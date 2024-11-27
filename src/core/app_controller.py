@@ -56,6 +56,15 @@ class AppController:
                                             song=playing_info['song'],
                                             singer=playing_info['singer']
                                         )
+                                    case 'skip':
+                                        # Skip to next song
+                                        playing_info = self.music_handler.skip_song()
+                                        
+                                        # Send status back to Soul using command's template
+                                        response = command_info['response_template'].format(
+                                            song=playing_info['song'],
+                                            singer=playing_info['singer']
+                                        )
                                     case 'next':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
@@ -66,6 +75,23 @@ class AppController:
                                             song=playing_info['song'],
                                             singer=playing_info['singer']
                                         )
+                                    case 'pause':
+                                        # Pause current song
+                                        playing_info = self.music_handler.pause_song()
+                                        
+                                        # Send status back to Soul using command's template
+                                        response = command_info['response_template'].format(
+                                            song=playing_info['song'],
+                                            singer=playing_info['singer']
+                                        )
+                                    case 'vol+':
+                                        # Increase volume
+                                        self.music_handler.increase_volume()
+                                        response = command_info['response_template']
+                                    case 'vol-':
+                                        # Decrease volume
+                                        self.music_handler.decrease_volume()
+                                        response = command_info['response_template']
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
                                 if response:

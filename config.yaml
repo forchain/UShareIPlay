@@ -20,7 +20,11 @@ qq_music:
     back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
     song_name: "com.tencent.qqmusic:id/ll6"
     singer_name: "com.tencent.qqmusic:id/ln9"
-
+    pause_button: "android:id/action1"
+    skip_button: "android:id/action2"
+    playing_bar: "com.tencent.qqmusic:id/iir"
+    current_song: "android:id/title"
+    current_singer: "android:id/text"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
@@ -29,7 +33,11 @@ commands:
   - prefix: "next"
     response_template: "Scheduled {song} by {singer} to play next"
   - prefix: "pause"
-    response_template: "Paused <<{song}>> by {singer}"
+    response_template: "Paused/Playing <<{song}>> by {singer}"
+  - prefix: "vol+"
+    response_template: "Volume increased"
+  - prefix: "vol-"
+    response_template: "Volume decreased"
 
 appium:
   host: "0.0.0.0"

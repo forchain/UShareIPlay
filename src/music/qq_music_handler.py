@@ -46,6 +46,24 @@ class QQMusicHandler(AppHandler):
         except Exception as e:
             print(f"Error getting playing info: {str(e)}")
             return None
+    def get_current_playing(self):
+        """Get current playing song and singer info"""
+        try:
+            song_element = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['current_song']
+            )
+            singer_element = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['current_singer']
+            )
+            return {
+                'song': song_element.text,
+                'singer': singer_element.text
+            }
+        except Exception as e:
+            print(f"Error getting current playing info: {str(e)}")
+            return None
 
     def _prepare_music_playback(self, music_query):
         """Common logic for preparing music playback"""
@@ -130,4 +148,120 @@ class QQMusicHandler(AppHandler):
                 'song': music_query,
                 'singer': 'unknown'
             }
+
+    def skip_song(self):
+        """Skip to next song using notification panel"""
+        try:
+            # Open notification panel
+            self.driver.open_notifications()
+            print("Opened notification panel")
+            time.sleep(1)  # Wait for animation
+
+            # Find and click skip button in notification
+            skip_button = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['skip_button']
+            )
+            skip_button.click()
+            print("Clicked skip button")
+            time.sleep(1)  # Wait for song change
+
+            # Get playing info
+            playing_info = self.get_current_playing()
+            if not playing_info:
+                playing_info = {
+                    'song': 'unknown',
+                    'singer': 'unknown'
+                }
+            print(f"Now playing: {playing_info}")
+
+            # Close notification panel
+            self.press_back()
+            print("Closed notification panel")
+
+            return playing_info
+
+        except Exception as e:
+            print(f"Error skipping song: {str(e)}")
+            return {
+                'song': 'unknown',
+                'singer': 'unknown'
+            }
+
+    def pause_song(self):
+        """Pause current playing song using notification panel"""
+        try:
+            # Get current playing info before pause
+            self.driver.open_notifications()
+            print("Opened notification panel")
+            time.sleep(1)  # Wait for animation
+
+            # Get current playing info
+            playing_info = self.get_current_playing()
+            if not playing_info:
+                playing_info = {
+                    'song': 'unknown',
+                    'singer': 'unknown'
+                }
+            print(f"Current playing: {playing_info}")
+
+            # Find and click pause button
+            pause_button = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['pause_button']
+            )
+            pause_button.click()
+            print("Clicked pause button")
+            time.sleep(1)  # Wait for pause action
+
+            # Close notification panel
+            self.press_back()
+            print("Closed notification panel")
+
+            return playing_info
+
+        except Exception as e:
+            print(f"Error pausing song: {str(e)}")
+            return {
+                'song': 'unknown',
+                'singer': 'unknown'
+            }
+
+    def get_volume_level(self):
+        """Get current volume level"""
+        try:
+            # Execute shell command to get volume
+            result = self.driver.execute_script(
+                'mobile: shell',
+                {
+                    'command': 'dumpsys audio | grep "STREAM_MUSIC" | grep -o "[0-9]*/[0-9]*"'
+                }
+            )
+            
+            # Parse volume level
+            if result:
+                current, max_vol = map(int, result.strip().split('/'))
+                volume_percentage = int((current / max_vol) * 100)
+                print(f"Current volume: {volume_percentage}%")
+                return volume_percentage
+            return 0
+        except Exception as e:
+            print(f"Error getting volume level: {str(e)}")
+            return 0
+
+    def increase_volume(self):
+        """Increase the device volume"""
+        try:
+            self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
+            print("Increased volume")
+        except Exception as e:
+            print(f"Error increasing volume: {str(e)}")
+
+    def decrease_volume(self):
+        """Decrease the device volume"""
+        try:
+            self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
+            print("Decreased volume")
+        except Exception as e:
+            print(f"Error decreasing volume: {str(e)}")
 

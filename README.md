@@ -126,33 +126,54 @@ The `config.yaml` file in the project root directory contains the following conf
 ```yaml
 soul:
     package_name: "cn.soulapp.android"
-    chat_activity: ".ui.chat.ChatActivity"
+    chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
     elements:
-        message_list: "id=message_list"
-        input_box: "id=chat_input"
-        send_button: "id=send_button"
+        message_list: "cn.soulapp.android:id/rvMessage"
+        message_content: "cn.soulapp.android:id/tvContent"
+        input_box_entry: "cn.soulapp.android:id/tvChat"
+        input_box: "cn.soulapp.android:id/etInputView"
+        button_send: "cn.soulapp.android:id/btnSend"
 
 qq_music:
     package_name: "com.tencent.qqmusic"
     search_activity: ".activity.AppStarterActivity"
     elements:
-        search_box: "id=search_input"
-        search_button: "id=search_btn"
-        first_song: "id=song_item_0"
-        play_button: "id=play_button"
+        search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id=\"com.tencent.qqmusic:id/hi2\"]/android.view.View"
+        search_box: "com.tencent.qqmusic:id/searchItem"
+        play_button: "com.tencent.qqmusic:id/krg"
+        next_button: "com.tencent.qqmusic:id/f4"
+        player_panel: "com.tencent.qqmusic:id/idm"
+        back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
+        song_name: "com.tencent.qqmusic:id/ll6"
+        singer_name: "com.tencent.qqmusic:id/ln9"
+        pause_button: "android:id/action1"
+        skip_button: "android:id/action2"
+        playing_bar: "com.tencent.qqmusic:id/iir"
+        current_song: "android:id/title"
+        current_singer: "android:id/text"
 
-command:
-    prefix: ":play"
-    response_template: "Now playing {singer} 's {song}"
+commands:
+    - prefix: "play"
+      response_template: "Playing <<{song}>> by {singer}"
+    - prefix: "skip"
+      response_template: "Skipped to next song <<{song}>> by {singer}"
+    - prefix: "next"
+      response_template: "Scheduled {song} by {singer} to play next"
+    - prefix: "pause"
+      response_template: "Paused/Playing <<{song}>> by {singer}"
+    - prefix: "vol+"
+      response_template: "Volume increased"
+    - prefix: "vol-"
+      response_template: "Volume decreased"
 
 appium:
-    host: "127.0.0.1"
+    host: "0.0.0.0"
     port: 4723
 
 device:
     name: "your_device_name"  # Replace with actual device ID
     platform_name: "Android"
-    platform_version: "11.0"  # Replace with actual Android version
+    platform_version: "10"  # Replace with actual Android version
     automation_name: "UiAutomator2"
     no_reset: true
 ```
@@ -210,7 +231,9 @@ python main.py
    - `skip song_name artist_name`: Skip to a specific song
    - `next song_name artist_name`: Add song to play next
    - `pause`: Pause current playback
-   Example: ":play 听妈妈的话 周杰伦" or ":next 晴天 周杰伦"
+   - `vol+`: Increase volume
+   - `vol-`: Decrease volume
+   Example: "play 听妈妈的话 周杰伦" or "next 晴天 周杰伦"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song
