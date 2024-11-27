@@ -15,16 +15,21 @@ qq_music:
     search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id=\"com.tencent.qqmusic:id/hi2\"]/android.view.View"
     search_box: "com.tencent.qqmusic:id/searchItem"
     play_button: "com.tencent.qqmusic:id/krg"
+    next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
     back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
     song_name: "com.tencent.qqmusic:id/ll6"
     singer_name: "com.tencent.qqmusic:id/ln9"
-    next_song_button: "com.tencent.qqmusic:id/l9d"
-                    
 
-command:
-  prefix: "播放"
-  response_template: "Playing <<{song}>> by {singer}"
+commands:
+  - prefix: "play"
+    response_template: "Playing <<{song}>> by {singer}"
+  - prefix: "skip"
+    response_template: "Skipped to next song <<{song}>> by {singer}"
+  - prefix: "next"
+    response_template: "Scheduled {song} by {singer} to play next"
+  - prefix: "pause"
+    response_template: "Paused <<{song}>> by {singer}"
 
 appium:
   host: "0.0.0.0"

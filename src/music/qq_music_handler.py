@@ -35,7 +35,6 @@ class QQMusicHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['song_name']
             )
-            print(f"Found song element: {song_element.text}")
             singer_element = self.driver.find_element(
                 AppiumBy.ID,
                 self.config['elements']['singer_name']
@@ -48,46 +47,52 @@ class QQMusicHandler(AppHandler):
             print(f"Error getting playing info: {str(e)}")
             return None
 
+    def _prepare_music_playback(self, music_query):
+        """Common logic for preparing music playback"""
+        self.switch_to_app()
+        print(f"Switched to QQ Music app")
+        
+        # Hide player if visible
+        self.hide_player()
+        print(f"Attempted to hide player")
+        
+        # Go back to home page
+        self.navigate_to_home()
+        print(f"Navigated to home page")
+            
+        # Find search entry
+        search_entry = self.driver.find_element(
+            AppiumBy.XPATH,
+            self.config['elements']['search_entry']
+        )
+        search_entry.click()
+        print(f"Clicked search entry")
+                
+        # Input search query and press enter
+        search_box = self.driver.find_element(
+            AppiumBy.ID, 
+            self.config['elements']['search_box']
+        )
+        search_box.send_keys(music_query)
+        print(f"Input search query: {music_query}")
+        
+        self.press_enter(search_box)
+        print(f"Pressed enter to search")
+            
+        playing_info = self.get_playing_info()
+        if not playing_info:
+            playing_info = {
+                'song': music_query,
+                'singer': 'unknown'
+            }
+        print(f"Found playing info: {playing_info}")
+        
+        return playing_info
+
     def play_music(self, music_query):
         """Search and play music"""
         try:
-            self.switch_to_app()
-            print(f"Switched to QQ Music app")
-            
-            # Hide player if visible
-            self.hide_player()
-            print(f"Attempted to hide player")
-            
-            # Go back to home page
-            self.navigate_to_home()
-            print(f"Navigated to home page")
-                
-            # Find search entry
-            search_entry = self.driver.find_element(
-                AppiumBy.XPATH,
-                self.config['elements']['search_entry']
-            )
-            search_entry.click()
-            print(f"Clicked search entry")
-                    
-            # Input search query and press enter
-            search_box = self.driver.find_element(
-                AppiumBy.ID, 
-                self.config['elements']['search_box']
-            )
-            search_box.send_keys(music_query)
-            print(f"Input search query: {music_query}")
-            
-            self.press_enter(search_box)
-            print(f"Pressed enter to search")
-                
-            playing_info = self.get_playing_info()
-            if not playing_info:
-                playing_info = {
-                    'song': music_query,
-                    'singer': 'unknown'
-                }
-            print(f"Found playing info: {playing_info}")
+            playing_info = self._prepare_music_playback(music_query)
             # Click play button
             play_button = self.driver.find_element(
                 AppiumBy.ID, 
@@ -100,6 +105,27 @@ class QQMusicHandler(AppHandler):
 
         except Exception as e:
             print(f"Error playing music: {str(e)}")
+            return {
+                'song': music_query,
+                'singer': 'unknown'
+            }
+
+    def play_next(self, music_query):
+        """Search and play next music"""
+        try:
+            playing_info = self._prepare_music_playback(music_query)
+            # Click next button
+            next_button = self.driver.find_element(
+                AppiumBy.ID, 
+                self.config['elements']['next_button']
+            )
+            next_button.click()
+            print(f"Clicked next button")
+
+            return playing_info
+
+        except Exception as e:
+            print(f"Error playing next music: {str(e)}")
             return {
                 'song': music_query,
                 'singer': 'unknown'

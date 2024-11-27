@@ -205,8 +205,12 @@ python main.py
 ### 2. Usage Steps
 1. Ensure phone screen is unlocked
 2. Enter target Soul App group chat
-3. Send message in format: "播放 歌名 歌手"
-   Example: "播放 听妈妈的话 周杰伦" or "播放 周杰伦 听妈妈的话"
+3. Send message using one of the following formats:
+   - `play song_name artist_name`: Play a song
+   - `skip song_name artist_name`: Skip to a specific song
+   - `next song_name artist_name`: Add song to play next
+   - `pause`: Pause current playback
+   Example: ":play 听妈妈的话 周杰伦" or ":next 晴天 周杰伦"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song

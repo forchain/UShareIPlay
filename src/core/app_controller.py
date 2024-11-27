@@ -14,7 +14,7 @@ class AppController:
         self.driver = self._init_driver()
         self.soul_handler = SoulHandler(self.driver, config['soul'])
         self.music_handler = QQMusicHandler(self.driver, config['qq_music'])
-        self.command_parser = CommandParser(config['command'])
+        self.command_parser = CommandParser(config['commands'])
 
     def _init_driver(self):
         options = AppiumOptions()
@@ -41,17 +41,35 @@ class AppController:
                 if messages:
                     for message in messages:
                         if self.command_parser.is_valid_command(message):
-                            music_query = self.command_parser.parse_command(message)
-                            if music_query:
-                                # Play music and get info
-                                playing_info = self.music_handler.play_music(music_query)
-                                
-                                # Send status back to Soul
-                                response = self.config['command']['response_template'].format(
-                                    song=playing_info['song'],
-                                    singer=playing_info['singer']
-                                )
-                                self.soul_handler.send_message(response)
+                            command_info = self.command_parser.parse_command(message)
+                            if command_info:
+                                # Handle different commands using match-case
+                                response = None
+                                match command_info['command']:
+                                    case 'play':
+                                        # Play music and get info
+                                        query = ' '.join(command_info['parameters'])
+                                        playing_info = self.music_handler.play_music(query)
+                                        
+                                        # Send status back to Soul using command's template
+                                        response = command_info['response_template'].format(
+                                            song=playing_info['song'],
+                                            singer=playing_info['singer']
+                                        )
+                                    case 'next':
+                                        # Play music and get info
+                                        query = ' '.join(command_info['parameters'])
+                                        playing_info = self.music_handler.play_next(query)
+                                        
+                                        # Send status back to Soul using command's template
+                                        response = command_info['response_template'].format(
+                                            song=playing_info['song'],
+                                            singer=playing_info['singer']
+                                        )
+                                    case _:
+                                        print(f"Unknown command: {command_info['command']}")
+                                if response:
+                                    self.soul_handler.send_message(response)
                 time.sleep(9)
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")

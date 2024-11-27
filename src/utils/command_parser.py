@@ -1,17 +1,38 @@
 class CommandParser:
     def __init__(self, config):
-        self.prefix = config['prefix']
+        self.commands = config  # Now it's a list of command configs
 
     def is_valid_command(self, message):
-        """检查是否是有效的命令"""
+        """Check if message starts with any valid prefix"""
         if not message:
             return False
-        return message.startswith(self.prefix)
+        return any(message.startswith(cmd['prefix']) for cmd in self.commands)
 
     def parse_command(self, message):
-        """解析命令获取音乐搜索关键词"""
-        # 移除前缀
-        content = message[len(self.prefix):].strip()
-        if content:
-            return content
-        return None 
+        """Parse command and get the music query"""
+        if not message:
+            return None
+
+        # Split message into command and parameters
+        parts = message.split()
+        if not parts:
+            return None
+
+        command = parts[0]
+        parameters = parts[1:]  # All elements after the command
+
+        # Find matching command config
+        matching_cmd = None
+        for cmd in self.commands:
+            if command == cmd['prefix']:
+                matching_cmd = cmd
+                break
+
+        if not matching_cmd:
+            return None
+
+        return {
+            'command': command,
+            'parameters': parameters,
+            'response_template': matching_cmd['response_template']
+        } 
