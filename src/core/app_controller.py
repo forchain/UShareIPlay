@@ -43,12 +43,13 @@ class AppController:
                         if self.command_parser.is_valid_command(message):
                             music_query = self.command_parser.parse_command(message)
                             if music_query:
-                                # Play music
-                                self.music_handler.play_music(music_query)
+                                # Play music and get info
+                                playing_info = self.music_handler.play_music(music_query)
                                 
                                 # Send status back to Soul
                                 response = self.config['command']['response_template'].format(
-                                    music=music_query
+                                    song=playing_info['song'],
+                                    singer=playing_info['singer']
                                 )
                                 self.soul_handler.send_message(response)
                 time.sleep(9)

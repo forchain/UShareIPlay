@@ -25,3 +25,8 @@ class AppHandler:
         """
         self.driver.press_keycode(66)
         print('try 66')
+
+    def press_back(self):
+        """Press Android back button"""
+        self.driver.press_keycode(4)  # Android back key code
+        print("Pressed back button")

@@ -86,7 +86,7 @@ class SoulHandler(AppHandler):
             print("Clicked send button")
 
             # hide input dialog
-            self.driver.press_keycode(4)  # Android back key code
-            print(f"hide input dialog")
+            self.press_back()
+            print("Hide input dialog")
         except Exception as e:
             print(f"Error sending message: {str(e)}") 
