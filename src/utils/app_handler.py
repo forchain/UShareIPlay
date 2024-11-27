@@ -9,4 +9,19 @@ class AppHandler:
 
     def close_app(self):
         """关闭应用"""
-        self.driver.terminate_app(self.config['package_name']) 
+        self.driver.terminate_app(self.config['package_name'])
+    
+    def switch_to_activity(self, activity):
+        """Switch to the specified activity"""
+        package_name = self.config['package_name']
+        command = f'am start -n {package_name}/{activity}'
+        self.driver.execute_script('mobile: shell', {'command': command})
+
+    def press_enter(self, element):
+        """
+        Press Enter key on the given element
+        Args:
+            element: The WebElement to send Enter key to
+        """
+        self.driver.press_keycode(66)
+        print('try 66')

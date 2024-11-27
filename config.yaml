@@ -1,23 +1,26 @@
 soul:
   package_name: "cn.soulapp.android"
-  chat_activity: ".ui.chat.ChatActivity"
+  chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
   elements:
-    message_list: "id=message_list"
-    input_box: "id=chat_input"
-    send_button: "id=send_button"
+    message_list: "cn.soulapp.android:id/rvMessage"
+    message_content: "cn.soulapp.android:id/tvContent"
+    input_box_entry: "cn.soulapp.android:id/tvChat"
+    input_box: "cn.soulapp.android:id/etInputView"
+    button_send: "cn.soulapp.android:id/btnSend"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
   elements:
-    search_box: "id=search_input"
-    search_button: "id=search_btn"
-    first_song: "id=song_item_0"
-    play_button: "id=play_button"
+    search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id=\"com.tencent.qqmusic:id/hi2\"]/android.view.View"
+    search_box: "com.tencent.qqmusic:id/searchItem"
+    play_button: "com.tencent.qqmusic:id/krg"
+    player_panel: "com.tencent.qqmusic:id/idm"
+    back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
 
 command:
-  prefix: ":播放"
-  response_template: "正在播放 {singer} 的 {song}"
+  prefix: "播放"
+  response_template: "正在播放 {music}"
 
 appium:
   host: "0.0.0.0"

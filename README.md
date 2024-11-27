@@ -205,7 +205,8 @@ python main.py
 ### 2. Usage Steps
 1. Ensure phone screen is unlocked
 2. Enter target Soul App group chat
-3. Send message in format: ":play song_name artist_name"
+3. Send message in format: "播放 歌名 歌手"
+   Example: "播放 听妈妈的话 周杰伦" or "播放 周杰伦 听妈妈的话"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song
@@ -282,6 +283,47 @@ SoulMusicBox-Android/
 ```
 
 ### 2. Development Suggestions
+
+#### Using Appium Inspector
+1. Install Appium Inspector
+```bash
+# Download from GitHub releases
+https://github.com/appium/appium-inspector/releases
+
+# Or install via brew (macOS)
+brew install --cask appium-inspector
+```
+
+2. Configure Appium Inspector
+- Launch Appium Inspector
+- Configure Desired Capabilities:
+  ```json
+  {
+    "platformName": "Android",
+    "deviceName": "your_device_id",
+    "platformVersion": "your_android_version",
+    "automationName": "UiAutomator2",
+    "noReset": true
+  }
+  ```
+
+3. Using Inspector
+- Ensure Appium server is running
+- Connect your Android device
+- Start the application you want to inspect
+- Click "Start Session" in Appium Inspector
+- Use the element picker to:
+  - Click elements to view their attributes
+  - Get element locators (id, xpath, etc.)
+  - Record element hierarchies
+  - Test interactions with elements
+
+4. Tips for Element Inspection
+- Use the refresh button to update the page view
+- Try different locator strategies (id, xpath, accessibility id)
+- Save commonly used locators for future reference
+- Use the recorded element attributes in your config.yaml file
+
 - Use Appium Inspector for element positioning assistance
 - Write test cases to ensure functionality stability
 - Follow the project's code style

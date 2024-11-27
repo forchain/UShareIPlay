@@ -9,13 +9,9 @@ class CommandParser:
         return message.startswith(self.prefix)
 
     def parse_command(self, message):
-        """解析命令获取歌名和歌手"""
+        """解析命令获取音乐搜索关键词"""
         # 移除前缀
         content = message[len(self.prefix):].strip()
-        # 分割歌名和歌手
-        parts = content.split()
-        if len(parts) >= 2:
-            song = parts[0]
-            singer = parts[1]
-            return song, singer
-        return None, None 
+        if content:
+            return content
+        return None 

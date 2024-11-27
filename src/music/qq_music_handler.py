@@ -1,39 +1,69 @@
 from appium.webdriver.common.appiumby import AppiumBy
+from appium.webdriver.common.touch_action import TouchAction
 from ..utils.app_handler import AppHandler
-
+import time
 class QQMusicHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
 
-    def play_music(self, song, singer):
-        """搜索并播放音乐"""
-        try:
-            # 打开搜索框
-            search_box = self.driver.find_element(
-                AppiumBy.ID, 
-                self.config['elements']['search_box'].replace('id=', '')
-            )
-            search_box.send_keys(f"{song} {singer}")
+    def hide_player(self):
+        self.driver.press_keycode(4)  # Android back key code
+        print("Pressed back key to hide player panel")
+        """Hide the music player by pressing back key if visible"""
+
+    def navigate_to_home(self):
+        """Navigate back to home page"""
+        # Keep clicking back until no more back buttons found
+        while True:
+            try:
+                back_button = self.driver.find_element(
+                    AppiumBy.XPATH,
+                    self.config['elements']['back_button']
+                )
+                back_button.click()
+                print(f"Clicked back button")
+            except:
+                # No back button found, assume we're at home page
+                print(f"No back button found, assume we're at home page")
+                break
+
+    def play_music(self, music_query):
+        """Search and play music"""
+        self.switch_to_app()
+        print(f"Switched to QQ Music app")
+        
+        # Hide player if visible
+        self.hide_player()
+        print(f"Attempted to hide player")
+        
+        # Go back to home page
+        self.navigate_to_home()
+        print(f"Navigated to home page")
             
-            # 点击搜索
-            search_button = self.driver.find_element(
+        # Find search entry
+        search_entry = self.driver.find_element(
+            AppiumBy.XPATH,
+            self.config['elements']['search_entry']
+        )
+        search_entry.click()
+        print(f"Clicked search entry")
+                    
+        # Input search query and press enter
+        search_box = self.driver.find_element(
                 AppiumBy.ID, 
-                self.config['elements']['search_button'].replace('id=', '')
+                self.config['elements']['search_box']
             )
-            search_button.click()
+        search_box.send_keys(music_query)
+        print(f"Input search query: {music_query}")
+        
+        self.press_enter(search_box)
+        print(f"Pressed enter to search")
             
-            # 选择第一首歌
-            first_song = self.driver.find_element(
-                AppiumBy.ID, 
-                self.config['elements']['first_song'].replace('id=', '')
-            )
-            first_song.click()
-            
-            # 点击播放
-            play_button = self.driver.find_element(
-                AppiumBy.ID, 
-                self.config['elements']['play_button'].replace('id=', '')
-            )
-            play_button.click()
-        except Exception as e:
-            print(f"Error playing music: {str(e)}") 
+        # Click play button
+        play_button = self.driver.find_element(
+            AppiumBy.ID, 
+            self.config['elements']['play_button']
+        )
+        play_button.click()
+        print(f"Clicked play button")
+
