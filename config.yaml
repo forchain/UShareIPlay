@@ -1,0 +1,31 @@
+soul:
+  package_name: "cn.soulapp.android"
+  chat_activity: ".ui.chat.ChatActivity"
+  elements:
+    message_list: "id=message_list"
+    input_box: "id=chat_input"
+    send_button: "id=send_button"
+
+qq_music:
+  package_name: "com.tencent.qqmusic"
+  search_activity: ".activity.AppStarterActivity"
+  elements:
+    search_box: "id=search_input"
+    search_button: "id=search_btn"
+    first_song: "id=song_item_0"
+    play_button: "id=play_button"
+
+command:
+  prefix: ":播放"
+  response_template: "正在播放 {singer} 的 {song}"
+
+appium:
+  host: "0.0.0.0"
+  port: 4723
+
+device:
+  name: "554b4e4745413498"
+  platform_name: "Android"
+  platform_version: "10"
+  automation_name: "UiAutomator2"
+  no_reset: true 
