@@ -1,6 +1,7 @@
 class CommandParser:
-    def __init__(self, config):
-        self.commands = config  # Now it's a list of command configs
+    def __init__(self, commands, lyrics_tags=None):
+        self.commands = commands
+        self.lyrics_tags = lyrics_tags
 
     def is_valid_command(self, message):
         """Check if message starts with any valid prefix"""

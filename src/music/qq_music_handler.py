@@ -1,11 +1,14 @@
 from appium.webdriver.common.appiumby import AppiumBy
 from appium.webdriver.common.touch_action import TouchAction
 from ..utils.app_handler import AppHandler
+from ..utils.lyrics_formatter import LyricsFormatter
 import time
+import re
 
 class QQMusicHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
+        self.lyrics_formatter = None  # Will be set by app_controller
 
     def hide_player(self):
         self.press_back()
@@ -249,19 +252,212 @@ class QQMusicHandler(AppHandler):
             print(f"Error getting volume level: {str(e)}")
             return 0
 
+    def toggle_accompaniment(self, enable):
+        """Toggle accompaniment mode
+        Args:
+            enable: bool, True to enable, False to disable
+        Returns:
+            dict: {'enabled': 'on'/'off'}
+        """
+        try:
+            self.switch_to_app()
+            print("Switched to QQ Music app")
+
+            # Try to find more button in play panel
+            try:
+                time.sleep(2)
+                more_button = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['more_in_play_panel']
+                )
+            except:
+                # If not found, try to activate play panel first
+                print("More button not found, trying to activate play panel")
+                self.press_back()
+                print("Close unexpected screen")
+                time.sleep(1)
+                playing_bar = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['playing_bar']
+                )
+                playing_bar.click()
+                print("Clicked playing bar")
+                time.sleep(1)
+                more_button = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['more_in_play_panel']
+                )
+
+            # Click more button
+            more_button.click()
+            print("Clicked more button")
+            time.sleep(1)
+
+            # Scroll menu to find accompaniment menu
+            for _ in range(5):
+                self.press_dpad_down()
+            print("Scrolled menu")
+
+            # Click accompaniment menu
+            accompaniment_menu = self.driver.find_element(
+                AppiumBy.XPATH,
+                self.config['elements']['accompaniment_menu']
+            )
+            accompaniment_menu.click()
+            print("Clicked accompaniment menu")
+            time.sleep(1)
+
+            # Find switch and check current state
+            switch = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['accompaniment_switch']
+            )
+            current_state = switch.get_attribute('content-desc')
+            is_on = current_state == "伴唱已开启"
+            print(f"Current accompaniment state: {'on' if is_on else 'off'}")
+
+            # Toggle if needed
+            if (enable and not is_on) or (not enable and is_on):
+                time.sleep(1)
+                max_retries = 9
+                retry_count = 0
+                target_state = not is_on
+                
+                while retry_count < max_retries:
+                    try:
+                        # Get fresh switch element
+                        switch = self.driver.find_element(
+                            AppiumBy.ID,
+                            self.config['elements']['accompaniment_switch']
+                        )
+                        switch.click()
+                        print(f"Attempt {retry_count + 1}: Toggled accompaniment switch")
+                        time.sleep(1)
+                        
+                        # Check new state
+                        switch = self.driver.find_element(
+                            AppiumBy.ID,
+                            self.config['elements']['accompaniment_switch']
+                        )
+                        current_state = switch.get_attribute('content-desc')
+                        is_on = current_state == "伴唱已开启"
+                        
+                        if is_on == target_state:
+                            print(f"Successfully toggled accompaniment to {'on' if is_on else 'off'}")
+                            break
+                        else:
+                            print(f"Attempt {retry_count + 1}: Toggle failed, current state: {'on' if is_on else 'off'}")
+                            retry_count += 1
+                            time.sleep(1)
+                    except Exception as e:
+                        print(f"Attempt {retry_count + 1}: Error during toggle: {str(e)}")
+                        retry_count += 1
+                        time.sleep(1)
+                
+                if retry_count >= max_retries:
+                    print("Failed to toggle accompaniment after maximum retries")
+
+            return {
+                'enabled': 'on' if is_on else 'off'
+            }
+
+        except Exception as e:
+            print(f"Error toggling accompaniment: {str(e)}")
+            return {
+                'enabled': 'unknown'
+            }
+
     def increase_volume(self):
         """Increase the device volume"""
         try:
-            self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
-            print("Increased volume")
+            self.press_volume_up()
         except Exception as e:
             print(f"Error increasing volume: {str(e)}")
 
     def decrease_volume(self):
         """Decrease the device volume"""
         try:
-            self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
-            print("Decreased volume")
+            self.press_volume_down()
         except Exception as e:
             print(f"Error decreasing volume: {str(e)}")
+
+    def get_lyrics(self):
+        """Get lyrics of current playing song"""
+        try:
+            self.switch_to_app()
+            print("Switched to QQ Music app")
+
+            # Try to find info dot button
+            try:
+                info_dot = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['info_dot']
+                )
+            except:
+                # If not found, try to activate play panel first
+                print("Info dot not found, trying to activate play panel")
+                self.press_back()
+                print("Close unexpected screen")
+                time.sleep(1)
+                playing_bar = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['playing_bar']
+                )
+                playing_bar.click()
+                print("Clicked playing bar")
+                time.sleep(1)
+                info_dot = self.driver.find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['info_dot']
+                )
+
+            # Click info dot
+            info_dot.click()
+            print("Clicked info dot")
+            time.sleep(1)
+
+            # Click details link
+            details_link = self.driver.find_element(
+                AppiumBy.ID,
+                self.config['elements']['details_link']
+            )
+            details_link.click()
+            print("Clicked details link")
+            time.sleep(2)  # Wait for lyrics to load
+
+            # Get lyrics
+            lyrics_element = self.driver.find_element(
+                AppiumBy.XPATH,
+                self.config['elements']['song_lyrics']
+            )
+            raw_lyrics = lyrics_element.text
+            
+            # Extract language from lyrics text
+            language = None
+            language_match = re.search(r' 语种 (\w+)', raw_lyrics)
+            if language_match:
+                language = language_match.group(1)
+            
+            # Format lyrics
+            formatted_lyrics = self.lyrics_formatter.format_lyrics(raw_lyrics, language)
+            print("Formatted lyrics")
+
+            # Go back to main screen
+            self.press_back()
+            time.sleep(0.5)
+            self.press_back()
+            print("Returned to main screen")
+
+            return {
+                'lyrics': formatted_lyrics if formatted_lyrics else "No lyrics available"
+            }
+
+        except Exception as e:
+            print(f"Error getting lyrics: {str(e)}")
+            return {
+                'lyrics': "Failed to get lyrics"
+            }
+
+    def set_lyrics_formatter(self, formatter):
+        self.lyrics_formatter = formatter
 

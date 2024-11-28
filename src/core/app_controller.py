@@ -6,14 +6,29 @@ from appium.options.common import AppiumOptions
 from ..soul.soul_handler import SoulHandler
 from ..music.qq_music_handler import QQMusicHandler
 from ..utils.command_parser import CommandParser
+from ..utils.lyrics_formatter import LyricsFormatter
 import time
 
 class AppController:
     def __init__(self, config):
         self.config = config
         self.driver = self._init_driver()
+        
+        # Get lyrics formatter tags from lyrics command config
+        lyrics_tags = next(
+            (cmd.get('tags', []) for cmd in config['commands'] if cmd['prefix'] == 'lyrics'),
+            []
+        )
+        
+        # Create lyrics formatter
+        self.lyrics_formatter = LyricsFormatter(lyrics_tags)
+        
+        # Initialize handlers
         self.soul_handler = SoulHandler(self.driver, config['soul'])
         self.music_handler = QQMusicHandler(self.driver, config['qq_music'])
+        self.music_handler.set_lyrics_formatter(self.lyrics_formatter)
+        
+        # Initialize command parser
         self.command_parser = CommandParser(config['commands'])
 
     def _init_driver(self):
@@ -92,6 +107,27 @@ class AppController:
                                         # Decrease volume
                                         self.music_handler.decrease_volume()
                                         response = command_info['response_template']
+                                    case 'accompaniment':
+                                        # Get parameter
+                                        if len(command_info['parameters']) > 0:
+                                            enable = command_info['parameters'][0] == '1'
+                                            # Toggle accompaniment mode
+                                            result = self.music_handler.toggle_accompaniment(enable)
+                                            
+                                            # Send status back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                enabled=result['enabled']
+                                            )
+                                        else:
+                                            print("Missing parameter for accompaniment command")
+                                    case 'lyrics':
+                                        # Get lyrics of current song
+                                        result = self.music_handler.get_lyrics()
+                                        
+                                        # Send lyrics back to Soul using command's template
+                                        response = command_info['response_template'].format(
+                                            lyrics=result['lyrics']
+                                        )
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
                                 if response:

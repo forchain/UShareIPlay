@@ -8,6 +8,7 @@ A mobile application for Android that monitors Soul App group chat messages and 
 - Automatically recognize music playback commands (e.g., ":play 听妈妈的话 周杰伦")
 - Automatically switch to the music app (QQ Music) and search and play the specified song
 - Send play status messages back to Soul App after successful playback
+- Toggle accompaniment mode for karaoke experience
 
 ## Environment Requirements
 
@@ -151,6 +152,12 @@ qq_music:
         playing_bar: "com.tencent.qqmusic:id/iir"
         current_song: "android:id/title"
         current_singer: "android:id/text"
+        info_dot: "com.tencent.qqmusic:id/c14"
+        details_link: "com.tencent.qqmusic:id/gnw"
+        more_in_play_panel: "com.tencent.qqmusic:id/a7m"
+        accompaniment_menu: "//android.widget.TextView[@resource-id=\"com.tencent.qqmusic:id/ndp\" and @text=\"伴唱模式\"]"
+        accompaniment_switch: "com.tencent.qqmusic:id/ocy"
+        song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
 
 commands:
     - prefix: "play"
@@ -163,8 +170,11 @@ commands:
       response_template: "Paused/Playing <<{song}>> by {singer}"
     - prefix: "vol+"
       response_template: "Volume increased"
-    - prefix: "vol-"
-      response_template: "Volume decreased"
+    - prefix: "accompaniment"
+      response_template: "Accompaniment mode {enabled}"
+    - prefix: "lyrics"
+      response_template: "{lyrics}"
+      tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介"]
 
 appium:
     host: "0.0.0.0"
@@ -177,6 +187,40 @@ device:
     automation_name: "UiAutomator2"
     no_reset: true
 ```
+
+The configuration file is divided into several sections:
+
+1. `soul`: Soul App related configuration
+   - `package_name`: Soul App package name
+   - `chat_activity`: Chat activity path
+   - `elements`: UI element identifiers
+
+2. `qq_music`: QQ Music App related configuration
+   - `package_name`: QQ Music package name
+   - `search_activity`: Search activity path
+   - `elements`: UI element identifiers for various features including:
+     - Basic playback controls
+     - Player panel elements
+     - Notification panel controls
+     - Lyrics and song info elements
+     - Accompaniment mode controls
+
+3. `commands`: Command configurations
+   - Multiple command configurations with:
+     - `prefix`: Command trigger word (e.g., "play", "skip", "next")
+     - `response_template`: Message template for command response
+     - `tags`: (For lyrics command) Tags for formatting lyrics display
+
+4. `appium`: Appium server configuration
+   - `host`: Server host address
+   - `port`: Server port number
+
+5. `device`: Device configuration
+   - `name`: Device ID
+   - `platform_name`: Operating system
+   - `platform_version`: OS version
+   - `automation_name`: Automation framework name
+   - `no_reset`: App reset settings
 
 ### 2. Device Configuration
 
@@ -227,13 +271,14 @@ python main.py
 1. Ensure phone screen is unlocked
 2. Enter target Soul App group chat
 3. Send message using one of the following formats:
-   - `play song_name artist_name`: Play a song
-   - `skip song_name artist_name`: Skip to a specific song
-   - `next song_name artist_name`: Add song to play next
-   - `pause`: Pause current playback
-   - `vol+`: Increase volume
-   - `vol-`: Decrease volume
-   Example: "play 听妈妈的话 周杰伦" or "next 晴天 周杰伦"
+   - `:play song_name artist_name`: Play a song
+   - `:skip song_name artist_name`: Skip to a specific song
+   - `:next song_name artist_name`: Add song to play next
+   - `:pause`: Pause/Continue current playback
+   - `:vol+`: Increase volume
+   - `:accompaniment 1/0`: Enable/disable accompaniment mode
+   - `:lyrics`: Show current song lyrics
+   Example: "play 听妈妈的话 周杰伦" or "lyrics"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song

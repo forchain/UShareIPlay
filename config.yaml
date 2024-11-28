@@ -25,6 +25,12 @@ qq_music:
     playing_bar: "com.tencent.qqmusic:id/iir"
     current_song: "android:id/title"
     current_singer: "android:id/text"
+    info_dot: "com.tencent.qqmusic:id/c14"
+    details_link: "com.tencent.qqmusic:id/gnw"
+    more_in_play_panel: "com.tencent.qqmusic:id/a7m"
+    accompaniment_menu: "//android.widget.TextView[@resource-id=\"com.tencent.qqmusic:id/ndp\" and @text=\"伴唱模式\"]"
+    accompaniment_switch: "com.tencent.qqmusic:id/ocy"
+    song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
@@ -36,8 +42,11 @@ commands:
     response_template: "Paused/Playing <<{song}>> by {singer}"
   - prefix: "vol+"
     response_template: "Volume increased"
-  - prefix: "vol-"
-    response_template: "Volume decreased"
+  - prefix: "accompaniment"
+    response_template: "Accompaniment mode {enabled}"
+  - prefix: "lyrics"
+    response_template: "{lyrics}"
+    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", “歌曲简介”]
 
 appium:
   host: "0.0.0.0"
