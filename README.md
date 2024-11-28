@@ -8,6 +8,7 @@ A mobile application for Android that monitors Soul App group chat messages and 
 - Automatically recognize music playback commands (e.g., ":play 听妈妈的话 周杰伦")
 - Automatically switch to the music app (QQ Music) and search and play the specified song
 - Send play status messages back to Soul App after successful playback
+- Toggle accompaniment mode for karaoke experience
 
 ## Environment Requirements
 
@@ -233,7 +234,8 @@ python main.py
    - `pause`: Pause current playback
    - `vol+`: Increase volume
    - `vol-`: Decrease volume
-   Example: "play 听妈妈的话 周杰伦" or "next 晴天 周杰伦"
+   - `accompaniment 1/0`: Enable/disable accompaniment mode
+   Example: "play 听妈妈的话 周杰伦" or "accompaniment on"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song

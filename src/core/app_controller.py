@@ -92,6 +92,19 @@ class AppController:
                                         # Decrease volume
                                         self.music_handler.decrease_volume()
                                         response = command_info['response_template']
+                                    case 'accompaniment':
+                                        # Get parameter
+                                        if len(command_info['parameters']) > 0:
+                                            enable = command_info['parameters'][0] == '1'
+                                            # Toggle accompaniment mode
+                                            result = self.music_handler.toggle_accompaniment(enable)
+                                            
+                                            # Send status back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                enabled=result['enabled']
+                                            )
+                                        else:
+                                            print("Missing parameter for accompaniment command")
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
                                 if response:
