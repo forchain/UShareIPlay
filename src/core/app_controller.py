@@ -132,7 +132,7 @@ class AppController:
                                         print(f"Unknown command: {command_info['command']}")
                                 if response:
                                     self.soul_handler.send_message(response)
-                time.sleep(9)
+                time.sleep(1)
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
                 break

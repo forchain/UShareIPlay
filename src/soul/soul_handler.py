@@ -44,7 +44,7 @@ class SoulHandler(AppHandler):
                 print(f"New message contents: {new_message_contents}")
                 return new_message_contents
             
-            print("No new messages")
+            # print("No new messages")
             return None
             
         except Exception as e:
