@@ -17,9 +17,6 @@ class QQMusicHandler(AppHandler):
             "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
         })
         
-        # Set implicit wait timeout
-        self.driver.implicitly_wait(2)  # Set implicit wait timeout to 2 seconds
-
     def hide_player(self):
         self.press_back()
         print("Hide player panel")
@@ -92,12 +89,6 @@ class QQMusicHandler(AppHandler):
             self.navigate_to_home()
             print(f"Navigated to home page")
             
-            # Temporarily increase wait time for search elements
-            self.driver.implicitly_wait(5)  # Increase timeout for search operations
-            
-            # Input search query using clipboard
-            self.driver.set_clipboard_text(music_query)
-            print(f"Set clipboard text: {music_query}")
             # Find search entry
             search_entry = self.driver.find_element(
                 AppiumBy.XPATH,
@@ -112,7 +103,7 @@ class QQMusicHandler(AppHandler):
             )
             print(f"Found search box")
             search_box.click()  # Ensure focus
-            self.driver.press_keycode(279)  # KEYCODE_PASTE
+            search_box.send_keys(music_query)  # KEYCODE_PASTE
             print(f"Pasted search query: {music_query}")
             
             self.press_enter(search_box)
@@ -127,12 +118,10 @@ class QQMusicHandler(AppHandler):
             print(f"Found playing info: {playing_info}")
             
             # Reset wait time back to default
-            self.driver.implicitly_wait(2)
             
             return playing_info
             
         except Exception as e:
-            self.driver.implicitly_wait(2)  # Ensure timeout is reset even if error occurs
             raise e
 
     def play_music(self, music_query):
@@ -391,7 +380,7 @@ class QQMusicHandler(AppHandler):
         print("Clicked details link")
 
         # Get lyrics
-        lyrics_element = self.driver.find_element(
+        lyrics_element = self.wait_for_element(
             AppiumBy.XPATH,
             self.config['elements']['song_lyrics']
         )

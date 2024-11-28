@@ -11,6 +11,14 @@ class SoulHandler(AppHandler):
         """Get new message contents that weren't seen before"""
         try:
             self.switch_to_app()
+
+            # Check if there is a new message tip
+            new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
+            if new_message_tip:
+                print(f'Found new message tip')
+                new_message_tip.click()
+                print(f'Clicked new message tip')
+            
             # Get elements by ID directly without replace
             message_contents = self.driver.find_elements(
                 AppiumBy.ID,

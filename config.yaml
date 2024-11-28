@@ -7,12 +7,13 @@ soul:
     input_box_entry: "cn.soulapp.android:id/tvChat"
     input_box: "cn.soulapp.android:id/etInputView"
     button_send: "cn.soulapp.android:id/btnSend"
+    new_message_tip: "cn.soulapp.android:id/tvNewMsgTip"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
   elements:
-    search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id=\"com.tencent.qqmusic:id/hi2\"]/android.view.View"
+    search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id='com.tencent.qqmusic:id/hi2']/android.view.View"
     search_box: "com.tencent.qqmusic:id/searchItem"
     play_button: "com.tencent.qqmusic:id/krg"
     next_button: "com.tencent.qqmusic:id/f4"
