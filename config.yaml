@@ -42,7 +42,7 @@ commands:
     response_template: "Paused/Playing <<{song}>> by {singer}"
   - prefix: "vol+"
     response_template: "Volume increased"
-  - prefix: "accompaniment"
+  - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
   - prefix: "lyrics"
     response_template: "{lyrics}"

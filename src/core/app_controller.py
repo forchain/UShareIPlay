@@ -107,7 +107,7 @@ class AppController:
                                         # Decrease volume
                                         self.music_handler.decrease_volume()
                                         response = command_info['response_template']
-                                    case 'accompaniment':
+                                    case 'acc':
                                         # Get parameter
                                         if len(command_info['parameters']) > 0:
                                             enable = command_info['parameters'][0] == '1'

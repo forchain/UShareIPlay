@@ -272,11 +272,11 @@ python main.py
 2. Enter target Soul App group chat
 3. Send message using one of the following formats:
    - `:play song_name artist_name`: Play a song
-   - `:skip song_name artist_name`: Skip to a specific song
    - `:next song_name artist_name`: Add song to play next
+   - `:skip`: Skip to next song
    - `:pause`: Pause/Continue current playback
-   - `:vol+`: Increase volume
-   - `:accompaniment 1/0`: Enable/disable accompaniment mode
+   - `:vol+/-`: Increase/Decrease volume
+   - `:acc 1/0`: Enable/disable accompaniment mode
    - `:lyrics`: Show current song lyrics
    Example: "play 听妈妈的话 周杰伦" or "lyrics"
 4. Program will automatically:

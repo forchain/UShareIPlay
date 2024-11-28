@@ -9,6 +9,16 @@ class QQMusicHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
         self.lyrics_formatter = None  # Will be set by app_controller
+        
+        # Optimize driver settings
+        self.driver.update_settings({
+            "waitForIdleTimeout": 0,  # Don't wait for idle state
+            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+        })
+        
+        # Set implicit wait timeout
+        self.driver.implicitly_wait(2)  # Set implicit wait timeout to 2 seconds
 
     def hide_player(self):
         self.press_back()
@@ -70,45 +80,60 @@ class QQMusicHandler(AppHandler):
 
     def _prepare_music_playback(self, music_query):
         """Common logic for preparing music playback"""
-        self.switch_to_app()
-        print(f"Switched to QQ Music app")
-        
-        # Hide player if visible
-        self.hide_player()
-        print(f"Attempted to hide player")
-        
-        # Go back to home page
-        self.navigate_to_home()
-        print(f"Navigated to home page")
+        try:
+            self.switch_to_app()
+            print(f"Switched to QQ Music app")
             
-        # Find search entry
-        search_entry = self.driver.find_element(
-            AppiumBy.XPATH,
-            self.config['elements']['search_entry']
-        )
-        search_entry.click()
-        print(f"Clicked search entry")
-                
-        # Input search query and press enter
-        search_box = self.driver.find_element(
-            AppiumBy.ID, 
-            self.config['elements']['search_box']
-        )
-        search_box.send_keys(music_query)
-        print(f"Input search query: {music_query}")
-        
-        self.press_enter(search_box)
-        print(f"Pressed enter to search")
+            # Hide player if visible
+            self.hide_player()
+            print(f"Attempted to hide player")
             
-        playing_info = self.get_playing_info()
-        if not playing_info:
-            playing_info = {
-                'song': music_query,
-                'singer': 'unknown'
-            }
-        print(f"Found playing info: {playing_info}")
-        
-        return playing_info
+            # Go back to home page
+            self.navigate_to_home()
+            print(f"Navigated to home page")
+            
+            # Temporarily increase wait time for search elements
+            self.driver.implicitly_wait(5)  # Increase timeout for search operations
+            
+            # Input search query using clipboard
+            self.driver.set_clipboard_text(music_query)
+            print(f"Set clipboard text: {music_query}")
+            # Find search entry
+            search_entry = self.driver.find_element(
+                AppiumBy.XPATH,
+                self.config['elements']['search_entry']
+            )
+            search_entry.click()
+            print(f"Clicked search entry")
+            
+            search_box = self.driver.find_element(
+                AppiumBy.ID, 
+                self.config['elements']['search_box']
+            )
+            print(f"Found search box")
+            search_box.click()  # Ensure focus
+            self.driver.press_keycode(279)  # KEYCODE_PASTE
+            print(f"Pasted search query: {music_query}")
+            
+            self.press_enter(search_box)
+            print(f"Pressed enter to search")
+            
+            playing_info = self.get_playing_info()
+            if not playing_info:
+                playing_info = {
+                    'song': music_query,
+                    'singer': 'unknown'
+                }
+            print(f"Found playing info: {playing_info}")
+            
+            # Reset wait time back to default
+            self.driver.implicitly_wait(2)
+            
+            return playing_info
+            
+        except Exception as e:
+            self.driver.implicitly_wait(2)  # Ensure timeout is reset even if error occurs
+            raise e
 
     def play_music(self, music_query):
         """Search and play music"""
