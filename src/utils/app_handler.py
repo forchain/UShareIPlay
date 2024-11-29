@@ -55,7 +55,7 @@ class AppHandler:
     def switch_to_app(self):
         """切换到指定应用"""
         self.driver.activate_app(self.config['package_name'])
-        time.sleep(1)
+        time.sleep(0.1)
 
     def close_app(self):
         """关闭应用"""

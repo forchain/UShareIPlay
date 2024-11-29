@@ -32,6 +32,9 @@ qq_music:
     accompaniment_menu: "//android.widget.TextView[@resource-id=\"com.tencent.qqmusic:id/ndp\" and @text=\"伴唱模式\"]"
     accompaniment_switch: "com.tencent.qqmusic:id/ocy"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
+    accompaniment_tag: "com.tencent.qqmusic:id/n6i"
+#    live_lyrics: "com.tencent.qqmusic:id/e5z"
+    live_lyrics: "com.tencent.qqmusic:id/lbr"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
@@ -47,7 +50,11 @@ commands:
     response_template: "Accompaniment mode {enabled}"
   - prefix: "lyrics"
     response_template: "{lyrics}"
-    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", “歌曲简介”]
+    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介", "影视综述"]
+  - prefix: "ktv"
+    response_template: "{lyrics}"
+    max_switches: 9
+    switch_interval: 1
 
 appium:
   host: "0.0.0.0"

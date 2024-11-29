@@ -128,6 +128,27 @@ class AppController:
                                         response = command_info['response_template'].format(
                                             lyrics=result['lyrics']
                                         )
+                                    case 'ktv':
+                                        # Get KTV mode parameters from command config
+                                        ktv_config = next(
+                                            (cmd for cmd in self.config['commands'] if cmd['prefix'] == 'ktv'),
+                                            {}
+                                        )
+                                        max_switches = ktv_config.get('max_switches', 9)
+                                        switch_interval = ktv_config.get('switch_interval', 1)
+                                        
+                                        # Start KTV mode
+                                        for lyrics in self.music_handler.start_ktv_mode(
+                                            max_switches=max_switches,
+                                            switch_interval=switch_interval
+                                        ):
+                                            # Send lyrics to Soul
+                                            response = command_info['response_template'].format(
+                                                lyrics=lyrics
+                                            )
+                                            self.soul_handler.send_message(response)
+                                            self.music_handler.switch_to_app()
+                                            
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
                                 if response:

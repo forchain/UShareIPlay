@@ -65,20 +65,20 @@ class SoulHandler(AppHandler):
             self.switch_to_app()
             
             # Click on the input box entry first
-            input_box_entry = self.driver.find_element(
+            input_box_entry = self.wait_for_element_clickable(
                 AppiumBy.ID, 
                 self.config['elements']['input_box_entry']
             )
             input_box_entry.click()
             print("Clicked input box entry")
 
-            # Wait 1 second for input box to be ready
-            import time
-            time.sleep(1)
-            print("Waited 1 second for input box")
+            # # Wait 1 second for input box to be ready
+            # import time
+            # time.sleep(1)
+            # print("Waited 1 second for input box")
 
             # Now find and interact with the actual input box
-            input_box = self.driver.find_element(
+            input_box = self.wait_for_element_clickable(
                 AppiumBy.ID, 
                 self.config['elements']['input_box']
             )
@@ -86,7 +86,7 @@ class SoulHandler(AppHandler):
             print(f"Entered message: {message}")
 
             # click send button
-            send_button = self.driver.find_element(
+            send_button = self.wait_for_element_clickable(
                 AppiumBy.ID, 
                 self.config['elements']['button_send']
             )

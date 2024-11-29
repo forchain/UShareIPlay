@@ -92,6 +92,49 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 6. Install Tesseract OCR
+
+For KTV mode lyrics recognition, you need to install Tesseract OCR:
+
+#### macOS
+```bash
+# Install Tesseract using Homebrew
+brew install tesseract
+brew install tesseract-lang  # Install additional language packs
+
+# Verify installation
+tesseract --version
+
+# Install Python binding
+pip install pytesseract Pillow
+```
+
+#### Verify Chinese Support
+```bash
+# Check available languages
+tesseract --list-langs
+
+# Should include:
+# chi_sim - Simplified Chinese
+# chi_tra - Traditional Chinese
+# eng - English
+```
+
+If Chinese languages are missing, install them:
+```bash
+brew install tesseract-lang
+```
+
+#### Configure Tesseract Path
+Add the following to your environment variables (in `~/.zshrc` or `~/.bash_profile`):
+```bash
+export TESSDATA_PREFIX=/usr/local/share/tessdata
+```
+
+Then reload your shell:
+```bash
+source ~/.zshrc  # or source ~/.bash_profile
+```
 
 ## Phone Configuration
 

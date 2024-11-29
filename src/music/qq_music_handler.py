@@ -4,19 +4,24 @@ from ..utils.app_handler import AppHandler
 from ..utils.lyrics_formatter import LyricsFormatter
 import time
 import re
+import pytesseract
+from PIL import Image
+import io
+import base64
+
 
 class QQMusicHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
         self.lyrics_formatter = None  # Will be set by app_controller
-        
+
         # Optimize driver settings
         self.driver.update_settings({
             "waitForIdleTimeout": 0,  # Don't wait for idle state
             "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
             "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
         })
-        
+
     def hide_player(self):
         self.press_back()
         print("Hide player panel")
@@ -56,6 +61,7 @@ class QQMusicHandler(AppHandler):
         except Exception as e:
             print(f"Error getting playing info: {str(e)}")
             return None
+
     def get_current_playing(self):
         """Get current playing song and singer info"""
         try:
@@ -80,35 +86,35 @@ class QQMusicHandler(AppHandler):
         try:
             self.switch_to_app()
             print(f"Switched to QQ Music app")
-            
+
             # Hide player if visible
             self.hide_player()
             print(f"Attempted to hide player")
-            
+
             # Go back to home page
             self.navigate_to_home()
             print(f"Navigated to home page")
-            
+
             # Find search entry
-            search_entry = self.driver.find_element(
+            search_entry = self.wait_for_element_clickable(
                 AppiumBy.XPATH,
                 self.config['elements']['search_entry']
             )
             search_entry.click()
             print(f"Clicked search entry")
-            
-            search_box = self.driver.find_element(
-                AppiumBy.ID, 
+
+            search_box = self.wait_for_element_clickable(
+                AppiumBy.ID,
                 self.config['elements']['search_box']
             )
             print(f"Found search box")
             search_box.click()  # Ensure focus
             search_box.send_keys(music_query)  # KEYCODE_PASTE
             print(f"Pasted search query: {music_query}")
-            
+
             self.press_enter(search_box)
             print(f"Pressed enter to search")
-            
+
             playing_info = self.get_playing_info()
             if not playing_info:
                 playing_info = {
@@ -116,11 +122,11 @@ class QQMusicHandler(AppHandler):
                     'singer': 'unknown'
                 }
             print(f"Found playing info: {playing_info}")
-            
+
             # Reset wait time back to default
-            
+
             return playing_info
-            
+
         except Exception as e:
             raise e
 
@@ -130,7 +136,7 @@ class QQMusicHandler(AppHandler):
             playing_info = self._prepare_music_playback(music_query)
             # Click play button
             play_button = self.driver.find_element(
-                AppiumBy.ID, 
+                AppiumBy.ID,
                 self.config['elements']['play_button']
             )
             play_button.click()
@@ -151,7 +157,7 @@ class QQMusicHandler(AppHandler):
             playing_info = self._prepare_music_playback(music_query)
             # Click next button
             next_button = self.driver.find_element(
-                AppiumBy.ID, 
+                AppiumBy.ID,
                 self.config['elements']['next_button']
             )
             next_button.click()
@@ -254,7 +260,7 @@ class QQMusicHandler(AppHandler):
                     'command': 'dumpsys audio | grep "STREAM_MUSIC" | grep -o "[0-9]*/[0-9]*"'
                 }
             )
-            
+
             # Parse volume level
             if result:
                 current, max_vol = map(int, result.strip().split('/'))
@@ -290,6 +296,15 @@ class QQMusicHandler(AppHandler):
                     break
                 else:
                     self.press_back()
+
+            # Check if supporting accompaniment mode
+
+            acc_tag = self.try_find_element(AppiumBy.ID, self.config['elements']['accompaniment_tag'])
+            if acc_tag is None:
+                return {
+                    'enabled': 'Accompaniment not supported for current song, please try following songs'
+                }
+
             more_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
             more_button.click()
             print("Clicked more button")
@@ -297,7 +312,8 @@ class QQMusicHandler(AppHandler):
             accompaniment_menu = None
             for _ in range(9):
                 self.press_dpad_down()
-                accompaniment_menu = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_menu'])
+                accompaniment_menu = self.try_find_element(AppiumBy.XPATH,
+                                                           self.config['elements']['accompaniment_menu'])
                 if accompaniment_menu:
                     break
             print("Scrolled menu")
@@ -306,7 +322,8 @@ class QQMusicHandler(AppHandler):
                 return None
 
             # Click accompaniment menu
-            accompaniment_menu = self.wait_for_element_clickable(AppiumBy.XPATH, self.config['elements']['accompaniment_menu'])
+            accompaniment_menu = self.wait_for_element_clickable(AppiumBy.XPATH,
+                                                                 self.config['elements']['accompaniment_menu'])
             accompaniment_menu.click()
             print("Clicked accompaniment menu")
             switch = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
@@ -328,7 +345,6 @@ class QQMusicHandler(AppHandler):
         return {
             'enabled': 'on' if is_on else 'off'
         }
-
 
     def increase_volume(self):
         """Increase the device volume"""
@@ -358,16 +374,16 @@ class QQMusicHandler(AppHandler):
                 if info_dot:
                     break
                 playing_bar = self.try_find_element(
-                AppiumBy.ID,
+                    AppiumBy.ID,
                     self.config['elements']['playing_bar']
                 )
                 if playing_bar:
-                    playing_bar.click() 
+                    playing_bar.click()
                     print("Clicked playing bar")
                     break
         else:
             print(f'Found info dot')
-        
+
         info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'], timeout=20)
         print(f'info_dot is clickable')
         # Click info dot
@@ -402,13 +418,13 @@ class QQMusicHandler(AppHandler):
             else:
                 raw_lyrics = lyrics_element.text
             tries += 1
-        
+
         # Extract language from lyrics text
         language = None
         language_match = re.search(r' 语种 (\w+)', raw_lyrics)
         if language_match:
             language = language_match.group(1)
-        
+
         # Format lyrics
         formatted_lyrics = self.lyrics_formatter.format_lyrics(raw_lyrics, language)
         print("Formatted lyrics")
@@ -420,3 +436,92 @@ class QQMusicHandler(AppHandler):
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
 
+    def get_element_screenshot(self, element):
+        """Get screenshot of specific element and perform OCR
+        Args:
+            element: WebElement to capture
+        Returns:
+            str: Recognized text
+        """
+        try:
+            # Get element screenshot
+            screenshot = element.screenshot_as_base64
+            image_data = base64.b64decode(screenshot)
+            image = Image.open(io.BytesIO(image_data))
+            
+            # # Get image size
+            # width, height = image.size
+            #
+            # # Define crop region (top 80 pixels)
+            # crop_box = (0, 500, width, 800)  # (left, top, right, bottom)
+            # cropped_image = image.crop(crop_box)
+            
+            # Perform OCR with Chinese support
+            text = pytesseract.image_to_string(
+                image,
+                lang='chi_sim+eng',  # Use both Chinese and English
+                config='--psm 6'  # Assume uniform text block
+            )
+            
+            return text.strip()
+        except Exception as e:
+            print(f"Error performing OCR: {str(e)}")
+            return ""
+
+    def start_ktv_mode(self, max_switches=9, switch_interval=1):
+        """Start KTV mode to sync lyrics"""
+        try:
+            self.switch_to_app()
+            print("Switched to QQ Music app")
+            
+            # Try to find live lyrics element
+            live_lyrics = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['live_lyrics']
+            )
+            
+            if not live_lyrics:
+                # Try to activate player panel
+                playing_bar = self.try_find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['playing_bar']
+                )
+                if playing_bar:
+                    playing_bar.click()
+                    print("Clicked playing bar")
+                    time.sleep(1)
+                    live_lyrics = self.try_find_element(
+                        AppiumBy.ID,
+                        self.config['elements']['live_lyrics']
+                    )
+            
+            if not live_lyrics:
+                yield "Live lyrics not available"
+                return
+                
+            previous_lyrics = ""
+            switches = 0
+            
+            while switches < max_switches:
+                # Get lyrics using OCR
+                current_lyrics = self.get_element_screenshot(live_lyrics)
+                
+                # Only yield if lyrics changed and not empty
+                if current_lyrics and current_lyrics != previous_lyrics:
+                    previous_lyrics = current_lyrics
+                    yield current_lyrics
+                
+                time.sleep(switch_interval)
+                switches += 1
+                
+                # Try to find live lyrics again
+                live_lyrics = self.try_find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['live_lyrics']
+                )
+                if not live_lyrics:
+                    break
+                
+        except Exception as e:
+            print(f"Error in KTV mode: {str(e)}")
+            yield "Error getting live lyrics"
