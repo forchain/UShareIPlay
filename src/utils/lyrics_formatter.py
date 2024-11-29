@@ -13,6 +13,12 @@ class LyricsFormatter:
         # Split text into metadata and lyrics using "歌词" tag
         parts = formatted_text.split("歌词")
         if len(parts) != 2:
+            parts = formatted_text.split("歌曲简介")
+            if len(parts) == 2:
+                return parts[0] + "\n No lyrics available"
+            parts = formatted_text.split("相关曲谱")
+            if len(parts) == 2:
+                return parts[0] + "\n No lyrics available"
             return formatted_text  # Return original if no "歌词" tag found
             
         metadata, lyrics = parts[0], parts[1]

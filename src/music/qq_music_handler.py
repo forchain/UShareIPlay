@@ -287,8 +287,10 @@ class QQMusicHandler(AppHandler):
                 if playing_bar:
                     playing_bar.click()
                     print("Clicked playing bar")
+                    break
                 else:
                     self.press_back()
+            more_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
             more_button.click()
             print("Clicked more button")
 
@@ -304,6 +306,7 @@ class QQMusicHandler(AppHandler):
                 return None
 
             # Click accompaniment menu
+            accompaniment_menu = self.wait_for_element_clickable(AppiumBy.XPATH, self.config['elements']['accompaniment_menu'])
             accompaniment_menu.click()
             print("Clicked accompaniment menu")
             switch = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
@@ -365,7 +368,7 @@ class QQMusicHandler(AppHandler):
         else:
             print(f'Found info dot')
         
-        info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'])
+        info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'], timeout=20)
         print(f'info_dot is clickable')
         # Click info dot
         info_dot.click()
@@ -385,6 +388,20 @@ class QQMusicHandler(AppHandler):
             self.config['elements']['song_lyrics']
         )
         raw_lyrics = lyrics_element.text
+        max_tries = 9
+        tries = 0
+        while raw_lyrics == '' and tries < max_tries:
+            print(f"attempt to find lyrics element, tries: {tries}")
+            time.sleep(1)
+            lyrics_element = self.try_find_element(
+                AppiumBy.XPATH,
+                self.config['elements']['song_lyrics']
+            )
+            if lyrics_element is None:
+                print('error: lyrics is not found')
+            else:
+                raw_lyrics = lyrics_element.text
+            tries += 1
         
         # Extract language from lyrics text
         language = None

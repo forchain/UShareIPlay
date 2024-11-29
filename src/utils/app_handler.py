@@ -96,10 +96,13 @@ class AppHandler:
         self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
         print("Pressed volume down button")
 
-    def try_find_element(self, locator_type, locator_value, log=True):
+    def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
         """Try to find element and return it"""
         try:
-            return self.driver.find_element(locator_type, locator_value)
+            element = self.driver.find_element(locator_type, locator_value)
+            if element and clickable:
+                element = self.wait_for_element_clickable(locator_type, locator_value)
+            return element
         except:
             if log: 
                 print(f"Element not found: {locator_value}")
