@@ -74,7 +74,7 @@ class AppHandler:
             element: The WebElement to send Enter key to
         """
         self.driver.press_keycode(66)
-        print('try 66')
+        print('Pressed Return Key')
 
     def press_back(self):
         """Press Android back button"""

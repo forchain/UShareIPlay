@@ -96,5 +96,13 @@ class SoulHandler(AppHandler):
             # hide input dialog
             self.press_back()
             print("Hide input dialog")
+            input_box = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['input_box']
+            )
+            if input_box:
+                self.press_back()
+                print("Hide input dialog failed, hide again")
+
         except Exception as e:
             print(f"Error sending message: {str(e)}") 

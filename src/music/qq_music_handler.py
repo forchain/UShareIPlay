@@ -8,6 +8,10 @@ import pytesseract
 from PIL import Image
 import io
 import base64
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions import interaction
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
+from selenium.webdriver.common.actions.pointer_input import PointerInput
 
 
 class QQMusicHandler(AppHandler):
@@ -31,17 +35,24 @@ class QQMusicHandler(AppHandler):
         """Navigate back to home page"""
         # Keep clicking back until no more back buttons found
         while True:
-            try:
-                back_button = self.driver.find_element(
-                    AppiumBy.XPATH,
-                    self.config['elements']['back_button']
-                )
+            back_button = self.try_find_element(
+                AppiumBy.XPATH,
+                self.config['elements']['back_button']
+            )
+
+            if back_button:
                 back_button.click()
                 print(f"Clicked back button")
-            except:
-                # No back button found, assume we're at home page
-                print(f"No back button found, assume we're at home page")
-                break
+            else:
+                search_entry = self.try_find_element(
+                    AppiumBy.XPATH,
+                    self.config['elements']['search_entry']
+                )
+                if search_entry:
+                    print(f"Found search entry, assume we're at home page")
+                    return
+                else:
+                    self.press_back()
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
@@ -110,7 +121,7 @@ class QQMusicHandler(AppHandler):
             print(f"Found search box")
             search_box.click()  # Ensure focus
             search_box.send_keys(music_query)  # KEYCODE_PASTE
-            print(f"Pasted search query: {music_query}")
+            print(f"Input search query: {music_query}")
 
             self.press_enter(search_box)
             print(f"Pressed enter to search")
@@ -338,9 +349,12 @@ class QQMusicHandler(AppHandler):
 
         # Toggle if needed
         if (enable and not is_on) or (not enable and is_on):
-            switch.click()
-            current_state = switch.get_attribute('content-desc')
-            is_on = current_state == "伴唱已开启"
+            while is_on != enable:
+                switch.click()
+                current_state = switch.get_attribute('content-desc')
+                is_on = current_state == "伴唱已开启"
+                if is_on != enable:
+                    print(f"Failed to toggle accompaniment mode, current state: {current_state}")
 
         return {
             'enabled': 'on' if is_on else 'off'
@@ -362,76 +376,70 @@ class QQMusicHandler(AppHandler):
 
     def get_lyrics(self):
         """Get lyrics of current playing song"""
-        self.switch_to_app()
-        print("Switched to QQ Music app")
+        try:
+            self.switch_to_app()
+            print("Switched to QQ Music app")
 
-        # Try to find info dot button
-        info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
-        if not info_dot:
-            while True:
-                self.press_back()
-                info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
-                if info_dot:
-                    break
-                playing_bar = self.try_find_element(
-                    AppiumBy.ID,
-                    self.config['elements']['playing_bar']
-                )
-                if playing_bar:
-                    playing_bar.click()
-                    print("Clicked playing bar")
-                    break
-        else:
-            print(f'Found info dot')
+            # Try to find info dot button
+            info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
+            if not info_dot:
+                while True:
+                    self.press_back()
+                    info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
+                    if info_dot:
+                        break
+                    playing_bar = self.try_find_element(
+                        AppiumBy.ID,
+                        self.config['elements']['playing_bar']
+                    )
+                    if playing_bar:
+                        playing_bar.click()
+                        print("Clicked playing bar")
+                        break
+            else:
+                print(f'Found info dot')
 
-        info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'], timeout=20)
-        print(f'info_dot is clickable')
-        # Click info dot
-        info_dot.click()
-        print("Clicked info dot")
+            info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'], timeout=20)
+            print(f'info_dot is clickable')
+            # Click info dot
+            info_dot.click()
+            print("Clicked info dot")
 
-        # Click details link
-        details_link = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['details_link']
-        )
-        details_link.click()
-        print("Clicked details link")
+            # Click details link
+            details_link = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['details_link']
+            )
+            details_link.click()
+            print("Clicked details link")
 
-        # Get lyrics
-        lyrics_element = self.wait_for_element(
-            AppiumBy.XPATH,
-            self.config['elements']['song_lyrics']
-        )
-        raw_lyrics = lyrics_element.text
-        max_tries = 9
-        tries = 0
-        while raw_lyrics == '' and tries < max_tries:
-            print(f"attempt to find lyrics element, tries: {tries}")
-            time.sleep(1)
-            lyrics_element = self.try_find_element(
+            # Wait for song_lyrics to appear and scroll to bottom
+            song_lyrics = self.wait_for_element(
                 AppiumBy.XPATH,
                 self.config['elements']['song_lyrics']
             )
-            if lyrics_element is None:
-                print('error: lyrics is not found')
+            if song_lyrics:
+                # Scroll song_lyrics to bottom
+                self.scroll_element(song_lyrics)
+                print("Scrolled song_lyrics to bottom")
+                time.sleep(1)  # Wait for scroll animation and DOM update
+                
+                # Now try to get full lyrics
+                full_lyrics = self.get_full_lyrics()
+                
+                return {
+                    'lyrics': full_lyrics if full_lyrics else "No lyrics available"
+                }
             else:
-                raw_lyrics = lyrics_element.text
-            tries += 1
+                return {
+                    'lyrics': "Song lyrics not found"
+                }
 
-        # Extract language from lyrics text
-        language = None
-        language_match = re.search(r' 语种 (\w+)', raw_lyrics)
-        if language_match:
-            language = language_match.group(1)
-
-        # Format lyrics
-        formatted_lyrics = self.lyrics_formatter.format_lyrics(raw_lyrics, language)
-        print("Formatted lyrics")
-
-        return {
-            'lyrics': formatted_lyrics if formatted_lyrics else "No lyrics available"
-        }
+        except Exception as e:
+            print(f"Error getting lyrics: {str(e)}")
+            return {
+                'lyrics': "Failed to get lyrics"
+            }
 
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
@@ -448,21 +456,21 @@ class QQMusicHandler(AppHandler):
             screenshot = element.screenshot_as_base64
             image_data = base64.b64decode(screenshot)
             image = Image.open(io.BytesIO(image_data))
-            
+
             # # Get image size
             # width, height = image.size
             #
             # # Define crop region (top 80 pixels)
             # crop_box = (0, 500, width, 800)  # (left, top, right, bottom)
             # cropped_image = image.crop(crop_box)
-            
+
             # Perform OCR with Chinese support
             text = pytesseract.image_to_string(
                 image,
                 lang='chi_sim+eng',  # Use both Chinese and English
                 config='--psm 6'  # Assume uniform text block
             )
-            
+
             return text.strip()
         except Exception as e:
             print(f"Error performing OCR: {str(e)}")
@@ -473,13 +481,13 @@ class QQMusicHandler(AppHandler):
         try:
             self.switch_to_app()
             print("Switched to QQ Music app")
-            
+
             # Try to find live lyrics element
             live_lyrics = self.try_find_element(
                 AppiumBy.ID,
                 self.config['elements']['live_lyrics']
             )
-            
+
             if not live_lyrics:
                 # Try to activate player panel
                 playing_bar = self.try_find_element(
@@ -494,26 +502,26 @@ class QQMusicHandler(AppHandler):
                         AppiumBy.ID,
                         self.config['elements']['live_lyrics']
                     )
-            
+
             if not live_lyrics:
                 yield "Live lyrics not available"
                 return
-                
+
             previous_lyrics = ""
             switches = 0
-            
+
             while switches < max_switches:
                 # Get lyrics using OCR
                 current_lyrics = self.get_element_screenshot(live_lyrics)
-                
+
                 # Only yield if lyrics changed and not empty
                 if current_lyrics and current_lyrics != previous_lyrics:
                     previous_lyrics = current_lyrics
                     yield current_lyrics
-                
+
                 time.sleep(switch_interval)
                 switches += 1
-                
+
                 # Try to find live lyrics again
                 live_lyrics = self.try_find_element(
                     AppiumBy.ID,
@@ -521,7 +529,124 @@ class QQMusicHandler(AppHandler):
                 )
                 if not live_lyrics:
                     break
-                
+
         except Exception as e:
             print(f"Error in KTV mode: {str(e)}")
             yield "Error getting live lyrics"
+
+    def get_full_lyrics(self):
+        """Get full lyrics by scrolling and combining all parts"""
+        try:
+            # First find lyrics container
+            lyrics_container = self.wait_for_element(
+                AppiumBy.XPATH,
+                self.config['elements']['full_lyrics']
+            )
+            
+            if not lyrics_container:
+                return "No lyrics container found"
+            
+            # Print lyrics container info
+            print(f"Lyrics container found: {lyrics_container}")
+            print(f"Container size: {lyrics_container.size}")
+            print(f"Container location: {lyrics_container.location}")
+            print(f"Container tag name: {lyrics_container.tag_name}")
+            print(f"Container text: {lyrics_container.text}")
+            print(f"Container element id: {lyrics_container.id}")
+            
+            # Get initial lyrics elements
+            lyrics_elements = lyrics_container.find_elements(AppiumBy.CLASS_NAME, "android.widget.TextView")
+            if not lyrics_elements:
+                return "No lyrics elements found"
+            
+            # Collect initial lyrics
+            lyrics_list = []
+            seen_ids = set()
+            last_element_id = None
+
+            for element in lyrics_elements:
+                text = element.text
+                if text:
+                    element_id = element.id
+                    seen_ids.add(element_id)
+                    lyrics_list.append(text)
+                    last_element_id = element_id
+            
+            print(f"Collected {len(lyrics_list)} initial lyrics")
+            print(f"Last element id: {last_element_id}")
+            
+            # Scroll to bottom to reveal more lyrics
+            self.scroll_element(lyrics_container)
+            print("Scrolled lyrics container to bottom")
+            time.sleep(1)  # Wait for scroll animation
+            
+            # Get additional lyrics elements after scroll
+            lyrics_elements = lyrics_container.find_elements(AppiumBy.CLASS_NAME, "android.widget.TextView")
+            found_last_element = False
+
+            count = 0
+            for element in lyrics_elements:
+                element_id = element.id
+                # Skip until we find the last element from previous section
+                if not found_last_element:
+                    if element_id == last_element_id:
+                        found_last_element = True
+                    continue
+                
+                # Add new lyrics that we haven't seen before
+                if element_id not in seen_ids:
+                    text = element.text
+                    if text:
+                        count += len(text)
+                        if count + len(text) > 500:
+                            break
+                        seen_ids.add(element_id)
+                        lyrics_list.append(text)
+            
+            print(f"Collected total {len(lyrics_list)} lyrics after scroll")
+            
+            # Join all lyrics
+            full_lyrics = '\n'.join(lyrics_list)
+            print("Combined all lyrics")
+            return full_lyrics
+            
+        except Exception as e:
+            print(f"Error getting full lyrics: {str(e)}")
+            return "Error getting full lyrics"
+
+    def scroll_element(self, element, start_y_percent=0.75, end_y_percent=0.25):
+        """Scroll element using W3C Actions API
+        Args:
+            element: WebElement to scroll
+            start_y_percent: Start y position as percentage of element height (0.75 = 75% from top)
+            end_y_percent: End y position as percentage of element height (0.25 = 25% from top)
+        """
+        try:
+            # Get element location and size
+            size = element.size
+            location = element.location
+            
+            # Calculate scroll coordinates
+            start_x = location['x'] + size['width'] // 2
+            start_y = location['y'] + int(size['height'] * start_y_percent)
+            end_y = location['y'] + int(size['height'] * end_y_percent)
+            
+            # Create pointer input
+            actions = ActionChains(self.driver)
+            pointer = PointerInput(interaction.POINTER_TOUCH, "touch")
+            
+            # Create action sequence
+            actions.w3c_actions = ActionBuilder(self.driver, mouse=pointer)
+            actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
+            actions.w3c_actions.pointer_action.pointer_down()
+            # actions.w3c_actions.pointer_action.pause(0.01)
+            actions.w3c_actions.pointer_action.move_to_location(start_x, end_y)
+            actions.w3c_actions.pointer_action.release()
+            
+            # Perform action
+            actions.perform()
+            print(f"Scrolled element from {start_y} to {end_y}")
+            time.sleep(1)  # Wait for scroll animation
+            
+        except Exception as e:
+            print(f"Error scrolling element: {str(e)}")
