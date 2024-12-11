@@ -157,3 +157,16 @@ class AppHandler:
             print(f"Polling for clickable element: {locator_value}")
         print(f"Clickable element not found after polling for {timeout} seconds: {locator_value}")
         return None
+
+    def set_clipboard_text(self, text):
+        """Set clipboard text using Appium's native method
+        Args:
+            text: str, text to be copied to clipboard
+        """
+        self.driver.set_clipboard_text(text)
+        print(f"Copied '{text}' to clipboard")
+
+    def paste_text(self):
+        """Execute paste operation using Android keycode"""
+        self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
+        print("Pressed paste key")

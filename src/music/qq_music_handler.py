@@ -114,20 +114,16 @@ class QQMusicHandler(AppHandler):
             search_entry.click()
             print(f"Clicked search entry")
 
+            # Find and click search box
             search_box = self.wait_for_element_clickable(
                 AppiumBy.ID,
                 self.config['elements']['search_box']
             )
             print(f"Found search box")
-            search_box.click()  # Ensure focus
-            search_box.send_keys(music_query)  # KEYCODE_PASTE
-            print(f"Input search query: {music_query}")
             
-            # Wait for search box to be focused
-            time.sleep(1)
-
-            self.press_enter(search_box)
-            print(f"Pressed enter to search")
+            # Use clipboard operations from parent class
+            self.set_clipboard_text(music_query)
+            self.paste_text()
 
             self.select_song_tab()
 
@@ -138,8 +134,6 @@ class QQMusicHandler(AppHandler):
                     'singer': 'unknown'
                 }
             print(f"Found playing info: {playing_info}")
-
-            # Reset wait time back to default
 
             return playing_info
 
