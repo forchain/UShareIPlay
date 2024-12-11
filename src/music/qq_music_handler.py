@@ -122,9 +122,14 @@ class QQMusicHandler(AppHandler):
             search_box.click()  # Ensure focus
             search_box.send_keys(music_query)  # KEYCODE_PASTE
             print(f"Input search query: {music_query}")
+            
+            # Wait for search box to be focused
+            time.sleep(1)
 
             self.press_enter(search_box)
             print(f"Pressed enter to search")
+
+            self.select_song_tab()
 
             playing_info = self.get_playing_info()
             if not playing_info:
@@ -140,6 +145,15 @@ class QQMusicHandler(AppHandler):
 
         except Exception as e:
             raise e
+
+    def select_song_tab(self):
+        """Select the 'Songs' tab in search results"""
+        song_tab = self.wait_for_element_clickable(
+            AppiumBy.XPATH,
+            self.config['elements']['song_tab']
+        )
+        song_tab.click()
+        print("Selected songs tab")
 
     def play_music(self, music_query):
         """Search and play music"""

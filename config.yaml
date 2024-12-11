@@ -15,7 +15,8 @@ qq_music:
   elements:
     search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id='com.tencent.qqmusic:id/hi2']/android.view.View"
     search_box: "com.tencent.qqmusic:id/searchItem"
-    play_button: "com.tencent.qqmusic:id/krg"
+    song_tab: "//android.widget.RelativeLayout[@content-desc=\"歌曲 按钮\"]"
+    play_button: "com.tencent.qqmusic:id/kcr"
     next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
     back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
@@ -58,11 +59,11 @@ commands:
     switch_interval: 1
 
 appium:
-  host: "0.0.0.0"
+  host: "192.168.50.103"
   port: 4723
 
 device:
-  name: "554b4e4745413498"
+  name: "192.168.50.151:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"

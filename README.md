@@ -149,13 +149,50 @@ source ~/.zshrc  # or source ~/.bash_profile
    - Stay awake
 
 ### 2. Connect Device
+
+#### USB Connection
 1. Connect the phone to the computer using a USB data cable
 2. Allow USB debugging on the phone
 3. Verify connection:
-
 ```bash
 adb devices
 ```
+
+#### Wireless Connection
+1. First connect your device via USB and ensure USB debugging is enabled
+2. Make sure your phone and computer are on the same network
+3. Get your phone's IP address:
+   - Go to Settings -> About phone -> Status -> IP address
+   - Or use command: `adb shell ip addr show wlan0`
+4. Enable wireless debugging:
+```bash
+# Enable TCP/IP mode
+adb tcpip 5555
+
+# Connect to device wirelessly
+adb connect <phone-ip-address>:5555
+
+# Verify connection
+adb devices
+# Should show something like:
+# 192.168.50.151:5555    device
+```
+
+5. You can now unplug the USB cable
+
+Troubleshooting wireless connection:
+- If connection fails, try:
+```bash
+# Reset ADB server
+adb kill-server
+adb start-server
+
+# Reconnect
+adb connect <phone-ip-address>:5555
+```
+- Ensure phone and computer are on same network
+- Check if any firewall is blocking port 5555
+- Try re-enabling wireless debugging through USB connection
 
 ### 3. Application Preparation
 1. Install Soul App and log in
@@ -224,9 +261,9 @@ appium:
     port: 4723
 
 device:
-    name: "your_device_name"  # Replace with actual device ID
+    name: "192.168.50.151:5555"  # Use your phone's IP:PORT
     platform_name: "Android"
-    platform_version: "10"  # Replace with actual Android version
+    platform_version: "10"
     automation_name: "UiAutomator2"
     no_reset: true
 ```
