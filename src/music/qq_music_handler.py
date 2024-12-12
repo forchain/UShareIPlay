@@ -193,42 +193,39 @@ class QQMusicHandler(AppHandler):
 
     def skip_song(self):
         """Skip to next song using notification panel"""
-        try:
-            # Open notification panel
-            self.driver.open_notifications()
-            print("Opened notification panel")
-            time.sleep(1)  # Wait for animation
+        # Open notification panel
+        self.driver.open_notifications()
+        print("Opened notification panel")
+        time.sleep(1)  # Wait for animation
 
-            # Find and click skip button in notification
-            skip_button = self.driver.find_element(
-                AppiumBy.ID,
-                self.config['elements']['skip_button']
-            )
-            skip_button.click()
-            print("Clicked skip button")
-            time.sleep(1)  # Wait for song change
-
-            # Get playing info
-            playing_info = self.get_current_playing()
-            if not playing_info:
-                playing_info = {
-                    'song': 'unknown',
-                    'singer': 'unknown'
-                }
-            print(f"Now playing: {playing_info}")
-
-            # Close notification panel
+        # Find and click skip button in notification
+        skip_button = self.try_find_element(
+            AppiumBy.ID,
+            self.config['elements']['skip_button']
+        )
+        if not skip_button:
+            print("[Error]skip_song cannot find skip button, no music playing")
             self.press_back()
-            print("Closed notification panel")
+            return False
+        skip_button.click()
+        print("Clicked skip button")
+        time.sleep(1)  # Wait for song change
 
-            return playing_info
-
-        except Exception as e:
-            print(f"Error skipping song: {str(e)}")
-            return {
+        # Get playing info
+        playing_info = self.get_current_playing()
+        if not playing_info:
+            playing_info = {
                 'song': 'unknown',
                 'singer': 'unknown'
             }
+        print(f"Now playing: {playing_info}")
+
+        # Close notification panel
+        self.press_back()
+        print("Closed notification panel")
+
+        return playing_info
+
 
     def pause_song(self):
         """Pause current playing song using notification panel"""
@@ -238,6 +235,19 @@ class QQMusicHandler(AppHandler):
             print("Opened notification panel")
             time.sleep(1)  # Wait for animation
 
+            # Find and click pause button
+            pause_button = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['pause_button']
+            )
+            if not pause_button:
+                print("[Error]pause_song cannot find pause button")
+                self.press_back()
+                return False
+            pause_button.click()
+            print("Clicked pause button")
+            time.sleep(1)  # Wait for pause action
+
             # Get current playing info
             playing_info = self.get_current_playing()
             if not playing_info:
@@ -246,15 +256,6 @@ class QQMusicHandler(AppHandler):
                     'singer': 'unknown'
                 }
             print(f"Current playing: {playing_info}")
-
-            # Find and click pause button
-            pause_button = self.driver.find_element(
-                AppiumBy.ID,
-                self.config['elements']['pause_button']
-            )
-            pause_button.click()
-            print("Clicked pause button")
-            time.sleep(1)  # Wait for pause action
 
             # Close notification panel
             self.press_back()

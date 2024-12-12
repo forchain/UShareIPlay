@@ -357,7 +357,6 @@ python main.py
    - `:pause`: Pause/Continue current playback
    - `:vol+/-`: Increase/Decrease volume
    - `:acc 1/0`: Enable/disable accompaniment mode
-   - `:lyrics`: Show current song lyrics
    Example: "play 听妈妈的话 周杰伦" or "lyrics"
 4. Program will automatically:
    - Switch to QQ Music

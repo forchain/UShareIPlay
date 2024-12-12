@@ -8,6 +8,7 @@ soul:
     input_box: "cn.soulapp.android:id/etInputView"
     button_send: "cn.soulapp.android:id/btnSend"
     new_message_tip: "cn.soulapp.android:id/tvNewMsgTip"
+    floating_entry: "cn.soulapp.android:id/background"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -50,14 +51,30 @@ commands:
     response_template: "Volume increased"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
-  - prefix: "lyrics"
-    response_template: "{lyrics}"
-    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介", "影视综述"]
+#  - prefix: "lyrics"
+#    response_template: "{lyrics}"
+#    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介", "影视综述"]
   - prefix: "ktv"
     response_template: "{lyrics}"
     max_switches: 9
     switch_interval: 1
-
+  - prefix: "enable"
+    response_template: "Enabled: {enabled}"
+  - prefix: "help"
+    response_template:  |
+      Help for (U)Share (I)Play
+      1. play - play music and change the playlist
+        command - :play keywords
+      2. next - schedule music to next, first come first serve, won't change playlist
+        command - :next keywords
+      3. acc - turn on/off accompaniment mode, apply on the playlist
+        command - :acc 1/0
+      4. skip - play next song instantly
+        command - :skip
+      5. pause - pause/play current song
+        command - :pause 1/0
+      6. vol - volume up/down by one degree
+        command - :vol+/-
 appium:
   host: "192.168.50.103"
   port: 4723
