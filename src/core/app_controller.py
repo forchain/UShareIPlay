@@ -54,7 +54,7 @@ class AppController:
         while True:
             try:
                 # Monitor Soul messages
-                messages = self.soul_handler.get_latest_message()
+                messages = self.soul_handler.get_latest_message(enabled)
                 if messages:
                     for message in messages:
                         if self.command_parser.is_valid_command(message):

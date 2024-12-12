@@ -8,7 +8,7 @@ class SoulHandler(AppHandler):
         super().__init__(driver, config)
         self.previous_message_ids = set()  # Store previous element IDs
 
-    def get_latest_message(self):
+    def get_latest_message(self, enabled = True):
         """Get new message contents that weren't seen before"""
         try:
             self.switch_to_app()
@@ -19,7 +19,7 @@ class SoulHandler(AppHandler):
                 self.config['elements']['message_content']
             )
 
-            if len(message_contents) == 0:
+            if len(message_contents) == 0 and enabled:
                 print("[Warning]get_latest_message cannot find message_contents, may be minimized")
                 floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
                 if floating_entry:
@@ -36,7 +36,7 @@ class SoulHandler(AppHandler):
 
             # Check if there is a new message tip
             new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
-            if new_message_tip:
+            if new_message_tip and enabled:
                 print(f'Found new message tip')
                 new_message_tip.click()
                 print(f'Clicked new message tip')
