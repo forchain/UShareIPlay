@@ -52,7 +52,7 @@ class SoulHandler(AppHandler):
 
             # Get all ViewGroup containers first
             containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
-            print(f"Found {len(containers)} ViewGroup containers")
+            # print(f"Found {len(containers)} ViewGroup containers")
             
             # Process each container and collect message info
             current_messages = {}  # Dict to store element_id: MessageInfo pairs
@@ -252,4 +252,76 @@ class SoulHandler(AppHandler):
 
         except Exception as e:
             print(f"Error inviting user: {str(e)}")
+            return {'error': str(e)}
+
+    def manage_admin(self, message_info: MessageInfo, enable: bool):
+        """
+        Manage administrator status
+        Args:
+            message_info: MessageInfo object containing user information
+            enable: bool, True to enable admin, False to disable
+        Returns:
+            dict: Result of operation with user info
+        """
+        try:
+            # Check relation tag
+            if not message_info.relation_tag:
+                return {
+                    'error': '只有群主密友才能申请管理'
+                }
+
+            # Click avatar to open profile
+            if message_info.avatar_element:
+                message_info.avatar_element.click()
+                print("Clicked sender avatar")
+            else:
+                return {'error': 'Avatar element not found'}
+            
+            # Find manager invite button
+            manager_invite = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['manager_invite']
+            )
+            if not manager_invite:
+                return {'error': 'Failed to find manager invite button'}
+            
+            # Check current status
+            current_text = manager_invite.text
+            if enable:
+                if current_text == "解除管理":
+                    self.press_back()
+                    return {'error': '你已经是管理员了'}
+            else:
+                if current_text == "管理邀请":
+                    self.press_back()
+                    return {'error': '你还不是管理员'}
+            
+            # Click manager invite button
+            manager_invite.click()
+            print("Clicked manager invite button")
+            
+            # Click confirm button
+            if enable:
+                confirm_button = self.wait_for_element_clickable(
+                    AppiumBy.ID,
+                    self.config['elements']['confirm_invite']
+                )
+                action = "邀请"
+            else:
+                confirm_button = self.wait_for_element_clickable(
+                    AppiumBy.XPATH,
+                    self.config['elements']['confirm_dismiss']
+                )
+                action = "解除"
+                
+            if not confirm_button:
+                return {'error': f'Failed to find {action}确认按钮'}
+            
+            confirm_button.click()
+            print(f"Clicked {action}确认按钮")
+
+            return {'user': message_info.nickname}
+
+        except Exception as e:
+            print(f"Error managing admin: {str(e)}")
             return {'error': str(e)}

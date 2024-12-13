@@ -185,6 +185,29 @@ class AppController:
                                             
                                     case 'help':
                                         response = command_info['response_template']
+                                    case 'admin':
+                                        # Get parameter
+                                        if len(command_info['parameters']) > 0:
+                                            enable = command_info['parameters'][0] == '1'
+                                            # Manage admin status
+                                            result = self.soul_handler.manage_admin(message_info, enable)
+                                            
+                                            if 'error' in result:
+                                                # Use error template if operation failed
+                                                response = command_info['error_template'].format(
+                                                    user=message_info.nickname,
+                                                    error=result['error']
+                                                )
+                                            else:
+                                                # Use success template if operation succeeded
+                                                response = command_info['response_template'].format(
+                                                    user=message_info.nickname
+                                                )
+                                        else:
+                                            response = command_info['error_template'].format(
+                                                user=message_info.nickname,
+                                                error='Missing parameter (1 for enable, 0 for disable)'
+                                            )
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
                                         

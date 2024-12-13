@@ -35,5 +35,6 @@ class CommandParser:
         return {
             'command': command,
             'parameters': parameters,
-            'response_template': matching_cmd['response_template']
-        } 
+            'response_template': matching_cmd['response_template'],
+            'error_template': matching_cmd['error_template']
+        }

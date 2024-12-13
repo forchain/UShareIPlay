@@ -17,6 +17,9 @@ soul:
     profile_avatar: "cn.soulapp.android:id/img_head"
     moments_chat: "cn.soulapp.android:id/rl_user_bottom_chat"
     chat_title: "cn.soulapp.android:id/c_ct_chat_title_info"
+    manager_invite: "cn.soulapp.android:id/tv_manager_invite"
+    confirm_invite: "cn.soulapp.android:id/tv_confirm_invite"
+    confirm_dismiss: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认解除']"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -86,6 +89,9 @@ commands:
   - prefix: "invite"
     response_template: "Invited by {user} to join the room"
     error_template: "Failed to be invited by {user}, because {error}"
+  - prefix: "admin"
+    response_template: "Invited {user} as administrator"
+    error_template: "Failed to invite {user} as administrator, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
