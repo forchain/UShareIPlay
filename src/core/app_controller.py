@@ -56,9 +56,10 @@ class AppController:
                 # Monitor Soul messages
                 messages = self.soul_handler.get_latest_message(enabled)
                 if messages:
-                    for message in messages:
-                        if self.command_parser.is_valid_command(message):
-                            command_info = self.command_parser.parse_command(message)
+                    # Iterate through message info objects
+                    for msg_id, message_info in messages.items():
+                        if self.command_parser.is_valid_command(message_info.content):
+                            command_info = self.command_parser.parse_command(message_info.content)
                             if command_info:
                                 # Handle different commands using match-case
                                 response = None
@@ -166,10 +167,27 @@ class AppController:
                                             self.soul_handler.send_message(response)
                                             self.music_handler.switch_to_app()
 
+                                    case 'invite':
+                                        # Use message info directly for invitation
+                                        result = self.soul_handler.invite_user(message_info)
+                                        
+                                        if 'error' in result:
+                                            # Use error template if invitation failed
+                                            response = command_info['error_template'].format(
+                                                user=message_info.nickname,
+                                                error=result['error']
+                                            )
+                                        else:
+                                            # Use success template if invitation succeeded
+                                            response = command_info['response_template'].format(
+                                                user=message_info.nickname
+                                            )
+                                            
                                     case 'help':
                                         response = command_info['response_template']
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
+                                        
                                 if response:
                                     self.soul_handler.send_message(response)
                 time.sleep(1)

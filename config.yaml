@@ -9,6 +9,14 @@ soul:
     button_send: "cn.soulapp.android:id/btnSend"
     new_message_tip: "cn.soulapp.android:id/tvNewMsgTip"
     floating_entry: "cn.soulapp.android:id/background"
+    invite_link: "cn.soulapp.android:id/iv_room_music"
+    sender_relation: "cn.soulapp.android:id/imgRelation"
+    sender_flag: "cn.soulapp.android:id/flagContainerView"
+    sender_avatar: "cn.soulapp.android:id/ivAvatar"
+    sender_nickname: "cn.soulapp.android:id/tvNickname"
+    profile_avatar: "cn.soulapp.android:id/img_head"
+    moments_chat: "cn.soulapp.android:id/rl_user_bottom_chat"
+    chat_title: "cn.soulapp.android:id/c_ct_chat_title_info"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -75,6 +83,9 @@ commands:
         command - :pause 1/0
       6. vol - volume up/down by one degree
         command - :vol+/-
+  - prefix: "invite"
+    response_template: "Invited by {user} to join the room"
+    error_template: "Failed to be invited by {user}, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

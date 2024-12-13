@@ -170,3 +170,48 @@ class AppHandler:
         """Execute paste operation using Android keycode"""
         self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
         print("Pressed paste key")
+
+    def find_child_element(self, parent, locator_type, locator_value):
+        """Find child element of parent element
+        Args:
+            parent: WebElement, parent element
+            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
+            locator_value: The locator value
+        Returns:
+            WebElement if found, None if not found
+        """
+        try:
+            return parent.find_element(locator_type, locator_value)
+        except Exception as e:
+            # print(f"Child element not found: {locator_value}")
+            # print(f"Error: {str(e)}")
+            return None
+
+    def find_child_elements(self, parent, locator_type, locator_value):
+        """Find child elements of parent element
+        Args:
+            parent: WebElement, parent element
+            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
+            locator_value: The locator value
+        Returns:
+            List of WebElements if found, empty list if not found
+        """
+        try:
+            return parent.find_elements(locator_type, locator_value)
+        except Exception as e:
+            # print(f"Child elements not found: {locator_value}")
+            # print(f"Error: {str(e)}")
+            return []
+
+    def get_element_text(self, element):
+        """Get element text safely
+        Args:
+            element: WebElement
+        Returns:
+            str: element text or empty string if element is None
+        """
+        try:
+            return element.text if element else ""
+        except Exception as e:
+            print(f"Error getting element text: {str(e)}")
+            return ""
