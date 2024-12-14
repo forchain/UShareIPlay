@@ -20,6 +20,13 @@ soul:
     manager_invite: "cn.soulapp.android:id/tv_manager_invite"
     confirm_invite: "cn.soulapp.android:id/tv_confirm_invite"
     confirm_dismiss: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认解除']"
+    more_menu: "cn.soulapp.android:id/ivChatMore"
+    party_hall: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='派对大厅']"
+    search_entry: "cn.soulapp.android:id/ivSearch"
+    search_box: "cn.soulapp.android:id/commonViewEtSearch"
+    search_button: "cn.soulapp.android:id/flRight"
+    party_id: "cn.soulapp.android:id/tvFM"
+    parties_search: "cn.soulapp.android:id/rvParties"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -87,8 +94,8 @@ commands:
       6. vol - volume up/down by one degree
         command - :vol+/-
   - prefix: "invite"
-    response_template: "Invited by {user} to join the room"
-    error_template: "Failed to be invited by {user}, because {error}"
+    response_template: "Invited by {user} to party {party_id}"
+    error_template: "Failed to join party {party_id}, because {error}"
   - prefix: "admin"
     response_template: "Invited {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"

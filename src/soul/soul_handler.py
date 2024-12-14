@@ -1,3 +1,5 @@
+import time
+
 from PIL.ImageOps import contain
 from appium.webdriver.common.appiumby import AppiumBy
 from ..utils.app_handler import AppHandler
@@ -178,81 +180,140 @@ class SoulHandler(AppHandler):
         except Exception as e:
             print(f"Error sending message: {str(e)}")
 
-    def invite_user(self, message_info: MessageInfo):
+    def invite_user(self, message_info: MessageInfo, party_id: str):
         """
-        Invite user to join the room
+        Invite user to join the party
         Args:
             message_info: MessageInfo object containing user information
+            party_id: str, party ID to join
         Returns:
-            dict: Result of invitation with user info
+            dict: Result of invitation
         """
         try:
             # Check relation tag
             if not message_info.relation_tag:
                 return {
-                    'error': '必须群主关注的人才能邀请群主入群'
+                    'error': '必须群主关注的人才能邀请群主入群',
+                    'party_id': party_id
                 }
 
-            # Click avatar to open profile
-            if message_info.avatar_element:
-                message_info.avatar_element.click()
-                print("Clicked sender avatar")
-            else:
-                return {'error': 'Avatar element not found'}
-            
-            # Wait for profile page and click profile avatar
-            profile_avatar = self.wait_for_element_clickable(
+            # Click more menu button
+            more_menu = self.wait_for_element_clickable(
                 AppiumBy.ID,
-                self.config['elements']['profile_avatar']
+                self.config['elements']['more_menu']
             )
-            if not profile_avatar:
-                return {'error': 'Failed to open profile page'}
+            if not more_menu:
+                return {
+                    'error': 'Failed to find more menu button',
+                    'party_id': party_id
+                }
             
-            profile_avatar.click()
-            print("Clicked profile avatar")
+            more_menu.click()
+            print("Clicked more menu button")
 
-            # Find and click chat button
-            chat_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['moments_chat']
+            # Find and click party hall entry
+            party_hall = self.wait_for_element_clickable(
+                AppiumBy.XPATH,
+                self.config['elements']['party_hall']
             )
-            if not chat_button:
-                return {'error': 'Failed to find chat button'}
+            if not party_hall:
+                return {
+                    'error': 'Failed to find party hall entry',
+                    'party_id': party_id
+                }
             
-            chat_button.click()
-            print("Clicked chat button")
-            
-            # Wait for chat title to appear to confirm we're in chat page
-            chat_title = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['chat_title']
-            )
-            if not chat_title:
-                return {'error': 'Failed to enter chat page'}
-            print("Entered chat page")
+            party_hall.click()
+            print("Clicked party hall entry")
 
-            # Look for invite links
-            invite_links = self.driver.find_elements(
+            # Find and click search entry
+            search_entry = self.wait_for_element_clickable(
                 AppiumBy.ID,
-                self.config['elements']['invite_link']
+                self.config['elements']['search_entry']
+            )
+            if not search_entry:
+                return {
+                    'error': 'Failed to find search entry',
+                    'party_id': party_id
+                }
+            
+            search_entry.click()
+            print("Clicked search entry")
+
+            # Find search box and input party ID
+            search_box = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['search_box']
+            )
+            if not search_box:
+                return {
+                    'error': 'Failed to find search box',
+                    'party_id': party_id
+                }
+            
+            search_box.send_keys(party_id)
+            print(f"Entered party ID: {party_id}")
+
+            # Click search button
+            search_button = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['search_button']
+            )
+            if not search_button:
+                return {
+                    'error': 'Failed to find search button',
+                    'party_id': party_id
+                }
+            
+            search_button.click()
+            print("Clicked search button")
+
+            # Find parties search result
+            parties_search = self.wait_for_element(
+                AppiumBy.ID,
+                self.config['elements']['parties_search']
+            )
+            if not parties_search:
+                return {
+                    'error': 'Failed to find parties search',
+                    'party_id': party_id
+                }
+            
+            print("Found parties search result")
+
+            # waif for results to appear
+            time.sleep(1)
+            # Look for party ID element
+            party_element = self.find_child_element(
+                parties_search,
+                AppiumBy.ID,
+                self.config['elements']['party_id']
             )
             
-            if not invite_links:
-                print("Invite link not found, room may be closed")
-                self.press_back()
-                self.press_back()
-                return {'error': 'Room is closed'}
+            if not party_element:
+                print("Party not found, returning to previous party")
+                floating_entry = self.wait_for_element_clickable(
+                    AppiumBy.ID,
+                    self.config['elements']['floating_entry']
+                )
+                floating_entry.click()
+                return {
+                    'error': f'Party {party_id} not found',
+                    'party_id': party_id
+                }
             
-            # Click the last (most recent) invite link
-            last_link = invite_links[-1]
-            last_link.click()
-            print(f"Clicked last invite link (found {len(invite_links)} links)")
+            # Click party to enter
+            party_element.click()
+            print(f"Entered party {party_id}")
 
-            return {'user': message_info.nickname}
+
+            return {'party_id': party_id, 'user': message_info.nickname}
 
         except Exception as e:
-            print(f"Error inviting user: {str(e)}")
-            return {'error': str(e)}
+            print(f"Error inviting to party: {str(e)}")
+            return {
+                'error': str(e),
+                'party_id': party_id
+            }
 
     def manage_admin(self, message_info: MessageInfo, enable: bool):
         """

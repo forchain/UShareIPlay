@@ -168,21 +168,28 @@ class AppController:
                                             self.music_handler.switch_to_app()
 
                                     case 'invite':
-                                        # Use message info directly for invitation
-                                        result = self.soul_handler.invite_user(message_info)
-                                        
-                                        if 'error' in result:
-                                            # Use error template if invitation failed
-                                            response = command_info['error_template'].format(
-                                                user=message_info.nickname,
-                                                error=result['error']
-                                            )
-                                        else:
-                                            # Use success template if invitation succeeded
-                                            response = command_info['response_template'].format(
-                                                user=message_info.nickname
-                                            )
+                                        # Get party ID parameter
+                                        if len(command_info['parameters']) > 0:
+                                            party_id = command_info['parameters'][0]
+                                            # Try to join party
+                                            result = self.soul_handler.invite_user(message_info, party_id)
                                             
+                                            if 'error' in result:
+                                                # Use error template if invitation failed
+                                                response = command_info['error_template'].format(
+                                                    party_id=result['party_id'],
+                                                    error=result['error']
+                                                )
+                                            else:
+                                                # Use success template if invitation succeeded
+                                                response = command_info['response_template'].format(
+                                                    party_id=result['party_id']
+                                                )
+                                        else:
+                                            response = command_info['error_template'].format(
+                                                party_id='unknown',
+                                                error='Missing party ID parameter'
+                                            )
                                     case 'help':
                                         response = command_info['response_template']
                                     case 'admin':
