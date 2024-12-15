@@ -67,7 +67,8 @@ commands:
   - prefix: "next"
     response_template: "Scheduled {song} by {singer} to play next"
   - prefix: "pause"
-    response_template: "Paused/Playing <<{song}>> by {singer}"
+    response_template: "Paused/Resume <<{song}>> by {singer}"
+    error_template: "Pause failed, because {error}"
   - prefix: "vol+"
     response_template: "Volume increased"
   - prefix: "acc"
@@ -86,7 +87,7 @@ commands:
       Help for (U)Share (I)Play
       1. play - play music and change the playlist
         command - :play keywords
-      2. next - schedule music to next, first come first serve, won't change playlist
+      2. next - queue up music to next, first come first serve, won't change playlist
         command - :next keywords
       3. acc - turn on/off accompaniment mode, apply on the playlist
         command - :acc 1/0
@@ -94,7 +95,7 @@ commands:
         command - :skip
       5. pause - pause/play current song
         command - :pause 1/0
-      6. vol - volume up/down by one degree
+      6. vol - volume up/down by one level 
         command - :vol+/-
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"

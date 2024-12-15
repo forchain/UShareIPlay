@@ -111,14 +111,15 @@ class AppController:
                                     case 'pause':
                                         # Pause current song
                                         playing_info = self.music_handler.pause_song()
-                                        if response:
-                                            # Send status back to Soul using command's template
+                                        if 'error' in playing_info:
+                                            response = command_info['error_template'].format(
+                                                error=playing_info['error'],
+                                            )
+                                        else:
                                             response = command_info['response_template'].format(
                                                 song=playing_info['song'],
                                                 singer=playing_info['singer']
                                             )
-                                        else:
-                                            response = "pause failed"
                                     case 'vol+':
                                         # Increase volume
                                         self.music_handler.increase_volume()

@@ -243,7 +243,7 @@ class QQMusicHandler(AppHandler):
             if not pause_button:
                 print("[Error]pause_song cannot find pause button")
                 self.press_back()
-                return False
+                return {'error': 'cannot find pause button'}
             pause_button.click()
             print("Clicked pause button")
             time.sleep(1)  # Wait for pause action
@@ -251,10 +251,7 @@ class QQMusicHandler(AppHandler):
             # Get current playing info
             playing_info = self.get_current_playing()
             if not playing_info:
-                playing_info = {
-                    'song': 'unknown',
-                    'singer': 'unknown'
-                }
+                return {'error': 'cannot find playing info'}
             print(f"Current playing: {playing_info}")
 
             # Close notification panel
