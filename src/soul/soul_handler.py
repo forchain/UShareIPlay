@@ -305,6 +305,8 @@ class SoulHandler(AppHandler):
             party_element.click()
             print(f"Entered party {party_id}")
 
+            # Grab mic and confirm
+            self.grab_mic_and_confirm()
 
             return {'party_id': party_id, 'user': message_info.nickname}
 
@@ -386,3 +388,53 @@ class SoulHandler(AppHandler):
         except Exception as e:
             print(f"Error managing admin: {str(e)}")
             return {'error': str(e)}
+
+    def grab_mic_and_confirm(self):
+        """Wait for the grab mic button and confirm the action"""
+        try:
+            # Wait for the grab mic button to be clickable
+            grab_mic_button = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['grab_mic']
+            )
+            grab_mic_button.click()
+            print("Clicked grab mic button")
+
+            # Wait for the confirmation dialog to appear
+            confirm_button = self.wait_for_element_clickable(
+                AppiumBy.XPATH,
+                self.config['elements']['confirm_mic']
+            )
+            confirm_button.click()
+            print("Clicked confirm button for mic")
+
+        except Exception as e:
+            print(f"Error grabbing mic: {str(e)}")
+
+    def ensure_mic_active(self):
+        """Ensure the microphone is active"""
+        try:
+            # Check if the grab mic button is present
+            grab_mic_button = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['grab_mic']
+            )
+            
+            if grab_mic_button:
+                print("Grab mic button found, grabbing mic...")
+                self.grab_mic_and_confirm()
+            else:
+                print("Already on mic, checking toggle mic status...")
+                # Check the toggle mic button
+                toggle_mic_button = self.wait_for_element_clickable(
+                    AppiumBy.ID,
+                    self.config['elements']['toggle_mic']
+                )
+                
+                if toggle_mic_button.text == "闭麦中":  # Assuming this means "Mic is off"
+                    print("Mic is off, turning it on...")
+                    toggle_mic_button.click()
+                    print("Clicked toggle mic button to turn on mic")
+
+        except Exception as e:
+            print(f"Error ensuring mic is active: {str(e)}")

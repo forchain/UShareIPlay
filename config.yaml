@@ -27,6 +27,9 @@ soul:
     search_button: "cn.soulapp.android:id/flRight"
     party_id: "cn.soulapp.android:id/tvFM"
     parties_search: "cn.soulapp.android:id/rvParties"
+    grab_mic: "cn.soulapp.android:id/ivUpSeat"
+    confirm_mic: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认']"
+    toggle_mic: "cn.soulapp.android:id/ivMic"
 
 qq_music:
   package_name: "com.tencent.qqmusic"

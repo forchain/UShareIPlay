@@ -79,6 +79,7 @@ class AppController:
                                     case 'play':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
+                                        self.soul_handler.ensure_mic_active()
                                         playing_info = self.music_handler.play_music(query)
 
                                         # Send status back to Soul using command's template
@@ -100,6 +101,7 @@ class AppController:
                                     case 'next':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
+                                        self.soul_handler.ensure_mic_active()
                                         playing_info = self.music_handler.play_next(query)
                                         # Send status back to Soul using command's template
                                         response = command_info['response_template'].format(
@@ -173,7 +175,7 @@ class AppController:
                                             party_id = command_info['parameters'][0]
                                             # Try to join party
                                             result = self.soul_handler.invite_user(message_info, party_id)
-                                            
+
                                             if 'error' in result:
                                                 # Use error template if invitation failed
                                                 response = command_info['error_template'].format(
@@ -183,7 +185,8 @@ class AppController:
                                             else:
                                                 # Use success template if invitation succeeded
                                                 response = command_info['response_template'].format(
-                                                    party_id=result['party_id']
+                                                    party_id=result['party_id'],
+                                                    user=message_info.nickname
                                                 )
                                         else:
                                             response = command_info['error_template'].format(
@@ -198,7 +201,7 @@ class AppController:
                                             enable = command_info['parameters'][0] == '1'
                                             # Manage admin status
                                             result = self.soul_handler.manage_admin(message_info, enable)
-                                            
+
                                             if 'error' in result:
                                                 # Use error template if operation failed
                                                 response = command_info['error_template'].format(
@@ -217,7 +220,7 @@ class AppController:
                                             )
                                     case _:
                                         print(f"Unknown command: {command_info['command']}")
-                                        
+
                                 if response:
                                     self.soul_handler.send_message(response)
                 time.sleep(1)
@@ -226,4 +229,7 @@ class AppController:
                 break
             except Exception as e:
                 print(f"Error in monitoring loop: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
                 time.sleep(1)
