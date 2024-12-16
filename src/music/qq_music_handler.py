@@ -98,21 +98,35 @@ class QQMusicHandler(AppHandler):
             self.switch_to_app()
             print(f"Switched to QQ Music app")
 
-            # Hide player if visible
-            self.hide_player()
-            print(f"Attempted to hide player")
-
-            # Go back to home page
-            self.navigate_to_home()
-            print(f"Navigated to home page")
-
-            # Find search entry
-            search_entry = self.wait_for_element_clickable(
-                AppiumBy.XPATH,
-                self.config['elements']['search_entry']
+            search_box = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['search_box']
             )
-            search_entry.click()
-            print(f"Clicked search entry")
+            if not search_box:
+                print(f"Cannot find search entry")
+
+                # Hide player if visible
+                self.hide_player()
+                print(f"Attempted to hide player")
+
+                # Go back to home page
+                self.navigate_to_home()
+                print(f"Navigated to home page")
+
+                # Find search entry
+                search_entry = self.wait_for_element_clickable(
+                    AppiumBy.XPATH,
+                    self.config['elements']['search_entry']
+                )
+                search_entry.click()
+                print(f"Clicked search entry")
+            else:
+                clear_search = self.wait_for_element_clickable(
+                    AppiumBy.ID,
+                    self.config['elements']['clear_search']
+                )
+                clear_search.click()
+                print(f"Clear search")
 
             # Find and click search box
             search_box = self.wait_for_element_clickable(

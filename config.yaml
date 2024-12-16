@@ -59,6 +59,13 @@ qq_music:
     accompaniment_tag: "com.tencent.qqmusic:id/n6i"
 #    live_lyrics: "com.tencent.qqmusic:id/e5z"
     live_lyrics: "com.tencent.qqmusic:id/lbr"
+    acc_tag: "com.tencent.qqmusic:id/ocx"
+    accompaniment_tool: "com.tencent.qqmusic:id/ocx"
+    lyrics_tool: "com.tencent.qqmusic:id/hu9"
+    lyrics_poster: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/jbp' and @text='歌词海报']"
+    lyrics_line: "com.tencent.qqmusic:id/h3g"
+    lyrics_end: "//android.view.View"
+    clear_search: "com.tencent.qqmusic:id/kpu"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
