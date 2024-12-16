@@ -380,19 +380,41 @@ class QQMusicHandler(AppHandler):
             'enabled': 'on' if is_on else 'off'
         }
 
-    def increase_volume(self):
-        """Increase the device volume"""
+    def increase_volume(self, times=1):
+        """
+        Increase volume multiple times
+        Args:
+            times: int, number of times to increase volume
+        Returns:
+            dict: Result with times or error
+        """
         try:
-            self.press_volume_up()
+            self.switch_to_app()
+            for i in range(times):
+                self.press_volume_up()
+                print(f"Increased volume ({i+1}/{times})")
+            return {'times': times}
         except Exception as e:
             print(f"Error increasing volume: {str(e)}")
+            return {'error': str(e)}
 
-    def decrease_volume(self):
-        """Decrease the device volume"""
+    def decrease_volume(self, times=1):
+        """
+        Decrease volume multiple times
+        Args:
+            times: int, number of times to decrease volume
+        Returns:
+            dict: Result with times or error
+        """
         try:
-            self.press_volume_down()
+            self.switch_to_app()
+            for i in range(times):
+                self.press_volume_down()
+                print(f"Decreased volume ({i+1}/{times})")
+            return {'times': times}
         except Exception as e:
             print(f"Error decreasing volume: {str(e)}")
+            return {'error': str(e)}
 
     def get_lyrics(self):
         """Get lyrics of current playing song"""

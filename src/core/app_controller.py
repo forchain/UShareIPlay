@@ -121,13 +121,50 @@ class AppController:
                                                 singer=playing_info['singer']
                                             )
                                     case 'vol+':
+                                        # Get times parameter
+                                        times = 1
+                                        if len(command_info['parameters']) > 0:
+                                            try:
+                                                times = int(command_info['parameters'][0])
+                                            except ValueError:
+                                                response = command_info['error_template'].format(
+                                                    error='Invalid times parameter, must be a number'
+                                                )
+                                                continue
+                                        
                                         # Increase volume
-                                        self.music_handler.increase_volume()
-                                        response = command_info['response_template']
+                                        result = self.music_handler.increase_volume(times)
+                                        if 'error' in result:
+                                            response = command_info['error_template'].format(
+                                                error=result['error']
+                                            )
+                                        else:
+                                            response = command_info['response_template'].format(
+                                                times=result['times']
+                                            )
+                                            
                                     case 'vol-':
+                                        # Get times parameter
+                                        times = 1
+                                        if len(command_info['parameters']) > 0:
+                                            try:
+                                                times = int(command_info['parameters'][0])
+                                            except ValueError:
+                                                response = command_info['error_template'].format(
+                                                    error='Invalid times parameter, must be a number'
+                                                )
+                                                continue
+                                        
                                         # Decrease volume
-                                        self.music_handler.decrease_volume()
-                                        response = command_info['response_template']
+                                        result = self.music_handler.decrease_volume(times)
+                                        if 'error' in result:
+                                            response = command_info['error_template'].format(
+                                                error=result['error']
+                                            )
+                                        else:
+                                            response = command_info['response_template'].format(
+                                                times=result['times']
+                                            )
                                     case 'acc':
                                         # Get parameter
                                         if len(command_info['parameters']) > 0:
