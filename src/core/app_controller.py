@@ -64,7 +64,7 @@ class AppController:
                             if command_info:
                                 # Handle different commands using match-case
                                 response = None
-                                cmd = command_info['command']
+                                cmd = command_info['prefix']
                                 if cmd == 'enable':
                                     enabled = ''.join(command_info['parameters']) == "1"
                                     print(f"[Info]start_monitoring enabled: {enabled}")
@@ -76,7 +76,7 @@ class AppController:
                                 if not enabled:
                                     continue
 
-                                match command_info['command']:
+                                match command_info['prefix']:
                                     case 'play':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
@@ -121,51 +121,42 @@ class AppController:
                                                 song=playing_info['song'],
                                                 singer=playing_info['singer']
                                             )
-                                    case 'vol+':
-                                        # Get times parameter
-                                        times = 1
+                                    case 'vol':
+                                        # Parse volume parameter
+                                        delta = None
                                         if len(command_info['parameters']) > 0:
                                             try:
-                                                times = int(command_info['parameters'][0])
+                                                delta = int(command_info['parameters'][0])
                                             except ValueError:
                                                 response = command_info['error_template'].format(
-                                                    error='Invalid times parameter, must be a number'
+                                                    error='Invalid parameter, must be a number'
                                                 )
                                                 continue
                                         
-                                        # Increase volume
-                                        result = self.music_handler.increase_volume(times)
+                                        # Adjust volume
+                                        result = self.music_handler.adjust_volume(delta)
                                         if 'error' in result:
                                             response = command_info['error_template'].format(
                                                 error=result['error']
                                             )
                                         else:
-                                            response = command_info['response_template'].format(
-                                                times=result['times']
-                                            )
-                                            
-                                    case 'vol-':
-                                        # Get times parameter
-                                        times = 1
-                                        if len(command_info['parameters']) > 0:
-                                            try:
-                                                times = int(command_info['parameters'][0])
-                                            except ValueError:
-                                                response = command_info['error_template'].format(
-                                                    error='Invalid times parameter, must be a number'
+                                            if delta is None:
+                                                # Just showing current volume
+                                                response = command_info['response_template'].format(
+                                                    level=result['level']
                                                 )
-                                                continue
-                                        
-                                        # Decrease volume
-                                        result = self.music_handler.decrease_volume(times)
-                                        if 'error' in result:
-                                            response = command_info['error_template'].format(
-                                                error=result['error']
-                                            )
-                                        else:
-                                            response = command_info['response_template'].format(
-                                                times=result['times']
-                                            )
+                                            elif delta > 0:
+                                                # Volume increased
+                                                response = command_info['increase_template'].format(
+                                                    times=result['times'],
+                                                    level=result['level']
+                                                )
+                                            else:
+                                                # Volume decreased
+                                                response = command_info['decrease_template'].format(
+                                                    times=result['times'],
+                                                    level=result['level']
+                                                )
                                     case 'acc':
                                         # Get parameter
                                         if len(command_info['parameters']) > 0:
@@ -264,7 +255,7 @@ class AppController:
                                                 error='Missing parameter (1 for enable, 0 for disable)'
                                             )
                                     case _:
-                                        print(f"Unknown command: {command_info['command']}")
+                                        print(f"Unknown command: {command_info['prefix']}")
 
                                 if response:
                                     self.soul_handler.send_message(response)

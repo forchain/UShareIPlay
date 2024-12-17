@@ -288,19 +288,25 @@ class QQMusicHandler(AppHandler):
             result = self.driver.execute_script(
                 'mobile: shell',
                 {
-                    'command': 'dumpsys audio | grep "STREAM_MUSIC" | grep -o "[0-9]*/[0-9]*"'
+                    'command': 'dumpsys audio'
                 }
             )
 
             # Parse volume level
             if result:
-                current, max_vol = map(int, result.strip().split('/'))
-                volume_percentage = int((current / max_vol) * 100)
-                print(f"Current volume: {volume_percentage}%")
-                return volume_percentage
+                # Split by "- STREAM_MUSIC:" first
+                parts = result.split('- STREAM_MUSIC:')
+                if len(parts) > 1:
+                    # Find first streamVolume in second part
+                    match = re.search(r'streamVolume:(\d+)', parts[1])
+                    if match:
+                        volume = int(match.group(1))
+                        print(f"Current volume: {volume}")
+                        return volume
             return 0
         except Exception as e:
             print(f"Error getting volume level: {str(e)}")
+            traceback.print_exc()
             return 0
 
     def toggle_accompaniment(self, enable):
@@ -380,40 +386,38 @@ class QQMusicHandler(AppHandler):
             'enabled': 'on' if is_on else 'off'
         }
 
-    def increase_volume(self, times=1):
+    def adjust_volume(self, delta=None):
         """
-        Increase volume multiple times
+        Adjust volume level
         Args:
-            times: int, number of times to increase volume
+            delta: int, positive to increase, negative to decrease, None to just get current level
         Returns:
-            dict: Result with times or error
+            dict: Result with level and times if adjusted, or error
         """
         try:
-            self.switch_to_app()
+            if delta is None:
+                # Just get current volume
+                return {'level': self.get_volume_level()}
+            
+            # Adjust volume
+            times = abs(delta)
             for i in range(times):
-                self.press_volume_up()
-                print(f"Increased volume ({i + 1}/{times})")
-            return {'times': times}
+                if delta > 0:
+                    self.press_volume_up()
+                    print(f"Increased volume ({i + 1}/{times})")
+                else:
+                    self.press_volume_down()
+                    print(f"Decreased volume ({i + 1}/{times})")
+            
+            # Get final volume level
+            level = self.get_volume_level()
+            return {
+                'level': level,
+                'times': times
+            }
+            
         except Exception as e:
-            print(f"Error increasing volume: {str(e)}")
-            return {'error': str(e)}
-
-    def decrease_volume(self, times=1):
-        """
-        Decrease volume multiple times
-        Args:
-            times: int, number of times to decrease volume
-        Returns:
-            dict: Result with times or error
-        """
-        try:
-            self.switch_to_app()
-            for i in range(times):
-                self.press_volume_down()
-                print(f"Decreased volume ({i + 1}/{times})")
-            return {'times': times}
-        except Exception as e:
-            print(f"Error decreasing volume: {str(e)}")
+            print(f"Error adjusting volume: {str(e)}")
             return {'error': str(e)}
 
     def get_lyrics(self):

@@ -32,9 +32,5 @@ class CommandParser:
         if not matching_cmd:
             return None
 
-        return {
-            'command': command,
-            'parameters': parameters,
-            'response_template': matching_cmd['response_template'],
-            'error_template': matching_cmd.get('error_template', '')
-        }
+        matching_cmd['parameters'] = parameters
+        return matching_cmd
