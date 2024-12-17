@@ -110,16 +110,32 @@ class AppController:
                                             singer=playing_info['singer']
                                         )
                                     case 'pause':
-                                        # Pause current song
-                                        playing_info = self.music_handler.pause_song()
-                                        if 'error' in playing_info:
+                                        # Get pause state parameter
+                                        pause_state = None
+                                        if len(command_info['parameters']) > 0:
+                                            try:
+                                                pause_state = int(command_info['parameters'][0])
+                                                if pause_state not in [0, 1]:
+                                                    raise ValueError
+                                            except ValueError:
+                                                response = command_info['error_template'].format(
+                                                    action='control playback',
+                                                    error='Invalid parameter, must be 0 or 1'
+                                                )
+                                                continue
+                                        
+                                        # Control playback
+                                        result = self.music_handler.pause_song(pause_state)
+                                        if 'error' in result:
                                             response = command_info['error_template'].format(
-                                                error=playing_info['error'],
+                                                action='control playback',
+                                                error=result['error']
                                             )
                                         else:
                                             response = command_info['response_template'].format(
-                                                song=playing_info['song'],
-                                                singer=playing_info['singer']
+                                                action=result['action'],
+                                                song=result['song'],
+                                                singer=result['singer']
                                             )
                                     case 'vol':
                                         # Parse volume parameter

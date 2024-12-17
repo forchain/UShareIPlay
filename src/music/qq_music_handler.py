@@ -235,45 +235,58 @@ class QQMusicHandler(AppHandler):
                 'singer': 'Unknown'
             }
 
-    def pause_song(self):
-        """Pause current playing song using notification panel"""
+    def pause_song(self, pause_state=None):
+        """
+        Pause/resume playback
+        Args:
+            pause_state: None for toggle, 1 for pause, 0 for play
+        Returns:
+            dict: Current playing info or error
+        """
         try:
-            # Get current playing info before pause
-            self.driver.open_notifications()
-            print("Opened notification panel")
-            time.sleep(1)  # Wait for animation
-
-            # Find and click pause button
-            pause_button = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['pause_button']
+            # Get current playback info
+            current_info = self.get_playback_info()
+            if 'error' in current_info:
+                return current_info
+                
+            # Get current state
+            is_playing = current_info['state'] == "Playing"
+            
+            # Determine if we need to change state
+            should_pause = False
+            if pause_state is None:
+                # Toggle mode
+                should_pause = is_playing
+            else:
+                # Explicit mode
+                should_pause = pause_state == 1
+                if (should_pause and not is_playing) or (not should_pause and is_playing):
+                    # State already matches desired state
+                    return {
+                        'song': current_info['song'],
+                        'singer': current_info['singer'],
+                        'action': 'Paused' if not is_playing else 'Resumed'
+                    }
+            
+            # Execute media control command
+            self.driver.execute_script(
+                'mobile: shell',
+                {
+                    'command': 'input keyevent KEYCODE_MEDIA_PLAY_PAUSE'
+                }
             )
-            if not pause_button:
-                print("[Error]pause_song cannot find pause button")
-                self.press_back()
-                return {'error': 'cannot find pause button'}
-            pause_button.click()
-            print("Clicked pause button")
-            time.sleep(1)  # Wait for pause action
-
-            # Get current playing info
-            playing_info = self.get_current_playing()
-            if not playing_info:
-                return {'error': 'cannot find playing info'}
-            print(f"Current playing: {playing_info}")
-
-            # Close notification panel
-            self.press_back()
-            print("Closed notification panel")
-
-            return playing_info
-
-        except Exception as e:
-            print(f"Error pausing song: {str(e)}")
+            print("Sent media play/pause key event")
+            
             return {
-                'song': 'unknown',
-                'singer': 'unknown'
+                'song': current_info['song'],
+                'singer': current_info['singer'],
+                'action': 'Paused' if should_pause else 'Resumed'
             }
+            
+        except Exception as e:
+            print(f"Error controlling playback: {str(e)}")
+            traceback.print_exc()
+            return {'error': str(e)}
 
     def get_volume_level(self):
         """Get current volume level"""
