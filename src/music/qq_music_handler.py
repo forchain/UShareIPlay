@@ -207,39 +207,33 @@ class QQMusicHandler(AppHandler):
             }
 
     def skip_song(self):
-        """Skip to next song using notification panel"""
-        # Open notification panel
-        self.driver.open_notifications()
-        print("Opened notification panel")
-        time.sleep(1)  # Wait for animation
-
-        # Find and click skip button in notification
-        skip_button = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['skip_button']
-        )
-        if not skip_button:
-            print("[Error]skip_song cannot find skip button, no music playing")
-            self.press_back()
-            return False
-        skip_button.click()
-        print("Clicked skip button")
-        time.sleep(1)  # Wait for song change
-
-        # Get playing info
-        playing_info = self.get_current_playing()
-        if not playing_info:
-            playing_info = {
-                'song': 'unknown',
-                'singer': 'unknown'
+        """Skip to next song"""
+        try:
+            # Get current info before skip
+            current_info = self.get_playback_info()
+            
+            # Execute shell command to simulate media button press
+            self.driver.execute_script(
+                'mobile: shell',
+                {
+                    'command': 'input keyevent KEYCODE_MEDIA_NEXT'
+                }
+            )
+            print("Sent media next key event")
+            
+            # Return song info
+            return {
+                'song': current_info.get('song', 'Unknown'),
+                'singer': current_info.get('singer', 'Unknown')
             }
-        print(f"Now playing: {playing_info}")
-
-        # Close notification panel
-        self.press_back()
-        print("Closed notification panel")
-
-        return playing_info
+            
+        except Exception as e:
+            print(f"Error skipping song: {str(e)}")
+            traceback.print_exc()
+            return {
+                'song': 'Unknown',
+                'singer': 'Unknown'
+            }
 
     def pause_song(self):
         """Pause current playing song using notification panel"""
@@ -817,3 +811,61 @@ class QQMusicHandler(AppHandler):
 
         except Exception as e:
             print(f"Error scrolling element: {str(e)}")
+
+    def get_playback_info(self):
+        """Get current playback information including song info and state"""
+        try:
+            # Get media session info
+            result = self.driver.execute_script(
+                'mobile: shell',
+                {
+                    'command': 'dumpsys media_session'
+                }
+            )
+            
+            # Parse metadata
+            metadata = {}
+            state = "Unknown"
+            
+            if result:
+                # Get metadata
+                meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
+                if meta_match:
+                    meta_parts = meta_match.group(1).split(', ')
+                    if len(meta_parts) >= 3:
+                        metadata = {
+                            'song': meta_parts[0],
+                            'singer': meta_parts[1],
+                            'album': meta_parts[2]
+                        }
+                
+                # Get playback state
+                state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
+                if state_match:
+                    state_code = int(state_match.group(1))
+                    state = {
+                        0: "None",
+                        1: "Stopped",
+                        2: "Paused",
+                        3: "Playing",
+                        4: "Fast Forwarding",
+                        5: "Rewinding",
+                        6: "Buffering",
+                        7: "Error",
+                        8: "Connecting",
+                        9: "Skipping to Next",
+                        10: "Skipping to Previous",
+                        11: "Skipping to Queue Item"
+                    }.get(state_code, "Unknown")
+            
+            return {
+                'song': metadata.get('song', 'Unknown'),
+                'singer': metadata.get('singer', 'Unknown'),
+                'album': metadata.get('album', 'Unknown'),
+                'state': state
+            }
+            
+        except Exception as e:
+            print(f"Error getting playback info: {str(e)}")
+            traceback.print_exc()
+            return {'error': str(e)}

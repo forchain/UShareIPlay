@@ -254,6 +254,21 @@ class AppController:
                                                 user=message_info.nickname,
                                                 error='Missing parameter (1 for enable, 0 for disable)'
                                             )
+                                    case 'info':
+                                        # Get current playback info
+                                        result = self.music_handler.get_playback_info()
+                                        
+                                        if 'error' in result:
+                                            response = command_info['error_template'].format(
+                                                error=result['error']
+                                            )
+                                        else:
+                                            response = command_info['response_template'].format(
+                                                album=result['album'],
+                                                song=result['song'],
+                                                singer=result['singer'],
+                                                state=result['state']
+                                            )
                                     case _:
                                         print(f"Unknown command: {command_info['prefix']}")
 
