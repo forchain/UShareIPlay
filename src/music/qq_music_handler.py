@@ -472,15 +472,6 @@ class QQMusicHandler(AppHandler):
             self.driver.swipe(start_x, y, end_x, y, 500)  # 1000ms = 1s
             print("Swiped to lyrics page")
 
-            time.sleep(0.5)  # Wait for animation
-            # Check if lyrics are available
-            no_lyrics = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['no_lyrics']
-            )
-            if no_lyrics:
-                return {'error': 'No lyrics available for this song'}
-
             # Find and click lyrics tool button
             lyrics_tool = self.wait_for_element_clickable(
                 AppiumBy.ID,
@@ -488,6 +479,14 @@ class QQMusicHandler(AppHandler):
             )
             if not lyrics_tool:
                 return {'error': 'Cannot find lyrics tool'}
+
+            # Check if lyrics are available
+            no_lyrics = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['no_lyrics']
+            )
+            if no_lyrics:
+                return {'error': 'No lyrics available for this song'}
 
             lyrics_tool.click()
             print("Clicked lyrics tool")
