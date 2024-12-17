@@ -65,6 +65,7 @@ qq_music:
     lyrics_poster: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/jbp' and @text='歌词海报']"
     lyrics_line: "com.tencent.qqmusic:id/h3g"
     lyrics_end: "//android.view.View"
+    no_lyrics: "com.tencent.qqmusic:id/ndz"
     clear_search: "com.tencent.qqmusic:id/kpu"
 commands:
   - prefix: "play"
