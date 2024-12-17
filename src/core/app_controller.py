@@ -201,25 +201,16 @@ class AppController:
                                                 lyrics=result['lyrics']
                                             )
                                     case 'ktv':
-                                        # Get KTV mode parameters from command config
-                                        ktv_config = next(
-                                            (cmd for cmd in self.config['commands'] if cmd['prefix'] == 'ktv'),
-                                            {}
+                                        # Toggle KTV mode
+                                        enable = True
+                                        if len(command_info['parameters']) > 0:
+                                            enable = command_info['parameters'][0] == '1'
+                                        
+                                        # Toggle KTV mode
+                                        result = self.music_handler.toggle_ktv_mode(enable)
+                                        response = command_info['response_template'].format(
+                                            enabled=result['enabled']
                                         )
-                                        max_switches = ktv_config.get('max_switches', 9)
-                                        switch_interval = ktv_config.get('switch_interval', 1)
-
-                                        # Start KTV mode
-                                        for lyrics in self.music_handler.start_ktv_mode(
-                                                max_switches=max_switches,
-                                                switch_interval=switch_interval
-                                        ):
-                                            # Send lyrics to Soul
-                                            response = command_info['response_template'].format(
-                                                lyrics=lyrics
-                                            )
-                                            self.soul_handler.send_message(response)
-                                            self.music_handler.switch_to_app()
 
                                     case 'invite':
                                         # Get party ID parameter
@@ -273,7 +264,7 @@ class AppController:
                                     case 'info':
                                         # Get current playback info
                                         result = self.music_handler.get_playback_info()
-                                        
+
                                         if 'error' in result:
                                             response = command_info['error_template'].format(
                                                 error=result['error']
@@ -287,9 +278,15 @@ class AppController:
                                             )
                                     case _:
                                         print(f"Unknown command: {command_info['prefix']}")
-
                                 if response:
                                     self.soul_handler.send_message(response)
+                # Check KTV lyrics if mode is enabled
+                if self.music_handler.ktv_mode:
+                    lyrics = self.music_handler.check_ktv_lyrics()
+                    if lyrics:
+                        self.soul_handler.send_message(lyrics)
+                        self.soul_handler.press_back()
+
                 time.sleep(1)
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")

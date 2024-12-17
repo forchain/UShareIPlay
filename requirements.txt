@@ -6,3 +6,5 @@ pytesseract==0.3.10
 Pillow
 pytest>=7.4.3
 python-dotenv>=1.0.0 
+jieba>=0.42.1
+langdetect>=1.0.9

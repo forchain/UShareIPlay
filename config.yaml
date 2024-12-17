@@ -88,9 +88,8 @@ commands:
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "ktv"
-    response_template: "{lyrics}"
-    max_switches: 9
-    switch_interval: 1
+    response_template: "KTV mode {enabled}"
+    error_template: "Failed to toggle KTV mode, because {error}"
   - prefix: "enable"
     response_template: "Enabled: {enabled}"
   - prefix: "help"

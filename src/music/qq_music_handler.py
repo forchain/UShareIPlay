@@ -13,12 +13,20 @@ from selenium.webdriver.common.actions import interaction
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 import traceback
+import jieba
+from langdetect import detect_langs
+import langdetect
+
+# 在导入后设置种子
+langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 
 class QQMusicHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
         self.lyrics_formatter = None  # Will be set by app_controller
+        self.ktv_mode = False  # KTV mode state
+        self.last_lyrics = ""  # Store last recognized lyrics
 
         # Optimize driver settings
         self.driver.update_settings({
@@ -211,7 +219,7 @@ class QQMusicHandler(AppHandler):
         try:
             # Get current info before skip
             current_info = self.get_playback_info()
-            
+
             # Execute shell command to simulate media button press
             self.driver.execute_script(
                 'mobile: shell',
@@ -220,13 +228,13 @@ class QQMusicHandler(AppHandler):
                 }
             )
             print("Sent media next key event")
-            
+
             # Return song info
             return {
                 'song': current_info.get('song', 'Unknown'),
                 'singer': current_info.get('singer', 'Unknown')
             }
-            
+
         except Exception as e:
             print(f"Error skipping song: {str(e)}")
             traceback.print_exc()
@@ -248,10 +256,10 @@ class QQMusicHandler(AppHandler):
             current_info = self.get_playback_info()
             if 'error' in current_info:
                 return current_info
-                
+
             # Get current state
             is_playing = current_info['state'] == "Playing"
-            
+
             # Determine if we need to change state
             should_pause = False
             if pause_state is None:
@@ -267,7 +275,7 @@ class QQMusicHandler(AppHandler):
                         'singer': current_info['singer'],
                         'action': 'Paused' if not is_playing else 'Resumed'
                     }
-            
+
             # Execute media control command
             self.driver.execute_script(
                 'mobile: shell',
@@ -276,13 +284,13 @@ class QQMusicHandler(AppHandler):
                 }
             )
             print("Sent media play/pause key event")
-            
+
             return {
                 'song': current_info['song'],
                 'singer': current_info['singer'],
                 'action': 'Paused' if should_pause else 'Resumed'
             }
-            
+
         except Exception as e:
             print(f"Error controlling playback: {str(e)}")
             traceback.print_exc()
@@ -405,7 +413,7 @@ class QQMusicHandler(AppHandler):
             if delta is None:
                 # Just get current volume
                 return {'level': self.get_volume_level()}
-            
+
             # Adjust volume
             times = abs(delta)
             for i in range(times):
@@ -415,14 +423,14 @@ class QQMusicHandler(AppHandler):
                 else:
                     self.press_volume_down()
                     print(f"Decreased volume ({i + 1}/{times})")
-            
+
             # Get final volume level
             level = self.get_volume_level()
             return {
                 'level': level,
                 'times': times
             }
-            
+
         except Exception as e:
             print(f"Error adjusting volume: {str(e)}")
             return {'error': str(e)}
@@ -633,7 +641,10 @@ class QQMusicHandler(AppHandler):
         """
         try:
             # Get element screenshot
+            start_time = time.time()  # Start time for screenshot
             screenshot = element.screenshot_as_base64
+            end_time = time.time()  # End time for screenshot
+            print(f"Time taken to get screenshot: {end_time - start_time:.2f} seconds")
             image_data = base64.b64decode(screenshot)
             image = Image.open(io.BytesIO(image_data))
 
@@ -645,11 +656,14 @@ class QQMusicHandler(AppHandler):
             # cropped_image = image.crop(crop_box)
 
             # Perform OCR with Chinese support
+            start_time = time.time()  # Start time for OCR
             text = pytesseract.image_to_string(
                 image,
                 lang='chi_sim+eng',  # Use both Chinese and English
                 config='--psm 6'  # Assume uniform text block
             )
+            end_time = time.time()  # End time for OCR
+            print(f"Time taken for OCR: {end_time - start_time:.2f} seconds")
 
             return text.strip()
         except Exception as e:
@@ -841,11 +855,11 @@ class QQMusicHandler(AppHandler):
                     'command': 'dumpsys media_session'
                 }
             )
-            
+
             # Parse metadata
             metadata = {}
             state = "Unknown"
-            
+
             if result:
                 # Get metadata
                 meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
@@ -857,7 +871,7 @@ class QQMusicHandler(AppHandler):
                             'singer': meta_parts[1],
                             'album': meta_parts[2]
                         }
-                
+
                 # Get playback state
                 state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
                 if state_match:
@@ -876,15 +890,120 @@ class QQMusicHandler(AppHandler):
                         10: "Skipping to Previous",
                         11: "Skipping to Queue Item"
                     }.get(state_code, "Unknown")
-            
+
             return {
                 'song': metadata.get('song', 'Unknown'),
                 'singer': metadata.get('singer', 'Unknown'),
                 'album': metadata.get('album', 'Unknown'),
                 'state': state
             }
-            
+
         except Exception as e:
             print(f"Error getting playback info: {str(e)}")
             traceback.print_exc()
             return {'error': str(e)}
+
+    def toggle_ktv_mode(self, enable):
+        """Toggle KTV mode
+        Args:
+            enable: bool, True to enable, False to disable
+        """
+        self.ktv_mode = enable
+        print(f"KTV mode {'enabled' if enable else 'disabled'}")
+        return {'enabled': 'on' if enable else 'off'}
+
+    def is_meaningful_text(self, text):
+        """Check if text is meaningful
+        Args:
+            text: str, text to check
+        Returns:
+            bool: True if text seems meaningful
+        """
+        try:
+            if len(text) < 2:  # 太短的文本认为无意义
+                return False
+
+            # 检测语言
+            try:
+                # 使用detect_langs获取语言概率列表
+                langs = detect_langs(text)
+                if not langs:
+                    return False
+                # 获取最可能的语言
+                lang = langs[0].lang
+            except:
+                return False
+
+            if 'zh' in lang:
+                # 中文文本检查逻辑保持不变
+                words = list(jieba.cut(text))
+                if len(words) < 2 or len(words) > len(text):
+                    return False
+                single_char_ratio = sum(1 for w in words if len(w) == 1) / len(words)
+                if single_char_ratio > 0.8:
+                    return False
+            else:
+                # 英文文本检查逻辑保持不变
+                words = text.split()
+                if len(words) < 2:
+                    return False
+                avg_word_len = sum(len(w) for w in words) / len(words)
+                if avg_word_len < 2 or avg_word_len > 15:
+                    return False
+
+            return True
+
+        except Exception as e:
+            print(f"Error checking text meaningfulness: {str(e)}")
+            return False
+
+    def check_ktv_lyrics(self):
+        """Check current lyrics in KTV mode
+        Returns:
+            str or None: New lyrics if changed, None if no change or invalid
+        """
+        try:
+            # Take screenshot of the specified area
+            start_time = time.time()  # Start time for screenshot
+            screenshot = self.driver.get_screenshot_as_base64()
+            end_time = time.time()  # End time for screenshot
+            print(f"Time taken to get screenshot: {end_time - start_time:.2f} seconds")
+
+            image_data = base64.b64decode(screenshot)
+            image = Image.open(io.BytesIO(image_data))
+
+            # Crop the image to the specified coordinates
+            start_time = time.time()  # Start time for cropping
+            width, height = image.size
+            crop_box = (250, 0, 1000, 100)  # (left, top, right, bottom)
+            cropped_image = image.crop(crop_box)
+            end_time = time.time()  # End time for cropping
+            print(f"Time taken to crop image: {end_time - start_time:.2f} seconds")
+
+            # Perform OCR
+            start_time = time.time()  # Start time for OCR
+            text = pytesseract.image_to_string(
+                cropped_image,
+                lang='chi_sim+eng',
+                config='--psm 6'
+            ).strip()
+            end_time = time.time()  # End time for OCR
+            print(f"Time taken for OCR: {end_time - start_time:.2f} seconds")
+
+            # Check if text is valid and meaningful
+            # if not text or not self.is_meaningful_text(text):
+            #     return None
+            if not text:
+                return None
+
+            # Check if text has changed
+            if text != self.last_lyrics:
+                self.last_lyrics = text
+                return text
+
+            return None
+
+        except Exception as e:
+            print(f"Error checking KTV lyrics: {str(e)}")
+            traceback.print_exc()
+            return None
