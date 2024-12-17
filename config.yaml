@@ -84,9 +84,9 @@ commands:
     error_template: "Failed to decrease volume, because {error}"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
-#  - prefix: "lyrics"
-#    response_template: "{lyrics}"
-#    tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介", "影视综述"]
+  - prefix: "lyrics"
+    response_template: "{lyrics}"
+    error_template: "Failed to get lyrics, because {error}"
   - prefix: "ktv"
     response_template: "{lyrics}"
     max_switches: 9

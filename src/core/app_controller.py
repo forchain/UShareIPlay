@@ -8,6 +8,7 @@ from ..music.qq_music_handler import QQMusicHandler
 from ..utils.command_parser import CommandParser
 from ..utils.lyrics_formatter import LyricsFormatter
 import time
+import traceback
 
 
 class AppController:
@@ -178,14 +179,20 @@ class AppController:
                                             )
                                         else:
                                             print("Missing parameter for accompaniment command")
-                                    # case 'lyrics':
-                                    #     # Get lyrics of current song
-                                    #     result = self.music_handler.get_lyrics()
-                                    #
-                                    #     # Send lyrics back to Soul using command's template
-                                    #     response = command_info['response_template'].format(
-                                    #         lyrics=result['lyrics']
-                                    #     )
+                                    case 'lyrics':
+                                        # Get lyrics of current song
+                                        result = self.music_handler.get_lyrics()
+                                        
+                                        if 'error' in result:
+                                            # Use error template if getting lyrics failed
+                                            response = command_info['error_template'].format(
+                                                error=result['error']
+                                            )
+                                        else:
+                                            # Send lyrics back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                lyrics=result['lyrics']
+                                            )
                                     case 'ktv':
                                         # Get KTV mode parameters from command config
                                         ktv_config = next(
@@ -267,7 +274,6 @@ class AppController:
                 break
             except Exception as e:
                 print(f"Error in monitoring loop: {str(e)}")
-                import traceback
 
                 traceback.print_exc()
                 time.sleep(1)

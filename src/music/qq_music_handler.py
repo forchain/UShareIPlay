@@ -12,6 +12,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions import interaction
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_input import PointerInput
+import traceback
 
 
 class QQMusicHandler(AppHandler):
@@ -134,7 +135,7 @@ class QQMusicHandler(AppHandler):
                 self.config['elements']['search_box']
             )
             print(f"Found search box")
-            
+
             # Use clipboard operations from parent class
             self.set_clipboard_text(music_query)
             self.paste_text()
@@ -239,7 +240,6 @@ class QQMusicHandler(AppHandler):
         print("Closed notification panel")
 
         return playing_info
-
 
     def pause_song(self):
         """Pause current playing song using notification panel"""
@@ -392,7 +392,7 @@ class QQMusicHandler(AppHandler):
             self.switch_to_app()
             for i in range(times):
                 self.press_volume_up()
-                print(f"Increased volume ({i+1}/{times})")
+                print(f"Increased volume ({i + 1}/{times})")
             return {'times': times}
         except Exception as e:
             print(f"Error increasing volume: {str(e)}")
@@ -410,7 +410,7 @@ class QQMusicHandler(AppHandler):
             self.switch_to_app()
             for i in range(times):
                 self.press_volume_down()
-                print(f"Decreased volume ({i+1}/{times})")
+                print(f"Decreased volume ({i + 1}/{times})")
             return {'times': times}
         except Exception as e:
             print(f"Error decreasing volume: {str(e)}")
@@ -422,66 +422,187 @@ class QQMusicHandler(AppHandler):
             self.switch_to_app()
             print("Switched to QQ Music app")
 
-            # Try to find info dot button
-            info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
-            if not info_dot:
-                while True:
-                    self.press_back()
-                    info_dot = self.try_find_element(AppiumBy.ID, self.config['elements']['info_dot'])
-                    if info_dot:
-                        break
-                    playing_bar = self.try_find_element(
-                        AppiumBy.ID,
-                        self.config['elements']['playing_bar']
-                    )
-                    if playing_bar:
-                        playing_bar.click()
-                        print("Clicked playing bar")
-                        break
-            else:
-                print(f'Found info dot')
-
-            info_dot = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['info_dot'], timeout=20)
-            print(f'info_dot is clickable')
-            # Click info dot
-            info_dot.click()
-            print("Clicked info dot")
-
-            # Click details link
-            details_link = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['details_link']
-            )
-            details_link.click()
-            print("Clicked details link")
-
-            # Wait for song_lyrics to appear and scroll to bottom
-            song_lyrics = self.wait_for_element(
+            # Press back to exit most interfaces
+            self.press_back()
+            search_entry = self.try_find_element(
                 AppiumBy.XPATH,
-                self.config['elements']['song_lyrics']
+                self.config['elements']['search_entry']
             )
-            if song_lyrics:
-                # Scroll song_lyrics to bottom
-                self.scroll_element(song_lyrics)
-                print("Scrolled song_lyrics to bottom")
-                time.sleep(1)  # Wait for scroll animation and DOM update
-                
-                # Now try to get full lyrics
-                full_lyrics = self.get_full_lyrics()
-                
-                return {
-                    'lyrics': full_lyrics if full_lyrics else "No lyrics available"
-                }
-            else:
-                return {
-                    'lyrics': "Song lyrics not found"
-                }
+            if not search_entry:
+                self.press_back()
+            print("Pressed back to clean up interface")
+
+            time.sleep(0.5)  # Wait for animation
+            # Try to find and click playing bar if exists
+            playing_bar = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['playing_bar']
+            )
+            if playing_bar:
+                playing_bar.click()
+                print("Found and clicked playing bar")
+                time.sleep(0.5)  # Wait for animation
+
+            # Find more menu in play panel
+            more_menu = self.wait_for_element(
+                AppiumBy.ID,
+                self.config['elements']['more_in_play_panel']
+            )
+            if not more_menu:
+                return {'error': 'Cannot find playing interface, please try again'}
+
+            # Get screen dimensions for swipe
+            screen_size = self.driver.get_window_size()
+            start_x = int(screen_size['width'] * 0.8)  # Start from 80% of width
+            end_x = int(screen_size['width'] * 0.1)  # End at 20% of width
+            y = int(screen_size['height'] * 0.5)  # Middle of screen
+
+            # Swipe to lyrics page
+            self.driver.swipe(start_x, y, end_x, y, 500)  # 1000ms = 1s
+            print("Swiped to lyrics page")
+
+            time.sleep(0.5)  # Wait for animation
+
+            # Find and click lyrics tool button
+            lyrics_tool = self.wait_for_element_clickable(
+                AppiumBy.ID,
+                self.config['elements']['lyrics_tool']
+            )
+            if not lyrics_tool:
+                return {'error': 'Cannot find lyrics tool'}
+
+            lyrics_tool.click()
+            print("Clicked lyrics tool")
+
+            # Find and click lyrics poster button
+            lyrics_poster = self.wait_for_element(
+                AppiumBy.XPATH,
+                self.config['elements']['lyrics_poster']
+            )
+            if not lyrics_poster:
+                return {'error': 'Cannot find lyrics poster option'}
+            if not lyrics_poster.is_enabled():
+                return {'error': 'Lyrics poster disabled'}
+
+            lyrics_poster.click()
+            print("Clicked lyrics poster")
+            self.wait_for_element(
+                AppiumBy.ID,
+                self.config['elements']['lyrics_line']
+            )
+
+            # Quick swipe to top of lyrics
+            self.driver.swipe(
+                screen_size['width'] // 2,  # Start from middle x
+                screen_size['height'] * 0.3,  # Start from bottom part
+                screen_size['width'] // 2,  # End at same x
+                screen_size['height'] * 0.9,  # End at top
+                100  # Fast swipe (300ms)
+            )
+            print("Quick swipe to top of lyrics")
+            time.sleep(0.5)  # Wait for scroll to settle
+
+            # Collect lyrics
+            all_lyrics = []  # Use list to maintain order
+            total_chars = 0
+            screen_height = screen_size['height']
+            previous_lines = []  # Store previous batch of lyrics
+
+            while True:
+                try:
+                    # Find all lyrics lines
+                    lyrics_lines = self.wait_for_element(
+                        AppiumBy.ID,
+                        self.config['elements']['lyrics_line']
+                    )
+                    if not lyrics_lines:
+                        print(f'No lyrics lines found')
+                        break
+
+                    # Get fresh elements each time
+                    lyrics_lines = self.driver.find_elements(
+                        AppiumBy.ID,
+                        self.config['elements']['lyrics_line']
+                    )
+
+                    # Get current batch of lyrics, handle StaleElementReferenceException
+                    current_lines = []
+                    for line in lyrics_lines:
+                        try:
+                            text = line.text.strip()
+                            if text:
+                                current_lines.append(text)
+                        except:
+                            continue
+
+                    if not current_lines:
+                        print("No valid lyrics in current view")
+                        break
+
+                    # Process new lyrics, handling overlapping
+                    if previous_lines:
+                        # Find overlap between previous end and current start
+                        overlap_size = 0
+                        for i in range(min(len(previous_lines), len(current_lines))):
+                            if previous_lines[-i - 1:] == current_lines[:i + 1]:
+                                overlap_size = i + 1
+
+                        # Add only non-overlapping lines
+                        new_lines = current_lines[overlap_size:]
+                    else:
+                        new_lines = current_lines
+
+                    # Add new lines while checking character limit
+                    too_long = False
+                    for line in new_lines:
+                        if total_chars + len(line) > 400:
+                            print("Would exceed character limit, stopping")
+                            too_long = True
+                            break
+                        all_lyrics.append(line)
+                        total_chars += len(line)
+                    if too_long:
+                        break
+
+                    # Check for end marker
+                    end_marker = self.try_find_element(
+                        AppiumBy.XPATH,
+                        self.config['elements']['lyrics_end'],
+                        log=False
+                    )
+                    if end_marker:
+                        print("Reached lyrics end")
+                        break
+
+                    # Store current lines for next iteration
+                    previous_lines = current_lines
+
+                    # Scroll up half screen
+                    self.driver.swipe(
+                        screen_size['width'] // 2,
+                        screen_height * 0.7,
+                        screen_size['width'] // 2,
+                        screen_height * 0.3,
+                        400
+                    )
+
+                except Exception as e:
+                    print(f"Error in lyrics collection loop: {str(e)}")
+                    break
+
+            # Join lyrics with newlines
+            final_lyrics = '\n'.join(all_lyrics)
+            print(f"Collected {len(all_lyrics)} lines of lyrics")
+
+            # Press back to return
+            self.press_back()
+
+            return {'lyrics': final_lyrics if final_lyrics else "No lyrics available"}
 
         except Exception as e:
             print(f"Error getting lyrics: {str(e)}")
-            return {
-                'lyrics': "Failed to get lyrics"
-            }
+            traceback.print_exc()
+            return {'error': str(e)}
 
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
@@ -584,10 +705,10 @@ class QQMusicHandler(AppHandler):
                 AppiumBy.XPATH,
                 self.config['elements']['full_lyrics']
             )
-            
+
             if not lyrics_container:
                 return "No lyrics container found"
-            
+
             # Print lyrics container info
             print(f"Lyrics container found: {lyrics_container}")
             print(f"Container size: {lyrics_container.size}")
@@ -595,12 +716,12 @@ class QQMusicHandler(AppHandler):
             print(f"Container tag name: {lyrics_container.tag_name}")
             print(f"Container text: {lyrics_container.text}")
             print(f"Container element id: {lyrics_container.id}")
-            
+
             # Get initial lyrics elements
             lyrics_elements = lyrics_container.find_elements(AppiumBy.CLASS_NAME, "android.widget.TextView")
             if not lyrics_elements:
                 return "No lyrics elements found"
-            
+
             # Collect initial lyrics
             lyrics_list = []
             seen_ids = set()
@@ -613,15 +734,15 @@ class QQMusicHandler(AppHandler):
                     seen_ids.add(element_id)
                     lyrics_list.append(text)
                     last_element_id = element_id
-            
+
             print(f"Collected {len(lyrics_list)} initial lyrics")
             print(f"Last element id: {last_element_id}")
-            
+
             # Scroll to bottom to reveal more lyrics
             self.scroll_element(lyrics_container)
             print("Scrolled lyrics container to bottom")
             time.sleep(1)  # Wait for scroll animation
-            
+
             # Get additional lyrics elements after scroll
             lyrics_elements = lyrics_container.find_elements(AppiumBy.CLASS_NAME, "android.widget.TextView")
             found_last_element = False
@@ -634,7 +755,7 @@ class QQMusicHandler(AppHandler):
                     if element_id == last_element_id:
                         found_last_element = True
                     continue
-                
+
                 # Add new lyrics that we haven't seen before
                 if element_id not in seen_ids:
                     text = element.text
@@ -644,14 +765,14 @@ class QQMusicHandler(AppHandler):
                             break
                         seen_ids.add(element_id)
                         lyrics_list.append(text)
-            
+
             print(f"Collected total {len(lyrics_list)} lyrics after scroll")
-            
+
             # Join all lyrics
             full_lyrics = '\n'.join(lyrics_list)
             print("Combined all lyrics")
             return full_lyrics
-            
+
         except Exception as e:
             print(f"Error getting full lyrics: {str(e)}")
             return "Error getting full lyrics"
@@ -667,16 +788,16 @@ class QQMusicHandler(AppHandler):
             # Get element location and size
             size = element.size
             location = element.location
-            
+
             # Calculate scroll coordinates
             start_x = location['x'] + size['width'] // 2
             start_y = location['y'] + int(size['height'] * start_y_percent)
             end_y = location['y'] + int(size['height'] * end_y_percent)
-            
+
             # Create pointer input
             actions = ActionChains(self.driver)
             pointer = PointerInput(interaction.POINTER_TOUCH, "touch")
-            
+
             # Create action sequence
             actions.w3c_actions = ActionBuilder(self.driver, mouse=pointer)
             actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
@@ -684,11 +805,11 @@ class QQMusicHandler(AppHandler):
             # actions.w3c_actions.pointer_action.pause(0.01)
             actions.w3c_actions.pointer_action.move_to_location(start_x, end_y)
             actions.w3c_actions.pointer_action.release()
-            
+
             # Perform action
             actions.perform()
             print(f"Scrolled element from {start_y} to {end_y}")
             time.sleep(1)  # Wait for scroll animation
-            
+
         except Exception as e:
             print(f"Error scrolling element: {str(e)}")
