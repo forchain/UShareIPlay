@@ -6,6 +6,7 @@ from ..utils.app_handler import AppHandler
 import re
 from dataclasses import dataclass
 
+
 @dataclass
 class MessageInfo:
     """Data class for message information"""
@@ -14,12 +15,13 @@ class MessageInfo:
     avatar_element: object  # WebElement for avatar, always exists
     relation_tag: bool = False  # True if user has relation tag
 
+
 class SoulHandler(AppHandler):
     def __init__(self, driver, config):
         super().__init__(driver, config)
         self.previous_message_ids = set()  # Store previous element IDs
 
-    def get_latest_message(self, enabled = True):
+    def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
         try:
             self.switch_to_app()
@@ -29,20 +31,30 @@ class SoulHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['message_list']
             )
-            
+
             if not message_list:
                 if enabled:
                     print("[Warning]get_latest_message cannot find message_list, may be minimized")
+                    enable_floating_entry = True
                     floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
-                    if floating_entry:
+                    if enable_floating_entry and floating_entry:
                         floating_entry.click()
                         message_list = self.try_find_element(
                             AppiumBy.ID,
                             self.config['elements']['message_list']
                         )
                     else:
-                        print("[Warning]get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
-                        self.press_back()
+                        square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
+                        if square_tab:
+                            print(
+                                "[Warning]get_latest_message already back in home but no party entry found, try go to party")
+                            square_tab.click()
+                            self.find_party_to_join("FM16781037")
+                        else:
+                            print(
+                                "[Warning]get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
+                            self.press_back()
+
                 return None
 
             # Check if there is a new message tip and click it
@@ -55,7 +67,7 @@ class SoulHandler(AppHandler):
             # Get all ViewGroup containers first
             containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
             # print(f"Found {len(containers)} ViewGroup containers")
-            
+
             # Process each container and collect message info
             current_messages = {}  # Dict to store element_id: MessageInfo pairs
             pattern = r'souler\[.+\]说：:(.+)'
@@ -67,12 +79,12 @@ class SoulHandler(AppHandler):
                     AppiumBy.ID,
                     self.config['elements']['message_content']
                 )
-                
+
                 if content_element:
                     content = content_element.get_attribute('content-desc')
                     if content and re.match(pattern, content):
                         element_id = container.id
-                        
+
                         # Get nickname
                         nickname_element = self.find_child_element(
                             container,
@@ -82,7 +94,7 @@ class SoulHandler(AppHandler):
                         nickname = self.get_element_text(nickname_element)
                         if not nickname:
                             continue
-                        
+
                         # Get avatar element
                         avatar_element = self.find_child_element(
                             container,
@@ -91,7 +103,7 @@ class SoulHandler(AppHandler):
                         )
                         if not avatar_element:
                             continue
-                        
+
                         # Check for relation tag
                         relation_element = self.find_child_element(
                             container,
@@ -106,7 +118,7 @@ class SoulHandler(AppHandler):
                             )
 
                         has_relation = relation_element is not None
-                        
+
                         # Create MessageInfo object
                         message_info = MessageInfo(
                             content=re.match(pattern, content).group(1),
@@ -114,7 +126,7 @@ class SoulHandler(AppHandler):
                             avatar_element=avatar_element,
                             relation_tag=has_relation
                         )
-                        
+
                         current_messages[element_id] = message_info
 
             # Find new message IDs (not in previous set)
@@ -180,6 +192,59 @@ class SoulHandler(AppHandler):
         except Exception as e:
             print(f"Error sending message: {str(e)}")
 
+    def find_party_to_join(self, party_id):
+        # Find and click search entry
+        search_entry = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['search_entry']
+        )
+        if not search_entry:
+            return {
+                'error': 'Failed to find search entry',
+            }
+
+        search_entry.click()
+        print("Clicked search entry")
+
+        # Find search box and input party ID
+        search_box = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['search_box']
+        )
+        if not search_box:
+            return {
+                'error': 'Failed to find search box',
+            }
+
+        search_box.send_keys(party_id)
+        print(f"Entered party ID: {party_id}")
+
+        # Click search button
+        search_button = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['search_button']
+        )
+        if not search_button:
+            return {
+                'error': 'Failed to find search button',
+            }
+
+        search_button.click()
+        print("Clicked search button")
+
+        party_tab = self.wait_for_element_clickable(AppiumBy.XPATH, self.config['elements']['party_tab'])
+        party_tab.click()
+        search_result = self.wait_for_element(AppiumBy.ID, self.config['elements']['party_search_result'])
+        empty_result = self.find_child_element(search_result, AppiumBy.ID, self.config['elements']['party_search_empty'])
+        if empty_result:
+            print(f"Party ID: {party_id} not found")
+            return {'error': 'Party not found'}
+        party_entry = self.find_child_element(search_result, AppiumBy.ID, self.config['elements']['party_search_entry'])
+        if not party_entry:
+            print(f"Party entry: {party_id} not found")
+            return {'error': 'Party entry not found'}
+        party_entry.click()
+
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
         Invite user to join the party
@@ -207,7 +272,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find more menu button',
                     'party_id': party_id
                 }
-            
+
             more_menu.click()
             print("Clicked more menu button")
 
@@ -221,7 +286,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find party hall entry',
                     'party_id': party_id
                 }
-            
+
             party_hall.click()
             print("Clicked party hall entry")
 
@@ -235,7 +300,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find search entry',
                     'party_id': party_id
                 }
-            
+
             search_entry.click()
             print("Clicked search entry")
 
@@ -249,7 +314,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find search box',
                     'party_id': party_id
                 }
-            
+
             search_box.send_keys(party_id)
             print(f"Entered party ID: {party_id}")
 
@@ -263,7 +328,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find search button',
                     'party_id': party_id
                 }
-            
+
             search_button.click()
             print("Clicked search button")
 
@@ -277,7 +342,7 @@ class SoulHandler(AppHandler):
                     'error': 'Failed to find parties search',
                     'party_id': party_id
                 }
-            
+
             print("Found parties search result")
 
             # waif for results to appear
@@ -288,7 +353,7 @@ class SoulHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['party_id']
             )
-            
+
             if not party_element:
                 print("Party not found, returning to previous party")
                 floating_entry = self.wait_for_element_clickable(
@@ -300,7 +365,7 @@ class SoulHandler(AppHandler):
                     'error': f'Party {party_id} not found',
                     'party_id': party_id
                 }
-            
+
             # Click party to enter
             party_element.click()
             print(f"Entered party {party_id}")
@@ -339,7 +404,7 @@ class SoulHandler(AppHandler):
                 print("Clicked sender avatar")
             else:
                 return {'error': 'Avatar element not found'}
-            
+
             # Find manager invite button
             manager_invite = self.wait_for_element_clickable(
                 AppiumBy.ID,
@@ -347,7 +412,7 @@ class SoulHandler(AppHandler):
             )
             if not manager_invite:
                 return {'error': 'Failed to find manager invite button'}
-            
+
             # Check current status
             current_text = manager_invite.text
             if enable:
@@ -358,11 +423,11 @@ class SoulHandler(AppHandler):
                 if current_text == "管理邀请":
                     self.press_back()
                     return {'error': '你还不是管理员'}
-            
+
             # Click manager invite button
             manager_invite.click()
             print("Clicked manager invite button")
-            
+
             # Click confirm button
             if enable:
                 confirm_button = self.wait_for_element_clickable(
@@ -376,10 +441,10 @@ class SoulHandler(AppHandler):
                     self.config['elements']['confirm_dismiss']
                 )
                 action = "解除"
-                
+
             if not confirm_button:
                 return {'error': f'Failed to find {action}确认按钮'}
-            
+
             confirm_button.click()
             print(f"Clicked {action}确认按钮")
 
@@ -419,7 +484,7 @@ class SoulHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['grab_mic']
             )
-            
+
             if grab_mic_button:
                 print("Grab mic button found, grabbing mic...")
                 self.grab_mic_and_confirm()
@@ -430,7 +495,7 @@ class SoulHandler(AppHandler):
                     AppiumBy.ID,
                     self.config['elements']['toggle_mic']
                 )
-                
+
                 if toggle_mic_button.text == "闭麦中":  # Assuming this means "Mic is off"
                     print("Mic is off, turning it on...")
                     toggle_mic_button.click()

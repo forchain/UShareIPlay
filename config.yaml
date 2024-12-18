@@ -30,6 +30,13 @@ soul:
     grab_mic: "cn.soulapp.android:id/ivUpSeat"
     confirm_mic: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认']"
     toggle_mic: "cn.soulapp.android:id/ivMic"
+    square_tab: "cn.soulapp.android:id/main_tab_square"
+    party_tab: "//android.widget.LinearLayout[@content-desc='派对']"
+    no_party_from_home: "cn.soulapp.android:id/tvEmptyContent"
+    no_party_from_hall: "cn.soulapp.android:id/tvEmptyDesc"
+    party_search_empty: "cn.soulapp.android:id/llEmpty"
+    party_search_result: "cn.soulapp.android:id/searchViewPager"
+    party_search_entry: "cn.soulapp.android:id/roomCard"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
