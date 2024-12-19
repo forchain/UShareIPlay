@@ -384,16 +384,16 @@ class QQMusicHandler(AppHandler):
             print(f'Accompaniment switch already found')
 
         # Find switch and check current state
-        current_state = switch.get_attribute('content-desc')
-        is_on = current_state == "伴唱已开启"
+        current_state = self.try_get_attribute(switch, 'content-desc')
+        is_on = current_state and current_state == "伴唱已开启"
         print(f"Current accompaniment state: {'on' if is_on else 'off'}")
 
         # Toggle if needed
         if (enable and not is_on) or (not enable and is_on):
             while is_on != enable:
                 switch.click()
-                current_state = switch.get_attribute('content-desc')
-                is_on = current_state == "伴唱已开启"
+                current_state = self.try_get_attribute(switch, 'content-desc')
+                is_on = current_state and current_state == "伴唱已开启"
                 if is_on != enable:
                     print(f"Failed to toggle accompaniment mode, current state: {current_state}")
 

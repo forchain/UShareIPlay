@@ -80,7 +80,8 @@ class SoulHandler(AppHandler):
             )
 
             if content_element:
-                content = content_element.get_attribute('content-desc')
+
+                content = self.try_get_attribute(content_element,'content-desc')
                 if content and re.match(pattern, content):
                     element_id = container.id
 

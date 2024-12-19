@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import StaleElementReferenceException
 
 
 class AppHandler:
@@ -216,3 +217,11 @@ class AppHandler:
         except Exception as e:
             print(f"Error getting element text: {str(e)}")
             return ""
+
+    def try_get_attribute(self, element, attribute):
+        """Try to get an attribute from a web element, catching StaleElementReferenceException."""
+        try:
+            return element.get_attribute(attribute)
+        except StaleElementReferenceException:
+            print(f"Unable to get  attribute {attribute}: Element is no longer attached to the DOM.")
+            return None
