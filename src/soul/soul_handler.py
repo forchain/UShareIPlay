@@ -23,7 +23,9 @@ class SoulHandler(AppHandler):
 
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
-        self.switch_to_app()
+        if not self.switch_to_app():
+            print("Failed to switch to Soul app")
+            return None
 
         # Get message list container
         message_list = self.try_find_element(

@@ -175,6 +175,10 @@ class QQMusicHandler(AppHandler):
     def play_music(self, music_query):
         """Search and play music"""
         try:
+            if not self.switch_to_app():
+                return {'error': 'Failed to switch to QQ Music app'}
+            print(f"Switched to QQ Music app")
+            
             playing_info = self._prepare_music_playback(music_query)
             # Click play button
             play_button = self.driver.find_element(
@@ -331,7 +335,8 @@ class QQMusicHandler(AppHandler):
         Returns:
             dict: {'enabled': 'on'/'off'}
         """
-        self.switch_to_app()
+        if not self.switch_to_app():
+            return {'error': 'Failed to switch to QQ Music app'}
         print("Switched to QQ Music app")
 
         switch = self.try_find_element(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
@@ -438,9 +443,10 @@ class QQMusicHandler(AppHandler):
     def get_lyrics(self):
         """Get lyrics of current playing song"""
         try:
-            self.switch_to_app()
+            if not self.switch_to_app():
+                return {'error': 'Failed to switch to QQ Music app'}
             print("Switched to QQ Music app")
-
+            
             # Press back to exit most interfaces
             self.press_back()
             search_entry = self.try_find_element(
@@ -963,6 +969,10 @@ class QQMusicHandler(AppHandler):
             str or None: New lyrics if changed, None if no change or invalid
         """
         try:
+            if not self.switch_to_app():
+                return None
+            print("Switched to QQ Music app")
+            
             # Take screenshot of the specified area
             start_time = time.time()  # Start time for screenshot
             screenshot = self.driver.get_screenshot_as_base64()

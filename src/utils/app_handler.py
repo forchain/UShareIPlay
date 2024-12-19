@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException
+import selenium
 
 
 class AppHandler:
@@ -54,10 +55,24 @@ class AppHandler:
             return None
 
     def switch_to_app(self):
-        """切换到指定应用"""
-        self.driver.activate_app(self.config['package_name'])
-        self.wait_for_element(AppiumBy.ID, self.config['elements']['content_container'], timeout=10)
+        """
+        Switch to specified app
+        Returns:
+            bool: True if successful, False if failed
+        """
+        try:
+            self.driver.activate_app(self.config['package_name'])
+        except selenium.common.exceptions.WebDriverException as e:
+            if "error: closed" in str(e):
+                print(f"Failed to switch to app: connection closed")
+                return False
+            raise e
+        element = self.wait_for_element(AppiumBy.ID, self.config['elements']['content_container'], timeout=10)
+        if not element:
+            print(f"Failed to switch to app: content_container not found")
+            return False            
         time.sleep(0.1)
+        return True
 
     def close_app(self):
         """关闭应用"""
