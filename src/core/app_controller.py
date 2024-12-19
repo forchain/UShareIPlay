@@ -291,8 +291,3 @@ class AppController:
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
                 break
-            except Exception as e:
-                print(f"Error in monitoring loop: {str(e)}")
-
-                traceback.print_exc()
-                time.sleep(1)

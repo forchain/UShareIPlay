@@ -23,174 +23,170 @@ class SoulHandler(AppHandler):
 
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
-        try:
-            self.switch_to_app()
+        self.switch_to_app()
 
-            # Get message list container
-            message_list = self.try_find_element(
+        # Get message list container
+        message_list = self.try_find_element(
+            AppiumBy.ID,
+            self.config['elements']['message_list']
+        )
+
+        if not message_list:
+            if enabled:
+                print("[Warning]get_latest_message cannot find message_list, may be minimized")
+                enable_floating_entry = True
+                floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
+                if enable_floating_entry and floating_entry:
+                    floating_entry.click()
+                    message_list = self.try_find_element(
+                        AppiumBy.ID,
+                        self.config['elements']['message_list']
+                    )
+                else:
+                    square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
+                    if square_tab:
+                        print(
+                            "[Warning]get_latest_message already back in home but no party entry found, try go to party")
+                        square_tab.click()
+                        self.find_party_to_join("FM16781037")
+                    else:
+                        print(
+                            "[Warning]get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
+                        self.press_back()
+
+            return None
+
+        # Check if there is a new message tip and click it
+        new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
+        if new_message_tip and enabled:
+            print(f'Found new message tip')
+            new_message_tip.click()
+            print(f'Clicked new message tip')
+
+        # Get all ViewGroup containers first
+        containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+        # print(f"Found {len(containers)} ViewGroup containers")
+
+        # Process each container and collect message info
+        current_messages = {}  # Dict to store element_id: MessageInfo pairs
+        pattern = r'souler\[.+\]说：:(.+)'
+
+        for container in containers:
+            # Check if container has valid message content
+            content_element = self.find_child_element(
+                container,
                 AppiumBy.ID,
-                self.config['elements']['message_list']
+                self.config['elements']['message_content']
             )
 
-            if not message_list:
-                if enabled:
-                    print("[Warning]get_latest_message cannot find message_list, may be minimized")
-                    enable_floating_entry = True
-                    floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
-                    if enable_floating_entry and floating_entry:
-                        floating_entry.click()
-                        message_list = self.try_find_element(
-                            AppiumBy.ID,
-                            self.config['elements']['message_list']
-                        )
-                    else:
-                        square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
-                        if square_tab:
-                            print(
-                                "[Warning]get_latest_message already back in home but no party entry found, try go to party")
-                            square_tab.click()
-                            self.find_party_to_join("FM16781037")
-                        else:
-                            print(
-                                "[Warning]get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
-                            self.press_back()
+            if content_element:
+                content = content_element.get_attribute('content-desc')
+                if content and re.match(pattern, content):
+                    element_id = container.id
 
-                return None
+                    # Get nickname
+                    nickname_element = self.find_child_element(
+                        container,
+                        AppiumBy.ID,
+                        self.config['elements']['sender_nickname']
+                    )
+                    nickname = self.get_element_text(nickname_element)
+                    if not nickname:
+                        continue
 
-            # Check if there is a new message tip and click it
-            new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
-            if new_message_tip and enabled:
-                print(f'Found new message tip')
-                new_message_tip.click()
-                print(f'Clicked new message tip')
+                    # Get avatar element
+                    avatar_element = self.find_child_element(
+                        container,
+                        AppiumBy.ID,
+                        self.config['elements']['sender_avatar']
+                    )
+                    if not avatar_element:
+                        continue
 
-            # Get all ViewGroup containers first
-            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
-            # print(f"Found {len(containers)} ViewGroup containers")
-
-            # Process each container and collect message info
-            current_messages = {}  # Dict to store element_id: MessageInfo pairs
-            pattern = r'souler\[.+\]说：:(.+)'
-
-            for container in containers:
-                # Check if container has valid message content
-                content_element = self.find_child_element(
-                    container,
-                    AppiumBy.ID,
-                    self.config['elements']['message_content']
-                )
-
-                if content_element:
-                    content = content_element.get_attribute('content-desc')
-                    if content and re.match(pattern, content):
-                        element_id = container.id
-
-                        # Get nickname
-                        nickname_element = self.find_child_element(
-                            container,
-                            AppiumBy.ID,
-                            self.config['elements']['sender_nickname']
-                        )
-                        nickname = self.get_element_text(nickname_element)
-                        if not nickname:
-                            continue
-
-                        # Get avatar element
-                        avatar_element = self.find_child_element(
-                            container,
-                            AppiumBy.ID,
-                            self.config['elements']['sender_avatar']
-                        )
-                        if not avatar_element:
-                            continue
-
-                        # Check for relation tag
+                    # Check for relation tag
+                    relation_element = self.find_child_element(
+                        container,
+                        AppiumBy.ID,
+                        self.config['elements']['sender_relation']
+                    )
+                    if not relation_element:
                         relation_element = self.find_child_element(
                             container,
                             AppiumBy.ID,
-                            self.config['elements']['sender_relation']
-                        )
-                        if not relation_element:
-                            relation_element = self.find_child_element(
-                                container,
-                                AppiumBy.ID,
-                                self.config['elements']['sender_flag']
-                            )
-
-                        has_relation = relation_element is not None
-
-                        # Create MessageInfo object
-                        message_info = MessageInfo(
-                            content=re.match(pattern, content).group(1),
-                            nickname=nickname,
-                            avatar_element=avatar_element,
-                            relation_tag=has_relation
+                            self.config['elements']['sender_flag']
                         )
 
-                        current_messages[element_id] = message_info
+                    has_relation = relation_element is not None
 
-            # Find new message IDs (not in previous set)
-            current_ids = set(current_messages.keys())
-            new_message_ids = current_ids - self.previous_message_ids
+                    # Create MessageInfo object
+                    message_info = MessageInfo(
+                        content=re.match(pattern, content).group(1),
+                        nickname=nickname,
+                        avatar_element=avatar_element,
+                        relation_tag=has_relation
+                    )
 
-            # Update previous message IDs for next check
-            self.previous_message_ids = current_ids
+                    current_messages[element_id] = message_info
 
-            if new_message_ids:
-                # Create result dict with only new messages
-                new_messages = {
-                    msg_id: current_messages[msg_id]
-                    for msg_id in new_message_ids
-                }
-                print(f"Found {len(new_messages)} new messages")
-                return new_messages
+        # Find new message IDs (not in previous set)
+        current_ids = set(current_messages.keys())
+        new_message_ids = current_ids - self.previous_message_ids
 
-            return None
+        # Update previous message IDs for next check
+        self.previous_message_ids = current_ids
 
-        except Exception as e:
-            print(f"Error getting message: {str(e)}")
-            return None
+        if new_message_ids:
+            # Create result dict with only new messages
+            new_messages = {
+                msg_id: current_messages[msg_id]
+                for msg_id in new_message_ids
+            }
+            print(f"Found {len(new_messages)} new messages")
+            return new_messages
+
+        return None
 
     def send_message(self, message):
         """Send message"""
-        try:
-            self.switch_to_app()
+        self.switch_to_app()
 
-            # Click on the input box entry first
-            input_box_entry = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['input_box_entry']
-            )
-            input_box_entry.click()
-            print("Clicked input box entry")
+        # Click on the input box entry first
+        input_box_entry = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['input_box_entry']
+        )
+        input_box_entry.click()
+        print("Clicked input box entry")
 
-            # # Wait 1 second for input box to be ready
-            # import time
-            # time.sleep(1)
-            # print("Waited 1 second for input box")
+        # # Wait 1 second for input box to be ready
+        # import time
+        # time.sleep(1)
+        # print("Waited 1 second for input box")
 
-            # Now find and interact with the actual input box
-            input_box = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['input_box']
-            )
-            input_box.send_keys(message)
-            print(f"Entered message: {message}")
+        # Now find and interact with the actual input box
+        input_box = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['input_box']
+        )
+        input_box.send_keys(message)
+        print(f"Entered message: {message}")
 
-            # click send button
-            send_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['button_send']
-            )
-            send_button.click()
-            print("Clicked send button")
+        # click send button
+        send_button = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['button_send']
+        )
+        send_button.click()
+        print("Clicked send button")
 
-            # hide input dialog
+        # hide input dialog
+        self.press_back()
+        print("Hide input dialog")
+
+        input_box = self.try_find_element(AppiumBy.ID, self.config['elements']['input_box'], log=False)
+        if input_box:
             self.press_back()
-            print("Hide input dialog")
-
-        except Exception as e:
-            print(f"Error sending message: {str(e)}")
+            print("Failed to hide input dialog, try again")
 
     def find_party_to_join(self, party_id):
         # Find and click search entry

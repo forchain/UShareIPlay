@@ -37,6 +37,7 @@ soul:
     party_search_empty: "cn.soulapp.android:id/llEmpty"
     party_search_result: "cn.soulapp.android:id/searchViewPager"
     party_search_entry: "cn.soulapp.android:id/roomCard"
+    content_container: "cn.soulapp.android:id/flContent"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -74,6 +75,8 @@ qq_music:
     lyrics_end: "//android.view.View"
     no_lyrics: "com.tencent.qqmusic:id/ndz"
     clear_search: "com.tencent.qqmusic:id/kpu"
+    current_lyrics: "com.tencent.qqmusic:id/kvs"
+    content_container: "android:id/content"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"

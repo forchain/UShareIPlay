@@ -24,7 +24,7 @@ class AppHandler:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((locator_type, locator_value))
             )
-            print(f"Found element: {locator_value}")
+            # print(f"Found element: {locator_value}")
             return element
         except Exception as e:
             print(f"Element not found within {timeout} seconds: {locator_value}")
@@ -55,6 +55,7 @@ class AppHandler:
     def switch_to_app(self):
         """切换到指定应用"""
         self.driver.activate_app(self.config['package_name'])
+        self.wait_for_element(AppiumBy.ID, self.config['elements']['content_container'], timeout=10)
         time.sleep(0.1)
 
     def close_app(self):
