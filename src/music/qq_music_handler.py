@@ -29,6 +29,7 @@ class QQMusicHandler(AppHandler):
         self.lyrics_formatter = None  # Will be set by app_controller
         self.ktv_mode = False  # KTV mode state
         self.last_lyrics = ""  # Store last recognized lyrics
+        self.last_lyrics_lines = []
 
         # Optimize driver settings
         self.driver.update_settings({
@@ -873,6 +874,25 @@ class QQMusicHandler(AppHandler):
         """
         self.ktv_mode = enable
         print(f"KTV mode {'enabled' if enable else 'disabled'}")
+
+        # Check if we need to switch to lyrics page when enabling KTV mode
+        if enable:
+            if not self.switch_to_app():
+                return False
+            # Try to find lyrics tool
+            lyrics_tool = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['lyrics_tool']
+            )
+
+            if not lyrics_tool:
+                # If not found, switch to lyrics page
+                print("Not in lyrics page, switching to lyrics page...")
+                result = self.switch_to_lyrics_page()
+                if result and 'error' in result:
+                    print(f"Error switching to lyrics page: {result['error']}")
+                    return {'enabled': 'off'}  # Indicate that KTV mode could not be enabled
+
         return {'enabled': 'on' if enable else 'off'}
 
     def is_meaningful_text(self, text):
@@ -886,7 +906,6 @@ class QQMusicHandler(AppHandler):
             if len(text) < 2:  # 太短的文本认为无意义
                 return False
 
-            # 检��语言
             try:
                 # 使用detect_langs获取语言概率列表
                 langs = detect_langs(text)
@@ -921,59 +940,138 @@ class QQMusicHandler(AppHandler):
             return False
 
     def check_ktv_lyrics(self):
-        """Check current lyrics in KTV mode
-        Returns:
-            str or None: New lyrics if changed, None if no change or invalid
-        """
-        try:
-            if not self.switch_to_app():
-                return None
-            print("Switched to QQ Music app")
+        if not self.switch_to_app():
+            return False
 
-            # Take screenshot of the specified area
-            start_time = time.time()  # Start time for screenshot
-            screenshot = self.driver.get_screenshot_as_base64()
-            end_time = time.time()  # End time for screenshot
-            print(f"Time taken to get screenshot: {end_time - start_time:.2f} seconds")
+        """Check current lyrics in KTV mode"""
+        if not self.ktv_mode:
+            return None  # 如果KTV模式未开启，则不执行
 
-            image_data = base64.b64decode(screenshot)
-            image = Image.open(io.BytesIO(image_data))
+        close_poster = self.try_find_element(
+            AppiumBy.ID,
+            self.config['elements']['close_poster']
+        )
+        if close_poster:
+            print("Closing poster...")
+            close_poster.click()
 
-            # Crop the image to the specified coordinates
-            start_time = time.time()  # Start time for cropping
-            width, height = image.size
-            crop_box = (250, 0, 1000, 100)  # (left, top, right, bottom)
-            cropped_image = image.crop(crop_box)
-            end_time = time.time()  # End time for cropping
-            print(f"Time taken to crop image: {end_time - start_time:.2f} seconds")
+        # 尝试查找并点击歌词工具
+        lyrics_tool = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['lyrics_tool']
+        )
+        if not lyrics_tool:
+            return {'error': 'Cannot find lyrics tool'}
 
-            # Perform OCR
-            start_time = time.time()  # Start time for OCR
-            text = pytesseract.image_to_string(
-                cropped_image,
-                lang='chi_sim+eng',
-                config='--psm 6'
-            ).strip()
-            end_time = time.time()  # End time for OCR
-            print(f"Time taken for OCR: {end_time - start_time:.2f} seconds")
+        lyrics_tool.click()
+        print("Clicked lyrics tool")
 
-            # Check if text is valid and meaningful
-            # if not text or not self.is_meaningful_text(text):
-            #     return None
-            if not text:
-                return None
+        # 尝试查找并点击歌词海报
+        lyrics_poster = self.wait_for_element_clickable(
+            AppiumBy.XPATH,
+            self.config['elements']['lyrics_poster']
+        )
+        if not lyrics_poster:
+            return {'error': 'Cannot find lyrics poster option'}
 
-            # Check if text has changed
-            if text != self.last_lyrics:
-                self.last_lyrics = text
-                return text
+        lyrics_poster.click()
+        print("Clicked lyrics poster")
 
-            return None
+        # 找到所有的lyrics_box
+        close_poster = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['close_poster']
+        )
+        if not close_poster:
+            print("No close poster")
+        lyrics_boxes = self.driver.find_elements(
+            AppiumBy.ID,
+            self.config['elements']['lyrics_box']
+        )
 
-        except Exception as e:
-            print(f"Error checking KTV lyrics: {str(e)}")
-            traceback.print_exc()
-            return None
+        if len(lyrics_boxes) <= 1:
+            self.ktv_mode = False
+            return {'error': 'Cannot find lyrics box'}
+
+        found = False
+        text = ""
+        for lyrics_box in lyrics_boxes:
+            # 检查是否包含current_lyrics
+
+            if found:
+                current_line = self.find_child_element(
+                    lyrics_box,
+                    AppiumBy.ID,
+                    self.config['elements']['lyrics_line']
+                )
+                if current_line:
+                    text += '\n' + current_line.text
+            else:
+                current_lyrics = self.find_child_element(
+                    lyrics_box,
+                    AppiumBy.ID,
+                    self.config['elements']['current_lyrics']
+                )
+                if current_lyrics:
+                    found = True
+
+        # no = 0
+        # for lyrics_box in lyrics_boxes:
+        #     # 检查是否包含current_lyrics
+        #     current_lyrics = self.find_child_element(
+        #         lyrics_box,
+        #         AppiumBy.ID,
+        #         self.config['elements']['current_lyrics']
+        #     )
+        #     if current_lyrics:
+        #        break
+        #     no += 1
+
+        # # skip current line
+        # no += 1
+        # lyrics_lines = []
+        # for i in range(no, len(lyrics_boxes)):
+        #     line = self.find_child_element(
+        #         lyrics_boxes[i],
+        #         AppiumBy.ID,
+        #         self.config['elements']['lyrics_line']
+        #     )
+        #     if line:
+        #         lyrics_lines.append(line.text)
+        #
+        # # 找到lyrics_line
+        # current_line = self.find_child_element(
+        #     lyrics_boxes[no],
+        #     AppiumBy.ID,
+        #     self.config['elements']['lyrics_line']
+        # )
+        #
+        # text = current_line.text.strip()
+        # all_lines = text
+        # for i in range(0, len(self.last_lyrics_lines)):
+        #     if self.last_lyrics_lines[i] == text:
+        #         break
+        #     no += 1
+        #     if no == len(lyrics_boxes):
+        #         break
+        #     extended_line = self.find_child_element(
+        #         lyrics_boxes[no],
+        #         AppiumBy.ID,
+        #         self.config['elements']['lyrics_line']
+        #     )
+        #     if extended_line:
+        #         all_lines += '\n' + extended_line.text.strip()
+        #
+        # self.last_lyrics_lines = lyrics_lines
+        if text and text != self.last_lyrics:
+            self.last_lyrics = text
+            print(f"New lyrics detected: {text}")
+            close_poster.click()
+            # 这里可以选择发送消息或其他处理
+            # return all_lines
+            return text
+
+        return None
 
     def switch_to_playing_page(self):
         # Press back to exit most interfaces

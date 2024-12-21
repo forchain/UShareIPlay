@@ -80,6 +80,8 @@ qq_music:
     reminder_ok: "com.tencent.qqmusic:id/icm"
     vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
     accompaniment_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='伴唱']"
+    lyrics_box: "com.tencent.qqmusic:id/j1t"
+    close_poster: "com.tencent.qqmusic:id/b5_"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"

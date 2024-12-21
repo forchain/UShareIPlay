@@ -290,9 +290,9 @@ class AppController:
                     lyrics = self.music_handler.check_ktv_lyrics()
                     if lyrics:
                         self.soul_handler.send_message(lyrics)
-                        self.soul_handler.press_back()
+                else:
+                    time.sleep(1)
 
-                time.sleep(1)
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
                 break
