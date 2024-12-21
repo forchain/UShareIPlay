@@ -180,10 +180,15 @@ class AppController:
                                             # Toggle accompaniment mode
                                             result = self.music_handler.toggle_accompaniment(enable)
 
-                                            # Send status back to Soul using command's template
-                                            response = command_info['response_template'].format(
-                                                enabled=result['enabled']
-                                            )
+                                            if 'error' in result:
+                                                response = command_info['error_template'].format(
+                                                    error=result['error']
+                                                )
+                                            else:
+                                                # Send status back to Soul using command's template
+                                                response = command_info['response_template'].format(
+                                                    enabled=result['enabled']
+                                                )
                                         else:
                                             print("Missing parameter for accompaniment command")
                                     case 'lyrics':

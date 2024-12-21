@@ -67,6 +67,10 @@ class AppHandler:
                 print(f"Failed to switch to app: connection closed")
                 return False
             raise e
+        reminder_ok = self.try_find_element(AppiumBy.ID, self.config['elements']['reminder_ok'], log=False)
+        if reminder_ok:
+            print(f"Found reminder dialog and close")
+            reminder_ok.click()
         element = self.wait_for_element(AppiumBy.ID, self.config['elements']['content_container'], timeout=10)
         if not element:
             print(f"Failed to switch to app: content_container not found")

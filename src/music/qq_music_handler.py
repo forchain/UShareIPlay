@@ -1,5 +1,7 @@
 from appium.webdriver.common.appiumby import AppiumBy
 from appium.webdriver.common.touch_action import TouchAction
+from selenium.common import StaleElementReferenceException
+
 from ..utils.app_handler import AppHandler
 from ..utils.lyrics_formatter import LyricsFormatter
 import time
@@ -178,7 +180,7 @@ class QQMusicHandler(AppHandler):
             if not self.switch_to_app():
                 return {'error': 'Failed to switch to QQ Music app'}
             print(f"Switched to QQ Music app")
-            
+
             playing_info = self._prepare_music_playback(music_query)
             # Click play button
             play_button = self.driver.find_element(
@@ -339,71 +341,60 @@ class QQMusicHandler(AppHandler):
             return {'error': 'Failed to switch to QQ Music app'}
         print("Switched to QQ Music app")
 
-        switch = self.try_find_element(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
-        if not switch:
-            print("Switch not found, trying to find more button")
-            while True:
-                more_button = self.try_find_element(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
-                if more_button:
-                    break
-                playing_bar = self.try_find_element(AppiumBy.ID, self.config['elements']['playing_bar'])
-                if playing_bar:
-                    playing_bar.click()
-                    print("Clicked playing bar")
-                    break
-                else:
-                    self.press_back()
+        error = self.switch_to_playing_page()
+        if error:
+            return error
 
-            # Check if supporting accompaniment mode
+        tag = None
+        for _ in range(10):
+            tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_tag'])
+            if not tag:
+                tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['vocal_tag'])
 
-            acc_tag = self.try_find_element(AppiumBy.ID, self.config['elements']['accompaniment_tag'])
-            if acc_tag is None:
-                return {
-                    'enabled': 'Accompaniment not supported for current song, please try following songs'
-                }
+            if tag:
+                print(f"Found accompaniment tag")
+                break
+            else:
+                playback_info = self.get_playback_info()
+                if playback_info:
+                    print(f"No accompaniment tag found, playing info: {playback_info}")
+                self.driver.execute_script(
+                    'mobile: shell',
+                    {
+                        'command': 'input keyevent KEYCODE_MEDIA_NEXT'
+                    }
+                )
+                time.sleep(1)
 
-            more_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
-            more_button.click()
-            print("Clicked more button")
-
-            accompaniment_menu = None
-            for _ in range(9):
-                self.press_dpad_down()
-                accompaniment_menu = self.try_find_element(AppiumBy.XPATH,
-                                                           self.config['elements']['accompaniment_menu'])
-                if accompaniment_menu:
-                    break
-            print("Scrolled menu")
-            if not accompaniment_menu:
-                print(f'error: cannot find accompaniment_menu in more menu')
-                return None
-
-            # Click accompaniment menu
-            accompaniment_menu = self.wait_for_element_clickable(AppiumBy.XPATH,
-                                                                 self.config['elements']['accompaniment_menu'])
-            accompaniment_menu.click()
-            print("Clicked accompaniment menu")
-            switch = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
-            print(f'Found accompaniment switch')
-        else:
-            print(f'Accompaniment switch already found')
+        if not tag:
+            return {'error': 'No songs support accompaniment, please try again later'}
 
         # Find switch and check current state
-        current_state = self.try_get_attribute(switch, 'content-desc')
-        is_on = current_state and current_state == "伴唱已开启"
+        is_on = tag.text == "伴唱"
         print(f"Current accompaniment state: {'on' if is_on else 'off'}")
 
         # Toggle if needed
         if (enable and not is_on) or (not enable and is_on):
-            while is_on != enable:
+            if is_on:
+                tag.click()
+                switch = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
                 switch.click()
-                current_state = self.try_get_attribute(switch, 'content-desc')
-                is_on = current_state and current_state == "伴唱已开启"
-                if is_on != enable:
-                    print(f"Failed to toggle accompaniment mode, current state: {current_state}")
+            else:
+                more_menu = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
+                more_menu.click()
+                found = False
+                for _ in range(9):
+                    self.press_dpad_down()
+                    acc_menu = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_menu'])
+                    if acc_menu:
+                        found = True
+                        acc_menu.click()
+                        break
+                if not found:
+                    return {'error': 'No accompaniment menu found'}
 
         return {
-            'enabled': 'on' if is_on else 'off'
+            'enabled': 'on' if enable else 'off'
         }
 
     def adjust_volume(self, delta=None):
@@ -446,45 +437,11 @@ class QQMusicHandler(AppHandler):
             if not self.switch_to_app():
                 return {'error': 'Failed to switch to QQ Music app'}
             print("Switched to QQ Music app")
-            
-            # Press back to exit most interfaces
-            self.press_back()
-            search_entry = self.try_find_element(
-                AppiumBy.XPATH,
-                self.config['elements']['search_entry']
-            )
-            if not search_entry:
-                self.press_back()
-            print("Pressed back to clean up interface")
 
-            time.sleep(0.5)  # Wait for animation
-            # Try to find and click playing bar if exists
-            playing_bar = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['playing_bar']
-            )
-            if playing_bar:
-                playing_bar.click()
-                print("Found and clicked playing bar")
-                time.sleep(0.5)  # Wait for animation
-
-            # Find more menu in play panel
-            more_menu = self.wait_for_element(
-                AppiumBy.ID,
-                self.config['elements']['more_in_play_panel']
-            )
-            if not more_menu:
-                return {'error': 'Cannot find playing interface, please try again'}
-
-            # Get screen dimensions for swipe
-            screen_size = self.driver.get_window_size()
-            start_x = int(screen_size['width'] * 0.8)  # Start from 80% of width
-            end_x = int(screen_size['width'] * 0.1)  # End at 20% of width
-            y = int(screen_size['height'] * 0.5)  # Middle of screen
-
-            # Swipe to lyrics page
-            self.driver.swipe(start_x, y, end_x, y, 500)  # 1000ms = 1s
-            print("Swiped to lyrics page")
+            # Switch to lyrics page
+            error = self.switch_to_lyrics_page()
+            if error:  # If result is not None, it means error
+                return error
 
             # Find and click lyrics tool button
             lyrics_tool = self.wait_for_element_clickable(
@@ -929,7 +886,7 @@ class QQMusicHandler(AppHandler):
             if len(text) < 2:  # 太短的文本认为无意义
                 return False
 
-            # 检测语言
+            # 检��语言
             try:
                 # 使用detect_langs获取语言概率列表
                 langs = detect_langs(text)
@@ -972,7 +929,7 @@ class QQMusicHandler(AppHandler):
             if not self.switch_to_app():
                 return None
             print("Switched to QQ Music app")
-            
+
             # Take screenshot of the specified area
             start_time = time.time()  # Start time for screenshot
             screenshot = self.driver.get_screenshot_as_base64()
@@ -1017,3 +974,67 @@ class QQMusicHandler(AppHandler):
             print(f"Error checking KTV lyrics: {str(e)}")
             traceback.print_exc()
             return None
+
+    def switch_to_playing_page(self):
+        # Press back to exit most interfaces
+        self.press_back()
+        search_entry = self.try_find_element(
+            AppiumBy.XPATH,
+            self.config['elements']['search_entry']
+        )
+        if not search_entry:
+            self.press_back()
+        print("Pressed back to clean up interface")
+
+        time.sleep(0.5)  # Wait for animation
+        # Try to find and click playing bar if exists
+        playing_bar = self.try_find_element(
+            AppiumBy.ID,
+            self.config['elements']['playing_bar']
+        )
+        if playing_bar:
+            try:
+                playing_bar.click()
+            except StaleElementReferenceException as e:
+                print(f"[switch_to_lyrics_page]Failed to click playing bar")
+                self.press_back()
+                return {'error': 'Failed to switch to lyrics page, unexpected dialog might pop up'}
+
+            print("Found and clicked playing bar")
+            time.sleep(0.5)  # Wait for animation
+
+        # Find more menu in play panel
+        more_menu = self.wait_for_element(
+            AppiumBy.ID,
+            self.config['elements']['more_in_play_panel']
+        )
+        if not more_menu:
+            print(f"[switch_to_lyrics_page]playing interface is covered by unexpected dialog")
+            return {'error': 'Cannot find playing interface, please try again'}
+
+    def switch_to_lyrics_page(self):
+        """
+        Switch to lyrics page
+        Returns:
+            dict: None if successful, error dict if failed
+        """
+        error = self.switch_to_playing_page()
+        if error:
+            return error
+
+        # Get screen dimensions for swipe
+        screen_size = self.driver.get_window_size()
+        start_x = int(screen_size['width'] * 0.8)  # Start from 80% of width
+        end_x = int(screen_size['width'] * 0.1)  # End at 20% of width
+        y = int(screen_size['height'] * 0.5)  # Middle of screen
+
+        # Swipe to lyrics page
+        self.driver.swipe(start_x, y, end_x, y, 500)  # 500ms = 0.5s
+        print("Swiped to lyrics page")
+
+        lyrics_tool = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['lyrics_tool'])
+        if not lyrics_tool:
+            return {'error': 'Cannot find lyrics tool, please try again'}
+        return None

@@ -38,6 +38,7 @@ soul:
     party_search_result: "cn.soulapp.android:id/searchViewPager"
     party_search_entry: "cn.soulapp.android:id/roomCard"
     content_container: "cn.soulapp.android:id/flContent"
+    reminder_ok: "cn.soulapp.android:id/tvOk"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -64,10 +65,9 @@ qq_music:
     accompaniment_switch: "com.tencent.qqmusic:id/ocy"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
     full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
-    accompaniment_tag: "com.tencent.qqmusic:id/n6i"
+    accompaniment_status: "com.tencent.qqmusic:id/bln"
 #    live_lyrics: "com.tencent.qqmusic:id/e5z"
     live_lyrics: "com.tencent.qqmusic:id/lbr"
-    acc_tag: "com.tencent.qqmusic:id/ocx"
     accompaniment_tool: "com.tencent.qqmusic:id/ocx"
     lyrics_tool: "com.tencent.qqmusic:id/hu9"
     lyrics_poster: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/jbp' and @text='歌词海报']"
@@ -77,6 +77,9 @@ qq_music:
     clear_search: "com.tencent.qqmusic:id/kpu"
     current_lyrics: "com.tencent.qqmusic:id/kvs"
     content_container: "android:id/content"
+    reminder_ok: "com.tencent.qqmusic:id/icm"
+    vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
+    accompaniment_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='伴唱']"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
@@ -94,6 +97,7 @@ commands:
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
+    error_template: "Failed to toggle accompaniment mode, because {error}"
   - prefix: "lyrics"
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"

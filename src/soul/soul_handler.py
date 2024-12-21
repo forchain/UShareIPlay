@@ -5,6 +5,8 @@ from appium.webdriver.common.appiumby import AppiumBy
 from ..utils.app_handler import AppHandler
 import re
 from dataclasses import dataclass
+from selenium.common.exceptions import StaleElementReferenceException
+
 
 
 @dataclass
@@ -66,7 +68,13 @@ class SoulHandler(AppHandler):
             print(f'Clicked new message tip')
 
         # Get all ViewGroup containers first
-        containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+        try:
+            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+        except StaleElementReferenceException as e:
+            print(f'[get_latest_message] cannot find message_list element, might be in loading')
+            time.sleep(1)
+            return None
+
         # print(f"Found {len(containers)} ViewGroup containers")
 
         # Process each container and collect message info
@@ -158,6 +166,9 @@ class SoulHandler(AppHandler):
             AppiumBy.ID,
             self.config['elements']['input_box_entry']
         )
+        if not input_box_entry:
+            print(f'[send_message] cannot find input box entry, might be in loading')
+            return
         input_box_entry.click()
         print("Clicked input box entry")
 
