@@ -255,6 +255,12 @@ class SoulHandler(AppHandler):
             return {'error': 'Party entry not found'}
         party_entry.click()
 
+        time.sleep(1)
+        party_back = self.try_find_element(AppiumBy.ID, self.config['elements']['party_back'], log=False)
+        if party_back:
+            print(f"Found back to party dialog and close")
+            party_back.click()
+
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
         Invite user to join the party

@@ -346,32 +346,15 @@ class QQMusicHandler(AppHandler):
         if error:
             return error
 
-        tag = None
-        for _ in range(10):
-            tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_tag'])
-            if not tag:
-                tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['vocal_tag'])
+        tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_tag'])
 
-            if tag:
-                print(f"Found accompaniment tag")
-                break
-            else:
-                playback_info = self.get_playback_info()
-                if playback_info:
-                    print(f"No accompaniment tag found, playing info: {playback_info}")
-                self.driver.execute_script(
-                    'mobile: shell',
-                    {
-                        'command': 'input keyevent KEYCODE_MEDIA_NEXT'
-                    }
-                )
-                time.sleep(1)
-
-        if not tag:
-            return {'error': 'No songs support accompaniment, please try again later'}
+        if tag:
+            print(f"Found accompaniment tag")
+            is_on = True
+        else:
+            is_on = False
 
         # Find switch and check current state
-        is_on = tag.text == "伴唱"
         print(f"Current accompaniment state: {'on' if is_on else 'off'}")
 
         # Toggle if needed
@@ -390,6 +373,14 @@ class QQMusicHandler(AppHandler):
                     if acc_menu:
                         found = True
                         acc_menu.click()
+                        time.sleep(1)
+                        acc_bar = self.try_find_element(AppiumBy.ID,
+                                                                    self.config['elements']['accompaniment_bar'])
+                        if acc_bar:
+                            # maximize accompaniment
+                            self.press_right_key(times=4)
+                        else:
+                            return {'error': 'Current song does not support accompaniment, please find one supporting'}
                         break
                 if not found:
                     return {'error': 'No accompaniment menu found'}
@@ -993,8 +984,12 @@ class QQMusicHandler(AppHandler):
             self.ktv_mode = False
             return {'error': 'Cannot find lyrics box'}
 
+        # last element is a mistake
+        lyrics_boxes.pop()
+
         found = False
         text = ""
+        n = 0
         for lyrics_box in lyrics_boxes:
             # 检查是否包含current_lyrics
 
@@ -1005,7 +1000,8 @@ class QQMusicHandler(AppHandler):
                     self.config['elements']['lyrics_line']
                 )
                 if current_line:
-                    text += '\n' + current_line.text
+                    text +=  current_line.text + '\n'
+                    n += 1
             else:
                 current_lyrics = self.find_child_element(
                     lyrics_box,
@@ -1015,6 +1011,9 @@ class QQMusicHandler(AppHandler):
                 if current_lyrics:
                     found = True
 
+        if n > 5:
+            self.ktv_mode = False
+            print(f'Music ended, KTV off')
         # no = 0
         # for lyrics_box in lyrics_boxes:
         #     # 检查是否包含current_lyrics

@@ -39,6 +39,7 @@ soul:
     party_search_entry: "cn.soulapp.android:id/roomCard"
     content_container: "cn.soulapp.android:id/flContent"
     reminder_ok: "cn.soulapp.android:id/tvOk"
+    party_back: "cn.soulapp.android:id/tv_look"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -82,6 +83,7 @@ qq_music:
     accompaniment_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='伴唱']"
     lyrics_box: "com.tencent.qqmusic:id/j1t"
     close_poster: "com.tencent.qqmusic:id/b5_"
+    accompaniment_bar: "com.tencent.qqmusic:id/oct"
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
