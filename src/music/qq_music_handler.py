@@ -978,6 +978,21 @@ class QQMusicHandler(AppHandler):
         )
         if not close_poster:
             print("No close poster")
+
+        self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['lyrics_box']
+        )
+        screen_size = self.driver.get_window_size()
+        screen_height = screen_size['height']
+        # Scroll up half screen
+        self.driver.swipe(
+            screen_size['width'] // 2,
+            screen_height * 0.6,
+            screen_size['width'] // 2,
+            screen_height * 0.4,
+            400
+        )
         lyrics_boxes = self.driver.find_elements(
             AppiumBy.ID,
             self.config['elements']['lyrics_box']
@@ -1014,9 +1029,19 @@ class QQMusicHandler(AppHandler):
                 if current_lyrics:
                     found = True
 
-        if n > 5:
-            self.ktv_mode = False
-            print(f'Music ended, KTV off')
+        if not found:
+            for lyrics_box in lyrics_boxes:
+                current_line = self.find_child_element(
+                    lyrics_box,
+                    AppiumBy.ID,
+                    self.config['elements']['lyrics_line']
+                )
+                if current_line:
+                    text += current_line.text + '\n'
+
+        # if n > 5:
+        #     self.ktv_mode = False
+        #     print(f'Music ended, KTV off')
         # no = 0
         # for lyrics_box in lyrics_boxes:
         #     # 检查是否包含current_lyrics
