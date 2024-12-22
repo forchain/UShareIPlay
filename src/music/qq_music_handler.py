@@ -471,6 +471,7 @@ class QQMusicHandler(AppHandler):
                 self.config['elements']['lyrics_line']
             )
 
+            screen_size = self.driver.get_window_size()
             # Quick swipe to top of lyrics
             self.driver.swipe(
                 screen_size['width'] // 2,  # Start from middle x
@@ -952,6 +953,7 @@ class QQMusicHandler(AppHandler):
             self.config['elements']['lyrics_tool']
         )
         if not lyrics_tool:
+            self.ktv_mode = False
             return {'error': 'Cannot find lyrics tool'}
 
         lyrics_tool.click()
@@ -963,6 +965,7 @@ class QQMusicHandler(AppHandler):
             self.config['elements']['lyrics_poster']
         )
         if not lyrics_poster:
+            self.ktv_mode = False
             return {'error': 'Cannot find lyrics poster option'}
 
         lyrics_poster.click()
