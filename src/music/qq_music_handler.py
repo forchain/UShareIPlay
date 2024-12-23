@@ -982,20 +982,28 @@ class QQMusicHandler(AppHandler):
         if not close_poster:
             print("No close poster")
 
-        self.wait_for_element_clickable(
+        current_lyrics = self.wait_for_element(
             AppiumBy.ID,
-            self.config['elements']['lyrics_box']
+            self.config['elements']['current_lyrics']
         )
-        screen_size = self.driver.get_window_size()
-        screen_height = screen_size['height']
-        # Scroll up half screen
-        self.driver.swipe(
-            screen_size['width'] // 2,
-            screen_height * 0.65,
-            screen_size['width'] // 2,
-            screen_height * 0.35,
-            400
-        )
+        finished = False
+        if current_lyrics:
+            y_coordinate = current_lyrics.location['y']
+            if y_coordinate < 1000:
+                finished = True
+                print("Found first line, song might be finished")
+        if not finished:
+            screen_size = self.driver.get_window_size()
+            screen_height = screen_size['height']
+            # Scroll up half screen
+            self.driver.swipe(
+                screen_size['width'] // 2,
+                screen_height * 0.60,
+                screen_size['width'] // 2,
+                screen_height * 0.35,
+                400
+            )
+
         lyrics_boxes = self.driver.find_elements(
             AppiumBy.ID,
             self.config['elements']['lyrics_box']
@@ -1011,28 +1019,29 @@ class QQMusicHandler(AppHandler):
         found = False
         text = ""
         n = 0
-        for lyrics_box in lyrics_boxes:
-            # 检查是否包含current_lyrics
+        if not finished:
+            for lyrics_box in lyrics_boxes:
+                # 检查是否包含current_lyrics
 
-            if found:
-                current_line = self.find_child_element(
-                    lyrics_box,
-                    AppiumBy.ID,
-                    self.config['elements']['lyrics_line']
-                )
-                if current_line:
-                    text +=  current_line.text + '\n'
-                    n += 1
-            else:
-                current_lyrics = self.find_child_element(
-                    lyrics_box,
-                    AppiumBy.ID,
-                    self.config['elements']['current_lyrics']
-                )
-                if current_lyrics:
-                    found = True
+                if found:
+                    current_line = self.find_child_element(
+                        lyrics_box,
+                        AppiumBy.ID,
+                        self.config['elements']['lyrics_line']
+                    )
+                    if current_line:
+                        text += current_line.text + '\n'
+                        n += 1
+                else:
+                    current_lyrics = self.find_child_element(
+                        lyrics_box,
+                        AppiumBy.ID,
+                        self.config['elements']['current_lyrics']
+                    )
+                    if current_lyrics:
+                        found = True
 
-        if not found:
+        if not found or finished:
             for lyrics_box in lyrics_boxes:
                 current_line = self.find_child_element(
                     lyrics_box,
