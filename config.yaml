@@ -97,7 +97,7 @@ commands:
   - prefix: "skip"
     response_template: "Skipped song <<{song}>> by {singer}"
   - prefix: "next"
-    response_template: "Scheduled {song} by {singer} to play next"
+    response_template: "Added {song} by {singer} to playlist"
   - prefix: "pause"
     response_template: "{action} <<{song}>> by {singer}"
     error_template: "Failed to {action}, because {error}"
@@ -139,7 +139,7 @@ commands:
     response_template: "Invited {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
-    response_template: "Now playing: {song} by {singer}\nAlbum: {album}\nPlayback state: {state}"
+    response_template: "Playing: {song} by {singer}\nAlbum: {album}"
     error_template: "Failed to get playback info, because {error}"
 appium:
   host: "192.168.50.103"

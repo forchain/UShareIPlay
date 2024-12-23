@@ -53,11 +53,20 @@ class AppController:
     def start_monitoring(self):
         enabled = True
         response = None
+        lyrics = None
+        last_info = None
         while True:
             try:
+                info = self.music_handler.get_playback_info()
+                if info != last_info:
+                    last_info = info
+                    self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} @ {info['album']}")
                 # Monitor Soul messages
                 messages = self.soul_handler.get_latest_message(enabled)
                 # get messages in advance to avoid being floored by responses
+                if lyrics:
+                    self.soul_handler.send_message(lyrics)
+                    lyrics = None
                 if response:
                     self.soul_handler.send_message(response)
                     response = None
@@ -283,15 +292,14 @@ class AppController:
                                                 album=result['album'],
                                                 song=result['song'],
                                                 singer=result['singer'],
-                                                state=result['state']
                                             )
                                     case _:
                                         print(f"Unknown command: {command_info['prefix']}")
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
-                    lyrics = self.music_handler.check_ktv_lyrics()
-                    if lyrics:
-                        response = lyrics
+                    l = self.music_handler.check_ktv_lyrics()
+                    if l:
+                        lyrics = l
                 else:
                     time.sleep(1)
 
