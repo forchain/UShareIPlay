@@ -133,12 +133,14 @@ class QQMusicHandler(AppHandler):
                 search_entry.click()
                 print(f"Clicked search entry")
             else:
-                clear_search = self.wait_for_element_clickable(
+
+                clear_search = self.try_find_element(
                     AppiumBy.ID,
                     self.config['elements']['clear_search']
                 )
-                clear_search.click()
-                print(f"Clear search")
+                if clear_search:
+                    clear_search.click()
+                    print(f"Clear search")
 
             # Find and click search box
             search_box = self.wait_for_element_clickable(
@@ -146,6 +148,7 @@ class QQMusicHandler(AppHandler):
                 self.config['elements']['search_box']
             )
             print(f"Found search box")
+            search_box.click()
 
             # Use clipboard operations from parent class
             self.set_clipboard_text(music_query)
