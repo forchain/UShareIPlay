@@ -58,9 +58,12 @@ class AppController:
         while True:
             try:
                 info = self.music_handler.get_playback_info()
+                # ignore state
+                info['state'] = None
                 if info != last_info:
                     last_info = info
                     self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} @ {info['album']}")
+
                 # Monitor Soul messages
                 messages = self.soul_handler.get_latest_message(enabled)
                 # get messages in advance to avoid being floored by responses
