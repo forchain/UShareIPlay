@@ -991,9 +991,9 @@ class QQMusicHandler(AppHandler):
         # Scroll up half screen
         self.driver.swipe(
             screen_size['width'] // 2,
-            screen_height * 0.6,
+            screen_height * 0.65,
             screen_size['width'] // 2,
-            screen_height * 0.4,
+            screen_height * 0.35,
             400
         )
         lyrics_boxes = self.driver.find_elements(

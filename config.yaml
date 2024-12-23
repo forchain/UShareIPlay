@@ -40,6 +40,13 @@ soul:
     content_container: "cn.soulapp.android:id/flContent"
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_back: "cn.soulapp.android:id/tv_look"
+    expand_seats: "cn.soulapp.android:id/tvHandleUserList"
+    party_ended: "cn.soulapp.android:id/ivMask"
+    planet_tab: "cn.soulapp.android:id/main_tab_planet"
+    party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
+    create_party: "cn.soulapp.android:id/tv_create"
+    restore_party: "cn.soulapp.android:id/imgRestore"
+    confirm_party: "cn.soulapp.android:id/tv_confirm"
 
 qq_music:
   package_name: "com.tencent.qqmusic"

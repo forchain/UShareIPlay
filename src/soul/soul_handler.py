@@ -2,6 +2,8 @@ import time
 
 from PIL.ImageOps import contain
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common import WebDriverException
+
 from ..utils.app_handler import AppHandler
 import re
 from dataclasses import dataclass
@@ -37,7 +39,7 @@ class SoulHandler(AppHandler):
 
         if not message_list:
             if enabled:
-                print("[Warning]get_latest_message cannot find message_list, may be minimized")
+                print("[Warning] get_latest_message cannot find message_list, may be minimized")
                 enable_floating_entry = True
                 floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
                 if enable_floating_entry and floating_entry:
@@ -49,13 +51,11 @@ class SoulHandler(AppHandler):
                 else:
                     square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
                     if square_tab:
-                        print(
-                            "[Warning]get_latest_message already back in home but no party entry found, try go to party")
+                        print("[Warning] get_latest_message already back in home but no party entry found, try go to party")
                         square_tab.click()
-                        self.find_party_to_join("FM16781037")
+                        self.find_party_to_join("FM15321640")
                     else:
-                        print(
-                            "[Warning]get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
+                        print("[Warning] get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
                         self.press_back()
 
             return None
@@ -67,15 +67,19 @@ class SoulHandler(AppHandler):
             new_message_tip.click()
             print(f'Clicked new message tip')
 
+        expand_seats = self.try_find_element(AppiumBy.ID, self.config['elements']['expand_seats'], log=False)
+        if expand_seats and expand_seats.text == '收起座位':
+            expand_seats.click()
+            print(f'Collapsed seats')
+
         # Get all ViewGroup containers first
         try:
             containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
-        except StaleElementReferenceException as e:
+        except WebDriverException as e:
             print(f'[get_latest_message] cannot find message_list element, might be in loading')
             time.sleep(1)
             return None
 
-        # print(f"Found {len(containers)} ViewGroup containers")
 
         # Process each container and collect message info
         current_messages = {}  # Dict to store element_id: MessageInfo pairs
@@ -90,8 +94,7 @@ class SoulHandler(AppHandler):
             )
 
             if content_element:
-
-                content = self.try_get_attribute(content_element,'content-desc')
+                content = self.try_get_attribute(content_element, 'content-desc')
                 if content and re.match(pattern, content):
                     element_id = container.id
 
@@ -205,13 +208,14 @@ class SoulHandler(AppHandler):
     def find_party_to_join(self, party_id):
         # Find and click search entry
         search_entry = self.wait_for_element_clickable(
-            AppiumBy.ID,
+            AppiumBy.ID, 
             self.config['elements']['search_entry']
         )
         if not search_entry:
             return {
                 'error': 'Failed to find search entry',
             }
+
 
         search_entry.click()
         print("Clicked search entry")
@@ -253,13 +257,50 @@ class SoulHandler(AppHandler):
         if not party_entry:
             print(f"Party entry: {party_id} not found")
             return {'error': 'Party entry not found'}
-        party_entry.click()
 
-        time.sleep(1)
-        party_back = self.try_find_element(AppiumBy.ID, self.config['elements']['party_back'], log=False)
-        if party_back:
-            print(f"Found back to party dialog and close")
-            party_back.click()
+        # Check party status after finding the message
+        # Check if the party has ended
+        party_ended = self.find_child_element(party_entry, AppiumBy.ID, self.config['elements']['party_ended'])
+        if not party_ended:
+            # Party is ongoing, click the party entry
+            party_entry.click()
+            print("Clicked party entry")
+
+            time.sleep(1)
+            party_back = self.try_find_element(AppiumBy.ID, self.config['elements']['party_back'], log=False)
+            if party_back:
+                print(f"Found back to party dialog and close")
+                party_back.click()
+        else:
+            # Party has ended, navigate to create a new party
+            print("Party has ended, navigating to create a new party")
+            self.press_back()  # Go back to the home screen
+            planet_tab = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['planet_tab'])
+            if planet_tab:
+                planet_tab.click()
+                print("Clicked planet tab")
+                party_hall_entry = self.wait_for_element_clickable(AppiumBy.XPATH,
+                                                                   self.config['elements']['party_hall_entry'])
+                if party_hall_entry:
+                    party_hall_entry.click()
+                    print("Clicked party hall entry")
+                    create_party_button = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                          self.config['elements']['create_party'])
+                    if create_party_button:
+                        create_party_button.click()
+                        print("Clicked create party button")
+                        restore_party_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements'][
+                            'restore_party'])
+                        if restore_party_button:
+                            restore_party_button.click()
+                            print("Clicked restore party button")
+                            confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                                   self.config['elements'][
+                                                                                       'confirm_party'])
+                            if confirm_party_button:
+                                confirm_party_button.click()
+                                print("Clicked confirm party button")
+
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
