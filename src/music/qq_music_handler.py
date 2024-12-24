@@ -971,7 +971,11 @@ class QQMusicHandler(AppHandler):
             self.ktv_mode = False
             return {'error': 'Cannot find lyrics poster option'}
 
-        lyrics_poster.click()
+        try:
+            lyrics_poster.click()
+        except StaleElementReferenceException as e:
+            self.ktv_mode = False
+            return {'error': 'Cannot click lyrics poster option'}
         print("Clicked lyrics poster")
 
         # 找到所有的lyrics_box
