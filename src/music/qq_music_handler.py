@@ -106,8 +106,14 @@ class QQMusicHandler(AppHandler):
 
     def query_music(self, music_query: str):
         """Common logic for preparing music playback"""
-        self.switch_to_app()
+        if not self.switch_to_app():
+            return False
         print(f"Switched to QQ Music app")
+
+        go_back = self.try_find_element(
+            AppiumBy.ID, self.config['elements']['go_back'])
+        if go_back:
+            go_back.click()
 
         search_box = self.try_find_element(
             AppiumBy.ID,
@@ -152,6 +158,7 @@ class QQMusicHandler(AppHandler):
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
         self.paste_text()
+        return True
 
     def _prepare_music_playback(self, music_query):
         self.query_music(music_query)
@@ -186,6 +193,15 @@ class QQMusicHandler(AppHandler):
         playlist_tab.click()
         print("Selected playlist tab")
 
+    def select_singer_tab(self):
+        """Select the 'Playlist' tab in search results"""
+        playlist_tab = self.wait_for_element_clickable(
+            AppiumBy.XPATH,
+            self.config['elements']['singer_tab']
+        )
+        playlist_tab.click()
+        print("Selected singer tab")
+
     def select_lyrics_tab(self):
         self.press_right_key()
         self.press_right_key()
@@ -197,6 +213,62 @@ class QQMusicHandler(AppHandler):
         )
         lyrics_tab.click()
         print("Selected lyrics tab")
+
+    def play_singer(self, query: str):
+
+        if not self.query_music(query):
+            return {
+                'error': 'Failed to query music playlist',
+            }
+
+        self.select_singer_tab()
+        singer_result = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['singer_result']
+        )
+        singer_text = self.find_child_element(singer_result, AppiumBy.ID, self.config['elements']['singer_text'])
+        singer_text.click()
+        print("Selected singer result")
+
+        play_button = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['play_singer']
+        )
+        play_button.click()
+        print("Clicked play singer result")
+
+        return {
+            'singer': singer_text.text,
+        }
+
+    def play_playlist(self, query: str):
+
+        if not self.query_music(query):
+            return {
+                'error': 'Failed to query music playlist',
+            }
+
+        self.select_playlist_tab()
+        result = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['playlist_result']
+        )
+        result.click()
+
+        play_button = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['play_playlist']
+        )
+        if play_button:
+            play_button.click()
+        else:
+            play_button = self.wait_for_element_clickable(
+                AppiumBy.ID, self.config['elements']['playlist_item']
+            )
+            if play_button:
+                play_button.click()
+            else:
+                return {'error': 'Failed to find play button'}
+
+        return {
+            'playlist': result.text,
+        }
 
     def play_music(self, music_query):
         """Search and play music"""
@@ -210,6 +282,11 @@ class QQMusicHandler(AppHandler):
                 return playing_info
 
             playing_info = self._prepare_music_playback(music_query)
+            studio_version = self.try_find_element(AppiumBy.XPATH, self.config['elements']['studio_version'])
+            if studio_version:
+                studio_version.click()
+                print("Alter to studio version")
+
             # Click play button
             play_button = self.driver.find_element(
                 AppiumBy.ID,
@@ -620,7 +697,10 @@ class QQMusicHandler(AppHandler):
             info = self.get_playback_info()
             if info:
                 query = f'{info["song"]} {info["singer"]} {info["album"]}'
-        self.query_music(query)
+        if not self.query_music(query):
+            return {
+                'error': 'Failed to query lyrics',
+            }
         self.select_lyrics_tab()
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])

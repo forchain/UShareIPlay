@@ -98,7 +98,16 @@ qq_music:
     fav_singer: 'com.tencent.qqmusic:id/ln9'
     lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌词"]'
     playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌单"]'
+    singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌手"]'
     lyrics_text: 'com.tencent.qqmusic:id/h2v'
+    playlist_result: 'com.tencent.qqmusic:id/kq5'
+    singer_text: 'com.tencent.qqmusic:id/mhi'
+    singer_result: 'com.tencent.qqmusic:id/bb9'
+    play_playlist: 'com.tencent.qqmusic:id/eg6'
+    play_singer: 'com.tencent.qqmusic:id/ehu'
+    playlist_item: 'com.tencent.qqmusic:id/ljb'
+    go_back: 'com.tencent.qqmusic:id/zu'
+    studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
@@ -149,6 +158,12 @@ commands:
   - prefix: "info"
     response_template: "Playing: {song} by {singer}\nAlbum: {album}"
     error_template: "Failed to get playback info, because {error}"
+  - prefix: "singer"
+    response_template: "Playing singer: {singer}"
+    error_template: "Failed to play singer, because {error}"
+  - prefix: "playlist"
+    response_template: "Playing playlist: {playlist}"
+    error_template: "Failed to play playlist, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

@@ -109,6 +109,36 @@ class AppController:
                                                 song=playing_info['song'],
                                                 singer=playing_info['singer']
                                             )
+                                    case 'playlist':
+                                        # Play music and get info
+                                        query = ' '.join(command_info['parameters'])
+                                        self.soul_handler.ensure_mic_active()
+                                        playing_info = self.music_handler.play_playlist(query)
+
+                                        if 'error' in playing_info:
+                                            response = command_info['error_template'].format(
+                                                error=playing_info['error']
+                                            )
+                                        else:
+                                            # Send status back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                playlist=playing_info['playlist'],
+                                            )
+                                    case 'singer':
+                                        # Play music and get info
+                                        query = ' '.join(command_info['parameters'])
+                                        self.soul_handler.ensure_mic_active()
+                                        playing_info = self.music_handler.play_singer(query)
+
+                                        if 'error' in playing_info:
+                                            response = command_info['error_template'].format(
+                                                error=playing_info['error']
+                                            )
+                                        else:
+                                            # Send status back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                singer=playing_info['singer'],
+                                            )
                                     case 'skip':
                                         # Skip to next song
                                         playing_info = self.music_handler.skip_song()
@@ -144,7 +174,7 @@ class AppController:
                                                     error='Invalid parameter, must be 0 or 1'
                                                 )
                                                 continue
-                                        
+
                                         # Control playback
                                         result = self.music_handler.pause_song(pause_state)
                                         if 'error' in result:
@@ -169,7 +199,7 @@ class AppController:
                                                     error='Invalid parameter, must be a number'
                                                 )
                                                 continue
-                                        
+
                                         # Adjust volume
                                         result = self.music_handler.adjust_volume(delta)
                                         if 'error' in result:
@@ -233,7 +263,7 @@ class AppController:
                                         enable = True
                                         if len(command_info['parameters']) > 0:
                                             enable = command_info['parameters'][0] == '1'
-                                        
+
                                         # Toggle KTV mode
                                         result = self.music_handler.toggle_ktv_mode(enable)
                                         response = command_info['response_template'].format(
