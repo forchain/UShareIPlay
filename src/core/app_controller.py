@@ -99,11 +99,16 @@ class AppController:
                                         self.soul_handler.ensure_mic_active()
                                         playing_info = self.music_handler.play_music(query)
 
-                                        # Send status back to Soul using command's template
-                                        response = command_info['response_template'].format(
-                                            song=playing_info['song'],
-                                            singer=playing_info['singer']
-                                        )
+                                        if 'error' in playing_info:
+                                            response = command_info['error_template'].format(
+                                                error=playing_info['error']
+                                            )
+                                        else:
+                                            # Send status back to Soul using command's template
+                                            response = command_info['response_template'].format(
+                                                song=playing_info['song'],
+                                                singer=playing_info['singer']
+                                            )
                                     case 'skip':
                                         # Skip to next song
                                         playing_info = self.music_handler.skip_song()
@@ -209,8 +214,10 @@ class AppController:
                                             print("Missing parameter for accompaniment command")
                                     case 'lyrics':
                                         # Get lyrics of current song
-                                        result = self.music_handler.get_lyrics()
-                                        
+                                        # result = self.music_handler.get_lyrics()
+                                        query = ' '.join(command_info['parameters'])
+                                        result = self.music_handler.query_lyrics(query)
+
                                         if 'error' in result:
                                             # Use error template if getting lyrics failed
                                             response = command_info['error_template'].format(

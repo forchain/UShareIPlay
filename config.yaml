@@ -37,7 +37,7 @@ soul:
     party_search_empty: "cn.soulapp.android:id/llEmpty"
     party_search_result: "cn.soulapp.android:id/searchViewPager"
     party_search_entry: "cn.soulapp.android:id/roomCard"
-    content_container: "cn.soulapp.android:id/flContent"
+    content_container: "android:id/content"
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_back: "cn.soulapp.android:id/tv_look"
     expand_seats: "cn.soulapp.android:id/tvHandleUserList"
@@ -91,6 +91,14 @@ qq_music:
     lyrics_box: "com.tencent.qqmusic:id/j1t"
     close_poster: "com.tencent.qqmusic:id/b5_"
     accompaniment_bar: "com.tencent.qqmusic:id/oct"
+    my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
+    fav_entry: 'com.tencent.qqmusic:id/i_s'
+    play_fav: 'com.tencent.qqmusic:id/eg6'
+    fav_song: 'com.tencent.qqmusic:id/ll6'
+    fav_singer: 'com.tencent.qqmusic:id/ln9'
+    lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌词"]'
+    playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌单"]'
+    lyrics_text: 'com.tencent.qqmusic:id/h2v'
 commands:
   - prefix: "play"
     response_template: "Playing <<{song}>> by {singer}"
