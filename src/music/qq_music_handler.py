@@ -46,7 +46,8 @@ class QQMusicHandler(AppHandler):
     def navigate_to_home(self):
         """Navigate back to home page"""
         # Keep clicking back until no more back buttons found
-        while True:
+        n = 0
+        while n < 9:
             back_button = self.try_find_element(
                 AppiumBy.XPATH,
                 self.config['elements']['back_button']
@@ -65,6 +66,7 @@ class QQMusicHandler(AppHandler):
                     return
                 else:
                     self.press_back()
+            n += 1
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
@@ -705,9 +707,24 @@ class QQMusicHandler(AppHandler):
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])
         lyrics.click()
+        text = lyrics.text
+        lyrics_lines = text.splitlines()  # Split lyrics into lines
+        merged_lines = []  # List to hold merged lines
+
+        i = 0
+        while i < len(lyrics_lines):
+            if i < len(lyrics_lines) -1 and len(lyrics_lines[i]) <= 5:
+                # Merge with the next line if current line length is less than 5
+                merged_lines.append(lyrics_lines[i] + ' ' + lyrics_lines[i + 1])
+                i += 1  # Skip the next line as it has been merged
+            else:
+                merged_lines.append(lyrics_lines[i])  # Add the current line
+            i += 1
+
+        text = '\n'.join(merged_lines)[:350]  # Join merged lines and limit to 500 characters
+
         return {
-            'lyrics': lyrics.text[:500]
-            # 'lyrics': lyrics.text
+            'lyrics': text
         }
 
     def get_element_screenshot(self, element):
