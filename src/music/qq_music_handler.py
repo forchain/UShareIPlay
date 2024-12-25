@@ -154,8 +154,11 @@ class QQMusicHandler(AppHandler):
             AppiumBy.ID,
             self.config['elements']['search_box']
         )
-        print(f"Found search box")
+        if not search_box:
+            print(f"Cannot find search entry")
+            return False
         search_box.click()
+        print(f"Found search box")
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
