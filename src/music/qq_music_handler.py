@@ -213,8 +213,13 @@ class QQMusicHandler(AppHandler):
             AppiumBy.XPATH,
             self.config['elements']['lyrics_tab']
         )
+        if not lyrics_tab:
+            print("Cannot find lyrics tab")
+            return False
+
         lyrics_tab.click()
         print("Selected lyrics tab")
+        return True
 
     def play_singer(self, query: str):
 
@@ -703,7 +708,10 @@ class QQMusicHandler(AppHandler):
             return {
                 'error': 'Failed to query lyrics',
             }
-        self.select_lyrics_tab()
+        if not self.select_lyrics_tab():
+            return {
+                'error': 'Failed to select lyrics tab',
+            }
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])
         lyrics.click()
