@@ -247,9 +247,23 @@ class AppController:
                                             print("Missing parameter for accompaniment command")
                                     case 'lyrics':
                                         # Get lyrics of current song
-                                        # result = self.music_handler.get_lyrics()
-                                        query = ' '.join(command_info['parameters'])
-                                        result = self.music_handler.query_lyrics(query)
+                                        # Parse parameters
+                                        force_groups = 0
+                                        params = command_info['parameters']
+                                        
+                                        if params:
+                                            try:
+                                                # Try to parse first parameter as group number
+                                                force_groups = int(params[0])
+                                                # Remove group number from query
+                                                query = ' '.join(params[1:])
+                                            except ValueError:
+                                                # First parameter is not a number, use entire query
+                                                query = ' '.join(params)
+                                        else:
+                                            query = ""
+                                            
+                                        result = self.music_handler.query_lyrics(query, force_groups)
 
                                         if 'error' in result:
                                             # Use error template if getting lyrics failed
@@ -257,9 +271,16 @@ class AppController:
                                                 error=result['error']
                                             )
                                         else:
+                                            groups = result['groups']
+                                            l = 0
+                                            for lyr in groups:
+                                                l += len(lyr)
+                                                self.soul_handler.send_message(lyr)
+
+                                            prompt = f' {len(groups)} piece(s) of lyrics sent, {l} characters'
                                             # Send lyrics back to Soul using command's template
                                             response = command_info['response_template'].format(
-                                                lyrics=result['lyrics']
+                                                lyrics=prompt
                                             )
                                     case 'ktv':
                                         # Toggle KTV mode

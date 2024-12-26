@@ -702,7 +702,7 @@ class QQMusicHandler(AppHandler):
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
 
-    def query_lyrics(self, query):
+    def query_lyrics(self, query, group_num=0):
         if query == "":
             info = self.get_playback_info()
             if info:
@@ -718,24 +718,10 @@ class QQMusicHandler(AppHandler):
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])
         lyrics.click()
-        text = lyrics.text
-        lyrics_lines = text.splitlines()  # Split lyrics into lines
-        merged_lines = []  # List to hold merged lines
-
-        i = 0
-        while i < len(lyrics_lines):
-            if i < len(lyrics_lines) -1 and len(lyrics_lines[i]) <= 5:
-                # Merge with the next line if current line length is less than 5
-                merged_lines.append(lyrics_lines[i] + ' ' + lyrics_lines[i + 1])
-                i += 1  # Skip the next line as it has been merged
-            else:
-                merged_lines.append(lyrics_lines[i])  # Add the current line
-            i += 1
-
-        text = '\n'.join(merged_lines)[:350]  # Join merged lines and limit to 500 characters
+        groups = self.process_lyrics(lyrics.text, 16, group_num)
 
         return {
-            'lyrics': text
+            'groups': groups
         }
 
     def get_element_screenshot(self, element):
@@ -1386,3 +1372,78 @@ class QQMusicHandler(AppHandler):
         except Exception as e:
             print(f"Error playing favorites: {str(e)}")
             return {'error': str(e)}
+
+    def process_lyrics(self, lyrics_text, max_width=20, force_groups=0):
+        """Process lyrics text into groups with width control
+        Args:
+            lyrics_text: str, multi-line lyrics text
+            max_width: int, maximum width for each line
+            force_groups: int, force number of groups, 0 for auto calculation
+        Returns:
+            list: list of processed lyrics groups
+        """
+        try:
+            # Calculate total length including newlines
+            total_length = len(lyrics_text)
+            
+            # Calculate number of groups
+            if force_groups > 0:
+                num_groups = force_groups
+            else:
+                num_groups = (total_length + 499) // 500  # Ceiling division
+                
+            # Calculate target size per group
+            target_group_size = total_length / num_groups if num_groups > 0 else 0
+
+            # Split lyrics into lines and remove empty lines
+            lyrics_lines = [line.strip() for line in lyrics_text.split('\n') if line.strip()]
+            
+            if not lyrics_lines:
+                return []
+
+            # First pass: combine adjacent lines within max_width
+            combined_lines = []
+            current_line = lyrics_lines[0]
+            
+            for next_line in lyrics_lines[1:]:
+                # Try combining with next line (including a space between)
+                combined = current_line + " " + next_line
+                if len(combined) <= max_width:
+                    current_line = combined
+                else:
+                    combined_lines.append(current_line)
+                    current_line = next_line
+            
+            # Add the last line
+            combined_lines.append(current_line)
+
+            # Second pass: group lines with balanced length
+            groups = []
+            current_group = []
+            current_length = 0
+
+            for line in combined_lines:
+                line_length = len(line) + 1  # +1 for newline
+                new_length = current_length + line_length
+                
+                # Check if adding this line would make the group too far from target size
+                if (current_length > 0 and  # Don't check first line
+                    abs(new_length - target_group_size) > abs(current_length - target_group_size) and 
+                    len(groups) < num_groups - 1):  # Don't create new group if we're on last group
+                    groups.append('\n'.join(current_group))
+                    current_group = [line]
+                    current_length = len(line)
+                else:
+                    current_group.append(line)
+                    current_length = new_length
+
+            # Add the last group
+            if current_group:
+                groups.append('\n'.join(current_group))
+
+            return groups
+
+        except Exception as e:
+            print(f"Error processing lyrics: {str(e)}")
+            traceback.print_exc()
+            return []

@@ -110,13 +110,13 @@ qq_music:
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
 commands:
   - prefix: "play"
-    response_template: "Playing <<{song}>> by {singer}"
+    response_template: "playing {song} by {singer}"
   - prefix: "skip"
-    response_template: "Skipped song <<{song}>> by {singer}"
+    response_template: "skipped {song} by {singer}"
   - prefix: "next"
-    response_template: "Added {song} by {singer} to playlist"
+    response_template: "added {song} by {singer} to playlist"
   - prefix: "pause"
-    response_template: "{action} <<{song}>> by {singer}"
+    response_template: "{action} {song} by {singer}"
     error_template: "Failed to {action}, because {error}"
   - prefix: "vol"
     response_template: "Current volume is {level}"
