@@ -95,6 +95,8 @@ class AppController:
                                 if not enabled:
                                     continue
 
+                                self.soul_handler.send_message(f'received {cmd} command from @{message_info.nickname}')
+
                                 match command_info['prefix']:
                                     case 'play':
                                         # Play music and get info
@@ -112,6 +114,7 @@ class AppController:
                                                 song=playing_info['song'],
                                                 singer=playing_info['singer']
                                             )
+                                            response = f'{response} @{message_info.nickname}'
                                     case 'playlist':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
@@ -127,6 +130,7 @@ class AppController:
                                             response = command_info['response_template'].format(
                                                 playlist=playing_info['playlist'],
                                             )
+                                            response = f'{response} @{message_info.nickname}'
                                     case 'singer':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
@@ -142,6 +146,7 @@ class AppController:
                                             response = command_info['response_template'].format(
                                                 singer=playing_info['singer'],
                                             )
+                                            response = f'{response} @{message_info.nickname}'
                                     case 'skip':
                                         # Skip to next song
                                         playing_info = self.music_handler.skip_song()
@@ -163,6 +168,7 @@ class AppController:
                                             song=playing_info['song'],
                                             singer=playing_info['singer']
                                         )
+                                        response = f'{response} @{message_info.nickname}'
                                     case 'pause':
                                         # Get pause state parameter
                                         pause_state = None
@@ -243,6 +249,7 @@ class AppController:
                                                 response = command_info['response_template'].format(
                                                     enabled=result['enabled']
                                                 )
+
                                         else:
                                             print("Missing parameter for accompaniment command")
                                     case 'lyrics':
@@ -282,6 +289,7 @@ class AppController:
                                             response = command_info['response_template'].format(
                                                 lyrics=prompt
                                             )
+                                            response = f'{response} @{message_info.nickname}'
                                     case 'ktv':
                                         # Toggle KTV mode
                                         enable = True
