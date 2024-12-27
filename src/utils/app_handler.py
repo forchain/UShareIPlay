@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 import selenium
 
 
@@ -32,6 +32,16 @@ class AppHandler:
             print(f"Element not found within {timeout} seconds: {locator_value}")
             print(f"Error: {str(e)}")
             return None
+
+    def is_element_clickable(self, element):
+        """
+        Check if element is clickable
+        Returns:
+            bool: True if element is clickable, False otherwise
+        """
+
+        is_clickable = element.get_attribute("clickable")
+        return is_clickable == "true"
 
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
         """
@@ -99,8 +109,14 @@ class AppHandler:
 
     def press_back(self):
         """Press Android back button"""
-        self.driver.press_keycode(4)  # Android back key code
+        try:
+            self.driver.press_keycode(4)  # Android back key code
+        except WebDriverException as e:
+            print(f"Failed to press back button")
+            return False
+
         print("Pressed back button")
+        return True
 
     def press_dpad_down(self):
         """Press Android DPAD down button"""
