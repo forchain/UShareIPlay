@@ -112,6 +112,8 @@ qq_music:
     play_playlist: 'com.tencent.qqmusic:id/eg6'
     play_singer: 'com.tencent.qqmusic:id/ehu'
     play_singer_hot: 'com.tencent.qqmusic:id/j0g'
+    singer_tabs: 'com.tencent.qqmusic:id/bb7'
+    singer_song_tab: '(//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb"])[2]'
     playlist_item: 'com.tencent.qqmusic:id/ljb'
     go_back: 'com.tencent.qqmusic:id/zu'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
@@ -150,9 +152,9 @@ commands:
   - prefix: "help"
     response_template:  |
       Help for (U)Share (I)Play
-      1. play - play music and change the playlist
+      1. play - play music instantly
         command - :play keywords
-      2. next - queue up music to next, first come first serve, won't change playlist
+      2. next - add music to playlist, first come first serve, won't change playlist
         command - :next keywords
       3. acc - turn on/off accompaniment mode, apply on the playlist
         command - :acc 1/0
@@ -166,7 +168,7 @@ commands:
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
   - prefix: "admin"
-    response_template: "Invited {user} as administrator"
+    response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
     response_template: "Playing: {song} by {singer}\nAlbum: {album}"

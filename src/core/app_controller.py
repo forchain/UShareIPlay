@@ -1,5 +1,6 @@
 from appium import webdriver
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common import WebDriverException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from appium.options.common import AppiumOptions
@@ -55,6 +56,7 @@ class AppController:
         response = None
         lyrics = None
         last_info = None
+        error_count = 0
         while True:
             try:
                 info = self.music_handler.get_playback_info()
@@ -352,7 +354,8 @@ class AppController:
                                             else:
                                                 # Use success template if operation succeeded
                                                 response = command_info['response_template'].format(
-                                                    user=message_info.nickname
+                                                    user=message_info.nickname,
+                                                    action = result['action']
                                                 )
                                         else:
                                             response = command_info['error_template'].format(
@@ -386,3 +389,10 @@ class AppController:
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
                 break
+            except StaleElementReferenceException as e:
+                self.soul_handler.log_error('[start_monitoring]stale element, traceback: {traceback.format_exc()}')
+            except WebDriverException as e:
+                self.soul_handler.log_error('[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
+                error_count += 1
+                if error_count > 9:
+                    break

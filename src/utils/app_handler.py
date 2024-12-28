@@ -5,32 +5,82 @@ from selenium.webdriver.support import expected_conditions as EC
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 import selenium
+import logging
+import os
+from datetime import datetime
 
 
 class AppHandler:
     def __init__(self, driver, config):
         self.driver = driver
         self.config = config
+        self.logger = self._setup_logger()
+
+    def _setup_logger(self):
+        """Setup logger for the handler
+        Returns:
+            logging.Logger: Configured logger instance
+        """
+        # Create logs directory if it doesn't exist
+        if not os.path.exists('logs'):
+            os.makedirs('logs')
+            
+        # Get current date for log file name
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        log_file = f'logs/{self.__class__.__name__}_{current_date}.log'
+        
+        # Create logger
+        logger = logging.getLogger(self.__class__.__name__)
+        logger.setLevel(logging.DEBUG)
+        
+        # Create file handler
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        # Add handlers to logger
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+        
+        return logger
+
+    def log_info(self, message):
+        """Log info level message"""
+        self.logger.info(message)
+
+    def log_error(self, message):
+        """Log error level message"""
+        self.logger.error(message)
+
+    def log_debug(self, message):
+        """Log debug level message"""
+        self.logger.debug(message)
+
+    def log_warning(self, message):
+        """Log warning level message"""
+        self.logger.warning(message)
 
     def wait_for_element(self, locator_type, locator_value, timeout=10):
-        """
-        Wait for element to be present and return it
-        Args:
-            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
-            locator_value: The locator value
-            timeout: Maximum time to wait in seconds
-        Returns:
-            WebElement if found, None if not found
-        """
+        """Wait for element to be present and return it"""
         try:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((locator_type, locator_value))
             )
-            # print(f"Found element: {locator_value}")
+            self.log_debug(f"Found element: {locator_value}")
             return element
         except Exception as e:
-            print(f"Element not found within {timeout} seconds: {locator_value}")
-            print(f"Error: {str(e)}")
+            self.log_error(f"Element not found within {timeout} seconds: {locator_value}")
+            self.log_error(f"Error: {str(e)}")
             return None
 
     def is_element_clickable(self, element):
@@ -82,11 +132,7 @@ class AppHandler:
             return None
 
     def switch_to_app(self):
-        """
-        Switch to specified app
-        Returns:
-            bool: True if successful, False if failed
-        """
+        """Switch to specified app"""
         try:
             self.driver.activate_app(self.config['package_name'])
         except selenium.common.exceptions.WebDriverException as e:
@@ -96,10 +142,6 @@ class AppHandler:
         if reminder_ok:
             print(f"Found reminder dialog and close")
             reminder_ok.click()
-        element = self.wait_for_element(AppiumBy.ID, self.config['elements']['content_container'], timeout=10)
-        if not element:
-            print(f"Failed to switch to app: content_container not found")
-            return False            
         time.sleep(0.1)
         return True
 

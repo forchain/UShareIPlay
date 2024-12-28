@@ -239,17 +239,23 @@ class QQMusicHandler(AppHandler):
         singer_text.click()
         print("Selected singer result")
 
+        self.wait_for_element(
+            AppiumBy.ID,self.config['elements']['singer_tabs'])
+
+        singer_song_tabs = self.driver.find_elements(
+            AppiumBy.XPATH,self.config['elements']['singer_song_tab'])
+        if len(singer_song_tabs) > 1:
+            singer_song_tabs[1].click()
+        else:
+            singer_song_tabs[0].click()
+        print("Selected singer tab")
+
         play_button = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['play_singer']
         )
         if not play_button:
-            print(f"[Warning]play_singer Cannot find play singer button, try find hot play button")
-            play_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['play_singer_hot'])
-            if play_button:
-                play_button.click()
-            else:
-                print(f"[Error]play_singer Cannot find play singer button")
-                return {'error': 'Failed to find play button'}
+            print(f"[Error]play_singer Cannot find play singer button")
+            return {'error': 'Failed to find play button'}
 
         play_button.click()
         print("Clicked play singer result")
@@ -307,12 +313,19 @@ class QQMusicHandler(AppHandler):
                 print("Alter to studio version")
 
             # Click play button
-            play_button = self.driver.find_element(
+            # play_button = self.driver.find_element(
+            #     AppiumBy.ID,
+            #     self.config['elements']['play_button']
+            # )
+            # play_button.click()
+            # print(f"Clicked play button")
+
+            song_element = self.wait_for_element_clickable(
                 AppiumBy.ID,
-                self.config['elements']['play_button']
+                self.config['elements']['song_name']
             )
-            play_button.click()
-            print(f"Clicked play button")
+            song_element.click()
+            print(f"Select first song")
 
             return playing_info
 
@@ -1134,7 +1147,13 @@ class QQMusicHandler(AppHandler):
         )
         finished = False
         if current_lyrics:
-            y_coordinate = current_lyrics.location['y']
+            try:
+                y_coordinate = current_lyrics.location['y']
+            except StaleElementReferenceException as e:
+                print(f"Error finding y coordinate")
+                self.ktv_mode = False
+                return {'error': 'Cannot get current lyrics coordinate'}
+
             if y_coordinate < 1000:
                 finished = True
                 print("Found first line, song might be finished")

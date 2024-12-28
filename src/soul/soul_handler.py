@@ -294,12 +294,13 @@ class SoulHandler(AppHandler):
                     party_hall_entry.click()
                     print("Clicked party hall entry")
                     create_party_entry = self.wait_for_element_clickable(AppiumBy.ID,
-                                                                          self.config['elements']['create_party_entry'])
+                                                                         self.config['elements']['create_party_entry'])
                     if create_party_entry:
                         create_party_entry.click()
                         print("Clicked create party entry")
                         self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
-                        create_party_button = self.try_find_element(AppiumBy.ID, self.config['elements']['create_party_button'])
+                        create_party_button = self.try_find_element(AppiumBy.ID,
+                                                                    self.config['elements']['create_party_button'])
                         if create_party_button:
                             create_party_button.click()
                             print("Clicked create party button")
@@ -526,21 +527,22 @@ class SoulHandler(AppHandler):
                     AppiumBy.ID,
                     self.config['elements']['confirm_invite']
                 )
-                action = "邀请"
+                action = "Invite"
             else:
                 confirm_button = self.wait_for_element_clickable(
                     AppiumBy.XPATH,
                     self.config['elements']['confirm_dismiss']
                 )
-                action = "解除"
+                action = "Dismiss"
 
             if not confirm_button:
-                return {'error': f'Failed to find {action}确认按钮'}
+                return {'error': f'Failed to find {action} confirmation button'}
 
             confirm_button.click()
-            print(f"Clicked {action}确认按钮")
+            print(f"Clicked {action} confirmation button")
 
-            return {'user': message_info.nickname}
+            return {'user': message_info.nickname,
+                    'action': action}
 
         except Exception as e:
             print(f"Error managing admin: {str(e)}")
