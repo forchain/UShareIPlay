@@ -95,7 +95,7 @@ class AppController:
                                 if not enabled:
                                     continue
 
-                                self.soul_handler.send_message(f'received {cmd} command from @{message_info.nickname}')
+                                self.soul_handler.send_message(f'Processing {cmd} command from @{message_info.nickname}')
 
                                 match command_info['prefix']:
                                     case 'play':

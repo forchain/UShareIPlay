@@ -73,10 +73,8 @@ class AppHandler:
         try:
             self.driver.activate_app(self.config['package_name'])
         except selenium.common.exceptions.WebDriverException as e:
-            if "error: closed" in str(e):
-                print(f"Failed to switch to app: connection closed")
-                return False
-            raise e
+            print(f"Failed to switch to app")
+            return False
         reminder_ok = self.try_find_element(AppiumBy.ID, self.config['elements']['reminder_ok'], log=False)
         if reminder_ok:
             print(f"Found reminder dialog and close")

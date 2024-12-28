@@ -114,11 +114,11 @@ qq_music:
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
 commands:
   - prefix: "play"
-    response_template: "playing {song} by {singer}"
+    response_template: "Playing {song} by {singer}"
   - prefix: "skip"
-    response_template: "skipped {song} by {singer}"
+    response_template: "Skipped {song} by {singer}"
   - prefix: "next"
-    response_template: "added {song} by {singer} to playlist"
+    response_template: "Added {song} by {singer} to playlist"
   - prefix: "pause"
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to {action}, because {error}"
@@ -163,10 +163,10 @@ commands:
     response_template: "Playing: {song} by {singer}\nAlbum: {album}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
-    response_template: "Playing singer: {singer}"
+    response_template: "Playing singer {singer}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
-    response_template: "Playing playlist: {playlist}"
+    response_template: "Playing playlist {playlist}"
     error_template: "Failed to play playlist, because {error}"
 appium:
   host: "192.168.50.103"
