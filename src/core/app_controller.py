@@ -118,8 +118,11 @@ class AppController:
                                     case 'playlist':
                                         # Play music and get info
                                         query = ' '.join(command_info['parameters'])
-                                        self.soul_handler.ensure_mic_active()
-                                        playing_info = self.music_handler.play_playlist(query)
+                                        if len(command_info['parameters']) == 0:
+                                            playing_info = self.music_handler.get_playlist_info()
+                                        else:
+                                            self.soul_handler.ensure_mic_active()
+                                            playing_info = self.music_handler.play_playlist(query)
 
                                         if 'error' in playing_info:
                                             response = command_info['error_template'].format(
@@ -127,9 +130,14 @@ class AppController:
                                             )
                                         else:
                                             # Send status back to Soul using command's template
-                                            response = command_info['response_template'].format(
-                                                playlist=playing_info['playlist'],
-                                            )
+                                            if len(command_info['parameters'])==0:
+                                                response = command_info['current_template'].format(
+                                                    playlist=playing_info['playlist'],
+                                                )
+                                            else:
+                                                response = command_info['response_template'].format(
+                                                    playlist=playing_info['playlist'],
+                                                )
                                             response = f'{response} @{message_info.nickname}'
                                     case 'singer':
                                         # Play music and get info

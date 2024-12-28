@@ -34,14 +34,31 @@ class AppHandler:
             return None
 
     def is_element_clickable(self, element):
-        """
-        Check if element is clickable
+        """Check if element is clickable
+        Args:
+            element: WebElement to check
         Returns:
             bool: True if element is clickable, False otherwise
         """
-
-        is_clickable = element.get_attribute("clickable")
-        return is_clickable == "true"
+        try:
+            if not element:
+                return False
+            
+            # First check if element exists and is displayed
+            if not element.is_displayed():
+                return False
+            
+            # Then check if element is enabled
+            if not element.is_enabled():
+                return False
+            
+            # Finally check clickable attribute
+            clickable = element.get_attribute("clickable")
+            return clickable == "true"
+        
+        except Exception as e:
+            print(f"Error checking if element is clickable: {str(e)}")
+            return False
 
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
         """
@@ -271,4 +288,69 @@ class AppHandler:
             return element.get_attribute(attribute)
         except StaleElementReferenceException:
             print(f"Unable to get  attribute {attribute}: Element is no longer attached to the DOM.")
+            return None
+
+    def get_playlist_info(self):
+        """Get current playlist information
+        Returns:
+            str: Formatted playlist info or None if failed
+        """
+        try:
+            # Try to find playlist entry in playing panel first
+            playlist_entry = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['playlist_entry_playing']
+            )
+            
+            if playlist_entry:
+                playlist_entry.click()
+                print("Clicked playlist entry in playing panel")
+            else:
+                # Navigate to home and try floating entry
+                self.navigate_to_home()
+                playlist_entry = self.try_find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['playlist_entry_floating']
+                )
+                if not playlist_entry:
+                    print("Failed to find playlist entry")
+                    return None
+                    
+                playlist_entry.click()
+                print("Clicked playlist entry floating")
+                
+            # Wait for playlist items to appear
+            if not self.wait_for_element(
+                AppiumBy.ID,
+                self.config['elements']['playlist_song']
+            ):
+                print("Failed to find playlist songs")
+                return None
+                
+            # Get all songs and singers
+            songs = self.driver.find_elements(
+                AppiumBy.ID,
+                self.config['elements']['playlist_song']
+            )
+            singers = self.driver.find_elements(
+                AppiumBy.ID,
+                self.config['elements']['playlist_singer']
+            )
+            
+            # Combine songs and singers
+            playlist_info = []
+            for song, singer in zip(songs, singers):
+                try:
+                    song_text = song.text.strip()
+                    singer_text = singer.text.strip()
+                    if song_text and singer_text:
+                        playlist_info.append(f"{song_text}-{singer_text}")
+                except Exception as e:
+                    print(f"Error getting song/singer text: {str(e)}")
+                    continue
+                    
+            return '\n'.join(playlist_info)
+            
+        except Exception as e:
+            print(f"Error getting playlist info: {str(e)}")
             return None

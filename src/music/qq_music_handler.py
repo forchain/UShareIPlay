@@ -1447,3 +1447,96 @@ class QQMusicHandler(AppHandler):
             print(f"Error processing lyrics: {str(e)}")
             traceback.print_exc()
             return []
+
+    def get_playlist_info(self):
+        """Get current playlist information
+        Returns:
+            str: Formatted playlist info or error dict
+        """
+        try:
+            if not self.switch_to_app():
+                return {'error': 'Failed to switch to QQ Music app'}
+            
+            # Try to find playlist entry in playing panel first
+            playlist_entry = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['playlist_entry_playing']
+            )
+            
+            if playlist_entry:
+                if not self.is_element_clickable(playlist_entry):
+                    return {'error': 'Playlist entry in playing panel not clickable'}
+                playlist_entry.click()
+                print("Clicked playlist entry in playing panel")
+            else:
+                # Navigate to home and try floating entry
+                self.navigate_to_home()
+                playlist_entry = self.try_find_element(
+                    AppiumBy.ID,
+                    self.config['elements']['playlist_entry_floating']
+                )
+                if not playlist_entry:
+                    return {'error': 'Failed to find playlist entry'}
+                
+                if not self.is_element_clickable(playlist_entry):
+                    return {'error': 'Playlist entry floating not clickable'}
+                playlist_entry.click()
+                print("Clicked playlist entry floating")
+            
+            playlist_playing = self.wait_for_element(
+                AppiumBy.ID,
+                self.config['elements']['playlist_playing']
+            )
+            if not playlist_playing:
+                return {'error': 'Failed to find playlist playing'}
+            
+            # Find playlist title element
+            playlist_title = self.try_find_element(
+                AppiumBy.ID,
+                self.config['elements']['playlist_title']
+            )
+            if playlist_title:
+                # Get locations and size
+                playing_loc = playlist_playing.location
+                title_loc = playlist_title.location
+                playing_size = playlist_playing.size
+                
+                # Calculate swipe coordinates
+                start_x = playing_loc['x'] + playing_size['width'] // 2
+                start_y = playing_loc['y'] 
+                end_y = title_loc['y']
+                
+                # Swipe playing element up to title position
+                self.driver.swipe(start_x, start_y, start_x, end_y, 500)
+                print(f"Scrolled playlist from y={start_y} to y={end_y}")
+            
+            # Get all songs and singers
+            songs = self.driver.find_elements(
+                AppiumBy.ID,
+                self.config['elements']['playlist_song']
+            )
+            singers = self.driver.find_elements(
+                AppiumBy.ID,
+                self.config['elements']['playlist_singer']
+            )
+            
+            # Combine songs and singers
+            playlist_info = []
+            for song, singer in zip(songs, singers):
+                try:
+                    song_text = song.text.strip()
+                    singer_text = singer.text.strip()
+                    if song_text and singer_text:
+                        playlist_info.append(f"{song_text} {singer_text}")
+                except Exception as e:
+                    print(f"Error getting song/singer text: {str(e)}")
+                    continue
+                
+            if not playlist_info:
+                return {'error': 'No songs found in playlist'}
+            
+            return {'playlist': '\n'.join(playlist_info)}
+            
+        except Exception as e:
+            print(f"Error getting playlist info: {str(e)}")
+            return {'error': str(e)}
