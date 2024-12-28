@@ -111,6 +111,7 @@ qq_music:
     singer_result: 'com.tencent.qqmusic:id/bb9'
     play_playlist: 'com.tencent.qqmusic:id/eg6'
     play_singer: 'com.tencent.qqmusic:id/ehu'
+    play_singer_hot: 'com.tencent.qqmusic:id/j0g'
     playlist_item: 'com.tencent.qqmusic:id/ljb'
     go_back: 'com.tencent.qqmusic:id/zu'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
@@ -175,7 +176,7 @@ commands:
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     response_template: "Playing playlist {playlist}"
-    current_template: "Current playlist\n {playlist}"
+    current_template: "Playlist\n{playlist}"
     error_template: "Failed to play playlist, because {error}"
 appium:
   host: "192.168.50.103"

@@ -243,8 +243,13 @@ class QQMusicHandler(AppHandler):
             AppiumBy.ID, self.config['elements']['play_singer']
         )
         if not play_button:
-            print(f"[Error]play_singer Cannot find play singer button")
-            return {'error': 'Failed to find play button'}
+            print(f"[Warning]play_singer Cannot find play singer button, try find hot play button")
+            play_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['play_singer_hot'])
+            if play_button:
+                play_button.click()
+            else:
+                print(f"[Error]play_singer Cannot find play singer button")
+                return {'error': 'Failed to find play button'}
 
         play_button.click()
         print("Clicked play singer result")
