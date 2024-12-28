@@ -242,17 +242,22 @@ class QQMusicHandler(AppHandler):
         self.wait_for_element(
             AppiumBy.ID,self.config['elements']['singer_tabs'])
 
-        singer_song_tabs = self.driver.find_elements(
-            AppiumBy.XPATH,self.config['elements']['singer_song_tab'])
-        if len(singer_song_tabs) > 1:
-            singer_song_tabs[1].click()
-        else:
-            singer_song_tabs[0].click()
-        print("Selected singer tab")
-
-        play_button = self.wait_for_element_clickable(
+        play_button = self.try_find_element(
             AppiumBy.ID, self.config['elements']['play_singer']
         )
+        if not play_button:
+            singer_song_tabs = self.driver.find_elements(
+                AppiumBy.XPATH, self.config['elements']['singer_song_tab'])
+            if len(singer_song_tabs) > 1:
+                singer_song_tabs[1].click()
+            else:
+                singer_song_tabs[0].click()
+            print("Selected singer tab")
+
+            play_button = self.wait_for_element_clickable(
+                AppiumBy.ID, self.config['elements']['play_singer']
+            )
+
         if not play_button:
             print(f"[Error]play_singer Cannot find play singer button")
             return {'error': 'Failed to find play button'}
