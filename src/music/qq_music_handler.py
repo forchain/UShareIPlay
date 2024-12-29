@@ -745,7 +745,7 @@ class QQMusicHandler(AppHandler):
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])
         lyrics.click()
-        groups = self.process_lyrics(lyrics.text, 16, group_num)
+        groups = self.process_lyrics(lyrics.text, 15, group_num)
 
         return {
             'groups': groups

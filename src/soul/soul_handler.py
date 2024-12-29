@@ -298,6 +298,12 @@ class SoulHandler(AppHandler):
                     if create_party_entry:
                         create_party_entry.click()
                         print("Clicked create party entry")
+                        confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                               self.config['elements'][
+                                                                                   'confirm_party'])
+                        if confirm_party_button:
+                            confirm_party_button.click()
+                            print("Clicked confirm party button")
                         self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
                         create_party_button = self.try_find_element(AppiumBy.ID,
                                                                     self.config['elements']['create_party_button'])
@@ -310,12 +316,6 @@ class SoulHandler(AppHandler):
                             if restore_party_button:
                                 restore_party_button.click()
                                 print("Clicked restore party button")
-                                confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
-                                                                                       self.config['elements'][
-                                                                                           'confirm_party'])
-                                if confirm_party_button:
-                                    confirm_party_button.click()
-                                    print("Clicked confirm party button")
                         input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['confirm_party'])
                         if input_box_entry:
                             print(f"Entered party {party_id}")
