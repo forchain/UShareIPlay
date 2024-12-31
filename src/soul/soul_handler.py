@@ -298,12 +298,12 @@ class SoulHandler(AppHandler):
                     if create_party_entry:
                         create_party_entry.click()
                         print("Clicked create party entry")
-                        confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
-                                                                               self.config['elements'][
-                                                                                   'confirm_party'])
-                        if confirm_party_button:
-                            confirm_party_button.click()
-                            print("Clicked confirm party button")
+                        # confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
+                        #                                                        self.config['elements'][
+                        #                                                            'confirm_party'])
+                        # if confirm_party_button:
+                        #     confirm_party_button.click()
+                        #     print("Clicked confirm party button")
                         self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
                         create_party_button = self.try_find_element(AppiumBy.ID,
                                                                     self.config['elements']['create_party_button'])
@@ -484,69 +484,64 @@ class SoulHandler(AppHandler):
         Returns:
             dict: Result of operation with user info
         """
-        try:
-            # Check relation tag
-            if not message_info.relation_tag:
-                return {
-                    'error': '只有群主密友才能申请管理'
-                }
+        # Check relation tag
+        if not message_info.relation_tag:
+            return {
+                'error': '只有群主密友才能申请管理'
+            }
 
-            # Click avatar to open profile
-            if message_info.avatar_element:
-                message_info.avatar_element.click()
-                print("Clicked sender avatar")
-            else:
-                return {'error': 'Avatar element not found'}
+        # Click avatar to open profile
+        if message_info.avatar_element:
+            message_info.avatar_element.click()
+            print("Clicked sender avatar")
+        else:
+            return {'error': 'Avatar element not found'}
 
-            # Find manager invite button
-            manager_invite = self.wait_for_element_clickable(
+        # Find manager invite button
+        manager_invite = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['manager_invite']
+        )
+        if not manager_invite:
+            return {'error': 'Failed to find manager invite button'}
+
+        # Check current status
+        current_text = manager_invite.text
+        if enable:
+            if current_text == "解除管理":
+                self.press_back()
+                return {'error': '你已经是管理员了'}
+        else:
+            if current_text == "管理邀请":
+                self.press_back()
+                return {'error': '你还不是管理员'}
+
+        # Click manager invite button
+        manager_invite.click()
+        print("Clicked manager invite button")
+
+        # Click confirm button
+        if enable:
+            confirm_button = self.wait_for_element_clickable(
                 AppiumBy.ID,
-                self.config['elements']['manager_invite']
+                self.config['elements']['confirm_invite']
             )
-            if not manager_invite:
-                return {'error': 'Failed to find manager invite button'}
+            action = "Invite"
+        else:
+            confirm_button = self.wait_for_element_clickable(
+                AppiumBy.XPATH,
+                self.config['elements']['confirm_dismiss']
+            )
+            action = "Dismiss"
 
-            # Check current status
-            current_text = manager_invite.text
-            if enable:
-                if current_text == "解除管理":
-                    self.press_back()
-                    return {'error': '你已经是管理员了'}
-            else:
-                if current_text == "管理邀请":
-                    self.press_back()
-                    return {'error': '你还不是管理员'}
+        if not confirm_button:
+            return {'error': f'Failed to find {action} confirmation button'}
 
-            # Click manager invite button
-            manager_invite.click()
-            print("Clicked manager invite button")
+        confirm_button.click()
+        print(f"Clicked {action} confirmation button")
 
-            # Click confirm button
-            if enable:
-                confirm_button = self.wait_for_element_clickable(
-                    AppiumBy.ID,
-                    self.config['elements']['confirm_invite']
-                )
-                action = "Invite"
-            else:
-                confirm_button = self.wait_for_element_clickable(
-                    AppiumBy.XPATH,
-                    self.config['elements']['confirm_dismiss']
-                )
-                action = "Dismiss"
-
-            if not confirm_button:
-                return {'error': f'Failed to find {action} confirmation button'}
-
-            confirm_button.click()
-            print(f"Clicked {action} confirmation button")
-
-            return {'user': message_info.nickname,
-                    'action': action}
-
-        except Exception as e:
-            print(f"Error managing admin: {str(e)}")
-            return {'error': str(e)}
+        return {'user': message_info.nickname,
+                'action': action}
 
     def grab_mic_and_confirm(self):
         """Wait for the grab mic button and confirm the action"""
