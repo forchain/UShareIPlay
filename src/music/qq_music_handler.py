@@ -58,7 +58,7 @@ class QQMusicHandler(AppHandler):
                 print(f"Clicked back button")
             else:
                 search_entry = self.try_find_element(
-                    AppiumBy.XPATH,
+                    AppiumBy.ID,
                     self.config['elements']['search_entry']
                 )
                 if search_entry:
@@ -70,22 +70,18 @@ class QQMusicHandler(AppHandler):
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
-        try:
-            song_element = self.driver.find_element(
-                AppiumBy.ID,
-                self.config['elements']['song_name']
-            )
-            singer_element = self.driver.find_element(
-                AppiumBy.ID,
-                self.config['elements']['singer_name']
-            )
-            return {
-                'song': song_element.text,
-                'singer': singer_element.text
-            }
-        except Exception as e:
-            print(f"Error getting playing info: {str(e)}")
-            return None
+        song_element = self.driver.find_element(
+             AppiumBy.ID,
+             self.config['elements']['song_name']
+         )
+        singer_element = self.driver.find_element(
+            AppiumBy.ID,
+            self.config['elements']['singer_name']
+        )
+        return {
+            'song': song_element.text,
+            'singer': singer_element.text
+        }
 
     def get_current_playing(self):
         """Get current playing song and singer info"""
@@ -134,7 +130,7 @@ class QQMusicHandler(AppHandler):
 
             # Find search entry
             search_entry = self.wait_for_element_clickable(
-                AppiumBy.XPATH,
+                AppiumBy.ID,
                 self.config['elements']['search_entry']
             )
             search_entry.click()
@@ -236,9 +232,14 @@ class QQMusicHandler(AppHandler):
             }
 
         self.select_singer_tab()
+
         singer_result = self.wait_for_element_clickable(
-            AppiumBy.ID, self.config['elements']['singer_result']
-        )
+            AppiumBy.ID, self.config['elements']['singer_result'])
+        if not singer_result:
+            return {
+                'error': 'Failed to find singer result',
+            }
+
         singer_text = self.find_child_element(singer_result, AppiumBy.ID, self.config['elements']['singer_text'])
         singer_text.click()
         print("Selected singer result")
@@ -514,6 +515,7 @@ class QQMusicHandler(AppHandler):
             else:
                 more_menu = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
                 more_menu.click()
+                print(f"Selected more menu")
                 found = False
                 for _ in range(9):
                     self.press_dpad_down()
@@ -521,12 +523,32 @@ class QQMusicHandler(AppHandler):
                     if acc_menu:
                         found = True
                         acc_menu.click()
-                        time.sleep(1)
-                        acc_bar = self.try_find_element(AppiumBy.ID,
-                                                        self.config['elements']['accompaniment_bar'])
-                        if acc_bar:
-                            # maximize accompaniment
-                            self.press_right_key(times=4)
+                        print(f"Selected accompaniment menu")
+                        acc_label = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_label'], timeout=1)
+                        if acc_label:
+                            # Get element size and location
+                            size = acc_label.size
+                            location = acc_label.location
+                            
+                            # Calculate click position
+                            # X: right side - 1/4 of width
+                            click_x = location['x'] + size['width'] - (size['width'] // 4)
+                            # Y: vertical center
+                            click_y = location['y'] + (size['height'] // 2)
+                            
+                            # Perform tap action at calculated position
+                            actions = ActionChains(self.driver)
+                            actions.w3c_actions = ActionBuilder(
+                                self.driver, 
+                                mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
+                            )
+                            actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
+                            actions.w3c_actions.pointer_action.pointer_down()
+                            actions.w3c_actions.pointer_action.pause(0.1)
+                            actions.w3c_actions.pointer_action.pointer_up()
+                            actions.perform()
+                            
+                            self.log_info(f"Clicked acc_label at position ({click_x}, {click_y})")
                         else:
                             return {'error': 'Current song does not support accompaniment, please find one supporting'}
                         break
@@ -973,61 +995,55 @@ class QQMusicHandler(AppHandler):
 
     def get_playback_info(self):
         """Get current playback information including song info and state"""
-        try:
-            # Get media session info
-            result = self.driver.execute_script(
-                'mobile: shell',
-                {
-                    'command': 'dumpsys media_session'
-                }
-            )
-
-            # Parse metadata
-            metadata = {}
-            state = "Unknown"
-
-            if result:
-                # Get metadata
-                meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
-                if meta_match:
-                    meta_parts = meta_match.group(1).split(', ')
-                    if len(meta_parts) >= 3:
-                        metadata = {
-                            'song': meta_parts[0],
-                            'singer': meta_parts[1],
-                            'album': meta_parts[2]
-                        }
-
-                # Get playback state
-                state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
-                if state_match:
-                    state_code = int(state_match.group(1))
-                    state = {
-                        0: "None",
-                        1: "Stopped",
-                        2: "Paused",
-                        3: "Playing",
-                        4: "Fast Forwarding",
-                        5: "Rewinding",
-                        6: "Buffering",
-                        7: "Error",
-                        8: "Connecting",
-                        9: "Skipping to Next",
-                        10: "Skipping to Previous",
-                        11: "Skipping to Queue Item"
-                    }.get(state_code, "Unknown")
-
-            return {
-                'song': metadata.get('song', 'Unknown'),
-                'singer': metadata.get('singer', 'Unknown'),
-                'album': metadata.get('album', 'Unknown'),
-                'state': state
+        # Get media session info
+        result = self.driver.execute_script(
+            'mobile: shell',
+            {
+                'command': 'dumpsys media_session'
             }
+        )
 
-        except Exception as e:
-            print(f"Error getting playback info: {str(e)}")
-            traceback.print_exc()
-            return {'error': str(e)}
+        # Parse metadata
+        metadata = {}
+        state = "Unknown"
+
+        if result:
+            # Get metadata
+            meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
+            if meta_match:
+                meta_parts = meta_match.group(1).split(', ')
+                if len(meta_parts) >= 3:
+                    metadata = {
+                        'song': meta_parts[0],
+                        'singer': meta_parts[1],
+                        'album': meta_parts[2]
+                    }
+
+            # Get playback state
+            state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
+            if state_match:
+                state_code = int(state_match.group(1))
+                state = {
+                    0: "None",
+                    1: "Stopped",
+                    2: "Paused",
+                    3: "Playing",
+                    4: "Fast Forwarding",
+                    5: "Rewinding",
+                    6: "Buffering",
+                    7: "Error",
+                    8: "Connecting",
+                    9: "Skipping to Next",
+                    10: "Skipping to Previous",
+                    11: "Skipping to Queue Item"
+                }.get(state_code, "Unknown")
+
+        return {
+            'song': metadata.get('song', 'Unknown'),
+            'singer': metadata.get('singer', 'Unknown'),
+            'album': metadata.get('album', 'Unknown'),
+            'state': state
+        }
 
     def toggle_ktv_mode(self, enable):
         """Toggle KTV mode
@@ -1283,17 +1299,20 @@ class QQMusicHandler(AppHandler):
             self.last_lyrics = text
             print(f"New lyrics detected: {text}")
             close_poster.click()
-            # 这里可以选择发送消息或其他处理
             # return all_lines
-            return text
+            return {
+               'lyrics': text
+            }
 
-        return None
+        return {
+            'error': 'No new lyrics detected'
+        }
 
     def switch_to_playing_page(self):
         # Press back to exit most interfaces
         self.press_back()
         search_entry = self.try_find_element(
-            AppiumBy.XPATH,
+            AppiumBy.ID,
             self.config['elements']['search_entry']
         )
         if not search_entry:

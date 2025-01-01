@@ -221,6 +221,7 @@ class SoulHandler(AppHandler):
             self.config['elements']['search_entry']
         )
         if not search_entry:
+            print(f"Search entry not found")
             return {
                 'error': 'Failed to find search entry',
             }
@@ -234,10 +235,10 @@ class SoulHandler(AppHandler):
             self.config['elements']['search_box']
         )
         if not search_box:
+            print(f"Search box not found")
             return {
                 'error': 'Failed to find search box',
             }
-
         search_box.send_keys(party_id)
         print(f"Entered party ID: {party_id}")
 
@@ -247,21 +248,32 @@ class SoulHandler(AppHandler):
             self.config['elements']['search_button']
         )
         if not search_button:
+            print(f"Search button not found")
             return {
                 'error': 'Failed to find search button',
             }
-
         search_button.click()
         print("Clicked search button")
 
         party_tab = self.wait_for_element_clickable(AppiumBy.XPATH, self.config['elements']['party_tab'])
+        if not party_tab:
+            print(f"Party tab not found")
+            return {'error': 'Party tab not found'}
         party_tab.click()
+        print("Clicked party tab")
+
         search_result = self.wait_for_element(AppiumBy.ID, self.config['elements']['party_search_result'])
+        if not search_result:
+            print(f"Party search result not found")
+            return {'error': 'Party search result not found'}
+        print("Found party search result")
+
         empty_result = self.find_child_element(search_result, AppiumBy.ID,
                                                self.config['elements']['party_search_empty'])
         if empty_result:
             print(f"Party ID: {party_id} not found")
             return {'error': 'Party not found'}
+
         party_entry = self.find_child_element(search_result, AppiumBy.ID, self.config['elements']['party_search_entry'])
         if not party_entry:
             print(f"Party entry: {party_id} not found")
@@ -284,45 +296,62 @@ class SoulHandler(AppHandler):
             # Party has ended, navigate to create a new party
             print("Party has ended, navigating to create a new party")
             self.press_back()  # Go back to the home screen
+
             planet_tab = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['planet_tab'])
-            if planet_tab:
-                planet_tab.click()
-                print("Clicked planet tab")
-                party_hall_entry = self.wait_for_element_clickable(AppiumBy.XPATH,
-                                                                   self.config['elements']['party_hall_entry'])
-                if party_hall_entry:
-                    party_hall_entry.click()
-                    print("Clicked party hall entry")
-                    create_party_entry = self.wait_for_element_clickable(AppiumBy.ID,
-                                                                         self.config['elements']['create_party_entry'])
-                    if create_party_entry:
-                        create_party_entry.click()
-                        print("Clicked create party entry")
-                        # confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
-                        #                                                        self.config['elements'][
-                        #                                                            'confirm_party'])
-                        # if confirm_party_button:
-                        #     confirm_party_button.click()
-                        #     print("Clicked confirm party button")
-                        self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
-                        create_party_button = self.try_find_element(AppiumBy.ID,
-                                                                    self.config['elements']['create_party_button'])
-                        if create_party_button:
-                            create_party_button.click()
-                            print("Clicked create party button")
-                        else:
-                            restore_party_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements'][
-                                'restore_party'])
-                            if restore_party_button:
-                                restore_party_button.click()
-                                print("Clicked restore party button")
-                        input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['confirm_party'])
-                        if input_box_entry:
-                            print(f"Entered party {party_id}")
-                            claim_reward = self.try_find_element(AppiumBy.ID, self.config['elements']['claim_reward'])
-                            if claim_reward:
-                                claim_reward.click()
-                                print("Claimed party creation reward")
+            if not planet_tab:
+                print("Failed to find planet tab")
+                return {'error': 'Failed to find planet tab'}
+            planet_tab.click()
+            print("Clicked planet tab")
+
+            party_hall_entry = self.wait_for_element_clickable(AppiumBy.XPATH,
+                                                               self.config['elements']['party_hall_entry'])
+            if not party_hall_entry:
+                print(f"Party hall entry not found")
+                return {'error': 'Party hall entry not found'}
+            party_hall_entry.click()
+            print("Clicked party hall entry")
+
+            create_party_entry = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                 self.config['elements']['create_party_entry'])
+            if not create_party_entry:
+                print(f"Party creation entry not found")
+                return {'error': 'Party creation entry not found'}
+            create_party_entry.click()
+            print("Clicked create party entry")
+
+            confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                   self.config['elements'][
+                                                                       'confirm_party'])
+            if not confirm_party_button:
+                print(f"Party confirmation entry not found")
+                return {'error': 'Party confirmation entry not found'}
+            confirm_party_button.click()
+            print("Clicked confirm party button")
+
+            self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
+            create_party_button = self.try_find_element(AppiumBy.ID,
+                                                        self.config['elements']['create_party_button'])
+            if create_party_button:
+                create_party_button.click()
+                print("Clicked create party button")
+            else:
+                restore_party_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements'][
+                    'restore_party'])
+                if restore_party_button:
+                    restore_party_button.click()
+                    print("Clicked restore party button")
+
+        input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['input_box_entry'])
+        if not input_box_entry:
+            print(f"Input box entry not found")
+            return {'error': 'Input box entry not found'}
+        print(f"Entered party {party_id}")
+
+        claim_reward = self.try_find_element(AppiumBy.ID, self.config['elements']['claim_reward'])
+        if claim_reward:
+            claim_reward.click()
+            print("Claimed party creation reward")
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """

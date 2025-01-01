@@ -58,24 +58,24 @@ qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
   elements:
-    search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id='com.tencent.qqmusic:id/hi2']/android.view.View"
+    search_entry: "com.tencent.qqmusic:id/c8x"
     search_box: "com.tencent.qqmusic:id/searchItem"
     song_tab: "//android.widget.RelativeLayout[@content-desc=\"歌曲 按钮\"]"
     play_button: "com.tencent.qqmusic:id/kcr"
     next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
     back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
-    song_name: "com.tencent.qqmusic:id/ll6"
-    singer_name: "com.tencent.qqmusic:id/ln9"
+    song_name: "com.tencent.qqmusic:id/lxj"
+    singer_name: "com.tencent.qqmusic:id/lzn"
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
-    playing_bar: "com.tencent.qqmusic:id/iir"
+    playing_bar: "com.tencent.qqmusic:id/ha_"
     current_song: "android:id/title"
     current_singer: "android:id/text"
     info_dot: "com.tencent.qqmusic:id/c14"
     details_link: "com.tencent.qqmusic:id/gnw"
-    more_in_play_panel: "com.tencent.qqmusic:id/a7m"
-    accompaniment_menu: "//android.widget.TextView[@resource-id=\"com.tencent.qqmusic:id/ndp\" and @text=\"伴唱模式\"]"
+    more_in_play_panel: "com.tencent.qqmusic:id/a8r"
+    accompaniment_menu: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nr8" and @text="伴唱模式"]'
     accompaniment_switch: "com.tencent.qqmusic:id/ocy"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
     full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
@@ -83,39 +83,40 @@ qq_music:
 #    live_lyrics: "com.tencent.qqmusic:id/e5z"
     live_lyrics: "com.tencent.qqmusic:id/lbr"
     accompaniment_tool: "com.tencent.qqmusic:id/ocx"
-    lyrics_tool: "com.tencent.qqmusic:id/hu9"
-    lyrics_poster: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/jbp' and @text='歌词海报']"
-    lyrics_line: "com.tencent.qqmusic:id/h3g"
+    lyrics_tool: "com.tencent.qqmusic:id/i2y"
+    lyrics_poster: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/jmb" and @text="歌词海报"]'
+    lyrics_line: "com.tencent.qqmusic:id/h9e"
     lyrics_end: "//android.view.View"
     no_lyrics: "com.tencent.qqmusic:id/ndz"
-    clear_search: "com.tencent.qqmusic:id/kpu"
-    current_lyrics: "com.tencent.qqmusic:id/kvs"
+    clear_search: "com.tencent.qqmusic:id/l1a"
+    current_lyrics: "com.tencent.qqmusic:id/l7_"
     content_container: "android:id/content"
     reminder_ok: "com.tencent.qqmusic:id/icm"
     vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
     accompaniment_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='伴唱']"
-    lyrics_box: "com.tencent.qqmusic:id/j1t"
-    close_poster: "com.tencent.qqmusic:id/b5_"
-    accompaniment_bar: "com.tencent.qqmusic:id/oct"
+    lyrics_box: "com.tencent.qqmusic:id/jah"
+    close_poster: "com.tencent.qqmusic:id/b6w"
+    accompaniment_bar: "com.tencent.qqmusic:id/or3"
+    accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     fav_entry: 'com.tencent.qqmusic:id/i_s'
     play_fav: 'com.tencent.qqmusic:id/eg6'
     fav_song: 'com.tencent.qqmusic:id/ll6'
     fav_singer: 'com.tencent.qqmusic:id/ln9'
-    lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌词"]'
-    playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌单"]'
-    singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb" and @text="歌手"]'
-    lyrics_text: 'com.tencent.qqmusic:id/h2v'
-    playlist_result: 'com.tencent.qqmusic:id/kq5'
-    singer_text: 'com.tencent.qqmusic:id/mhi'
-    singer_result: 'com.tencent.qqmusic:id/bb9'
-    play_playlist: 'com.tencent.qqmusic:id/eg6'
-    play_singer: 'com.tencent.qqmusic:id/ehu'
+    lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌词"]'
+    playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
+    singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
+    lyrics_text: 'com.tencent.qqmusic:id/h8u'
+    playlist_result: 'com.tencent.qqmusic:id/l1l'
+    singer_text: 'com.tencent.qqmusic:id/muo'
+    singer_result: 'com.tencent.qqmusic:id/l2b'
+    play_playlist: 'com.tencent.qqmusic:id/eki'
+    play_singer: 'com.tencent.qqmusic:id/em7'
     play_singer_hot: 'com.tencent.qqmusic:id/j0g'
-    singer_tabs: 'com.tencent.qqmusic:id/bb7'
+    singer_tabs: 'com.tencent.qqmusic:id/b_h'
     singer_song_tab: '(//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/ebb"])[2]'
     playlist_item: 'com.tencent.qqmusic:id/ljb'
-    go_back: 'com.tencent.qqmusic:id/zu'
+    go_back: 'com.tencent.qqmusic:id/a0q'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry_floating: 'com.tencent.qqmusic:id/iit'
     playlist_entry_playing: 'com.tencent.qqmusic:id/a8f'

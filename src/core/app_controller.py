@@ -380,9 +380,11 @@ class AppController:
                                         print(f"Unknown command: {command_info['prefix']}")
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
-                    l = self.music_handler.check_ktv_lyrics()
-                    if l:
-                        lyrics = l
+                    res = self.music_handler.check_ktv_lyrics()
+                    if 'error' in res:
+                        lyrics = f'stopped KTV mode for {res["error"]}'
+                    else:
+                        lyrics = res['lyrics']
                 else:
                     time.sleep(1)
 
