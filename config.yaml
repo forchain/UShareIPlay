@@ -76,7 +76,7 @@ qq_music:
     details_link: "com.tencent.qqmusic:id/gnw"
     more_in_play_panel: "com.tencent.qqmusic:id/a8r"
     accompaniment_menu: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nr8" and @text="伴唱模式"]'
-    accompaniment_switch: "com.tencent.qqmusic:id/ocy"
+    accompaniment_switch: "com.tencent.qqmusic:id/or6"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
     full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
     accompaniment_status: "com.tencent.qqmusic:id/bln"
@@ -93,7 +93,7 @@ qq_music:
     content_container: "android:id/content"
     reminder_ok: "com.tencent.qqmusic:id/icm"
     vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
-    accompaniment_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='伴唱']"
+    accompaniment_tag: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nj0" and @text="伴唱"]'
     lyrics_box: "com.tencent.qqmusic:id/jah"
     close_poster: "com.tencent.qqmusic:id/b6w"
     accompaniment_bar: "com.tencent.qqmusic:id/or3"

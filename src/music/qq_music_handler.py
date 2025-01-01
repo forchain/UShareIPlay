@@ -524,7 +524,7 @@ class QQMusicHandler(AppHandler):
                         found = True
                         acc_menu.click()
                         print(f"Selected accompaniment menu")
-                        acc_label = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_label'], timeout=1)
+                        acc_label = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_label'], timeout=2)
                         if acc_label:
                             # Get element size and location
                             size = acc_label.size
