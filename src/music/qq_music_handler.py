@@ -195,8 +195,12 @@ class QQMusicHandler(AppHandler):
             AppiumBy.XPATH,
             self.config['elements']['playlist_tab']
         )
+        if not playlist_tab:
+            print("Cannot find playlist tab")
+            return False
         playlist_tab.click()
         print("Selected playlist tab")
+        return True
 
     def select_singer_tab(self):
         """Select the 'Playlist' tab in search results"""
@@ -276,7 +280,10 @@ class QQMusicHandler(AppHandler):
                 'error': 'Failed to query music playlist',
             }
 
-        self.select_playlist_tab()
+        if not self.select_playlist_tab():
+            return {
+                'error': 'Failed to find playlist tab',
+            }
         result = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['playlist_result']
         )

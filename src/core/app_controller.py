@@ -390,9 +390,9 @@ class AppController:
                 print("\nStopping the monitoring...")
                 break
             except StaleElementReferenceException as e:
-                self.soul_handler.log_error('[start_monitoring]stale element, traceback: {traceback.format_exc()}')
+                self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
             except WebDriverException as e:
-                self.soul_handler.log_error('[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
+                self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
                 error_count += 1
                 if error_count > 9:
                     break
