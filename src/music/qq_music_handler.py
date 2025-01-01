@@ -130,8 +130,12 @@ class QQMusicHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['search_entry']
             )
-            search_entry.click()
-            print(f"Clicked search entry")
+            if search_entry:
+                search_entry.click()
+                print(f"Clicked search entry")
+            else:
+                print(f"[Error]query_music failed to find search entry")
+                return False
 
         clear_search = self.try_find_element(
             AppiumBy.ID,
