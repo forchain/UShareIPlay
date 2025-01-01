@@ -53,8 +53,13 @@ class QQMusicHandler(AppHandler):
                 self.config['elements']['search_entry']
             )
             if search_entry:
-                print(f"Found search entry, assume we're at home page")
-                return True
+                go_back = self.try_find_element(AppiumBy.ID, self.config['elements']['go_back'])
+                if go_back:
+                    go_back.click()
+                    self.log_info(f"[navigate_to_home]Clicked go back button")
+                else:
+                    self.log_info(f"[navigate_to_home]Found search entry, assume we're at home page")
+                    return True
             else:
                 self.press_back()
                 n += 1
