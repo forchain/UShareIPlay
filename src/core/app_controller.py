@@ -64,7 +64,7 @@ class AppController:
                 info['state'] = None
                 if info != last_info:
                     last_info = info
-                    if not 'album' in info or len(info['album']) == 0:
+                    if not 'album' in info or len(info['album']) == 0 or info['song'].endswith('(live)'):
                         self.music_handler.skip_song()
                     else:
                         self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} @ {info['album']}")
