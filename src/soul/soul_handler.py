@@ -516,13 +516,20 @@ class SoulHandler(AppHandler):
         # Check relation tag
         if not message_info.relation_tag:
             return {
-                'error': '只有群主密友才能申请管理'
+                'error': 'Only friends of owner can apply administrators',
             }
 
         # Click avatar to open profile
-        if message_info.avatar_element:
-            message_info.avatar_element.click()
-            print("Clicked sender avatar")
+        avatar = message_info.avatar_element
+        if avatar:
+            try:
+               avatar.click()
+               self.logger.info("Clicked sender avatar")
+            except StaleElementReferenceException as e:
+                self.log_error('Avatar element is unavailable')
+                return {
+                    'error': 'Avatar element is unavailable',
+                }
         else:
             return {'error': 'Avatar element not found'}
 

@@ -43,7 +43,7 @@ class AppHandler:
         
         # Create formatter
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            '[%(levelname)s]%(funcName)s:%(lineno)d - %(message)s'
         )
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
