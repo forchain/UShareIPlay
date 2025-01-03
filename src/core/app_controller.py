@@ -64,7 +64,7 @@ class AppController:
                 info['state'] = None
                 if info != last_info:
                     last_info = info
-                    if not 'album' in info or len(info['album']) == 0 or info['song'].endswith('(Live)'):
+                    if not 'album' in info or info['album'] == info['singer'] or info['song'].endswith('(Live)'):
                         self.music_handler.skip_song()
                     else:
                         self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} @ {info['album']}")
@@ -97,7 +97,8 @@ class AppController:
                                 if not enabled:
                                     continue
 
-                                self.soul_handler.send_message(f'Processing {cmd} command from @{message_info.nickname}')
+                                self.soul_handler.send_message(
+                                    f'Processing {cmd} command from @{message_info.nickname}')
 
                                 match command_info['prefix']:
                                     case 'play':
@@ -132,7 +133,7 @@ class AppController:
                                             )
                                         else:
                                             # Send status back to Soul using command's template
-                                            if len(command_info['parameters'])==0:
+                                            if len(command_info['parameters']) == 0:
                                                 response = command_info['current_template'].format(
                                                     playlist=playing_info['playlist'],
                                                 )
@@ -267,7 +268,7 @@ class AppController:
                                         # Parse parameters
                                         force_groups = 0
                                         params = command_info['parameters']
-                                        
+
                                         if params:
                                             try:
                                                 # Try to parse first parameter as group number
@@ -279,7 +280,7 @@ class AppController:
                                                 query = ' '.join(params)
                                         else:
                                             query = ""
-                                            
+
                                         result = self.music_handler.query_lyrics(query, force_groups)
 
                                         if 'error' in result:
@@ -355,7 +356,7 @@ class AppController:
                                                 # Use success template if operation succeeded
                                                 response = command_info['response_template'].format(
                                                     user=message_info.nickname,
-                                                    action = result['action']
+                                                    action=result['action']
                                                 )
                                         else:
                                             response = command_info['error_template'].format(
@@ -391,7 +392,8 @@ class AppController:
                 # clear error once back to normal
                 error_count = 0
                 if self.soul_handler.error_count > 9:
-                    self.soul_handler.log_error(f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
+                    self.soul_handler.log_error(
+                        f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
                     return False
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
