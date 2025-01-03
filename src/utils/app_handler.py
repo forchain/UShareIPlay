@@ -1,4 +1,6 @@
 import time
+import traceback
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -15,6 +17,7 @@ class AppHandler:
         self.driver = driver
         self.config = config
         self.logger = self._setup_logger()
+        self.error_count = 0
 
     def _setup_logger(self):
         """Setup logger for the handler
@@ -79,8 +82,8 @@ class AppHandler:
             self.log_debug(f"Found element: {locator_value}")
             return element
         except Exception as e:
-            self.log_error(f"Element not found within {timeout} seconds: {locator_value}")
-            self.log_error(f"Error: {str(e)}")
+            self.logger.error(f"Element not found within {timeout} seconds: {locator_value}")
+            self.logger.error(f"Error: {str(e)}")
             return None
 
     def is_element_clickable(self, element):
@@ -169,10 +172,12 @@ class AppHandler:
         try:
             self.driver.press_keycode(4)  # Android back key code
         except WebDriverException as e:
-            print(f"Failed to press back button")
+            self.error_count += 1
+            self.logger.error(f"[press_back]Failed to press back button,  times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}")
             return False
 
-        print("Pressed back button")
+        self.error_count = 0
+        self.logger.info("Pressed back button")
         return True
 
     def press_dpad_down(self):

@@ -526,7 +526,7 @@ class SoulHandler(AppHandler):
                avatar.click()
                self.logger.info("Clicked sender avatar")
             except StaleElementReferenceException as e:
-                self.log_error('Avatar element is unavailable')
+                self.logger.error('Avatar element is unavailable')
                 return {
                     'error': 'Avatar element is unavailable',
                 }

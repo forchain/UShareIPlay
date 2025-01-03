@@ -1,28 +1,28 @@
-import logging
 from src.core.app_controller import AppController
 from src.utils.config_loader import ConfigLoader
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+def run_app():
+    # 加载配置
+    config = ConfigLoader.load_config()
 
-logger = logging.getLogger(__name__)
+    # 初始化控制器
+    controller = AppController(config)
+
+    # 启动监控
+    return controller.start_monitoring()
 
 def main():
-    try:
-        # 加载配置
-        config = ConfigLoader.load_config()
-        
-        # 初始化控制器
-        controller = AppController(config)
-        
-        # 启动监控
-        controller.start_monitoring()
-        
-    except Exception as e:
-        logger.error(f"Application error: {str(e)}")
-        raise
+    run_count = 0
+    while run_count <= 9:
+        res = run_app()
+        if res:
+            break
+        run_count += 1
+        print(f"[main]App restarting... {run_count}")
+    if run_count > 9:
+        print("[main]App error too many times, exit.")
+    else:
+        print("[main]App stopped by user, exit.")
 
 if __name__ == "__main__":
     main() 

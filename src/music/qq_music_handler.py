@@ -56,9 +56,9 @@ class QQMusicHandler(AppHandler):
                 go_back = self.try_find_element(AppiumBy.ID, self.config['elements']['go_back'])
                 if go_back:
                     go_back.click()
-                    self.log_info(f"[navigate_to_home]Clicked go back button")
+                    self.logger.info(f"[navigate_to_home]Clicked go back button")
                 else:
-                    self.log_info(f"[navigate_to_home]Found search entry, assume we're at home page")
+                    self.logger.info(f"[navigate_to_home]Found search entry, assume we're at home page")
                     return True
             else:
                 self.press_back()
@@ -130,8 +130,12 @@ class QQMusicHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['search_entry']
             )
-            search_entry.click()
-            print(f"Clicked search entry")
+            if search_entry:
+                search_entry.click()
+                print(f"Clicked search entry")
+            else:
+                print(f"[Error]query_music failed to find search entry")
+                return False
 
         clear_search = self.try_find_element(
             AppiumBy.ID,
@@ -250,12 +254,12 @@ class QQMusicHandler(AppHandler):
             song_tab = self.try_find_element(
                 AppiumBy.XPATH, self.config['elements']['song_tab'])
             if not song_tab:
-                self.log_error("Cannot find singer song tab")
+                self.logger.error("Cannot find singer song tab")
                 return {
                     'error': 'Failed to find singer song tab',
                 }
             song_tab.click()
-            self.log_info("Selected singer tab")
+            self.logger.info("Selected singer tab")
 
             play_button = self.wait_for_element_clickable(
                 AppiumBy.ID, self.config['elements']['play_singer']
@@ -546,7 +550,7 @@ class QQMusicHandler(AppHandler):
                             actions.w3c_actions.pointer_action.pointer_up()
                             actions.perform()
                             
-                            self.log_info(f"Clicked acc_label at position ({click_x}, {click_y})")
+                            self.logger.info(f"Clicked acc_label at position ({click_x}, {click_y})")
                         else:
                             return {'error': 'Current song does not support accompaniment, please find one supporting'}
                         break
