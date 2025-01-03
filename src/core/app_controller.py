@@ -388,13 +388,19 @@ class AppController:
                 else:
                     time.sleep(1)
 
+                # clear error once back to normal
+                error_count = 0
+                if self.soul_handler.error_count > 9:
+                    self.soul_handler.log_error(f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
+                    return False
             except KeyboardInterrupt:
                 print("\nStopping the monitoring...")
-                break
+                return True
             except StaleElementReferenceException as e:
                 self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
             except WebDriverException as e:
                 self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
                 error_count += 1
+                # error consecutively up to 10 times, should rerun app
                 if error_count > 9:
-                    break
+                    return False
