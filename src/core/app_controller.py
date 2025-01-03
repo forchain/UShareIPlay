@@ -67,7 +67,7 @@ class AppController:
                     if not 'album' in info or info['album'] == info['singer'] or info['song'].endswith('(Live)'):
                         self.music_handler.skip_song()
                     else:
-                        self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} @ {info['album']}")
+                        self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
                 messages = self.soul_handler.get_latest_message(enabled)

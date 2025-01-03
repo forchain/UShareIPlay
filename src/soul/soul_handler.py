@@ -315,43 +315,41 @@ class SoulHandler(AppHandler):
             create_party_entry = self.wait_for_element_clickable(AppiumBy.ID,
                                                                  self.config['elements']['create_party_entry'])
             if not create_party_entry:
-                print(f"Party creation entry not found")
+                self.logger.error(f"Party creation entry not found")
                 return {'error': 'Party creation entry not found'}
             create_party_entry.click()
-            print("Clicked create party entry")
+            self.logger.info("Clicked create party entry")
 
             confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
                                                                    self.config['elements'][
-                                                                       'confirm_party'])
-            if not confirm_party_button:
-                print(f"Party confirmation entry not found")
-                return {'error': 'Party confirmation entry not found'}
-            confirm_party_button.click()
-            print("Clicked confirm party button")
+                                                                       'confirm_party'], timeout=1)
+            if confirm_party_button:
+                confirm_party_button.click()
+                self.logger.info("Clicked confirm party button")
 
             self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
             create_party_button = self.try_find_element(AppiumBy.ID,
                                                         self.config['elements']['create_party_button'])
             if create_party_button:
                 create_party_button.click()
-                print("Clicked create party button")
+                self.logger.info("Clicked create party button")
             else:
                 restore_party_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements'][
                     'restore_party'])
                 if restore_party_button:
                     restore_party_button.click()
-                    print("Clicked restore party button")
+                    self.logger.info("Clicked restore party button")
 
         input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['input_box_entry'])
         if not input_box_entry:
-            print(f"Input box entry not found")
+            self.logger.error(f"Input box entry not found")
             return {'error': 'Input box entry not found'}
-        print(f"Entered party {party_id}")
+        self.logger.info(f"Entered party {party_id}")
 
         claim_reward = self.try_find_element(AppiumBy.ID, self.config['elements']['claim_reward'])
         if claim_reward:
             claim_reward.click()
-            print("Claimed party creation reward")
+            self.logger.info("Claimed party creation reward")
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
@@ -523,8 +521,8 @@ class SoulHandler(AppHandler):
         avatar = message_info.avatar_element
         if avatar:
             try:
-               avatar.click()
-               self.logger.info("Clicked sender avatar")
+                avatar.click()
+                self.logger.info("Clicked sender avatar")
             except StaleElementReferenceException as e:
                 self.logger.error('Avatar element is unavailable')
                 return {
