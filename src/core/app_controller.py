@@ -98,7 +98,7 @@ class AppController:
                                     continue
 
                                 self.soul_handler.send_message(
-                                    f'Processing {cmd} command from @{message_info.nickname}')
+                                    f'Processing :{cmd} command @{message_info.nickname}')
 
                                 match command_info['prefix']:
                                     case 'play':

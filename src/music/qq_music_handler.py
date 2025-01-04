@@ -1246,68 +1246,23 @@ class QQMusicHandler(AppHandler):
                 if current_line:
                     text += current_line.text + '\n'
 
-        # if n > 5:
-        #     self.ktv_mode = False
-        #     print(f'Music ended, KTV off')
-        # no = 0
-        # for lyrics_box in lyrics_boxes:
-        #     # 检查是否包含current_lyrics
-        #     current_lyrics = self.find_child_element(
-        #         lyrics_box,
-        #         AppiumBy.ID,
-        #         self.config['elements']['current_lyrics']
-        #     )
-        #     if current_lyrics:
-        #        break
-        #     no += 1
+        if text:
+            if text == self.last_lyrics:
+                return {
+                    'lyrics': 'Playing interlude..'
+                }
+            else:
+                self.last_lyrics = text
+                close_poster.click()
+                # return all_lines
+                return {
+                   'lyrics': text
+                }
 
-        # # skip current line
-        # no += 1
-        # lyrics_lines = []
-        # for i in range(no, len(lyrics_boxes)):
-        #     line = self.find_child_element(
-        #         lyrics_boxes[i],
-        #         AppiumBy.ID,
-        #         self.config['elements']['lyrics_line']
-        #     )
-        #     if line:
-        #         lyrics_lines.append(line.text)
-        #
-        # # 找到lyrics_line
-        # current_line = self.find_child_element(
-        #     lyrics_boxes[no],
-        #     AppiumBy.ID,
-        #     self.config['elements']['lyrics_line']
-        # )
-        #
-        # text = current_line.text.strip()
-        # all_lines = text
-        # for i in range(0, len(self.last_lyrics_lines)):
-        #     if self.last_lyrics_lines[i] == text:
-        #         break
-        #     no += 1
-        #     if no == len(lyrics_boxes):
-        #         break
-        #     extended_line = self.find_child_element(
-        #         lyrics_boxes[no],
-        #         AppiumBy.ID,
-        #         self.config['elements']['lyrics_line']
-        #     )
-        #     if extended_line:
-        #         all_lines += '\n' + extended_line.text.strip()
-        #
-        # self.last_lyrics_lines = lyrics_lines
-        if text and text != self.last_lyrics:
-            self.last_lyrics = text
-            print(f"New lyrics detected: {text}")
-            close_poster.click()
-            # return all_lines
-            return {
-               'lyrics': text
-            }
-
+        self.logger.error(f"lyrics is unavailable")
+        self.ktv_mode = False
         return {
-            'error': 'No new lyrics detected'
+            'error': 'lyrics is unavailable'
         }
 
     def switch_to_playing_page(self):
