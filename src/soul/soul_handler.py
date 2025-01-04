@@ -40,9 +40,9 @@ class SoulHandler(AppHandler):
         if not message_list:
             if enabled:
                 print("[Warning] get_latest_message cannot find message_list, may be minimized")
-                enable_floating_entry = True
-                floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'])
-                if enable_floating_entry and floating_entry and self.is_element_clickable(floating_entry):
+                floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'],
+                                                       clickable=True)
+                if floating_entry:
                     floating_entry.click()
                     message_list = self.try_find_element(
                         AppiumBy.ID,
@@ -203,11 +203,18 @@ class SoulHandler(AppHandler):
             self.config['elements']['button_send']
         )
         send_button.click()
-        print("Clicked send button")
+        self.logger.info("Clicked send button")
 
-        # hide input dialog
-        self.press_back()
-        print("Hide input dialog")
+        input_box_entry = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['input_box_entry'], timeout=1
+        )
+        if not input_box_entry:
+            # hide input dialog
+            self.press_back()
+            self.logger.info("Hide input dialog")
+        else:
+            self.logger.info("Found input box entry, no need to hide input dialog")
 
         input_box = self.try_find_element(AppiumBy.ID, self.config['elements']['input_box'], log=False)
         if input_box:
