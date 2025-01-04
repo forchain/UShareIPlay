@@ -134,9 +134,7 @@ commands:
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to {action}, because {error}"
   - prefix: "vol"
-    response_template: "Current volume is {level}"
-    increase_template: "Volume increased by {times} level, current volume is {level}"
-    decrease_template: "Volume decreased by {times} level, current volume is {level}"
+    response_template: "Adjusted volume to {volume}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
@@ -151,19 +149,32 @@ commands:
     response_template: "Enabled: {enabled}"
   - prefix: "help"
     response_template:  |
-      Help for (U)Share (I)Play
-      1. play - play music instantly
-        command - :play keywords
-      2. next - add music to playlist, first come first serve, won't change playlist
-        command - :next keywords
-      3. acc - turn on/off accompaniment mode, apply on the playlist
-        command - :acc 1/0
-      4. skip - play next song instantly
-        command - :skip
-      5. pause - pause/play current song
-        command - :pause 1/0
-      6. vol - Adjust volume  by n level, if n is negative, it means decrease
-        command - :vol n
+      Help
+      1. play music instantly
+        :play song singer 
+      2. add music to playlist
+        :next song singer
+      3. turn on/off accompaniment mode
+        :acc 1/0
+      4. play next song instantly
+        :skip
+      5. pause/resume current song
+        :pause 1/0
+      6. Adjust volume (0~15)
+        :vol n
+      7. view lyrics of playing song
+        :lyrics
+      8. view playing song
+        :info
+      9. play music collection
+        :playlist music
+      10. play singer collection
+        :singer name
+      11. apply/dismiss admin
+        :admin 1/0
+      12. ktv mode
+        :ktv 1/0
+
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"

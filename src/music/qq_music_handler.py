@@ -68,9 +68,9 @@ class QQMusicHandler(AppHandler):
     def get_playing_info(self):
         """Get current playing song and singer info"""
         song_element = self.driver.find_element(
-             AppiumBy.ID,
-             self.config['elements']['song_name']
-         )
+            AppiumBy.ID,
+            self.config['elements']['song_name']
+        )
         singer_element = self.driver.find_element(
             AppiumBy.ID,
             self.config['elements']['singer_name']
@@ -245,7 +245,7 @@ class QQMusicHandler(AppHandler):
         print("Selected singer result")
 
         self.wait_for_element(
-            AppiumBy.ID,self.config['elements']['singer_tabs'])
+            AppiumBy.ID, self.config['elements']['singer_tabs'])
 
         play_button = self.try_find_element(
             AppiumBy.ID, self.config['elements']['play_singer']
@@ -526,22 +526,24 @@ class QQMusicHandler(AppHandler):
                         found = True
                         acc_menu.click()
                         print(f"Selected accompaniment menu")
-                        acc_label = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_label'], timeout=2)
+                        acc_label = self.wait_for_element_clickable(AppiumBy.ID,
+                                                                    self.config['elements']['accompaniment_label'],
+                                                                    timeout=2)
                         if acc_label:
                             # Get element size and location
                             size = acc_label.size
                             location = acc_label.location
-                            
+
                             # Calculate click position
                             # X: right side - 1/4 of width
                             click_x = location['x'] + size['width'] - (size['width'] // 4)
                             # Y: vertical center
                             click_y = location['y'] + (size['height'] // 2)
-                            
+
                             # Perform tap action at calculated position
                             actions = ActionChains(self.driver)
                             actions.w3c_actions = ActionBuilder(
-                                self.driver, 
+                                self.driver,
                                 mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
                             )
                             actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
@@ -549,7 +551,7 @@ class QQMusicHandler(AppHandler):
                             actions.w3c_actions.pointer_action.pause(0.1)
                             actions.w3c_actions.pointer_action.pointer_up()
                             actions.perform()
-                            
+
                             self.logger.info(f"Clicked acc_label at position ({click_x}, {click_y})")
                         else:
                             return {'error': 'Current song does not support accompaniment, please find one supporting'}
@@ -570,27 +572,35 @@ class QQMusicHandler(AppHandler):
             dict: Result with level and times if adjusted, or error
         """
         try:
+            vol = self.get_volume_level()
             if delta is None:
                 # Just get current volume
-                return {'level': self.get_volume_level()}
+                return {'volume': vol}
 
             # Adjust volume
-            times = abs(delta)
-            for i in range(times):
-                if delta > 0:
-                    self.press_volume_up()
-                    print(f"Increased volume ({i + 1}/{times})")
-                else:
+            if delta < 0:
+                times = abs(delta) if vol + delta > 0 else vol
+                for i in range(times):
                     self.press_volume_down()
-                    print(f"Decreased volume ({i + 1}/{times})")
+                    self.logger.info(f"Decreased volume ({i + 1}/{times})")
+            else:
+                if vol > delta:
+                    times = vol - delta
+                    for i in range(times):
+                        self.press_volume_down()
+                        self.logger.info(f"Decreased volume ({i + 1}/{times})")
+                else:
+                    times = delta - vol
+                    for i in range(times):
+                        self.press_volume_up()
+                        self.logger.info(f"Increased volume ({i + 1}/{times})")
 
             # Get final volume level
-            level = self.get_volume_level()
+            vol = self.get_volume_level()
+            self.logger.info(f"Adjusted volume to {vol}")
             return {
-                'level': level,
-                'times': times
+                'volume': vol,
             }
-
         except Exception as e:
             print(f"Error adjusting volume: {str(e)}")
             return {'error': str(e)}
@@ -1256,7 +1266,7 @@ class QQMusicHandler(AppHandler):
                 close_poster.click()
                 # return all_lines
                 return {
-                   'lyrics': text
+                    'lyrics': text
                 }
 
         self.logger.error(f"lyrics is unavailable")
@@ -1398,30 +1408,30 @@ class QQMusicHandler(AppHandler):
         Returns:
             list: list of processed lyrics groups
         """
-            # Calculate total length including newlines
+        # Calculate total length including newlines
         from html import unescape
         lyrics_text = unescape(lyrics_text)
         total_length = len(lyrics_text)
-            
+
         # Calculate number of groups
         if force_groups > 0:
             num_groups = force_groups
         else:
             num_groups = (total_length + 499) // 500  # Ceiling division
-            
+
         # Calculate target size per group
         target_group_size = total_length / num_groups if num_groups > 0 else 0
 
         # Split lyrics into lines and remove empty lines
         lyrics_lines = [line.strip() for line in lyrics_text.split('\n') if line.strip()]
-            
+
         if not lyrics_lines:
             return []
 
         # First pass: combine adjacent lines within max_width
         combined_lines = []
         current_line = lyrics_lines[0]
-            
+
         for next_line in lyrics_lines[1:]:
             # Try combining with next line (including a space between)
             combined = current_line + " " + next_line
@@ -1430,7 +1440,7 @@ class QQMusicHandler(AppHandler):
             else:
                 combined_lines.append(current_line)
                 current_line = next_line
-            
+
         # Add the last line
         combined_lines.append(current_line)
 
@@ -1442,11 +1452,11 @@ class QQMusicHandler(AppHandler):
         for line in combined_lines:
             line_length = len(line) + 1  # +1 for newline
             new_length = current_length + line_length
-            
+
             # Check if adding this line would make the group too far from target size
             if (current_length > 0 and  # Don't check first line
-                abs(new_length - target_group_size) > abs(current_length - target_group_size) and 
-                len(groups) < num_groups - 1):  # Don't create new group if we're on last group
+                    abs(new_length - target_group_size) > abs(current_length - target_group_size) and
+                    len(groups) < num_groups - 1):  # Don't create new group if we're on last group
                 groups.append('\n'.join(current_group))
                 current_group = [line]
                 current_length = len(line)
@@ -1468,13 +1478,13 @@ class QQMusicHandler(AppHandler):
         try:
             if not self.switch_to_app():
                 return {'error': 'Failed to switch to QQ Music app'}
-            
+
             # Try to find playlist entry in playing panel first
             playlist_entry = self.try_find_element(
                 AppiumBy.ID,
                 self.config['elements']['playlist_entry_playing']
             )
-            
+
             if playlist_entry:
                 if not self.is_element_clickable(playlist_entry):
                     return {'error': 'Playlist entry in playing panel not clickable'}
@@ -1489,19 +1499,19 @@ class QQMusicHandler(AppHandler):
                 )
                 if not playlist_entry:
                     return {'error': 'Failed to find playlist entry'}
-                
+
                 if not self.is_element_clickable(playlist_entry):
                     return {'error': 'Playlist entry floating not clickable'}
                 playlist_entry.click()
                 print("Clicked playlist entry floating")
-            
+
             playlist_playing = self.wait_for_element(
                 AppiumBy.ID,
                 self.config['elements']['playlist_playing']
             )
             if not playlist_playing:
                 return {'error': 'Failed to find playlist playing'}
-            
+
             # Find playlist title element
             playlist_header = self.try_find_element(
                 AppiumBy.ID,
@@ -1512,16 +1522,16 @@ class QQMusicHandler(AppHandler):
                 playing_loc = playlist_playing.location
                 title_loc = playlist_header.location
                 playing_size = playlist_playing.size
-                
+
                 # Calculate swipe coordinates
                 start_x = playing_loc['x'] + playing_size['width'] // 2
-                start_y = playing_loc['y'] 
+                start_y = playing_loc['y']
                 end_y = title_loc['y']
-                
+
                 # Swipe playing element up to title position
                 self.driver.swipe(start_x, start_y, start_x, end_y, 500)
                 print(f"Scrolled playlist from y={start_y} to y={end_y}")
-            
+
             # Get all songs and singers
             songs = self.driver.find_elements(
                 AppiumBy.ID,
@@ -1531,7 +1541,7 @@ class QQMusicHandler(AppHandler):
                 AppiumBy.ID,
                 self.config['elements']['playlist_singer']
             )
-            
+
             # Combine songs and singers
             playlist_info = []
             for song, singer in zip(songs, singers):
@@ -1543,12 +1553,12 @@ class QQMusicHandler(AppHandler):
                 except Exception as e:
                     print(f"Error getting song/singer text: {str(e)}")
                     continue
-                
+
             if not playlist_info:
                 return {'error': 'No songs found in playlist'}
-            
+
             return {'playlist': '\n'.join(playlist_info)}
-            
+
         except Exception as e:
             print(f"Error getting playlist info: {str(e)}")
             return {'error': str(e)}

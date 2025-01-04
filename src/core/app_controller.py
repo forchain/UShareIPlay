@@ -227,23 +227,9 @@ class AppController:
                                                 error=result['error']
                                             )
                                         else:
-                                            if delta is None:
-                                                # Just showing current volume
-                                                response = command_info['response_template'].format(
-                                                    level=result['level']
-                                                )
-                                            elif delta > 0:
-                                                # Volume increased
-                                                response = command_info['increase_template'].format(
-                                                    times=result['times'],
-                                                    level=result['level']
-                                                )
-                                            else:
-                                                # Volume decreased
-                                                response = command_info['decrease_template'].format(
-                                                    times=result['times'],
-                                                    level=result['level']
-                                                )
+                                            response = command_info['response_template'].format(
+                                                volume=result['volume'],
+                                            )
                                     case 'acc':
                                         # Get parameter
                                         if len(command_info['parameters']) > 0:
