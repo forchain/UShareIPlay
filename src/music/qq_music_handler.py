@@ -56,9 +56,9 @@ class QQMusicHandler(AppHandler):
                 go_back = self.try_find_element(AppiumBy.ID, self.config['elements']['go_back'])
                 if go_back:
                     go_back.click()
-                    self.logger.info(f"[navigate_to_home]Clicked go back button")
+                    self.logger.info(f"Clicked go back button")
                 else:
-                    self.logger.info(f"[navigate_to_home]Found search entry, assume we're at home page")
+                    self.logger.info(f"Found search entry, assume we're at home page")
                     return True
             else:
                 self.press_back()
@@ -132,9 +132,9 @@ class QQMusicHandler(AppHandler):
             )
             if search_entry:
                 search_entry.click()
-                print(f"Clicked search entry")
+                self.logger.info(f"Clicked search entry")
             else:
-                print(f"[Error]query_music failed to find search entry")
+                self.logger.error(f"failed to find search entry")
                 return False
 
         clear_search = self.try_find_element(
@@ -143,7 +143,7 @@ class QQMusicHandler(AppHandler):
         )
         if clear_search:
             clear_search.click()
-            print(f"Clear search")
+            self.logger.info(f"Clear search")
 
         # Find and click search box
         search_box = self.wait_for_element_clickable(
@@ -266,11 +266,11 @@ class QQMusicHandler(AppHandler):
             )
 
         if not play_button:
-            print(f"[Error]play_singer Cannot find play singer button")
+            self.logger.error(f"Cannot find play singer button")
             return {'error': 'Failed to find play button'}
 
         play_button.click()
-        print("Clicked play singer result")
+        self.logger.info("Clicked play singer result")
 
         return {
             'singer': singer_text.text,
@@ -1331,7 +1331,7 @@ class QQMusicHandler(AppHandler):
             try:
                 playing_bar.click()
             except StaleElementReferenceException as e:
-                print(f"[switch_to_lyrics_page]Failed to click playing bar")
+                self.logger.error(f"Failed to click playing bar")
                 self.press_back()
                 return {'error': 'Failed to switch to lyrics page, unexpected dialog might pop up'}
 
@@ -1344,7 +1344,7 @@ class QQMusicHandler(AppHandler):
             self.config['elements']['more_in_play_panel']
         )
         if not more_menu:
-            print(f"[switch_to_lyrics_page]playing interface is covered by unexpected dialog")
+            self.logger.error(f"playing interface is covered by unexpected dialog")
             return {'error': 'Cannot find playing interface, please try again'}
 
     def switch_to_lyrics_page(self):
@@ -1443,71 +1443,67 @@ class QQMusicHandler(AppHandler):
         Returns:
             list: list of processed lyrics groups
         """
-        try:
             # Calculate total length including newlines
-            total_length = len(lyrics_text)
+        from html import unescape
+        lyrics_text = unescape(lyrics_text)
+        total_length = len(lyrics_text)
             
-            # Calculate number of groups
-            if force_groups > 0:
-                num_groups = force_groups
-            else:
-                num_groups = (total_length + 499) // 500  # Ceiling division
-                
-            # Calculate target size per group
-            target_group_size = total_length / num_groups if num_groups > 0 else 0
-
-            # Split lyrics into lines and remove empty lines
-            lyrics_lines = [line.strip() for line in lyrics_text.split('\n') if line.strip()]
+        # Calculate number of groups
+        if force_groups > 0:
+            num_groups = force_groups
+        else:
+            num_groups = (total_length + 499) // 500  # Ceiling division
             
-            if not lyrics_lines:
-                return []
+        # Calculate target size per group
+        target_group_size = total_length / num_groups if num_groups > 0 else 0
 
-            # First pass: combine adjacent lines within max_width
-            combined_lines = []
-            current_line = lyrics_lines[0]
+        # Split lyrics into lines and remove empty lines
+        lyrics_lines = [line.strip() for line in lyrics_text.split('\n') if line.strip()]
             
-            for next_line in lyrics_lines[1:]:
-                # Try combining with next line (including a space between)
-                combined = current_line + " " + next_line
-                if len(combined) <= max_width:
-                    current_line = combined
-                else:
-                    combined_lines.append(current_line)
-                    current_line = next_line
-            
-            # Add the last line
-            combined_lines.append(current_line)
-
-            # Second pass: group lines with balanced length
-            groups = []
-            current_group = []
-            current_length = 0
-
-            for line in combined_lines:
-                line_length = len(line) + 1  # +1 for newline
-                new_length = current_length + line_length
-                
-                # Check if adding this line would make the group too far from target size
-                if (current_length > 0 and  # Don't check first line
-                    abs(new_length - target_group_size) > abs(current_length - target_group_size) and 
-                    len(groups) < num_groups - 1):  # Don't create new group if we're on last group
-                    groups.append('\n'.join(current_group))
-                    current_group = [line]
-                    current_length = len(line)
-                else:
-                    current_group.append(line)
-                    current_length = new_length
-
-            # Add the last group
-            if current_group:
-                groups.append('\n'.join(current_group))
-
-            return groups
-
-        except Exception as e:
-            print(f"Error processing lyrics: {str(e)}")
-            traceback.print_exc()
+        if not lyrics_lines:
             return []
+
+        # First pass: combine adjacent lines within max_width
+        combined_lines = []
+        current_line = lyrics_lines[0]
+            
+        for next_line in lyrics_lines[1:]:
+            # Try combining with next line (including a space between)
+            combined = current_line + " " + next_line
+            if len(combined) <= max_width:
+                current_line = combined
+            else:
+                combined_lines.append(current_line)
+                current_line = next_line
+            
+        # Add the last line
+        combined_lines.append(current_line)
+
+        # Second pass: group lines with balanced length
+        groups = []
+        current_group = []
+        current_length = 0
+
+        for line in combined_lines:
+            line_length = len(line) + 1  # +1 for newline
+            new_length = current_length + line_length
+            
+            # Check if adding this line would make the group too far from target size
+            if (current_length > 0 and  # Don't check first line
+                abs(new_length - target_group_size) > abs(current_length - target_group_size) and 
+                len(groups) < num_groups - 1):  # Don't create new group if we're on last group
+                groups.append('\n'.join(current_group))
+                current_group = [line]
+                current_length = len(line)
+            else:
+                current_group.append(line)
+                current_length = new_length
+
+        # Add the last group
+        if current_group:
+            groups.append('\n'.join(current_group))
+
+        return groups
 
     def get_playlist_info(self):
         """Get current playlist information

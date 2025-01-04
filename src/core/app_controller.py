@@ -88,7 +88,7 @@ class AppController:
                                 cmd = command_info['prefix']
                                 if cmd == 'enable':
                                     enabled = ''.join(command_info['parameters']) == "1"
-                                    print(f"[Info]start_monitoring enabled: {enabled}")
+                                    self.soul_handler.logger.info(f"start_monitoring enabled: {enabled}")
                                     response = command_info['response_template'].format(
                                         enabled=enabled
                                     )

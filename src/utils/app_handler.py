@@ -173,7 +173,7 @@ class AppHandler:
             self.driver.press_keycode(4)  # Android back key code
         except WebDriverException as e:
             self.error_count += 1
-            self.logger.error(f"[press_back]Failed to press back button,  times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}")
+            self.logger.error(f"Failed to press back button,  times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}")
             return False
 
         self.error_count = 0
