@@ -30,6 +30,7 @@ class QQMusicHandler(AppHandler):
         self.ktv_mode = False  # KTV mode state
         self.last_lyrics = ""  # Store last recognized lyrics
         self.last_lyrics_lines = []
+        self.live_count = 0
 
         # Optimize driver settings
         self.driver.update_settings({
@@ -162,17 +163,32 @@ class QQMusicHandler(AppHandler):
         return True
 
     def _prepare_music_playback(self, music_query):
-        self.query_music(music_query)
+        if not self.query_music(music_query):
+            self.logger.error(f"Failed to query music query: {music_query}")
+            playing_info = {
+                'error': f"Failed to query music: {music_query}"
+            }
+            return playing_info
 
         self.select_song_tab()
 
         playing_info = self.get_playing_info()
         if not playing_info:
+            self.logger.warning(f"No playing info found for query: {music_query}")
             playing_info = {
-                'song': music_query,
-                'singer': 'unknown'
+                'error': f"No playing info found for query: {music_query}"
             }
-        print(f"Found playing info: {playing_info}")
+            return playing_info
+
+        self.logger.info(f"Found playing info: {playing_info}")
+
+        if playing_info['song'].endswith('(Live)'):
+            self.live_count += 1
+        else:
+            studio_version = self.try_find_element(AppiumBy.XPATH, self.config['elements']['studio_version'])
+            if studio_version:
+                studio_version.click()
+                self.logger.info("Alter to studio version")
 
         return playing_info
 
@@ -183,7 +199,7 @@ class QQMusicHandler(AppHandler):
             self.config['elements']['song_tab']
         )
         song_tab.click()
-        print("Selected songs tab")
+        self.logger.info("Selected songs tab")
 
     def select_playlist_tab(self):
         """Select the 'Playlist' tab in search results"""
@@ -312,56 +328,39 @@ class QQMusicHandler(AppHandler):
 
     def play_music(self, music_query):
         """Search and play music"""
-        try:
-            if not self.switch_to_app():
-                return {'error': 'Failed to switch to QQ Music app'}
-            print(f"Switched to QQ Music app")
-
-            if music_query == '':
-                playing_info = self.play_favorites()
-                return playing_info
-
-            playing_info = self._prepare_music_playback(music_query)
-            studio_version = self.try_find_element(AppiumBy.XPATH, self.config['elements']['studio_version'])
-            if studio_version:
-                studio_version.click()
-                print("Alter to studio version")
-
-            # Click play button
-            # play_button = self.driver.find_element(
-            #     AppiumBy.ID,
-            #     self.config['elements']['play_button']
-            # )
-            # play_button.click()
-            # print(f"Clicked play button")
-
-            song_element = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['song_name']
-            )
-            song_element.click()
-            print(f"Select first song")
-
+        if music_query == '':
+            playing_info = self.play_favorites()
             return playing_info
 
-        except Exception as e:
-            print(f"Error playing music: {str(e)}")
-            return {
-                'song': music_query,
-                'singer': 'unknown'
-            }
+        playing_info = self._prepare_music_playback(music_query)
+        if 'error' in playing_info:
+            self.logger.error(f'Failed to play music {music_query}')
+            return playing_info
+
+        song_element = self.wait_for_element_clickable(
+            AppiumBy.ID,
+            self.config['elements']['song_name']
+        )
+        song_element.click()
+        self.logger.info(f"Select first song")
+
+        return playing_info
 
     def play_next(self, music_query):
         """Search and play next music"""
         try:
             playing_info = self._prepare_music_playback(music_query)
+            if 'error' in playing_info:
+                self.logger.error(f'Failed to add music {music_query} to playlist')
+                return playing_info
+
             # Click next button
-            next_button = self.driver.find_element(
+            next_button = self.wait_for_element_clickable(
                 AppiumBy.ID,
                 self.config['elements']['next_button']
             )
             next_button.click()
-            print(f"Clicked next button")
+            self.logger.info(f"Clicked next button")
 
             return playing_info
 
