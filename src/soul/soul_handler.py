@@ -28,7 +28,7 @@ class SoulHandler(AppHandler):
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
         if not self.switch_to_app():
-            print("Failed to switch to Soul app")
+            self.logger.error("Failed to switch to Soul app")
             return None
 
         # Get message list container
@@ -39,7 +39,7 @@ class SoulHandler(AppHandler):
 
         if not message_list:
             if enabled:
-                print("[Warning] get_latest_message cannot find message_list, may be minimized")
+                self.logger.warning("cannot find message_list, may be minimized")
                 floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'],
                                                        clickable=True)
                 if floating_entry:
@@ -51,18 +51,18 @@ class SoulHandler(AppHandler):
                 else:
                     square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
                     if square_tab:
-                        print(
-                            "[Warning] get_latest_message already back in home but no party entry found, try go to party")
+                        self.logger.warning(
+                            "already back in home but no party entry found, try go to party")
                         square_tab.click()
                         party_home = "FM15321640"
                         party_id = self.party_id if self.party_id else party_home
                         self.find_party_to_join(party_id)
                         self.party_id = None
                     else:
-                        print(
-                            "[Warning] get_latest_message still cannot find message_list, may stay in unknown pages, go back first")
+                        self.logger.warning(
+                            "still cannot find message_list, may stay in unknown pages, go back first")
                         if not self.press_back():
-                            print('[Error]get_latest_message Failed to press back')
+                            self.logger.error('Failed to press back')
                             return None
 
             return None
@@ -70,20 +70,20 @@ class SoulHandler(AppHandler):
         # Check if there is a new message tip and click it
         new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
         if new_message_tip and enabled:
-            print(f'Found new message tip')
+            self.logger.info(f'Found new message tip')
             new_message_tip.click()
-            print(f'Clicked new message tip')
+            self.logger.info(f'Clicked new message tip')
 
         expand_seats = self.try_find_element(AppiumBy.ID, self.config['elements']['expand_seats'], log=False)
         if expand_seats and expand_seats.text == '收起座位':
             expand_seats.click()
-            print(f'Collapsed seats')
+            self.logger.info(f'Collapsed seats')
 
         # Get all ViewGroup containers first
         try:
             containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
         except WebDriverException as e:
-            print(f'[get_latest_message] cannot find message_list element, might be in loading')
+            self.logger.error(f'cannot find message_list element, might be in loading')
             time.sleep(1)
             return None
 
@@ -161,7 +161,8 @@ class SoulHandler(AppHandler):
                 msg_id: current_messages[msg_id]
                 for msg_id in new_message_ids
             }
-            print(f"Found {len(new_messages)} new messages")
+            for m in new_messages.values():
+                self.logger.info(f"New command :{m.content} from @{m.nickname}")
             return new_messages
 
         return None

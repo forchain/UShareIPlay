@@ -42,7 +42,7 @@ class AppHandler:
         
         # Create console handler
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)
         
         # Create formatter
         formatter = logging.Formatter(
@@ -127,7 +127,7 @@ class AppHandler:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.element_to_be_clickable((locator_type, locator_value))
             )
-            self.logger.info(f"Found clickable element: {locator_value}")
+            self.logger.debug(f"Found clickable element: {locator_value}")
             return element
         except Exception as e:
             self.logger.warning(f"Clickable element not found within {timeout} seconds: {locator_value}")
@@ -144,7 +144,7 @@ class AppHandler:
             return False
         reminder_ok = self.try_find_element(AppiumBy.ID, self.config['elements']['reminder_ok'], log=False)
         if reminder_ok:
-            self.logger.info(f"Found reminder dialog and close")
+            self.logger.debug(f"Found reminder dialog and close")
             reminder_ok.click()
         time.sleep(0.1)
         return True
@@ -166,7 +166,7 @@ class AppHandler:
             element: The WebElement to send Enter key to
         """
         self.driver.press_keycode(66)
-        self.logger.info('Pressed Return Key')
+        self.logger.debug('Pressed Return Key')
 
     def press_back(self):
         """Press Android back button"""
@@ -178,23 +178,23 @@ class AppHandler:
             return False
 
         self.error_count = 0
-        self.logger.info("Pressed back button")
+        self.logger.debug("Pressed back button")
         return True
 
     def press_dpad_down(self):
         """Press Android DPAD down button"""
         self.driver.press_keycode(20)  # KEYCODE_DPAD_DOWN
-        self.logger.info("Pressed DPAD down button")
+        self.logger.debug("Pressed DPAD down button")
 
     def press_volume_up(self):
         """Press Android volume up button"""
         self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
-        self.logger.info("Pressed volume up button")
+        self.logger.debug("Pressed volume up button")
 
     def press_volume_down(self):
         """Press Android volume down button"""
         self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
-        self.logger.info("Pressed volume down button")
+        self.logger.debug("Pressed volume down button")
 
     def press_right_key(self, times=1):
         """Simulate pressing the right key multiple times
@@ -238,12 +238,12 @@ class AppHandler:
             try:
                 element = self.driver.find_element(locator_type, locator_value)
                 if element and element.is_displayed():
-                    self.logger.info(f"Found element after polling: {locator_value}")
+                    self.logger.debug(f"Found element after polling: {locator_value}")
                     return element
             except Exception:
                 pass
             time.sleep(poll_frequency)
-            self.logger.info(f"Polling for element: {locator_value}")
+            self.logger.debug(f"Polling for element: {locator_value}")
         self.logger.warning(f"Element not found after polling for {timeout} seconds: {locator_value}")
         return None
 
@@ -263,12 +263,12 @@ class AppHandler:
             try:
                 element = self.driver.find_element(locator_type, locator_value)
                 if element and element.is_displayed() and element.is_enabled():
-                    self.logger.info(f"Found clickable element after polling: {locator_value}")
+                    self.logger.debug(f"Found clickable element after polling: {locator_value}")
                     return element
             except Exception:
                 pass
             time.sleep(poll_frequency)
-            self.logger.info(f"Polling for clickable element: {locator_value}")
+            self.logger.debug(f"Polling for clickable element: {locator_value}")
         self.logger.warning(f"Clickable element not found after polling for {timeout} seconds: {locator_value}")
         return None
 
@@ -278,12 +278,12 @@ class AppHandler:
             text: str, text to be copied to clipboard
         """
         self.driver.set_clipboard_text(text)
-        self.logger.info(f"Copied '{text}' to clipboard")
+        self.logger.debug(f"Copied '{text}' to clipboard")
 
     def paste_text(self):
         """Execute paste operation using Android keycode"""
         self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
-        self.logger.info("Pressed paste key")
+        self.logger.debug("Pressed paste key")
 
     def find_child_element(self, parent, locator_type, locator_value):
         """Find child element of parent element
@@ -352,7 +352,7 @@ class AppHandler:
             
             if playlist_entry:
                 playlist_entry.click()
-                self.logger.info("Clicked playlist entry in playing panel")
+                self.logger.debug("Clicked playlist entry in playing panel")
             else:
                 # Navigate to home and try floating entry
                 self.navigate_to_home()
@@ -365,7 +365,7 @@ class AppHandler:
                     return None
                     
                 playlist_entry.click()
-                self.logger.info("Clicked playlist entry floating")
+                self.logger.debug("Clicked playlist entry floating")
                 
             # Wait for playlist items to appear
             if not self.wait_for_element(
