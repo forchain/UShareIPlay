@@ -1552,14 +1552,14 @@ class QQMusicHandler(AppHandler):
                 return {'error': 'Failed to find playlist playing'}
             
             # Find playlist title element
-            playlist_title = self.try_find_element(
+            playlist_header = self.try_find_element(
                 AppiumBy.ID,
-                self.config['elements']['playlist_title']
+                self.config['elements']['playlist_header']
             )
-            if playlist_title:
+            if playlist_header:
                 # Get locations and size
                 playing_loc = playlist_playing.location
-                title_loc = playlist_title.location
+                title_loc = playlist_header.location
                 playing_size = playlist_playing.size
                 
                 # Calculate swipe coordinates

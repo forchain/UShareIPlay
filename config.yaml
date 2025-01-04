@@ -117,12 +117,12 @@ qq_music:
     playlist_item: 'com.tencent.qqmusic:id/ljb'
     go_back: 'com.tencent.qqmusic:id/a0q'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
-    playlist_entry_floating: 'com.tencent.qqmusic:id/iit'
-    playlist_entry_playing: 'com.tencent.qqmusic:id/a8f'
-    playlist_song: 'com.tencent.qqmusic:id/llj'
-    playlist_singer: 'com.tencent.qqmusic:id/l9n'
-    playlist_playing: 'com.tencent.qqmusic:id/e_s'
-    playlist_title: 'com.tencent.qqmusic:id/j4l'
+    playlist_entry_floating: 'com.tencent.qqmusic:id/is5'
+    playlist_entry_playing: 'com.tencent.qqmusic:id/a9i'
+    playlist_song: 'com.tencent.qqmusic:id/lxy'
+    playlist_singer: 'com.tencent.qqmusic:id/lkv'
+    playlist_playing: 'com.tencent.qqmusic:id/ee4'
+    playlist_header: 'com.tencent.qqmusic:id/je8'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer}"
