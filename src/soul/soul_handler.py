@@ -176,10 +176,10 @@ class SoulHandler(AppHandler):
             self.config['elements']['input_box_entry']
         )
         if not input_box_entry:
-            print(f'[send_message] cannot find input box entry, might be in loading')
+            self.logger.error(f'cannot find input box entry, might be in loading')
             return
         input_box_entry.click()
-        print("Clicked input box entry")
+        self.logger.info("Clicked input box entry")
 
         # # Wait 1 second for input box to be ready
         # import time
@@ -192,10 +192,10 @@ class SoulHandler(AppHandler):
             self.config['elements']['input_box']
         )
         if not input_box:
-            print(f'[Error]send_message cannot find input box, might be in chat screen')
+            self.logger.error(f'send_message cannot find input box, might be in chat screen')
             return
         input_box.send_keys(message)
-        print(f"Entered message: {message}")
+        self.logger.info(f"Entered message: {message}")
 
         # click send button
         send_button = self.wait_for_element_clickable(
@@ -219,7 +219,7 @@ class SoulHandler(AppHandler):
         input_box = self.try_find_element(AppiumBy.ID, self.config['elements']['input_box'], log=False)
         if input_box:
             self.press_back()
-            print("Failed to hide input dialog, try again")
+            self.logger.warning("Failed to hide input dialog, try again")
 
     def find_party_to_join(self, party_id):
         # Find and click search entry

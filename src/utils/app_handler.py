@@ -82,8 +82,8 @@ class AppHandler:
             self.log_debug(f"Found element: {locator_value}")
             return element
         except Exception as e:
-            self.logger.error(f"Element not found within {timeout} seconds: {locator_value}")
-            self.logger.error(f"Error: {str(e)}")
+            self.logger.warning(f"Element not found within {timeout} seconds: {locator_value}")
+            self.logger.warning(f"Error: {str(e)}")
             return None
 
     def is_element_clickable(self, element):
@@ -110,7 +110,7 @@ class AppHandler:
             return clickable == "true"
         
         except Exception as e:
-            print(f"Error checking if element is clickable: {str(e)}")
+            self.logger.warning(f"Error checking if element is clickable: {str(e)}")
             return False
 
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
@@ -127,11 +127,12 @@ class AppHandler:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.element_to_be_clickable((locator_type, locator_value))
             )
-            print(f"Found clickable element: {locator_value}")
+            self.logger.info(f"Found clickable element: {locator_value}")
             return element
         except Exception as e:
-            print(f"Clickable element not found within {timeout} seconds: {locator_value}")
-            print(f"Error: {str(e)}")
+            self.logger.warning(f"Clickable element not found within {timeout} seconds: {locator_value}")
+            self.logger.warning(f"Trace: {traceback.format_exc()}")
+            self.logger.warning(f"Error: {str(e)}")
             return None
 
     def switch_to_app(self):
@@ -139,11 +140,11 @@ class AppHandler:
         try:
             self.driver.activate_app(self.config['package_name'])
         except selenium.common.exceptions.WebDriverException as e:
-            print(f"Failed to switch to app")
+            self.logger.error(f"Failed to switch to app")
             return False
         reminder_ok = self.try_find_element(AppiumBy.ID, self.config['elements']['reminder_ok'], log=False)
         if reminder_ok:
-            print(f"Found reminder dialog and close")
+            self.logger.info(f"Found reminder dialog and close")
             reminder_ok.click()
         time.sleep(0.1)
         return True
@@ -165,7 +166,7 @@ class AppHandler:
             element: The WebElement to send Enter key to
         """
         self.driver.press_keycode(66)
-        print('Pressed Return Key')
+        self.logger.info('Pressed Return Key')
 
     def press_back(self):
         """Press Android back button"""
@@ -183,17 +184,17 @@ class AppHandler:
     def press_dpad_down(self):
         """Press Android DPAD down button"""
         self.driver.press_keycode(20)  # KEYCODE_DPAD_DOWN
-        print("Pressed DPAD down button")
+        self.logger.info("Pressed DPAD down button")
 
     def press_volume_up(self):
         """Press Android volume up button"""
         self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
-        print("Pressed volume up button")
+        self.logger.info("Pressed volume up button")
 
     def press_volume_down(self):
         """Press Android volume down button"""
         self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
-        print("Pressed volume down button")
+        self.logger.info("Pressed volume down button")
 
     def press_right_key(self, times=1):
         """Simulate pressing the right key multiple times
@@ -218,7 +219,7 @@ class AppHandler:
             return element
         except:
             if log: 
-                print(f"Element not found: {locator_value}")
+                self.logger.warning(f"Element not found: {locator_value}")
             return None
 
     def wait_for_element_polling(self, locator_type, locator_value, timeout=10, poll_frequency=0.5):
@@ -237,13 +238,13 @@ class AppHandler:
             try:
                 element = self.driver.find_element(locator_type, locator_value)
                 if element and element.is_displayed():
-                    print(f"Found element after polling: {locator_value}")
+                    self.logger.info(f"Found element after polling: {locator_value}")
                     return element
             except Exception:
                 pass
             time.sleep(poll_frequency)
-            print(f"Polling for element: {locator_value}")
-        print(f"Element not found after polling for {timeout} seconds: {locator_value}")
+            self.logger.info(f"Polling for element: {locator_value}")
+        self.logger.warning(f"Element not found after polling for {timeout} seconds: {locator_value}")
         return None
 
     def wait_for_element_clickable_polling(self, locator_type, locator_value, timeout=10, poll_frequency=0.5):
@@ -262,13 +263,13 @@ class AppHandler:
             try:
                 element = self.driver.find_element(locator_type, locator_value)
                 if element and element.is_displayed() and element.is_enabled():
-                    print(f"Found clickable element after polling: {locator_value}")
+                    self.logger.info(f"Found clickable element after polling: {locator_value}")
                     return element
             except Exception:
                 pass
             time.sleep(poll_frequency)
-            print(f"Polling for clickable element: {locator_value}")
-        print(f"Clickable element not found after polling for {timeout} seconds: {locator_value}")
+            self.logger.info(f"Polling for clickable element: {locator_value}")
+        self.logger.warning(f"Clickable element not found after polling for {timeout} seconds: {locator_value}")
         return None
 
     def set_clipboard_text(self, text):
@@ -277,12 +278,12 @@ class AppHandler:
             text: str, text to be copied to clipboard
         """
         self.driver.set_clipboard_text(text)
-        print(f"Copied '{text}' to clipboard")
+        self.logger.info(f"Copied '{text}' to clipboard")
 
     def paste_text(self):
         """Execute paste operation using Android keycode"""
         self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
-        print("Pressed paste key")
+        self.logger.info("Pressed paste key")
 
     def find_child_element(self, parent, locator_type, locator_value):
         """Find child element of parent element
@@ -326,7 +327,7 @@ class AppHandler:
         try:
             return element.text if element else ""
         except Exception as e:
-            print(f"Error getting element text: {str(e)}")
+            self.logger.warning(f"Error getting element text: {str(e)}")
             return ""
 
     def try_get_attribute(self, element, attribute):
@@ -334,7 +335,7 @@ class AppHandler:
         try:
             return element.get_attribute(attribute)
         except StaleElementReferenceException:
-            print(f"Unable to get  attribute {attribute}: Element is no longer attached to the DOM.")
+            self.logger.warning(f"Unable to get  attribute {attribute}: Element is no longer attached to the DOM.")
             return None
 
     def get_playlist_info(self):
@@ -351,7 +352,7 @@ class AppHandler:
             
             if playlist_entry:
                 playlist_entry.click()
-                print("Clicked playlist entry in playing panel")
+                self.logger.info("Clicked playlist entry in playing panel")
             else:
                 # Navigate to home and try floating entry
                 self.navigate_to_home()
@@ -360,18 +361,18 @@ class AppHandler:
                     self.config['elements']['playlist_entry_floating']
                 )
                 if not playlist_entry:
-                    print("Failed to find playlist entry")
+                    self.logger.error("Failed to find playlist entry")
                     return None
                     
                 playlist_entry.click()
-                print("Clicked playlist entry floating")
+                self.logger.info("Clicked playlist entry floating")
                 
             # Wait for playlist items to appear
             if not self.wait_for_element(
                 AppiumBy.ID,
                 self.config['elements']['playlist_song']
             ):
-                print("Failed to find playlist songs")
+                self.logger.error("Failed to find playlist songs")
                 return None
                 
             # Get all songs and singers
@@ -393,11 +394,11 @@ class AppHandler:
                     if song_text and singer_text:
                         playlist_info.append(f"{song_text}-{singer_text}")
                 except Exception as e:
-                    print(f"Error getting song/singer text: {str(e)}")
+                    self.logger.error(f"Error getting song/singer text: {str(e)}")
                     continue
                     
             return '\n'.join(playlist_info)
             
         except Exception as e:
-            print(f"Error getting playlist info: {str(e)}")
+            self.logger.error(f"Error getting playlist info: {str(e)}")
             return None
