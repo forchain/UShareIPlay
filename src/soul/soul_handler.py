@@ -235,7 +235,7 @@ class SoulHandler(AppHandler):
             }
 
         search_entry.click()
-        print("Clicked search entry")
+        self.logger.info("Clicked search entry")
 
         # Find search box and input party ID
         search_box = self.wait_for_element_clickable(
@@ -243,12 +243,12 @@ class SoulHandler(AppHandler):
             self.config['elements']['search_box']
         )
         if not search_box:
-            print(f"Search box not found")
+            self.logger.error(f"Search box not found")
             return {
                 'error': 'Failed to find search box',
             }
         search_box.send_keys(party_id)
-        print(f"Entered party ID: {party_id}")
+        self.logger.info(f"Entered party ID: {party_id}")
 
         # Click search button
         search_button = self.wait_for_element_clickable(
@@ -256,35 +256,35 @@ class SoulHandler(AppHandler):
             self.config['elements']['search_button']
         )
         if not search_button:
-            print(f"Search button not found")
+            self.logger.error(f"Search button not found")
             return {
                 'error': 'Failed to find search button',
             }
         search_button.click()
-        print("Clicked search button")
+        self.logger.info("Clicked search button")
 
         party_tab = self.wait_for_element_clickable(AppiumBy.XPATH, self.config['elements']['party_tab'])
         if not party_tab:
-            print(f"Party tab not found")
+            self.logger.error(f"Party tab not found")
             return {'error': 'Party tab not found'}
         party_tab.click()
-        print("Clicked party tab")
+        self.logger.info("Clicked party tab")
 
         search_result = self.wait_for_element(AppiumBy.ID, self.config['elements']['party_search_result'])
         if not search_result:
-            print(f"Party search result not found")
+            self.logger.error(f"Party search result not found")
             return {'error': 'Party search result not found'}
-        print("Found party search result")
+        self.logger.info("Found party search result")
 
         empty_result = self.find_child_element(search_result, AppiumBy.ID,
                                                self.config['elements']['party_search_empty'])
         if empty_result:
-            print(f"Party ID: {party_id} not found")
+            self.logger.error(f"Party ID: {party_id} not found")
             return {'error': 'Party not found'}
 
         party_entry = self.find_child_element(search_result, AppiumBy.ID, self.config['elements']['party_search_entry'])
         if not party_entry:
-            print(f"Party entry: {party_id} not found")
+            self.logger.error(f"Party entry: {party_id} not found")
             return {'error': 'Party entry not found'}
 
         # Check party status after finding the message
@@ -293,32 +293,32 @@ class SoulHandler(AppHandler):
         if party_online:
             # Party is ongoing, click the party entry
             party_entry.click()
-            print("Clicked party entry")
+            self.logger.info("Clicked party entry")
 
             time.sleep(1)
             party_back = self.try_find_element(AppiumBy.ID, self.config['elements']['party_back'], log=False)
             if party_back:
-                print(f"Found back to party dialog and close")
+                self.logger.info(f"Found back to party dialog and close")
                 party_back.click()
         else:
             # Party has ended, navigate to create a new party
-            print("Party has ended, navigating to create a new party")
+            self.logger.info("Party has ended, navigating to create a new party")
             self.press_back()  # Go back to the home screen
 
             planet_tab = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['planet_tab'])
             if not planet_tab:
-                print("Failed to find planet tab")
+                self.logger.error("Failed to find planet tab")
                 return {'error': 'Failed to find planet tab'}
             planet_tab.click()
-            print("Clicked planet tab")
+            self.logger.info("Clicked planet tab")
 
             party_hall_entry = self.wait_for_element_clickable(AppiumBy.XPATH,
                                                                self.config['elements']['party_hall_entry'])
             if not party_hall_entry:
-                print(f"Party hall entry not found")
+                self.logger.error(f"Party hall entry not found")
                 return {'error': 'Party hall entry not found'}
             party_hall_entry.click()
-            print("Clicked party hall entry")
+            self.logger.info("Clicked party hall entry")
 
             create_party_entry = self.wait_for_element_clickable(AppiumBy.ID,
                                                                  self.config['elements']['create_party_entry'])
@@ -330,7 +330,7 @@ class SoulHandler(AppHandler):
 
             confirm_party_button = self.wait_for_element_clickable(AppiumBy.ID,
                                                                    self.config['elements'][
-                                                                       'confirm_party'], timeout=1)
+                                                                       'confirm_party'], timeout=5)
             if confirm_party_button:
                 confirm_party_button.click()
                 self.logger.info("Clicked confirm party button")
