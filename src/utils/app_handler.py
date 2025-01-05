@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException, NoSuchDriverException
 import selenium
 import logging
 import os
@@ -129,11 +129,14 @@ class AppHandler:
             )
             self.logger.debug(f"Found clickable element: {locator_value}")
             return element
-        except Exception as e:
+        except NoSuchDriverException as e:
             self.logger.warning(f"Clickable element not found within {timeout} seconds: {locator_value}")
+            return None
+        except Exception as e:
             self.logger.warning(f"Trace: {traceback.format_exc()}")
             self.logger.warning(f"Error: {str(e)}")
             return None
+
 
     def switch_to_app(self):
         """Switch to specified app"""

@@ -772,18 +772,25 @@ class QQMusicHandler(AppHandler):
     def query_lyrics(self, query, group_num=0):
         if query == "":
             info = self.get_playback_info()
-            if info:
-                query = f'{info["song"]} {info["singer"]} {info["album"]}'
+            if not info:
+                self.logger.error(f"Failed to get playback info with query {query}")
+                return {'error': f'Failed to get playback info'}
+            query = f'{info["song"]} {info["singer"]} {info["album"]}'
         if not self.query_music(query):
+            self.logger.error(f"Failed to query music with query {query}")
             return {
                 'error': 'Failed to query lyrics',
             }
         if not self.select_lyrics_tab():
+            self.logger.error(f"Failed to select lyrics tab with query {query}")
             return {
                 'error': 'Failed to select lyrics tab',
             }
         lyrics = self.wait_for_element_clickable(
             AppiumBy.ID, self.config['elements']['lyrics_text'])
+        if not lyrics:
+            self.logger.error(f"Failed to find lyrics lines with query {query}")
+            return {'error': 'Failed to find lyrics lines'}
         lyrics.click()
         groups = self.process_lyrics(lyrics.text, 15, group_num)
 
@@ -1018,36 +1025,39 @@ class QQMusicHandler(AppHandler):
         metadata = {}
         state = "Unknown"
 
-        if result:
-            # Get metadata
-            meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
-            if meta_match:
-                meta_parts = meta_match.group(1).split(', ')
-                if len(meta_parts) >= 3:
-                    metadata = {
-                        'song': meta_parts[0],
-                        'singer': meta_parts[1],
-                        'album': meta_parts[2]
-                    }
+        if not result:
+            self.logger.error("Failed to get playback information")
+            return None
 
-            # Get playback state
-            state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
-            if state_match:
-                state_code = int(state_match.group(1))
-                state = {
-                    0: "None",
-                    1: "Stopped",
-                    2: "Paused",
-                    3: "Playing",
-                    4: "Fast Forwarding",
-                    5: "Rewinding",
-                    6: "Buffering",
-                    7: "Error",
-                    8: "Connecting",
-                    9: "Skipping to Next",
-                    10: "Skipping to Previous",
-                    11: "Skipping to Queue Item"
-                }.get(state_code, "Unknown")
+        # Get metadata
+        meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
+        if meta_match:
+            meta_parts = meta_match.group(1).split(', ')
+            if len(meta_parts) >= 3:
+                metadata = {
+                    'song': meta_parts[0],
+                    'singer': meta_parts[1],
+                    'album': meta_parts[2]
+                }
+
+        # Get playback state
+        state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
+        if state_match:
+            state_code = int(state_match.group(1))
+            state = {
+                0: "None",
+                1: "Stopped",
+                2: "Paused",
+                3: "Playing",
+                4: "Fast Forwarding",
+                5: "Rewinding",
+                6: "Buffering",
+                7: "Error",
+                8: "Connecting",
+                9: "Skipping to Next",
+                10: "Skipping to Previous",
+                11: "Skipping to Queue Item"
+            }.get(state_code, "Unknown")
 
         return {
             'song': metadata.get('song', 'Unknown'),
