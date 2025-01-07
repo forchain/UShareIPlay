@@ -53,6 +53,15 @@ soul:
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
     claim_reward: "cn.soulapp.android:id/tvCheckReward"
+    room_topic: 'cn.soulapp.android:id/tvStudyRoomTitle'
+    edit_topic_entry: 'cn.soulapp.android:id/tvCustomTopic'
+    edit_topic_input: 'cn.soulapp.android:id/et_input_message'
+    edit_topic_confirm: 'cn.soulapp.android:id/tvConfim'
+    little_assistant: 'cn.soulapp.android:id/ivLittleAssistant'
+    edit_announcement_entry: 'cn.soulapp.android:id/ivEdit'
+    customize_announcement_button: '//android.view.View[@text="自定义"]'
+    edit_announcement_input: '//android.widget.EditText'
+    edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -123,6 +132,7 @@ qq_music:
     playlist_singer: 'com.tencent.qqmusic:id/lkv'
     playlist_playing: 'com.tencent.qqmusic:id/ee4'
     playlist_header: 'com.tencent.qqmusic:id/je8'
+    play_mode: 'com.tencent.qqmusic:id/a9j'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer}"
@@ -194,6 +204,9 @@ commands:
     response_template: "Playing playlist {playlist}"
     current_template: "Playlist\n{playlist}"
     error_template: "Failed to play playlist, because {error}"
+  - prefix: "mode"
+    response_template: "Change play mode to {mode}"
+    error_template: "Failed to change play mode, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

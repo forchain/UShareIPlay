@@ -368,6 +368,34 @@ class AppController:
                                                 song=result['song'],
                                                 singer=result['singer'],
                                             )
+                                    case 'mode':
+                                        # Get mode parameter
+                                        if len(command_info['parameters']) > 0:
+                                            try:
+                                                mode = int(command_info['parameters'][0])
+                                                if mode not in [0, 1, -1]:
+                                                    raise ValueError
+                                                    
+                                                # Change play mode
+                                                result = self.music_handler.change_play_mode(mode)
+                                                
+                                                if 'error' in result:
+                                                    response = command_info['error_template'].format(
+                                                        error=result['error']
+                                                    )
+                                                else:
+                                                    response = command_info['response_template'].format(
+                                                        mode=result['mode']
+                                                    )
+                                                    
+                                            except ValueError:
+                                                response = command_info['error_template'].format(
+                                                    error='Invalid mode parameter, must be 0, 1 or -1'
+                                                )
+                                        else:
+                                            response = command_info['error_template'].format(
+                                                error='Missing mode parameter'
+                                            )
                                     case _:
                                         print(f"Unknown command: {command_info['prefix']}")
                 # Check KTV lyrics if mode is enabled

@@ -208,53 +208,14 @@ The `config.yaml` file in the project root directory contains the following conf
 soul:
     package_name: "cn.soulapp.android"
     chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
-    elements:
-        message_list: "cn.soulapp.android:id/rvMessage"
-        message_content: "cn.soulapp.android:id/tvContent"
-        input_box_entry: "cn.soulapp.android:id/tvChat"
-        input_box: "cn.soulapp.android:id/etInputView"
-        button_send: "cn.soulapp.android:id/btnSend"
+    elements: # UI elements are defined in the config.yaml file
 
 qq_music:
     package_name: "com.tencent.qqmusic"
     search_activity: ".activity.AppStarterActivity"
-    elements:
-        search_entry: "//androidx.recyclerview.widget.RecyclerView[@resource-id=\"com.tencent.qqmusic:id/hi2\"]/android.view.View"
-        search_box: "com.tencent.qqmusic:id/searchItem"
-        play_button: "com.tencent.qqmusic:id/krg"
-        next_button: "com.tencent.qqmusic:id/f4"
-        player_panel: "com.tencent.qqmusic:id/idm"
-        back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
-        song_name: "com.tencent.qqmusic:id/ll6"
-        singer_name: "com.tencent.qqmusic:id/ln9"
-        pause_button: "android:id/action1"
-        skip_button: "android:id/action2"
-        playing_bar: "com.tencent.qqmusic:id/iir"
-        current_song: "android:id/title"
-        current_singer: "android:id/text"
-        info_dot: "com.tencent.qqmusic:id/c14"
-        details_link: "com.tencent.qqmusic:id/gnw"
-        more_in_play_panel: "com.tencent.qqmusic:id/a7m"
-        accompaniment_menu: "//android.widget.TextView[@resource-id=\"com.tencent.qqmusic:id/ndp\" and @text=\"伴唱模式\"]"
-        accompaniment_switch: "com.tencent.qqmusic:id/ocy"
-        song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
+    elements: # UI elements are defined in the config.yaml file
 
-commands:
-    - prefix: "play"
-      response_template: "Playing <<{song}>> by {singer}"
-    - prefix: "skip"
-      response_template: "Skipped to next song <<{song}>> by {singer}"
-    - prefix: "next"
-      response_template: "Scheduled {song} by {singer} to play next"
-    - prefix: "pause"
-      response_template: "Paused/Playing <<{song}>> by {singer}"
-    - prefix: "vol+"
-      response_template: "Volume increased"
-    - prefix: "accompaniment"
-      response_template: "Accompaniment mode {enabled}"
-    - prefix: "lyrics"
-      response_template: "{lyrics}"
-      tags: ["歌曲名", "歌手", "语种", "专辑", "专辑发行时间", "幕后团队", "作词", "作曲", "歌词", "制作人", "歌曲简介"]
+commands: # Commands are defined in the config.yaml file
 
 appium:
     host: "0.0.0.0"
@@ -289,7 +250,7 @@ The configuration file is divided into several sections:
    - Multiple command configurations with:
      - `prefix`: Command trigger word (e.g., "play", "skip", "next")
      - `response_template`: Message template for command response
-     - `tags`: (For lyrics command) Tags for formatting lyrics display
+     - `error_template`: Message template for command error
 
 4. `appium`: Appium server configuration
    - `host`: Server host address
@@ -355,9 +316,10 @@ python main.py
    - `:next song_name artist_name`: Add song to play next
    - `:skip`: Skip to next song
    - `:pause`: Pause/Continue current playback
-   - `:vol+/-`: Increase/Decrease volume
+   - `:vol`: Set volume
    - `:acc 1/0`: Enable/disable accompaniment mode
-   Example: "play 听妈妈的话 周杰伦" or "lyrics"
+   - `:mode <mode_name>`: Switch playback mode (0:normal/-1:random/1:single)
+   Example: ":play 听妈妈的话 周杰伦" or ":mode 1"
 4. Program will automatically:
    - Switch to QQ Music
    - Search and play song

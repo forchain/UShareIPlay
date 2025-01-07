@@ -4,6 +4,7 @@ import traceback
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.webelement import WebElement
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException, TimeoutException
 import selenium
@@ -113,6 +114,23 @@ class AppHandler:
             self.logger.warning(f"Error checking if element is clickable: {str(e)}")
             return False
 
+    def wait_for_element_clickable_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+        """Enhanced wait_for_element using just element key"""
+        try:
+            locator_type, value = self._get_locator(element_key)
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((locator_type, value))
+            )
+            self.logger.debug(f"Found clickable element: {element_key}")
+            return element
+        except TimeoutException as e:
+            self.logger.warning(f"Clickable element {element_key}:{value} not found within {timeout} seconds ")
+            return None
+        except WebDriverException as e:
+            self.logger.error(f"Trace: {traceback.format_exc()}")
+            self.logger.error(f"Error: {str(e)}")
+            return None
+
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
         """
         Wait for element to be clickable and return it
@@ -211,6 +229,19 @@ class AppHandler:
                 }
             )
             time.sleep(0.1)  # Small delay between key presses
+
+    def try_find_element_plus(self, element_key: str, log=True, clickable=False) -> WebElement:
+        """Enhanced try_find_element using just element key"""
+        try:
+            locator_type, value = self._get_locator(element_key)
+            element = self.driver.find_element(locator_type, value)
+            if clickable:
+                element = self.wait_for_element_clickable_plus(element_key)
+            return element
+        except Exception as e:
+            if log:
+                self.logger.warning(f"Failed to find element '{element_key}' with value '{value}'")
+            return None
 
     def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
         """Try to find element and return it"""
@@ -340,67 +371,21 @@ class AppHandler:
             self.logger.warning(f"Unable to get  attribute {attribute}: Element is no longer attached to the DOM.")
             return None
 
-    def get_playlist_info(self):
-        """Get current playlist information
-        Returns:
-            str: Formatted playlist info or None if failed
-        """
+    def _get_locator(self, element_key: str) -> tuple:
+        """Helper to get locator type and value from element key"""
+        if element_key not in self.config['elements']:
+            raise ValueError(f"Element key '{element_key}' not found in config")
+        
+        value = self.config['elements'][element_key]
+        locator_type = AppiumBy.XPATH if value.startswith('//') else AppiumBy.ID
+        return locator_type, value
+
+
+    def find_elements_plus(self, element_key: str) -> list:
+        """Enhanced find_elements using just element key"""
         try:
-            # Try to find playlist entry in playing panel first
-            playlist_entry = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['playlist_entry_playing']
-            )
-            
-            if playlist_entry:
-                playlist_entry.click()
-                self.logger.debug("Clicked playlist entry in playing panel")
-            else:
-                # Navigate to home and try floating entry
-                self.navigate_to_home()
-                playlist_entry = self.try_find_element(
-                    AppiumBy.ID,
-                    self.config['elements']['playlist_entry_floating']
-                )
-                if not playlist_entry:
-                    self.logger.error("Failed to find playlist entry")
-                    return None
-                    
-                playlist_entry.click()
-                self.logger.debug("Clicked playlist entry floating")
-                
-            # Wait for playlist items to appear
-            if not self.wait_for_element(
-                AppiumBy.ID,
-                self.config['elements']['playlist_song']
-            ):
-                self.logger.error("Failed to find playlist songs")
-                return None
-                
-            # Get all songs and singers
-            songs = self.driver.find_elements(
-                AppiumBy.ID,
-                self.config['elements']['playlist_song']
-            )
-            singers = self.driver.find_elements(
-                AppiumBy.ID,
-                self.config['elements']['playlist_singer']
-            )
-            
-            # Combine songs and singers
-            playlist_info = []
-            for song, singer in zip(songs, singers):
-                try:
-                    song_text = song.text.strip()
-                    singer_text = singer.text.strip()
-                    if song_text and singer_text:
-                        playlist_info.append(f"{song_text}-{singer_text}")
-                except Exception as e:
-                    self.logger.error(f"Error getting song/singer text: {str(e)}")
-                    continue
-                    
-            return '\n'.join(playlist_info)
-            
+            locator_type, value = self._get_locator(element_key)
+            return self.driver.find_elements(locator_type, value)
         except Exception as e:
-            self.logger.error(f"Error getting playlist info: {str(e)}")
-            return None
+            print(f"Failed to find elements '{element_key}' with value '{value}': {str(e)}")
+            return []
