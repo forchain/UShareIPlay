@@ -10,6 +10,9 @@ from ..utils.command_parser import CommandParser
 from ..utils.lyrics_formatter import LyricsFormatter
 import time
 import traceback
+import importlib
+import os
+from pathlib import Path
 
 
 class AppController:
@@ -34,6 +37,9 @@ class AppController:
         # Initialize command parser
         self.command_parser = CommandParser(config['commands'])
 
+        self.commands_path = Path(__file__).parent.parent / 'commands'
+        self.command_modules = {}  # Cache for loaded command modules
+
     def _init_driver(self):
         options = AppiumOptions()
 
@@ -50,6 +56,62 @@ class AppController:
 
         server_url = f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
         return webdriver.Remote(command_executor=server_url, options=options)
+
+    def _load_command_module(self, command):
+        """Load command module dynamically
+        Args:
+            command: str, command name
+        Returns:
+            module or None if not found
+        """
+        try:
+            if command in self.command_modules:
+                return self.command_modules[command]
+                
+            module_path = self.commands_path / f"{command}.py"
+            if not module_path.exists():
+                return None
+                
+            spec = importlib.util.spec_from_file_location(
+                f"commands.{command}",
+                module_path
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            self.command_modules[command] = module
+            return module
+            
+        except Exception as e:
+            self.soul_handler.log_error(f"Error loading command module {command}: {str(e)}")
+            return None
+
+    def _process_command(self, message_info, command_info):
+        """Process command using module if available
+        Args:
+            message_info: MessageInfo object
+            command_info: dict containing command details
+        Returns:
+            str: Response message
+        """
+        cmd = command_info['prefix']
+        
+        # Try to load command module
+        module = self._load_command_module(cmd)
+        if module and hasattr(module, 'command'):
+            try:
+                result = module['command'].process(self, message_info, command_info['parameters'])
+                if 'error' in result:
+                    return command_info['error_template'].format(
+                        error=result['error']
+                    )
+                else:
+                    return result['response']
+            except Exception as e:
+                self.soul_handler.log_error(f"Error processing command {cmd}: {traceback.format_exc()}")
+                if 'error_template' in command_info:
+                    return command_info['error_template'].format(error=traceback.format_exc())
+                return f"Error processing command {cmd}: {traceback.format_exc()}"
 
     def start_monitoring(self):
         enabled = True
@@ -397,7 +459,10 @@ class AppController:
                                                 error='Missing mode parameter'
                                             )
                                     case _:
-                                        print(f"Unknown command: {command_info['prefix']}")
+                                        if self._process_command(message_info, command_info):
+                                            response = self._process_command(message_info, command_info)
+                                        else:
+                                            self.soul_handler.log_error(f"Unknown command: {command_info['prefix']}")
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
                     res = self.music_handler.check_ktv_lyrics()
