@@ -13,6 +13,7 @@ import traceback
 import importlib
 import os
 from pathlib import Path
+import sys
 
 
 class AppController:
@@ -58,33 +59,33 @@ class AppController:
         return webdriver.Remote(command_executor=server_url, options=options)
 
     def _load_command_module(self, command):
-        """Load command module dynamically
-        Args:
-            command: str, command name
-        Returns:
-            module or None if not found
-        """
+        """Load command module dynamically"""
         try:
             if command in self.command_modules:
                 return self.command_modules[command]
                 
-            module_path = self.commands_path / f"{command}.py"
+            module_path = (Path(__file__).parent.parent / 'commands' / f"{command}.py").resolve()
             if not module_path.exists():
                 self.soul_handler.logger.error(f'module path not exists, {module_path}')
                 return None
                 
-            spec = importlib.util.spec_from_file_location(
-                f"src.commands.{command}",
-                module_path
-            )
+            package_name = f"src.commands.{command}"
+            spec = importlib.util.spec_from_file_location(package_name, module_path)
             module = importlib.util.module_from_spec(spec)
+            sys.modules[package_name] = module
             spec.loader.exec_module(module)
 
             if not module:
                 self.soul_handler.logger.error('Command module failed to load')
                 return None
+
             if not hasattr(module, 'command'):
                 self.soul_handler.logger.error('Command module does not have command')
+                return None
+
+            # Create command instance
+            if not hasattr(module, 'create_command'):
+                self.soul_handler.logger.error('Command module does not have create_command')
                 return None
 
             module.command = module.create_command(self)
@@ -94,6 +95,15 @@ class AppController:
         except Exception as e:
             self.soul_handler.log_error(f"Error loading command module {command}: {str(e)}")
             return None
+
+    def _update_commands(self):
+        """Update all loaded commands"""
+        for module in self.command_modules.values():
+            try:
+                if hasattr(module, 'command'):
+                    module.command.update()
+            except Exception as e:
+                self.soul_handler.log_error(f"Error updating command {module.__name__}: {str(e)}")
 
     def _check_command(self, command):
         # Try to load command module
@@ -109,13 +119,14 @@ class AppController:
             str: Response message
         """
         try:
+            # self.soul_handler.send_message(f"Processing command :{command_info['prefix']}\n@{message_info.nickname}")
             result = command.process(message_info, command_info['parameters'])
             if 'error' in result:
                 res =  command_info['error_template'].format(
                     error=result['error']
                 )
             else:
-                res = command_info['response_template'].format(**result)
+                res = f'{command_info['response_template'].format(**result)}\n@{message_info.nickname}'
             return res
         except Exception as e:
             self.soul_handler.log_error(f"Error processing command {command_info}: {traceback.format_exc()}")
@@ -131,6 +142,9 @@ class AppController:
         error_count = 0
         while True:
             try:
+                # Update all commands
+                self._update_commands()
+                
                 info = self.music_handler.get_playback_info()
                 # ignore state
                 info['state'] = None
@@ -218,6 +232,8 @@ class AppController:
                                                 response = command_info['response_template'].format(
                                                     playlist=playing_info['playlist'],
                                                 )
+                                            topic_command = self._check_command('topic')
+                                            topic_command.change_topic(playing_info['playlist'])
                                             response = f'{response} @{message_info.nickname}'
                                     case 'singer':
                                         # Play music and get info
@@ -231,6 +247,8 @@ class AppController:
                                             )
                                         else:
                                             # Send status back to Soul using command's template
+                                            topic_command = self._check_command('topic')
+                                            topic_command.change_topic(playing_info['singer'])
                                             response = command_info['response_template'].format(
                                                 singer=playing_info['singer'],
                                             )
