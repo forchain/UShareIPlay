@@ -207,6 +207,9 @@ commands:
   - prefix: "mode"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
+  - prefix: "topic"
+    response_template: "Change topic to {topic}"
+    error_template: "Failed to change topic, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

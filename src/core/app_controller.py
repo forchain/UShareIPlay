@@ -70,15 +70,24 @@ class AppController:
                 
             module_path = self.commands_path / f"{command}.py"
             if not module_path.exists():
+                self.soul_handler.logger.error(f'module path not exists, {module_path}')
                 return None
                 
             spec = importlib.util.spec_from_file_location(
-                f"commands.{command}",
+                f"src.commands.{command}",
                 module_path
             )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            
+
+            if not module:
+                self.soul_handler.logger.error('Command module failed to load')
+                return None
+            if not hasattr(module, 'command'):
+                self.soul_handler.logger.error('Command module does not have command')
+                return None
+
+            module.command = module.create_command(self)
             self.command_modules[command] = module
             return module
             
@@ -86,7 +95,12 @@ class AppController:
             self.soul_handler.log_error(f"Error loading command module {command}: {str(e)}")
             return None
 
-    def _process_command(self, message_info, command_info):
+    def _check_command(self, command):
+        # Try to load command module
+        module = self._load_command_module(command)
+        return module.command if module else None
+
+    def _process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
             message_info: MessageInfo object
@@ -94,24 +108,20 @@ class AppController:
         Returns:
             str: Response message
         """
-        cmd = command_info['prefix']
-        
-        # Try to load command module
-        module = self._load_command_module(cmd)
-        if module and hasattr(module, 'command'):
-            try:
-                result = module['command'].process(self, message_info, command_info['parameters'])
-                if 'error' in result:
-                    return command_info['error_template'].format(
-                        error=result['error']
-                    )
-                else:
-                    return result['response']
-            except Exception as e:
-                self.soul_handler.log_error(f"Error processing command {cmd}: {traceback.format_exc()}")
-                if 'error_template' in command_info:
-                    return command_info['error_template'].format(error=traceback.format_exc())
-                return f"Error processing command {cmd}: {traceback.format_exc()}"
+        try:
+            result = command.process(message_info, command_info['parameters'])
+            if 'error' in result:
+                res =  command_info['error_template'].format(
+                    error=result['error']
+                )
+            else:
+                res = command_info['response_template'].format(**result)
+            return res
+        except Exception as e:
+            self.soul_handler.log_error(f"Error processing command {command_info}: {traceback.format_exc()}")
+            if 'error_template' in command_info:
+                return command_info['error_template'].format(error=traceback.format_exc())
+            return f"Error processing command {command_info}: {traceback.format_exc()}"
 
     def start_monitoring(self):
         enabled = True
@@ -459,10 +469,11 @@ class AppController:
                                                 error='Missing mode parameter'
                                             )
                                     case _:
-                                        if self._process_command(message_info, command_info):
-                                            response = self._process_command(message_info, command_info)
+                                        command = self._check_command(cmd)
+                                        if command:
+                                            response = self._process_command(command, message_info, command_info)
                                         else:
-                                            self.soul_handler.log_error(f"Unknown command: {command_info['prefix']}")
+                                            self.soul_handler.log_error(f"Unknown command: {cmd}")
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
                     res = self.music_handler.check_ktv_lyrics()
