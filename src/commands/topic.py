@@ -39,6 +39,12 @@ class TopicCommand(BaseCommand):
 
         time_diff = current_time - self.last_update_time
         remaining_minutes = self.cooldown_minutes - (time_diff.total_seconds() / 60)
+        if remaining_minutes < 0:
+            self.handler.logger.info(f'Topic will be updated to {new_topic} soon')
+            return {
+                'topic': f'{new_topic}. Topic will update soon'
+            }
+
 
         self.handler.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
         return {

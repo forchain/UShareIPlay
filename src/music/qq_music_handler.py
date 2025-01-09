@@ -384,7 +384,7 @@ class QQMusicHandler(AppHandler):
                     'command': 'input keyevent KEYCODE_MEDIA_NEXT'
                 }
             )
-            print("Sent media next key event")
+            self.logger.info("Sent media next key event")
 
             # Return song info
             return {
@@ -393,7 +393,7 @@ class QQMusicHandler(AppHandler):
             }
 
         except Exception as e:
-            print(f"Error skipping song: {str(e)}")
+            self.logger.error(f"Error skipping song: {str(e)}")
             traceback.print_exc()
             return {
                 'song': 'Unknown',
@@ -1350,63 +1350,37 @@ class QQMusicHandler(AppHandler):
 
     def play_favorites(self):
         """Navigate to favorites and play all"""
-        try:
-            # Navigate to home page
-            # self.navigate_to_home()
+        if not self.switch_to_app():
+            return {'error': 'Cannot switch to qq music'}
+        self.logger.info(f"Switched to QQ Music app")
+
+        self.press_back()
+        my_nav = self.try_find_element_plus('my_nav')
+        if not my_nav:
             self.press_back()
-            my_nav = self.try_find_element(
-                AppiumBy.XPATH,
-                self.config['elements']['my_nav']
-            )
+            my_nav = self.try_find_element_plus('my_nav')
             if not my_nav:
-                self.press_back()
-                my_nav = self.try_find_element(
-                    AppiumBy.XPATH,
-                    self.config['elements']['my_nav']
-                )
-                if not my_nav:
-                    return {'error': 'Cannot find my_nav'}
+                return {'error': 'Cannot find my_nav'}
 
-            print("Navigated to home page")
+        self.logger.info("Navigated to home page")
 
-            # Click on personal info navigation button
-            # my_nav = self.wait_for_element_clickable(
-            #     AppiumBy.XPATH,
-            #     self.config['elements']['my_nav']
-            # )
-            my_nav.click()
-            print("Clicked personal info navigation button")
+        my_nav.click()
+        self.logger.info("Clicked personal info navigation button")
 
-            # Click on favorites button
-            fav_entry = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['fav_entry']
-            )
-            fav_entry.click()
-            print("Clicked favorites button")
+        # Click on favorites button
+        fav_entry = self.wait_for_element_clickable_plus('fav_entry')
+        fav_entry.click()
+        self.logger.info("Clicked favorites button")
 
-            # Click on play all button
-            play_fav = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['play_fav']
-            )
-            song = self.wait_for_element(
-                AppiumBy.ID,
-                self.config['elements']['fav_song']
-            )
-            singer = self.wait_for_element(
-                AppiumBy.ID,
-                self.config['elements']['fav_singer']
-            )
+        # Click on play all button
+        play_fav = self.wait_for_element_clickable_plus('play_fav')
+        song = self.wait_for_element_clickable_plus('fav_song')
+        singer = self.wait_for_element_clickable_plus('fav_singer')
 
-            play_fav.click()
-            print("Clicked play all button")
+        play_fav.click()
+        self.logger.info("Clicked play all button")
 
-            return {'song': song.text, 'singer': singer.text}
-
-        except Exception as e:
-            print(f"Error playing favorites: {str(e)}")
-            return {'error': str(e)}
+        return {'song': song.text, 'singer': singer.text}
 
     def process_lyrics(self, lyrics_text, max_width=20, force_groups=0):
         """Process lyrics text into groups with width control
@@ -1581,25 +1555,25 @@ class QQMusicHandler(AppHandler):
         """
         if not self.switch_to_app():
             return {'error': 'Failed to switch to QQ Music app'}
-        
+
         # Try to find playing bar
         playing_bar = self.try_find_element_plus('playing_bar')
-        
+
         if not playing_bar:
             # Navigate to home and try again
             self.navigate_to_home()
             playing_bar = self.wait_for_element_clickable_plus('playing_bar')
             if not playing_bar:
                 return {'error': 'Cannot find playing bar'}
-            
+
         playing_bar.click()
         self.logger.info("Clicked playing bar")
-        
+
         # Find play mode button
         play_mode = self.wait_for_element_clickable_plus('play_mode')
         if not play_mode:
             return {'error': 'Cannot find play mode button'}
-        
+
         # Get current mode
         current_desc = play_mode.get_attribute('content-desc')
         target_desc = {
@@ -1607,14 +1581,14 @@ class QQMusicHandler(AppHandler):
             -1: "随机播放",
             0: "列表循环"
         }.get(mode)
-        
+
         # Convert mode to display text
         mode_text = {
             1: "single loop",
             -1: "random",
             0: "list loop"
         }.get(mode, "unknown")
-        
+
         # Click until we reach target mode if needed
         if current_desc != target_desc:
             while True:
@@ -1623,6 +1597,5 @@ class QQMusicHandler(AppHandler):
                 new_desc = play_mode.get_attribute('content-desc')
                 if new_desc == target_desc:
                     break
-                
-        return {'mode': mode_text}
 
+        return {'mode': mode_text}

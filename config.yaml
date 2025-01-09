@@ -107,10 +107,10 @@ qq_music:
     accompaniment_bar: "com.tencent.qqmusic:id/or3"
     accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
-    fav_entry: 'com.tencent.qqmusic:id/i_s'
-    play_fav: 'com.tencent.qqmusic:id/eg6'
-    fav_song: 'com.tencent.qqmusic:id/ll6'
-    fav_singer: 'com.tencent.qqmusic:id/ln9'
+    fav_entry: 'com.tencent.qqmusic:id/ij0'
+    play_fav: 'com.tencent.qqmusic:id/eki'
+    fav_song: 'com.tencent.qqmusic:id/lxj'
+    fav_singer: 'com.tencent.qqmusic:id/lzn'
     lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌词"]'
     playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
     singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
@@ -145,7 +145,7 @@ commands:
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     response_template: "{action} {song} by {singer}"
-    error_template: "Failed to {action}, because {error}"
+    error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
     response_template: "Adjusted volume to {volume}"
     error_template: "Failed to adjust volume, because {error}"
@@ -179,14 +179,16 @@ commands:
         :lyrics
       8. view playing song
         :info
-      9. play music collection
+      9. play music 
         :playlist music
-      10. play singer collection
+      10. play singer 
         :singer name
       11. apply/dismiss admin
         :admin 1/0
       12. ktv mode
         :ktv 1/0
+      13. play mode
+        :mode 0/1/-1
 
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"

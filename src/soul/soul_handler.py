@@ -622,10 +622,10 @@ class SoulHandler(AppHandler):
             )
 
             if grab_mic_button:
-                print("Grab mic button found, grabbing mic...")
+                self.logger.info("Grab mic button found, grabbing mic...")
                 self.grab_mic_and_confirm()
             else:
-                print("Already on mic, checking toggle mic status...")
+                self.logger.info("Already on mic, checking toggle mic status...")
                 # Check the toggle mic button
                 toggle_mic_button = self.wait_for_element_clickable(
                     AppiumBy.ID,
@@ -633,9 +633,9 @@ class SoulHandler(AppHandler):
                 )
 
                 if toggle_mic_button.text == "闭麦中":  # Assuming this means "Mic is off"
-                    print("Mic is off, turning it on...")
+                    self.logger.info("Mic is off, turning it on...")
                     toggle_mic_button.click()
-                    print("Clicked toggle mic button to turn on mic")
+                    self.logger.info("Clicked toggle mic button to turn on mic")
 
         except Exception as e:
-            print(f"Error ensuring mic is active: {str(e)}")
+            self.logger.error(f"Error ensuring mic is active: {str(e)}")
