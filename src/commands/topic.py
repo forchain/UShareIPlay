@@ -24,8 +24,8 @@ class TopicCommand(BaseCommand):
         self.cooldown_minutes = 5 + 2
         self.handler = self.soul_handler
 
-    def change_topic(self, topic):
-        new_topic = topic[:15]
+    def change_topic(self, topic: str):
+        new_topic = topic.split('|')[0].strip()[:15]
         current_time = datetime.now()
 
         # Update topic
@@ -40,11 +40,10 @@ class TopicCommand(BaseCommand):
         time_diff = current_time - self.last_update_time
         remaining_minutes = self.cooldown_minutes - (time_diff.total_seconds() / 60)
 
-        if remaining_minutes > 0:
-            self.handler.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
-            return {
-                'topic': f'{new_topic}. Topic will update in {int(remaining_minutes)} minutes'
-            }
+        self.handler.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
+        return {
+            'topic': f'{new_topic}. Topic will update in {int(remaining_minutes)} minutes'
+        }
 
     def process(self, message_info, parameters):
         """Process topic command"""
