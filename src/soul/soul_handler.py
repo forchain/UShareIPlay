@@ -1,4 +1,5 @@
 import time
+import traceback
 
 from PIL.ImageOps import contain
 from appium.webdriver.common.appiumby import AppiumBy
@@ -188,7 +189,6 @@ class SoulHandler(AppHandler):
         input_box = self.wait_for_element_clickable_plus('input_box')
         if not input_box:
             self.logger.error(f'send_message cannot find input box, might be in chat screen')
-        return
         input_box.send_keys(message)
         self.logger.info(f"Entered message: {message}")
 
@@ -497,9 +497,9 @@ class SoulHandler(AppHandler):
             return {'party_id': party_id, 'user': message_info.nickname}
 
         except Exception as e:
-            print(f"Error inviting to party: {str(e)}")
+            self.logger.error(f"Error inviting to party: {traceback.format_exc()}")
             return {
-                'error': str(e),
+                'error': f'Failed to invite to party to {party_id}',
                 'party_id': party_id
             }
 

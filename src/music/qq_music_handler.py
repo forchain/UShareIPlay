@@ -437,7 +437,7 @@ class QQMusicHandler(AppHandler):
                     'command': 'input keyevent KEYCODE_MEDIA_PLAY_PAUSE'
                 }
             )
-            print("Sent media play/pause key event")
+            self.logger.info("Sent media play/pause key event")
 
             return {
                 'song': current_info['song'],
@@ -446,9 +446,8 @@ class QQMusicHandler(AppHandler):
             }
 
         except Exception as e:
-            print(f"Error controlling playback: {str(e)}")
-            traceback.print_exc()
-            return {'error': str(e)}
+            self.logger.error(f"Error controlling playback: {traceback.format_exc()}")
+            return {'error': f'Failed to pause/resume song, {pause_state}'}
 
     def get_volume_level(self):
         """Get current volume level"""
@@ -598,8 +597,8 @@ class QQMusicHandler(AppHandler):
                 'volume': vol,
             }
         except Exception as e:
-            print(f"Error adjusting volume: {str(e)}")
-            return {'error': str(e)}
+            print(f"Error adjusting volume: {traceback.format_exc()}")
+            return {'error': f'Failed to adjust volume to {delta}'}
 
     def get_lyrics(self):
         """Get lyrics of current playing song"""
@@ -759,9 +758,8 @@ class QQMusicHandler(AppHandler):
             return {'lyrics': final_lyrics if final_lyrics else "No lyrics available"}
 
         except Exception as e:
-            print(f"Error getting lyrics: {str(e)}")
-            traceback.print_exc()
-            return {'error': str(e)}
+            self.logger.error(f"Error getting lyrics: {traceback.format_exc()}")
+            return {'error': 'Failed to get lyrics' }
 
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter

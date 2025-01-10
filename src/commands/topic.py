@@ -62,7 +62,7 @@ class TopicCommand(BaseCommand):
             return self.change_topic(new_topic)
         except Exception as e:
             self.handler.log_error(f"Error processing topic command: {str(e)}")
-            return {'error': str(e)}
+            return {'error': f'Failed to process topic command, {new_topic}'}
 
     def update(self):
         """Check and update topic periodically"""
@@ -134,4 +134,5 @@ class TopicCommand(BaseCommand):
             return {'success': True}
 
         except Exception as e:
-            return {'error': f'Failed to update topic: {str(e)}'}
+            self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
+            return {'error': f'Failed to update topic: {topic}'}
