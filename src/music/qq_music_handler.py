@@ -1458,93 +1458,87 @@ class QQMusicHandler(AppHandler):
         Returns:
             str: Formatted playlist info or error dict
         """
+        if not self.switch_to_app():
+            self.logger.error("Cannot switch to QQ music")
+            return {'error': 'Failed to switch to QQ Music app'}
+
+        # Try to find playlist entry in playing panel first
+        playlist_entry = self.try_find_element_plus('playlist_entry_playing')
+
+        if playlist_entry:
+            if not self.is_element_clickable(playlist_entry):
+                self.logger.error("Playlist entry in playing panel not clickable")
+                return {'error': 'Playlist entry in playing panel not clickable'}
+            playlist_entry.click()
+            self.logger.info("Clicked playlist entry in playing panel")
+        else:
+            # Navigate to home and try floating entry
+            self.navigate_to_home()
+            playlist_entry = self.try_find_element_plus('playlist_entry_floating')
+            if not playlist_entry:
+                self.logger.error("Failed to find playlist entry")
+                return {'error': 'Failed to find playlist entry'}
+
+            if not self.is_element_clickable(playlist_entry):
+                self.logger.error("Playlist entry floating not clickable")
+                return {'error': 'Playlist entry floating not clickable'}
+            playlist_entry.click()
+            self.logger.info("Clicked playlist entry floating")
+
+        playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
+        if not playlist_playing:
+            self.logger.error("Failed to find playlist playing")
+            return {'error': 'Failed to find playlist playing'}
         try:
-            if not self.switch_to_app():
-                return {'error': 'Failed to switch to QQ Music app'}
+            playing_loc = playlist_playing.location
+            playing_size = playlist_playing.size
+        except StaleElementReferenceException as e:
+            self.logger.error(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
+            return {'error': 'Failed to find playing indicator playlist '}
 
-            # Try to find playlist entry in playing panel first
-            playlist_entry = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['playlist_entry_playing']
-            )
+        # Find playlist title element
+        playlist_header = self.try_find_element_plus('playlist_header')
+        if not playlist_header:
+            self.logger.error("Failed to find playlist header")
+            return {'error': 'Failed to find playlist header'}
 
-            if playlist_entry:
-                if not self.is_element_clickable(playlist_entry):
-                    return {'error': 'Playlist entry in playing panel not clickable'}
-                playlist_entry.click()
-                print("Clicked playlist entry in playing panel")
-            else:
-                # Navigate to home and try floating entry
-                self.navigate_to_home()
-                playlist_entry = self.try_find_element(
-                    AppiumBy.ID,
-                    self.config['elements']['playlist_entry_floating']
-                )
-                if not playlist_entry:
-                    return {'error': 'Failed to find playlist entry'}
+        title_loc = playlist_header.location
+        # Calculate swipe coordinates
+        start_x = playing_loc['x'] + playing_size['width'] // 2
+        start_y = playing_loc['y']
+        end_y = title_loc['y']
 
-                if not self.is_element_clickable(playlist_entry):
-                    return {'error': 'Playlist entry floating not clickable'}
-                playlist_entry.click()
-                print("Clicked playlist entry floating")
+        # Swipe playing element up to title position
+        self.driver.swipe(start_x, start_y, start_x, end_y, 500)
+        self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
-            playlist_playing = self.wait_for_element(
-                AppiumBy.ID,
-                self.config['elements']['playlist_playing']
-            )
-            if not playlist_playing:
-                return {'error': 'Failed to find playlist playing'}
+        # Get all songs and singers
+        songs = self.driver.find_elements(
+            AppiumBy.ID,
+            self.config['elements']['playlist_song']
+        )
+        singers = self.driver.find_elements(
+            AppiumBy.ID,
+            self.config['elements']['playlist_singer']
+        )
 
-            # Find playlist title element
-            playlist_header = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['playlist_header']
-            )
-            if playlist_header:
-                # Get locations and size
-                playing_loc = playlist_playing.location
-                title_loc = playlist_header.location
-                playing_size = playlist_playing.size
+        # Combine songs and singers
+        playlist_info = []
+        for song, singer in zip(songs, singers):
+            try:
+                song_text = song.text.strip()
+                singer_text = singer.text.strip()
+                if song_text and singer_text:
+                    playlist_info.append(f"{song_text} {singer_text}")
+            except Exception as e:
+                self.logger.warning(f"Error getting song/singer text: {traceback.format_exc()}")
+                continue
 
-                # Calculate swipe coordinates
-                start_x = playing_loc['x'] + playing_size['width'] // 2
-                start_y = playing_loc['y']
-                end_y = title_loc['y']
+        if not playlist_info:
+            self.logger.error("No songs found in playlist")
+            return {'error': 'No songs found in playlist'}
 
-                # Swipe playing element up to title position
-                self.driver.swipe(start_x, start_y, start_x, end_y, 500)
-                print(f"Scrolled playlist from y={start_y} to y={end_y}")
-
-            # Get all songs and singers
-            songs = self.driver.find_elements(
-                AppiumBy.ID,
-                self.config['elements']['playlist_song']
-            )
-            singers = self.driver.find_elements(
-                AppiumBy.ID,
-                self.config['elements']['playlist_singer']
-            )
-
-            # Combine songs and singers
-            playlist_info = []
-            for song, singer in zip(songs, singers):
-                try:
-                    song_text = song.text.strip()
-                    singer_text = singer.text.strip()
-                    if song_text and singer_text:
-                        playlist_info.append(f"{song_text} {singer_text}")
-                except Exception as e:
-                    print(f"Error getting song/singer text: {str(e)}")
-                    continue
-
-            if not playlist_info:
-                return {'error': 'No songs found in playlist'}
-
-            return {'playlist': '\n'.join(playlist_info)}
-
-        except Exception as e:
-            print(f"Error getting playlist info: {str(e)}")
-            return {'error': str(e)}
+        return {'playlist': '\n'.join(playlist_info)}
 
     def change_play_mode(self, mode):
         """Change play mode

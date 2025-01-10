@@ -25,7 +25,7 @@ class TopicCommand(BaseCommand):
         self.handler = self.soul_handler
 
     def change_topic(self, topic: str):
-        new_topic = topic.split('|')[0].strip()[:15]
+        new_topic = topic.split('|')[0].split('(')[0].strip()[:15]
         current_time = datetime.now()
 
         # Update topic

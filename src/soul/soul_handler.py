@@ -172,10 +172,7 @@ class SoulHandler(AppHandler):
         self.switch_to_app()
 
         # Click on the input box entry first
-        input_box_entry = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['input_box_entry']
-        )
+        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry')
         if not input_box_entry:
             self.logger.error(f'cannot find input box entry, might be in loading')
             return
@@ -188,28 +185,19 @@ class SoulHandler(AppHandler):
         # print("Waited 1 second for input box")
 
         # Now find and interact with the actual input box
-        input_box = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['input_box']
-        )
+        input_box = self.wait_for_element_clickable_plus('input_box')
         if not input_box:
             self.logger.error(f'send_message cannot find input box, might be in chat screen')
-            return
+        return
         input_box.send_keys(message)
         self.logger.info(f"Entered message: {message}")
 
         # click send button
-        send_button = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['button_send']
-        )
+        send_button = self.wait_for_element_clickable_plus('button_send')
         send_button.click()
         self.logger.info("Clicked send button")
 
-        input_box_entry = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['input_box_entry'], timeout=1
-        )
+        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry', timeout=2)
         if not input_box_entry:
             # hide input dialog
             self.press_back()
@@ -217,7 +205,7 @@ class SoulHandler(AppHandler):
         else:
             self.logger.info("Found input box entry, no need to hide input dialog")
 
-        input_box = self.try_find_element(AppiumBy.ID, self.config['elements']['input_box'], log=False)
+        input_box = self.try_find_element_plus('input_box', log=False)
         if input_box:
             self.press_back()
             self.logger.warning("Failed to hide input dialog, try again")
