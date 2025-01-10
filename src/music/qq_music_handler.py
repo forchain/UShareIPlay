@@ -49,12 +49,9 @@ class QQMusicHandler(AppHandler):
         # Keep clicking back until no more back buttons found
         n = 0
         while n < 9:
-            search_entry = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['search_entry']
-            )
+            search_entry = self.try_find_element_plus('search_entry')
             if search_entry:
-                go_back = self.try_find_element(AppiumBy.ID, self.config['elements']['go_back'])
+                go_back = self.try_find_element_plus('go_back')
                 if go_back:
                     go_back.click()
                     self.logger.info(f"Clicked go back button")
@@ -1530,14 +1527,15 @@ class QQMusicHandler(AppHandler):
                 singer_text = singer.text.strip()
                 if song_text and singer_text:
                     playlist_info.append(f"{song_text} {singer_text}")
-            except Exception as e:
-                self.logger.warning(f"Error getting song/singer text: {traceback.format_exc()}")
+            except StaleElementReferenceException as e:
+                self.logger.warning(f"Error getting song/singer text, {len(songs)} {len(singers)}")
                 continue
 
         if not playlist_info:
             self.logger.error("No songs found in playlist")
             return {'error': 'No songs found in playlist'}
 
+        self.logger.info(f"Found {len(playlist_info)} songs in playlist")
         return {'playlist': '\n'.join(playlist_info)}
 
     def change_play_mode(self, mode):
