@@ -15,7 +15,6 @@ class AdminCommand(BaseCommand):
         super().__init__(controller)
 
     def process(self, message_info, parameters):
-        result = self.music_handler.admin_song()
         # Get parameter
         if len(parameters) == 0:
             return {
