@@ -305,7 +305,7 @@ class QQMusicHandler(AppHandler):
         result.click()
         self.logger.info("Selected playlist tab")
 
-        play_button = self.wait_for_element_clickable_plus('play_all', timeout=1)
+        play_button = self.wait_for_element_clickable_plus('play_all', timeout=5)
         if play_button:
             self.logger.info("Found play all button")
             play_button.click()
