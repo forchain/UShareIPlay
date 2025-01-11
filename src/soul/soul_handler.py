@@ -197,16 +197,16 @@ class SoulHandler(AppHandler):
         send_button.click()
         self.logger.info("Clicked send button")
 
-        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry', timeout=2)
-        if not input_box_entry:
+        input_box = self.wait_for_element_clickable_plus('input_box', timeout=1)
+        if input_box:
             # hide input dialog
             self.press_back()
             self.logger.info("Hide input dialog")
         else:
-            self.logger.info("Found input box entry, no need to hide input dialog")
+            self.logger.info("No input box found, no need to hide input dialog")
 
-        input_box = self.try_find_element_plus('input_box', log=False)
-        if input_box:
+        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry', timeout=1)
+        if not input_box_entry:
             self.press_back()
             self.logger.warning("Failed to hide input dialog, try again")
 

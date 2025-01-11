@@ -119,7 +119,8 @@ qq_music:
     playlist_result: 'com.tencent.qqmusic:id/l1l'
     singer_text: 'com.tencent.qqmusic:id/muo'
     singer_result: 'com.tencent.qqmusic:id/l2b'
-    play_playlist: 'com.tencent.qqmusic:id/eki'
+    play_all: '//android.widget.TextView[@text="全部播放"]'
+    play_album: 'com.tencent.qqmusic:id/j98'
     play_singer: 'com.tencent.qqmusic:id/em7'
     play_singer_hot: 'com.tencent.qqmusic:id/j0g'
     singer_tabs: 'com.tencent.qqmusic:id/b_h'
@@ -200,10 +201,10 @@ commands:
     response_template: "Playing {song} by {singer} in {album}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
-    response_template: "Playing singer {singer}"
+    response_template: "Playing {singer}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
-    response_template: "Playing playlist {playlist}"
+    response_template: "Playing {playlist}"
     current_template: "Playlist\n{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "mode"

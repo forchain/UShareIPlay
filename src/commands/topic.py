@@ -90,7 +90,7 @@ class TopicCommand(BaseCommand):
                 self.last_update_time = current_time
                 self.handler.logger.info(f'Topic is updated to {self.next_topic}')
                 self.handler.send_message(
-                    f"Auto-updated topic to: {self.next_topic}"
+                    f"Updating topic to {self.next_topic}"
                 )
                 self.current_topic = self.next_topic
                 self.next_topic = None
