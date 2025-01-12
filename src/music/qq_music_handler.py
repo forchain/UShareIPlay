@@ -388,8 +388,7 @@ class QQMusicHandler(AppHandler):
             }
 
         except Exception as e:
-            self.logger.error(f"Error skipping song: {str(e)}")
-            traceback.print_exc()
+            self.logger.error(f"Error skipping song: {traceback.format_exc()}")
             return {
                 'song': 'Unknown',
                 'singer': 'Unknown'
@@ -757,7 +756,7 @@ class QQMusicHandler(AppHandler):
 
         except Exception as e:
             self.logger.error(f"Error getting lyrics: {traceback.format_exc()}")
-            return {'error': 'Failed to get lyrics' }
+            return {'error': 'Failed to get lyrics'}
 
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
@@ -1133,72 +1132,64 @@ class QQMusicHandler(AppHandler):
 
     def check_ktv_lyrics(self):
         if not self.switch_to_app():
-            return False
+            self.logger.error("Failed to switch to app")
+            return {
+                'error': "Failed to switch to app"
+            }
 
         """Check current lyrics in KTV mode"""
         if not self.ktv_mode:
             return None  # 如果KTV模式未开启，则不执行
 
-        close_poster = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['close_poster']
-        )
+        close_poster = self.try_find_element_plus('close_poster', log=False)
         if close_poster:
-            print("Closing poster...")
+            self.logger.info("Closing poster...")
             close_poster.click()
 
-        # 尝试查找并点击歌词工具
-        lyrics_tool = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['lyrics_tool']
-        )
+        lyrics_tool = self.wait_for_element_clickable_plus('lyrics_tool')
         if not lyrics_tool:
             self.ktv_mode = False
+            self.logger.error("Failed to find lyrics tool")
             return {'error': 'Cannot find lyrics tool'}
 
         lyrics_tool.click()
-        print("Clicked lyrics tool")
+        self.logger.info("Clicked lyrics tool")
 
         # 尝试查找并点击歌词海报
-        lyrics_poster = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['lyrics_poster']
-        )
+        lyrics_poster = self.wait_for_element_clickable_plus('lyrics_poster')
         if not lyrics_poster:
-            self.ktv_mode = False
-            return {'error': 'Cannot find lyrics poster option'}
+            # self.ktv_mode = False
+            info =  self.skip_song()
+            self.logger.warning(f"Failed to find lyrics poster for {info['song']} by {info['singer']}")
+            return {'error': f'Skip {info['song']} by {info['singer']} due to no lyrics poster option'}
 
         try:
             lyrics_poster.click()
         except StaleElementReferenceException as e:
             self.ktv_mode = False
             return {'error': 'Cannot click lyrics poster option'}
-        print("Clicked lyrics poster")
+        self.logger.info("Clicked lyrics poster")
 
         # 找到所有的lyrics_box
-        close_poster = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['close_poster']
-        )
+        close_poster = self.wait_for_element_clickable_plus('close_poster')
         if not close_poster:
-            print("No close poster")
+            self.ktv_mode = False
+            self.logger.warning("No close poster")
+            return {'error': 'No close poster'}
 
-        current_lyrics = self.wait_for_element(
-            AppiumBy.ID,
-            self.config['elements']['current_lyrics']
-        )
+        current_lyrics = self.wait_for_element_clickable_plus('current_lyrics')
         finished = False
         if current_lyrics:
             try:
                 y_coordinate = current_lyrics.location['y']
             except StaleElementReferenceException as e:
-                print(f"Error finding y coordinate")
+                self.logger.error(f"Error finding y coordinate")
                 self.ktv_mode = False
                 return {'error': 'Cannot get current lyrics coordinate'}
 
             if y_coordinate < 1000:
                 finished = True
-                print("Found first line, song might be finished")
+                self.logger.info("Found first line, song might be finished")
         if not finished:
             screen_size = self.driver.get_window_size()
             screen_height = screen_size['height']
