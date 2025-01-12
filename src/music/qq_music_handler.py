@@ -379,7 +379,7 @@ class QQMusicHandler(AppHandler):
                     'command': 'input keyevent KEYCODE_MEDIA_NEXT'
                 }
             )
-            self.logger.info("Sent media next key event")
+            self.logger.info(f"Skipped {current_info['song']} by {current_info['singer']}")
 
             # Return song info
             return {
@@ -1159,7 +1159,7 @@ class QQMusicHandler(AppHandler):
         lyrics_poster = self.wait_for_element_clickable_plus('lyrics_poster')
         if not lyrics_poster:
             # self.ktv_mode = False
-            info =  self.skip_song()
+            info = self.skip_song()
             self.logger.warning(f"Failed to find lyrics poster for {info['song']} by {info['singer']}")
             return {'error': f'Skip {info['song']} by {info['singer']} due to no lyrics poster option'}
 
