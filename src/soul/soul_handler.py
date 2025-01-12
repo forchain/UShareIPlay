@@ -180,11 +180,6 @@ class SoulHandler(AppHandler):
         input_box_entry.click()
         self.logger.info("Clicked input box entry")
 
-        # # Wait 1 second for input box to be ready
-        # import time
-        # time.sleep(1)
-        # print("Waited 1 second for input box")
-
         # Now find and interact with the actual input box
         input_box = self.wait_for_element_clickable_plus('input_box')
         if not input_box:
@@ -204,6 +199,11 @@ class SoulHandler(AppHandler):
             self.logger.info("Hide input dialog")
         else:
             self.logger.info("No input box found, no need to hide input dialog")
+
+        input_box = self.try_find_element_plus('input_box')
+        if input_box:
+            self.press_back()
+            self.logger.info("Hide input dialog again")
 
         input_box_entry = self.wait_for_element_clickable_plus('input_box_entry', timeout=1)
         if not input_box_entry:
