@@ -35,6 +35,11 @@ class AppHandler:
         
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
+        
+        # Clear any existing handlers
+        if logger.hasHandlers():
+            logger.handlers.clear()
+        
         logger.setLevel(logging.DEBUG)
         
         # Create file handler
