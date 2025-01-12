@@ -290,33 +290,35 @@ class QQMusicHandler(AppHandler):
         }
 
     def play_playlist(self, query: str):
+
         if not self.query_music(query):
-            self.logger.error('Failed to query music in playlist')
             return {
                 'error': 'Failed to query music playlist',
             }
 
         if not self.select_playlist_tab():
-            self.logger.erryyor('Failed to find playlist tab')
             return {
                 'error': 'Failed to find playlist tab',
             }
-        result = self.wait_for_element_clickable_plus('playlist_result')
+        result = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['playlist_result']
+        )
         result.click()
-        self.logger.info("Selected playlist tab")
 
-        play_button = self.wait_for_element_clickable_plus('play_all', timeout=5)
+        play_button = self.wait_for_element_clickable(
+            AppiumBy.ID, self.config['elements']['play_playlist']
+        )
         if play_button:
-            self.logger.info("Found play all button")
             play_button.click()
         else:
-            play_button = self.wait_for_element_clickable_plus('play_album')
+            play_button = self.wait_for_element_clickable(
+                AppiumBy.ID, self.config['elements']['playlist_item']
+            )
             if play_button:
-                self.logger.info("Found play album button")
                 play_button.click()
             else:
-                self.logger.error('Failed to find playlist button')
                 return {'error': 'Failed to find play button'}
+
         return {
             'playlist': result.text,
         }
@@ -992,7 +994,7 @@ class QQMusicHandler(AppHandler):
             actions.w3c_actions = ActionBuilder(self.driver, mouse=pointer)
             actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
             actions.w3c_actions.pointer_action.pointer_down()
-            actions.w3c_actions.pointer_action.pause(0.01)
+            # actions.w3c_actions.pointer_action.pause(0.01)
             actions.w3c_actions.pointer_action.move_to_location(start_x, end_y)
             actions.w3c_actions.pointer_action.release()
 

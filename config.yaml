@@ -58,10 +58,12 @@ soul:
     edit_topic_input: 'cn.soulapp.android:id/et_input_message'
     edit_topic_confirm: 'cn.soulapp.android:id/tvConfim'
     little_assistant: 'cn.soulapp.android:id/ivLittleAssistant'
-    edit_announcement_entry: 'cn.soulapp.android:id/ivEdit'
-    customize_announcement_button: '//android.view.View[@text="自定义"]'
-    edit_announcement_input: '//android.widget.EditText'
-    edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
+    edit_notice_entry: 'cn.soulapp.android:id/ivEdit'
+    customize_notice_button: '//android.view.View[@text="自定义"]'
+    edit_notice_input: '//android.widget.EditText'
+    edit_notice_confirm: '//android.view.View[@text="确认提交"]'
+    empty_seat: 'cn.soulapp.android:id/leftTvDefaultName'
+    up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -213,6 +215,9 @@ commands:
   - prefix: "topic"
     response_template: "Change topic to {topic}"
     error_template: "Failed to change topic, because {error}"
+  - prefix: "notice"
+    response_template: "Change notice to {notice}"
+    error_template: "Failed to change notice, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
