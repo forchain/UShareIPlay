@@ -14,13 +14,19 @@ import importlib
 import os
 from pathlib import Path
 import sys
+import threading
+import queue
+import readline  # 用于更好的命令行输入体验
 
 
 class AppController:
     def __init__(self, config):
         self.config = config
         self.driver = self._init_driver()
-
+        self.input_queue = queue.Queue()
+        self.is_running = True
+        self.in_console_mode = False
+        
         # Get lyrics formatter tags from lyrics command config
         lyrics_tags = next(
             (cmd.get('tags', []) for cmd in config['commands'] if cmd['prefix'] == 'lyrics'),
@@ -134,14 +140,54 @@ class AppController:
                 return command_info['error_template'].format(error=traceback.format_exc())
             return f"Error processing command {command_info}: {traceback.format_exc()}"
 
+    def _toggle_console_mode(self):
+        """Toggle console mode on Ctrl+P"""
+        if not self.in_console_mode:
+            print("\nEntering console mode. Press Ctrl+P again to exit...")
+            self.in_console_mode = True
+        else:
+            print("\nExiting console mode...")
+            self.in_console_mode = False
+
+    def _console_input(self):
+        """Background thread for console input"""
+        while self.is_running:
+            try:
+                user_input = input("Console> " if self.in_console_mode else "")
+                if user_input.strip():  # 只处理非空输入
+                    self.input_queue.put(user_input)
+            except EOFError:
+                continue
+            except KeyboardInterrupt:
+                if self.in_console_mode:
+                    self.in_console_mode = False
+                    print("\nExiting console mode...")
+                else:
+                    self.is_running = False
+                break
+
     def start_monitoring(self):
         enabled = True
         response = None
         lyrics = None
         last_info = None
         error_count = 0
-        while True:
+        
+        # Start console input thread
+        input_thread = threading.Thread(target=self._console_input)
+        input_thread.daemon = True
+        input_thread.start()
+
+        while self.is_running:
             try:
+                # Check for console input
+                try:
+                    while not self.input_queue.empty():
+                        message = self.input_queue.get_nowait()
+                        self.soul_handler.send_message(message)
+                except queue.Empty:
+                    pass
+
                 # Update all commands
                 self._update_commands()
                 
@@ -283,13 +329,18 @@ class AppController:
                         f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
                     return False
             except KeyboardInterrupt:
-                print("\nStopping the monitoring...")
-                return True
+                if not self.in_console_mode:
+                    print("\nEntering console mode. Press Ctrl+C to exit...")
+                    self.in_console_mode = True
+                else:
+                    print("\nStopping the monitoring...")
+                    self.is_running = False
+                    return True
             except StaleElementReferenceException as e:
                 self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
             except WebDriverException as e:
                 self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
                 error_count += 1
-                # error consecutively up to 10 times, should rerun app
                 if error_count > 9:
+                    self.is_running = False
                     return False
