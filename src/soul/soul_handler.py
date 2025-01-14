@@ -184,6 +184,9 @@ class SoulHandler(AppHandler):
         input_box = self.wait_for_element_clickable_plus('input_box')
         if not input_box:
             self.logger.error(f'send_message cannot find input box, might be in chat screen')
+            return {
+                'error': 'Failed to find input box',
+            }
         input_box.send_keys(message)
         self.logger.info(f"Entered message: {message}")
 
