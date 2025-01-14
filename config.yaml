@@ -115,6 +115,8 @@ qq_music:
     playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
     singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
     song_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌曲"]'
+    album_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="专辑"]'
+    album_text: 'com.tencent.qqmusic:id/kzn'
     lyrics_text: 'com.tencent.qqmusic:id/h8u'
     playlist_result: 'com.tencent.qqmusic:id/l1l'
     singer_text: 'com.tencent.qqmusic:id/muo'
@@ -213,6 +215,9 @@ commands:
   - prefix: "topic"
     response_template: "Change topic to {topic}"
     error_template: "Failed to change topic, because {error}"
+  - prefix: "album"
+    response_template: "Playing album {album}"
+    error_template: "Failed to play album, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

@@ -100,34 +100,29 @@ class QQMusicHandler(AppHandler):
     def query_music(self, music_query: str):
         """Common logic for preparing music playback"""
         if not self.switch_to_app():
+            self.logger.info(f"Failed to switched to QQ Music app")
             return False
-        print(f"Switched to QQ Music app")
+        self.logger.info(f"Switched to QQ Music app")
 
-        go_back = self.try_find_element(
-            AppiumBy.ID, self.config['elements']['go_back'])
+        go_back = self.try_find_element_plus('go_back', log=False)
         if go_back:
+            self.logger.info(f"Clicked Go Back button")
             go_back.click()
 
-        search_box = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['search_box']
-        )
+        search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
-            print(f"Cannot find search entry")
+            self.logger.info(f"Cannot find search entry")
 
             # Hide player if visible
             self.hide_player()
-            print(f"Attempted to hide player")
+            self.logger.info(f"Attempted to hide player")
 
             # Go back to home page
             self.navigate_to_home()
-            print(f"Navigated to home page")
+            self.logger.info(f"Navigated to home page")
 
             # Find search entry
-            search_entry = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['search_entry']
-            )
+            search_entry = self.wait_for_element_clickable_plus('search_entry')
             if search_entry:
                 search_entry.click()
                 self.logger.info(f"Clicked search entry")
@@ -135,24 +130,18 @@ class QQMusicHandler(AppHandler):
                 self.logger.error(f"failed to find search entry")
                 return False
 
-        clear_search = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['clear_search']
-        )
+        clear_search = self.try_find_element_plus('clear_search')
         if clear_search:
             clear_search.click()
             self.logger.info(f"Clear search")
 
         # Find and click search box
-        search_box = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['search_box']
-        )
+        search_box = self.wait_for_element_clickable_plus('search_box')
         if not search_box:
-            print(f"Cannot find search entry")
+            self.logger.error(f"Cannot find search entry")
             return False
         search_box.click()
-        print(f"Found search box")
+        self.logger.info(f"Found search box")
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
@@ -182,7 +171,7 @@ class QQMusicHandler(AppHandler):
         if playing_info['song'].endswith('(Live)'):
             self.live_count += 1
         else:
-            studio_version = self.try_find_element(AppiumBy.XPATH, self.config['elements']['studio_version'])
+            studio_version = self.try_find_element_plus('studio_version')
             if studio_version:
                 studio_version.click()
                 self.logger.info("Alter to studio version")
