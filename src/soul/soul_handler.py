@@ -516,6 +516,7 @@ class SoulHandler(AppHandler):
         if not message_info.relation_tag:
             return {
                 'error': 'Only friends of owner can apply administrators',
+                'user': message_info.nickname,
             }
 
         # Click avatar to open profile
@@ -528,52 +529,48 @@ class SoulHandler(AppHandler):
                 self.logger.error('Avatar element is unavailable')
                 return {
                     'error': 'Avatar element is unavailable',
+                    'user': message_info.nickname,
                 }
         else:
-            return {'error': 'Avatar element not found'}
+            return {
+                'error': 'Avatar element not found',
+                'user': message_info.nickname,
+            }
 
         # Find manager invite button
-        manager_invite = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['manager_invite']
-        )
+        manager_invite = self.wait_for_element_clickable_plus('manager_invite')
         if not manager_invite:
-            return {'error': 'Failed to find manager invite button'}
+            return {'error': 'Failed to find manager invite button', 'user': message_info.nickname}
 
         # Check current status
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
                 self.press_back()
-                return {'error': '你已经是管理员了'}
+                return {'error': '你已经是管理员了', 'user': message_info.nickname}
         else:
             if current_text == "管理邀请":
                 self.press_back()
-                return {'error': '你还不是管理员'}
+                return {'error': '你还不是管理员', 'user': message_info.nickname}
 
         # Click manager invite button
         manager_invite.click()
-        print("Clicked manager invite button")
+        self.logger.info("Clicked manager invite button")
 
         # Click confirm button
         if enable:
-            confirm_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['confirm_invite']
-            )
+            confirm_button = self.wait_for_element_clickable_plus('confirm_invite')
             action = "Invite"
         else:
-            confirm_button = self.wait_for_element_clickable(
-                AppiumBy.XPATH,
-                self.config['elements']['confirm_dismiss']
-            )
+            confirm_button = self.wait_for_element_clickable_plus('confirm_dismiss')
             action = "Dismiss"
 
         if not confirm_button:
-            return {'error': f'Failed to find {action} confirmation button'}
+            self.logger.error(f"Failed to find {action} confirmation button by {message_info.nickname}")
+            return {'error': f'Failed to find {action} confirmation button', 'user': message_info.nickname}
 
         confirm_button.click()
-        print(f"Clicked {action} confirmation button")
+        self.logger.info(f"Clicked {action} confirmation button")
 
         return {'user': message_info.nickname,
                 'action': action}

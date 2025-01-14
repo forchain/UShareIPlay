@@ -136,9 +136,7 @@ class AppController:
             return res
         except Exception as e:
             self.soul_handler.log_error(f"Error processing command {command_info}: {traceback.format_exc()}")
-            if 'error_template' in command_info:
-                return command_info['error_template'].format(error=traceback.format_exc())
-            return f"Error processing command {command_info}: {traceback.format_exc()}"
+            return f"Error processing command {command_info}"
 
     def _toggle_console_mode(self):
         """Toggle console mode on Ctrl+P"""
