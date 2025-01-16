@@ -356,6 +356,8 @@ class SoulHandler(AppHandler):
             claim_reward.click()
             self.logger.info("Claimed party creation reward")
 
+        self.seat_command.be_seated()
+
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
         Invite user to join the party

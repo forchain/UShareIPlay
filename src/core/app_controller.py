@@ -40,6 +40,7 @@ class AppController:
         self.soul_handler = SoulHandler(self.driver, config['soul'])
         self.music_handler = QQMusicHandler(self.driver, config['qq_music'])
         self.music_handler.set_lyrics_formatter(self.lyrics_formatter)
+        self.logger = self.soul_handler.logger
 
         # Initialize command parser
         self.command_parser = CommandParser(config['commands'])
@@ -164,12 +165,42 @@ class AppController:
                     self.is_running = False
                 break
 
+    def _load_all_commands(self):
+        """Load all command modules from commands directory
+        Returns:
+            dict: Loaded command modules
+        """
+        try:
+            # Get all .py files in commands directory
+            command_files = [f.stem for f in self.commands_path.glob('*.py') 
+                            if f.is_file() and not f.stem.startswith('__')]
+            
+            self.logger.info(f"Found command files: {command_files}")
+            
+            # Load each command module
+            for command in command_files:
+                try:
+                    module = self._load_command_module(command)
+                    if module:
+                        self.logger.info(f"Loaded command module: {command}")
+                    else:
+                        self.logger.error(f"Failed to load command module: {command}")
+                except Exception as e:
+                    self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading commands: {traceback.format_exc()}")
+
     def start_monitoring(self):
         enabled = True
         response = None
         lyrics = None
         last_info = None
         error_count = 0
+        
+        # Load all command modules
+        self._load_all_commands()
+        self.logger.info("All command modules loaded")
         
         # Start console input thread
         input_thread = threading.Thread(target=self._console_input)
