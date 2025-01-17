@@ -1486,25 +1486,17 @@ class QQMusicHandler(AppHandler):
         self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         # Get all songs and singers
-        songs = self.driver.find_elements(
-            AppiumBy.ID,
-            self.config['elements']['playlist_song']
-        )
-        singers = self.driver.find_elements(
-            AppiumBy.ID,
-            self.config['elements']['playlist_singer']
-        )
+        items = self.driver.find_elements(AppiumBy.ID, self.config['elements']['playlist_item_container'])
 
-        # Combine songs and singers
         playlist_info = []
-        for song, singer in zip(songs, singers):
+        for item in items:
             try:
-                song_text = song.text.strip()
-                singer_text = singer.text.strip()
-                if song_text and singer_text:
-                    playlist_info.append(f"{song_text} {singer_text}")
+                song = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_song'])
+                singer = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_singer'])
+                info = f'{song.text}{singer.text}' if singer else song.text
+                playlist_info.append(info)
             except StaleElementReferenceException as e:
-                self.logger.warning(f"Error getting song/singer text, {len(songs)} {len(singers)}")
+                self.logger.warning(f"Error getting song/singer text, {len(items)} ")
                 continue
 
         if not playlist_info:

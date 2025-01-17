@@ -133,6 +133,7 @@ qq_music:
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry_floating: 'com.tencent.qqmusic:id/is5'
     playlist_entry_playing: 'com.tencent.qqmusic:id/a9i'
+    playlist_item_container: 'com.tencent.qqmusic:id/gsa'
     playlist_song: 'com.tencent.qqmusic:id/lxy'
     playlist_singer: 'com.tencent.qqmusic:id/lkv'
     playlist_playing: 'com.tencent.qqmusic:id/ee4'
