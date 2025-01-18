@@ -1492,6 +1492,9 @@ class QQMusicHandler(AppHandler):
         for item in items:
             try:
                 song = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_song'])
+                if not song:
+                    self.logger.warning("Failed to find song in playlist")
+                    continue
                 singer = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_singer'])
                 info = f'{song.text}{singer.text}' if singer else song.text
                 playlist_info.append(info)
