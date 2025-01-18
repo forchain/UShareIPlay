@@ -119,6 +119,7 @@ qq_music:
     song_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌曲"]'
     album_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="专辑"]'
     album_text: 'com.tencent.qqmusic:id/kzn'
+    album_singer: 'com.tencent.qqmusic:id/kzl'
     lyrics_text: 'com.tencent.qqmusic:id/h8u'
     playlist_result: 'com.tencent.qqmusic:id/l1l'
     singer_text: 'com.tencent.qqmusic:id/muo'

@@ -52,10 +52,17 @@ class AlbumCommand(BaseCommand):
             return {
                 'error': 'Failed to select lyrics tab',
             }
+
         album_text = self.handler.wait_for_element_clickable_plus('album_text')
         if not album_text:
             self.handler.logger.error(f"Failed to find album text with query {query}")
             return {'error': 'Failed to find album text'}
+        topic = album_text.text
+        album_singer = self.handler.try_find_element_plus('album_singer')
+        if album_singer:
+            with_singer = f'{topic} {album_singer.text.split(' ')[0]}'
+            topic = with_singer if len(with_singer) <= 15 else topic
+
         album_text.click()
         self.handler.logger.info("album text clicked")
 
@@ -66,6 +73,9 @@ class AlbumCommand(BaseCommand):
         play_all.click()
         self.handler.logger.info("play all clicked")
 
+        self.controller.topic_command.change_topic(topic)
+        self.handler.logger.info(f"change album topic to {topic}")
+
         return {
-            'album': album_text.text
+            'album': topic
         }
