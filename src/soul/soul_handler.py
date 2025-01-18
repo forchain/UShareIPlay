@@ -203,9 +203,13 @@ class SoulHandler(AppHandler):
 
         input_box = self.wait_for_element_clickable_plus('input_box')
         if input_box:
-            # hide input dialog
-            self.press_back()
-            self.logger.info("Hide input dialog")
+            if input_box.text == '输入新消息':
+                self.press_back()
+                self.logger.info("Hide input dialog")
+            else:
+                send_button = self.wait_for_element_clickable_plus('button_send')
+                send_button.click()
+                self.logger.warning("Failed to send message, resent ")
         else:
             self.logger.info("No input box found, no need to hide input dialog")
 
