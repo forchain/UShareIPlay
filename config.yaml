@@ -64,6 +64,11 @@ soul:
     edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
     confirm_seat: 'cn.soulapp.android:id/tvOperation'
+    chat_room_title: 'cn.soulapp.android:id/tvChatRoomTitle'
+    title_edit_entry: 'cn.soulapp.android:id/iv_edit'
+    title_edit_input: 'cn.soulapp.android:id/et_content'
+    title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
+
 
 qq_music:
   package_name: "com.tencent.qqmusic"
