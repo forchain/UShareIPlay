@@ -3,6 +3,13 @@ from ..core.base_command import BaseCommand
 from datetime import datetime
 import time
 
+def create_command(controller):
+    title_command = TitleCommand(controller)
+    controller.title_command = title_command
+    return title_command
+
+command = None
+
 class TitleCommand(BaseCommand):
     prefix = "title"
     response_template = "Changing title to {title}"
