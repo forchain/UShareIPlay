@@ -22,6 +22,7 @@ class TitleCommand(BaseCommand):
         self.last_update_time = None
         self.current_title = None
         self.next_title = None
+        self.cooldown_minutes = 15 + 2
         self.handler = controller.soul_handler
 
     def change_title(self, title: str):
