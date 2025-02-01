@@ -68,6 +68,7 @@ soul:
     title_edit_entry: 'cn.soulapp.android:id/iv_edit'
     title_edit_input: 'cn.soulapp.android:id/et_content'
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
+    go_back: 'cn.soulapp.android:id/iv_back'
 
 
 qq_music:

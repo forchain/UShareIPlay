@@ -62,9 +62,14 @@ class SoulHandler(AppHandler):
                     else:
                         self.logger.warning(
                             "still cannot find message_list, may stay in unknown pages, go back first")
-                        if not self.press_back():
-                            self.logger.error('Failed to press back')
-                            return None
+                        go_back = self.try_find_element_plus('go_back', log=False)
+                        if go_back:
+                            go_back.click()
+                            self.logger.info("Clicked go back")
+                        else:
+                            if not self.press_back():
+                                self.logger.error('Failed to press back')
+                                return None
 
             return None
 
