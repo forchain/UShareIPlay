@@ -290,8 +290,8 @@ class AppController:
                                                 response = command_info['response_template'].format(
                                                     playlist=playing_info['playlist'],
                                                 )
-                                                topic_command = self._check_command('topic')
-                                                topic_command.change_topic(playing_info['playlist'])
+                                                self.topic_command.change_topic(playing_info['playlist'])
+                                                self.title_command.change_title(playing_info['playlist'])
                                             response = f'{response} @{message_info.nickname}'
                                     case 'singer':
                                         # Play music and get info
@@ -305,8 +305,8 @@ class AppController:
                                             )
                                         else:
                                             # Send status back to Soul using command's template
-                                            topic_command = self._check_command('topic')
-                                            topic_command.change_topic(playing_info['singer'])
+                                            self.topic_command.change_topic(playing_info['singer'])
+                                            self.title_command.change_title(playing_info['singer'])
                                             response = command_info['response_template'].format(
                                                 singer=playing_info['singer'],
                                             )

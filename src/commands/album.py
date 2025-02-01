@@ -74,6 +74,7 @@ class AlbumCommand(BaseCommand):
         self.handler.logger.info("play all clicked")
 
         self.controller.topic_command.change_topic(topic)
+        self.controller.title_command.change_title(topic)
         self.handler.logger.info(f"change album topic to {topic}")
 
         return {
