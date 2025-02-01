@@ -230,6 +230,9 @@ commands:
   - prefix: "seat"
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
+  - prefix: "title"
+    response_template: "Change title to {title}"
+    error_template: "Failed to change title, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
