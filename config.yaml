@@ -115,6 +115,9 @@ qq_music:
     accompaniment_bar: "com.tencent.qqmusic:id/or3"
     accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
+    radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
+    radar_song: 'com.tencent.qqmusic:id/lxj'
+    radar_singer: 'com.tencent.qqmusic:id/lkl'
     fav_entry: 'com.tencent.qqmusic:id/ij0'
     play_fav: 'com.tencent.qqmusic:id/eki'
     fav_song: 'com.tencent.qqmusic:id/lxj'

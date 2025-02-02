@@ -310,26 +310,6 @@ class QQMusicHandler(AppHandler):
             'playlist': result.text,
         }
 
-    def play_music(self, music_query):
-        """Search and play music"""
-        if music_query == '':
-            playing_info = self.play_favorites()
-            return playing_info
-
-        playing_info = self._prepare_music_playback(music_query)
-        if 'error' in playing_info:
-            self.logger.error(f'Failed to play music {music_query}')
-            return playing_info
-
-        song_element = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['song_name']
-        )
-        song_element.click()
-        self.logger.info(f"Select first song")
-
-        return playing_info
-
     def play_next(self, music_query):
         """Search and play next music"""
         try:
@@ -1320,40 +1300,6 @@ class QQMusicHandler(AppHandler):
         if not lyrics_tool:
             return {'error': 'Cannot find lyrics tool, please try again'}
         return None
-
-    def play_favorites(self):
-        """Navigate to favorites and play all"""
-        if not self.switch_to_app():
-            return {'error': 'Cannot switch to qq music'}
-        self.logger.info(f"Switched to QQ Music app")
-
-        self.press_back()
-        my_nav = self.try_find_element_plus('my_nav')
-        if not my_nav:
-            self.press_back()
-            my_nav = self.try_find_element_plus('my_nav')
-            if not my_nav:
-                return {'error': 'Cannot find my_nav'}
-
-        self.logger.info("Navigated to home page")
-
-        my_nav.click()
-        self.logger.info("Clicked personal info navigation button")
-
-        # Click on favorites button
-        fav_entry = self.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.logger.info("Clicked favorites button")
-
-        # Click on play all button
-        play_fav = self.wait_for_element_clickable_plus('play_fav')
-        song = self.wait_for_element_clickable_plus('fav_song')
-        singer = self.wait_for_element_clickable_plus('fav_singer')
-
-        play_fav.click()
-        self.logger.info("Clicked play all button")
-
-        return {'song': song.text, 'singer': singer.text}
 
     def process_lyrics(self, lyrics_text, max_width=20, force_groups=0):
         """Process lyrics text into groups with width control
