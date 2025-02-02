@@ -211,7 +211,7 @@ class SoulHandler(AppHandler):
             self.logger.info("Found input box entry, no need to hide input dialog")
             return True
 
-        input_box = self.wait_for_element_clickable_plus('input_box')
+        input_box = self.wait_for_element_clickable_plus('input_box', timeout=1)
         if input_box:
             if input_box.text == '输入新消息':
                 self.press_back()

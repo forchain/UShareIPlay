@@ -187,28 +187,6 @@ class QQMusicHandler(AppHandler):
         song_tab.click()
         self.logger.info("Selected songs tab")
 
-    def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        playlist_tab = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['playlist_tab']
-        )
-        if not playlist_tab:
-            print("Cannot find playlist tab")
-            return False
-        playlist_tab.click()
-        print("Selected playlist tab")
-        return True
-
-    def select_singer_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        playlist_tab = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['singer_tab']
-        )
-        playlist_tab.click()
-        print("Selected singer tab")
-
     def select_lyrics_tab(self):
         self.press_right_key()
         self.press_right_key()
@@ -226,89 +204,6 @@ class QQMusicHandler(AppHandler):
         print("Selected lyrics tab")
         return True
 
-    def play_singer(self, query: str):
-
-        if not self.query_music(query):
-            return {
-                'error': 'Failed to query music playlist',
-            }
-
-        self.select_singer_tab()
-
-        singer_result = self.wait_for_element_clickable(
-            AppiumBy.ID, self.config['elements']['singer_result'])
-        if not singer_result:
-            return {
-                'error': 'Failed to find singer result',
-            }
-
-        singer_text = self.find_child_element(singer_result, AppiumBy.ID, self.config['elements']['singer_text'])
-        singer_text.click()
-        print("Selected singer result")
-
-        self.wait_for_element(
-            AppiumBy.ID, self.config['elements']['singer_tabs'])
-
-        play_button = self.try_find_element(
-            AppiumBy.ID, self.config['elements']['play_singer']
-        )
-        if not play_button:
-            song_tab = self.try_find_element(
-                AppiumBy.XPATH, self.config['elements']['song_tab'])
-            if not song_tab:
-                self.logger.error("Cannot find singer song tab")
-                return {
-                    'error': 'Failed to find singer song tab',
-                }
-            song_tab.click()
-            self.logger.info("Selected singer tab")
-
-            play_button = self.wait_for_element_clickable(
-                AppiumBy.ID, self.config['elements']['play_singer']
-            )
-
-        if not play_button:
-            self.logger.error(f"Cannot find play singer button")
-            return {'error': 'Failed to find play button'}
-
-        play_button.click()
-        self.logger.info("Clicked play singer result")
-
-        return {
-            'singer': singer_text.text,
-        }
-
-    def play_playlist(self, query: str):
-        if not self.query_music(query):
-            self.logger.error('Failed to query music in playlist')
-            return {
-                'error': 'Failed to query music playlist',
-            }
-
-        if not self.select_playlist_tab():
-            self.logger.erryyor('Failed to find playlist tab')
-            return {
-                'error': 'Failed to find playlist tab',
-            }
-        result = self.wait_for_element_clickable_plus('playlist_result')
-        result.click()
-        self.logger.info("Selected playlist tab")
-
-        play_button = self.wait_for_element_clickable_plus('play_all', timeout=5)
-        if play_button:
-            self.logger.info("Found play all button")
-            play_button.click()
-        else:
-            play_button = self.wait_for_element_clickable_plus('play_album')
-            if play_button:
-                self.logger.info("Found play album button")
-                play_button.click()
-            else:
-                self.logger.error('Failed to find playlist button')
-                return {'error': 'Failed to find play button'}
-        return {
-            'playlist': result.text,
-        }
 
     def play_next(self, music_query):
         """Search and play next music"""

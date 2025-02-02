@@ -26,6 +26,7 @@ class AppController:
         self.input_queue = queue.Queue()
         self.is_running = True
         self.in_console_mode = False
+        self.player_name = 'Outlier'
         
         # Get lyrics formatter tags from lyrics command config
         lyrics_tags = next(
@@ -267,50 +268,6 @@ class AppController:
                                     f'Processing :{cmd} command @{message_info.nickname}')
 
                                 match command_info['prefix']:
-                                    case 'playlist':
-                                        # Play music and get info
-                                        query = ' '.join(command_info['parameters'])
-                                        if len(command_info['parameters']) == 0:
-                                            playing_info = self.music_handler.get_playlist_info()
-                                        else:
-                                            self.soul_handler.ensure_mic_active()
-                                            playing_info = self.music_handler.play_playlist(query)
-
-                                        if 'error' in playing_info:
-                                            response = command_info['error_template'].format(
-                                                error=playing_info['error']
-                                            )
-                                        else:
-                                            # Send status back to Soul using command's template
-                                            if len(command_info['parameters']) == 0:
-                                                response = command_info['current_template'].format(
-                                                    playlist=playing_info['playlist'],
-                                                )
-                                            else:
-                                                response = command_info['response_template'].format(
-                                                    playlist=playing_info['playlist'],
-                                                )
-                                                self.topic_command.change_topic(playing_info['playlist'])
-                                                self.title_command.change_title(playing_info['playlist'])
-                                            response = f'{response} @{message_info.nickname}'
-                                    case 'singer':
-                                        # Play music and get info
-                                        query = ' '.join(command_info['parameters'])
-                                        self.soul_handler.ensure_mic_active()
-                                        playing_info = self.music_handler.play_singer(query)
-
-                                        if 'error' in playing_info:
-                                            response = command_info['error_template'].format(
-                                                error=playing_info['error']
-                                            )
-                                        else:
-                                            # Send status back to Soul using command's template
-                                            self.topic_command.change_topic(playing_info['singer'])
-                                            self.title_command.change_title(playing_info['singer'])
-                                            response = command_info['response_template'].format(
-                                                singer=playing_info['singer'],
-                                            )
-                                            response = f'{response} @{message_info.nickname}'
                                     case 'invite':
                                         # Get party ID parameter
                                         if len(command_info['parameters']) > 0:

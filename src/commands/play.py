@@ -19,10 +19,20 @@ class PlayCommand(BaseCommand):
     def process(self, message_info, parameters):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
-        playing_info = self.play_music(query)
-        return playing_info
 
-    def play_music(self, music_query):
+        if query == '?':
+            playing_info = self.play_favorites()
+            self.controller.player_name = message_info.nickname
+            return playing_info
+        elif query == '':
+            playing_info = self.play_radar()
+            self.controller.player_name = message_info.nickname
+            return playing_info
+        else:
+            playing_info = self.play_song(query)
+            return playing_info
+
+    def play_song(self, music_query):
         """Search and play music"""
         if music_query == '?':
             playing_info = self.play_favorites()

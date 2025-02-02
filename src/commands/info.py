@@ -16,4 +16,5 @@ class InfoCommand(BaseCommand):
 
     def process(self, message_info, parameters):
         result = self.music_handler.get_playback_info()
+        result['player'] = self.controller.player_name
         return result
