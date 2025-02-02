@@ -74,6 +74,9 @@ class PlayCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        self.controller.topic_command.change_topic("Joyer Radio")
+        self.controller.title_command.change_title("Joyer Radio")
+
         return {'song': song.text, 'singer': singer.text}
 
     def play_radar(self):
@@ -94,6 +97,9 @@ class PlayCommand(BaseCommand):
 
         radar_nav.click()
         self.handler.logger.info("Clicked radar navigation button")
+
+        self.controller.topic_command.change_topic("Outlier Radio")
+        self.controller.title_command.change_title("OutlierRadio")
 
         # Click on play all button
         song = self.handler.wait_for_element_clickable_plus('radar_song')
