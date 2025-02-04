@@ -49,22 +49,30 @@ class PlaylistCommand(BaseCommand):
             return {
                 'error': 'Failed to find playlist tab',
             }
+        self.handler.logger.info("Selected playlist tab")
+
         result = self.handler.wait_for_element_clickable_plus('playlist_result')
         result.click()
-        self.handler.logger.info("Selected playlist tab")
+        self.handler.logger.info("Selected playlist result")
+
+        playlist = result.text
 
         play_button = self.handler.wait_for_element_clickable_plus('play_all', timeout=5)
         if play_button:
             self.handler.logger.info("Found play all button")
             play_button.click()
+            self.controller.topic_command.change_topic(playlist)
+            self.controller.title_command.change_title(playlist)
         else:
             play_button = self.handler.wait_for_element_clickable_plus('play_album')
             if play_button:
                 self.handler.logger.info("Found play album button")
                 play_button.click()
+                self.controller.topic_command.change_topic(playlist)
+                self.controller.title_command.change_title(playlist)
             else:
                 self.handler.logger.error('Failed to find playlist button')
                 return {'error': 'Failed to find play button'}
         return {
-            'playlist': result.text,
+            'playlist': playlist,
         }
