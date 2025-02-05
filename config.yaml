@@ -69,6 +69,7 @@ soul:
     title_edit_input: 'cn.soulapp.android:id/et_content'
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
     go_back: 'cn.soulapp.android:id/iv_back'
+    user_count: 'cn.soulapp.android:id/tvUserCount'
 
 
 qq_music:
@@ -236,6 +237,9 @@ commands:
   - prefix: "title"
     response_template: "Change title to {title}"
     error_template: "Failed to change title, because {error}"
+  - prefix: "restart"
+    response_template: "Restart party"
+    error_template: "Failed to restart party, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
