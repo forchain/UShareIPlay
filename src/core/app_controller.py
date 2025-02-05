@@ -233,6 +233,8 @@ class AppController:
                             self.music_handler.live_count -= 1
                         else:
                             self.music_handler.skip_song()
+                    elif 'DJ' in info['song'] or 'Remix' in info['song']:
+                        self.music_handler.skip_song()
                     else:
                         self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
