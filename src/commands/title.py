@@ -26,6 +26,17 @@ class TitleCommand(BaseCommand):
         self.handler = controller.soul_handler
 
     def change_title(self, title: str):
+        """Change room title with cooldown check
+        Args:
+            title: str, new title text
+        Returns:
+            dict: Result with title info or error
+        """
+        # Switch to Soul app first
+        if not self.handler.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+        self.handler.logger.info("Switched to Soul app")
+
         new_title = title.split('|')[0].split('(')[0].strip()[:12]
         current_time = datetime.now()
 
@@ -45,7 +56,6 @@ class TitleCommand(BaseCommand):
             return {
                 'title': f'{new_title}. Title will update soon'
             }
-
 
         self.handler.logger.info(f'Title will be updated to {new_title} in {remaining_minutes} minutes')
         return {

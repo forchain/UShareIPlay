@@ -53,6 +53,8 @@ class SingerCommand(BaseCommand):
         singer_text.click()
         print("Selected singer result")
 
+        singer_name = singer_text.text
+
         self.handler.wait_for_element_clickable_plus('singer_tabs')
 
         play_button = self.handler.try_find_element_plus('play_singer')
@@ -75,9 +77,9 @@ class SingerCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("Clicked play singer result")
 
-        self.controller.topic_command.change_topic(singer_text.text)
-        self.controller.title_command.change_title(singer_text.text)
+        self.controller.topic_command.change_topic(singer_name)
+        self.controller.title_command.change_title(singer_name)
 
         return {
-            'singer': singer_text.text,
+            'singer': singer_name,
         }
