@@ -11,6 +11,10 @@ import selenium
 import logging
 import os
 from datetime import datetime
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions import interaction
+from selenium.webdriver.common.actions.pointer_input import PointerInput
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
 
 
 class AppHandler:
@@ -394,3 +398,43 @@ class AppHandler:
         except Exception as e:
             print(f"Failed to find elements '{element_key}' with value '{value}': {str(e)}")
             return []
+
+    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
+        """Click element at specified position ratio
+        Args:
+            element: WebElement to click
+            x_ratio: float, horizontal position ratio (0.0 to 1.0), default 0.5 for center
+            y_ratio: float, vertical position ratio (0.0 to 1.0), default 0.5 for center
+        Returns:
+            bool: True if click successful, False otherwise
+        """
+        try:
+            if not element:
+                return False
+            
+            # Get element size and location
+            size = element.size
+            location = element.location
+            
+            # Calculate click position
+            click_x = location['x'] + int(size['width'] * x_ratio)
+            click_y = location['y'] + int(size['height'] * y_ratio)
+            
+            # Perform tap action at calculated position
+            actions = ActionChains(self.driver)
+            actions.w3c_actions = ActionBuilder(
+                self.driver,
+                mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
+            )
+            actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
+            actions.w3c_actions.pointer_action.pointer_down()
+            actions.w3c_actions.pointer_action.pause(0.1)
+            actions.w3c_actions.pointer_action.pointer_up()
+            actions.perform()
+            
+            self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
+            return True
+        
+        except Exception as e:
+            self.logger.error(f"Error clicking element: {traceback.format_exc()}")
+            return False

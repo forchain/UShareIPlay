@@ -26,6 +26,17 @@ class TitleCommand(BaseCommand):
         self.handler = controller.soul_handler
 
     def change_title(self, title: str):
+        """Change room title with cooldown check
+        Args:
+            title: str, new title text
+        Returns:
+            dict: Result with title info or error
+        """
+        # Switch to Soul app first
+        if not self.handler.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+        self.handler.logger.info("Switched to Soul app")
+
         new_title = title.split('|')[0].split('(')[0].strip()[:12]
         current_time = datetime.now()
 
@@ -45,7 +56,6 @@ class TitleCommand(BaseCommand):
             return {
                 'title': f'{new_title}. Title will update soon'
             }
-
 
         self.handler.logger.info(f'Title will be updated to {new_title} in {remaining_minutes} minutes')
         return {
@@ -90,6 +100,7 @@ class TitleCommand(BaseCommand):
             if not 'error' in result:
                 self.last_update_time = current_time
                 self.handler.logger.info(f'Title is updated to {self.next_title}')
+                self.handler.press_back()
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"
                 )
@@ -117,7 +128,8 @@ class TitleCommand(BaseCommand):
             edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
             if not edit_entry:
                 return {'error': 'Failed to find edit title entry'}
-            edit_entry.click()
+            if not self.handler.click_element_at(edit_entry, y_ratio=0.25):
+                return {'error': 'Failed to click edit entry'}
 
             # Input new title
             title_input = self.handler.wait_for_element_clickable_plus('title_edit_input')

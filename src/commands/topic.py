@@ -25,6 +25,11 @@ class TopicCommand(BaseCommand):
         self.handler = self.soul_handler
 
     def change_topic(self, topic: str):
+
+        if not self.handler.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+        self.handler.logger.info("Switched to Soul app")
+
         new_topic = topic.split('|')[0].split('(')[0].strip()[:15]
         current_time = datetime.now()
 
