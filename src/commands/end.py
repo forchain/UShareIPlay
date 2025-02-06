@@ -20,6 +20,11 @@ class EndCommand(BaseCommand):
     def process(self, message_info, parameters):
         """Process end command to close party"""
         try:
+            # Check if user has relation tag (followed by host)
+            if not message_info.relation_tag:
+                self.handler.logger.warning(f"User {message_info.nickname} not followed by host, cannot end party")
+                return {'error': '必须群主关注的人才能关闭房间'}
+                
             return self.end_party()
         except Exception as e:
             self.handler.log_error(f"Error processing end command: {str(e)}")
@@ -38,7 +43,6 @@ class EndCommand(BaseCommand):
     def update(self):
         """Check and auto end party if conditions are met"""
         try:
-            
             current_time = datetime.now()
             current_date = current_time.date()
 
