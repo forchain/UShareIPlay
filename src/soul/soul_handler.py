@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
 
+# Constants
+DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 
 @dataclass
 class MessageInfo:
@@ -55,8 +57,7 @@ class SoulHandler(AppHandler):
                         self.logger.warning(
                             "already back in home but no party entry found, try go to party")
                         square_tab.click()
-                        party_home = "FM15321640"
-                        party_id = self.party_id if self.party_id else party_home
+                        party_id = self.party_id if self.party_id else DEFAULT_PARTY_ID
                         self.find_party_to_join(party_id)
                         self.party_id = None
                     else:
@@ -644,3 +645,42 @@ class SoulHandler(AppHandler):
 
         except Exception as e:
             self.logger.error(f"Error ensuring mic is active: {str(e)}")
+
+    def end_party(self):
+        """Close current party
+        Returns:
+            dict: Result with success or error
+        """
+        try:
+            # Switch to Soul app first
+            if not self.switch_to_app():
+                return {'error': 'Failed to switch to Soul app'}
+            self.logger.info("Switched to Soul app")
+
+            # Click more menu
+            more_menu = self.wait_for_element_clickable_plus('more_menu')
+            if not more_menu:
+                return {'error': 'Failed to find more menu'}
+            more_menu.click()
+            self.logger.info("Clicked more menu")
+
+            # Click end party option
+            end_party = self.wait_for_element_clickable_plus('end_party')
+            if not end_party:
+                return {'error': 'Failed to find end party option'}
+            end_party.click()
+            self.logger.info("Clicked end party option")
+
+            # Click confirm end
+            confirm_end = self.wait_for_element_clickable_plus('confirm_end')
+            if not confirm_end:
+                return {'error': 'Failed to find confirm end button'}
+            confirm_end.click()
+            self.logger.info("Clicked confirm end button")
+
+            return {'success': True}
+
+        except Exception as e:
+            self.log_error(f"Error closing party: {traceback.format_exc()}")
+            return {'error': 'Failed to close party'}
+

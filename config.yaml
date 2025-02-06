@@ -236,10 +236,11 @@ commands:
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
     response_template: "Change title to {title}"
+    
     error_template: "Failed to change title, because {error}"
-  - prefix: "restart"
-    response_template: "Restart party"
-    error_template: "Failed to restart party, because {error}"
+  - prefix: "end"
+    response_template: "{success}"
+    error_template: "Failed to end party, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
