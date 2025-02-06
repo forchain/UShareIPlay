@@ -90,6 +90,7 @@ class TitleCommand(BaseCommand):
             if not 'error' in result:
                 self.last_update_time = current_time
                 self.handler.logger.info(f'Title is updated to {self.next_title}')
+                self.handler.press_back()
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"
                 )
@@ -117,7 +118,8 @@ class TitleCommand(BaseCommand):
             edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
             if not edit_entry:
                 return {'error': 'Failed to find edit title entry'}
-            edit_entry.click()
+            if not self.handler.click_element_at(edit_entry, y_ratio=0.25):
+                return {'error': 'Failed to click edit entry'}
 
             # Input new title
             title_input = self.handler.wait_for_element_clickable_plus('title_edit_input')
