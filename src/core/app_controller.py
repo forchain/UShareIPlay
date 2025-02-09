@@ -131,7 +131,8 @@ class AppController:
             result = command.process(message_info, command_info['parameters'])
             if 'error' in result:
                 res =  command_info['error_template'].format(
-                    error=result['error']
+                    error=result['error'],
+                    user=message_info.nickname,
                 )
             else:
                 res = f'{command_info['response_template'].format(**result)} @{message_info.nickname}'
