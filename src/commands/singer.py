@@ -51,7 +51,7 @@ class SingerCommand(BaseCommand):
 
         singer_text = self.handler.find_child_element(singer_result, AppiumBy.ID, self.handler.config['elements']['singer_text'])
         singer_text.click()
-        print("Selected singer result")
+        self.handler.logger.info("Selected singer result")
 
         singer_name = singer_text.text
 

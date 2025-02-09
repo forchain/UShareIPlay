@@ -95,10 +95,11 @@ class TitleCommand(BaseCommand):
             if not on_time:
                 return
 
+            self.last_update_time = current_time
+
             # Check if cooldown period has passed
             result = self._update_title(self.next_title)
             if not 'error' in result:
-                self.last_update_time = current_time
                 self.handler.logger.info(f'Title is updated to {self.next_title}')
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"

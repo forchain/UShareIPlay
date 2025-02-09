@@ -89,10 +89,11 @@ class TopicCommand(BaseCommand):
             if not on_time:
                 return
 
+            self.last_update_time = current_time
+
             # Check if cooldown period has passed
             result = self._update_topic(self.next_topic)
             if not 'error' in result:
-                self.last_update_time = current_time
                 self.handler.logger.info(f'Topic is updated to {self.next_topic}')
                 self.handler.send_message(
                     f"Updating topic to {self.next_topic}"
