@@ -41,7 +41,7 @@ class QQMusicHandler(AppHandler):
 
     def hide_player(self):
         self.press_back()
-        print("Hide player panel")
+        self.logger.info("Hide player panel")
         time.sleep(1)
 
     def navigate_to_home(self):

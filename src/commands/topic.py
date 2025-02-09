@@ -136,6 +136,12 @@ class TopicCommand(BaseCommand):
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
 
+            edit_entry = self.handler.wait_for_element_clickable_plus('edit_topic_entry')
+            if not edit_entry:
+                return {'error': 'Failed to find edit topic entry'}
+            self.handler.press_back()
+            self.handler.logger.info('Hide edit topic dialog')
+
             return {'success': True}
 
         except Exception as e:

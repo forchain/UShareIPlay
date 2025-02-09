@@ -96,6 +96,23 @@ class AppHandler:
             self.logger.warning(f"Error: {str(e)}")
             return None
 
+    def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+        """Enhanced wait_for_element using just element key"""
+        try:
+            locator_type, value = self._get_locator(element_key)
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((locator_type, value))
+            )
+            self.logger.debug(f"Found  element: {element_key}")
+            return element
+        except TimeoutException as e:
+            self.logger.warning(f"Element {element_key}:{value} not found within {timeout} seconds ")
+            return None
+        except WebDriverException as e:
+            self.logger.error(f"Trace: {traceback.format_exc()}")
+            self.logger.error(f"Error: {str(e)}")
+            return None
+
     def is_element_clickable(self, element):
         """Check if element is clickable
         Args:
@@ -128,7 +145,7 @@ class AppHandler:
         try:
             locator_type, value = self._get_locator(element_key)
             element = WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((locator_type, value))
+                EC.element_to_be_clickable((locator_type, value))
             )
             self.logger.debug(f"Found clickable element: {element_key}")
             return element

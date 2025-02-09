@@ -100,7 +100,6 @@ class TitleCommand(BaseCommand):
             if not 'error' in result:
                 self.last_update_time = current_time
                 self.handler.logger.info(f'Title is updated to {self.next_title}')
-                self.handler.press_back()
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"
                 )
@@ -143,6 +142,12 @@ class TitleCommand(BaseCommand):
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
+
+            edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
+            if not edit_entry:
+                return {'error': 'Failed to find edit title entry'}
+            self.handler.press_back()
+            self.handler.logger.info('Hide edit title dialog')
 
             return {'success': True}
 
