@@ -96,6 +96,7 @@ class TitleCommand(BaseCommand):
                 return
 
             self.last_update_time = current_time
+            self.next_title = None
             self.handler.logger.info(f'updated last title update time to {current_time}')
 
             # Check if cooldown period has passed
@@ -107,7 +108,6 @@ class TitleCommand(BaseCommand):
                     f"Updating title to {self.next_title}"
                 )
                 self.current_title = self.next_title
-                self.next_title = None
 
         except Exception as e:
             self.handler.log_error(f"Error in title update: {traceback.format_exc()}")

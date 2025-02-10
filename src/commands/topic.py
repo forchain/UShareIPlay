@@ -90,6 +90,8 @@ class TopicCommand(BaseCommand):
 
             # Check if cooldown period has passed
             self.last_update_time = current_time
+            self.next_topic = None
+
             self.handler.logger.info(f'updated last topic update time to {current_time}')
             result = self._update_topic(self.next_topic)
             if not 'error' in result:
@@ -99,7 +101,6 @@ class TopicCommand(BaseCommand):
                     f"Updating topic to {self.next_topic}"
                 )
                 self.current_topic = self.next_topic
-                self.next_topic = None
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
