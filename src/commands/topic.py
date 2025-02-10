@@ -1,5 +1,7 @@
 import traceback
 
+from trio import current_time
+
 from ..core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
@@ -88,20 +90,12 @@ class TopicCommand(BaseCommand):
             if not on_time:
                 return
 
-            # Check if cooldown period has passed
-            self.last_update_time = current_time
-
-            self.handler.logger.info(f'updated last topic update time to {current_time}')
             result = self._update_topic(self.next_topic)
             if not 'error' in result:
-
                 self.handler.logger.info(f'Topic is updated to {self.next_topic}')
                 self.handler.send_message(
                     f"Updating topic to {self.next_topic}"
                 )
-                self.current_topic = self.next_topic
-
-            self.next_topic = None
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
@@ -139,9 +133,13 @@ class TopicCommand(BaseCommand):
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
 
-            edit_entry = self.handler.wait_for_element_clickable_plus('edit_topic_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit topic entry'}
+            # note: update status in advance in case failing to find the edit entry
+            current_time = datetime.now()
+            self.last_update_time = current_time
+            self.handler.logger.info(f'updated last topic update time to {current_time}')
+            self.current_topic = self.next_topic
+            self.next_topic = None
+
             self.handler.press_back()
             self.handler.logger.info('Hide edit topic dialog')
 

@@ -95,8 +95,6 @@ class TitleCommand(BaseCommand):
             if not on_time:
                 return
 
-            self.last_update_time = current_time
-            self.handler.logger.info(f'updated last title update time to {current_time}')
 
             # Check if cooldown period has passed
             result = self._update_title(self.next_title)
@@ -106,9 +104,7 @@ class TitleCommand(BaseCommand):
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"
                 )
-                self.current_title = self.next_title
 
-            self.next_title = None
 
         except Exception as e:
             self.handler.log_error(f"Error in title update: {traceback.format_exc()}")
@@ -147,9 +143,12 @@ class TitleCommand(BaseCommand):
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
 
-            edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit title entry'}
+            current_time = datetime.now()
+            self.last_update_time = current_time
+            self.handler.logger.info(f'updated last title update time to {current_time}')
+            self.current_title = self.next_title
+            self.next_title = None
+
             self.handler.press_back()
             self.handler.logger.info('Hide edit title dialog')
 
