@@ -98,6 +98,8 @@ class TitleCommand(BaseCommand):
             # Check if cooldown period has passed
             result = self._update_title(self.next_title)
             if not 'error' in result:
+                self.last_update_time = current_time
+
                 self.handler.logger.info(f'Title is updated to {self.next_title}')
                 self.handler.send_message(
                     f"Updating title to {self.next_title}"
@@ -148,7 +150,6 @@ class TitleCommand(BaseCommand):
             self.handler.press_back()
             self.handler.logger.info('Hide edit title dialog')
 
-            self.last_update_time = datetime.now()
             return {'success': True}
 
         except Exception as e:
