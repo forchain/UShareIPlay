@@ -50,7 +50,6 @@ class TopicCommand(BaseCommand):
                 'topic': f'{new_topic}. Topic will update soon'
             }
 
-
         self.handler.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
         return {
             'topic': f'{new_topic}. Topic will update in {int(remaining_minutes)} minutes'
@@ -88,8 +87,6 @@ class TopicCommand(BaseCommand):
 
             if not on_time:
                 return
-
-            self.last_update_time = current_time
 
             # Check if cooldown period has passed
             result = self._update_topic(self.next_topic)
@@ -143,6 +140,7 @@ class TopicCommand(BaseCommand):
             self.handler.press_back()
             self.handler.logger.info('Hide edit topic dialog')
 
+            self.last_update_time = datetime.now()
             return {'success': True}
 
         except Exception as e:
