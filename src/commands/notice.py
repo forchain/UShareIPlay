@@ -64,7 +64,6 @@ class NoticeCommand(BaseCommand):
 
     def update(self):
         """Check and update notice periodically"""
-        super().update()
 
         try:
             if not self.next_notice:
@@ -85,13 +84,10 @@ class NoticeCommand(BaseCommand):
             # Check if cooldown period has passed
             result = self._update_notice(self.next_notice)
             if not 'error' in result:
-                self.last_update_time = current_time
-                self.handler.logger.info(f'Notice is updated to {self.next_notice}')
+                self.handler.logger.info(f'Notice is updated to {self.current_notice}')
                 self.handler.send_message(
-                    f"Updating notice to: {self.next_notice}"
+                    f"Updating notice to: {self.current_notice}"
                 )
-                self.current_notice = self.next_notice
-                self.next_notice = None
 
         except Exception as e:
             self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")
@@ -134,6 +130,15 @@ class NoticeCommand(BaseCommand):
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
+
+            self.last_update_time = datetime.now()
+            self.current_notice = self.next_notice
+            self.next_notice = None
+
+            edit_entry = self.handler.wait_for_element_clickable_plus('edit_notice_entry', timeout=1)
+            if edit_entry:
+                self.handler.press_back()
+                self.handler.logger.info(f'Hide notice setting dialog')
 
             return {'success': True}
 

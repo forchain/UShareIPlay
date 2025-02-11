@@ -72,7 +72,6 @@ class TopicCommand(BaseCommand):
 
     def update(self):
         """Check and update topic periodically"""
-        # super().update()
 
         try:
             if not self.next_topic:
