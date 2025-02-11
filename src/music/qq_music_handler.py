@@ -24,8 +24,9 @@ langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 
 class QQMusicHandler(AppHandler):
-    def __init__(self, driver, config):
-        super().__init__(driver, config)
+    def __init__(self, driver, config, controller):
+        super().__init__(driver, config, controller)
+
         self.lyrics_formatter = None  # Will be set by app_controller
         self.ktv_mode = False  # KTV mode state
         self.last_lyrics = ""  # Store last recognized lyrics

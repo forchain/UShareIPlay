@@ -18,11 +18,12 @@ from selenium.webdriver.common.actions.action_builder import ActionBuilder
 
 
 class AppHandler:
-    def __init__(self, driver, config):
+    def __init__(self, driver, config, controller):
         self.driver = driver
         self.config = config
         self.logger = self._setup_logger()
         self.error_count = 0
+        self.controller = controller
 
     def _setup_logger(self):
         """Setup logger for the handler

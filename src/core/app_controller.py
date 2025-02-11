@@ -38,8 +38,8 @@ class AppController:
         self.lyrics_formatter = LyricsFormatter(lyrics_tags)
 
         # Initialize handlers
-        self.soul_handler = SoulHandler(self.driver, config['soul'])
-        self.music_handler = QQMusicHandler(self.driver, config['qq_music'])
+        self.soul_handler = SoulHandler(self.driver, config['soul'], self)
+        self.music_handler = QQMusicHandler(self.driver, config['qq_music'], self)
         self.music_handler.set_lyrics_formatter(self.lyrics_formatter)
         self.logger = self.soul_handler.logger
 

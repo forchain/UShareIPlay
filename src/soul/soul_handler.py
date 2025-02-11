@@ -12,6 +12,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 # Constants
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
+DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
 @dataclass
 class MessageInfo:
@@ -23,8 +24,9 @@ class MessageInfo:
 
 
 class SoulHandler(AppHandler):
-    def __init__(self, driver, config):
-        super().__init__(driver, config)
+    def __init__(self, driver, config, controller):
+        super().__init__(driver, config, controller)
+
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
 
@@ -60,6 +62,8 @@ class SoulHandler(AppHandler):
                         party_id = self.party_id if self.party_id else DEFAULT_PARTY_ID
                         self.find_party_to_join(party_id)
                         self.party_id = None
+                        if party_id == DEFAULT_PARTY_ID:
+                            self.controller.notice_command.change_notice(DEFAULT_NOTICE)
                     else:
                         self.logger.warning(
                             "still cannot find message_list, may stay in unknown pages, go back first")
@@ -360,6 +364,7 @@ class SoulHandler(AppHandler):
                 create_party_button.click()
                 self.logger.info("Clicked create party button")
 
+
         input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['input_box_entry'])
         if not input_box_entry:
             self.logger.error(f"Input box entry not found")
@@ -371,7 +376,7 @@ class SoulHandler(AppHandler):
             claim_reward.click()
             self.logger.info("Claimed party creation reward")
 
-        self.seat_command.be_seated()
+        self.controller.seat_command.be_seated()
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """

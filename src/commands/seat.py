@@ -14,7 +14,6 @@ class SeatCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.soul_handler
-        self.handler.seat_command = self
 
     def process(self, message_info, parameters):
         """Process seat command to apply for a seat
