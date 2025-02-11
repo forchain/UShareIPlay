@@ -100,9 +100,9 @@ class TitleCommand(BaseCommand):
             result = self._update_title(self.next_title)
             if not 'error' in result:
 
-                self.handler.logger.info(f'Title is updated to {self.next_title}')
+                self.handler.logger.info(f'Title is updated to {self.current_title}')
                 self.handler.send_message(
-                    f"Updating title to {self.next_title}"
+                    f"Updating title to {self.current_title}"
                 )
 
 

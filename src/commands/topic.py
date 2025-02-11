@@ -92,9 +92,9 @@ class TopicCommand(BaseCommand):
 
             result = self._update_topic(self.next_topic)
             if not 'error' in result:
-                self.handler.logger.info(f'Topic is updated to {self.next_topic}')
+                self.handler.logger.info(f'Topic is updated to {self.current_topic}')
                 self.handler.send_message(
-                    f"Updating topic to {self.next_topic}"
+                    f"Updating topic to {self.current_topic}"
                 )
 
         except Exception as e:
