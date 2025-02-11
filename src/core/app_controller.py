@@ -14,13 +14,20 @@ import importlib
 import os
 from pathlib import Path
 import sys
+import threading
+import queue
+import readline  # 用于更好的命令行输入体验
 
 
 class AppController:
     def __init__(self, config):
         self.config = config
         self.driver = self._init_driver()
-
+        self.input_queue = queue.Queue()
+        self.is_running = True
+        self.in_console_mode = False
+        self.player_name = 'Outlier'
+        
         # Get lyrics formatter tags from lyrics command config
         lyrics_tags = next(
             (cmd.get('tags', []) for cmd in config['commands'] if cmd['prefix'] == 'lyrics'),
@@ -34,6 +41,7 @@ class AppController:
         self.soul_handler = SoulHandler(self.driver, config['soul'])
         self.music_handler = QQMusicHandler(self.driver, config['qq_music'])
         self.music_handler.set_lyrics_formatter(self.lyrics_formatter)
+        self.logger = self.soul_handler.logger
 
         # Initialize command parser
         self.command_parser = CommandParser(config['commands'])
@@ -123,16 +131,67 @@ class AppController:
             result = command.process(message_info, command_info['parameters'])
             if 'error' in result:
                 res =  command_info['error_template'].format(
-                    error=result['error']
+                    error=result['error'],
+                    user=message_info.nickname,
                 )
             else:
                 res = f'{command_info['response_template'].format(**result)} @{message_info.nickname}'
             return res
         except Exception as e:
             self.soul_handler.log_error(f"Error processing command {command_info}: {traceback.format_exc()}")
-            if 'error_template' in command_info:
-                return command_info['error_template'].format(error=traceback.format_exc())
-            return f"Error processing command {command_info}: {traceback.format_exc()}"
+            return f"Error processing command {command_info}"
+
+    def _toggle_console_mode(self):
+        """Toggle console mode on Ctrl+P"""
+        if not self.in_console_mode:
+            print("\nEntering console mode. Press Ctrl+P again to exit...")
+            self.in_console_mode = True
+        else:
+            print("\nExiting console mode...")
+            self.in_console_mode = False
+
+    def _console_input(self):
+        """Background thread for console input"""
+        while self.is_running:
+            try:
+                user_input = input("Console> " if self.in_console_mode else "")
+                if user_input.strip():  # 只处理非空输入
+                    self.input_queue.put(user_input)
+            except EOFError:
+                continue
+            except KeyboardInterrupt:
+                if self.in_console_mode:
+                    self.in_console_mode = False
+                    print("\nExiting console mode...")
+                else:
+                    self.is_running = False
+                break
+
+    def _load_all_commands(self):
+        """Load all command modules from commands directory
+        Returns:
+            dict: Loaded command modules
+        """
+        try:
+            # Get all .py files in commands directory
+            command_files = [f.stem for f in self.commands_path.glob('*.py') 
+                            if f.is_file() and not f.stem.startswith('__')]
+            
+            self.logger.info(f"Found command files: {command_files}")
+            
+            # Load each command module
+            for command in command_files:
+                try:
+                    module = self._load_command_module(command)
+                    if module:
+                        self.logger.info(f"Loaded command module: {command}")
+                    else:
+                        self.logger.error(f"Failed to load command module: {command}")
+                except Exception as e:
+                    self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
     def start_monitoring(self):
         enabled = True
@@ -140,8 +199,26 @@ class AppController:
         lyrics = None
         last_info = None
         error_count = 0
-        while True:
+        
+        # Load all command modules
+        self._load_all_commands()
+        self.logger.info("All command modules loaded")
+        
+        # Start console input thread
+        input_thread = threading.Thread(target=self._console_input)
+        input_thread.daemon = True
+        input_thread.start()
+
+        while self.is_running:
             try:
+                # Check for console input
+                try:
+                    while not self.input_queue.empty():
+                        message = self.input_queue.get_nowait()
+                        self.soul_handler.send_message(message)
+                except queue.Empty:
+                    pass
+
                 # Update all commands
                 self._update_commands()
                 
@@ -157,6 +234,8 @@ class AppController:
                             self.music_handler.live_count -= 1
                         else:
                             self.music_handler.skip_song()
+                    elif 'DJ' in info['song'] or 'Remix' in info['song']:
+                        self.music_handler.skip_song()
                     else:
                         self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
@@ -192,50 +271,6 @@ class AppController:
                                     f'Processing :{cmd} command @{message_info.nickname}')
 
                                 match command_info['prefix']:
-                                    case 'playlist':
-                                        # Play music and get info
-                                        query = ' '.join(command_info['parameters'])
-                                        if len(command_info['parameters']) == 0:
-                                            playing_info = self.music_handler.get_playlist_info()
-                                        else:
-                                            self.soul_handler.ensure_mic_active()
-                                            playing_info = self.music_handler.play_playlist(query)
-
-                                        if 'error' in playing_info:
-                                            response = command_info['error_template'].format(
-                                                error=playing_info['error']
-                                            )
-                                        else:
-                                            # Send status back to Soul using command's template
-                                            if len(command_info['parameters']) == 0:
-                                                response = command_info['current_template'].format(
-                                                    playlist=playing_info['playlist'],
-                                                )
-                                            else:
-                                                response = command_info['response_template'].format(
-                                                    playlist=playing_info['playlist'],
-                                                )
-                                                topic_command = self._check_command('topic')
-                                                topic_command.change_topic(playing_info['playlist'])
-                                            response = f'{response} @{message_info.nickname}'
-                                    case 'singer':
-                                        # Play music and get info
-                                        query = ' '.join(command_info['parameters'])
-                                        self.soul_handler.ensure_mic_active()
-                                        playing_info = self.music_handler.play_singer(query)
-
-                                        if 'error' in playing_info:
-                                            response = command_info['error_template'].format(
-                                                error=playing_info['error']
-                                            )
-                                        else:
-                                            # Send status back to Soul using command's template
-                                            topic_command = self._check_command('topic')
-                                            topic_command.change_topic(playing_info['singer'])
-                                            response = command_info['response_template'].format(
-                                                singer=playing_info['singer'],
-                                            )
-                                            response = f'{response} @{message_info.nickname}'
                                     case 'invite':
                                         # Get party ID parameter
                                         if len(command_info['parameters']) > 0:
@@ -283,13 +318,18 @@ class AppController:
                         f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
                     return False
             except KeyboardInterrupt:
-                print("\nStopping the monitoring...")
-                return True
+                if not self.in_console_mode:
+                    print("\nEntering console mode. Press Ctrl+C to exit...")
+                    self.in_console_mode = True
+                else:
+                    print("\nStopping the monitoring...")
+                    self.is_running = False
+                    return True
             except StaleElementReferenceException as e:
                 self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
             except WebDriverException as e:
                 self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
                 error_count += 1
-                # error consecutively up to 10 times, should rerun app
                 if error_count > 9:
+                    self.is_running = False
                     return False

@@ -1,5 +1,7 @@
 import traceback
 
+from trio import current_time
+
 from ..core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
@@ -25,6 +27,11 @@ class TopicCommand(BaseCommand):
         self.handler = self.soul_handler
 
     def change_topic(self, topic: str):
+
+        if not self.handler.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+        self.handler.logger.info("Switched to Soul app")
+
         new_topic = topic.split('|')[0].split('(')[0].strip()[:15]
         current_time = datetime.now()
 
@@ -44,7 +51,6 @@ class TopicCommand(BaseCommand):
             return {
                 'topic': f'{new_topic}. Topic will update soon'
             }
-
 
         self.handler.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
         return {
@@ -84,16 +90,12 @@ class TopicCommand(BaseCommand):
             if not on_time:
                 return
 
-            # Check if cooldown period has passed
             result = self._update_topic(self.next_topic)
             if not 'error' in result:
-                self.last_update_time = current_time
-                self.handler.logger.info(f'Topic is updated to {self.next_topic}')
+                self.handler.logger.info(f'Topic is updated to {self.current_topic}')
                 self.handler.send_message(
-                    f"Updating topic to {self.next_topic}"
+                    f"Updating topic to {self.current_topic}"
                 )
-                self.current_topic = self.next_topic
-                self.next_topic = None
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
@@ -130,6 +132,16 @@ class TopicCommand(BaseCommand):
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
+
+            # note: update status in advance in case failing to find the edit entry
+            current_time = datetime.now()
+            self.last_update_time = current_time
+            self.handler.logger.info(f'updated last topic update time to {current_time}')
+            self.current_topic = self.next_topic
+            self.next_topic = None
+
+            self.handler.press_back()
+            self.handler.logger.info('Hide edit topic dialog')
 
             return {'success': True}
 

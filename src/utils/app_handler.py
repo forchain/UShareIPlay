@@ -11,6 +11,10 @@ import selenium
 import logging
 import os
 from datetime import datetime
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions import interaction
+from selenium.webdriver.common.actions.pointer_input import PointerInput
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
 
 
 class AppHandler:
@@ -35,6 +39,11 @@ class AppHandler:
         
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
+        
+        # Clear any existing handlers
+        if logger.hasHandlers():
+            logger.handlers.clear()
+        
         logger.setLevel(logging.DEBUG)
         
         # Create file handler
@@ -87,6 +96,23 @@ class AppHandler:
             self.logger.warning(f"Error: {str(e)}")
             return None
 
+    def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+        """Enhanced wait_for_element using just element key"""
+        try:
+            locator_type, value = self._get_locator(element_key)
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((locator_type, value))
+            )
+            self.logger.debug(f"Found  element: {element_key}")
+            return element
+        except TimeoutException as e:
+            self.logger.warning(f"Element {element_key}:{value} not found within {timeout} seconds ")
+            return None
+        except WebDriverException as e:
+            self.logger.error(f"Trace: {traceback.format_exc()}")
+            self.logger.error(f"Error: {str(e)}")
+            return None
+
     def is_element_clickable(self, element):
         """Check if element is clickable
         Args:
@@ -119,7 +145,7 @@ class AppHandler:
         try:
             locator_type, value = self._get_locator(element_key)
             element = WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((locator_type, value))
+                EC.element_to_be_clickable((locator_type, value))
             )
             self.logger.debug(f"Found clickable element: {element_key}")
             return element
@@ -389,3 +415,43 @@ class AppHandler:
         except Exception as e:
             print(f"Failed to find elements '{element_key}' with value '{value}': {str(e)}")
             return []
+
+    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
+        """Click element at specified position ratio
+        Args:
+            element: WebElement to click
+            x_ratio: float, horizontal position ratio (0.0 to 1.0), default 0.5 for center
+            y_ratio: float, vertical position ratio (0.0 to 1.0), default 0.5 for center
+        Returns:
+            bool: True if click successful, False otherwise
+        """
+        try:
+            if not element:
+                return False
+            
+            # Get element size and location
+            size = element.size
+            location = element.location
+            
+            # Calculate click position
+            click_x = location['x'] + int(size['width'] * x_ratio)
+            click_y = location['y'] + int(size['height'] * y_ratio)
+            
+            # Perform tap action at calculated position
+            actions = ActionChains(self.driver)
+            actions.w3c_actions = ActionBuilder(
+                self.driver,
+                mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
+            )
+            actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
+            actions.w3c_actions.pointer_action.pointer_down()
+            actions.w3c_actions.pointer_action.pause(0.1)
+            actions.w3c_actions.pointer_action.pointer_up()
+            actions.perform()
+            
+            self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
+            return True
+        
+        except Exception as e:
+            self.logger.error(f"Error clicking element: {traceback.format_exc()}")
+            return False

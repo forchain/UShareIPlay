@@ -64,6 +64,18 @@ soul:
     edit_notice_confirm: '//android.view.View[@text="确认提交"]'
     empty_seat: 'cn.soulapp.android:id/leftTvDefaultName'
     up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
+    edit_announcement_entry: 'cn.soulapp.android:id/ivEdit'
+    customize_announcement_button: '//android.view.View[@text="自定义"]'
+    edit_announcement_input: '//android.widget.EditText'
+    edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
+    apply_seat: '//android.widget.TextView[@text="点击入座"]'
+    confirm_seat: 'cn.soulapp.android:id/tvOperation'
+    chat_room_title: 'cn.soulapp.android:id/tvChatRoomTitle'
+    title_edit_entry: 'cn.soulapp.android:id/iv_edit'
+    title_edit_input: 'cn.soulapp.android:id/et_content'
+    title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
+    go_back: 'cn.soulapp.android:id/iv_back'
+    user_count: 'cn.soulapp.android:id/tvUserCount'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -109,6 +121,9 @@ qq_music:
     accompaniment_bar: "com.tencent.qqmusic:id/or3"
     accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
+    radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
+    radar_song: 'com.tencent.qqmusic:id/lxj'
+    radar_singer: 'com.tencent.qqmusic:id/lkl'
     fav_entry: 'com.tencent.qqmusic:id/ij0'
     play_fav: 'com.tencent.qqmusic:id/eki'
     fav_song: 'com.tencent.qqmusic:id/lxj'
@@ -117,11 +132,16 @@ qq_music:
     playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
     singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
     song_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌曲"]'
+    album_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="专辑"]'
+    album_text: 'com.tencent.qqmusic:id/kzn'
+    album_singer: 'com.tencent.qqmusic:id/kzk'
     lyrics_text: 'com.tencent.qqmusic:id/h8u'
     playlist_result: 'com.tencent.qqmusic:id/l1l'
     singer_text: 'com.tencent.qqmusic:id/muo'
     singer_result: 'com.tencent.qqmusic:id/l2b'
     play_all: '//android.widget.TextView[@text="全部播放"]'
+    play_all_mini: 'com.tencent.qqmusic:id/se'
+    singer_container: 'com.tencent.qqmusic:id/hag'
     play_album: 'com.tencent.qqmusic:id/j98'
     play_singer: 'com.tencent.qqmusic:id/em7'
     play_singer_hot: 'com.tencent.qqmusic:id/j0g'
@@ -131,6 +151,7 @@ qq_music:
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry_floating: 'com.tencent.qqmusic:id/is5'
     playlist_entry_playing: 'com.tencent.qqmusic:id/a9i'
+    playlist_item_container: 'com.tencent.qqmusic:id/gsa'
     playlist_song: 'com.tencent.qqmusic:id/lxy'
     playlist_singer: 'com.tencent.qqmusic:id/lkv'
     playlist_playing: 'com.tencent.qqmusic:id/ee4'
@@ -200,14 +221,13 @@ commands:
     response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
-    response_template: "Playing {song} by {singer} in {album}"
+    response_template: "Playing {song} by {singer} in {album}, playlist from {player}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     response_template: "Playing {singer}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
-    response_template: "Playing {playlist}"
-    current_template: "Playlist\n{playlist}"
+    response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "mode"
     response_template: "Change play mode to {mode}"
@@ -218,6 +238,20 @@ commands:
   - prefix: "notice"
     response_template: "Change notice to {notice}"
     error_template: "Failed to change notice, because {error}"
+  - prefix: "album"
+    response_template: "Playing album {album}"
+    error_template: "Failed to play album, because {error}"
+  - prefix: "seat"
+    response_template: "{success}"
+    error_template: "Failed to apply for seat, because {error}"
+  - prefix: "title"
+    response_template: "Change title to {title}"
+    
+    error_template: "Failed to change title, because {error}"
+  - prefix: "end"
+    response_template: "{success}"
+    error_template: "Failed to end party, because {error}"
+>>>>>>> main
 appium:
   host: "192.168.50.103"
   port: 4723

@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
 
+# Constants
+DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 
 @dataclass
 class MessageInfo:
@@ -55,16 +57,20 @@ class SoulHandler(AppHandler):
                         self.logger.warning(
                             "already back in home but no party entry found, try go to party")
                         square_tab.click()
-                        party_home = "FM15321640"
-                        party_id = self.party_id if self.party_id else party_home
+                        party_id = self.party_id if self.party_id else DEFAULT_PARTY_ID
                         self.find_party_to_join(party_id)
                         self.party_id = None
                     else:
                         self.logger.warning(
                             "still cannot find message_list, may stay in unknown pages, go back first")
-                        if not self.press_back():
-                            self.logger.error('Failed to press back')
-                            return None
+                        go_back = self.try_find_element_plus('go_back', log=False)
+                        if go_back:
+                            go_back.click()
+                            self.logger.info("Clicked go back")
+                        else:
+                            if not self.press_back():
+                                self.logger.error('Failed to press back')
+                                return None
 
             return None
 
@@ -180,32 +186,45 @@ class SoulHandler(AppHandler):
         input_box_entry.click()
         self.logger.info("Clicked input box entry")
 
-        # # Wait 1 second for input box to be ready
-        # import time
-        # time.sleep(1)
-        # print("Waited 1 second for input box")
-
         # Now find and interact with the actual input box
         input_box = self.wait_for_element_clickable_plus('input_box')
         if not input_box:
-            self.logger.error(f'send_message cannot find input box, might be in chat screen')
+            self.logger.error(f'cannot find input box, might be in chat screen')
+            return {
+                'error': 'Failed to find input box',
+            }
         input_box.send_keys(message)
         self.logger.info(f"Entered message: {message}")
 
         # click send button
         send_button = self.wait_for_element_clickable_plus('button_send')
+        if not send_button:
+            self.logger.error(f'cannot find send button')
+            return {
+                'error': 'Failed to find send button',
+            }
+
         send_button.click()
         self.logger.info("Clicked send button")
 
+        input_box_entry = self.try_find_element_plus('input_box_entry', log=False)
+        if input_box_entry:
+            self.logger.info("Found input box entry, no need to hide input dialog")
+            return True
+
         input_box = self.wait_for_element_clickable_plus('input_box', timeout=1)
         if input_box:
-            # hide input dialog
-            self.press_back()
-            self.logger.info("Hide input dialog")
+            if input_box.text == '输入新消息':
+                self.press_back()
+                self.logger.info("Hide input dialog")
+            else:
+                send_button = self.wait_for_element_clickable_plus('button_send')
+                send_button.click()
+                self.logger.warning("Failed to send message, resent ")
         else:
             self.logger.info("No input box found, no need to hide input dialog")
 
-        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry', timeout=1)
+        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry')
         if not input_box_entry:
             self.press_back()
             self.logger.warning("Failed to hide input dialog, try again")
@@ -323,11 +342,6 @@ class SoulHandler(AppHandler):
                 confirm_party_button.click()
                 self.logger.info("Clicked confirm party button")
                 self.wait_for_element(AppiumBy.ID, self.config['elements']['create_party_screen'])
-                create_party_button = self.try_find_element(AppiumBy.ID,
-                                                            self.config['elements']['create_party_button'])
-                if create_party_button:
-                    create_party_button.click()
-                    self.logger.info("Clicked create party button")
             else:
                 restore_party_button = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements'][
                     'restore_party'])
@@ -341,6 +355,11 @@ class SoulHandler(AppHandler):
                     confirm_party_button.click()
                     self.logger.info("Clicked confirm party button")
 
+            create_party_button = self.try_find_element_plus('create_party_button')
+            if create_party_button:
+                create_party_button.click()
+                self.logger.info("Clicked create party button")
+
         input_box_entry = self.wait_for_element(AppiumBy.ID, self.config['elements']['input_box_entry'])
         if not input_box_entry:
             self.logger.error(f"Input box entry not found")
@@ -351,6 +370,8 @@ class SoulHandler(AppHandler):
         if claim_reward:
             claim_reward.click()
             self.logger.info("Claimed party creation reward")
+
+        self.seat_command.be_seated()
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
@@ -516,6 +537,7 @@ class SoulHandler(AppHandler):
         if not message_info.relation_tag:
             return {
                 'error': 'Only friends of owner can apply administrators',
+                'user': message_info.nickname,
             }
 
         # Click avatar to open profile
@@ -528,52 +550,48 @@ class SoulHandler(AppHandler):
                 self.logger.error('Avatar element is unavailable')
                 return {
                     'error': 'Avatar element is unavailable',
+                    'user': message_info.nickname,
                 }
         else:
-            return {'error': 'Avatar element not found'}
+            return {
+                'error': 'Avatar element not found',
+                'user': message_info.nickname,
+            }
 
         # Find manager invite button
-        manager_invite = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['manager_invite']
-        )
+        manager_invite = self.wait_for_element_clickable_plus('manager_invite')
         if not manager_invite:
-            return {'error': 'Failed to find manager invite button'}
+            return {'error': 'Failed to find manager invite button', 'user': message_info.nickname}
 
         # Check current status
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
                 self.press_back()
-                return {'error': '你已经是管理员了'}
+                return {'error': '你已经是管理员了', 'user': message_info.nickname}
         else:
             if current_text == "管理邀请":
                 self.press_back()
-                return {'error': '你还不是管理员'}
+                return {'error': '你还不是管理员', 'user': message_info.nickname}
 
         # Click manager invite button
         manager_invite.click()
-        print("Clicked manager invite button")
+        self.logger.info("Clicked manager invite button")
 
         # Click confirm button
         if enable:
-            confirm_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['confirm_invite']
-            )
+            confirm_button = self.wait_for_element_clickable_plus('confirm_invite')
             action = "Invite"
         else:
-            confirm_button = self.wait_for_element_clickable(
-                AppiumBy.XPATH,
-                self.config['elements']['confirm_dismiss']
-            )
+            confirm_button = self.wait_for_element_clickable_plus('confirm_dismiss')
             action = "Dismiss"
 
         if not confirm_button:
-            return {'error': f'Failed to find {action} confirmation button'}
+            self.logger.error(f"Failed to find {action} confirmation button by {message_info.nickname}")
+            return {'error': f'Failed to find {action} confirmation button', 'user': message_info.nickname}
 
         confirm_button.click()
-        print(f"Clicked {action} confirmation button")
+        self.logger.info(f"Clicked {action} confirmation button")
 
         return {'user': message_info.nickname,
                 'action': action}
@@ -627,3 +645,42 @@ class SoulHandler(AppHandler):
 
         except Exception as e:
             self.logger.error(f"Error ensuring mic is active: {str(e)}")
+
+    def end_party(self):
+        """Close current party
+        Returns:
+            dict: Result with success or error
+        """
+        try:
+            # Switch to Soul app first
+            if not self.switch_to_app():
+                return {'error': 'Failed to switch to Soul app'}
+            self.logger.info("Switched to Soul app")
+
+            # Click more menu
+            more_menu = self.wait_for_element_clickable_plus('more_menu')
+            if not more_menu:
+                return {'error': 'Failed to find more menu'}
+            more_menu.click()
+            self.logger.info("Clicked more menu")
+
+            # Click end party option
+            end_party = self.wait_for_element_clickable_plus('end_party')
+            if not end_party:
+                return {'error': 'Failed to find end party option'}
+            end_party.click()
+            self.logger.info("Clicked end party option")
+
+            # Click confirm end
+            confirm_end = self.wait_for_element_clickable_plus('confirm_end')
+            if not confirm_end:
+                return {'error': 'Failed to find confirm end button'}
+            confirm_end.click()
+            self.logger.info("Clicked confirm end button")
+
+            return {'success': True}
+
+        except Exception as e:
+            self.log_error(f"Error closing party: {traceback.format_exc()}")
+            return {'error': 'Failed to close party'}
+

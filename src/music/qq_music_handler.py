@@ -41,7 +41,7 @@ class QQMusicHandler(AppHandler):
 
     def hide_player(self):
         self.press_back()
-        print("Hide player panel")
+        self.logger.info("Hide player panel")
         time.sleep(1)
 
     def navigate_to_home(self):
@@ -100,34 +100,29 @@ class QQMusicHandler(AppHandler):
     def query_music(self, music_query: str):
         """Common logic for preparing music playback"""
         if not self.switch_to_app():
+            self.logger.info(f"Failed to switched to QQ Music app")
             return False
-        print(f"Switched to QQ Music app")
+        self.logger.info(f"Switched to QQ Music app")
 
-        go_back = self.try_find_element(
-            AppiumBy.ID, self.config['elements']['go_back'])
+        go_back = self.try_find_element_plus('go_back', log=False)
         if go_back:
+            self.logger.info(f"Clicked Go Back button")
             go_back.click()
 
-        search_box = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['search_box']
-        )
+        search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
-            print(f"Cannot find search entry")
+            self.logger.info(f"Cannot find search entry")
 
             # Hide player if visible
             self.hide_player()
-            print(f"Attempted to hide player")
+            self.logger.info(f"Attempted to hide player")
 
             # Go back to home page
             self.navigate_to_home()
-            print(f"Navigated to home page")
+            self.logger.info(f"Navigated to home page")
 
             # Find search entry
-            search_entry = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['search_entry']
-            )
+            search_entry = self.wait_for_element_clickable_plus('search_entry')
             if search_entry:
                 search_entry.click()
                 self.logger.info(f"Clicked search entry")
@@ -135,24 +130,18 @@ class QQMusicHandler(AppHandler):
                 self.logger.error(f"failed to find search entry")
                 return False
 
-        clear_search = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['clear_search']
-        )
+        clear_search = self.try_find_element_plus('clear_search')
         if clear_search:
             clear_search.click()
             self.logger.info(f"Clear search")
 
         # Find and click search box
-        search_box = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['search_box']
-        )
+        search_box = self.wait_for_element_clickable_plus('search_box')
         if not search_box:
-            print(f"Cannot find search entry")
+            self.logger.error(f"Cannot find search entry")
             return False
         search_box.click()
-        print(f"Found search box")
+        self.logger.info(f"Found search box")
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
@@ -182,7 +171,7 @@ class QQMusicHandler(AppHandler):
         if playing_info['song'].endswith('(Live)'):
             self.live_count += 1
         else:
-            studio_version = self.try_find_element(AppiumBy.XPATH, self.config['elements']['studio_version'])
+            studio_version = self.try_find_element_plus('studio_version')
             if studio_version:
                 studio_version.click()
                 self.logger.info("Alter to studio version")
@@ -197,28 +186,6 @@ class QQMusicHandler(AppHandler):
         )
         song_tab.click()
         self.logger.info("Selected songs tab")
-
-    def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        playlist_tab = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['playlist_tab']
-        )
-        if not playlist_tab:
-            print("Cannot find playlist tab")
-            return False
-        playlist_tab.click()
-        print("Selected playlist tab")
-        return True
-
-    def select_singer_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        playlist_tab = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['singer_tab']
-        )
-        playlist_tab.click()
-        print("Selected singer tab")
 
     def select_lyrics_tab(self):
         self.press_right_key()
@@ -381,7 +348,7 @@ class QQMusicHandler(AppHandler):
                     'command': 'input keyevent KEYCODE_MEDIA_NEXT'
                 }
             )
-            self.logger.info("Sent media next key event")
+            self.logger.info(f"Skipped {current_info['song']} by {current_info['singer']}")
 
             # Return song info
             return {
@@ -390,8 +357,7 @@ class QQMusicHandler(AppHandler):
             }
 
         except Exception as e:
-            self.logger.error(f"Error skipping song: {str(e)}")
-            traceback.print_exc()
+            self.logger.error(f"Error skipping song: {traceback.format_exc()}")
             return {
                 'song': 'Unknown',
                 'singer': 'Unknown'
@@ -476,87 +442,6 @@ class QQMusicHandler(AppHandler):
             print(f"Error getting volume level: {str(e)}")
             traceback.print_exc()
             return 0
-
-    def toggle_accompaniment(self, enable):
-        """Toggle accompaniment mode
-        Args:
-            enable: bool, True to enable, False to disable
-        Returns:
-            dict: {'enabled': 'on'/'off'}
-        """
-        if not self.switch_to_app():
-            return {'error': 'Failed to switch to QQ Music app'}
-        print("Switched to QQ Music app")
-
-        error = self.switch_to_playing_page()
-        if error:
-            return error
-
-        tag = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_tag'])
-
-        if tag:
-            print(f"Found accompaniment tag")
-            is_on = True
-        else:
-            is_on = False
-
-        # Find switch and check current state
-        print(f"Current accompaniment state: {'on' if is_on else 'off'}")
-
-        # Toggle if needed
-        if (enable and not is_on) or (not enable and is_on):
-            if is_on:
-                tag.click()
-                switch = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['accompaniment_switch'])
-                switch.click()
-            else:
-                more_menu = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['more_in_play_panel'])
-                more_menu.click()
-                print(f"Selected more menu")
-                found = False
-                for _ in range(9):
-                    self.press_dpad_down()
-                    acc_menu = self.try_find_element(AppiumBy.XPATH, self.config['elements']['accompaniment_menu'])
-                    if acc_menu:
-                        found = True
-                        acc_menu.click()
-                        print(f"Selected accompaniment menu")
-                        acc_label = self.wait_for_element_clickable(AppiumBy.ID,
-                                                                    self.config['elements']['accompaniment_label'],
-                                                                    timeout=2)
-                        if acc_label:
-                            # Get element size and location
-                            size = acc_label.size
-                            location = acc_label.location
-
-                            # Calculate click position
-                            # X: right side - 1/4 of width
-                            click_x = location['x'] + size['width'] - (size['width'] // 4)
-                            # Y: vertical center
-                            click_y = location['y'] + (size['height'] // 2)
-
-                            # Perform tap action at calculated position
-                            actions = ActionChains(self.driver)
-                            actions.w3c_actions = ActionBuilder(
-                                self.driver,
-                                mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
-                            )
-                            actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
-                            actions.w3c_actions.pointer_action.pointer_down()
-                            actions.w3c_actions.pointer_action.pause(0.1)
-                            actions.w3c_actions.pointer_action.pointer_up()
-                            actions.perform()
-
-                            self.logger.info(f"Clicked acc_label at position ({click_x}, {click_y})")
-                        else:
-                            return {'error': 'Current song does not support accompaniment, please find one supporting'}
-                        break
-                if not found:
-                    return {'error': 'No accompaniment menu found'}
-
-        return {
-            'enabled': 'on' if enable else 'off'
-        }
 
     def adjust_volume(self, delta=None):
         """
@@ -759,7 +644,7 @@ class QQMusicHandler(AppHandler):
 
         except Exception as e:
             self.logger.error(f"Error getting lyrics: {traceback.format_exc()}")
-            return {'error': 'Failed to get lyrics' }
+            return {'error': 'Failed to get lyrics'}
 
     def set_lyrics_formatter(self, formatter):
         self.lyrics_formatter = formatter
@@ -1135,72 +1020,64 @@ class QQMusicHandler(AppHandler):
 
     def check_ktv_lyrics(self):
         if not self.switch_to_app():
-            return False
+            self.logger.error("Failed to switch to app")
+            return {
+                'error': "Failed to switch to app"
+            }
 
         """Check current lyrics in KTV mode"""
         if not self.ktv_mode:
             return None  # 如果KTV模式未开启，则不执行
 
-        close_poster = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['close_poster']
-        )
+        close_poster = self.try_find_element_plus('close_poster', log=False)
         if close_poster:
-            print("Closing poster...")
+            self.logger.info("Closing poster...")
             close_poster.click()
 
-        # 尝试查找并点击歌词工具
-        lyrics_tool = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['lyrics_tool']
-        )
+        lyrics_tool = self.wait_for_element_clickable_plus('lyrics_tool')
         if not lyrics_tool:
             self.ktv_mode = False
+            self.logger.error("Failed to find lyrics tool")
             return {'error': 'Cannot find lyrics tool'}
 
         lyrics_tool.click()
-        print("Clicked lyrics tool")
+        self.logger.info("Clicked lyrics tool")
 
         # 尝试查找并点击歌词海报
-        lyrics_poster = self.wait_for_element_clickable(
-            AppiumBy.XPATH,
-            self.config['elements']['lyrics_poster']
-        )
+        lyrics_poster = self.wait_for_element_clickable_plus('lyrics_poster')
         if not lyrics_poster:
-            self.ktv_mode = False
-            return {'error': 'Cannot find lyrics poster option'}
+            # self.ktv_mode = False
+            info = self.skip_song()
+            self.logger.warning(f"Failed to find lyrics poster for {info['song']} by {info['singer']}")
+            return {'error': f'Skip {info['song']} by {info['singer']} due to no lyrics poster option'}
 
         try:
             lyrics_poster.click()
         except StaleElementReferenceException as e:
             self.ktv_mode = False
             return {'error': 'Cannot click lyrics poster option'}
-        print("Clicked lyrics poster")
+        self.logger.info("Clicked lyrics poster")
 
         # 找到所有的lyrics_box
-        close_poster = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['close_poster']
-        )
+        close_poster = self.wait_for_element_clickable_plus('close_poster')
         if not close_poster:
-            print("No close poster")
+            self.ktv_mode = False
+            self.logger.warning("No close poster")
+            return {'error': 'No close poster'}
 
-        current_lyrics = self.wait_for_element(
-            AppiumBy.ID,
-            self.config['elements']['current_lyrics']
-        )
+        current_lyrics = self.wait_for_element_clickable_plus('current_lyrics')
         finished = False
         if current_lyrics:
             try:
                 y_coordinate = current_lyrics.location['y']
             except StaleElementReferenceException as e:
-                print(f"Error finding y coordinate")
+                self.logger.error(f"Error finding y coordinate")
                 self.ktv_mode = False
                 return {'error': 'Cannot get current lyrics coordinate'}
 
             if y_coordinate < 1000:
                 finished = True
-                print("Found first line, song might be finished")
+                self.logger.info("Found first line, song might be finished")
         if not finished:
             screen_size = self.driver.get_window_size()
             screen_height = screen_size['height']
@@ -1343,40 +1220,6 @@ class QQMusicHandler(AppHandler):
             return {'error': 'Cannot find lyrics tool, please try again'}
         return None
 
-    def play_favorites(self):
-        """Navigate to favorites and play all"""
-        if not self.switch_to_app():
-            return {'error': 'Cannot switch to qq music'}
-        self.logger.info(f"Switched to QQ Music app")
-
-        self.press_back()
-        my_nav = self.try_find_element_plus('my_nav')
-        if not my_nav:
-            self.press_back()
-            my_nav = self.try_find_element_plus('my_nav')
-            if not my_nav:
-                return {'error': 'Cannot find my_nav'}
-
-        self.logger.info("Navigated to home page")
-
-        my_nav.click()
-        self.logger.info("Clicked personal info navigation button")
-
-        # Click on favorites button
-        fav_entry = self.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.logger.info("Clicked favorites button")
-
-        # Click on play all button
-        play_fav = self.wait_for_element_clickable_plus('play_fav')
-        song = self.wait_for_element_clickable_plus('fav_song')
-        singer = self.wait_for_element_clickable_plus('fav_singer')
-
-        play_fav.click()
-        self.logger.info("Clicked play all button")
-
-        return {'song': song.text, 'singer': singer.text}
-
     def process_lyrics(self, lyrics_text, max_width=20, force_groups=0):
         """Process lyrics text into groups with width control
         Args:
@@ -1508,25 +1351,20 @@ class QQMusicHandler(AppHandler):
         self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         # Get all songs and singers
-        songs = self.driver.find_elements(
-            AppiumBy.ID,
-            self.config['elements']['playlist_song']
-        )
-        singers = self.driver.find_elements(
-            AppiumBy.ID,
-            self.config['elements']['playlist_singer']
-        )
+        items = self.driver.find_elements(AppiumBy.ID, self.config['elements']['playlist_item_container'])
 
-        # Combine songs and singers
         playlist_info = []
-        for song, singer in zip(songs, singers):
+        for item in items:
             try:
-                song_text = song.text.strip()
-                singer_text = singer.text.strip()
-                if song_text and singer_text:
-                    playlist_info.append(f"{song_text} {singer_text}")
+                song = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_song'])
+                if not song:
+                    self.logger.warning("Failed to find song in playlist")
+                    continue
+                singer = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_singer'])
+                info = f'{song.text}{singer.text}' if singer else song.text
+                playlist_info.append(info)
             except StaleElementReferenceException as e:
-                self.logger.warning(f"Error getting song/singer text, {len(songs)} {len(singers)}")
+                self.logger.warning(f"Error getting song/singer text, {len(items)} ")
                 continue
 
         if not playlist_info:
