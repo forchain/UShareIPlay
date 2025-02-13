@@ -30,6 +30,8 @@ class SoulHandler(AppHandler):
 
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
+        self.last_content = None  # Last message content
+        self.second_last_content = None  # Second last message content
     
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
@@ -126,6 +128,14 @@ class SoulHandler(AppHandler):
                     continue
 
                 content = self.try_get_attribute(content_element, 'content-desc')
+                
+                # Log new messages to chat.log without pattern matching
+                if content and content != self.last_content and content != self.second_last_content:
+                    with open('logs/chat.log', 'a', encoding='utf-8') as f:
+                        f.write(f"{content}\n")
+                    self.second_last_content = self.last_content
+                    self.last_content = content
+                
                 if content and re.match(pattern, content):
                     element_id = container.id
 
