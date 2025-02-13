@@ -17,5 +17,9 @@ class NextCommand(BaseCommand):
     def process(self, message_info, parameters):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
+        info = self.play_next(query)
+        return info
+
+    def play_next(self, query):
         info = self.music_handler.play_next(query)
         return info

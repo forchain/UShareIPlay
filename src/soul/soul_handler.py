@@ -9,6 +9,7 @@ from ..utils.app_handler import AppHandler
 import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
+from core.base_command import BaseCommand
 
 # Constants
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
@@ -29,7 +30,7 @@ class SoulHandler(AppHandler):
 
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
-
+    
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
         if not self.switch_to_app():
@@ -111,6 +112,19 @@ class SoulHandler(AppHandler):
             )
 
             if content_element:
+                # Check for user enter message
+                message_text = content_element.text
+                is_enter, username = BaseCommand.is_user_enter_message(message_text)
+                if is_enter:
+                    self.logger.info(f"User entered: {username}")
+                    # Notify all commands
+                    for module in self.controller.command_modules.values():
+                        try:
+                            module.command.user_enter(username)
+                        except Exception as e:
+                            self.logger.error(f"Error in command user_enter: {str(e)}")
+                    continue
+
                 content = self.try_get_attribute(content_element, 'content-desc')
                 if content and re.match(pattern, content):
                     element_id = container.id

@@ -251,6 +251,9 @@ commands:
   - prefix: "end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
+  - prefix: "hello"
+    response_template: "{success}"
+    error_template: "Failed to say hello, because {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

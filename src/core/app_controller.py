@@ -17,6 +17,7 @@ import sys
 import threading
 import queue
 import readline  # 用于更好的命令行输入体验
+from ..utils.db_helper import DBHelper
 
 
 class AppController:
@@ -48,6 +49,9 @@ class AppController:
 
         self.commands_path = Path(__file__).parent.parent / 'commands'
         self.command_modules = {}  # Cache for loaded command modules
+
+        # Initialize database helper
+        self.db_helper = DBHelper()
 
     def _init_driver(self):
         options = AppiumOptions()
@@ -101,7 +105,7 @@ class AppController:
             return module
             
         except Exception as e:
-            self.soul_handler.log_error(f"Error loading command module {command}: {str(e)}")
+            self.soul_handler.log_error(f"Error loading command module {command}: {traceback.format_exc()}")
             return None
 
     def _update_commands(self):

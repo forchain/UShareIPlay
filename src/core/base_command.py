@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import time
+import re
 
 class BaseCommand(ABC):
     def __init__(self, controller):
@@ -31,4 +32,28 @@ class BaseCommand(ABC):
         self.last_update_time = current_time
         
         # Override this method in commands that need updates
-        pass 
+        pass
+
+    def user_enter(self, username: str):
+        """Called when a user enters the party
+        Args:
+            username: str, name of the user who entered
+        Returns:
+            None
+        """
+        # Override this method in commands that need to handle user entry
+        pass
+
+    @staticmethod
+    def is_user_enter_message(message: str) -> tuple[bool, str]:
+        """Check if message is a user enter notification
+        Args:
+            message: str, message to check
+        Returns:
+            tuple[bool, str]: (is_enter_message, username)
+        """
+        pattern = r"^(.+)进来陪你聊天啦(?: 来自派对提醒)?$"
+        match = re.match(pattern, message)
+        if match:
+            return True, match.group(1)
+        return False, "" 
