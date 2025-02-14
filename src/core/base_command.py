@@ -52,7 +52,7 @@ class BaseCommand(ABC):
         Returns:
             tuple[bool, str]: (is_enter_message, username)
         """
-        pattern = r"^(.+)进来陪你聊天啦(?: 来自派对提醒)?$"
+        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
         match = re.match(pattern, message)
         if match:
             return True, match.group(1)
