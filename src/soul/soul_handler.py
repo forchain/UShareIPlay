@@ -9,7 +9,7 @@ from ..utils.app_handler import AppHandler
 import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
-from core.base_command import BaseCommand
+from ..core.base_command import BaseCommand
 
 # Constants
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
