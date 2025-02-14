@@ -1325,6 +1325,7 @@ class QQMusicHandler(AppHandler):
             self.logger.info("Clicked playlist entry floating")
 
         playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
+        can_scroll = True
         if not playlist_playing:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
@@ -1332,24 +1333,27 @@ class QQMusicHandler(AppHandler):
             playing_loc = playlist_playing.location
             playing_size = playlist_playing.size
         except StaleElementReferenceException as e:
-            self.logger.error(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
-            return {'error': 'Failed to find playing indicator playlist '}
+            self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
+            playing_loc = None
+            playing_size = None
+            can_scroll = False
 
-        # Find playlist title element
-        playlist_header = self.try_find_element_plus('playlist_header')
-        if not playlist_header:
-            self.logger.error("Failed to find playlist header")
-            return {'error': 'Failed to find playlist header'}
+        if can_scroll:
+            # Find playlist title element
+            playlist_header = self.try_find_element_plus('playlist_header')
+            if not playlist_header:
+                self.logger.error("Failed to find playlist header")
+                return {'error': 'Failed to find playlist header'}
 
-        title_loc = playlist_header.location
-        # Calculate swipe coordinates
-        start_x = playing_loc['x'] + playing_size['width'] // 2
-        start_y = playing_loc['y']
-        end_y = title_loc['y']
+            title_loc = playlist_header.location
+            # Calculate swipe coordinates
+            start_x = playing_loc['x'] + playing_size['width'] // 2
+            start_y = playing_loc['y']
+            end_y = title_loc['y']
 
-        # Swipe playing element up to title position
-        self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
-        self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
+            # Swipe playing element up to title position
+            self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
+            self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         # Get all songs and singers
         items = self.driver.find_elements(AppiumBy.ID, self.config['elements']['playlist_item_container'])
