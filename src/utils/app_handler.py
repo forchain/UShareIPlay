@@ -456,3 +456,21 @@ class AppHandler:
         except Exception as e:
             self.logger.error(f"Error clicking element: {traceback.format_exc()}")
             return False
+
+    def find_child_element_plus(self, parent, element_key):
+        """Find child element using element key from config
+        Args:
+            parent: Parent element to search within
+            element_key: Key in config elements section
+        Returns:
+            WebElement or None if not found
+        """
+        try:
+            element_id = self.config['elements'][element_key]
+            if element_id.startswith('//'):
+                return self.find_child_element(parent, AppiumBy.XPATH, element_id)
+            else:
+                return self.find_child_element(parent, AppiumBy.ID, element_id)
+        except Exception as e:
+            self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
+            return None

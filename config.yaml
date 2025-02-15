@@ -76,6 +76,11 @@ soul:
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
     go_back: 'cn.soulapp.android:id/iv_back'
     user_count: 'cn.soulapp.android:id/tvUserCount'
+    seat_container: 'cn.soulapp.android:id/userRoot'
+    left_seat: 'cn.soulapp.android:id/leftUserView'
+    left_state: 'cn.soulapp.android:id/leftClState'
+    right_seat: 'cn.soulapp.android:id/rightUserView'
+    right_state: 'cn.soulapp.android:id/rightClState'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
