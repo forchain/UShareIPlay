@@ -63,5 +63,20 @@ class DBHelper:
         ''', (username,))
         self.conn.commit()
 
+    def delete_one_hello(self, username, sender, song, message):
+        """Delete one specific hello for given username"""
+        self.cursor.execute('''
+        DELETE FROM pending_hellos 
+        WHERE id IN (
+            SELECT id FROM pending_hellos
+            WHERE target_username = ? 
+            AND sender_name = ? 
+            AND song_name = ? 
+            AND message = ?
+            LIMIT 1
+        )
+        ''', (username, sender, song, message))
+        self.conn.commit()
+
     def __del__(self):
         self.conn.close() 

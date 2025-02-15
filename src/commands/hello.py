@@ -48,7 +48,7 @@ class HelloCommand(BaseCommand):
             queue_position = len(self.pending_hellos[username])
             
             return {
-                'success': f'Will greet {username} when they enter (#{queue_position} in queue)'
+                'success': f'Will greet {username} when they s/he (#{queue_position} in queue)'
             }
 
         except Exception as e:
@@ -60,26 +60,25 @@ class HelloCommand(BaseCommand):
         try:
             # Check if we have pending hellos for this user
             if username in self.pending_hellos and self.pending_hellos[username]:
-                # Send all greetings and queue songs
-                for i, (sender, message, song) in enumerate(self.pending_hellos[username]):
-                    # Send greeting message
-                    greeting = f"@{username}，{sender} 给你点了一首 {song}，TA想对你说：{message}"
-                    self.handler.send_message(greeting)
-                    self.handler.logger.info(f"Sent greeting to {username} from {sender}")
-                    
-                    # Queue the song
-                    if i == 0:
-                        # First song - use play command
-                        self.controller.play_command.play_song(song)
-                        self.handler.logger.info(f"Playing first song: {song}")
-                    else:
-                        # Subsequent songs - use next command
-                        self.controller.next_command.play_next(song)
-                        self.handler.logger.info(f"Queuing next song: {song}")
+                # Get the first hello message
+                sender, message, song = self.pending_hellos[username][0]
                 
-                # Clear all pending hellos for this user
-                del self.pending_hellos[username]
-                self.controller.db_helper.delete_hello(username)
+                # Send greeting message
+                greeting = f"@{username}，{sender} 给你点了一首 {song}，TA想对你说：{message}"
+                self.handler.send_message(greeting)
+                self.handler.logger.info(f"Sent greeting to {username} from {sender}")
+                
+                # Play the song
+                self.controller.play_command.play_song(song)
+                self.handler.logger.info(f"Playing song: {song}")
+                
+                # Remove this hello from the list
+                self.pending_hellos[username].pop(0)
+                if not self.pending_hellos[username]:  # Clean up if empty
+                    del self.pending_hellos[username]
+                
+                # Remove this hello from database
+                self.controller.db_helper.delete_one_hello(username, sender, song, message)
 
         except Exception as e:
             self.handler.log_error(f"Error in hello user_enter: {traceback.format_exc()}") 
