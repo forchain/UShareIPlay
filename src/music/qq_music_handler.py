@@ -364,58 +364,6 @@ class QQMusicHandler(AppHandler):
                 'singer': 'Unknown'
             }
 
-    def pause_song(self, pause_state=None):
-        """
-        Pause/resume playback
-        Args:
-            pause_state: None for toggle, 1 for pause, 0 for play
-        Returns:
-            dict: Current playing info or error
-        """
-        try:
-            # Get current playback info
-            current_info = self.get_playback_info()
-            if 'error' in current_info:
-                return current_info
-
-            # Get current state
-            is_playing = current_info['state'] == "Playing"
-
-            # Determine if we need to change state
-            should_pause = False
-            if pause_state is None:
-                # Toggle mode
-                should_pause = is_playing
-            else:
-                # Explicit mode
-                should_pause = pause_state == 1
-                if (should_pause and not is_playing) or (not should_pause and is_playing):
-                    # State already matches desired state
-                    return {
-                        'song': current_info['song'],
-                        'singer': current_info['singer'],
-                        'action': 'Paused' if not is_playing else 'Resumed'
-                    }
-
-            # Execute media control command
-            self.driver.execute_script(
-                'mobile: shell',
-                {
-                    'command': 'input keyevent KEYCODE_MEDIA_PLAY_PAUSE'
-                }
-            )
-            self.logger.info("Sent media play/pause key event")
-
-            return {
-                'song': current_info['song'],
-                'singer': current_info['singer'],
-                'action': 'Paused' if should_pause else 'Resumed'
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error controlling playback: {traceback.format_exc()}")
-            return {'error': f'Failed to pause/resume song, {pause_state}'}
-
     def get_volume_level(self):
         """Get current volume level"""
         try:

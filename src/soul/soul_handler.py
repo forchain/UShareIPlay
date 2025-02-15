@@ -662,12 +662,14 @@ class SoulHandler(AppHandler):
             else:
                 self.logger.info("Already on mic, checking toggle mic status...")
                 # Check the toggle mic button
-                toggle_mic_button = self.wait_for_element_clickable(
-                    AppiumBy.ID,
-                    self.config['elements']['toggle_mic']
-                )
+                toggle_mic_button = self.wait_for_element_clickable_plus('toggle_mic')
+                
+                if not toggle_mic_button:
+                    self.logger.error("Toggle mic button not found")
+                    return
 
-                if toggle_mic_button.text == "闭麦中":  # Assuming this means "Mic is off"
+                desc = self.try_get_attribute(toggle_mic_button, 'content-desc')
+                if desc == "开麦按钮":  # If we see "开麦按钮", mic is currently off
                     self.logger.info("Mic is off, turning it on...")
                     toggle_mic_button.click()
                     self.logger.info("Clicked toggle mic button to turn on mic")

@@ -254,6 +254,9 @@ commands:
   - prefix: "hello"
     response_template: "{success}"
     error_template: "Failed to say hello, because {error}"
+  - prefix: "mic"
+    response_template: "Microphone set to {state}"
+    error_template: "Failed to set microphone: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
