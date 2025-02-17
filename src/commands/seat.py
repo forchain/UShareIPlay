@@ -26,9 +26,11 @@ class SeatCommand(BaseCommand):
                 # Check both seats in this container
                 left_state = self.handler.find_child_element_plus(container, 'left_state')
                 right_state = self.handler.find_child_element_plus(container, 'right_state')
+                left_label = self.handler.find_child_element_plus(container, 'left_label')
+                right_label = self.handler.find_child_element_plus(container, 'right_label')
 
                 # If left seat is empty and right seat has someone
-                if not left_state and right_state:
+                if not left_state and right_state and (not right_label.text == '群主'):
                     left_seat = self.handler.find_child_element_plus(container, 'left_seat')
                     if left_seat:
                         left_seat.click()
@@ -36,7 +38,7 @@ class SeatCommand(BaseCommand):
                         return self._confirm_seat()
 
                 # If right seat is empty and left seat has someone
-                if not right_state and left_state:
+                if not right_state and left_state and (not left_label.text == '群主'):
                     right_seat = self.handler.find_child_element_plus(container, 'right_seat')
                     if right_seat:
                         right_seat.click()

@@ -115,7 +115,11 @@ class SoulHandler(AppHandler):
 
             if content_element:
                 # Check for user enter message
-                message_text = content_element.text
+                try:
+                    message_text = content_element.text
+                except StaleElementReferenceException:
+                    self.logger.error('message is unavailable')
+                    return None
                 is_enter, username = BaseCommand.is_user_enter_message(message_text)
                 if is_enter:
                     self.logger.info(f"User entered: {username}")
