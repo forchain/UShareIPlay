@@ -172,13 +172,13 @@ qq_music:
     play_mode: 'com.tencent.qqmusic:id/a9j'
 commands:
   - prefix: "play"
-    response_template: "Playing {song} by {singer}"
+    response_template: "Playing {song} by {singer} in {album}"
     error_template: "Failed to play music, because {error}"
   - prefix: "skip"
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
-    response_template: "Added {song} by {singer} to playlist"
+    response_template: "Added {song} by {singer} in {album} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     response_template: "{action} {song} by {singer}"

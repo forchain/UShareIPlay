@@ -31,7 +31,7 @@ class QQMusicHandler(AppHandler):
         self.ktv_mode = False  # KTV mode state
         self.last_lyrics = ""  # Store last recognized lyrics
         self.last_lyrics_lines = []
-        self.live_count = 0
+        self.no_skip = 0
 
         # Optimize driver settings
         self.driver.update_settings({
@@ -66,17 +66,29 @@ class QQMusicHandler(AppHandler):
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
-        song_element = self.driver.find_element(
-            AppiumBy.ID,
-            self.config['elements']['song_name']
-        )
-        singer_element = self.driver.find_element(
-            AppiumBy.ID,
-            self.config['elements']['singer_name']
-        )
+        song_element = self.try_find_element_plus("song_name")
+        if not song_element:
+            return {
+                "song": "Unknown",
+                "singer": "Unknown",
+                "album": "Unknown",
+            }
+        song = song_element.text
+        singer_element = self.try_find_element_plus("singer_name")
+        if not song_element:
+            return {
+                "song": song,
+                "singer": "Unknown",
+                "album": "Unknown",
+            }
+        singer_album = singer_element.text.split('·')
+        singer = singer_album[0]
+        album = singer_album[1]
+
         return {
-            'song': song_element.text,
-            'singer': singer_element.text
+            'song': song,
+            'singer': singer,
+            'album': album
         }
 
     def get_current_playing(self):
@@ -169,10 +181,11 @@ class QQMusicHandler(AppHandler):
 
         self.logger.info(f"Found playing info: {playing_info}")
 
-        if playing_info['song'].endswith('(Live)'):
-            self.live_count += 1
+        if playing_info['song'].endswith('(Live)') or (
+                playing_info['singer'] and playing_info['singer'] == playing_info['album']):
+            self.no_skip += 1
         else:
-            studio_version = self.try_find_element_plus('studio_version')
+            studio_version = self.try_find_element_plus('studio_version', log=False)
             if studio_version:
                 studio_version.click()
                 self.logger.info("Alter to studio version")

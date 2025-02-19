@@ -48,7 +48,7 @@ class HelloCommand(BaseCommand):
             queue_position = len(self.pending_hellos[username])
             
             return {
-                'success': f'Will greet {username} when they s/he (#{queue_position} in queue)'
+                'success': f'Will greet {username} when s/he (#{queue_position} in queue)'
             }
 
         except Exception as e:

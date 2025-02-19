@@ -232,10 +232,13 @@ class AppController:
                 if info != last_info:
                     last_info = info
                     if not 'album' in info or info['album'] == info['singer'] :
-                        self.music_handler.skip_song()
+                        if self.music_handler.no_skip > 0:
+                            self.music_handler.no_skip -= 1
+                        else:
+                            self.music_handler.skip_song()
                     elif info['song'].endswith('(Live)'):
-                        if self.music_handler.live_count > 0:
-                            self.music_handler.live_count -= 1
+                        if self.music_handler.no_skip > 0:
+                            self.music_handler.no_skip -= 1
                         else:
                             self.music_handler.skip_song()
                     elif 'DJ' in info['song'] or 'Remix' in info['song']:
