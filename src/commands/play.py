@@ -84,6 +84,7 @@ class PlayCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        self.handler.list_mode = 'favorites'
         self.controller.topic_command.change_topic("Joyer Radio")
         self.controller.title_command.change_title("Joyer Radio")
 
@@ -107,6 +108,8 @@ class PlayCommand(BaseCommand):
 
         radar_nav.click()
         self.handler.logger.info("Clicked radar navigation button")
+
+        self.handler.list_mode = 'radar'
 
         self.controller.topic_command.change_topic("Outlier Station")
         self.controller.title_command.change_title("Outlier电台")

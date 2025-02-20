@@ -77,6 +77,8 @@ class SingerCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("Clicked play singer result")
 
+        self.handler.list_mode = 'singer'
+
         self.controller.topic_command.change_topic(singer_name)
         self.controller.title_command.change_title(singer_name)
 

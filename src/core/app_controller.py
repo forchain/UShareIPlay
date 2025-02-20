@@ -231,20 +231,16 @@ class AppController:
                 info['state'] = None
                 if info != last_info:
                     last_info = info
-                    if not 'album' in info or info['album'] == info['singer'] :
-                        if self.music_handler.no_skip > 0:
-                            self.music_handler.no_skip -= 1
-                        else:
-                            self.music_handler.skip_song()
-                    elif info['song'].endswith('(Live)'):
-                        if self.music_handler.no_skip > 0:
-                            self.music_handler.no_skip -= 1
-                        else:
-                            self.music_handler.skip_song()
-                    elif 'DJ' in info['song'] or 'Remix' in info['song']:
+                    if self.music_handler.list_mode == 'singer':
+                        if info['song'].endswith('(Live)'):
+                            if self.music_handler.no_skip > 0:
+                                self.music_handler.no_skip -= 1
+                            else:
+                                self.music_handler.skip_song()
+                    if 'DJ' in info['song'] or 'Remix' in info['song']:
                         self.music_handler.skip_song()
-                    else:
-                        self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
+
+                    self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
                 messages = self.soul_handler.get_latest_message(enabled)

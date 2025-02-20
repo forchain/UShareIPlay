@@ -32,6 +32,7 @@ class QQMusicHandler(AppHandler):
         self.last_lyrics = ""  # Store last recognized lyrics
         self.last_lyrics_lines = []
         self.no_skip = 0
+        self.list_mode = 'unknown'
 
         # Optimize driver settings
         self.driver.update_settings({
@@ -181,14 +182,15 @@ class QQMusicHandler(AppHandler):
 
         self.logger.info(f"Found playing info: {playing_info}")
 
-        if playing_info['song'].endswith('(Live)') or (
-                playing_info['singer'] and playing_info['singer'] == playing_info['album']):
-            self.no_skip += 1
-        else:
-            studio_version = self.try_find_element_plus('studio_version', log=False)
-            if studio_version:
-                studio_version.click()
-                self.logger.info("Alter to studio version")
+        if self.list_mode == 'singer':
+            if playing_info['song'].endswith('(Live)') or (
+                    playing_info['singer'] and playing_info['singer'] == playing_info['album']):
+                self.no_skip += 1
+
+        studio_version = self.try_find_element_plus('studio_version', log=False)
+        if studio_version:
+            studio_version.click()
+            self.logger.info("Alter to studio version")
 
         return playing_info
 

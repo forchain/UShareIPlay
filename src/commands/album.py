@@ -88,6 +88,8 @@ class AlbumCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("play button clicked")
 
+        self.handler.list_mode = 'album'
+
         self.controller.topic_command.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
         self.controller.title_command.change_title(topic)

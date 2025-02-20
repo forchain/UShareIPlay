@@ -73,6 +73,7 @@ class PlaylistCommand(BaseCommand):
             else:
                 self.handler.logger.error('Failed to find playlist button')
                 return {'error': 'Failed to find play button'}
+        self.handler.list_mode = 'playlist'
         return {
             'playlist': playlist,
         }
