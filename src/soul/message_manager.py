@@ -6,6 +6,9 @@ import re
 from collections import deque
 import logging
 
+DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
+DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
+
 # Set up chat logger
 chat_logger = logging.getLogger('chat')
 chat_logger.setLevel(logging.INFO)
@@ -99,9 +102,12 @@ class MessageManager:
             self.handler.logger.warning(
                 "already back in home but no party entry found, try go to party")
             square_tab.click()
-            party_id = self.handler.party_id if hasattr(self.handler, 'party_id') else None
+            party_id = self.handler.party_id if self.handler.party_id else DEFAULT_PARTY_ID
             self.handler.find_party_to_join(party_id)
             self.handler.party_id = None
+
+            self.handler.controller.seat_command.be_seated()
+            self.handler.controller.notice_command.change_notice(DEFAULT_NOTICE)
         else:
             self.handler.logger.warning(
                 "still cannot find message_list, may stay in unknown pages, go back first")

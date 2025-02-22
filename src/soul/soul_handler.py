@@ -13,9 +13,6 @@ from ..core.base_command import BaseCommand
 from .message_manager import MessageManager
 
 # Constants
-DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
-DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
-
 @dataclass
 class MessageInfo:
     """Data class for message information"""
@@ -235,8 +232,6 @@ class SoulHandler(AppHandler):
         if claim_reward:
             claim_reward.click()
             self.logger.info("Claimed party creation reward")
-
-        self.controller.seat_command.be_seated()
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
