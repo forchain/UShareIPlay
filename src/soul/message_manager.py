@@ -6,7 +6,7 @@ import re
 from collections import deque
 import logging
 
-from core.base_command import BaseCommand
+from ..core.base_command import BaseCommand
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
@@ -244,7 +244,7 @@ class MessageManager:
 
             # Try to find and send soul power gift
             soul_power = self.handler.try_find_element_plus('soul_power', log=False)
-            if soul_power:
+            if soul_power and (not soul_power.text == '不增加灵魂力'):
                 # Click give gift button to send
                 give_gift.click()
                 self.handler.logger.info("Sent soul power gift")
