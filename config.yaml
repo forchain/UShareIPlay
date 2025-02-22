@@ -83,12 +83,18 @@ soul:
     right_state: 'cn.soulapp.android:id/rightClState'
     left_label: 'cn.soulapp.android:id/leftTvLabelH'
     right_label: 'cn.soulapp.android:id/rightTvLabelH'
-    luck_pack: 'cn.soulapp.android:id/tvLbLabelPack'
-    luck_item: 'cn.soulapp.android:id/name'
-    use_pack: 'cn.soulapp.android:id/tvUse'
-    soul_power: 'cn.soulapp.android:id/soulPower'
-    give_gift: 'cn.soulapp.android:id/mConfirm'
+    luck_pack: 'cn.soulapp.android:id/tvLbLabelPack' # 福袋 / 2个奖励
+    luck_item: 'cn.soulapp.android:id/name' # 初级福袋/中级福袋/高级福袋
+    use_pack: 'cn.soulapp.android:id/tvUse' # 使用
+    soul_power: 'cn.soulapp.android:id/soulPower' # +12灵魂力
+    give_gift: 'cn.soulapp.android:id/mConfirm' # 赠送
     gift_tool: 'cn.soulapp.android:id/ivGift'
+    follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
+    follower_name: 'cn.soulapp.android:id/tvName' # Outlier
+    follower_message: 'cn.soulapp.android:id/tvFollowUserContent' # 你关注的Outlier进入房间啦，打个招呼吧～
+    greet_follower: 'cn.soulapp.android:id/tvFollowUserNotify' # 打招呼
+    send_gift: 'cn.soulapp.android:id/tv_send_four_leaf' # 送礼物
+    follow_status: 'cn.soulapp.android:id/tv_follow' # 已关注/关注
 
 qq_music:
   package_name: "com.tencent.qqmusic"

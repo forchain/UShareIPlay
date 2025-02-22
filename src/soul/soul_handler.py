@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
 from ..core.base_command import BaseCommand
+from .message_manager import MessageManager
 
 # Constants
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
@@ -27,7 +28,7 @@ class MessageInfo:
 class SoulHandler(AppHandler):
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
-
+        self.message_manager = MessageManager(self)
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
         self.last_content = None  # Last message content
@@ -35,176 +36,7 @@ class SoulHandler(AppHandler):
     
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
-        if not self.switch_to_app():
-            self.logger.error("Failed to switch to Soul app")
-            return None
-
-        # Get message list container
-        message_list = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['message_list']
-        )
-
-        if not message_list:
-            if enabled:
-                self.logger.warning("cannot find message_list, may be minimized")
-                floating_entry = self.try_find_element(AppiumBy.ID, self.config['elements']['floating_entry'],
-                                                       clickable=True)
-                if floating_entry:
-                    floating_entry.click()
-                    message_list = self.try_find_element(
-                        AppiumBy.ID,
-                        self.config['elements']['message_list']
-                    )
-                else:
-                    square_tab = self.try_find_element(AppiumBy.ID, self.config['elements']['square_tab'])
-                    if square_tab:
-                        self.logger.warning(
-                            "already back in home but no party entry found, try go to party")
-                        square_tab.click()
-                        party_id = self.party_id if self.party_id else DEFAULT_PARTY_ID
-                        self.find_party_to_join(party_id)
-                        self.party_id = None
-                        if party_id == DEFAULT_PARTY_ID:
-                            self.controller.notice_command.change_notice(DEFAULT_NOTICE)
-                    else:
-                        self.logger.warning(
-                            "still cannot find message_list, may stay in unknown pages, go back first")
-                        go_back = self.try_find_element_plus('go_back', log=False)
-                        if go_back:
-                            go_back.click()
-                            self.logger.info("Clicked go back")
-                        else:
-                            if not self.press_back():
-                                self.logger.error('Failed to press back')
-                                return None
-
-            return None
-
-        # Check if there is a new message tip and click it
-        new_message_tip = self.try_find_element(AppiumBy.ID, self.config['elements']['new_message_tip'], log=False)
-        if new_message_tip and enabled:
-            self.logger.info(f'Found new message tip')
-            new_message_tip.click()
-            self.logger.info(f'Clicked new message tip')
-
-        expand_seats = self.try_find_element(AppiumBy.ID, self.config['elements']['expand_seats'], log=False)
-        if expand_seats and expand_seats.text == '收起座位':
-            expand_seats.click()
-            self.logger.info(f'Collapsed seats')
-
-        # Get all ViewGroup containers first
-        try:
-            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
-        except WebDriverException as e:
-            self.logger.error(f'cannot find message_list element, might be in loading')
-            time.sleep(1)
-            return None
-
-        # Process each container and collect message info
-        current_messages = {}  # Dict to store element_id: MessageInfo pairs
-        pattern = r'souler\[.+\]说：:(.+)'
-
-        for container in containers:
-            # Check if container has valid message content
-            content_element = self.find_child_element(
-                container,
-                AppiumBy.ID,
-                self.config['elements']['message_content']
-            )
-
-            if content_element:
-                # Check for user enter message
-                try:
-                    message_text = content_element.text
-                except StaleElementReferenceException:
-                    self.logger.error('message is unavailable')
-                    return None
-                is_enter, username = BaseCommand.is_user_enter_message(message_text)
-                if is_enter:
-                    self.logger.info(f"User entered: {username}")
-                    # Notify all commands
-                    for module in self.controller.command_modules.values():
-                        try:
-                            module.command.user_enter(username)
-                        except Exception as e:
-                            self.logger.error(f"Error in command user_enter: {str(e)}")
-                    continue
-
-                content = self.try_get_attribute(content_element, 'content-desc')
-                
-                # Log new messages to chat.log without pattern matching
-                if content and content != self.last_content and content != self.second_last_content:
-                    with open('logs/chat.log', 'a', encoding='utf-8') as f:
-                        f.write(f"{content}\n")
-                    self.second_last_content = self.last_content
-                    self.last_content = content
-                
-                if content and re.match(pattern, content):
-                    element_id = container.id
-
-                    # Get nickname
-                    nickname_element = self.find_child_element(
-                        container,
-                        AppiumBy.ID,
-                        self.config['elements']['sender_nickname']
-                    )
-                    nickname = self.get_element_text(nickname_element)
-                    if not nickname:
-                        continue
-
-                    # Get avatar element
-                    avatar_element = self.find_child_element(
-                        container,
-                        AppiumBy.ID,
-                        self.config['elements']['sender_avatar']
-                    )
-                    if not avatar_element:
-                        continue
-
-                    # Check for relation tag
-                    relation_element = self.find_child_element(
-                        container,
-                        AppiumBy.ID,
-                        self.config['elements']['sender_relation']
-                    )
-                    if not relation_element:
-                        relation_element = self.find_child_element(
-                            container,
-                            AppiumBy.ID,
-                            self.config['elements']['sender_flag']
-                        )
-
-                    has_relation = relation_element is not None
-
-                    # Create MessageInfo object
-                    message_info = MessageInfo(
-                        content=re.match(pattern, content).group(1),
-                        nickname=nickname,
-                        avatar_element=avatar_element,
-                        relation_tag=has_relation
-                    )
-
-                    current_messages[element_id] = message_info
-
-        # Find new message IDs (not in previous set)
-        current_ids = set(current_messages.keys())
-        new_message_ids = current_ids - self.previous_message_ids
-
-        # Update previous message IDs for next check
-        self.previous_message_ids = current_ids
-
-        if new_message_ids:
-            # Create result dict with only new messages
-            new_messages = {
-                msg_id: current_messages[msg_id]
-                for msg_id in new_message_ids
-            }
-            for m in new_messages.values():
-                self.logger.info(f"New command :{m.content} from @{m.nickname}")
-            return new_messages
-
-        return None
+        return self.message_manager.get_latest_message(enabled)
 
     def send_message(self, message):
         """Send message"""
