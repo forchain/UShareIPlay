@@ -84,7 +84,7 @@ soul:
     left_label: 'cn.soulapp.android:id/leftTvLabelH'
     right_label: 'cn.soulapp.android:id/rightTvLabelH'
     luck_pack: 'cn.soulapp.android:id/tvLbLabelPack'
-    luck_item: 'cn.soulapp.android:id/consItem'
+    luck_item: 'cn.soulapp.android:id/name'
     use_pack: 'cn.soulapp.android:id/tvUse'
     soul_power: 'cn.soulapp.android:id/soulPower'
     give_gift: 'cn.soulapp.android:id/mConfirm'
@@ -270,6 +270,9 @@ commands:
   - prefix: "mic"
     response_template: "Microphone set to {state}"
     error_template: "Failed to set microphone: {error}"
+  - prefix: "pack"
+    response_template: "Successfully opened luck pack {item}"
+    error_template: "Failed to open luck pack: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

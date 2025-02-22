@@ -1,0 +1,102 @@
+import traceback
+from ..core.base_command import BaseCommand
+
+def create_command(controller):
+    pack_command = PackCommand(controller)
+    controller.pack_command = pack_command
+    return pack_command
+
+command = None
+
+class PackCommand(BaseCommand):
+    def __init__(self, controller):
+        super().__init__(controller)
+        self.handler = self.soul_handler
+        self.auto_mode = False
+
+    def process(self, message_info, parameters):
+        """Process pack command to open luck pack"""
+        try:
+            # Check if user has relation tag (is a close friend)
+            if not message_info.relation_tag:
+                return {'error': 'Only close friends can open luck packs'}
+
+            self.auto_mode = False  # Manual mode
+            return self.open_luck_pack()
+        except Exception as e:
+            self.handler.log_error(f"Error processing pack command: {str(e)}")
+            return {'error': 'Failed to open luck pack'}
+
+    def update(self):
+        """Check room count and auto open pack if needed"""
+        try:
+            # Get user count element
+            user_count_elem = self.handler.try_find_element_plus('user_count')
+            if not user_count_elem:
+                return
+
+            # Extract number from text like "房间人数: 3"
+            count_text = user_count_elem.text
+            if not count_text:
+                return
+
+            try:
+                count = int(''.join(filter(str.isdigit, count_text)))
+                if count >= 3:
+                    self.auto_mode = True  # Auto mode
+                    self.open_luck_pack()
+            except ValueError:
+                self.handler.logger.error(f"Failed to parse user count: {count_text}")
+
+        except Exception as e:
+            self.handler.log_error(f"Error in pack update: {traceback.format_exc()}")
+
+    def open_luck_pack(self):
+        """Open luck pack if available"""
+        try:
+            # Find luck pack button
+            luck_pack = self.handler.try_find_element_plus('luck_pack', log=False)
+            if not luck_pack:
+                return {'error': 'No luck pack available'}
+
+            # Check if text contains "奖励"
+            pack_text = luck_pack.text
+            if "奖励" not in pack_text:
+                self.handler.logger.info(f"Luck pack text '{pack_text}' does not contain '奖励'")
+                return {'error': 'No luck pack available'}
+
+            # Click luck pack button to show list
+            luck_pack.click()
+            self.handler.logger.info("Clicked luck pack button")
+
+            # Find and click luck item
+            luck_item = self.handler.wait_for_element_clickable_plus('luck_item')
+            if not luck_item:
+                self.handler.logger.error("Failed to find luck item")
+                return {'error': 'Failed to find luck item'}
+
+            # Check pack level in auto mode
+            if self.auto_mode:
+                item_text = luck_item.text
+                if not ("初级" in item_text or "中级" in item_text):
+                    self.handler.logger.info(f"Skipping high level pack in auto mode: {item_text}")
+                    self.handler.press_back()  # Close pack dialog
+                    return {'error': 'Skipping high level pack in auto mode'}
+
+            luck_item.click()
+            self.handler.logger.info("Selected luck item")
+
+            # Find and click use pack button
+            use_pack = self.handler.wait_for_element_clickable_plus('use_pack')
+            if not use_pack:
+                self.handler.logger.error("Failed to find use pack button")
+                return {'error': 'Failed to find use pack button'}
+
+            use_pack.click()  # Actually click in both modes
+            self.handler.logger.info(f"Used luck pack in {'auto' if self.auto_mode else 'manual'} mode")
+
+            return {'item': luck_item.text}
+
+        except Exception as e:
+            self.handler.log_error(f"Error opening luck pack: {traceback.format_exc()}")
+            return {'error': 'Failed to open luck pack'}

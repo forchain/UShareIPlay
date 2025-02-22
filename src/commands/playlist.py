@@ -59,7 +59,20 @@ class PlaylistCommand(BaseCommand):
 
         playlist = result.text
         parser = PlaylistParser()
+        
         subject, topic = parser.parse_playlist_name(playlist)
+        if not subject:
+            self.handler.logger.warning('Failed to parse playlist name')
+            singer_name = self.handler.try_find_element_plus('singer_name')
+            if singer_name:
+                subject = singer_name.text
+                
+        if not topic:
+            self.handler.logger.warning('Failed to parse playlist topic')
+            song_name = self.handler.try_find_element_plus('song_name')
+            if song_name:
+                topic = song_name.text
+
         play_button = self.handler.wait_for_element_clickable_plus('play_all', timeout=5)
         if play_button:
             self.handler.logger.info("Found play all button")
