@@ -10,7 +10,7 @@ import logging
 chat_logger = logging.getLogger('chat')
 chat_logger.setLevel(logging.INFO)
 handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
-handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
 chat_logger.addHandler(handler)
 
 @dataclass
@@ -135,7 +135,7 @@ class MessageManager:
             
             message_text = content_element.text
             content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
-            chat_text = content_desc if content_desc else message_text
+            chat_text = content_desc if content_desc and content_desc != 'null' else message_text
 
             # Check if container has valid sender avatar
             # Get message content from content-desc attribute
