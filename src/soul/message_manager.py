@@ -6,7 +6,7 @@ import re
 from collections import deque
 import logging
 
-from core.base_command import BaseCommand
+from ..core.base_command import BaseCommand
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
