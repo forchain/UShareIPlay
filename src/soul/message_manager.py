@@ -6,6 +6,8 @@ import re
 from collections import deque
 import logging
 
+from core.base_command import BaseCommand
+
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
@@ -150,11 +152,21 @@ class MessageManager:
             if not chat_text in self.recent_messages:
                 chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
+            
+            is_enter, username = BaseCommand.is_user_enter_message(chat_text)
+            if is_enter:
+                self.handler.logger.info(f"User entered: {username}")
+                # Notify all commands
+                for module in self.handler.controller.command_modules.values():
+                    try:
+                        module.command.user_enter(username)
+                    except Exception as e:
+                        self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
+                    continue
 
             # Parse message content using pattern
-            # pattern = r'souler\[.+\]说：:(.+)'
-            pattern = r':(.+)'
-            match = re.match(pattern, message_text)
+            pattern = r'souler\[.+\]说：:(.+)'
+            match = re.match(pattern, chat_text)
             if not match:
                 return None
 
@@ -204,7 +216,7 @@ class MessageManager:
 
             message_text = follower_message.text
             # Click the message at 25% from top
-            if not self.handler.click_element_at(follower_message, y_ratio=0.25):
+            if not self.handler.click_element_at(follower_message, x_ratio=0.45, y_ratio=0.25):
                 return None
             self.handler.logger.info("Clicked follower message")
 
