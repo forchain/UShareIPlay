@@ -2,7 +2,16 @@ import traceback
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
 from appium.webdriver.common.appiumby import AppiumBy
+import re
+from collections import deque
+import logging
 
+# Set up chat logger
+chat_logger = logging.getLogger('chat')
+chat_logger.setLevel(logging.INFO)
+handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
+handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+chat_logger.addHandler(handler)
 
 @dataclass
 class MessageInfo:
@@ -17,6 +26,7 @@ class MessageManager:
     def __init__(self, handler):
         self.handler = handler
         self.previous_message_ids = set()
+        self.recent_messages = deque(maxlen=9)  # Keep last 9 messages
 
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
@@ -44,7 +54,6 @@ class MessageManager:
 
         # Process each container and collect message info
         current_messages = {}  # Dict to store element_id: MessageInfo pairs
-        pattern = r'souler\[.+\]说：:(.+)'
 
         for container in containers:
             message_info = self.process_container_message(container)
@@ -123,11 +132,28 @@ class MessageManager:
             )
             if not content_element:
                 return None
+            
+            message_text = content_element.text
+            content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
+            chat_text = content_desc if content_desc else message_text
 
-            # Get message text
-            text = content_element.text
-            if not text:
+            # Check if container has valid sender avatar
+            # Get message content from content-desc attribute
+
+            # Check for duplicate message
+            if not chat_text in self.recent_messages:
+                chat_logger.info(chat_text)
+                self.recent_messages.append(chat_text)
+
+            # Parse message content using pattern
+            # pattern = r'souler\[.+\]说：:(.+)'
+            pattern = r':(.+)'
+            match = re.match(pattern, message_text)
+            if not match:
                 return None
+
+            # Extract actual message content
+            message_content = match.group(1).strip()
 
             # Get avatar element
             avatar_element = self.handler.find_child_element_plus(
@@ -147,10 +173,10 @@ class MessageManager:
             # Check for relation tag
             relation_tag = bool(self.handler.find_child_element_plus(
                 container,
-                'sender_relation',
+                'sender_relation'
             ))
 
-            return MessageInfo(text, nickname, avatar_element, relation_tag)
+            return MessageInfo(message_content, nickname, avatar_element, relation_tag)
 
         except StaleElementReferenceException:
             self.handler.logger.warning("Message element became stale")

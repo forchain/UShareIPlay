@@ -22,7 +22,7 @@ class PackCommand(BaseCommand):
                 return {'error': 'Only close friends can open luck packs'}
 
             self.auto_mode = False  # Manual mode
-            return self.open_luck_pack()
+            return self.open_luck_pack()  # Manual mode doesn't need user count
         except Exception as e:
             self.handler.log_error(f"Error processing pack command: {str(e)}")
             return {'error': 'Failed to open luck pack'}
@@ -42,17 +42,20 @@ class PackCommand(BaseCommand):
 
             try:
                 count = int(''.join(filter(str.isdigit, count_text)))
-                if count >= 3:
+                if count > 5:
                     self.auto_mode = True  # Auto mode
-                    self.open_luck_pack()
+                    self.open_luck_pack(user_count=count)  # Pass user count as parameter
             except ValueError:
                 self.handler.logger.error(f"Failed to parse user count: {count_text}")
 
         except Exception as e:
             self.handler.log_error(f"Error in pack update: {traceback.format_exc()}")
 
-    def open_luck_pack(self):
-        """Open luck pack if available"""
+    def open_luck_pack(self, user_count=None):
+        """Open luck pack if available
+        Args:
+            user_count: Optional[int], current user count in room
+        """
         try:
             # Find luck pack button
             luck_pack = self.handler.try_find_element_plus('luck_pack', log=False)
@@ -75,13 +78,14 @@ class PackCommand(BaseCommand):
                 self.handler.logger.error("Failed to find luck item")
                 return {'error': 'Failed to find luck item'}
 
-            # Check pack level in auto mode
-            if self.auto_mode:
+            # In auto mode, check pack level based on user count
+            if self.auto_mode and user_count is not None:
                 item_text = luck_item.text
-                if not ("初级" in item_text or "中级" in item_text):
-                    self.handler.logger.info(f"Skipping high level pack in auto mode: {item_text}")
-                    self.handler.press_back()  # Close pack dialog
-                    return {'error': 'Skipping high level pack in auto mode'}
+                # If less than 10 people, only allow low/medium level packs
+                if user_count <= 10 and not ("初级" in item_text or "中级" in item_text):
+                    self.handler.logger.info(f"Skipping high level pack with {user_count} users: {item_text}")
+                    self.handler.press_back()
+                    return {'error': 'Skipping high level pack (not enough users)'}
 
             luck_item.click()
             self.handler.logger.info("Selected luck item")
@@ -92,7 +96,7 @@ class PackCommand(BaseCommand):
                 self.handler.logger.error("Failed to find use pack button")
                 return {'error': 'Failed to find use pack button'}
 
-            use_pack.click()  # Actually click in both modes
+            use_pack.click()
             self.handler.logger.info(f"Used luck pack in {'auto' if self.auto_mode else 'manual'} mode")
 
             return {'item': luck_item.text}
