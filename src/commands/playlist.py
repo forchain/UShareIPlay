@@ -1,6 +1,6 @@
 import traceback
 
-from utils.playlist_parser import PlaylistParser
+from ..utils.playlist_parser import PlaylistParser
 from ..core.base_command import BaseCommand
 
 def create_command(controller):

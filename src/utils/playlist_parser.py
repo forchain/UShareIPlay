@@ -8,10 +8,13 @@ class PlaylistParser:
             '（', '）',  # Full-width parentheses
             '(', ')',   # Half-width parentheses
             '-', '—',   # Dashes (half-width and full-width)
-            '·',        # Middle dot
+            '•', '·', '・',   # Middle dot
             '/',        # Forward slash
             '、',       # Ideographic comma
             '：', ':',  # Colons (full-width and half-width)
+            '！', '!',  # 
+            '，', ',',  # 
+            '。', '.',  # 
         ]
         
         # Define characters to strip from subject and topic
