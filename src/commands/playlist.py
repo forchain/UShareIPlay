@@ -1,4 +1,6 @@
 import traceback
+
+from utils.playlist_parser import PlaylistParser
 from ..core.base_command import BaseCommand
 
 def create_command(controller):
@@ -56,20 +58,23 @@ class PlaylistCommand(BaseCommand):
         self.handler.logger.info("Selected playlist result")
 
         playlist = result.text
-
+        parser = PlaylistParser()
+        subject, topic = parser.parse_playlist_name(playlist)
         play_button = self.handler.wait_for_element_clickable_plus('play_all', timeout=5)
         if play_button:
             self.handler.logger.info("Found play all button")
             play_button.click()
-            self.controller.topic_command.change_topic(playlist)
-            self.controller.title_command.change_title(playlist)
+
+            self.controller.title_command.change_title(subject)
+            self.controller.topic_command.change_topic(topic)
         else:
             play_button = self.handler.wait_for_element_clickable_plus('play_album')
             if play_button:
                 self.handler.logger.info("Found play album button")
                 play_button.click()
-                self.controller.topic_command.change_topic(playlist)
-                self.controller.title_command.change_title(playlist)
+
+                self.controller.title_command.change_title(subject)
+                self.controller.topic_command.change_topic(topic)
             else:
                 self.handler.logger.error('Failed to find playlist button')
                 return {'error': 'Failed to find play button'}

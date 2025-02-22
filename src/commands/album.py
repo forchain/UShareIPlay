@@ -60,9 +60,13 @@ class AlbumCommand(BaseCommand):
             return {'error': 'Failed to find album text'}
         topic = album_text.text
         album_singer = self.handler.try_find_element_plus('album_singer')
-        if album_singer:
-            with_singer = f'{topic} {album_singer.text.split(' ')[0]}'
-            topic = with_singer if len(with_singer) <= 15 else topic
+        if not album_singer:
+            self.handler.logger.error(f"Failed to find album singer with query {query}")
+            return {'error': f'Failed to find album singer with query {query}'}
+        title = album_singer.text
+        # if album_singer:
+        #     with_singer = f'{topic} {album_singer.text.split(' ')[0]}'
+        #     topic = with_singer if len(with_singer) <= 15 else topic
 
         album_text.click()
         self.handler.logger.info("album text clicked")
@@ -92,8 +96,8 @@ class AlbumCommand(BaseCommand):
 
         self.controller.topic_command.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
-        self.controller.title_command.change_title(topic)
-        self.handler.logger.info(f"changing album title  to {topic}")
+        self.controller.title_command.change_title(title)
+        self.handler.logger.info(f"changing album title  to {title}")
 
         return {
             'album': topic

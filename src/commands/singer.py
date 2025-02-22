@@ -74,13 +74,18 @@ class SingerCommand(BaseCommand):
             self.handler.logger.error(f"Cannot find play singer button")
             return {'error': 'Failed to find play button'}
 
+        topic = singer_name
+        song_name = self.handler.try_find_element_plus('song_name')
+        if song_name:
+            topic = song_name.text
+
         play_button.click()
         self.handler.logger.info("Clicked play singer result")
 
         self.handler.list_mode = 'singer'
 
-        self.controller.topic_command.change_topic(singer_name)
         self.controller.title_command.change_title(singer_name)
+        self.controller.topic_command.change_topic(topic)
 
         return {
             'singer': singer_name,

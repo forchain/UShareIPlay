@@ -85,8 +85,8 @@ class PlayCommand(BaseCommand):
         self.handler.logger.info("Clicked play all button")
 
         self.handler.list_mode = 'favorites'
-        self.controller.topic_command.change_topic("Joyer Radio")
-        self.controller.title_command.change_title("Joyer Radio")
+        self.controller.title_command.change_title("My Favorites")
+        self.controller.topic_command.change_topic(song.text)
 
         return {'song': song.text, 'singer': singer.text}
 
@@ -111,11 +111,11 @@ class PlayCommand(BaseCommand):
 
         self.handler.list_mode = 'radar'
 
-        self.controller.topic_command.change_topic("Outlier Station")
-        self.controller.title_command.change_title("Outlier电台")
-
         # Click on play all button
         song = self.handler.wait_for_element_clickable_plus('radar_song')
         singer = self.handler.wait_for_element_clickable_plus('radar_singer')
+
+        self.controller.title_command.change_title("Outlier Radio")
+        self.controller.topic_command.change_topic(song.text)
 
         return {'song': song.text, 'singer': singer.text}
