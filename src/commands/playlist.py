@@ -78,6 +78,10 @@ class PlaylistCommand(BaseCommand):
             self.handler.logger.info("Found play all button")
             play_button.click()
 
+            playing_info = self.handler.get_playlist_info()
+            if not 'error' in playing_info:
+                playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
+
             self.controller.title_command.change_title(subject)
             self.controller.topic_command.change_topic(topic)
         else:
@@ -85,6 +89,10 @@ class PlaylistCommand(BaseCommand):
             if play_button:
                 self.handler.logger.info("Found play album button")
                 play_button.click()
+
+                playing_info = self.handler.get_playlist_info() 
+                if not 'error' in playing_info:
+                    playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
 
                 self.controller.title_command.change_title(subject)
                 self.controller.topic_command.change_topic(topic)

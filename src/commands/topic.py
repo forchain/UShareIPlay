@@ -139,8 +139,14 @@ class TopicCommand(BaseCommand):
             self.current_topic = self.next_topic
             self.next_topic = None
 
-            self.handler.press_back()
-            self.handler.logger.info('Hide edit topic dialog')
+            input_box_entry = self.handler.wait_for_element_clickable_plus('input_box_entry')
+            if not input_box_entry:
+                self.handler.logger.error('No input box entry found, skip back')
+                self.handler.press_back()
+                self.handler.press_back()
+                self.handler.press_back()
+                self.handler.logger.info('Hide edit topic dialog')
+                return {'error': 'update topic too frequently'}
 
             return {'success': True}
 

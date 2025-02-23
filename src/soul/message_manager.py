@@ -48,7 +48,7 @@ class MessageManager:
         self.check_new_message_tip(enabled)
 
         # Collapse seats if expanded
-        self.collapse_seats()
+        self.handler.controller.seat_command.collapse_seats()
 
         # Get all ViewGroup containers
         try:
@@ -128,13 +128,6 @@ class MessageManager:
             self.handler.logger.info(f'Found new message tip')
             new_message_tip.click()
             self.handler.logger.info(f'Clicked new message tip')
-
-    def collapse_seats(self):
-        """Collapse seats if expanded"""
-        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
-        if expand_seats and expand_seats.text == '收起座位':
-            expand_seats.click()
-            self.handler.logger.info(f'Collapsed seats')
 
     def process_container_message(self, container):
         """Process a single message container and return MessageInfo"""

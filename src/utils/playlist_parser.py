@@ -15,6 +15,7 @@ class PlaylistParser:
             '！', '!',  # 
             '，', ',',  # 
             '。', '.',  # 
+            ' ',   #
         ]
         
         # Define characters to strip from subject and topic
@@ -25,6 +26,10 @@ class PlaylistParser:
             '〈', '〉', # Full-width angle brackets (alternative)
             '「', '」', # Full-width corner brackets
             '『', '』', # Full-width white corner brackets
+            '【', '】',  # Full-width square brackets
+            '[', ']',   # Half-width square brackets
+            '（', '）',  # Full-width parentheses
+            '(', ')',   # Half-width parentheses
             '"', '"',   # Full-width quotation marks
             '"', '"',   # Half-width quotation marks
             ''', ''',   # Full-width single quotes

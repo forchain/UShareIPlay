@@ -1,4 +1,5 @@
 import traceback
+import re
 from ..core.base_command import BaseCommand
 
 def create_command(controller):
@@ -12,9 +13,36 @@ class SeatCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.soul_handler
+        self.previous_focus_count = None  # Initialize previous focus count
+
+    def update(self):
+        self.check_focus_count()
+
+    def check_focus_count(self):
+        """Check the focus count and execute seating if it changes."""
+        focus_count_element = self.handler.try_find_element_plus('focus_count', log=False)
+        if not focus_count_element:
+            return  # Early return if focus count element is not found
+
+        current_focus_count_text = focus_count_element.text
+        # Extract the number of focused users using regex
+        match = re.search(r'(\d+)人专注中', current_focus_count_text)
+        if not match:
+            return  # Early return if regex does not match
+
+        current_focus_count = int(match.group(1))  # Extract the number
+        if self.previous_focus_count == current_focus_count:
+            return  # Early return if focus count has not changed
+
+        self.previous_focus_count = current_focus_count
+        self.handler.logger.info(f"Focus count changed to: {current_focus_count}. Executing seating.")
+        self.be_seated()  # Call the seating method
 
     def be_seated(self):
         try:
+            # Expand seats if needed
+            self.expand_seats()
+
             # Find all seat containers
             seat_containers = self.handler.find_elements_plus('seat_container')
             if not seat_containers:
@@ -68,7 +96,24 @@ class SeatCommand(BaseCommand):
             
         confirm_seat.click()
         self.handler.logger.info("Clicked confirm seat button")
+
+        self.handler.press_back()
         return {'success': 'Successfully applied for seat'}
 
     def process(self, message_info, parameters):
         return self.be_seated() 
+
+
+    def collapse_seats(self):
+        """Collapse seats if expanded"""
+        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+        if expand_seats and expand_seats.text == '收起座位':
+            expand_seats.click()
+            self.handler.logger.info(f'Collapsed seats')
+    
+    def expand_seats(self):
+        """Expand seats if collapsed"""
+        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+        if expand_seats and expand_seats.text == '展开座位':
+            expand_seats.click()
+            self.handler.logger.info(f'Expanded seats')
