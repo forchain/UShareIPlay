@@ -10,7 +10,7 @@ soul:
     new_message_tip: "cn.soulapp.android:id/tvNewMsgTip"
     floating_entry: "cn.soulapp.android:id/background"
     invite_link: "cn.soulapp.android:id/iv_room_music"
-    sender_relation: "cn.soulapp.android:id/imgRelation"
+    sender_relation: "cn.soulapp.android:id/ivFlagImg"
     sender_flag: "cn.soulapp.android:id/flagContainerView"
     sender_avatar: "cn.soulapp.android:id/ivAvatar"
     sender_nickname: "cn.soulapp.android:id/tvNickname"

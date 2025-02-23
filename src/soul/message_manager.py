@@ -30,7 +30,7 @@ class MessageInfo:
 class MessageManager:
     def __init__(self, handler):
         self.handler = handler
-        self.previous_message_ids = set()
+        self.previous_messages = {}
         self.recent_messages = deque(maxlen=9)  # Keep last 9 messages
 
     def get_latest_message(self, enabled=True):
@@ -71,10 +71,10 @@ class MessageManager:
         # Update previous message IDs and return new messages
         new_messages = {}  # Changed from list to dict
         for element_id, message_info in current_messages.items():
-            if element_id not in self.previous_message_ids:
+            if element_id not in self.previous_messages:
                 new_messages[element_id] = message_info  # Store as dict
-                self.previous_message_ids.add(element_id)
 
+        self.previous_messages = current_messages
         return new_messages if new_messages else None
 
     def try_find_message_list(self, enabled):
@@ -158,7 +158,7 @@ class MessageManager:
             if not chat_text in self.recent_messages:
                 chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
-            
+
             is_enter, username = BaseCommand.is_user_enter_message(chat_text)
             if is_enter:
                 self.handler.logger.info(f"User entered: {username}")
