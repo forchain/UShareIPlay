@@ -113,7 +113,13 @@ class MessageManager:
         else:
             self.handler.logger.warning(
                 "still cannot find message_list, may stay in unknown pages, go back first")
-            self.handler.press_back()
+            go_back = self.handler.try_find_element_plus('go_back', log=False)
+            if go_back:
+                go_back.click()
+                self.handler.logger.info(f'Clicked go back')
+            else:
+                self.handler.press_back()
+
 
     def check_new_message_tip(self, enabled):
         """Check and click new message tip if present"""
