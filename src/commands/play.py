@@ -79,16 +79,18 @@ class PlayCommand(BaseCommand):
         # Click on play all button
         play_fav = self.handler.wait_for_element_clickable_plus('play_fav')
         song = self.handler.wait_for_element_clickable_plus('fav_song')
+        song_text = song.text
         singer = self.handler.wait_for_element_clickable_plus('fav_singer')
+        singer_text = singer.text
 
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
         self.handler.list_mode = 'favorites'
         self.controller.title_command.change_title("My Favorites")
-        self.controller.topic_command.change_topic(song.text)
+        self.controller.topic_command.change_topic(song_text)
 
-        return {'song': song.text, 'singer': singer.text}
+        return {'song': song_text, 'singer': singer_text, 'album': ''}
 
     def play_radar(self):
         """Navigate to favorites and play all"""
@@ -120,4 +122,4 @@ class PlayCommand(BaseCommand):
         self.controller.title_command.change_title("Outlier电台")
         self.controller.topic_command.change_topic(song_text)
 
-        return {'song': song_text, 'singer': singer_text}
+        return {'song': song_text, 'singer': singer_text, 'album': ''}

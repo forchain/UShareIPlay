@@ -149,6 +149,15 @@ class TitleCommand(BaseCommand):
             self.current_title = self.next_title
             self.next_title = None
 
+            title_edit_entry = self.handler.wait_for_element_plus('title_edit_entry')
+            if title_edit_entry:
+                self.handler.logger.info('wait for title edit entry')
+            else:
+                go_back = self.handler.wait_for_element_plus('go_back')
+                if go_back:
+                    go_back.click()
+                    self.handler.logger.info('go back to chat room info screen')
+
             self.handler.press_back()
             self.handler.logger.info('Hide edit title dialog')
 
