@@ -113,9 +113,11 @@ class PlayCommand(BaseCommand):
 
         # Click on play all button
         song = self.handler.wait_for_element_clickable_plus('radar_song')
+        song_text = song.text
         singer = self.handler.wait_for_element_clickable_plus('radar_singer')
+        singer_text = singer.text
 
-        self.controller.title_command.change_title("Outlier Radio")
-        self.controller.topic_command.change_topic(song.text)
+        self.controller.title_command.change_title("Outlier电台")
+        self.controller.topic_command.change_topic(song_text)
 
-        return {'song': song.text, 'singer': singer.text}
+        return {'song': song_text, 'singer': singer_text}
