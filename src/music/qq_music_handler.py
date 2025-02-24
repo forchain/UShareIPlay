@@ -84,7 +84,7 @@ class QQMusicHandler(AppHandler):
             }
         singer_album = singer_element.text.split('·')
         singer = singer_album[0]
-        album = singer_album[1]
+        album = singer_album[1] if singer_album[1] else "Unknown"
 
         return {
             'song': song,
