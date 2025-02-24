@@ -3,12 +3,15 @@ from ..core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
 
+
 def create_command(controller):
     play_command = PlayCommand(controller)
     controller.play_command = play_command
     return play_command
 
+
 command = None
+
 
 class PlayCommand(BaseCommand):
     def __init__(self, controller):
@@ -115,9 +118,9 @@ class PlayCommand(BaseCommand):
 
         # Click on play all button
         song = self.handler.wait_for_element_clickable_plus('radar_song')
-        song_text = song.text
+        song_text = song.text if song else "Unknown"
         singer = self.handler.wait_for_element_clickable_plus('radar_singer')
-        singer_text = singer.text
+        singer_text = singer.text if singer else "Unknown"
 
         self.controller.title_command.change_title("Outlier电台")
         self.controller.topic_command.change_topic(song_text)
