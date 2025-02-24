@@ -97,7 +97,10 @@ class SeatCommand(BaseCommand):
         confirm_seat.click()
         self.handler.logger.info("Clicked confirm seat button")
 
-        self.handler.press_back()
+        confirm_seat = self.handler.wait_for_element_clickable_plus('confirm_seat')
+        if confirm_seat.text == '已上座':
+            self.handler.press_back()
+
         return {'success': 'Successfully applied for seat'}
 
     def process(self, message_info, parameters):
