@@ -16,6 +16,12 @@ class EndCommand(BaseCommand):
         self.handler = self.soul_handler
         self.last_auto_end_date = None  # Track last auto end date
         self.auto_end_hour = 12  # Default auto end hour (12:00 PM)
+        
+        # Disable auto end if initialized between 0:00 and 12:00
+        current_hour = datetime.now().hour
+        self.auto_end_enabled = current_hour < 12
+        if not self.auto_end_enabled:
+            self.handler.logger.info("Initialized between 0:00-12:00, auto end disabled")
 
     def process(self, message_info, parameters):
         """Process end command to close party"""
@@ -43,6 +49,10 @@ class EndCommand(BaseCommand):
     def update(self):
         """Check and auto end party if conditions are met"""
         try:
+            # Skip if auto end is disabled
+            if not self.auto_end_enabled:
+                return
+
             current_time = datetime.now()
             current_date = current_time.date()
 
