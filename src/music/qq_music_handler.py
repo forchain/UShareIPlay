@@ -118,19 +118,26 @@ class QQMusicHandler(AppHandler):
             return False
         self.logger.info(f"Switched to QQ Music app")
 
-        go_back = self.try_find_element_plus('go_back', log=False)
-        if go_back:
-            self.logger.info(f"Clicked Go Back button")
-            go_back.click()
-
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
-            self.logger.info(f"Cannot find search entry")
+            go_back = self.try_find_element_plus('go_back', log=False)
+            if go_back:
+                self.logger.info(f"Clicked Go Back button")
+                go_back.click()
+            else:
+                self.press_back()
 
-            # Hide player if visible
-            self.hide_player()
-            self.logger.info(f"Attempted to hide player")
+        go_home = False
+        playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
+        search_box = None
+        if playlist_entry:
+            search_box = self.try_find_element_plus('search_box', log=False)
+            if not search_box:
+                go_home = True
+        else:
+            go_home = True
 
+        if go_home:
             # Go back to home page
             self.navigate_to_home()
             self.logger.info(f"Navigated to home page")
@@ -144,18 +151,18 @@ class QQMusicHandler(AppHandler):
                 self.logger.error(f"failed to find search entry")
                 return False
 
-        clear_search = self.try_find_element_plus('clear_search')
-        if clear_search:
-            clear_search.click()
-            self.logger.info(f"Clear search")
+            # Find and click search box
+            search_box = self.wait_for_element_clickable_plus('search_box')
 
-        # Find and click search box
-        search_box = self.wait_for_element_clickable_plus('search_box')
-        if not search_box:
+        if search_box:
+            clear_search = self.try_find_element_plus('clear_search', log=False)
+            if clear_search:
+                clear_search.click()
+                self.logger.info(f"Clear search")
+            search_box.click()
+        else:
             self.logger.error(f"Cannot find search entry")
             return False
-        search_box.click()
-        self.logger.info(f"Found search box")
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
@@ -1266,29 +1273,40 @@ class QQMusicHandler(AppHandler):
 
         # Try to find playlist entry in playing panel first
         playlist_entry = self.try_find_element_plus('playlist_entry_playing')
-
-        if playlist_entry:
-            if not self.is_element_clickable(playlist_entry):
-                self.logger.error("Playlist entry in playing panel not clickable")
-                return {'error': 'Playlist entry in playing panel not clickable'}
-            playlist_entry.click()
-            self.logger.info("Clicked playlist entry in playing panel")
-        else:
-            # Navigate to home and try floating entry
-            self.navigate_to_home()
+        if not playlist_entry:
             playlist_entry = self.try_find_element_plus('playlist_entry_floating')
-            if not playlist_entry:
-                self.logger.error("Failed to find playlist entry")
-                return {'error': 'Failed to find playlist entry'}
+        if not playlist_entry:
+            self.press_back()
 
-            if not self.is_element_clickable(playlist_entry):
-                self.logger.error("Playlist entry floating not clickable")
-                return {'error': 'Playlist entry floating not clickable'}
-            playlist_entry.click()
-            self.logger.info("Clicked playlist entry floating")
+        playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
+        if not playlist_entry:
+            self.navigate_to_home()
+            playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
+        playlist_entry.click()
+
+        # if playlist_entry:
+        #     if not self.is_element_clickable(playlist_entry):
+        #         self.logger.error("Playlist entry in playing panel not clickable")
+        #         return {'error': 'Playlist entry in playing panel not clickable'}
+        #     playlist_entry.click()
+        #     self.logger.info("Clicked playlist entry in playing panel")
+        # else:
+        #     # Navigate to home and try floating entry
+        #     self.navigate_to_home()
+        #     playlist_entry = self.try_find_element_plus('playlist_entry_floating')
+        #     if not playlist_entry:
+        #         self.logger.error("Failed to find playlist entry")
+        #         return {'error': 'Failed to find playlist entry'}
+        #
+        #     if not self.is_element_clickable(playlist_entry):
+        #         self.logger.error("Playlist entry floating not clickable")
+        #         return {'error': 'Playlist entry floating not clickable'}
+        #     playlist_entry.click()
+        #     self.logger.info("Clicked playlist entry floating")
 
         playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
-        can_scroll = True
+        # can_scroll = True
+        can_scroll = False
         if not playlist_playing:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
