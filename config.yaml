@@ -285,7 +285,7 @@ appium:
   port: 4723
 
 device:
-  name: "192.168.50.151:5555"
+  name: "192.168.50.152:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
