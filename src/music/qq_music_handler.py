@@ -1310,16 +1310,17 @@ class QQMusicHandler(AppHandler):
         if not playlist_playing:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
-        try:
-            playing_loc = playlist_playing.location
-            playing_size = playlist_playing.size
-        except StaleElementReferenceException as e:
-            self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
-            playing_loc = None
-            playing_size = None
-            can_scroll = False
 
         if can_scroll:
+            try:
+                playing_loc = playlist_playing.location
+                playing_size = playlist_playing.size
+            except StaleElementReferenceException as e:
+                self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
+                playing_loc = None
+                playing_size = None
+                can_scroll = False
+
             # Find playlist title element
             playlist_header = self.try_find_element_plus('playlist_header')
             if not playlist_header:

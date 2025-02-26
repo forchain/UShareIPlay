@@ -39,6 +39,12 @@ class MessageManager:
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
+        # Check for QQ Music ANR dialog and handle it
+        anr_close = self.handler.try_find_element_plus('close_app', log=False)
+        if anr_close:
+            anr_close.click()
+            self.handler.switch_to_app()
+
         # Get message list container
         message_list = self.try_find_message_list(enabled)
         if not message_list:

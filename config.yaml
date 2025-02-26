@@ -96,6 +96,7 @@ soul:
     send_gift: 'cn.soulapp.android:id/tv_send_four_leaf' # 送礼物
     follow_status: 'cn.soulapp.android:id/tv_follow' # 已关注/关注
     focus_count: 'cn.soulapp.android:id/tvStudyRoomDesc' # 1人专注中
+    close_app: 'android:id/aerr_close' # Close app
 
 qq_music:
   package_name: "com.tencent.qqmusic"
