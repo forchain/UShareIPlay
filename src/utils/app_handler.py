@@ -153,6 +153,9 @@ class AppHandler:
         except TimeoutException as e:
             self.logger.warning(f"Clickable element {element_key}:{value} not found within {timeout} seconds ")
             return None
+        except StaleElementReferenceException as e:
+            self.logger.warning(f"Stale element reference for {element_key}:{value}")
+            return None
         except WebDriverException as e:
             self.logger.error(f"Trace: {traceback.format_exc()}")
             self.logger.error(f"Error: {str(e)}")
