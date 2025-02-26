@@ -84,7 +84,7 @@ class QQMusicHandler(AppHandler):
             }
         singer_album = singer_element.text.split('·')
         singer = singer_album[0]
-        album = singer_album[1] if singer_album[1] else "Unknown"
+        album = singer_album[1] if len(singer_album) > 1 else "Unknown"
 
         return {
             'song': song,
@@ -118,6 +118,13 @@ class QQMusicHandler(AppHandler):
             return False
         self.logger.info(f"Switched to QQ Music app")
 
+        # Check if we're already in search mode
+
+        singer_screen = self.try_find_element_plus('singer_screen', log=False)
+        if singer_screen:
+            self.logger.info(f"Hide singer screen 1")
+            self.press_back()
+
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
             go_back = self.try_find_element_plus('go_back', log=False)
@@ -126,11 +133,20 @@ class QQMusicHandler(AppHandler):
                 go_back.click()
             else:
                 self.press_back()
+        else:
+            singer_screen = self.try_find_element_plus('singer_screen', log=False)
+            if singer_screen:
+                self.logger.info(f"Hide singer screen 2")
+                self.press_back()
 
         go_home = False
         playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
         search_box = None
         if playlist_entry:
+            singer_screen = self.try_find_element_plus('singer_screen', log=False)
+            if singer_screen:
+                self.logger.info(f"Hide singer screen 3")
+                self.press_back()
             search_box = self.try_find_element_plus('search_box', log=False)
             if not search_box:
                 go_home = True
@@ -159,7 +175,17 @@ class QQMusicHandler(AppHandler):
             if clear_search:
                 clear_search.click()
                 self.logger.info(f"Clear search")
-            search_box.click()
+            try:
+                search_box.click()
+            except StaleElementReferenceException as e:
+                self.logger.warning("Failed to click search box")
+                search_box = self.wait_for_element_clickable_plus('search_box')
+                if search_box:
+                    search_box.click()
+                    self.logger.info(f"Clicked search box")
+                else:
+                    self.logger.error(f"failed to find search box")
+                    return False
         else:
             self.logger.error(f"Cannot find search entry")
             return False

@@ -82,6 +82,11 @@ class SingerCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("Clicked play singer result")
 
+        singer_screen = self.handler.try_find_element_plus('singer_screen', log=False)
+        if singer_screen:
+            self.handler.logger.info(f"Found Singer screen")
+            self.handler.press_back()
+
         self.handler.list_mode = 'singer'
 
         self.controller.title_command.change_title(singer_name)

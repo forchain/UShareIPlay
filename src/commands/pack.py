@@ -31,7 +31,7 @@ class PackCommand(BaseCommand):
         """Check room count and auto open pack if needed"""
         try:
             # Get user count element
-            user_count_elem = self.handler.try_find_element_plus('user_count')
+            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
             if not user_count_elem:
                 return
 

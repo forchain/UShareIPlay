@@ -107,7 +107,7 @@ qq_music:
     play_button: "com.tencent.qqmusic:id/kcr"
     next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
-    back_button: "//android.widget.ImageButton[@content-desc=\"返回\"]"
+    hide_player: "com.tencent.qqmusic:id/na0"
     song_name: "com.tencent.qqmusic:id/lxj"
     singer_name: "com.tencent.qqmusic:id/lzn"
     pause_button: "android:id/action1"
@@ -178,6 +178,7 @@ qq_music:
     playlist_playing: 'com.tencent.qqmusic:id/ee4'
     playlist_header: 'com.tencent.qqmusic:id/je8'
     play_mode: 'com.tencent.qqmusic:id/a9j'
+    singer_screen: 'com.tencent.qqmusic:id/b_k' #
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
