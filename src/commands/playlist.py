@@ -94,6 +94,11 @@ class PlaylistCommand(BaseCommand):
                 if not 'error' in playing_info:
                     playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
 
+                playlist_screen = self.handler.wait_for_element_clickable_plus('playlist_screen')
+                if playlist_screen:
+                    self.handler.logger.info("Found playlist screen")
+                    self.handler.press_back()
+
                 self.controller.title_command.change_title(subject)
                 self.controller.topic_command.change_topic(topic)
             else:

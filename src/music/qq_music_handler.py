@@ -124,6 +124,11 @@ class QQMusicHandler(AppHandler):
         if singer_screen:
             self.logger.info(f"Hide singer screen 1")
             self.press_back()
+        
+        playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
+        if playlist_screen:
+            self.logger.info(f"Hide playlist screen 1")
+            self.press_back()
 
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
@@ -138,6 +143,10 @@ class QQMusicHandler(AppHandler):
             if singer_screen:
                 self.logger.info(f"Hide singer screen 2")
                 self.press_back()
+            playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
+            if playlist_screen:
+                self.logger.info(f"Hide playlist screen 2")
+                self.press_back()
 
         go_home = False
         playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
@@ -146,6 +155,10 @@ class QQMusicHandler(AppHandler):
             singer_screen = self.try_find_element_plus('singer_screen', log=False)
             if singer_screen:
                 self.logger.info(f"Hide singer screen 3")
+                self.press_back()
+            playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
+            if playlist_screen:
+                self.logger.info(f"Hide playlist screen 3")
                 self.press_back()
             search_box = self.try_find_element_plus('search_box', log=False)
             if not search_box:
