@@ -24,15 +24,43 @@ class SingerCommand(BaseCommand):
         return info
 
     def select_singer_tab(self):
-
-        tab = self.handler.wait_for_element_clickable_plus('singer_tab')
-        if not tab:
-            self.handler.logger.error("Cannot find singer tab")
+        """Select the 'Singer' tab in search results"""
+        try:
+            # Try to find singer tab first
+            singer_tab = self.handler.try_find_element_plus('singer_tab')
+            if not singer_tab:
+                # If not found, scroll music_tabs to find it
+                music_tabs = self.handler.try_find_element_plus('music_tabs')
+                if not music_tabs:
+                    self.handler.logger.error("Failed to find music tabs")
+                    return False
+                
+                # Get size and location for scrolling
+                size = music_tabs.size
+                location = music_tabs.location
+                
+                # Scroll to right
+                self.handler.driver.swipe(
+                    location['x'] + 200,  # Start from left
+                    location['y'] + size['height'] // 2,
+                    location['x'] + size['width'] - 10,  # End at right
+                    location['y'] + size['height'] // 2,
+                    1000
+                )
+                
+                # Try to find singer tab again
+                singer_tab = self.handler.try_find_element_plus('singer_tab')
+                if not singer_tab:
+                    self.handler.logger.error("Failed to find singer tab after scrolling")
+                    return False
+            
+            singer_tab.click()
+            self.handler.logger.info("Selected singer tab")
+            return True
+            
+        except Exception as e:
+            self.handler.logger.error(f"Error selecting singer tab: {traceback.format_exc()}")
             return False
-
-        tab.click()
-        self.handler.logger.info("Selected singer tab")
-        return True
 
     def play_singer(self, query: str):
 

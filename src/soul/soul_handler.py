@@ -77,6 +77,7 @@ class SoulHandler(AppHandler):
         if input_box:
             if input_box.text == '输入新消息':
                 self.press_back()
+                self.press_back()
                 self.logger.info("Hide input dialog")
             else:
                 send_button = self.wait_for_element_clickable_plus('button_send')

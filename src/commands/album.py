@@ -26,15 +26,43 @@ class AlbumCommand(BaseCommand):
         return info
 
     def select_album_tab(self):
-
-        tab = self.handler.wait_for_element_clickable_plus('album_tab')
-        if not tab:
-            self.handler.logger.error("Cannot find album tab")
+        """Select the 'Album' tab in search results"""
+        try:
+            # Try to find album tab first
+            album_tab = self.handler.try_find_element_plus('album_tab')
+            if not album_tab:
+                # If not found, scroll music_tabs to find it
+                music_tabs = self.handler.try_find_element_plus('music_tabs')
+                if not music_tabs:
+                    self.handler.logger.error("Failed to find music tabs")
+                    return False
+                
+                # Get size and location for scrolling
+                size = music_tabs.size
+                location = music_tabs.location
+                
+                # Scroll to right
+                self.handler.driver.swipe(
+                    location['x'] + 200,  # Start from left
+                    location['y'] + size['height'] // 2,
+                    location['x'] + size['width'] - 10,  # End at right
+                    location['y'] + size['height'] // 2,
+                    1000
+                )
+                
+                # Try to find album tab again
+                album_tab = self.handler.try_find_element_plus('album_tab')
+                if not album_tab:
+                    self.handler.logger.error("Failed to find album tab after scrolling")
+                    return False
+            
+            album_tab.click()
+            self.handler.logger.info("Selected album tab")
+            return True
+            
+        except Exception as e:
+            self.handler.logger.error(f"Error selecting album tab: {traceback.format_exc()}")
             return False
-
-        tab.click()
-        self.handler.logger.info("Selected album tab")
-        return True
 
     def play_album(self, query):
         if query == "":

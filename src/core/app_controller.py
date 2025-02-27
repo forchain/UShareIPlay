@@ -1,22 +1,16 @@
 from appium import webdriver
-from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import WebDriverException, StaleElementReferenceException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from appium.options.common import AppiumOptions
 from ..soul.soul_handler import SoulHandler
 from ..music.qq_music_handler import QQMusicHandler
 from ..utils.command_parser import CommandParser
-from ..utils.lyrics_formatter import LyricsFormatter
 import time
 import traceback
 import importlib
-import os
 from pathlib import Path
 import sys
 import threading
 import queue
-import readline  # 用于更好的命令行输入体验
 from ..utils.db_helper import DBHelper
 
 
@@ -35,13 +29,9 @@ class AppController:
             []
         )
 
-        # Create lyrics formatter
-        self.lyrics_formatter = LyricsFormatter(lyrics_tags)
-
         # Initialize handlers
         self.soul_handler = SoulHandler(self.driver, config['soul'], self)
         self.music_handler = QQMusicHandler(self.driver, config['qq_music'], self)
-        self.music_handler.set_lyrics_formatter(self.lyrics_formatter)
         self.logger = self.soul_handler.logger
 
         # Initialize command parser

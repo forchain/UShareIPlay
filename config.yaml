@@ -180,6 +180,7 @@ qq_music:
     play_mode: 'com.tencent.qqmusic:id/a9j'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
     playlist_screen: 'com.tencent.qqmusic:id/bay' #
+    music_tabs: 'com.tencent.qqmusic:id/b_h'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
