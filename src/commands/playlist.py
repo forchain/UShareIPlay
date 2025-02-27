@@ -47,7 +47,7 @@ class PlaylistCommand(BaseCommand):
             }
 
         if not self.select_playlist_tab():
-            self.handler.logger.erryyor('Failed to find playlist tab')
+            self.handler.logger.error('Failed to find playlist tab')
             return {
                 'error': 'Failed to find playlist tab',
             }
