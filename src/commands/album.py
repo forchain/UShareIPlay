@@ -119,6 +119,7 @@ class AlbumCommand(BaseCommand):
 
         play_button.click()
         self.handler.logger.info("play button clicked")
+        self.handler.press_back()
 
         self.handler.list_mode = 'album'
 

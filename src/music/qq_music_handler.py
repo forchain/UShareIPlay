@@ -107,6 +107,14 @@ class QQMusicHandler(AppHandler):
 
         # Check if we're already in search mode
 
+        play_all = self.try_find_element_plus('play_all')
+        play_all_mini = self.try_find_element_plus('play_all_mini')
+        play_singer = self.try_find_element_plus('play_singer')
+        play_album = self.try_find_element_plus('play_album')
+        if play_all or play_all_mini or play_singer or play_album:
+            self.logger.info(f"Found play button, go back")
+            self.press_back()
+
         singer_screen = self.try_find_element_plus('singer_screen', log=False)
         if singer_screen:
             self.logger.info(f"Hide singer screen 1")
