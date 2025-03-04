@@ -149,8 +149,8 @@ class AppController:
         while self.is_running:
             try:
                 user_input = input("Console> " if self.in_console_mode else "")
-                if user_input.strip():  # 只处理非空输入
-                    self.input_queue.put(user_input)
+                # Process all input, including empty strings (just pressing Enter)
+                self.input_queue.put(user_input)
             except EOFError:
                 continue
             except KeyboardInterrupt:
@@ -209,7 +209,9 @@ class AppController:
                 try:
                     while not self.input_queue.empty():
                         message = self.input_queue.get_nowait()
-                        self.soul_handler.send_message(message)
+                        # Only send non-empty messages
+                        if message.strip():
+                            self.soul_handler.send_message(message)
                 except queue.Empty:
                     pass
 
