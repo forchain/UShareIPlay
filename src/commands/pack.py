@@ -82,7 +82,7 @@ class PackCommand(BaseCommand):
             if self.auto_mode and user_count is not None:
                 item_text = luck_item.text
                 # If less than 10 people, only allow low/medium level packs
-                if user_count <= 10 and not ("初级" in item_text or "中级" in item_text):
+                if user_count <= 10 and not ("初级" in item_text or "中级" in item_text or "一级" in item_text or "二级" in item_text):
                     self.handler.logger.info(f"Skipping high level pack with {user_count} users: {item_text}")
                     self.handler.press_back()
                     return {'error': 'Skipping high level pack (not enough users)'}
