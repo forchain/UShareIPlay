@@ -1,6 +1,6 @@
 import traceback
-import re
 from ..core.base_command import BaseCommand
+from ..managers.seat_manager import SeatManager
 
 def create_command(controller):
     seat_command = SeatCommand(controller)
@@ -13,110 +13,41 @@ class SeatCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.soul_handler
-        self.previous_focus_count = None  # Initialize previous focus count
+        # Initialize the singleton SeatManager
+        self.seat_manager = SeatManager(self.handler)
 
-    def update(self):
-        self.check_focus_count()
-
-    def check_focus_count(self):
-        """Check the focus count and execute seating if it changes."""
-        focus_count_element = self.handler.try_find_element_plus('focus_count', log=False)
-        if not focus_count_element:
-            return  # Early return if focus count element is not found
-
-        current_focus_count_text = focus_count_element.text
-        # Extract the number of focused users using regex
-        match = re.search(r'(\d+)人专注中', current_focus_count_text)
-        if not match:
-            return  # Early return if regex does not match
-
-        current_focus_count = int(match.group(1))  # Extract the number
-        if self.previous_focus_count == current_focus_count:
-            return  # Early return if focus count has not changed
-
-        self.previous_focus_count = current_focus_count
-        self.handler.logger.info(f"Focus count changed to: {current_focus_count}. Executing seating.")
-        self.be_seated()  # Call the seating method
-
-    def be_seated(self):
+    async def process(self, message_info, parameters):
+        """Process seat command"""
         try:
-            # Expand seats if needed
-            self.expand_seats()
+            if not parameters:
+                return {'error': 'Invalid parameters. Use: :seat 1 <seat_number> to reserve a seat'}
 
-            # Find all seat containers
-            seat_containers = self.handler.find_elements_plus('seat_container')
-            if not seat_containers:
-                self.handler.logger.error("Failed to find seat containers")
-                return {'error': 'Failed to find seat containers'}
+            # Parse parameters
+            parts = parameters.split()
+            if len(parts) != 2:
+                return {'error': 'Invalid parameters. Use: :seat 1 <seat_number> to reserve a seat'}
 
-            # Try to find a seat next to someone
-            for container in seat_containers:
-                # Check both seats in this container
-                left_state = self.handler.find_child_element_plus(container, 'left_state')
-                right_state = self.handler.find_child_element_plus(container, 'right_state')
-                left_label = self.handler.find_child_element_plus(container, 'left_label')
-                right_label = self.handler.find_child_element_plus(container, 'right_label')
+            command, seat_number = parts[0], parts[1]
+            if command != '1':
+                return {'error': 'Invalid command. Use: :seat 1 <seat_number> to reserve a seat'}
 
-                # If left seat is empty and right seat has someone
-                if not left_state and right_state and (not right_label.text == '群主'):
-                    left_seat = self.handler.find_child_element_plus(container, 'left_seat')
-                    if left_seat:
-                        left_seat.click()
-                        self.handler.logger.info("Clicked left seat next to occupied right seat")
-                        return self._confirm_seat()
+            try:
+                seat_number = int(seat_number)
+                if seat_number < 1 or seat_number > 12:
+                    return {'error': 'Invalid seat number. Must be between 1 and 12'}
+            except ValueError:
+                return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
 
-                # If right seat is empty and left seat has someone
-                if not right_state and left_state and (not left_label.text == '群主'):
-                    right_seat = self.handler.find_child_element_plus(container, 'right_seat')
-                    if right_seat:
-                        right_seat.click()
-                        self.handler.logger.info("Clicked right seat next to occupied left seat")
-                        return self._confirm_seat()
-
-            # If no seats next to someone found, try any available seat
-            apply_seat = self.handler.wait_for_element_clickable_plus('apply_seat')
-            if not apply_seat:
-                self.handler.logger.error("Failed to find any available seat")
-                return {'error': 'Failed to find any available seat'}
-            
-            apply_seat.click()
-            self.handler.logger.info("Clicked available seat")
-            return self._confirm_seat()
+            # Get the singleton instance and delegate to seat manager for business logic
+            seat_manager = SeatManager.get_instance()
+            result = await seat_manager.reserve_seat(message_info.nickname, seat_number)
+            return result
 
         except Exception as e:
-            self.handler.log_error(f"Error applying for seat: {traceback.format_exc()}")
-            return {'error': 'Failed to apply for seat'}
+            self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")
+            return {'error': f'Failed to process seat command: {str(e)}'}
 
-    def _confirm_seat(self):
-        """Helper method to confirm seat selection"""
-        confirm_seat = self.handler.wait_for_element_clickable_plus('confirm_seat')
-        if not confirm_seat:
-            self.handler.logger.error("Failed to find confirm seat button")
-            return {'error': 'Failed to find confirm seat button'}
-            
-        confirm_seat.click()
-        self.handler.logger.info("Clicked confirm seat button")
-
-        confirm_seat = self.handler.wait_for_element_clickable_plus('confirm_seat')
-        if confirm_seat.text == '已上座':
-            self.handler.press_back()
-
-        return {'success': 'Successfully applied for seat'}
-
-    def process(self, message_info, parameters):
-        return self.be_seated() 
-
-
-    def collapse_seats(self):
-        """Collapse seats if expanded"""
-        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
-        if expand_seats and expand_seats.text == '收起座位':
-            expand_seats.click()
-            self.handler.logger.info(f'Collapsed seats')
-    
-    def expand_seats(self):
-        """Expand seats if collapsed"""
-        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
-        if expand_seats and expand_seats.text == '展开座位':
-            expand_seats.click()
-            self.handler.logger.info(f'Expanded seats')
+    async def check_and_remove_users(self):
+        """Check and remove users from reserved seats"""
+        seat_manager = SeatManager.get_instance()
+        await seat_manager.check_and_remove_users()
