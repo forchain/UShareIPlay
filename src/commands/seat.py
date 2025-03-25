@@ -20,28 +20,30 @@ class SeatCommand(BaseCommand):
         """Process seat command"""
         try:
             if not parameters:
-                return {'error': 'Invalid parameters. Use: :seat 1 <seat_number> to reserve a seat'}
+                # No parameters - find and take an available seat
+                return await self.seat_manager.be_seated()
 
             # Parse parameters
             parts = parameters.split()
-            if len(parts) != 2:
-                return {'error': 'Invalid parameters. Use: :seat 1 <seat_number> to reserve a seat'}
+            if len(parts) == 0:
+                return {'error': 'Invalid parameters'}
 
-            command, seat_number = parts[0], parts[1]
-            if command != '1':
-                return {'error': 'Invalid command. Use: :seat 1 <seat_number> to reserve a seat'}
-
-            try:
-                seat_number = int(seat_number)
-                if seat_number < 1 or seat_number > 12:
-                    return {'error': 'Invalid seat number. Must be between 1 and 12'}
-            except ValueError:
-                return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
-
-            # Get the singleton instance and delegate to seat manager for business logic
-            seat_manager = SeatManager.get_instance()
-            result = await seat_manager.reserve_seat(message_info.nickname, seat_number)
-            return result
+            command = parts[0]
+            
+            if command == '0':
+                # Remove user's reservations
+                return await self.seat_manager.remove_user_reservation(message_info.nickname)
+            elif command == '1' and len(parts) == 2:
+                # Reserve specific seat
+                try:
+                    seat_number = int(parts[1])
+                    if seat_number < 1 or seat_number > 12:
+                        return {'error': 'Invalid seat number. Must be between 1 and 12'}
+                    return await self.seat_manager.reserve_seat(message_info.nickname, seat_number)
+                except ValueError:
+                    return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
+            else:
+                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>]'}
 
         except Exception as e:
             self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")
@@ -51,3 +53,18 @@ class SeatCommand(BaseCommand):
         """Check and remove users from reserved seats"""
         seat_manager = SeatManager.get_instance()
         await seat_manager.check_and_remove_users()
+
+    def user_enter(self, username: str):
+        """Called when a user enters the party"""
+        try:
+            # Check seats when user enters, passing the username
+            self.seat_manager.check_seats_on_entry(username)
+        except Exception as e:
+            self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
+
+    def update(self):
+        """Update focus count"""
+        try:
+            self.seat_manager.update()
+        except Exception as e:
+            self.handler.log_error(f"Error updating focus count: {traceback.format_exc()}")
