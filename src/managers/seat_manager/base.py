@@ -12,6 +12,16 @@ class SeatManagerBase:
             self.handler = handler
             self._initialized = True
 
+    def __str__(self):
+        """Return string representation of the object for logging"""
+        handler_status = "with handler" if self.handler else "no handler"
+        return f"{self.__class__.__name__} ({handler_status})"
+        
+    def __repr__(self):
+        """Return detailed representation of the object"""
+        handler_id = id(self.handler) if self.handler else "None"
+        return f"{self.__class__.__name__}(handler={handler_id}, initialized={self._initialized})"
+
     @classmethod
     def get_instance(cls):
         if cls._instance is None:

@@ -17,8 +17,8 @@ class SeatCommand(BaseCommand):
         """Process seat command"""
         try:
             if not parameters:
-                # No parameters - find and take an available seat
-                return await seat_manager.reservation.be_seated()
+                # No parameters - find and take an available seat for owner
+                return await seat_manager.seating.find_owner_seat()
 
             # Parse parameters
             parts = parameters.split()

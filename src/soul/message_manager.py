@@ -7,17 +7,17 @@ from collections import deque
 import logging
 
 from ..core.base_command import BaseCommand
-from ..managers.seat_manager import seat_manager
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
-# Set up chat logger
+# Setup chat logger
 chat_logger = logging.getLogger('chat')
 chat_logger.setLevel(logging.INFO)
-handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
-handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
-chat_logger.addHandler(handler)
+chat_handler = logging.FileHandler('chat.log', encoding='utf-8')
+chat_handler.setLevel(logging.INFO)
+chat_logger.addHandler(chat_handler)
+
 
 @dataclass
 class MessageInfo:
@@ -30,9 +30,15 @@ class MessageInfo:
 
 class MessageManager:
     def __init__(self, handler):
+        """Initialize MessageManager with handler, previous messages, recent messages"""
         self.handler = handler
         self.previous_messages = {}
-        self.recent_messages = deque(maxlen=9)  # Keep last 9 messages
+        self.recent_messages = deque(maxlen=100)  # Keep track of recent messages to avoid duplicates
+        
+    def _get_seat_manager(self):
+        """Get the seat_manager lazily to avoid circular import issues"""
+        from ..managers.seat_manager import seat_manager
+        return seat_manager
 
     def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
@@ -54,11 +60,24 @@ class MessageManager:
         # Check if there is a new message tip and click it
         self.check_new_message_tip(enabled)
 
-        # Collapse seats if expanded
-        seat_manager.ui.collapse_seats()
-
-        # Update focus count
-        seat_manager.focus.update()
+        # Collapse seats if expanded and update focus count
+        # self.handler.logger.info("开始尝试收起座位...")
+        seat_manager = self._get_seat_manager()
+        if seat_manager is None:
+            self.handler.logger.error("seat_manager 为 None，无法收起座位")
+        elif not hasattr(seat_manager, 'ui'):
+            self.handler.logger.error("seat_manager 没有 ui 属性，无法收起座位")
+        elif seat_manager.ui is None:
+            self.handler.logger.error("seat_manager.ui 为 None，无法收起座位")
+        else:
+            # self.handler.logger.info("调用 seat_manager.ui.collapse_seats()...")
+            result = seat_manager.ui.collapse_seats()
+            # self.handler.logger.info(f"collapse_seats() 返回值: {result}")
+            
+        # 更新焦点计数
+        if seat_manager and hasattr(seat_manager, 'focus'):
+            # self.handler.logger.info("更新焦点计数...")
+            seat_manager.focus.update()
 
         # Get all ViewGroup containers
         try:
@@ -89,7 +108,7 @@ class MessageManager:
 
     def try_find_message_list(self, enabled):
         """Find and return message list container"""
-        message_list = self.handler.try_find_element_plus('message_list')
+        message_list = self.handler.try_find_element_plus('message_list', log=False)
 
         if not message_list and enabled:
             self.handler.logger.warning("cannot find message_list, may be minimized")
@@ -118,8 +137,11 @@ class MessageManager:
             self.handler.find_party_to_join(party_id)
             self.handler.party_id = None
 
-            # Use the appropriate manager component
-            seat_manager.reservation.be_seated()
+            # Get seat manager and use it if available
+            seat_manager = self._get_seat_manager()
+            if seat_manager and seat_manager.seating:
+                seat_manager.seating.find_owner_seat()
+                
             self.handler.controller.notice_command.change_notice(DEFAULT_NOTICE)
         else:
             self.handler.logger.warning(
@@ -130,7 +152,6 @@ class MessageManager:
                 self.handler.logger.info(f'Clicked go back')
             else:
                 self.handler.press_back()
-
 
     def check_new_message_tip(self, enabled):
         """Check and click new message tip if present"""

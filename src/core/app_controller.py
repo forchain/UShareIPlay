@@ -127,8 +127,29 @@ class AppController:
         try:
             # self.soul_handler.send_message(f"Processing command :{command_info['prefix']}\n@{message_info.nickname}")
             result = command.process(message_info, command_info['parameters'])
+            
+            # Check if result is a coroutine (async function)
+            if hasattr(result, '__await__'):
+                # Create a new event loop for this thread if there isn't one
+                try:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                # Run the coroutine and get its result
+                if loop.is_running():
+                    # If the loop is already running, run the coroutine in a future
+                    future = asyncio.run_coroutine_threadsafe(result, loop)
+                    result = future.result(timeout=10)  # Wait up to 10 seconds
+                else:
+                    # Otherwise, run the coroutine directly
+                    result = loop.run_until_complete(result)
+            
             if 'error' in result:
-                res =  command_info['error_template'].format(
+                res = command_info['error_template'].format(
                     error=result['error'],
                     user=message_info.nickname,
                 )

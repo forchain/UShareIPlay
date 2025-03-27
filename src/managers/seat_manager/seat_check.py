@@ -3,14 +3,18 @@ import traceback
 from datetime import datetime, timedelta
 from ...dal import UserDAO, SeatReservationDAO
 from .base import SeatManagerBase
+from .seat_ui import SeatUIManager
 
 class SeatCheckManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
-        self.seat_ui = None  # Will be set when needed through SeatManager instance
+        self.seat_ui = SeatUIManager(handler)
 
     async def check_seats_on_entry(self, username: str = None):
         """Check seats when user enters the party"""
+        if self.handler is None:
+            return
+            
         try:
             # Ensure seats are expanded first
             self.seat_ui.expand_seats()
@@ -34,6 +38,9 @@ class SeatCheckManager(SeatManagerBase):
 
     async def _check_user_specific_seat(self, username: str, seat_containers):
         """Check and handle a specific user's seat"""
+        if self.handler is None:
+            return
+            
         user_reservation = await SeatReservationDAO.get_user_reservation(User(username=username))
         if not user_reservation:
             return
@@ -47,6 +54,9 @@ class SeatCheckManager(SeatManagerBase):
 
     async def _scroll_to_seat_row(self, seat_number: int, seat_containers):
         """Scroll to the row containing the target seat"""
+        if self.handler is None:
+            return
+            
         # Calculate row (1-3) and position (1-4)
         row = (seat_number - 1) // 4 + 1
         position = (seat_number - 1) % 4 + 1
@@ -80,6 +90,9 @@ class SeatCheckManager(SeatManagerBase):
 
     def _find_seat_container(self, seat_containers, seat_number: int):
         """Find the container for a specific seat number"""
+        if self.handler is None:
+            return None
+            
         for container in seat_containers:
             seat_number_element = self.handler.find_child_element_plus(container, 'seat_number')
             if seat_number_element and seat_number_element.text == str(seat_number):
@@ -88,6 +101,9 @@ class SeatCheckManager(SeatManagerBase):
 
     async def _handle_occupied_seat(self, container, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
+        if self.handler is None:
+            return
+            
         left_state = self.handler.find_child_element_plus(container, 'left_state')
         right_state = self.handler.find_child_element_plus(container, 'right_state')
         
@@ -107,6 +123,9 @@ class SeatCheckManager(SeatManagerBase):
 
     async def _check_all_seats(self, seat_containers):
         """Check and handle all occupied seats"""
+        if self.handler is None:
+            return
+            
         for container in seat_containers:
             seat_number_element = self.handler.find_child_element_plus(container, 'seat_number')
             if not seat_number_element:
@@ -125,6 +144,9 @@ class SeatCheckManager(SeatManagerBase):
 
     async def check_and_remove_users(self):
         """Check and remove users from reserved seats"""
+        if self.handler is None:
+            return
+            
         try:
             # Get all active reservations
             reservations = await SeatReservationDAO.get_active_reservations()

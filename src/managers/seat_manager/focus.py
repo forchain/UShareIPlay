@@ -8,10 +8,15 @@ class FocusManager(SeatManagerBase):
 
     def update(self):
         """Update focus count"""
+        if self.handler is None:
+            return
         self.check_focus_count()
 
     def check_focus_count(self):
         """Check the focus count"""
+        if self.handler is None:
+            return
+            
         focus_count_element = self.handler.try_find_element_plus('focus_count', log=False)
         if not focus_count_element:
             return

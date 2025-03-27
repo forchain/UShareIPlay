@@ -2,6 +2,9 @@ from .base import SeatManagerBase
 from .focus import FocusManager
 from .reservation import ReservationManager
 from .seat_check import SeatCheckManager
+from .seat_ui import SeatUIManager
+from .seating import SeatingManager
+import logging
 
 class SeatManager(SeatManagerBase):
     """Global singleton instance for seat management"""
@@ -9,49 +12,48 @@ class SeatManager(SeatManagerBase):
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(SeatManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, handler=None):
-        if not self._initialized:
+        # 打印更多日志，帮助调试
+        logging.getLogger('seat_manager').info(f"初始化 SeatManager，handler={handler}")
+        
+        if not hasattr(self, 'initialized'):
             super().__init__(handler)
-            # Initialize components as attributes
+            # Initialize component managers
             self.focus = FocusManager(handler)
             self.reservation = ReservationManager(handler)
             self.check = SeatCheckManager(handler)
-            # Import and initialize SeatUIManager here to avoid circular import
-            from .seat_ui import SeatUIManager
             self.ui = SeatUIManager(handler)
-            self._initialized = True
+            self.seating = SeatingManager(handler)
+            self.initialized = True
+            logging.getLogger('seat_manager').info("SeatManager 初始化完成")
+        elif handler and not self.handler:
+            # 如果已经初始化过，但handler为None，更新handler
+            logging.getLogger('seat_manager').info(f"更新 SeatManager 的 handler: {handler}")
+            self.handler = handler
+            self.focus.handler = handler
+            self.reservation.handler = handler
+            self.check.handler = handler
+            self.ui.handler = handler
+            self.seating.handler = handler
 
-class LazyLoader:
-    """Lazy loader for seat manager to handle import-time initialization"""
-    def __init__(self):
-        self._initialized_seat_manager = None
-        
-    def __getattr__(self, name):
-        # Initialize the real seat manager if this is the first access
-        from ...soul.soul_handler import SoulHandler
-        if not self._initialized_seat_manager:
-            # For the first access, we need to find a handler
-            # Since we don't have direct access, use a dummy handler for now
-            # This will be replaced by the proper handler when init_seat_manager is called
-            self._initialized_seat_manager = SeatManager(None)
-        
-        # Forward the attribute access to the real seat manager
-        return getattr(self._initialized_seat_manager, name)
+# Create a default instance with a None handler
+# This ensures seat_manager is never None, components will be properly initialized later
+seat_manager = SeatManager(None)
 
 def init_seat_manager(handler):
-    """Initialize the global seat manager instance with a proper handler"""
+    """Initialize the global seat manager instance"""
     global seat_manager
-    # Use the singleton pattern to ensure we're updating the existing instance
-    real_manager = SeatManager(handler)
+    # Since we're using the singleton pattern, this will update the existing instance
+    logging.getLogger('seat_manager').info(f"调用 init_seat_manager，handler={handler}")
+    seat_manager = SeatManager(handler)
     
-    # If using the lazy loader, replace it with the real initialized manager
-    if isinstance(seat_manager, LazyLoader):
-        seat_manager = real_manager
-    
-    return real_manager
-
-# Create a lazy-loading placeholder - will initialize itself on first access
-seat_manager = LazyLoader() 
+    # 额外检查确保所有子管理器的handler都已正确设置
+    if not seat_manager.handler:
+        logging.getLogger('seat_manager').error("初始化后 seat_manager.handler 仍为 None")
+    if not seat_manager.ui.handler:
+        logging.getLogger('seat_manager').error("初始化后 seat_manager.ui.handler 仍为 None")
+        
+    return seat_manager 
