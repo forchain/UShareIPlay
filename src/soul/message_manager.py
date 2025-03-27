@@ -7,6 +7,7 @@ from collections import deque
 import logging
 
 from ..core.base_command import BaseCommand
+from ..managers.seat_manager import seat_manager
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
@@ -54,7 +55,10 @@ class MessageManager:
         self.check_new_message_tip(enabled)
 
         # Collapse seats if expanded
-        self.handler.controller.seat_command.collapse_seats()
+        seat_manager.ui.collapse_seats()
+
+        # Update focus count
+        seat_manager.focus.update()
 
         # Get all ViewGroup containers
         try:
@@ -114,7 +118,8 @@ class MessageManager:
             self.handler.find_party_to_join(party_id)
             self.handler.party_id = None
 
-            self.handler.controller.seat_command.be_seated()
+            # Use the appropriate manager component
+            seat_manager.reservation.be_seated()
             self.handler.controller.notice_command.change_notice(DEFAULT_NOTICE)
         else:
             self.handler.logger.warning(

@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta
-from ..dal import UserDAO, SeatReservationDAO
+from ...dal import UserDAO, SeatReservationDAO
 from .base import SeatManagerBase
-from .seat_ui import SeatUIManager
 
 class ReservationManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
-        self.seat_ui = SeatUIManager(handler)
+        self.seat_ui = None  # Will be set when needed through SeatManager instance
 
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """Reserve a seat for a user"""

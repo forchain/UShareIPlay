@@ -12,6 +12,7 @@ import sys
 import threading
 import queue
 from ..utils.db_helper import DBHelper
+from ..managers.seat_manager import init_seat_manager
 
 
 class AppController:
@@ -42,6 +43,9 @@ class AppController:
 
         # Initialize database helper
         self.db_helper = DBHelper()
+
+        # Initialize managers
+        self.seat_manager = init_seat_manager(self.soul_handler)
 
     def _init_driver(self):
         options = AppiumOptions()

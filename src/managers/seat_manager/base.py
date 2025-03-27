@@ -14,7 +14,6 @@ class SeatManagerBase:
 
     @classmethod
     def get_instance(cls):
-        """Get the singleton instance"""
         if cls._instance is None:
-            raise RuntimeError("SeatManager has not been initialized. Call SeatManager(handler) first.")
+            cls._instance = cls()
         return cls._instance 

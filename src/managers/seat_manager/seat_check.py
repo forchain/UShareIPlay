@@ -1,14 +1,13 @@
 import time
 import traceback
-from datetime import datetime
-from ..dal import UserDAO, SeatReservationDAO
+from datetime import datetime, timedelta
+from ...dal import UserDAO, SeatReservationDAO
 from .base import SeatManagerBase
-from .seat_ui import SeatUIManager
 
 class SeatCheckManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
-        self.seat_ui = SeatUIManager(handler)
+        self.seat_ui = None  # Will be set when needed through SeatManager instance
 
     async def check_seats_on_entry(self, username: str = None):
         """Check seats when user enters the party"""
