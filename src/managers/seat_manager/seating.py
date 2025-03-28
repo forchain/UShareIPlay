@@ -99,7 +99,7 @@ class SeatingManager(SeatManagerBase):
             
         try:
             # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_button')
+            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_seat')
             if not confirm_button:
                 self.handler.logger.error("Failed to find confirm button")
                 return {'error': 'Failed to find confirm button'}

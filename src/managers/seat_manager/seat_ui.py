@@ -99,7 +99,7 @@ class SeatUIManager(SeatManagerBase):
             self.handler.logger.error(f"检查座位状态时出错: {str(e)}")
             
         if not self.is_expanded:
-            self.handler.logger.info("座位已经收起，无需操作")
+            # self.handler.logger.info("座位已经收起，无需操作")
             return True
             
         # 添加详细日志，查看找到的元素

@@ -303,7 +303,7 @@ class AppHandler:
                 return element
             except Exception as find_e:
                 if log:
-                    self.logger.warning(f"Failed to find element '{element_key}' with value '{value}': {str(find_e)}")
+                    self.logger.warning(f"Failed to find element '{element_key}' with value '{value}'")
                 return None
                 
         except Exception as e:
