@@ -2,6 +2,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from ...dal import UserDAO, SeatReservationDAO
+from ...models import User
 from .base import SeatManagerBase
 from .seat_ui import SeatUIManager
 
@@ -46,13 +47,13 @@ class SeatCheckManager(SeatManagerBase):
             return
 
         seat_number = user_reservation.seat_number
-        await self._scroll_to_seat_row(seat_number, seat_containers)
+        self._scroll_to_seat_row(seat_number, seat_containers)
         
         target_container = self._find_seat_container(seat_containers, seat_number)
         if target_container:
-            await self._handle_occupied_seat(target_container, seat_number)
+            self._handle_occupied_seat(target_container, seat_number)
 
-    async def _scroll_to_seat_row(self, seat_number: int, seat_containers):
+    def _scroll_to_seat_row(self, seat_number: int, seat_containers):
         """Scroll to the row containing the target seat"""
         if self.handler is None:
             return
@@ -99,7 +100,7 @@ class SeatCheckManager(SeatManagerBase):
                 return container
         return None
 
-    async def _handle_occupied_seat(self, container, seat_number: int):
+    def _handle_occupied_seat(self, container, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
         if self.handler is None:
             return
@@ -140,7 +141,7 @@ class SeatCheckManager(SeatManagerBase):
             right_state = self.handler.find_child_element_plus(container, 'right_state')
             
             if left_state or right_state:
-                await self._handle_occupied_seat(container, seat_number)
+                self._handle_occupied_seat(container, seat_number)
 
     async def check_and_remove_users(self):
         """Check and remove users from reserved seats"""

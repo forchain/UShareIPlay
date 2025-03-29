@@ -116,7 +116,7 @@ class AppController:
         module = self._load_command_module(command)
         return module.command if module else None
 
-    def _process_command(self, command, message_info, command_info):
+    async def _process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
             message_info: MessageInfo object
@@ -125,28 +125,7 @@ class AppController:
             str: Response message
         """
         try:
-            # self.soul_handler.send_message(f"Processing command :{command_info['prefix']}\n@{message_info.nickname}")
-            result = command.process(message_info, command_info['parameters'])
-            
-            # Check if result is a coroutine (async function)
-            if hasattr(result, '__await__'):
-                # Create a new event loop for this thread if there isn't one
-                try:
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                
-                # Run the coroutine and get its result
-                if loop.is_running():
-                    # If the loop is already running, run the coroutine in a future
-                    future = asyncio.run_coroutine_threadsafe(result, loop)
-                    result = future.result(timeout=10)  # Wait up to 10 seconds
-                else:
-                    # Otherwise, run the coroutine directly
-                    result = loop.run_until_complete(result)
+            result = await command.process(message_info, command_info['parameters'])
             
             if 'error' in result:
                 res = command_info['error_template'].format(
@@ -212,7 +191,7 @@ class AppController:
         except Exception as e:
             self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
-    def start_monitoring(self):
+    async def start_monitoring(self):
         enabled = True
         response = None
         lyrics = None
@@ -258,7 +237,7 @@ class AppController:
                     self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
-                messages = self.soul_handler.get_latest_message(enabled)
+                messages = await self.soul_handler.get_latest_message(enabled)
                 # get messages in advance to avoid being floored by responses
                 if lyrics:
                     self.soul_handler.send_message(lyrics)
@@ -316,7 +295,7 @@ class AppController:
                                     case _:
                                         command = self._check_command(cmd)
                                         if command:
-                                            response = self._process_command(command, message_info, command_info)
+                                            response = await self._process_command(command, message_info, command_info)
                                         else:
                                             self.soul_handler.log_error(f"Unknown command: {cmd}")
                 # Check KTV lyrics if mode is enabled

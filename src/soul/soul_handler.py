@@ -31,9 +31,9 @@ class SoulHandler(AppHandler):
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
     
-    def get_latest_message(self, enabled=True):
-        """Get new message contents that weren't seen before"""
-        return self.message_manager.get_latest_message(enabled)
+    async def get_latest_message(self, enabled=True):
+        """Get latest messages from the chat"""
+        return await self.message_manager.get_latest_message(enabled)
 
     def send_message(self, message):
         """Send message"""

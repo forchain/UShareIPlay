@@ -8,7 +8,7 @@ class SeatingManager(SeatManagerBase):
         super().__init__(handler)
         self.seat_ui = SeatUIManager(handler)
         
-    async def find_owner_seat(self) -> dict:
+    def find_owner_seat(self) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
@@ -26,13 +26,13 @@ class SeatingManager(SeatManagerBase):
 
             # Try to find a seat next to someone
             for container in seat_containers:
-                result = await self._try_find_seat_next_to_someone(container)
+                result = self._try_find_seat_next_to_someone(container)
                 if result:
                     return result
 
             # If no seats next to someone found, try any available seat
             for container in seat_containers:
-                result = await self._try_find_any_available_seat(container)
+                result = self._try_find_any_available_seat(container)
                 if result:
                     return result
 
@@ -42,7 +42,7 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
             
-    async def _try_find_seat_next_to_someone(self, container) -> dict:
+    def _try_find_seat_next_to_someone(self, container) -> dict:
         """Try to find a seat next to someone in the container"""
         if self.handler is None:
             return None
@@ -59,7 +59,7 @@ class SeatingManager(SeatManagerBase):
             if left_seat:
                 left_seat.click()
                 self.handler.logger.info("Clicked left seat next to occupied right seat")
-                return await self._confirm_seat()
+                return self._confirm_seat()
 
         # If right seat is empty and left seat has someone
         if not right_state and left_state and (not left_label or left_label.text != '群主'):
@@ -67,11 +67,11 @@ class SeatingManager(SeatManagerBase):
             if right_seat:
                 right_seat.click()
                 self.handler.logger.info("Clicked right seat next to occupied left seat")
-                return await self._confirm_seat()
+                return self._confirm_seat()
                 
         return None
             
-    async def _try_find_any_available_seat(self, container) -> dict:
+    def _try_find_any_available_seat(self, container) -> dict:
         """Try to find any available seat in the container"""
         if self.handler is None:
             return None
@@ -81,18 +81,18 @@ class SeatingManager(SeatManagerBase):
         if left_seat and not left_state:
             left_seat.click()
             self.handler.logger.info("Clicked available left seat")
-            return await self._confirm_seat()
+            return self._confirm_seat()
             
         right_seat = self.handler.find_child_element_plus(container, 'right_seat')
         right_state = self.handler.find_child_element_plus(container, 'right_state')
         if right_seat and not right_state:
             right_seat.click()
             self.handler.logger.info("Clicked available right seat")
-            return await self._confirm_seat()
+            return self._confirm_seat()
             
         return None
             
-    async def _confirm_seat(self) -> dict:
+    def _confirm_seat(self) -> dict:
         """Confirm seat selection"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}

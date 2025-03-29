@@ -32,7 +32,12 @@ class SeatReservationDAO:
     @staticmethod
     async def get_user_reservation(user: User) -> Optional[SeatReservation]:
         """Get the latest reservation for a user"""
-        return await SeatReservation.filter(user=user).order_by('-created_at').first()
+        return await SeatReservation.filter(user=user).prefetch_related('user').order_by('-created_at').first()
+
+    @staticmethod
+    async def get_seat_reservation(seat_number: int) -> Optional[SeatReservation]:
+        """Get reservation for a specific seat"""
+        return await SeatReservation.filter(seat_number=seat_number).prefetch_related('user').first()
 
     @staticmethod
     async def get_active_reservations() -> List[SeatReservation]:
@@ -41,7 +46,7 @@ class SeatReservationDAO:
         reservations = await SeatReservation.filter(
             start_time__lte=now,
             start_time__gte=now - timedelta(hours=24)
-        ).all()
+        ).prefetch_related('user').all()
         
         # Filter out expired reservations
         active_reservations = []
@@ -52,16 +57,9 @@ class SeatReservationDAO:
         return active_reservations
 
     @staticmethod
-    async def remove_reservation(reservation_id: int) -> bool:
-        """Remove a reservation by ID"""
-        try:
-            reservation = await SeatReservation.get_or_none(id=reservation_id)
-            if reservation:
-                await reservation.delete()
-                return True
-            return False
-        except Exception:
-            return False
+    async def remove_reservation(reservation: SeatReservation):
+        """Remove a reservation"""
+        await reservation.delete()
 
     @staticmethod
     async def update_reservation_start_time(reservation_id: int, new_start_time: datetime) -> Optional[SeatReservation]:

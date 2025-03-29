@@ -14,7 +14,7 @@ DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID
 # Setup chat logger
 chat_logger = logging.getLogger('chat')
 chat_logger.setLevel(logging.INFO)
-chat_handler = logging.FileHandler('chat.log', encoding='utf-8')
+chat_handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
 chat_handler.setLevel(logging.INFO)
 chat_logger.addHandler(chat_handler)
 
@@ -40,7 +40,7 @@ class MessageManager:
         from ..managers.seat_manager import seat_manager
         return seat_manager
 
-    def get_latest_message(self, enabled=True):
+    async def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
@@ -90,7 +90,7 @@ class MessageManager:
         current_messages = {}  # Dict to store element_id: MessageInfo pairs
 
         for container in containers:
-            message_info = self.process_container_message(container)
+            message_info = await self.process_container_message(container)
             greeting_info = self.process_container_greeting(container)
             if message_info:
                 current_messages[container.id] = message_info
@@ -161,7 +161,7 @@ class MessageManager:
             new_message_tip.click()
             self.handler.logger.info(f'Clicked new message tip')
 
-    def process_container_message(self, container):
+    async def process_container_message(self, container):
         """Process a single message container and return MessageInfo"""
         try:
             # Check if container has valid message content
@@ -177,7 +177,6 @@ class MessageManager:
             chat_text = content_desc if content_desc and content_desc != 'null' else message_text
 
             # Check if container has valid sender avatar
-            # Get message content from content-desc attribute
 
             # Check for duplicate message
             if not chat_text in self.recent_messages:
@@ -190,7 +189,8 @@ class MessageManager:
                 # Notify all commands
                 for module in self.handler.controller.command_modules.values():
                     try:
-                        module.command.user_enter(username)
+                        if hasattr(module.command, 'user_enter'):
+                            await module.command.user_enter(username)
                     except Exception as e:
                         self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
                     continue

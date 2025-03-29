@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from ...dal import UserDAO, SeatReservationDAO
+from ...models import User
 from .base import SeatManagerBase
 from .seat_ui import SeatUIManager
 import time
@@ -16,15 +17,20 @@ class ReservationManager(SeatManagerBase):
             return {'error': 'Handler not initialized'}
             
         try:
+            # Get or create user first
+            user = await UserDAO.get_or_create(username)
+            if not user:
+                return {'error': f'Failed to get or create user {username}'}
+
             # Check if user already has a reservation
-            existing_reservation = await SeatReservationDAO.get_user_reservation(User(username=username))
+            existing_reservation = await SeatReservationDAO.get_user_reservation(user)
             if existing_reservation:
                 return {'error': f'User {username} already has a reservation for seat {existing_reservation.seat_number}'}
 
             # Check if seat is already reserved
             existing_reservation = await SeatReservationDAO.get_seat_reservation(seat_number)
             if existing_reservation:
-                return {'error': f'Seat {seat_number} is already reserved by {existing_reservation.username}'}
+                return {'error': f'Seat {seat_number} is already reserved by {existing_reservation.user.username}'}
 
             # Expand seats if collapsed
             self.seat_ui.expand_seats()
@@ -43,7 +49,7 @@ class ReservationManager(SeatManagerBase):
             target_container = seat_containers[row_index]
             
             # Determine if this is a left or right seat in the row
-            is_left_seat = (seat_number - 1) % 4 < 2  # Seats 1,2,5,6,9,10 are left seats
+            is_left_seat = (seat_number - 1) % 4 < 2
             
             # Find the specific seat element
             seat_element = None
@@ -68,19 +74,13 @@ class ReservationManager(SeatManagerBase):
             self.handler.logger.info(f"Clicked seat {seat_number}")
 
             # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_button')
+            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_seat')
             if not confirm_button:
                 return {'error': f'Failed to find confirm button for seat {seat_number}'}
             confirm_button.click()
 
             # Create reservation in database
-            reservation = SeatReservation(
-                username=username,
-                seat_number=seat_number,
-                created_at=datetime.now(),
-                expires_at=datetime.now() + timedelta(hours=24)
-            )
-            await SeatReservationDAO.create_reservation(reservation)
+            reservation = await SeatReservationDAO.create(user, seat_number, 24)
 
             return {'success': f'Successfully reserved seat {seat_number}'}
 
@@ -94,8 +94,13 @@ class ReservationManager(SeatManagerBase):
             return {'error': 'Handler not initialized'}
             
         try:
+            # Get or create user first
+            user = await UserDAO.get_or_create(username)
+            if not user:
+                return {'error': f'Failed to get or create user {username}'}
+
             # Get user's reservation
-            reservation = await SeatReservationDAO.get_user_reservation(User(username=username))
+            reservation = await SeatReservationDAO.get_user_reservation(user)
             if not reservation:
                 return {'error': f'No reservation found for user {username}'}
 
@@ -149,7 +154,7 @@ class ReservationManager(SeatManagerBase):
             self.handler.logger.info(f"Clicked seat {reservation.seat_number} to remove reservation")
 
             # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_button')
+            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_seat')
             if not confirm_button:
                 return {'error': f'Failed to find confirm button for seat {reservation.seat_number}'}
             confirm_button.click()
