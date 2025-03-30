@@ -173,9 +173,11 @@ class MessageManager:
         Returns:
             tuple[bool, str]: (is_enter_message, username)
         """
-        if message == self.last_enter_message:
-            return False, ""
+        last_message = self.last_enter_message
         self.last_enter_message = message
+
+        if message == last_message:
+            return False, ""
 
         pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
         match = re.match(pattern, message)
