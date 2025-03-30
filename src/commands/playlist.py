@@ -18,7 +18,7 @@ class PlaylistCommand(BaseCommand):
         super().__init__(controller)
         self.handler = self.music_handler
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         query = ' '.join(parameters)
 
         if len(parameters) == 0:

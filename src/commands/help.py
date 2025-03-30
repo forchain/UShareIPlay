@@ -14,5 +14,5 @@ class HelpCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         return {}

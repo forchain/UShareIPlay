@@ -6,6 +6,7 @@ from ...models import User
 from .base import SeatManagerBase
 from .seat_ui import SeatUIManager
 
+
 class SeatCheckManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
@@ -13,187 +14,129 @@ class SeatCheckManager(SeatManagerBase):
 
     async def check_seats_on_entry(self, username: str = None):
         """Check seats when user enters the party"""
-        if self.handler is None:
+        if self.handler is None or not username:
             return
-            
+
         try:
+            # Get user's reservation
+            user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
+            if not user_reservation:
+                return
+
+            # Check if reservation is still valid
+            now = datetime.now()
+
+            # Ensure both datetimes are timezone-naive
+            start_time = user_reservation.start_time
+            if start_time.tzinfo is not None:
+                # Convert to timezone-naive if needed
+                from datetime import timezone
+                start_time = start_time.replace(tzinfo=None)
+
+            end_time = start_time + timedelta(hours=user_reservation.duration_hours)
+
+            if now > end_time:
+                # Reservation expired, remove it
+                await SeatReservationDAO.remove_reservation(user_reservation)
+                self.handler.logger.info(f"Removed expired reservation for user {username}")
+                return
+
+            # Reservation is valid, auto-renew it
+            duration_hours = min(max(user_reservation.user.level, 1),
+                                 24)  # Duration is user's level, between 1 and 24 hours
+            await SeatReservationDAO.update_reservation_start_time(user_reservation.id, now)
+            user_reservation.duration_hours = duration_hours
+            await user_reservation.save()
+            self.handler.logger.info(
+                f"Auto-renewed reservation for user {username} with duration {duration_hours} hours")
+
             # Ensure seats are expanded first
             self.seat_ui.expand_seats()
             time.sleep(0.5)  # Wait for expansion animation
 
-            # Get all seat containers
-            seat_containers = self.handler.find_elements_plus('seat_container')
-            if not seat_containers:
+            # Get all seat desks
+            seat_desks = self.handler.find_elements_plus('seat_desk')
+            if not seat_desks:
+                self.handler.log_error("Cannot find seat desks")
                 return
 
-            # If username is provided, check their specific seat first
-            if username:
-                await self._check_user_specific_seat(username, seat_containers)
-                return
-
-            # If no specific seat to check, check all seats
-            await self._check_all_seats(seat_containers)
+            # Check and handle the user's specific seat
+            await self._check_user_specific_seat(username, seat_desks)
 
         except Exception as e:
             self.handler.log_error(f"Error checking seats: {traceback.format_exc()}")
 
-    async def _check_user_specific_seat(self, username: str, seat_containers):
+    async def _check_user_specific_seat(self, username: str, seat_desks):
         """Check and handle a specific user's seat"""
         if self.handler is None:
             return
-            
-        user_reservation = await SeatReservationDAO.get_user_reservation(User(username=username))
+
+        user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
         if not user_reservation:
             return
 
         seat_number = user_reservation.seat_number
-        self._scroll_to_seat_row(seat_number, seat_containers)
-        
-        target_container = self._find_seat_container(seat_containers, seat_number)
-        if target_container:
-            self._handle_occupied_seat(target_container, seat_number)
+        row_index = (seat_number - 1) // 4  # 0-based row index
 
-    def _scroll_to_seat_row(self, seat_number: int, seat_containers):
-        """Scroll to the row containing the target seat"""
-        if self.handler is None:
-            return
-            
-        # Calculate row (1-3) and position (1-4)
-        row = (seat_number - 1) // 4 + 1
-        position = (seat_number - 1) % 4 + 1
-        
-        # Get first container for height reference
-        container = seat_containers[0]
-        seat_height = container.size['height']
-        
-        # Scroll based on row
-        if row == 1:
-            # First row - scroll down
-            self.handler.driver.swipe(
-                container.location['x'] + container.size['width'] // 2,
-                container.location['y'] + container.size['height'] // 2,
-                container.location['x'] + container.size['width'] // 2,
-                container.location['y'] + container.size['height'] // 2 + seat_height,
-                1000
-            )
-        elif row == 3:
-            # Third row - scroll up
-            self.handler.driver.swipe(
-                container.location['x'] + container.size['width'] // 2,
-                container.location['y'] + container.size['height'] // 2,
-                container.location['x'] + container.size['width'] // 2,
-                container.location['y'] + container.size['height'] // 2 - seat_height,
-                1000
-            )
-        
-        # Wait for scroll to complete
-        time.sleep(0.5)
+        # Handle row visibility based on index
+        if row_index == 0 or row_index == 2:  # First or Third row
+            # Use second row's desk (index 1) as reference for scrolling
+            reference_desk = seat_desks[2]
+            desk_height = reference_desk.size['height']
 
-    def _find_seat_container(self, seat_containers, seat_number: int):
-        """Find the container for a specific seat number"""
-        if self.handler is None:
-            return None
-            
-        for container in seat_containers:
-            seat_number_element = self.handler.find_child_element_plus(container, 'seat_number')
-            if seat_number_element and seat_number_element.text == str(seat_number):
-                return container
-        return None
+            if row_index == 0:  # First row
+                # Scroll down one row height
+                self.handler.driver.swipe(
+                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                    reference_desk.location['y'] + reference_desk.size['height'] // 2,
+                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                    reference_desk.location['y'] + reference_desk.size['height'] // 2 + desk_height,
+                    1000
+                )
+            else:  # Third row
+                # Scroll up one row height
+                self.handler.driver.swipe(
+                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                    reference_desk.location['y'] + reference_desk.size['height'] // 2,
+                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                    reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
+                    1000
+                )
+            time.sleep(0.5)
 
-    def _handle_occupied_seat(self, container, seat_number: int):
+        self._handle_occupied_seat(seat_desks, seat_number)
+
+    def _handle_occupied_seat(self, seat_desks, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
         if self.handler is None:
             return
-            
-        left_state = self.handler.find_child_element_plus(container, 'left_state')
-        right_state = self.handler.find_child_element_plus(container, 'right_state')
-        
-        if left_state or right_state:
-            # Click the seat to remove occupant
-            if not self.handler.click_element_at(container, x_ratio=0.5, y_ratio=0.5):
-                self.handler.log_error(f"Failed to click seat {seat_number}")
-                return
-            
-            # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_button')
-            if confirm_button:
-                confirm_button.click()
-                self.handler.logger.info(f"Removed occupant from seat {seat_number}")
-            else:
-                self.handler.log_error(f"Failed to find confirm button for seat {seat_number}")
 
-    async def _check_all_seats(self, seat_containers):
-        """Check and handle all occupied seats"""
-        if self.handler is None:
+        # Determine if this is a left or right seat in the row
+        is_left_seat = bool(seat_number % 2)
+        desk = seat_desks[int((seat_number - 1) / 2)]
+
+        # Find the specific seat element
+        if is_left_seat:
+            seat_element = self.handler.find_child_element_plus(desk, 'left_seat')
+            seat_label = self.handler.find_child_element_plus(seat_element, 'left_label')
+        else:
+            seat_element = self.handler.find_child_element_plus(desk, 'right_seat')
+            seat_label = self.handler.find_child_element_plus(seat_element, 'right_label')
+
+        if not seat_element:
+            self.handler.log_error(f"Cannot find seat element for seat {seat_number}")
             return
-            
-        for container in seat_containers:
-            seat_number_element = self.handler.find_child_element_plus(container, 'seat_number')
-            if not seat_number_element:
-                continue
-                
-            try:
-                seat_number = int(seat_number_element.text)
-            except ValueError:
-                continue
 
-            left_state = self.handler.find_child_element_plus(container, 'left_state')
-            right_state = self.handler.find_child_element_plus(container, 'right_state')
-            
-            if left_state or right_state:
-                self._handle_occupied_seat(container, seat_number)
+        self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text}")
 
-    async def check_and_remove_users(self):
-        """Check and remove users from reserved seats"""
-        if self.handler is None:
+        # Click the specific seat element
+        seat_element.click()
+        self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
+
+        # Wait for seat off button
+        seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
+        if not seat_off:
+            self.handler.log_error(f"Failed to find seat off button for seat {seat_number}")
             return
-            
-        try:
-            # Get all active reservations
-            reservations = await SeatReservationDAO.get_active_reservations()
-            if not reservations:
-                return
-
-            # Expand seats if needed
-            self.seat_ui.expand_seats()
-
-            # Get all seat containers
-            seat_containers = self.handler.find_elements_plus('seat_container')
-            if not seat_containers:
-                return
-
-            for reservation in reservations:
-                seat_number = reservation.seat_number
-                target_container = None
-                
-                # Find the target container based on seat number
-                if seat_number <= 4:  # First row
-                    target_container = seat_containers[0]
-                elif seat_number <= 8:  # Second row
-                    target_container = seat_containers[1]
-                else:  # Third row
-                    target_container = seat_containers[2]
-
-                if not target_container:
-                    continue
-
-                # Check if seat is empty
-                empty_seat = self.handler.find_child_element_plus(target_container, 'empty_seat')
-                if empty_seat:
-                    continue
-
-                # Check both left and right seats
-                for side in ['left', 'right']:
-                    state = self.handler.find_child_element_plus(target_container, f'{side}_state')
-                    if state:
-                        # Click state to open profile
-                        state.click()
-                        # Find and click seat off button
-                        seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
-                        if seat_off:
-                            seat_off.click()
-                            self.handler.logger.info(f"Removed user from seat {seat_number}")
-                            break
-
-        except Exception as e:
-            self.handler.log_error(f"Error checking and removing users: {str(e)}") 
+        seat_off.click()
+        self.handler.logger.info(f"Successfully removed occupant from seat {seat_number}")

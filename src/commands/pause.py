@@ -78,7 +78,7 @@ class PauseCommand(BaseCommand):
             self.music_handler.logger.error(f"Error controlling playback: {traceback.format_exc()}")
             return {'error': f'Failed to pause/resume song, {pause_state}'}
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         pause_state = None
         if len(parameters) > 0:
             pause_state = int(parameters[0])

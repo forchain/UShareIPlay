@@ -21,7 +21,7 @@ class EndCommand(BaseCommand):
         self.init_time = datetime.now()
         self.handler.logger.info(f"EndCommand initialized at {self.init_time}")
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process end command to close party"""
         try:
             # Check if user has relation tag (followed by host)

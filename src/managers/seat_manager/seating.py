@@ -18,21 +18,21 @@ class SeatingManager(SeatManagerBase):
             self.seat_ui.expand_seats()
             time.sleep(0.5)  # Wait for expansion animation
 
-            # Find all seat containers
-            seat_containers = self.handler.find_elements_plus('seat_container')
-            if not seat_containers:
-                self.handler.logger.error("Failed to find seat containers")
-                return {'error': 'Failed to find seat containers'}
+            # Find all seat desks
+            seat_desks = self.handler.find_elements_plus('seat_desk')
+            if not seat_desks:
+                self.handler.logger.error("Failed to find seat desks")
+                return {'error': 'Failed to find seat desks'}
 
             # Try to find a seat next to someone
-            for container in seat_containers:
-                result = self._try_find_seat_next_to_someone(container)
+            for desk in seat_desks:
+                result = self._try_find_seat_next_to_someone(desk)
                 if result:
                     return result
 
             # If no seats next to someone found, try any available seat
-            for container in seat_containers:
-                result = self._try_find_any_available_seat(container)
+            for desk in seat_desks:
+                result = self._try_find_any_available_seat(desk)
                 if result:
                     return result
 
@@ -42,20 +42,20 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
             
-    def _try_find_seat_next_to_someone(self, container) -> dict:
+    def _try_find_seat_next_to_someone(self, desk) -> dict:
         """Try to find a seat next to someone in the container"""
         if self.handler is None:
             return None
             
         # Check both seats in this container
-        left_state = self.handler.find_child_element_plus(container, 'left_state')
-        right_state = self.handler.find_child_element_plus(container, 'right_state')
-        left_label = self.handler.find_child_element_plus(container, 'left_label')
-        right_label = self.handler.find_child_element_plus(container, 'right_label')
+        left_state = self.handler.find_child_element_plus(desk, 'left_state')
+        right_state = self.handler.find_child_element_plus(desk, 'right_state')
+        left_label = self.handler.find_child_element_plus(desk, 'left_label')
+        right_label = self.handler.find_child_element_plus(desk, 'right_label')
         
         # If left seat is empty and right seat has someone
         if not left_state and right_state and (not right_label or right_label.text != '群主'):
-            left_seat = self.handler.find_child_element_plus(container, 'left_seat')
+            left_seat = self.handler.find_child_element_plus(desk, 'left_seat')
             if left_seat:
                 left_seat.click()
                 self.handler.logger.info("Clicked left seat next to occupied right seat")
@@ -63,7 +63,7 @@ class SeatingManager(SeatManagerBase):
 
         # If right seat is empty and left seat has someone
         if not right_state and left_state and (not left_label or left_label.text != '群主'):
-            right_seat = self.handler.find_child_element_plus(container, 'right_seat')
+            right_seat = self.handler.find_child_element_plus(desk, 'right_seat')
             if right_seat:
                 right_seat.click()
                 self.handler.logger.info("Clicked right seat next to occupied left seat")

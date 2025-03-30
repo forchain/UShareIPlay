@@ -125,7 +125,8 @@ class AppController:
             str: Response message
         """
         try:
-            result = await command.process(message_info, command_info['parameters'])
+            parameters= command_info['parameters']
+            result = await command.process(message_info, parameters)
             
             if 'error' in result:
                 res = command_info['error_template'].format(

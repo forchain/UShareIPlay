@@ -14,7 +14,7 @@ class ModeCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         if len(parameters) == 0:
             return {
             'error': 'Missing mode parameter'

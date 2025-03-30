@@ -10,7 +10,7 @@ class BaseCommand(ABC):
         self.last_update_time = time.time()
 
     @abstractmethod
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process the command
         Args:
             message_info: MessageInfo object containing message details
@@ -34,7 +34,7 @@ class BaseCommand(ABC):
         # Override this method in commands that need updates
         pass
 
-    def user_enter(self, username: str):
+    async def user_enter(self, username: str):
         """Called when a user enters the party
         Args:
             username: str, name of the user who entered
@@ -43,17 +43,3 @@ class BaseCommand(ABC):
         """
         # Override this method in commands that need to handle user entry
         pass
-
-    @staticmethod
-    def is_user_enter_message(message: str) -> tuple[bool, str]:
-        """Check if message is a user enter notification
-        Args:
-            message: str, message to check
-        Returns:
-            tuple[bool, str]: (is_enter_message, username)
-        """
-        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
-        match = re.match(pattern, message)
-        if match:
-            return True, match.group(1)
-        return False, "" 

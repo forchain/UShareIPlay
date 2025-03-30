@@ -57,7 +57,7 @@ class TopicCommand(BaseCommand):
             'topic': f'{new_topic}. Topic will update in {int(remaining_minutes)} minutes'
         }
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process topic command"""
         try:
             # Get new topic from parameters

@@ -18,7 +18,7 @@ class HelloCommand(BaseCommand):
         # username -> List[(sender, message, song)]
         self.pending_hellos = self.controller.db_helper.get_pending_hellos()
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process hello command
         Args:
             message_info: MessageInfo object
@@ -55,7 +55,7 @@ class HelloCommand(BaseCommand):
             self.handler.log_error(f"Error processing hello command: {traceback.format_exc()}")
             return {'error': 'Failed to process hello command'}
 
-    def user_enter(self, username: str):
+    async def user_enter(self, username: str):
         """Called when a user enters the party"""
         try:
             # Check if we have pending hellos for this user

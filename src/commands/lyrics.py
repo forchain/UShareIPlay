@@ -191,7 +191,7 @@ class LyricsCommand(BaseCommand):
 
         return groups
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         # Get lyrics of current song
         # Parse parameters
         force_groups = 0

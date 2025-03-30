@@ -14,9 +14,9 @@ DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID
 # Setup chat logger
 chat_logger = logging.getLogger('chat')
 chat_logger.setLevel(logging.INFO)
-chat_handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
-chat_handler.setLevel(logging.INFO)
-chat_logger.addHandler(chat_handler)
+handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
+handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
+chat_logger.addHandler(handler)
 
 
 @dataclass
@@ -34,6 +34,7 @@ class MessageManager:
         self.handler = handler
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=100)  # Keep track of recent messages to avoid duplicates
+        self.last_enter_message = ''
         
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
@@ -161,6 +162,24 @@ class MessageManager:
             new_message_tip.click()
             self.handler.logger.info(f'Clicked new message tip')
 
+
+    def is_user_enter_message(self, message: str) -> tuple[bool, str]:
+        """Check if message is a user enter notification
+        Args:
+            message: str, message to check
+        Returns:
+            tuple[bool, str]: (is_enter_message, username)
+        """
+        if message == self.last_enter_message:
+            return False, ""
+        self.last_enter_message = message
+
+        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
+        match = re.match(pattern, message)
+        if match:
+            return True, match.group(1)
+        return False, "" 
+
     async def process_container_message(self, container):
         """Process a single message container and return MessageInfo"""
         try:
@@ -183,7 +202,7 @@ class MessageManager:
                 chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
 
-            is_enter, username = BaseCommand.is_user_enter_message(chat_text)
+            is_enter, username = self.is_user_enter_message(chat_text)
             if is_enter:
                 self.handler.logger.info(f"User entered: {username}")
                 # Notify all commands

@@ -62,7 +62,7 @@ class TitleCommand(BaseCommand):
             'title': f'{new_title}. Title will update in {int(remaining_minutes)} minutes'
         }
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process title command"""
         try:
             # Get new title from parameters

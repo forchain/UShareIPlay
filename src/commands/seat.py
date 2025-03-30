@@ -2,11 +2,14 @@ import traceback
 from ..core.base_command import BaseCommand
 from ..managers.seat_manager import seat_manager
 
+
 def create_command(controller):
     seat_command = SeatCommand(controller)
     return seat_command
 
+
 command = None
+
 
 class SeatCommand(BaseCommand):
     def __init__(self, controller):
@@ -25,7 +28,7 @@ class SeatCommand(BaseCommand):
                 return {'error': 'Invalid parameters'}
 
             command = parameters[0]
-            
+
             if command == '0':
                 # Remove user's reservations
                 return await seat_manager.reservation.remove_user_reservation(message_info.nickname)
@@ -44,10 +47,6 @@ class SeatCommand(BaseCommand):
         except Exception as e:
             self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")
             return {'error': f'Failed to process seat command: {str(e)}'}
-
-    def check_and_remove_users(self):
-        """Check and remove users from reserved seats"""
-        seat_manager.check.check_and_remove_users()
 
     async def user_enter(self, username: str):
         """Called when a user enters the party"""

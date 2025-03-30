@@ -20,7 +20,7 @@ class SeatUIManager(SeatManagerBase):
         # 获取元素
         expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
         if not expand_seats:
-            self.handler.logger.warning("未找到座位按钮，无法确定当前状态")
+            # self.handler.logger.warning("未找到座位按钮，无法确定当前状态")
             return self.is_expanded
             
         # 获取文本并根据文本判断状态
