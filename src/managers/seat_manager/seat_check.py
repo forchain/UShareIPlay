@@ -124,10 +124,13 @@ class SeatCheckManager(SeatManagerBase):
             seat_label = self.handler.find_child_element_plus(seat_element, 'right_label')
 
         if not seat_element:
-            self.handler.log_error(f"Cannot find seat element for seat {seat_number}")
+            self.handler.logger.error(f"Cannot find seat element for seat {seat_number}")
             return
 
-        self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text}")
+        if not seat_label:
+            self.handler.logger.info(f"No occupant for seat {seat_number}")
+            return
+        self.handler.logger.info(f"Found seat {seat_number} with label {seat_label}")
 
         # Click the specific seat element
         seat_element.click()
@@ -136,7 +139,7 @@ class SeatCheckManager(SeatManagerBase):
         # Wait for seat off button
         seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
         if not seat_off:
-            self.handler.log_error(f"Failed to find seat off button for seat {seat_number}")
+            self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             return
         seat_off.click()
         self.handler.logger.info(f"Successfully removed occupant from seat {seat_number}")
