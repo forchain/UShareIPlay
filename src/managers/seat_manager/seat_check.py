@@ -130,7 +130,7 @@ class SeatCheckManager(SeatManagerBase):
         if not seat_label:
             self.handler.logger.info(f"No occupant for seat {seat_number}")
             return
-        self.handler.logger.info(f"Found seat {seat_number} with label {seat_label}")
+        self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text}")
 
         # Click the specific seat element
         seat_element.click()

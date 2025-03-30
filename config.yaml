@@ -98,6 +98,7 @@ soul:
     focus_count: 'cn.soulapp.android:id/tvStudyRoomDesc' # 1人专注中
     close_app: 'android:id/aerr_close' # Close app
     seat_off: 'cn.soulapp.android:id/tvSeatDownUp' # 抱下
+    souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
 
 qq_music:
   package_name: "com.tencent.qqmusic"

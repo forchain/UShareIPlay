@@ -7,6 +7,8 @@ from collections import deque
 import logging
 
 from ..core.base_command import BaseCommand
+from .greeting_manager import GreetingManager
+
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
@@ -35,7 +37,7 @@ class MessageManager:
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=100)  # Keep track of recent messages to avoid duplicates
         self.last_enter_message = ''
-        
+        self.greeting_manager = GreetingManager(handler)
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
         from ..managers.seat_manager import seat_manager
@@ -92,7 +94,8 @@ class MessageManager:
 
         for container in containers:
             message_info = await self.process_container_message(container)
-            greeting_info = self.process_container_greeting(container)
+            greeting_info = await self.greeting_manager.process_container_greeting(container)
+
             if message_info:
                 current_messages[container.id] = message_info
             if greeting_info:
@@ -251,79 +254,4 @@ class MessageManager:
             return None
         except Exception as e:
             self.handler.logger.error(f"Error processing message container: {traceback.format_exc()}")
-            return None
-
-    def process_container_greeting(self, container):
-        """Process greeting for follower entering room"""
-        try:
-            # Check if container has follower message content
-            follower_message = self.handler.find_child_element_plus(
-                container,
-                'follower_message'
-            )
-            if not follower_message:
-                return None
-
-            message_text = follower_message.text
-            # Click the message at 25% from top
-            if not self.handler.click_element_at(follower_message, x_ratio=0.45, y_ratio=0.25):
-                return None
-            self.handler.logger.info("Clicked follower message")
-
-            # Wait for follow status and check
-            follow_status = self.handler.wait_for_element_clickable_plus('follow_status')
-            if not follow_status or follow_status.text == '关注':
-                self.handler.logger.info("User not followed or left, canceling")
-                self.handler.press_back()
-                return None
-
-            # Click send gift button
-            send_gift = self.handler.wait_for_element_clickable_plus('send_gift')
-            if not send_gift:
-                self.handler.logger.error("Failed to find send gift button")
-                return None
-            send_gift.click()
-            self.handler.logger.info("Clicked send gift")
-
-            # Wait for give gift button to ensure gift panel loaded
-            give_gift = self.handler.wait_for_element_clickable_plus('give_gift')
-            if not give_gift:
-                self.handler.logger.error("Failed to find give gift button")
-                self.handler.press_back()
-                return None
-
-            # Try to find and send soul power gift
-            soul_power = self.handler.try_find_element_plus('soul_power', log=False)
-            if soul_power and (not soul_power.text == '不增加灵魂力'):
-                # Click give gift button to send
-                give_gift.click()
-                self.handler.logger.info("Sent soul power gift")
-            else:
-                # If no gift available, try to greet
-                self.handler.press_back()  # Close gift panel
-                greet_follower = self.handler.wait_for_element_clickable_plus('greet_follower')
-                if not greet_follower:
-                    self.handler.logger.error("Failed to find greet button")
-                    return None
-
-                greet_follower.click()
-                self.handler.logger.info("Clicked greet button")
-
-                # Wait and click send message button
-                send_button = self.handler.wait_for_element_clickable_plus('button_send')
-                if not send_button:
-                    self.handler.logger.error("Failed to find send message button")
-                    return None
-                send_button.click()
-                self.handler.logger.info("Sent greeting message")
-
-            return MessageInfo(
-                content=message_text,
-                nickname="System",
-                avatar_element=None,
-                relation_tag=False
-            )
-
-        except Exception as e:
-            self.handler.log_error(f"Error processing greeting: {traceback.format_exc()}")
             return None
