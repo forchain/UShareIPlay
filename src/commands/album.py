@@ -18,7 +18,7 @@ class AlbumCommand(BaseCommand):
         super().__init__(controller)
         self.handler = self.music_handler
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
         self.controller.player_name = message_info.nickname

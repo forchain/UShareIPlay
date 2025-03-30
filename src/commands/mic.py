@@ -51,7 +51,7 @@ class MicCommand(BaseCommand):
             self.handler.log_error(f"Error in mic command: {str(e)}")
             return {'error': str(e)}
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process mic command
         Args:
             message_info: MessageInfo object

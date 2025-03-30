@@ -14,7 +14,7 @@ class KtvCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         # Toggle KTV mode
         enable = True
         if len(parameters) > 0:

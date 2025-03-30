@@ -19,7 +19,7 @@ class PlayCommand(BaseCommand):
 
         self.handler = controller.music_handler
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
 
@@ -90,7 +90,7 @@ class PlayCommand(BaseCommand):
         self.handler.logger.info("Clicked play all button")
 
         self.handler.list_mode = 'favorites'
-        self.controller.title_command.change_title("My Favorites")
+        self.controller.title_command.change_title("O Station")
         self.controller.topic_command.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
@@ -122,7 +122,7 @@ class PlayCommand(BaseCommand):
         singer = self.handler.wait_for_element_clickable_plus('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
-        self.controller.title_command.change_title("Outlier电台")
+        self.controller.title_command.change_title("O Radio")
         self.controller.topic_command.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

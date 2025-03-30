@@ -12,6 +12,7 @@ import sys
 import threading
 import queue
 from ..utils.db_helper import DBHelper
+from ..managers.seat_manager import init_seat_manager
 
 
 class AppController:
@@ -42,6 +43,9 @@ class AppController:
 
         # Initialize database helper
         self.db_helper = DBHelper()
+
+        # Initialize managers
+        self.seat_manager = init_seat_manager(self.soul_handler)
 
     def _init_driver(self):
         options = AppiumOptions()
@@ -112,7 +116,7 @@ class AppController:
         module = self._load_command_module(command)
         return module.command if module else None
 
-    def _process_command(self, command, message_info, command_info):
+    async def _process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
             message_info: MessageInfo object
@@ -121,10 +125,11 @@ class AppController:
             str: Response message
         """
         try:
-            # self.soul_handler.send_message(f"Processing command :{command_info['prefix']}\n@{message_info.nickname}")
-            result = command.process(message_info, command_info['parameters'])
+            parameters= command_info['parameters']
+            result = await command.process(message_info, parameters)
+            
             if 'error' in result:
-                res =  command_info['error_template'].format(
+                res = command_info['error_template'].format(
                     error=result['error'],
                     user=message_info.nickname,
                 )
@@ -187,7 +192,7 @@ class AppController:
         except Exception as e:
             self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
-    def start_monitoring(self):
+    async def start_monitoring(self):
         enabled = True
         response = None
         lyrics = None
@@ -235,7 +240,7 @@ class AppController:
                     self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
-                messages = self.soul_handler.get_latest_message(enabled)
+                messages = await self.soul_handler.get_latest_message(enabled)
                 # get messages in advance to avoid being floored by responses
                 if lyrics:
                     self.soul_handler.send_message(lyrics)
@@ -293,7 +298,7 @@ class AppController:
                                     case _:
                                         command = self._check_command(cmd)
                                         if command:
-                                            response = self._process_command(command, message_info, command_info)
+                                            response = await self._process_command(command, message_info, command_info)
                                         else:
                                             self.soul_handler.log_error(f"Unknown command: {cmd}")
                 # Check KTV lyrics if mode is enabled

@@ -14,7 +14,7 @@ class PackCommand(BaseCommand):
         self.handler = self.soul_handler
         self.auto_mode = False
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process pack command to open luck pack"""
         try:
             # Check if user has relation tag (is a close friend)

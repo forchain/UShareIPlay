@@ -49,7 +49,7 @@ class NoticeCommand(BaseCommand):
             'notice': f'{notice}. Notice will update in {int(remaining_minutes)} minutes'
         }
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         """Process notice command"""
         try:
             # Get new notice from parameters

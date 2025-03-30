@@ -76,13 +76,13 @@ soul:
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
     go_back: 'cn.soulapp.android:id/iv_back'
     user_count: 'cn.soulapp.android:id/tvUserCount'
-    seat_container: 'cn.soulapp.android:id/userRoot'
-    left_seat: 'cn.soulapp.android:id/leftUserView'
-    left_state: 'cn.soulapp.android:id/leftClState'
-    right_seat: 'cn.soulapp.android:id/rightUserView'
-    right_state: 'cn.soulapp.android:id/rightClState'
-    left_label: 'cn.soulapp.android:id/leftTvLabelH'
-    right_label: 'cn.soulapp.android:id/rightTvLabelH'
+    seat_desk: 'cn.soulapp.android:id/userRoot' #  > left_seat, right_seat
+    left_seat: 'cn.soulapp.android:id/leftUserView' # > left_state
+    left_state: 'cn.soulapp.android:id/leftClState' # > left_label
+    right_seat: 'cn.soulapp.android:id/rightUserView' # > right_state
+    right_state: 'cn.soulapp.android:id/rightClState' # > right_label
+    left_label: 'cn.soulapp.android:id/leftTvLabelH' #  群主, 管理, 1,3,5,7,9,11
+    right_label: 'cn.soulapp.android:id/rightTvLabelH' # 群主, 管理, 2,4,6,8,10,12
     luck_pack: 'cn.soulapp.android:id/tvLbLabelPack' # 福袋 / 2个奖励
     luck_item: 'cn.soulapp.android:id/name' # 初级福袋/中级福袋/高级福袋
     use_pack: 'cn.soulapp.android:id/tvUse' # 使用
@@ -97,6 +97,8 @@ soul:
     follow_status: 'cn.soulapp.android:id/tv_follow' # 已关注/关注
     focus_count: 'cn.soulapp.android:id/tvStudyRoomDesc' # 1人专注中
     close_app: 'android:id/aerr_close' # Close app
+    seat_off: 'cn.soulapp.android:id/tvSeatDownUp' # 抱下
+    souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
 
 qq_music:
   package_name: "com.tencent.qqmusic"

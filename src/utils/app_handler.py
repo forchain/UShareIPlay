@@ -263,14 +263,52 @@ class AppHandler:
     def try_find_element_plus(self, element_key: str, log=True, clickable=False) -> WebElement:
         """Enhanced try_find_element using just element key"""
         try:
+            if log:
+                self.logger.info(f"Looking for element '{element_key}'")
+                
+            if element_key not in self.config['elements']:
+                if log:
+                    self.logger.error(f"Element key '{element_key}' not defined in configuration")
+                return None
+                
             locator_type, value = self._get_locator(element_key)
-            element = self.driver.find_element(locator_type, value)
-            if clickable:
-                element = self.wait_for_element_clickable_plus(element_key)
-            return element
+            if log:
+                self.logger.info(f"Using locator type {locator_type} with value '{value}'")
+                
+            try:
+                element = self.driver.find_element(locator_type, value)
+                if element:
+                    if log:
+                        try:
+                            element_text = element.text
+                            element_attrs = {
+                                "displayed": element.is_displayed(),
+                                "enabled": element.is_enabled(),
+                                "text": element_text
+                            }
+                            # Try to get additional attributes
+                            for attr in ['content-desc', 'resource-id', 'className']:
+                                element_attrs[attr] = element.get_attribute(attr)
+                                
+                            self.logger.info(f"Found element '{element_key}': {element_attrs}")
+                        except Exception as attr_e:
+                            self.logger.warning(f"Found element '{element_key}' but couldn't get attributes: {str(attr_e)}")
+                            
+                    if clickable:
+                        if log:
+                            self.logger.info(f"Waiting for element '{element_key}' to be clickable")
+                        element = self.wait_for_element_clickable_plus(element_key)
+                        if element and log:
+                            self.logger.info(f"Element '{element_key}' is now clickable")
+                return element
+            except Exception as find_e:
+                if log:
+                    self.logger.warning(f"Failed to find element '{element_key}' with value '{value}'")
+                return None
+                
         except Exception as e:
             if log:
-                self.logger.warning(f"Failed to find element '{element_key}' with value '{value}'")
+                self.logger.warning(f"Error in try_find_element_plus for '{element_key}': {str(e)}")
             return None
 
     def try_find_element(self, locator_type, locator_value, log=True, clickable=False):

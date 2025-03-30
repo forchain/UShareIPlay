@@ -14,7 +14,7 @@ class InfoCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
 
-    def process(self, message_info, parameters):
+    async def process(self, message_info, parameters):
         result = self.music_handler.get_playback_info()
         result['player'] = self.controller.player_name
         return result
