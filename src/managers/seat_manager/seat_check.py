@@ -15,16 +15,23 @@ class SeatCheckManager(SeatManagerBase):
     async def check_seats_on_entry(self, username: str = None):
         """Check seats when user enters the party"""
         if self.handler is None or not username:
+            self.handler.logger.warning("check_seats_on_entry called with invalid parameters")
             return
 
         try:
+            self.handler.logger.info(f"Starting seat check for user {username}")
+            
             # Get user's reservation
             user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
             if not user_reservation:
+                self.handler.logger.info(f"No reservation found for user {username}")
                 return
+
+            self.handler.logger.info(f"Found reservation for user {username} on seat {user_reservation.seat_number}")
 
             # Check if reservation is still valid
             now = datetime.now()
+            self.handler.logger.info(f"Current time: {now}")
 
             # Ensure both datetimes are timezone-naive
             start_time = user_reservation.start_time
@@ -32,35 +39,40 @@ class SeatCheckManager(SeatManagerBase):
                 # Convert to timezone-naive if needed
                 from datetime import timezone
                 start_time = start_time.replace(tzinfo=None)
+                self.handler.logger.info(f"Converted start_time to timezone-naive: {start_time}")
 
             end_time = start_time + timedelta(hours=user_reservation.duration_hours)
+            self.handler.logger.info(f"Reservation period: {start_time} to {end_time}")
 
             if now > end_time:
                 # Reservation expired, remove it
+                self.handler.logger.info(f"Reservation for user {username} has expired, removing it")
                 await SeatReservationDAO.remove_reservation(user_reservation)
-                self.handler.logger.info(f"Removed expired reservation for user {username}")
+                self.handler.logger.info(f"Successfully removed expired reservation for user {username}")
                 return
 
             # Reservation is valid, auto-renew it
-            duration_hours = min(max(user_reservation.user.level, 1),
-                                 24)  # Duration is user's level, between 1 and 24 hours
+            duration_hours = min(max(user_reservation.user.level, 1), 24)  # Duration is user's level, between 1 and 24 hours
+            self.handler.logger.info(f"Auto-renewing reservation for user {username} (level {user_reservation.user.level}) with duration {duration_hours} hours")
+            
             await SeatReservationDAO.update_reservation_start_time(user_reservation.id, now)
-            user_reservation.duration_hours = duration_hours
-            await user_reservation.save()
-            self.handler.logger.info(
-                f"Auto-renewed reservation for user {username} with duration {duration_hours} hours")
+            self.handler.logger.info(f"Successfully auto-renewed reservation for user {username}")
 
             # Ensure seats are expanded first
+            self.handler.logger.info("Expanding seats for check")
             self.seat_ui.expand_seats()
             time.sleep(0.5)  # Wait for expansion animation
+            self.handler.logger.info("Seats expanded successfully")
 
             # Get all seat desks
             seat_desks = self.handler.find_elements_plus('seat_desk')
             if not seat_desks:
                 self.handler.log_error("Cannot find seat desks")
                 return
+            self.handler.logger.info(f"Found {len(seat_desks)} seat desks")
 
             # Check and handle the user's specific seat
+            self.handler.logger.info(f"Checking specific seat {user_reservation.seat_number} for user {username}")
             await self._check_user_specific_seat(username, seat_desks)
 
         except Exception as e:
@@ -151,5 +163,18 @@ class SeatCheckManager(SeatManagerBase):
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             return
+
+        souler_name = self.handler.try_find_element_plus('souler_name')
+        if not souler_name:
+            souler_name = self.handler.try_find_element_plus('user_name')
+        if not souler_name:
+            self.handler.logger.error(f"No souler name found for seat {seat_number}")
+            return
+
+        souler_name_text = souler_name.text 
+        if souler_name_text == username:
+            self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
+            return
+
         seat_off.click()
         self.handler.logger.info(f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")
