@@ -1,0 +1,30 @@
+:playlist 官方 r&b
+:playlist 官方 必胜
+:playlist 官方 华语怀旧金曲
+:playlist 官方 时光乐匣
+:playlist 官方 粤语经典
+:playlist 官方 欧美精选
+:playlist 官方 KTV热歌
+:playlist 官方 情歌
+:playlist 官方 欧美复古
+:playlist 官方 少女心
+:playlist 官方 玫瑰暮色
+:playlist 官方 Indie Music
+:playlist 官方 Alternative
+:playlist CityPop 日系
+
+:playlist 官方 纯音乐
+:playlist 官方 Lofi Girl
+:playlist 官方 jazz
+:playlist 官方 微醺咖啡厅
+:playlist 官方 微光森林
+:playlist 官方 深度专注
+:playlist 官方 Loft&Chill
+:playlist 官方 慵懒时间
+:playlist 官方 下厨音乐
+:playlist 官方 沐浴美学
+
+:playlist 百万收藏
+:playlist 红心雷达
+:playlist 热门搜索
+:playlist 下一首心动
