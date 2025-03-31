@@ -75,7 +75,7 @@ soul:
     title_edit_input: 'cn.soulapp.android:id/et_content'
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
     go_back: 'cn.soulapp.android:id/iv_back'
-    user_count: 'cn.soulapp.android:id/tvUserCount'
+    user_count: 'cn.soulapp.android:id/tvUserCount' # 6人
     seat_desk: 'cn.soulapp.android:id/userRoot' #  > left_seat, right_seat
     left_seat: 'cn.soulapp.android:id/leftUserView' # > left_state
     left_state: 'cn.soulapp.android:id/leftClState' # > left_label
