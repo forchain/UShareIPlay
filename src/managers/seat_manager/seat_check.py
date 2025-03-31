@@ -56,8 +56,6 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.logger.info(f"Auto-renewing reservation for user {username} (level {user_reservation.user.level}) with duration {duration_hours} hours")
             
             await SeatReservationDAO.update_reservation_start_time(user_reservation.id, now)
-            user_reservation.duration_hours = duration_hours
-            await user_reservation.save()
             self.handler.logger.info(f"Successfully auto-renewed reservation for user {username}")
 
             # Ensure seats are expanded first
