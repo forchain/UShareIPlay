@@ -104,9 +104,9 @@ class SeatCheckManager(SeatManagerBase):
                 )
             time.sleep(0.5)
 
-        self._handle_occupied_seat(seat_desks, seat_number)
+        self._handle_occupied_seat(username, seat_desks, seat_number)
 
-    def _handle_occupied_seat(self, seat_desks, seat_number: int):
+    def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
         if self.handler is None:
             return
@@ -136,10 +136,21 @@ class SeatCheckManager(SeatManagerBase):
         seat_element.click()
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
+        souler_name = self.handler.wait_for_element_plus('souler_name')
+        if not souler_name:
+            self.handler.logger.error(f"No souler name found for seat {seat_number}")
+            return
+
+        souler_name_text = souler_name.text 
+        if souler_name_text == username:
+            self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
+            return
+
+
         # Wait for seat off button
         seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             return
         seat_off.click()
-        self.handler.logger.info(f"Successfully removed occupant from seat {seat_number}")
+        self.handler.logger.info(f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")
