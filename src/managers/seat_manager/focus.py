@@ -1,10 +1,12 @@
 import re
 from .base import SeatManagerBase
+from .seating import SeatingManager
 
 class FocusManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
         self.previous_focus_count = None
+        self.seating = SeatingManager(handler)
 
     def update(self):
         """Update focus count"""
@@ -31,4 +33,5 @@ class FocusManager(SeatManagerBase):
             return
 
         self.previous_focus_count = current_focus_count
+        self.seating.find_owner_seat()
         self.handler.logger.info(f"Focus count changed to: {current_focus_count}") 

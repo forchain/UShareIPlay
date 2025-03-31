@@ -36,7 +36,6 @@ class MessageManager:
         self.handler = handler
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=100)  # Keep track of recent messages to avoid duplicates
-        self.last_enter_message = ''
         self.greeting_manager = GreetingManager(handler)
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
@@ -173,12 +172,6 @@ class MessageManager:
         Returns:
             tuple[bool, str]: (is_enter_message, username)
         """
-        last_message = self.last_enter_message
-        self.last_enter_message = message
-
-        if message == last_message:
-            return False, ""
-
         pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
         match = re.match(pattern, message)
         if match:
@@ -204,20 +197,20 @@ class MessageManager:
 
             # Check for duplicate message
             if not chat_text in self.recent_messages:
+                is_enter, username = self.is_user_enter_message(chat_text)
+                if is_enter:
+                    self.handler.logger.info(f"User entered: {username}")
+                    # Notify all commands
+                    for module in self.handler.controller.command_modules.values():
+                        try:
+                            if hasattr(module.command, 'user_enter'):
+                                await module.command.user_enter(username)
+                        except Exception as e:
+                            self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
+                        continue
                 chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
 
-            is_enter, username = self.is_user_enter_message(chat_text)
-            if is_enter:
-                self.handler.logger.info(f"User entered: {username}")
-                # Notify all commands
-                for module in self.handler.controller.command_modules.values():
-                    try:
-                        if hasattr(module.command, 'user_enter'):
-                            await module.command.user_enter(username)
-                    except Exception as e:
-                        self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
-                    continue
 
             # Parse message content using pattern
             pattern = r'souler\[.+\]说：:(.+)'
