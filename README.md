@@ -1,4 +1,4 @@
-# SoulMusicBox-Android
+# U Share I Play
 
 A mobile application for Android that monitors Soul App group chat messages and automatically responds to music playback requests.
 
@@ -31,8 +31,8 @@ brew install python
 python3 --version
 
 # Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
 ### 2. Install JDK
