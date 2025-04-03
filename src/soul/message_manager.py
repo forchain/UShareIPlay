@@ -36,7 +36,6 @@ class MessageManager:
         self.handler = handler
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
-
         self.greeting_manager = GreetingManager(handler)
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
