@@ -1,8 +1,7 @@
 import time
 import traceback
 from datetime import datetime, timedelta
-from ...dal import UserDAO, SeatReservationDAO
-from ...models import User
+from ...dal import SeatReservationDAO
 from .base import SeatManagerBase
 from .seat_ui import SeatUIManager
 
@@ -20,7 +19,7 @@ class SeatCheckManager(SeatManagerBase):
 
         try:
             self.handler.logger.info(f"Starting seat check for user {username}")
-            
+
             # Get user's reservation
             user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
             if not user_reservation:
@@ -52,42 +51,40 @@ class SeatCheckManager(SeatManagerBase):
                 return
 
             # Reservation is valid, auto-renew it
-            duration_hours = min(max(user_reservation.user.level, 1), 24)  # Duration is user's level, between 1 and 24 hours
-            self.handler.logger.info(f"Auto-renewing reservation for user {username} (level {user_reservation.user.level}) with duration {duration_hours} hours")
-            
+            duration_hours = min(max(user_reservation.user.level, 1),
+                                 24)  # Duration is user's level, between 1 and 24 hours
+            self.handler.logger.info(
+                f"Auto-renewing reservation for user {username} (level {user_reservation.user.level}) with duration {duration_hours} hours")
+
             await SeatReservationDAO.update_reservation_start_time(user_reservation.id, now)
             self.handler.logger.info(f"Successfully auto-renewed reservation for user {username}")
 
-            # Ensure seats are expanded first
-            self.handler.logger.info("Expanding seats for check")
-            self.seat_ui.expand_seats()
-            time.sleep(0.5)  # Wait for expansion animation
-            self.handler.logger.info("Seats expanded successfully")
-
-            # Get all seat desks
-            seat_desks = self.handler.find_elements_plus('seat_desk')
-            if not seat_desks:
-                self.handler.log_error("Cannot find seat desks")
+            user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
+            if not user_reservation:
                 return
-            self.handler.logger.info(f"Found {len(seat_desks)} seat desks")
 
-            # Check and handle the user's specific seat
-            self.handler.logger.info(f"Checking specific seat {user_reservation.seat_number} for user {username}")
-            await self._check_user_specific_seat(username, seat_desks)
+            await self.check_user_specific_seat(username, user_reservation.seat_number)
 
         except Exception as e:
             self.handler.log_error(f"Error checking seats: {traceback.format_exc()}")
 
-    async def _check_user_specific_seat(self, username: str, seat_desks):
-        """Check and handle a specific user's seat"""
-        if self.handler is None:
-            return
+    async def check_user_specific_seat(self, username: str, seat_number: int):
+        # ensure seats are expanded first
+        self.handler.logger.info("expanding seats for check")
+        self.seat_ui.expand_seats()
+        time.sleep(0.5)  # wait for expansion animation
+        self.handler.logger.info("seats expanded successfully")
 
-        user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
-        if not user_reservation:
+        # get all seat desks
+        seat_desks = self.handler.find_elements_plus('seat_desk')
+        if not seat_desks:
+            self.handler.log_error("cannot find seat desks")
             return
+        self.handler.logger.info(f"found {len(seat_desks)} seat desks")
 
-        seat_number = user_reservation.seat_number
+        # check and handle the user's specific seat
+        self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
+
         row_index = (seat_number - 1) // 4  # 0-based row index
 
         # Handle row visibility based on index
@@ -147,17 +144,6 @@ class SeatCheckManager(SeatManagerBase):
         seat_element.click()
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
-        souler_name = self.handler.wait_for_element_plus('souler_name')
-        if not souler_name:
-            self.handler.logger.error(f"No souler name found for seat {seat_number}")
-            return
-
-        souler_name_text = souler_name.text 
-        if souler_name_text == username:
-            self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
-            return
-
-
         # Wait for seat off button
         seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
         if not seat_off:
@@ -171,10 +157,11 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.logger.error(f"No souler name found for seat {seat_number}")
             return
 
-        souler_name_text = souler_name.text 
+        souler_name_text = souler_name.text
         if souler_name_text == username:
             self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
             return
 
         seat_off.click()
-        self.handler.logger.info(f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")
+        self.handler.logger.info(
+            f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")
