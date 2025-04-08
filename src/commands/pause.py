@@ -66,7 +66,7 @@ class PauseCommand(BaseCommand):
                 # If resuming, turn on mic after resuming playback
                 mic_result = self.controller.mic_command.toggle_mic(True)  # Turn mic on
                 if 'error' in mic_result:
-                    self.logger.warning(f"Failed to turn on mic: {mic_result['error']}")
+                    self.music_handler.logger.warning(f"Failed to turn on mic: {mic_result['error']}")
 
             return {
                 'song': current_info['song'],

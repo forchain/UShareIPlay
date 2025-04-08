@@ -1,6 +1,7 @@
 import traceback
 from dataclasses import dataclass
 from ..dal import UserDAO
+from ..managers.seat_manager import seat_manager
 
 @dataclass
 class MessageInfo:
@@ -51,6 +52,8 @@ class GreetingManager:
             # If user is followed, create user record
             self.handler.logger.info(f"User {nickname} is followed, creating user record")
             await UserDAO.get_or_create(nickname)
+
+            await seat_manager.check.check_seats_on_entry(nickname)
 
             # Try to send gift first
             if self.send_gift():
