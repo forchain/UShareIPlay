@@ -43,7 +43,7 @@ soul:
     content_container: "android:id/content"
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_back: "cn.soulapp.android:id/tv_look"
-    expand_seats: "cn.soulapp.android:id/tvHandleUserList"
+    expand_seats: "cn.soulapp.android:id/tvHandleUserList" # 收起座位/展开座位
     party_online: "cn.soulapp.android:id/tvOnline"
     planet_tab: "cn.soulapp.android:id/main_tab_planet"
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
@@ -100,6 +100,7 @@ soul:
     seat_off: 'cn.soulapp.android:id/tvSeatDownUp' # 抱下
     souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
     user_name: 'cn.soulapp.android:id/tvUserName' # Joyer
+    online_users: 'cn.soulapp.android:id/rvBannedUsers' # 在线用户
 
 qq_music:
   package_name: "com.tencent.qqmusic"
