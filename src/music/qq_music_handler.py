@@ -119,7 +119,7 @@ class QQMusicHandler(AppHandler):
         if singer_screen:
             self.logger.info(f"Hide singer screen 1")
             self.press_back()
-        
+
         playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
         if playlist_screen:
             self.logger.info(f"Hide playlist screen 1")
@@ -246,11 +246,11 @@ class QQMusicHandler(AppHandler):
                 if not music_tabs:
                     self.logger.error("Failed to find music tabs")
                     return False
-                
+
                 # Get size and location for scrolling
                 size = music_tabs.size
                 location = music_tabs.location
-                
+
                 # Scroll to left
                 self.driver.swipe(
                     location['x'] + 200,  # Start from left
@@ -259,17 +259,17 @@ class QQMusicHandler(AppHandler):
                     location['y'] + size['height'] // 2,
                     1000
                 )
-                
+
                 # Try to find song tab again
                 song_tab = self.try_find_element_plus('song_tab')
                 if not song_tab:
                     self.logger.error("Failed to find song tab after scrolling")
                     return False
-            
+
             song_tab.click()
             self.logger.info("Selected songs tab")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error selecting song tab: {traceback.format_exc()}")
             return False
@@ -736,7 +736,6 @@ class QQMusicHandler(AppHandler):
             return {'error': 'Cannot find lyrics tool, please try again'}
         return None
 
-
     def get_playlist_info(self):
         """Get current playlist information
         Returns:
@@ -760,22 +759,21 @@ class QQMusicHandler(AppHandler):
         playlist_entry.click()
 
         playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
-        # can_scroll = True
-        can_scroll = False
         if not playlist_playing:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
 
-        if can_scroll:
-            try:
-                playing_loc = playlist_playing.location
-                playing_size = playlist_playing.size
-            except StaleElementReferenceException as e:
-                self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
-                playing_loc = None
-                playing_size = None
-                can_scroll = False
+        can_scroll = True
+        try:
+            playing_loc = playlist_playing.location
+            playing_size = playlist_playing.size
+        except StaleElementReferenceException as e:
+            self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
+            playing_loc = None
+            playing_size = None
+            can_scroll = False
 
+        if can_scroll:
             # Find playlist title element
             playlist_header = self.try_find_element_plus('playlist_header')
             if not playlist_header:
@@ -783,10 +781,11 @@ class QQMusicHandler(AppHandler):
                 return {'error': 'Failed to find playlist header'}
 
             title_loc = playlist_header.location
+            title_size = playlist_header.size
             # Calculate swipe coordinates
             start_x = playing_loc['x'] + playing_size['width'] // 2
             start_y = playing_loc['y']
-            end_y = title_loc['y']
+            end_y = title_loc['y'] + 9 * title_size['height']
 
             # Swipe playing element up to title position
             self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
