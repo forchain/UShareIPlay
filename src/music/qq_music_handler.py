@@ -785,7 +785,7 @@ class QQMusicHandler(AppHandler):
             # Calculate swipe coordinates
             start_x = playing_loc['x'] + playing_size['width'] // 2
             start_y = playing_loc['y']
-            end_y = title_loc['y'] + 9 * title_size['height']
+            end_y = title_loc['y'] + 3 * title_size['height']
 
             # Swipe playing element up to title position
             self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
