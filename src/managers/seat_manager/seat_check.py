@@ -144,36 +144,18 @@ class SeatCheckManager(SeatManagerBase):
         seat_element.click()
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
-        souler_name = self.handler.wait_for_element_plus('souler_name')
-        if not souler_name:
-            souler_name = self.handler.wait_for_element_plus('user_name')
-            if not souler_name:
-                self.handler.logger.error(f"No souler name found for seat {seat_number}")
-                return
-
-        souler_name_text = souler_name.text 
-        if souler_name_text == username:
-            self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
-            return
-
-        user = await UserDAO.get_by_username(username)
-        souler = await UserDAO.get_by_username(souler_name_text)
-        if user and souler and user.level <= souler.level:
-            self.handler.logger.info(f"Souler {souler_name_text} does not have higher level ({souler.level}) than {username} ({user.level}), skipping")
-            return
-
         # Wait for seat off button
         seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             return
 
-        souler_name = self.handler.try_find_element_plus('souler_name')
+        souler_name = self.handler.wait_for_element_plus('souler_name')
         if not souler_name:
-            souler_name = self.handler.try_find_element_plus('user_name')
-        if not souler_name:
-            self.handler.logger.error(f"No souler name found for seat {seat_number}")
-            return
+            souler_name = self.handler.wait_for_element_plus('user_name')
+            if not souler_name:
+                self.handler.logger.error(f"No souler name found for seat {seat_number}")
+                return
 
         souler_name_text = souler_name.text
         if souler_name_text == username:
