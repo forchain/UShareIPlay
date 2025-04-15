@@ -28,17 +28,12 @@ class HelloCommand(BaseCommand):
         """
         try:
             # Parse parameters using shlex to handle quoted strings
-            try:
-                params = shlex.split(' '.join(parameters))
-            except ValueError as e:
-                return {'error': 'Invalid parameters format. Please check quotes.'}
-
-            if len(params) < 3:
+            if len(parameters) < 3:
                 return {'error': 'Missing parameters. Usage: :hello username "message" "song"'}
 
-            username = params[0]
-            message = params[1]
-            song = params[2]
+            username = parameters[0]
+            message = parameters[1]
+            song = parameters[2]
 
             # Add hello message to list
             self.pending_hellos[username].append((message_info.nickname, message, song))

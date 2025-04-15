@@ -1,3 +1,4 @@
+import shlex
 class CommandParser:
     def __init__(self, commands, lyrics_tags=None):
         self.commands = commands
@@ -32,5 +33,5 @@ class CommandParser:
         if not matching_cmd:
             return None
 
-        matching_cmd['parameters'] = parameters
+        matching_cmd['parameters'] = shlex.split(' '.join(parameters))
         return matching_cmd
