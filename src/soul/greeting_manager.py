@@ -99,7 +99,7 @@ class GreetingManager:
 
             # Try to find and send soul power gift
             soul_power = self.handler.try_find_element_plus('soul_power', log=False)
-            if soul_power and (not soul_power.text == '不增加灵魂力'):
+            if soul_power and (not soul_power.text == '不增加灵魂力') and (not soul_power.text == '+12灵魂力'):
                 # Click give gift button to send
                 give_gift.click()
                 self.handler.logger.info("Sent soul power gift")
