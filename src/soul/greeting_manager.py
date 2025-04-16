@@ -2,6 +2,8 @@ import traceback
 from dataclasses import dataclass
 from ..dal import UserDAO
 from ..managers.seat_manager import seat_manager
+from ..core.singleton import Singleton
+from ..managers.sleep_manager import SleepManager
 
 @dataclass
 class MessageInfo:
@@ -11,14 +13,19 @@ class MessageInfo:
     avatar_element: object  # WebElement for avatar, always exists
     relation_tag: bool = False  # True if user has relation tag
 
-class GreetingManager:
-    def __init__(self, handler):
-        """Initialize GreetingManager with handler"""
+class GreetingManager(Singleton):
+    def _init(self, handler=None):
         self.handler = handler
+        self.sleep_manager = SleepManager(handler)
 
     async def process_container_greeting(self, container):
         """Process greeting for follower entering room"""
         try:
+            # Check if sleep mode is enabled
+            if self.sleep_manager.is_sleep_mode_enabled():
+                self.handler.logger.info("Sleep mode is enabled, skipping greeting")
+                return None
+
             # Check if container has follower message content
             follower_message = self.handler.find_child_element_plus(
                 container,
@@ -136,3 +143,17 @@ class GreetingManager:
         except Exception as e:
             self.handler.log_error(f"Error sending greeting: {traceback.format_exc()}")
             return False 
+
+    async def handle_user_enter(self, username: str):
+        """Handle user enter event"""
+        try:
+            # Check if sleep mode is enabled
+            if self.sleep_manager.is_sleep_mode_enabled():
+                self.handler.logger.info(f"Sleep mode is enabled, skipping greeting for {username}")
+                return
+
+            # Rest of the greeting logic...
+            # ... existing code ...
+
+        except Exception as e:
+            self.handler.log_error(f"Error handling user enter: {traceback.format_exc()}") 

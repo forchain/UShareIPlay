@@ -2,6 +2,7 @@ import traceback
 from ..core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
+from ..managers.sleep_manager import SleepManager
 
 
 def create_command(controller):
@@ -18,22 +19,33 @@ class PlayCommand(BaseCommand):
         super().__init__(controller)
 
         self.handler = controller.music_handler
+        self.sleep_manager = SleepManager(controller.soul_handler)
 
     async def process(self, message_info, parameters):
-        query = ' '.join(parameters)
-        self.soul_handler.ensure_mic_active()
+        """Process play command"""
+        try:
+            # Check if sleep mode is enabled
+            if self.sleep_manager.is_sleep_mode_enabled():
+                return {'error': 'Cannot play music in sleep mode'}
 
-        if query == '?':
-            playing_info = self.play_favorites()
-            self.controller.player_name = message_info.nickname
-            return playing_info
-        elif query == '':
-            playing_info = self.play_radar()
-            self.controller.player_name = message_info.nickname
-            return playing_info
-        else:
-            playing_info = self.play_song(query)
-            return playing_info
+            query = ' '.join(parameters)
+            self.soul_handler.ensure_mic_active()
+
+            if query == '?':
+                playing_info = self.play_favorites()
+                self.controller.player_name = message_info.nickname
+                return playing_info
+            elif query == '':
+                playing_info = self.play_radar()
+                self.controller.player_name = message_info.nickname
+                return playing_info
+            else:
+                playing_info = self.play_song(query)
+                return playing_info
+
+        except Exception as e:
+            self.handler.log_error(f"Error processing play command: {str(e)}")
+            return {'error': f'Failed to process play command'}
 
     def play_song(self, music_query):
         """Search and play music"""

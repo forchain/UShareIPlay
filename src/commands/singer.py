@@ -1,6 +1,7 @@
 import traceback
 from ..core.base_command import BaseCommand
 from appium.webdriver.common.appiumby import AppiumBy
+from ..managers.sleep_manager import SleepManager
 
 def create_command(controller):
     singer_command = SingerCommand(controller)
@@ -15,13 +16,23 @@ class SingerCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.music_handler
+        self.sleep_manager = SleepManager(controller.soul_handler)
 
     async def process(self, message_info, parameters):
-        query = ' '.join(parameters)
-        self.soul_handler.ensure_mic_active()
-        self.controller.player_name = message_info.nickname
-        info = self.play_singer(query)
-        return info
+        """Process singer command"""
+        try:
+            # Check if sleep mode is enabled
+            if self.sleep_manager.is_sleep_mode_enabled():
+                return {'error': 'Cannot play music in sleep mode'}
+
+            query = ' '.join(parameters)
+            self.soul_handler.ensure_mic_active()
+            self.controller.player_name = message_info.nickname
+            info = self.play_singer(query)
+            return info
+        except Exception as e:
+            self.handler.log_error(f"Error processing singer command: {str(e)}")
+            return {'error': f'Failed to process singer command'}
 
     def select_singer_tab(self):
         """Select the 'Singer' tab in search results"""

@@ -2,6 +2,7 @@ import traceback
 
 from ..utils.playlist_parser import PlaylistParser
 from ..core.base_command import BaseCommand
+from ..managers.sleep_manager import SleepManager
 
 
 def create_command(controller):
@@ -17,18 +18,28 @@ class PlaylistCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.music_handler
+        self.sleep_manager = SleepManager(controller.soul_handler)
 
     async def process(self, message_info, parameters):
-        query = ' '.join(parameters)
+        """Process playlist command"""
+        try:
+            # Check if sleep mode is enabled
+            if self.sleep_manager.is_sleep_mode_enabled():
+                return {'error': 'Cannot play music in sleep mode'}
 
-        if len(parameters) == 0:
-            playing_info = self.handler.get_playlist_info()
-        else:
-            self.controller.player_name = message_info.nickname
-            self.soul_handler.ensure_mic_active()
-            playing_info = self.play_playlist(query)
+            query = ' '.join(parameters)
 
-        return playing_info
+            if len(parameters) == 0:
+                playing_info = self.handler.get_playlist_info()
+            else:
+                self.controller.player_name = message_info.nickname
+                self.soul_handler.ensure_mic_active()
+                playing_info = self.play_playlist(query)
+
+            return playing_info
+        except Exception as e:
+            self.handler.log_error(f"Error processing playlist command: {str(e)}")
+            return {'error': f'Failed to process playlist command'}
 
     def select_playlist_tab(self):
         """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""

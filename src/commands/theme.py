@@ -17,18 +17,13 @@ class ThemeCommand(BaseCommand):
         Format: :theme [mode] [title] or :theme mode [title] or :theme title
         """
         try:
-            if not parameters:
-                return {'error': 'Missing parameters. Use: :theme [mode] [title] or :theme mode [title] or :theme title'}
+            if not parameters or len(parameters) == 0:
+                return {'error': 'Missing parameters. Use: :theme [title] [mode] or :theme title'}
 
-            # Check if first parameter is a mode (2 chars)
+            title = parameters[0]
             mode = None
-            title = None
-            if len(parameters[0]) <= 2:
-                mode = parameters[0]
-                if len(parameters) > 1:
-                    title = ' '.join(parameters[1:])
-            else:
-                title = ' '.join(parameters)
+            if len(parameters) > 1:
+                mode = parameters[1]
 
             return self.theme_manager.change_theme(mode, title)
         except Exception as e:

@@ -1,21 +1,17 @@
 import traceback
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
+from ..core.singleton import Singleton
 
-class ThemeManager:
-    _instance = None
-
-    def __new__(cls, handler=None):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.handler = handler
-            cls._instance.last_update_time = None
-            cls._instance.current_mode = None
-            cls._instance.current_title = None
-            cls._instance.next_mode = None
-            cls._instance.next_title = None
-            cls._instance.cooldown_minutes = 15 + 2
-        return cls._instance
+class ThemeManager(Singleton):
+    def _init(self, handler=None):
+        self.handler = handler
+        self.last_update_time = None
+        self.current_mode = None
+        self.current_title = None
+        self.next_mode = None
+        self.next_title = None
+        self.cooldown_minutes = 10 + 2
 
     def change_theme(self, mode: Optional[str] = None, title: Optional[str] = None) -> dict:
         """Change room theme with cooldown check
