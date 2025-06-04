@@ -51,7 +51,7 @@ class PauseCommand(BaseCommand):
                 # If pausing, turn off mic first
                 mic_result = self.controller.mic_command.toggle_mic(False)  # Turn mic off
                 if 'error' in mic_result:
-                    self.logger.warning(f"Failed to turn off mic: {mic_result['error']}")
+                    self.music_handler.logger.warning(f"Failed to turn off mic: {mic_result['error']}")
 
             # Execute media control command
             self.music_handler.driver.execute_script(
