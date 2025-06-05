@@ -33,39 +33,39 @@ class AppHandler:
         # Create logs directory if it doesn't exist
         if not os.path.exists('logs'):
             os.makedirs('logs')
-            
+
         # Get current date for log file name
         current_date = datetime.now().strftime('%Y-%m-%d')
         log_file = f'logs/{self.__class__.__name__}_{current_date}.log'
-        
+
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
-        
+
         # Clear any existing handlers
         if logger.hasHandlers():
             logger.handlers.clear()
-        
+
         logger.setLevel(logging.DEBUG)
-        
+
         # Create file handler
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
-        
+
         # Create console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
-        
+
         # Create formatter
         formatter = logging.Formatter(
             '[%(levelname)s]%(funcName)s:%(lineno)d - %(message)s'
         )
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
-        
+
         # Add handlers to logger
         logger.addHandler(file_handler)
         logger.addHandler(console_handler)
-        
+
         return logger
 
     def log_info(self, message):
@@ -124,19 +124,19 @@ class AppHandler:
         try:
             if not element:
                 return False
-            
+
             # First check if element exists and is displayed
             if not element.is_displayed():
                 return False
-            
+
             # Then check if element is enabled
             if not element.is_enabled():
                 return False
-            
+
             # Finally check clickable attribute
             clickable = element.get_attribute("clickable")
             return clickable == "true"
-        
+
         except Exception as e:
             self.logger.warning(f"Error checking if element is clickable: {str(e)}")
             return False
@@ -202,7 +202,7 @@ class AppHandler:
     def close_app(self):
         """关闭应用"""
         self.driver.terminate_app(self.config['package_name'])
-    
+
     def switch_to_activity(self, activity):
         """Switch to the specified activity"""
         package_name = self.config['package_name']
@@ -224,7 +224,8 @@ class AppHandler:
             self.driver.press_keycode(4)  # Android back key code
         except WebDriverException as e:
             self.error_count += 1
-            self.logger.error(f"Failed to press back button,  times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}")
+            self.logger.error(
+                f"Failed to press back button,  times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}")
             return False
 
         self.error_count = 0
@@ -265,16 +266,16 @@ class AppHandler:
         try:
             if log:
                 self.logger.info(f"Looking for element '{element_key}'")
-                
+
             if element_key not in self.config['elements']:
                 if log:
                     self.logger.error(f"Element key '{element_key}' not defined in configuration")
                 return None
-                
+
             locator_type, value = self._get_locator(element_key)
             if log:
                 self.logger.info(f"Using locator type {locator_type} with value '{value}'")
-                
+
             try:
                 element = self.driver.find_element(locator_type, value)
                 if element:
@@ -289,11 +290,12 @@ class AppHandler:
                             # Try to get additional attributes
                             for attr in ['content-desc', 'resource-id', 'className']:
                                 element_attrs[attr] = element.get_attribute(attr)
-                                
+
                             self.logger.info(f"Found element '{element_key}': {element_attrs}")
                         except Exception as attr_e:
-                            self.logger.warning(f"Found element '{element_key}' but couldn't get attributes: {str(attr_e)}")
-                            
+                            self.logger.warning(
+                                f"Found element '{element_key}' but couldn't get attributes: {str(attr_e)}")
+
                     if clickable:
                         if log:
                             self.logger.info(f"Waiting for element '{element_key}' to be clickable")
@@ -305,7 +307,7 @@ class AppHandler:
                 if log:
                     self.logger.warning(f"Failed to find element '{element_key}' with value '{value}'")
                 return None
-                
+
         except Exception as e:
             if log:
                 self.logger.warning(f"Error in try_find_element_plus for '{element_key}': {str(e)}")
@@ -319,7 +321,7 @@ class AppHandler:
                 element = self.wait_for_element_clickable(locator_type, locator_value)
             return element
         except:
-            if log: 
+            if log:
                 self.logger.warning(f"Element not found: {locator_value}")
             return None
 
@@ -443,11 +445,10 @@ class AppHandler:
         """Helper to get locator type and value from element key"""
         if element_key not in self.config['elements']:
             raise ValueError(f"Element key '{element_key}' not found in config")
-        
+
         value = self.config['elements'][element_key]
         locator_type = AppiumBy.XPATH if value.startswith('//') else AppiumBy.ID
         return locator_type, value
-
 
     def find_elements_plus(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
@@ -458,7 +459,7 @@ class AppHandler:
             print(f"Failed to find elements '{element_key}' with value '{value}': {str(e)}")
             return []
 
-    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
+    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0):
         """Click element at specified position ratio
         Args:
             element: WebElement to click
@@ -470,15 +471,15 @@ class AppHandler:
         try:
             if not element:
                 return False
-            
+
             # Get element size and location
             size = element.size
             location = element.location
-            
+
             # Calculate click position
-            click_x = location['x'] + int(size['width'] * x_ratio)
-            click_y = location['y'] + int(size['height'] * y_ratio)
-            
+            click_x = location['x'] + int(x_offset) + int(size['width'] * x_ratio)
+            click_y = location['y'] + int(y_offset) + int(size['height'] * y_ratio)
+
             # Perform tap action at calculated position
             actions = ActionChains(self.driver)
             actions.w3c_actions = ActionBuilder(
@@ -490,10 +491,10 @@ class AppHandler:
             actions.w3c_actions.pointer_action.pause(0.1)
             actions.w3c_actions.pointer_action.pointer_up()
             actions.perform()
-            
+
             self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
             return True
-        
+
         except Exception as e:
             self.logger.error(f"Error clicking element: {traceback.format_exc()}")
             return False

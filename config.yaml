@@ -101,6 +101,7 @@ soul:
     souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
     user_name: 'cn.soulapp.android:id/tvUserName' # Joyer
     online_users: 'cn.soulapp.android:id/rvBannedUsers' # 在线用户
+    bottom_drawer: 'cn.soulapp.android:id/action_bar_root'
 
 qq_music:
   package_name: "com.tencent.qqmusic"

@@ -115,6 +115,10 @@ class NoticeCommand(BaseCommand):
             # Click customize notice button
             customize = self.handler.wait_for_element_clickable_plus('customize_notice_button')
             if not customize:
+                bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+                if bottom_drawer:
+                    self.handler.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
+                    bottom_drawer.click()
                 return {'error': 'Failed to find customize notice button'}
             customize.click()
 
@@ -135,10 +139,10 @@ class NoticeCommand(BaseCommand):
             self.current_notice = self.next_notice
             self.next_notice = None
 
-            edit_entry = self.handler.wait_for_element_clickable_plus('edit_notice_entry', timeout=1)
-            if edit_entry:
-                self.handler.press_back()
+            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+            if bottom_drawer:
                 self.handler.logger.info(f'Hide notice setting dialog')
+                bottom_drawer.click()
 
             return {'success': True}
 

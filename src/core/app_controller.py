@@ -333,3 +333,4 @@ class AppController:
                 if error_count > 9:
                     self.is_running = False
                     return False
+        return None
