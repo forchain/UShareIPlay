@@ -58,18 +58,18 @@ class SeatUIManager(SeatManagerBase):
             return True
             
         # 添加详细日志，查看找到的元素
-        self.handler.logger.info("尝试展开座位...")
+        # self.handler.logger.info("尝试展开座位...")
         try:
-            expand_seats = self.handler.try_find_element_plus('expand_seats', log=True)
+            expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
             
             # 记录按钮的实际文本内容
             if expand_seats:
                 actual_text = expand_seats.text
-                self.handler.logger.info(f"找到座位按钮，其文本为: '{actual_text}'")
+                # self.handler.logger.info(f"找到座位按钮，其文本为: '{actual_text}'")
                 
                 # 检查文本是否包含展开字样，不强制匹配完整文本
                 if '展开' in actual_text:
-                    self.handler.logger.info(f"检测到展开字样，点击按钮")
+                    # self.handler.logger.info(f"检测到展开字样，点击按钮")
                     expand_seats.click()
                     self.handler.logger.info(f'Expanded seats')
                     self.is_expanded = True
@@ -103,18 +103,18 @@ class SeatUIManager(SeatManagerBase):
             return True
             
         # 添加详细日志，查看找到的元素
-        self.handler.logger.info("尝试收起座位...")
+        # self.handler.logger.info("尝试收起座位...")
         try:
-            expand_seats = self.handler.try_find_element_plus('expand_seats', log=True)
+            expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
             
             # 记录按钮的实际文本内容
             if expand_seats:
                 actual_text = expand_seats.text
-                self.handler.logger.info(f"找到座位按钮，其文本为: '{actual_text}'")
+                # self.handler.logger.info(f"找到座位按钮，其文本为: '{actual_text}'")
                 
                 # 检查文本是否包含收起字样，不强制匹配完整文本
                 if '收起' in actual_text:
-                    self.handler.logger.info(f"检测到收起字样，点击按钮")
+                    # self.handler.logger.info(f"检测到收起字样，点击按钮")
                     expand_seats.click()
                     self.handler.logger.info(f'Collapsed seats')
                     self.is_expanded = False

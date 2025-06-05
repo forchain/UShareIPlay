@@ -94,7 +94,10 @@ class GreetingManager:
             give_gift = self.handler.wait_for_element_clickable_plus('give_gift')
             if not give_gift:
                 self.handler.logger.error("Failed to find give gift button")
-                self.handler.press_back()
+                bottom_drawer = self.handler.try_find_element_plus('bottom_drawer', log=False)
+                if bottom_drawer:
+                    self.handler.click_element_at(bottom_drawer, x_ratio=0.5, y_ratio=-0.01)
+                    self.handler.logger.info(f'Hid gift panel')
                 return False
 
             # Try to find and send soul power gift
