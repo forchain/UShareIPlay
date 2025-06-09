@@ -87,7 +87,7 @@ soul:
     luck_item: 'cn.soulapp.android:id/name' # 初级福袋/中级福袋/高级福袋
     use_pack: 'cn.soulapp.android:id/tvUse' # 使用
     soul_power: 'cn.soulapp.android:id/soulPower' # +12灵魂力
-    give_gift: 'cn.soulapp.android:id/mConfirm' # 赠送
+    give_gift: 'cn.soulapp.android:id/btnSend' # 赠送
     gift_tool: 'cn.soulapp.android:id/ivGift'
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
     follower_name: 'cn.soulapp.android:id/tvName' # Outlier
