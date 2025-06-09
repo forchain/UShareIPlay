@@ -1,7 +1,9 @@
+import re
 import traceback
 from dataclasses import dataclass
 from ..dal import UserDAO
 from ..managers.seat_manager import seat_manager
+
 
 @dataclass
 class MessageInfo:
@@ -10,6 +12,7 @@ class MessageInfo:
     nickname: str
     avatar_element: object  # WebElement for avatar, always exists
     relation_tag: bool = False  # True if user has relation tag
+
 
 class GreetingManager:
     def __init__(self, handler):
@@ -63,7 +66,7 @@ class GreetingManager:
                     avatar_element=None,
                     relation_tag=True
                 )
-            
+
             # If gift sending failed, try to greet
             if self.send_greeting():
                 return MessageInfo(
@@ -102,11 +105,13 @@ class GreetingManager:
 
             # Try to find and send soul power gift
             soul_power = self.handler.try_find_element_plus('soul_power', log=False)
-            if soul_power and (not soul_power.text == '不增加灵魂力') and (not soul_power.text == '+12灵魂力'):
-                # Click give gift button to send
-                give_gift.click()
-                self.handler.logger.info("Sent soul power gift")
-                return True
+            if soul_power and (not (soul_power_text := soul_power.text) == '不增加灵魂力'):
+                match = re.match(r'^\+(\d+)灵魂力$', soul_power_text)
+                if match and (value := int(match.group(1))) < 10:
+                    # Click give gift button to send
+                    give_gift.click()
+                    self.handler.logger.info(f"Sent soul power +{value} gift")
+                    return True
 
             # If no gift available, close gift panel
             self.handler.press_back()
@@ -138,4 +143,4 @@ class GreetingManager:
 
         except Exception as e:
             self.handler.log_error(f"Error sending greeting: {traceback.format_exc()}")
-            return False 
+            return False
