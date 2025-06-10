@@ -9,6 +9,27 @@ class SeatingManager(SeatManagerBase):
         super().__init__(handler)
         self.seat_ui = SeatUIManager(handler)
 
+    def _check_owner_seated(self, desk, seat_desks) -> dict:
+        """Check if owner is already seated in the desk
+        Args:
+            desk: The desk to check
+            seat_desks: List of all desks for index calculation
+        Returns:
+            dict: Success if owner is seated, None otherwise
+        """
+        left_label = self.handler.find_child_element_plus(desk, 'left_label')
+        right_label = self.handler.find_child_element_plus(desk, 'right_label')
+        
+        left_text = left_label.text if left_label else 'None'
+        right_text = right_label.text if right_label else 'None'
+        
+        if (left_text == '群主') or (right_text == '群主'):
+            desk_index = seat_desks.index(desk)
+            self.handler.logger.info(f"Owner is already seated at desk {desk_index + 1}, {'left' if left_text == '群主' else 'right'} side")
+            return {'success': 'Owner is already seated'}
+            
+        return None
+
     def find_owner_seat(self) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
@@ -31,7 +52,13 @@ class SeatingManager(SeatManagerBase):
                 if result:
                     return result
 
-            # If no seats next to someone found, try any available seat
+            # Check if owner is already seated before trying any available seat
+            for desk in seat_desks:
+                result = self._check_owner_seated(desk, seat_desks)
+                if result:
+                    return result
+
+            # If no seats next to someone found and owner is not seated, try any available seat
             for desk in seat_desks:
                 result = self._try_find_any_available_seat(desk)
                 if result:
@@ -53,6 +80,18 @@ class SeatingManager(SeatManagerBase):
         right_state = self.handler.find_child_element_plus(desk, 'right_state')
         left_label = self.handler.find_child_element_plus(desk, 'left_label')
         right_label = self.handler.find_child_element_plus(desk, 'right_label')
+
+        # If owner is in left seat and right seat has someone
+        if left_label and left_label.text == '群主' and right_state:
+            neighbor_label = right_label.text if right_label else 'Unknown'
+            self.handler.logger.info(f"Owner is in left seat and already has {neighbor_label} in right seat, skipping")
+            return {'success': f'Owner is in left seat and already has {neighbor_label} in right seat'}
+            
+        # If owner is in right seat and left seat has someone
+        if right_label and right_label.text == '群主' and left_state:
+            neighbor_label = left_label.text if left_label else 'Unknown'
+            self.handler.logger.info(f"Owner is in right seat and already has {neighbor_label} in left seat, skipping")
+            return {'success': f'Owner is in right seat and already has {neighbor_label} in left seat'}
 
         # If left seat is empty and right seat has someone
         if not left_state and right_state and (not right_label or right_label.text != '群主'):
