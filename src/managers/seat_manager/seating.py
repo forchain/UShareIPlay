@@ -35,9 +35,10 @@ class SeatingManager(SeatManagerBase):
             for desk in seat_desks:
                 left_label = self.handler.find_child_element_plus(desk, 'left_label')
                 right_label = self.handler.find_child_element_plus(desk, 'right_label')
-                
-                if (left_label and left_label.text == '群主') or (right_label and right_label.text == '群主'):
-                    self.handler.logger.info(f"Owner is already seated, no need to find another seat. left_label:{left_label.text} right_label:{right_label.text}")
+                left_text = left_label.text if left_label else 'None'
+                right_text = right_label.text if right_label else 'None'
+                if (left_text == '群主') or (right_text == '群主'):
+                    self.handler.logger.info(f"Owner is already seated, no need to find another seat. left_label:{left_text} right_label:{right_text}")
                     return {'success': 'Owner is already seated'}
 
             # If no seats next to someone found and owner is not seated, try any available seat
