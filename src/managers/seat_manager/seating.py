@@ -9,6 +9,27 @@ class SeatingManager(SeatManagerBase):
         super().__init__(handler)
         self.seat_ui = SeatUIManager(handler)
 
+    def _check_owner_seated(self, desk, seat_desks) -> dict:
+        """Check if owner is already seated in the desk
+        Args:
+            desk: The desk to check
+            seat_desks: List of all desks for index calculation
+        Returns:
+            dict: Success if owner is seated, None otherwise
+        """
+        left_label = self.handler.find_child_element_plus(desk, 'left_label')
+        right_label = self.handler.find_child_element_plus(desk, 'right_label')
+        
+        left_text = left_label.text if left_label else 'None'
+        right_text = right_label.text if right_label else 'None'
+        
+        if (left_text == '群主') or (right_text == '群主'):
+            desk_index = seat_desks.index(desk)
+            self.handler.logger.info(f"Owner is already seated at desk {desk_index + 1}, {'left' if left_text == '群主' else 'right'} side")
+            return {'success': 'Owner is already seated'}
+            
+        return None
+
     def find_owner_seat(self) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
@@ -33,13 +54,9 @@ class SeatingManager(SeatManagerBase):
 
             # Check if owner is already seated before trying any available seat
             for desk in seat_desks:
-                left_label = self.handler.find_child_element_plus(desk, 'left_label')
-                right_label = self.handler.find_child_element_plus(desk, 'right_label')
-                left_text = left_label.text if left_label else 'None'
-                right_text = right_label.text if right_label else 'None'
-                if (left_text == '群主') or (right_text == '群主'):
-                    self.handler.logger.info(f"Owner is already seated, no need to find another seat. left_label:{left_text} right_label:{right_text}")
-                    return {'success': 'Owner is already seated'}
+                result = self._check_owner_seated(desk, seat_desks)
+                if result:
+                    return result
 
             # If no seats next to someone found and owner is not seated, try any available seat
             for desk in seat_desks:
