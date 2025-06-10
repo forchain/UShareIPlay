@@ -54,6 +54,18 @@ class SeatingManager(SeatManagerBase):
         left_label = self.handler.find_child_element_plus(desk, 'left_label')
         right_label = self.handler.find_child_element_plus(desk, 'right_label')
 
+        # If owner is in left seat and right seat has someone
+        if left_label and left_label.text == '群主' and right_state:
+            neighbor_label = right_label.text if right_label else 'Unknown'
+            self.handler.logger.info(f"Owner is in left seat and already has {neighbor_label} in right seat, skipping")
+            return {'success': f'Owner is in left seat and already has {neighbor_label} in right seat'}
+            
+        # If owner is in right seat and left seat has someone
+        if right_label and right_label.text == '群主' and left_state:
+            neighbor_label = left_label.text if left_label else 'Unknown'
+            self.handler.logger.info(f"Owner is in right seat and already has {neighbor_label} in left seat, skipping")
+            return {'success': f'Owner is in right seat and already has {neighbor_label} in left seat'}
+
         # If left seat is empty and right seat has someone
         if not left_state and right_state and (not right_label or right_label.text != '群主'):
             left_seat = self.handler.find_child_element_plus(desk, 'left_seat')
