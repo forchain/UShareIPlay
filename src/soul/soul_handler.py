@@ -68,29 +68,8 @@ class SoulHandler(AppHandler):
         send_button.click()
         self.logger.info("Clicked send button")
 
-        input_box_entry = self.try_find_element_plus('input_box_entry', log=False)
-        if input_box_entry:
-            self.logger.info("Found input box entry, no need to hide input dialog")
-            return True
-
-        input_box = self.wait_for_element_clickable_plus('input_box', timeout=1)
-        if input_box:
-            self.click_element_at(input_box, 0.5, -1)
-            self.logger.info("Hide input dialog")
-            # if input_box.text == '输入新消息':
-            #     self.press_back()
-            #     self.logger.info("Hide input dialog")
-            # else:
-            #     send_button = self.wait_for_element_clickable_plus('button_send')
-            #     send_button.click()
-            #     self.logger.warning("Failed to send message, resent ")
-        else:
-            self.logger.info("No input box found, no need to hide input dialog")
-
-        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry')
-        if not input_box_entry:
-            self.press_back()
-            self.logger.warning("Failed to hide input dialog, try again")
+        self.click_element_at(input_box, 0.5, -1)
+        self.logger.info("Hide input dialog")
 
     def find_party_to_join(self, party_id):
         # Find and click search entry
