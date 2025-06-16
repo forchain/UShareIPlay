@@ -112,13 +112,18 @@ class NoticeCommand(BaseCommand):
                 return {'error': 'Failed to find edit notice entry'}
             edit_entry.click()
 
+            close_notice = self.handler.wait_for_element_plus('close_notice')
+            if not close_notice:
+                self.handler.logger.info(f'Close notice not found')
+                return {'error': 'Close notice not found'}
             # Click customize notice button
-            customize = self.handler.wait_for_element_clickable_plus('customize_notice_button')
+            customize = self.handler.try_find_element_plus('customize_notice_button')
             if not customize:
-                bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
-                if bottom_drawer:
-                    self.handler.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
-                    bottom_drawer.click()
+                close_notice.click()
+                self.handler.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
+
+                self.last_update_time = datetime.now()
+                self.next_notice = None
                 return {'error': 'Failed to find customize notice button'}
             customize.click()
 
@@ -139,10 +144,10 @@ class NoticeCommand(BaseCommand):
             self.current_notice = self.next_notice
             self.next_notice = None
 
-            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
-            if bottom_drawer:
+            close_notice = self.handler.wait_for_element_plus('close_notice')
+            if close_notice:
                 self.handler.logger.info(f'Hide notice setting dialog')
-                bottom_drawer.click()
+                close_notice.click()
 
             return {'success': True}
 
