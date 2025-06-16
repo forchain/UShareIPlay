@@ -13,6 +13,7 @@ class PackCommand(BaseCommand):
         super().__init__(controller)
         self.handler = self.soul_handler
         self.auto_mode = False
+        self.previous_count = 0  # Track previous user count
 
     async def process(self, message_info, parameters):
         """Process pack command to open luck pack"""
@@ -42,9 +43,12 @@ class PackCommand(BaseCommand):
 
             try:
                 count = int(''.join(filter(str.isdigit, count_text)))
-                if count > 5:
-                    self.auto_mode = True  # Auto mode
-                    self.open_luck_pack(user_count=count)  # Pass user count as parameter
+                # Only check if count has changed
+                if count != self.previous_count:
+                    self.previous_count = count  # Update previous count
+                    if count > 5:
+                        self.auto_mode = True  # Auto mode
+                        self.open_luck_pack(user_count=count)  # Pass user count as parameter
             except ValueError:
                 self.handler.logger.error(f"Failed to parse user count: {count_text}")
 
