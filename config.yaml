@@ -105,6 +105,7 @@ soul:
     bottom_drawer: 'cn.soulapp.android:id/action_bar_root'
     online_user: 'cn.soulapp.android:id/tvName' # Outlier
     close_notice: '//android.view.View[@text="关闭公告"]'
+    search_back: "cn.soulapp.android:id/ivSearchBack"
 
 qq_music:
   package_name: "com.tencent.qqmusic"
