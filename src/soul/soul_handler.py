@@ -152,7 +152,12 @@ class SoulHandler(AppHandler):
         else:
             # Party has ended, navigate to create a new party
             self.logger.info("Party has ended, navigating to create a new party")
-            self.press_back()  # Go back to the home screen
+            search_back = self.wait_for_element_clickable_plus('search_back')
+            if not search_back:
+                self.logger.error("Failed to find search back button")
+                return {'error': 'Failed to find search back button'}
+            search_back.click()
+            self.logger.info("Clicked search back button")
 
             planet_tab = self.wait_for_element_clickable(AppiumBy.ID, self.config['elements']['planet_tab'])
             if not planet_tab:
