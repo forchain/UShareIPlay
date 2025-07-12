@@ -3,7 +3,7 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 from appium.options.common import AppiumOptions
 from ..soul.soul_handler import SoulHandler
 from ..music.qq_music_handler import QQMusicHandler
-from ..utils.command_parser import CommandParser
+from ..core.command_parser import CommandParser
 import time
 import traceback
 import importlib
@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 import threading
 import queue
-from ..utils.db_helper import DBHelper
+from ..core.db_service import DBHelper
 from ..managers.seat_manager import init_seat_manager
 
 
