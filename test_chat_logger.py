@@ -5,7 +5,7 @@ import os
 import sys
 sys.path.append('src')
 
-from utils.config_loader import ConfigLoader
+from core.config_loader import ConfigLoader
 
 # 直接测试日志目录创建功能
 def test_log_dir_creation():
