@@ -297,6 +297,9 @@ appium:
   host: "192.168.50.103"
   port: 4723
 
+logging:
+  directory: "../logs"
+
 device:
   name: "192.168.50.151:5555"
   platform_name: "Android"
