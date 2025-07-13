@@ -53,7 +53,7 @@ soul:
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
-    claim_reward: "cn.soulapp.android:id/tvCheckReward"
+    claim_reward: "cn.soulapp.android:id/tvCheckReward" # 立即领取/已领取
     room_topic: 'cn.soulapp.android:id/tvStudyRoomTitle'
     edit_topic_entry: 'cn.soulapp.android:id/tvCustomTopic'
     edit_topic_input: 'cn.soulapp.android:id/et_input_message'
@@ -119,6 +119,7 @@ soul:
     room_id: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRoomId" and @text="FM15321640"]'
     room_card: 'cn.soulapp.android:id/roomCard'
     party_hall_back: 'cn.soulapp.android:id/img_back'
+    claim_reward_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvCheckReward" and @text="立即领取"]'
 
 qq_music:
   package_name: "com.tencent.qqmusic"

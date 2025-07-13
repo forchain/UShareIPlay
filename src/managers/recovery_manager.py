@@ -1,6 +1,5 @@
 import time
-import traceback
-from typing import List, Dict, Optional
+from typing import Dict
 
 
 class RecoveryManager:
@@ -22,7 +21,6 @@ class RecoveryManager:
             'close_more_menu',
             'activity_back',
             'h5_back',
-            'claim_reward',
             'reminder_ok',
         ]
 
@@ -35,6 +33,7 @@ class RecoveryManager:
 
         # 潜在风险元素列表（虽然不挡住输入框，但可能因误操作导致不稳定）
         self.risk_elements = [
+            'claim_reward_button',
             'new_message_tip',
             'close_button',
             'collapse_seats'
@@ -70,7 +69,7 @@ class RecoveryManager:
                 element = self.handler.try_find_element_plus(button_key, log=False)
                 if not element:
                     continue
-                self.logger.info(f"发现关闭按钮: {button_key}，正在点击")
+                self.logger.warning(f"发现关闭按钮: {button_key}，正在点击")
                 element.click()
                 return True
             except Exception as e:
@@ -89,7 +88,7 @@ class RecoveryManager:
                 element = self.handler.try_find_element_plus(drawer_key, log=False)
                 if not element:
                     continue
-                self.logger.info(f"发现抽屉元素: {drawer_key}，正在点击关闭")
+                self.logger.warning(f"发现抽屉元素: {drawer_key}，正在点击关闭")
                 # 点击抽屉上方区域来关闭抽屉
                 self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
                 return True
@@ -111,7 +110,7 @@ class RecoveryManager:
                 if not element:
                     continue
 
-                self.logger.info(f"发现潜在风险元素: {risk_key}，正在处理")
+                self.logger.warning(f"发现潜在风险元素: {risk_key}，正在处理")
                 element.click()
                 return True
             except Exception as e:
@@ -140,6 +139,12 @@ class RecoveryManager:
                 return False
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
+
+            party_back = self.handler.wait_for_element_clickable_plus('party_back', timeout=5)
+            if party_back:
+                party_back.click()
+                self.logger.info("Clicked back to party")
+                return True
 
             search_entry = self.handler.wait_for_element_clickable_plus('search_entry')
             if not search_entry:
@@ -238,7 +243,7 @@ class RecoveryManager:
             return False
 
         # 执行恢复操作，一次只处理一个异常情况
-        self.logger.info("检测到异常状态，开始执行恢复操作")
+        self.logger.warning("检测到异常状态，开始执行恢复操作")
 
         # 2. 处理关闭按钮
         recovery_performed = self.handle_close_buttons()

@@ -73,9 +73,6 @@ class AppController:
                 f"{qq_music_package}/{self.config['qq_music']['search_activity']}"
             ], check=True)
             
-            # 等待QQ Music启动
-            time.sleep(2)
-
             # 启动Soul app
             soul_package = self.config['soul']['package_name']
             print(f"正在启动Soul app: {soul_package}")
