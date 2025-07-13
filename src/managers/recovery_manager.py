@@ -153,13 +153,12 @@ class RecoveryManager:
             search_entry.click()
             self.logger.info("Clicked search entry")
 
-            search_box = self.handler.try_find_element_plus('search_box')
+            search_box = self.handler.wait_for_element_plus('search_box')
             if not search_box:
                 self.logger.warning("未找到搜索框")
                 return False
             party_id = self.handler.party_id
             if not party_id:
-                self.logger.info("未指定派对ID")
                 party_id = self.handler.message_manager.get_party_id()
             search_box.send_keys(party_id)
             self.logger.info(f"Entered party ID: {party_id}")
