@@ -117,6 +117,8 @@ soul:
     share_drawer: 'cn.soulapp.android:id/slide_bar' # 分享至好友抽屉
     input_drawer: 'cn.soulapp.android:id/clSecondContainer' # 输入框抽屉
     room_id: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRoomId" and @text="FM15321640"]'
+    room_card: 'cn.soulapp.android:id/roomCard'
+    party_hall_back: 'cn.soulapp.android:id/img_back'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
