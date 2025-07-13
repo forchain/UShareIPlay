@@ -125,14 +125,14 @@ qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
   elements:
-    search_entry: "com.tencent.qqmusic:id/c8x"
+    search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
     play_button: "com.tencent.qqmusic:id/kcr"
     next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
     hide_player: "com.tencent.qqmusic:id/na0"
-    song_name: "com.tencent.qqmusic:id/lxj"
-    singer_name: "com.tencent.qqmusic:id/lzn"
+    song_name: "com.tencent.qqmusic:id/m_v"
+    singer_name: "com.tencent.qqmusic:id/mc2"
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     playing_bar: "com.tencent.qqmusic:id/ha_"
@@ -172,17 +172,17 @@ qq_music:
     play_fav: 'com.tencent.qqmusic:id/eki'
     fav_song: 'com.tencent.qqmusic:id/lxj'
     fav_singer: 'com.tencent.qqmusic:id/lzn'
-    lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌词"]'
-    playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
-    singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
-    song_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌曲"]'
-    album_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="专辑"]'
-    album_text: 'com.tencent.qqmusic:id/kzn'
-    album_singer: 'com.tencent.qqmusic:id/kzk'
-    lyrics_text: 'com.tencent.qqmusic:id/h8u'
-    playlist_result: 'com.tencent.qqmusic:id/l1l'
-    singer_text: 'com.tencent.qqmusic:id/muo'
-    singer_result: 'com.tencent.qqmusic:id/l2b'
+    lyrics_tab: '//android.widget.RelativeLayout[@content-desc="歌词 按钮"]'
+    playlist_tab: '//android.widget.RelativeLayout[@content-desc="歌单 按钮"]'
+    singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'
+    song_tab: '//android.widget.RelativeLayout[@content-desc="歌曲 按钮"]'
+    album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
+    album_text: 'com.tencent.qqmusic:id/lb1'
+    album_singer: 'com.tencent.qqmusic:id/lay'
+    lyrics_text: 'com.tencent.qqmusic:id/hkq'
+    playlist_result: 'com.tencent.qqmusic:id/lcz'
+    singer_text: 'com.tencent.qqmusic:id/n7z'
+    singer_result: 'com.tencent.qqmusic:id/m_v'
     play_all: '//android.widget.TextView[@text="全部播放"]'
     play_all_mini: 'com.tencent.qqmusic:id/se'
     singer_container: 'com.tencent.qqmusic:id/hag'
