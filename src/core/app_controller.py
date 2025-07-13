@@ -13,11 +13,16 @@ import threading
 import queue
 from ..core.db_service import DBHelper
 from ..managers.seat_manager import init_seat_manager
+from ..managers.recovery_manager import RecoveryManager
 
 
 class AppController:
     def __init__(self, config):
         self.config = config
+        
+        # 在初始化driver之前先启动应用
+        self._start_apps()
+        
         self.driver = self._init_driver()
         self.input_queue = queue.Queue()
         self.is_running = True
@@ -46,6 +51,47 @@ class AppController:
 
         # Initialize managers
         self.seat_manager = init_seat_manager(self.soul_handler)
+        self.recovery_manager = RecoveryManager(self.soul_handler)
+
+    def _start_apps(self):
+        """在初始化driver之前启动Soul app和QQ Music"""
+        try:
+            import subprocess
+            import time
+            
+            print("正在启动应用...")
+            
+
+            # 启动QQ Music
+            qq_music_package = self.config['qq_music']['package_name']
+            print(f"正在启动QQ Music: {qq_music_package}")
+            
+            # 使用adb启动QQ Music
+            subprocess.run([
+                'adb', '-s', self.config['device']['name'], 
+                'shell', 'am', 'start', '-n', 
+                f"{qq_music_package}/{self.config['qq_music']['search_activity']}"
+            ], check=True)
+            
+            # 启动Soul app
+            soul_package = self.config['soul']['package_name']
+            print(f"正在启动Soul app: {soul_package}")
+
+            # 使用adb启动Soul app
+            subprocess.run([
+                'adb', '-s', self.config['device']['name'],
+                'shell', 'am', 'start', '-n',
+                f"{soul_package}/{self.config['soul']['chat_activity']}"
+            ], check=True)
+
+            print("应用启动完成")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"启动应用失败: {str(e)}")
+            raise
+        except Exception as e:
+            print(f"启动应用时发生错误: {str(e)}")
+            raise
 
     def _init_driver(self):
         options = AppiumOptions()
@@ -210,6 +256,13 @@ class AppController:
 
         while self.is_running:
             try:
+                # 异常检测和恢复 - 在每次循环的最开始执行
+                recovery_performed = self.recovery_manager.check_and_recover()
+                if recovery_performed:
+                    # 如果执行了恢复操作，等待一下让界面稳定
+                    time.sleep(1)
+                    continue
+                
                 # Check for console input
                 try:
                     while not self.input_queue.empty():

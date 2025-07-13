@@ -1,21 +1,20 @@
-import traceback
-import os
-from dataclasses import dataclass
-from selenium.common.exceptions import StaleElementReferenceException
-from appium.webdriver.common.appiumby import AppiumBy
-import re
-from collections import deque
 import logging
+import re
+import traceback
+from collections import deque
+from dataclasses import dataclass
 
-from ..core.base_command import BaseCommand
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import StaleElementReferenceException
+
 from .greeting_manager import GreetingManager
-
 
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
+
 
 def get_chat_logger(config=None):
     """Get or create chat logger with configurable directory"""
@@ -63,13 +62,20 @@ class MessageManager:
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
         self.greeting_manager = GreetingManager(handler)
-        
+
         # Initialize chat logger with config
         self.chat_logger = get_chat_logger(handler.config)
+
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
         from ..managers.seat_manager import seat_manager
         return seat_manager
+
+    def get_party_id(self):
+        party_id = self.handler.party_id
+        if not party_id:
+            party_id = DEFAULT_PARTY_ID
+        return party_id
 
     async def get_latest_message(self, enabled=True):
         """Get new message contents that weren't seen before"""
@@ -77,34 +83,15 @@ class MessageManager:
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
-        # Check for QQ Music ANR dialog and handle it
-        anr_close = self.handler.try_find_element_plus('close_app', log=False)
-        if anr_close:
-            anr_close.click()
-            self.handler.switch_to_app()
-
         # Get message list container
-        message_list = self.try_find_message_list(enabled)
+        message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
+            self.handler.logger.error("Failed to find message list")
             return None
 
-        # Check if there is a new message tip and click it
-        self.check_new_message_tip(enabled)
-
         # Collapse seats if expanded and update focus count
-        # self.handler.logger.info("开始尝试收起座位...")
         seat_manager = self._get_seat_manager()
-        if seat_manager is None:
-            self.handler.logger.error("seat_manager 为 None，无法收起座位")
-        elif not hasattr(seat_manager, 'ui'):
-            self.handler.logger.error("seat_manager 没有 ui 属性，无法收起座位")
-        elif seat_manager.ui is None:
-            self.handler.logger.error("seat_manager.ui 为 None，无法收起座位")
-        else:
-            # self.handler.logger.info("调用 seat_manager.ui.collapse_seats()...")
-            result = seat_manager.ui.collapse_seats()
-            # self.handler.logger.info(f"collapse_seats() 返回值: {result}")
-            
+
         # 更新焦点计数
         if seat_manager and hasattr(seat_manager, 'focus'):
             # self.handler.logger.info("更新焦点计数...")
@@ -138,62 +125,6 @@ class MessageManager:
         self.previous_messages = current_messages
         return new_messages if new_messages else None
 
-    def try_find_message_list(self, enabled):
-        """Find and return message list container"""
-        message_list = self.handler.try_find_element_plus('message_list', log=False)
-
-        if not message_list and enabled:
-            self.handler.logger.warning("cannot find message_list, may be minimized")
-            return self.handle_minimized_state()
-
-        return message_list
-
-    def handle_minimized_state(self):
-        """Handle case when message list is minimized"""
-        floating_entry = self.handler.try_find_element_plus('floating_entry', clickable=True)
-        if floating_entry:
-            floating_entry.click()
-            return self.handler.try_find_element_plus('message_list')
-        else:
-            self.handle_navigation_to_party()
-            return None
-
-    def handle_navigation_to_party(self):
-        """Handle navigation to party when needed"""
-        square_tab = self.handler.try_find_element_plus('square_tab')
-        if square_tab:
-            self.handler.logger.warning(
-                "already back in home but no party entry found, try go to party")
-            square_tab.click()
-            party_id = self.handler.party_id if self.handler.party_id else DEFAULT_PARTY_ID
-            self.handler.find_party_to_join(party_id)
-            self.handler.party_id = None
-
-            # Get seat manager and use it if available
-            seat_manager = self._get_seat_manager()
-            if seat_manager and seat_manager.seating:
-                seat_manager.seating.find_owner_seat()
-                
-            self.handler.controller.notice_command.change_notice(DEFAULT_NOTICE)
-        else:
-            self.handler.logger.warning(
-                "still cannot find message_list, may stay in unknown pages, go back first")
-            go_back = self.handler.try_find_element_plus('go_back', log=False)
-            if go_back:
-                go_back.click()
-                self.handler.logger.info(f'Clicked go back')
-            else:
-                self.handler.press_back()
-
-    def check_new_message_tip(self, enabled):
-        """Check and click new message tip if present"""
-        new_message_tip = self.handler.try_find_element_plus('new_message_tip', log=False)
-        if new_message_tip and enabled:
-            self.handler.logger.info(f'Found new message tip')
-            new_message_tip.click()
-            self.handler.logger.info(f'Clicked new message tip')
-
-
     def is_user_enter_message(self, message: str) -> tuple[bool, str]:
         """Check if message is a user enter notification
         Args:
@@ -205,7 +136,7 @@ class MessageManager:
         match = re.match(pattern, message)
         if match:
             return True, match.group(1)
-        return False, "" 
+        return False, ""
 
     async def process_container_message(self, container):
         """Process a single message container and return MessageInfo"""
@@ -217,7 +148,7 @@ class MessageManager:
             )
             if not content_element:
                 return None
-            
+
             message_text = content_element.text
             content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
             chat_text = content_desc if content_desc and content_desc != 'null' else message_text
@@ -239,7 +170,6 @@ class MessageManager:
                         continue
                 self.chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
-
 
             # Parse message content using pattern
             pattern = r'souler\[.+\]说：:(.+)'
