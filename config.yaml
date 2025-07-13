@@ -44,6 +44,7 @@ soul:
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_back: "cn.soulapp.android:id/tv_look"
     expand_seats: "cn.soulapp.android:id/tvHandleUserList" # 收起座位/展开座位
+    collapse_seats: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvHandleUserList" and @text="收起座位"]'
     party_online: "cn.soulapp.android:id/tvOnline"
     planet_tab: "cn.soulapp.android:id/main_tab_planet" #  星球
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
@@ -106,6 +107,16 @@ soul:
     online_user: 'cn.soulapp.android:id/tvName' # Outlier
     close_notice: '//android.view.View[@text="关闭公告"]'
     search_back: "cn.soulapp.android:id/ivSearchBack"
+    close_chat: "cn.soulapp.android:id/tv_btn_close" # 先不聊了
+    close_more_menu: "cn.soulapp.android:id/ivBack" # more_menu 的关闭按钮
+    activity_back: '//android.widget.Image[@text="此图片未加标签。打开右上角的“更多选项”菜单即可获取图片说明。"]' # 活动页面, 天赋共鸣，群主红包， ...
+    close_button: 'cn.soulapp.android:id/ivClose' # 关闭按钮, X 按钮
+    h5_back: 'cn.soulapp.android:id/h5_title_back' # 关闭H5页面
+    group_back: 'cn.soulapp.android:id/fans_back' # 关闭我的派对群页面
+    online_drawer: 'cn.soulapp.android:id/touch_close' # 在线用户抽屉
+    share_drawer: 'cn.soulapp.android:id/slide_bar' # 分享至好友抽屉
+    input_drawer: 'cn.soulapp.android:id/clSecondContainer' # 输入框抽屉
+    room_id: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRoomId" and @text="FM15321640"]'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -250,6 +261,9 @@ commands:
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
+  - prefix: "recovery"
+    response_template: "{status}"
+    error_template: "Recovery command failed: {error}"
   - prefix: "admin"
     response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"

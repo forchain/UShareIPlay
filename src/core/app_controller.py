@@ -13,6 +13,7 @@ import threading
 import queue
 from ..core.db_service import DBHelper
 from ..managers.seat_manager import init_seat_manager
+from ..managers.recovery_manager import RecoveryManager
 
 
 class AppController:
@@ -46,6 +47,7 @@ class AppController:
 
         # Initialize managers
         self.seat_manager = init_seat_manager(self.soul_handler)
+        self.recovery_manager = RecoveryManager(self.soul_handler)
 
     def _init_driver(self):
         options = AppiumOptions()
@@ -210,6 +212,13 @@ class AppController:
 
         while self.is_running:
             try:
+                # 异常检测和恢复 - 在每次循环的最开始执行
+                recovery_performed = self.recovery_manager.check_and_recover()
+                if recovery_performed:
+                    # 如果执行了恢复操作，等待一下让界面稳定
+                    time.sleep(1)
+                    continue
+                
                 # Check for console input
                 try:
                     while not self.input_queue.empty():
