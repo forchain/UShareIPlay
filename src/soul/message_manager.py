@@ -1,4 +1,5 @@
 import traceback
+import os
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException
 from appium.webdriver.common.appiumby import AppiumBy
@@ -13,12 +14,37 @@ from .greeting_manager import GreetingManager
 DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
 DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
-# Setup chat logger
-chat_logger = logging.getLogger('chat')
-chat_logger.setLevel(logging.INFO)
-handler = logging.FileHandler('logs/chat.log', encoding='utf-8')
-handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
-chat_logger.addHandler(handler)
+# Global chat logger - will be initialized when needed
+chat_logger = None
+
+def get_chat_logger(config=None):
+    """Get or create chat logger with configurable directory"""
+    global chat_logger
+    import yaml, os
+    if chat_logger is None:
+        # 直接加载全局 config.yaml
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                global_config = yaml.safe_load(f)
+            log_dir = global_config.get('logging', {}).get('directory', 'logs')
+        except Exception as e:
+            print(f"[日志调试] 加载 config.yaml 失败: {e}")
+            log_dir = 'logs'
+        print(f"[日志调试] chat.log 日志目录: {log_dir}, 绝对路径: {os.path.abspath(log_dir)}")
+        # Create logs directory if it doesn't exist (supports relative paths)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        # Create chat logger
+        chat_logger = logging.getLogger('chat')
+        chat_logger.setLevel(logging.INFO)
+        # Clear any existing handlers
+        if chat_logger.hasHandlers():
+            chat_logger.handlers.clear()
+        log_file = f'{log_dir}/chat.log'
+        handler = logging.FileHandler(log_file, encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
+        chat_logger.addHandler(handler)
+    return chat_logger
 
 
 @dataclass
@@ -37,6 +63,9 @@ class MessageManager:
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
         self.greeting_manager = GreetingManager(handler)
+        
+        # Initialize chat logger with config
+        self.chat_logger = get_chat_logger(handler.config)
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
         from ..managers.seat_manager import seat_manager
@@ -208,7 +237,7 @@ class MessageManager:
                         except Exception as e:
                             self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
                         continue
-                chat_logger.info(chat_text)
+                self.chat_logger.info(chat_text)
                 self.recent_messages.append(chat_text)
 
 

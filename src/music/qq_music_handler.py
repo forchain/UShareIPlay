@@ -1,7 +1,7 @@
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import StaleElementReferenceException
 
-from ..utils.app_handler import AppHandler
+from ..core.app_handler import AppHandler
 import time
 import re
 import traceback

@@ -1,5 +1,5 @@
 from src.core.app_controller import AppController
-from src.utils.config_loader import ConfigLoader
+from src.core.config_loader import ConfigLoader
 from src.core.db_manager import DatabaseManager
 import asyncio
 
