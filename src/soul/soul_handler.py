@@ -5,7 +5,7 @@ from PIL.ImageOps import contain
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import WebDriverException
 
-from ..utils.app_handler import AppHandler
+from ..core.app_handler import AppHandler
 import re
 from dataclasses import dataclass
 from selenium.common.exceptions import StaleElementReferenceException

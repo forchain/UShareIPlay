@@ -30,13 +30,24 @@ class AppHandler:
         Returns:
             logging.Logger: Configured logger instance
         """
-        # Create logs directory if it doesn't exist
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
+        import yaml
+        # 直接加载全局 config.yaml
+        try:
+            with open('config.yaml', 'r', encoding='utf-8') as f:
+                global_config = yaml.safe_load(f)
+            log_dir = global_config.get('logging', {}).get('directory', 'logs')
+        except Exception as e:
+            print(f"[日志调试] 加载 config.yaml 失败: {e}")
+            log_dir = 'logs'
+        print(f"[日志调试] handler 日志目录: {log_dir}, 绝对路径: {os.path.abspath(log_dir)}")
+        
+        # Create logs directory if it doesn't exist (supports relative paths)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
 
         # Get current date for log file name
         current_date = datetime.now().strftime('%Y-%m-%d')
-        log_file = f'logs/{self.__class__.__name__}_{current_date}.log'
+        log_file = f'{log_dir}/{self.__class__.__name__}_{current_date}.log'
 
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
