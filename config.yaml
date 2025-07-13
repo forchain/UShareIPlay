@@ -1,6 +1,6 @@
 soul:
   package_name: "cn.soulapp.android"
-  chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
+  chat_activity: ".component.startup.main.MainActivity"
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
     message_content: "cn.soulapp.android:id/tvContent"
