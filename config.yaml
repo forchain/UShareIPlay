@@ -120,6 +120,7 @@ soul:
     room_card: 'cn.soulapp.android:id/roomCard'
     party_hall_back: 'cn.soulapp.android:id/img_back'
     claim_reward_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvCheckReward" and @text="立即领取"]'
+    party_restore_drawer: 'cn.soulapp.android:id/design_bottom_sheet' # 我创建过的派对
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -154,7 +155,7 @@ qq_music:
     lyrics_line: "com.tencent.qqmusic:id/h9e"
     lyrics_end: "//android.view.View"
     no_lyrics: "com.tencent.qqmusic:id/ndz"
-    clear_search: "com.tencent.qqmusic:id/l1a"
+    clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     current_lyrics: "com.tencent.qqmusic:id/l7_"
     content_container: "android:id/content"
     reminder_ok: "com.tencent.qqmusic:id/icm"
@@ -182,28 +183,37 @@ qq_music:
     lyrics_text: 'com.tencent.qqmusic:id/hkq'
     playlist_result: 'com.tencent.qqmusic:id/lcz'
     singer_text: 'com.tencent.qqmusic:id/n7z'
-    singer_result: 'com.tencent.qqmusic:id/m_v'
+    singer_result: 'com.tencent.qqmusic:id/bdq'
     play_all: '//android.widget.TextView[@text="全部播放"]'
     play_all_mini: 'com.tencent.qqmusic:id/se'
     singer_container: 'com.tencent.qqmusic:id/hag'
     play_album: 'com.tencent.qqmusic:id/j98'
     play_singer: 'com.tencent.qqmusic:id/em7'
     play_singer_hot: 'com.tencent.qqmusic:id/j0g'
-    singer_tabs: 'com.tencent.qqmusic:id/b_h'
+    singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     playlist_item: 'com.tencent.qqmusic:id/ljb'
-    go_back: 'com.tencent.qqmusic:id/a0q'
+    go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry_floating: 'com.tencent.qqmusic:id/is5'
-    playlist_entry_playing: 'com.tencent.qqmusic:id/a9i'
-    playlist_item_container: 'com.tencent.qqmusic:id/gsa'
-    playlist_song: 'com.tencent.qqmusic:id/lxy'
-    playlist_singer: 'com.tencent.qqmusic:id/lkv'
-    playlist_playing: 'com.tencent.qqmusic:id/ee4'
-    playlist_header: 'com.tencent.qqmusic:id/je8'
+    playlist_entry_playing: '//android.widget.ImageView[@content-desc="歌曲队列"]'
+    playlist_item_container: 'com.tencent.qqmusic:id/l4v'
+    playlist_song: 'com.tencent.qqmusic:id/mab'
+    playlist_singer: 'com.tencent.qqmusic:id/lxx'
+    playlist_playing: 'com.tencent.qqmusic:id/eo6'
+    playlist_header: '//android.widget.TextView[@text="正在播放"]'
     play_mode: 'com.tencent.qqmusic:id/a9j'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
     playlist_screen: 'com.tencent.qqmusic:id/bay' #
-    music_tabs: 'com.tencent.qqmusic:id/b_h'
+    music_tabs: 'com.tencent.qqmusic:id/bds'
+
+    minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
+    play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
+    play_all_album: '//android.widget.TextView[@text="全部播放"]'
+    play_all_singer: '//android.widget.TextView[@text="播放最热歌曲"]'
+    playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
+    play_next: '//android.widget.ImageView[@content-desc="下一首"]'
+
+    cancel_drawer: '//android.widget.TextView[@text="取消"]'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"

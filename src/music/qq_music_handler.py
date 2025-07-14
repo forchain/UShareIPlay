@@ -1,11 +1,12 @@
+import re
+import time
+import traceback
+
+import langdetect
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import StaleElementReferenceException
 
 from ..core.app_handler import AppHandler
-import time
-import re
-import traceback
-import langdetect
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
@@ -106,97 +107,47 @@ class QQMusicHandler(AppHandler):
         self.logger.info(f"Switched to QQ Music app")
 
         # Check if we're already in search mode
-
-        play_all = self.try_find_element_plus('play_all')
-        play_all_mini = self.try_find_element_plus('play_all_mini')
-        play_singer = self.try_find_element_plus('play_singer')
-        play_album = self.try_find_element_plus('play_album')
-        if play_all or play_all_mini or play_singer or play_album:
-            self.logger.info(f"Found play button, go back")
+        playlist_header = self.try_find_element_plus('playlist_header', log=False)
+        play_next = self.try_find_element_plus('play_next')
+        minimize_screen = self.try_find_element_plus('minimize_screen')
+        playing_record = self.try_find_element_plus('playing_record')
+        cancel_drawer = self.try_find_element_plus('cancel_drawer')
+        if playlist_header or play_next or minimize_screen or playing_record or cancel_drawer:
             self.press_back()
+            self.logger.info(f"minimize playing window")
 
-        singer_screen = self.try_find_element_plus('singer_screen', log=False)
-        if singer_screen:
-            self.logger.info(f"Hide singer screen 1")
+        play_all_singer = self.try_find_element_plus('play_all_singer')
+        play_all_album = self.try_find_element_plus('play_all_album')
+        play_all_playlist = self.try_find_element_plus('play_all_playlist')
+        if play_all_singer or play_all_album or play_all_playlist:
             self.press_back()
+            self.logger.info(f"Found play all button, go back")
 
-        playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
-        if playlist_screen:
-            self.logger.info(f"Hide playlist screen 1")
-            self.press_back()
+        search_entry = self.try_find_element_plus('search_entry')
+        go_back = self.try_find_element_plus('go_back')
+        if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
+            search_entry.click()
+
+        clear_search = self.try_find_element_plus('clear_search', log=False)
+        if clear_search:
+            clear_search.click()
+            self.logger.info(f"Clear search")
 
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
-            go_back = self.try_find_element_plus('go_back', log=False)
-            if go_back:
-                self.logger.info(f"Clicked Go Back button")
-                go_back.click()
-            else:
-                self.press_back()
-        else:
-            singer_screen = self.try_find_element_plus('singer_screen', log=False)
-            if singer_screen:
-                self.logger.info(f"Hide singer screen 2")
-                self.press_back()
-            playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
-            if playlist_screen:
-                self.logger.info(f"Hide playlist screen 2")
-                self.press_back()
-
-        go_home = False
-        playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
-        search_box = None
-        if playlist_entry:
-            singer_screen = self.try_find_element_plus('singer_screen', log=False)
-            if singer_screen:
-                self.logger.info(f"Hide singer screen 3")
-                self.press_back()
-            playlist_screen = self.try_find_element_plus('playlist_screen', log=False)
-            if playlist_screen:
-                self.logger.info(f"Hide playlist screen 3")
-                self.press_back()
-            search_box = self.try_find_element_plus('search_box', log=False)
-            if not search_box:
-                go_home = True
-        else:
-            go_home = True
-
-        if go_home:
-            # Go back to home page
-            self.navigate_to_home()
-            self.logger.info(f"Navigated to home page")
-
-            # Find search entry
-            search_entry = self.wait_for_element_clickable_plus('search_entry')
-            if search_entry:
-                search_entry.click()
-                self.logger.info(f"Clicked search entry")
-            else:
-                self.logger.error(f"failed to find search entry")
-                return False
-
-            # Find and click search box
-            search_box = self.wait_for_element_clickable_plus('search_box')
-
-        if search_box:
-            clear_search = self.try_find_element_plus('clear_search', log=False)
-            if clear_search:
-                clear_search.click()
-                self.logger.info(f"Clear search")
-            try:
-                search_box.click()
-            except StaleElementReferenceException as e:
-                self.logger.warning("Failed to click search box")
-                search_box = self.wait_for_element_clickable_plus('search_box')
-                if search_box:
-                    search_box.click()
-                    self.logger.info(f"Clicked search box")
-                else:
-                    self.logger.error(f"failed to find search box")
-                    return False
-        else:
-            self.logger.error(f"Cannot find search entry")
+            self.logger.error(f"Cannot find search box")
             return False
+        try:
+            search_box.click()
+        except StaleElementReferenceException as e:
+            self.logger.warning("Failed to click search box")
+            search_box = self.wait_for_element_clickable_plus('search_box')
+            if search_box:
+                search_box.click()
+                self.logger.info(f"Clicked search box")
+            else:
+                self.logger.error(f"failed to find search box")
+                return False
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
@@ -748,14 +699,11 @@ class QQMusicHandler(AppHandler):
         # Try to find playlist entry in playing panel first
         playlist_entry = self.try_find_element_plus('playlist_entry_playing')
         if not playlist_entry:
-            playlist_entry = self.try_find_element_plus('playlist_entry_floating')
-        if not playlist_entry:
             self.press_back()
 
-        playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
+        playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_playing')
         if not playlist_entry:
-            self.navigate_to_home()
-            playlist_entry = self.wait_for_element_clickable_plus('playlist_entry_floating')
+            return {'error': 'Failed to find play list entry'}
         playlist_entry.click()
 
         playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
@@ -785,7 +733,8 @@ class QQMusicHandler(AppHandler):
             # Calculate swipe coordinates
             start_x = playing_loc['x'] + playing_size['width'] // 2
             start_y = playing_loc['y']
-            end_y = title_loc['y'] + 3 * title_size['height']
+            end_y = title_loc['y']
+            # end_y = title_loc['y'] + 3 * title_size['height']
 
             # Swipe playing element up to title position
             self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
