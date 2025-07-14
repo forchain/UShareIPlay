@@ -237,6 +237,8 @@ class RecoveryManager:
         if current_time - self.last_recovery_time < self.recovery_cooldown:
             return False
 
+        self.handler.switch_to_app()
+
         # 1. 处理潜在风险元素（优先级最高，在正常状态检测之前）
         self.handle_risk_elements()
 
