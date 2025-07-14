@@ -120,6 +120,7 @@ soul:
     room_card: 'cn.soulapp.android:id/roomCard'
     party_hall_back: 'cn.soulapp.android:id/img_back'
     claim_reward_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvCheckReward" and @text="立即领取"]'
+    party_restore_drawer: 'cn.soulapp.android:id/design_bottom_sheet' # 我创建过的派对
 
 qq_music:
   package_name: "com.tencent.qqmusic"

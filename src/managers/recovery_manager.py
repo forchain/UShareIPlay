@@ -28,7 +28,8 @@ class RecoveryManager:
         self.drawer_elements = [
             'online_drawer',
             'share_drawer',
-            'input_drawer'
+            'input_drawer',
+            'party_restore_drawer'
         ]
 
         # 潜在风险元素列表（虽然不挡住输入框，但可能因误操作导致不稳定）
