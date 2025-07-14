@@ -28,7 +28,8 @@ class RecoveryManager:
         self.drawer_elements = [
             'online_drawer',
             'share_drawer',
-            'input_drawer'
+            'input_drawer',
+            'party_restore_drawer'
         ]
 
         # 潜在风险元素列表（虽然不挡住输入框，但可能因误操作导致不稳定）
@@ -191,6 +192,8 @@ class RecoveryManager:
                 search_back.click()
                 self.logger.info("Clicked search back button")
 
+            
+            time.sleep(2)
             create_party_entry = self.handler.wait_for_element_clickable_plus('create_party_entry')
             if not create_party_entry:
                 self.logger.error(f"Party creation entry not found")
@@ -233,6 +236,8 @@ class RecoveryManager:
         # 检查冷却时间
         if current_time - self.last_recovery_time < self.recovery_cooldown:
             return False
+
+        self.handler.switch_to_app()
 
         # 1. 处理潜在风险元素（优先级最高，在正常状态检测之前）
         self.handle_risk_elements()
