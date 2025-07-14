@@ -192,6 +192,8 @@ class RecoveryManager:
                 search_back.click()
                 self.logger.info("Clicked search back button")
 
+            
+            time.sleep(2)
             create_party_entry = self.handler.wait_for_element_clickable_plus('create_party_entry')
             if not create_party_entry:
                 self.logger.error(f"Party creation entry not found")
