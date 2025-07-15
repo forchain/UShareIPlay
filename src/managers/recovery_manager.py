@@ -1,5 +1,6 @@
 import time
 from typing import Dict
+from ..core.config_loader import ConfigLoader
 
 
 class RecoveryManager:
@@ -11,6 +12,7 @@ class RecoveryManager:
 
         # 关闭和返回按钮列表
         self.close_buttons = [
+            'receive_gift',
             'floating_entry',
             'party_hall_back',
             'party_back',
@@ -37,7 +39,7 @@ class RecoveryManager:
             'claim_reward_button',
             'new_message_tip',
             'close_button',
-            'collapse_seats'
+            'collapse_seats',
         ]
 
         # 正常状态的关键元素
@@ -54,8 +56,9 @@ class RecoveryManager:
         最快速的方法就是检测输入框是否存在
         """
         try:
-            input_box = self.handler.try_find_element_plus('room_id', log=False)
-            return input_box is not None
+            room_id = self.handler.try_find_element_plus('room_id', log=False)
+            party_id = self.handler.config.get('default_party_id')
+            return room_id is not None and room_id.text == party_id
         except Exception as e:
             self.logger.debug(f"检测正常状态时出错: {str(e)}")
             return False
@@ -141,85 +144,63 @@ class RecoveryManager:
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
 
-            party_back = self.handler.wait_for_element_clickable_plus('party_back', timeout=5)
-            if party_back:
-                party_back.click()
+            if party_id := self.handler.party_id:
+                if not self._search_and_enter_party(party_id):
+                    self.logger.warning("未找到派对")
+                    return False
+
+            key, element = self.handler.wait_for_any_element_plus(
+                ['party_back', 'create_party_entry', 'create_room_entry'])
+            if not element:
+                self.logger.warning("未找到派对入口")
+                return False
+
+            if key == 'party_back':
+                element.click()
                 self.logger.info("Clicked back to party")
                 return True
 
-            search_entry = self.handler.wait_for_element_clickable_plus('search_entry')
-            if not search_entry:
-                self.logger.warning("未找到搜索按钮")
-                return False
-            search_entry.click()
-            self.logger.info("Clicked search entry")
-
-            search_box = self.handler.wait_for_element_plus('search_box')
-            if not search_box:
-                self.logger.warning("未找到搜索框")
-                return False
-            party_id = self.handler.party_id
-            if not party_id:
-                party_id = self.handler.message_manager.get_party_id()
-            search_box.send_keys(party_id)
-            self.logger.info(f"Entered party ID: {party_id}")
-
-            # Click search button
-            search_button = self.handler.wait_for_element_clickable_plus('search_button')
-            if not search_button:
-                self.logger.error(f"Search button not found")
-                return False
-            search_button.click()
-            self.logger.info("Clicked search button")
-
-            room_card = self.handler.wait_for_element_plus('room_card')
-            if not room_card:
-                self.logger.error(f"Party room card not found")
-                return False
-            self.logger.info("Found party room card")
-
-            party_online = self.handler.find_child_element_plus(room_card, 'party_online')
-            if party_online:
-                # Party is ongoing, click the party entry
-                party_online.click()
-                self.logger.info("Clicked party entry")
-            else:
-                self.logger.info("Party has ended, navigating to create a new party")
-                search_back = self.handler.wait_for_element_clickable_plus('search_back')
-                if not search_back:
-                    self.logger.error("Failed to find search back button")
-                    return False
-                search_back.click()
-                self.logger.info("Clicked search back button")
-
-            
-            time.sleep(2)
-            create_party_entry = self.handler.wait_for_element_clickable_plus('create_party_entry')
-            if not create_party_entry:
-                self.logger.error(f"Party creation entry not found")
-                return False
-            create_party_entry.click()
+            element.click()
             self.logger.info("Clicked create party entry")
 
-            confirm_party_button = self.handler.wait_for_element_clickable_plus('confirm_party', timeout=5)
-            if confirm_party_button:
-                confirm_party_button.click()
-                self.logger.info("Clicked confirm party button")
-                self.handler.wait_for_element_plus('create_party_screen')
-            else:
-                restore_party_button = self.handler.wait_for_element_clickable_plus('restore_party')
-                if restore_party_button:
-                    restore_party_button.click()
-                    self.logger.info("Clicked restore party button")
-                confirm_party_button = self.handler.wait_for_element_clickable_plus('confirm_party', timeout=5)
-                if confirm_party_button:
-                    confirm_party_button.click()
-                    self.logger.info("Clicked confirm party button")
+            key, element = self.handler.wait_for_any_element_plus(
+                ['confirm_party', 'restore_party', 'create_party_button'])
+            if not element:
+                self.logger.warning("未找到派对创建或恢复按钮")
+                return False
 
-            create_party_button = self.handler.try_find_element_plus('create_party_button')
-            if create_party_button:
-                create_party_button.click()
+            if key == 'create_party_button':
+                element.click()
                 self.logger.info("Clicked create party button")
+                return True
+
+            if key == 'confirm_party':
+                element.click()
+                self.logger.info("Clicked confirm party button")
+                key, element = self.handler.wait_for_any_element_plus(['create_party_button', 'room_id'])
+                if not element:
+                    self.logger.warning("未找到派对创建或恢复按钮")
+                    return False
+                if key == 'create_party_button':
+                    element.click()
+                    self.logger.info("Clicked create party button")
+                return True
+
+            element.click()
+            self.logger.info("Clicked restore party button")
+            key, element = self.handler.wait_for_any_element_plus(['confirm_party', 'room_id'])
+            if key == 'confirm_party':
+                element.click()
+                self.logger.info("Clicked confirm party button")
+                key, element = self.handler.wait_for_any_element_plus(['create_party_button', 'room_id'])
+                if not element:
+                    self.logger.warning("未找到派对创建或恢复按钮")
+                    return False
+                if key == 'create_party_button':
+                    element.click()
+                    self.logger.info("Clicked create party button")
+                return True
+
 
         except Exception as e:
             self.logger.debug(f"检测首页时出错: {str(e)}")

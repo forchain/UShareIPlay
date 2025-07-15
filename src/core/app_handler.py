@@ -530,3 +530,42 @@ class AppHandler:
         except Exception as e:
             self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
             return None
+
+    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10):
+        """
+        等待任意一个元素出现，返回(key, element)。超时返回None。
+        """
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        locators = []
+        key_map = {}
+        for key in element_keys:
+            if key not in self.config['elements']:
+                continue
+            value = self.config['elements'][key]
+            locator_type = AppiumBy.XPATH if value.startswith('//') else AppiumBy.ID
+            locators.append((locator_type, value))
+            key_map[(locator_type, value)] = key
+
+        if not locators:
+            self.logger.warning("wait_for_any_element_plus: 没有有效的元素key")
+            return None
+
+        try:
+            # Selenium 4.8+ 支持 EC.any_of
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.any_of(*[EC.presence_of_element_located(locator) for locator in locators])
+            )
+            # 找到是哪个key
+            for locator, key in key_map.items():
+                try:
+                    found = self.driver.find_element(*locator)
+                    if found and found.id == element.id:
+                        return key, element
+                except Exception:
+                    continue
+            return None
+        except Exception as e:
+            self.logger.error(f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}")
+            return None
