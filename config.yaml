@@ -137,8 +137,8 @@ qq_music:
     next_button: "com.tencent.qqmusic:id/f4"
     player_panel: "com.tencent.qqmusic:id/idm"
     hide_player: "com.tencent.qqmusic:id/na0"
-    song_name: "com.tencent.qqmusic:id/m_v"
-    singer_name: "com.tencent.qqmusic:id/mc2"
+    song_name: "com.tencent.qqmusic:id/mf6"
+    singer_name: "com.tencent.qqmusic:id/mhc"
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     playing_bar: "com.tencent.qqmusic:id/ha_"
@@ -183,12 +183,12 @@ qq_music:
     singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'
     song_tab: '//android.widget.RelativeLayout[@content-desc="歌曲 按钮"]'
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
-    album_text: 'com.tencent.qqmusic:id/lb1'
-    album_singer: 'com.tencent.qqmusic:id/lay'
-    lyrics_text: 'com.tencent.qqmusic:id/hkq'
+    album_text: 'com.tencent.qqmusic:id/lg8'
+    album_singer: 'com.tencent.qqmusic:id/lg5'
+    lyrics_text: 'com.tencent.qqmusic:id/hoi'
     playlist_result: 'com.tencent.qqmusic:id/li6'
-    singer_text: 'com.tencent.qqmusic:id/n7z'
-    singer_result: 'com.tencent.qqmusic:id/bdq'
+    singer_text: 'com.tencent.qqmusic:id/nc8'
+    singer_result: 'com.tencent.qqmusic:id/be2'
     play_all: '//android.widget.TextView[@text="全部播放"]'
     play_all_mini: 'com.tencent.qqmusic:id/se'
     singer_container: 'com.tencent.qqmusic:id/hag'
