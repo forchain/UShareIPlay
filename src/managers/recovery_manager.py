@@ -57,8 +57,16 @@ class RecoveryManager:
             input_box = self.handler.try_find_element_plus('room_id', log=False)
             return input_box is not None
         except Exception as e:
-            self.logger.debug(f"检测正常状态时出错: {str(e)}")
-            return False
+            error_str = str(e).lower()
+            # Check for connection errors
+            if any(keyword in error_str for keyword in ['socket hang up', 'could not proxy command', 'connection']):
+                self.logger.warning(f"检测到连接错误，可能需要重新连接: {str(e)}")
+                # Don't try to recover from connection errors at this level
+                # Let the main controller handle it
+                return False
+            else:
+                self.logger.debug(f"检测正常状态时出错: {str(e)}")
+                return False
 
     def handle_close_buttons(self) -> bool:
         """
@@ -141,16 +149,18 @@ class RecoveryManager:
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
 
-            party_back = self.handler.wait_for_element_clickable_plus('party_back', timeout=5)
-            if party_back:
-                party_back.click()
-                self.logger.info("Clicked back to party")
-                return True
-
             search_entry = self.handler.wait_for_element_clickable_plus('search_entry')
             if not search_entry:
                 self.logger.warning("未找到搜索按钮")
                 return False
+
+            # 先等待搜索按钮出现, 此时可能已经进入派对大厅， 如果有返回派对弹窗，应该已经显示
+            party_back = self.handler.try_find_element_plus('party_back', log=False)
+            if party_back:
+                party_back.click()
+                self.logger.info("Clicked back to party")
+                return True
+            
             search_entry.click()
             self.logger.info("Clicked search entry")
 
@@ -183,6 +193,7 @@ class RecoveryManager:
                 # Party is ongoing, click the party entry
                 party_online.click()
                 self.logger.info("Clicked party entry")
+                return True
             else:
                 self.logger.info("Party has ended, navigating to create a new party")
                 search_back = self.handler.wait_for_element_clickable_plus('search_back')

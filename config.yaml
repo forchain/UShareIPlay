@@ -332,4 +332,16 @@ device:
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
-  no_reset: true 
+  no_reset: true
+  # 连接优化设置
+  new_command_timeout: 300  # 5分钟无命令超时
+  uiautomator2_server_launch_timeout: 60000
+  uiautomator2_server_install_timeout: 60000
+  adb_exec_timeout: 60000
+
+# 连接恢复配置
+connection_recovery:
+  max_errors: 3
+  cooldown_seconds: 30
+  adb_timeout: 20
+  app_start_wait: 5 

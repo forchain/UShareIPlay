@@ -29,6 +29,15 @@ class AppController:
         self.in_console_mode = False
         self.player_name = 'Outlier'
         
+        # Connection recovery tracking
+        self.connection_error_count = 0
+        recovery_config = config.get('connection_recovery', {})
+        self.max_connection_errors = recovery_config.get('max_errors', 3)
+        self.last_driver_init_time = time.time()
+        self.driver_reinit_cooldown = recovery_config.get('cooldown_seconds', 30)
+        self.adb_timeout = recovery_config.get('adb_timeout', 20)
+        self.app_start_wait = recovery_config.get('app_start_wait', 5)
+        
         # Get lyrics formatter tags from lyrics command config
         lyrics_tags = next(
             (cmd.get('tags', []) for cmd in config['commands'] if cmd['prefix'] == 'lyrics'),
@@ -109,6 +118,148 @@ class AppController:
 
         server_url = f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
         return webdriver.Remote(command_executor=server_url, options=options)
+
+    def _check_adb_connection(self) -> bool:
+        """检查 ADB 连接状态"""
+        try:
+            import subprocess
+            result = subprocess.run([
+                'adb', 'devices'
+            ], capture_output=True, text=True, timeout=10)
+            
+            device_name = self.config['device']['name']
+            return device_name in result.stdout and 'device' in result.stdout
+        except Exception as e:
+            self.logger.error(f"Failed to check ADB connection: {str(e)}")
+            return False
+
+    def _reconnect_adb(self) -> bool:
+        """重新连接 ADB"""
+        try:
+            import subprocess
+            device_name = self.config['device']['name']
+            
+            # If it's a network device (contains :), try to reconnect
+            if ':' in device_name:
+                self.logger.info(f"Attempting to reconnect ADB to {device_name}")
+                
+                # Kill and restart ADB server
+                subprocess.run(['adb', 'kill-server'], timeout=10)
+                time.sleep(2)
+                subprocess.run(['adb', 'start-server'], timeout=10)
+                time.sleep(2)
+                
+                # Reconnect to device
+                result = subprocess.run([
+                    'adb', 'connect', device_name
+                ], capture_output=True, text=True, timeout=self.adb_timeout)
+                
+                if 'connected' in result.stdout.lower():
+                    self.logger.info(f"Successfully reconnected to {device_name}")
+                    return True
+                else:
+                    self.logger.error(f"Failed to reconnect to {device_name}: {result.stdout}")
+                    return False
+            else:
+                # For USB devices, just restart ADB
+                subprocess.run(['adb', 'kill-server'], timeout=10)
+                time.sleep(2)
+                subprocess.run(['adb', 'start-server'], timeout=10)
+                time.sleep(3)
+                return self._check_adb_connection()
+                
+        except Exception as e:
+            self.logger.error(f"Error during ADB reconnection: {str(e)}")
+            return False
+
+    def _reinitialize_driver(self) -> bool:
+        """重新初始化 Appium driver"""
+        current_time = time.time()
+        
+        # Check cooldown period
+        if current_time - self.last_driver_init_time < self.driver_reinit_cooldown:
+            self.logger.warning(f"Driver reinitialization in cooldown, waiting...")
+            return False
+            
+        try:
+            self.logger.warning("Attempting to reinitialize Appium driver...")
+            
+            # 1. Clean up old driver
+            if hasattr(self, 'driver') and self.driver:
+                try:
+                    self.driver.quit()
+                except:
+                    pass  # Ignore errors when quitting broken driver
+            
+            # 2. Check and fix ADB connection
+            if not self._check_adb_connection():
+                self.logger.warning("ADB connection lost, attempting to reconnect...")
+                if not self._reconnect_adb():
+                    self.logger.error("Failed to reconnect ADB")
+                    return False
+                time.sleep(3)  # Wait for ADB to stabilize
+            
+            # 3. Restart applications
+            self._start_apps()
+            time.sleep(self.app_start_wait)  # Wait for apps to start
+            
+            # 4. Initialize new driver
+            self.driver = self._init_driver()
+            self.last_driver_init_time = current_time
+            
+            # 5. Update driver reference in handlers
+            self.soul_handler.driver = self.driver
+            self.music_handler.driver = self.driver
+            
+            # 6. Reset error counters
+            self.connection_error_count = 0
+            self.soul_handler.error_count = 0
+            self.music_handler.error_count = 0
+            
+            self.logger.info("Successfully reinitialized Appium driver")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reinitialize driver: {str(e)}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+
+    def _is_connection_error(self, error: Exception) -> bool:
+        """判断是否为连接相关错误"""
+        error_str = str(error).lower()
+        connection_keywords = [
+            'socket hang up',
+            'could not proxy command',
+            'connection refused',
+            'connection reset',
+            'broken pipe',
+            'network is unreachable',
+            'timeout',
+            'connection aborted',
+            'remote end closed connection'
+        ]
+        return any(keyword in error_str for keyword in connection_keywords)
+
+    def _handle_connection_error(self, error: Exception) -> bool:
+        """处理连接错误"""
+        self.connection_error_count += 1
+        self.logger.error(f"Connection error #{self.connection_error_count}: {str(error)}")
+        
+        if self.connection_error_count >= self.max_connection_errors:
+            self.logger.warning(f"Reached max connection errors ({self.max_connection_errors}), attempting driver reinitialization...")
+            
+            if self._reinitialize_driver():
+                self.logger.info("Driver reinitialization successful, continuing...")
+                return True
+            else:
+                self.logger.error("Driver reinitialization failed, giving up...")
+                return False
+        else:
+            # Wait a bit before retrying
+            wait_time = min(2 ** self.connection_error_count, 30)  # Exponential backoff, max 30s
+            self.logger.info(f"Waiting {wait_time} seconds before retry...")
+            time.sleep(wait_time)
+            return True
 
     def _load_command_module(self, command):
         """Load command module dynamically"""
@@ -366,6 +517,7 @@ class AppController:
 
                 # clear error once back to normal
                 error_count = 0
+                self.connection_error_count = 0  # Reset connection error count on success
                 if self.soul_handler.error_count > 9:
                     self.soul_handler.log_error(
                         f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
@@ -381,9 +533,19 @@ class AppController:
             except StaleElementReferenceException as e:
                 self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
             except WebDriverException as e:
-                self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
-                error_count += 1
-                if error_count > 9:
-                    self.is_running = False
-                    return False
+                self.soul_handler.log_error(f'[start_monitoring]WebDriverException, traceback: {traceback.format_exc()}')
+                
+                # Check if it's a connection error
+                if self._is_connection_error(e):
+                    if self._handle_connection_error(e):
+                        continue  # Retry the loop
+                    else:
+                        self.is_running = False
+                        return False
+                else:
+                    # Regular WebDriverException, use existing logic
+                    error_count += 1
+                    if error_count > 9:
+                        self.is_running = False
+                        return False
         return None
