@@ -190,7 +190,12 @@ class RecoveryManager:
             self.logger.info("Clicked restore party button")
             key, element = self.handler.wait_for_any_element_plus(['confirm_party', 'room_id'])
             if key == 'confirm_party':
-                element.click()
+                # confirm_party is found but not clickable - wait for it to become clickable
+                confirm_party = self.handler.wait_for_element_clickable_plus('confirm_party')
+                if not confirm_party:
+                    self.logger.error("confirm party button not found")
+                    return False
+                confirm_party.click()
                 self.logger.info("Clicked confirm party button")
                 key, element = self.handler.wait_for_any_element_plus(['create_party_button', 'room_id'])
                 if not element:
@@ -243,7 +248,7 @@ class RecoveryManager:
 
         if recovery_performed:
             self.last_recovery_time = current_time
-            self.logger.info("恢复操作执行完成，等待下次检查")
+            # self.logger.info("恢复操作执行完成，等待下次检查")
 
         return recovery_performed
 
