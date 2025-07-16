@@ -243,7 +243,7 @@ class RecoveryManager:
 
         if recovery_performed:
             self.last_recovery_time = current_time
-            self.logger.info("恢复操作执行完成，等待下次检查")
+            # self.logger.info("恢复操作执行完成，等待下次检查")
 
         return recovery_performed
 
