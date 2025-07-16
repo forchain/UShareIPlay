@@ -1,7 +1,7 @@
 soul:
   package_name: "cn.soulapp.android"
   chat_activity: ".component.startup.main.MainActivity"
-  # default_party_id: "FM18633292" 
+  # default_party_id: "FM18633292"
   default_party_id: "FM15321640" 
   default_notice: "U Share I Play\n分享音乐 享受快乐"
   elements:
@@ -186,7 +186,7 @@ qq_music:
     album_text: 'com.tencent.qqmusic:id/lb1'
     album_singer: 'com.tencent.qqmusic:id/lay'
     lyrics_text: 'com.tencent.qqmusic:id/hkq'
-    playlist_result: 'com.tencent.qqmusic:id/lcz'
+    playlist_result: 'com.tencent.qqmusic:id/li6'
     singer_text: 'com.tencent.qqmusic:id/n7z'
     singer_result: 'com.tencent.qqmusic:id/bdq'
     play_all: '//android.widget.TextView[@text="全部播放"]'
@@ -333,7 +333,7 @@ logging:
   directory: "../logs"
 
 device:
-  name: "192.168.50.151:5555"
+  name: "192.168.50.33:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
