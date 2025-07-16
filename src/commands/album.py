@@ -1,7 +1,6 @@
 import traceback
+
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -36,11 +35,11 @@ class AlbumCommand(BaseCommand):
                 if not music_tabs:
                     self.handler.logger.error("Failed to find music tabs")
                     return False
-                
+
                 # Get size and location for scrolling
                 size = music_tabs.size
                 location = music_tabs.location
-                
+
                 # Scroll to right
                 self.handler.driver.swipe(
                     location['x'] + 200,  # Start from left
@@ -49,17 +48,17 @@ class AlbumCommand(BaseCommand):
                     location['y'] + size['height'] // 2,
                     1000
                 )
-                
+
                 # Try to find album tab again
                 album_tab = self.handler.try_find_element_plus('album_tab')
                 if not album_tab:
                     self.handler.logger.error("Failed to find album tab after scrolling")
                     return False
-            
+
             album_tab.click()
             self.handler.logger.info("Selected album tab")
             return True
-            
+
         except Exception as e:
             self.handler.logger.error(f"Error selecting album tab: {traceback.format_exc()}")
             return False
@@ -92,28 +91,12 @@ class AlbumCommand(BaseCommand):
             self.handler.logger.error(f"Failed to find album singer with query {query}")
             return {'error': f'Failed to find album singer with query {query}'}
         title = album_singer.text
-        # if album_singer:
-        #     with_singer = f'{topic} {album_singer.text.split(' ')[0]}'
-        #     topic = with_singer if len(with_singer) <= 15 else topic
 
         album_text.click()
         self.handler.logger.info("album text clicked")
 
-        singer_container = self.handler.wait_for_element_plus('singer_container')
-        if not singer_container:
-            self.handler.logger.error(f"Failed to find singer container with query {query}")
-            return {'error': 'Failed to find singer container'}
-
-        play_all = self.handler.try_find_element_plus('play_all')
-        play_all_mini = self.handler.try_find_element_plus('play_all_mini')
-
-        if play_all_mini :
-            play_button = play_all_mini
-            self.handler.logger.info("play all mini button found")
-        elif play_all:
-            play_button = play_all
-            self.handler.logger.info("play all button found")
-        else:
+        key, play_button = self.handler.wait_for_any_element_plus(['play_all', 'play_all_mini'])
+        if not play_button:
             self.handler.logger.error(f"Failed to find play button for query {query}")
             return {'error': 'Failed to find play button'}
 
