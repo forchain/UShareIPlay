@@ -9,8 +9,6 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from .greeting_manager import GreetingManager
 
-DEFAULT_PARTY_ID = "FM15321640"  # Default party ID to join
-DEFAULT_NOTICE = "U Share I Play\n分享音乐 享受快乐"  # Default party ID to join
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -74,7 +72,7 @@ class MessageManager:
     def get_party_id(self):
         party_id = self.handler.party_id
         if not party_id:
-            party_id = DEFAULT_PARTY_ID
+            party_id = self.handler.config['default_party_id']
         return party_id
 
     async def get_latest_message(self, enabled=True):
