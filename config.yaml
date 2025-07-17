@@ -200,7 +200,7 @@ qq_music:
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
-    playlist_item_container: 'com.tencent.qqmusic:id/jv5'
+    playlist_item_container: 'com.tencent.qqmusic:id/l_1'
     playlist_song: 'com.tencent.qqmusic:id/mab'
     playlist_singer: 'com.tencent.qqmusic:id/lxx'
     playlist_current: 'com.tencent.qqmusic:id/eox'
