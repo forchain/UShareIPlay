@@ -204,7 +204,7 @@ qq_music:
     playlist_item_container: 'com.tencent.qqmusic:id/l4v'
     playlist_song: 'com.tencent.qqmusic:id/mab'
     playlist_singer: 'com.tencent.qqmusic:id/lxx'
-    playlist_playing: 'com.tencent.qqmusic:id/eo6'
+    playlist_current: 'com.tencent.qqmusic:id/eox'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
     play_mode: 'com.tencent.qqmusic:id/a9j'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
@@ -217,6 +217,8 @@ qq_music:
     play_all_singer: '//android.widget.TextView[@text="播放最热歌曲"]'
     playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
     play_next: '//android.widget.ImageView[@content-desc="下一首"]'
+
+    minimize_player: 'com.tencent.qqmusic:id/cp9'
 
     cancel_drawer: '//android.widget.TextView[@text="取消"]'
 commands:

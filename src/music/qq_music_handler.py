@@ -116,6 +116,11 @@ class QQMusicHandler(AppHandler):
             self.press_back()
             self.logger.info(f"minimize playing window")
 
+        minimize_player = self.try_find_element_plus('minimize_player')
+        if minimize_player:
+            minimize_player.click()
+            self.logger.info(f"minimize player")
+
         play_all_singer = self.try_find_element_plus('play_all_singer')
         play_all_album = self.try_find_element_plus('play_all_album')
         play_all_playlist = self.try_find_element_plus('play_all_playlist')
@@ -706,15 +711,15 @@ class QQMusicHandler(AppHandler):
             return {'error': 'Failed to find play list entry'}
         playlist_entry.click()
 
-        playlist_playing = self.wait_for_element_clickable_plus('playlist_playing')
-        if not playlist_playing:
+        playlist_current = self.wait_for_element_clickable_plus('playlist_current')
+        if not playlist_current:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
 
         can_scroll = True
         try:
-            playing_loc = playlist_playing.location
-            playing_size = playlist_playing.size
+            playing_loc = playlist_current.location
+            playing_size = playlist_current.size
         except StaleElementReferenceException as e:
             self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
             playing_loc = None
