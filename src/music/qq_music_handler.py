@@ -108,27 +108,27 @@ class QQMusicHandler(AppHandler):
 
         # Check if we're already in search mode
         playlist_header = self.try_find_element_plus('playlist_header', log=False)
-        play_next = self.try_find_element_plus('play_next')
-        minimize_screen = self.try_find_element_plus('minimize_screen')
-        playing_record = self.try_find_element_plus('playing_record')
-        cancel_drawer = self.try_find_element_plus('cancel_drawer')
+        play_next = self.try_find_element_plus('play_next', log=False)
+        minimize_screen = self.try_find_element_plus('minimize_screen', log=False)
+        playing_record = self.try_find_element_plus('playing_record', log=False)
+        cancel_drawer = self.try_find_element_plus('cancel_drawer', log=False)
         if playlist_header or play_next or minimize_screen or playing_record or cancel_drawer:
             self.press_back()
             self.logger.info(f"minimize playing window")
 
-        minimize_player = self.try_find_element_plus('minimize_player')
+        minimize_player = self.try_find_element_plus('minimize_player', log=False)
         if minimize_player:
             minimize_player.click()
             self.logger.info(f"minimize player")
 
-        play_all_singer = self.try_find_element_plus('play_all_singer')
-        play_all_album = self.try_find_element_plus('play_all_album')
-        play_all_playlist = self.try_find_element_plus('play_all_playlist')
+        play_all_singer = self.try_find_element_plus('play_all_singer', log=False)
+        play_all_album = self.try_find_element_plus('play_all_album', log=False)
+        play_all_playlist = self.try_find_element_plus('play_all_playlist', log=False)
         if play_all_singer or play_all_album or play_all_playlist:
             self.press_back()
             self.logger.info(f"Found play all button, go back")
 
-        search_entry = self.try_find_element_plus('search_entry')
+        search_entry = self.try_find_element_plus('search_entry', log=False)
         go_back = self.try_find_element_plus('go_back')
         if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
             search_entry.click()

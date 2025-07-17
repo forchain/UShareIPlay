@@ -1,20 +1,19 @@
-import time
-import traceback
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.remote.webelement import WebElement
-from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException, TimeoutException
-import selenium
 import logging
 import os
+import time
+import traceback
 from datetime import datetime
+
+import selenium
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException, TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions import interaction
-from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
+from selenium.webdriver.common.actions.pointer_input import PointerInput
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class AppHandler:
@@ -40,7 +39,7 @@ class AppHandler:
             print(f"[日志调试] 加载 config.yaml 失败: {e}")
             log_dir = 'logs'
         print(f"[日志调试] handler 日志目录: {log_dir}, 绝对路径: {os.path.abspath(log_dir)}")
-        
+
         # Create logs directory if it doesn't exist (supports relative paths)
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
@@ -272,7 +271,7 @@ class AppHandler:
             )
             time.sleep(0.1)  # Small delay between key presses
 
-    def try_find_element_plus(self, element_key: str, log=True, clickable=False) -> WebElement:
+    def try_find_element_plus(self, element_key: str, log=False, clickable=False) -> WebElement:
         """Enhanced try_find_element using just element key"""
         try:
             if log:
