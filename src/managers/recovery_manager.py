@@ -1,6 +1,5 @@
 import time
 from typing import Dict
-from ..core.config_loader import ConfigLoader
 
 
 class RecoveryManager:
@@ -92,12 +91,12 @@ class RecoveryManager:
                 element = self.handler.try_find_element_plus(drawer_key, log=False)
                 if not element:
                     continue
-                self.logger.warning(f"发现抽屉元素: {drawer_key}，正在点击关闭")
-                # 点击抽屉上方区域来关闭抽屉
+
                 self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
+                self.logger.warning(f"Closed drawer: {drawer_key}")
                 return True
             except Exception as e:
-                self.logger.debug(f"检测抽屉元素 {drawer_key} 时出错: {str(e)}")
+                self.logger.debug(f"Error on detecting drawer {drawer_key}: {str(e)}")
                 continue
 
         return False
@@ -114,11 +113,11 @@ class RecoveryManager:
                 if not element:
                     continue
 
-                self.logger.warning(f"发现潜在风险元素: {risk_key}，正在处理")
                 element.click()
+                self.logger.warning(f"Processed risk element: {risk_key}")
                 return True
             except Exception as e:
-                self.logger.debug(f"检测风险元素 {risk_key} 时出错: {str(e)}")
+                self.logger.error(f"Error on detecting on risk element: {risk_key} : {str(e)}")
                 continue
 
         return False
@@ -231,9 +230,6 @@ class RecoveryManager:
         # 首先检查是否处于正常状态
         if self.is_normal_state():
             return False
-
-        # 执行恢复操作，一次只处理一个异常情况
-        self.logger.warning("检测到异常状态，开始执行恢复操作")
 
         # 2. 处理关闭按钮
         recovery_performed = self.handle_close_buttons()
