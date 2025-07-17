@@ -702,7 +702,7 @@ class QQMusicHandler(AppHandler):
             return {'error': 'Failed to switch to QQ Music app'}
 
         # Try to find playlist entry in playing panel first
-        playlist_entry = self.try_find_element_plus('playlist')
+        playlist_entry = self.try_find_element_plus('playlist_entry')
         if not playlist_entry:
             self.press_back()
 
