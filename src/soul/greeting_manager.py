@@ -44,7 +44,7 @@ class GreetingManager:
                 return None
 
             # Get nickname from message
-            nickname_element = self.handler.try_find_element_plus('souler_name')
+            nickname_element = self.handler.try_find_element_plus('souler_name', log= False)
             if not nickname_element:
                 self.handler.logger.error("Failed to find nickname of message")
                 self.handler.press_back()

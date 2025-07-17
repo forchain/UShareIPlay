@@ -1,16 +1,12 @@
 import time
 import traceback
-
-from PIL.ImageOps import contain
-from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common import WebDriverException
-
-from ..core.app_handler import AppHandler
-import re
 from dataclasses import dataclass
-from selenium.common.exceptions import StaleElementReferenceException
-from ..core.base_command import BaseCommand
+
+from appium.webdriver.common.appiumby import AppiumBy
+
 from .message_manager import MessageManager
+from ..core.app_handler import AppHandler
+
 
 # Constants
 @dataclass
@@ -30,7 +26,7 @@ class SoulHandler(AppHandler):
         self.party_id = None
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
-    
+
     async def get_latest_message(self, enabled=True):
         """Get latest messages from the chat"""
         return await self.message_manager.get_latest_message(enabled)
@@ -226,20 +222,12 @@ class SoulHandler(AppHandler):
         """Wait for the grab mic button and confirm the action"""
         try:
             # Wait for the grab mic button to be clickable
-            grab_mic_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['grab_mic']
-            )
+            grab_mic_button = self.wait_for_element_clickable_plus('grab_mic')
             grab_mic_button.click()
-            print("Clicked grab mic button")
 
             # Wait for the confirmation dialog to appear
-            confirm_button = self.wait_for_element_clickable(
-                AppiumBy.XPATH,
-                self.config['elements']['confirm_mic']
-            )
+            confirm_button = self.wait_for_element_clickable_plus('confirm_mic')
             confirm_button.click()
-            print("Clicked confirm button for mic")
 
         except Exception as e:
             print(f"Error grabbing mic: {str(e)}")
@@ -248,10 +236,7 @@ class SoulHandler(AppHandler):
         """Ensure the microphone is active"""
         try:
             # Check if the grab mic button is present
-            grab_mic_button = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['grab_mic']
-            )
+            grab_mic_button = self.try_find_element_plus('grab_mic', log=False)
 
             if grab_mic_button:
                 self.logger.info("Grab mic button found, grabbing mic...")
@@ -260,7 +245,7 @@ class SoulHandler(AppHandler):
                 self.logger.info("Already on mic, checking toggle mic status...")
                 # Check the toggle mic button
                 toggle_mic_button = self.wait_for_element_clickable_plus('toggle_mic')
-                
+
                 if not toggle_mic_button:
                     self.logger.error("Toggle mic button not found")
                     return
