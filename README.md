@@ -379,6 +379,30 @@ adb shell logcat | grep "cmp="
 
 After obtaining the package name and activity, update the corresponding `package_name` and `activity` fields in the `config.yaml` file.
 
+### 4. UiAutomator2 Crash Recovery
+The application now includes automatic recovery from UiAutomator2 server crashes. When the UiAutomator2 instrumentation process crashes, the system will:
+
+1. **Detect the crash** - Automatically identify UiAutomator2 server crashes from error messages
+2. **Reinitialize the driver** - Close the current driver session and create a new one
+3. **Update references** - Update all handler references to use the new driver
+4. **Switch back to app** - Automatically switch back to the target application
+5. **Retry operations** - Retry the original operation that caused the crash
+
+**Recovery is implemented in the following methods:**
+- `wait_for_element_clickable_plus()` - Element waiting operations
+- `wait_for_element_plus()` - Element presence detection
+- `try_find_element_plus()` - Element finding operations
+- `press_back()` - Back button operations
+- `switch_to_app()` - App switching operations
+- `wait_for_any_element_plus()` - Multi-element detection
+
+**Log messages to look for:**
+- `"Detected UiAutomator2 server crash, attempting recovery..."`
+- `"Driver reinitialization completed successfully"`
+- `"Found element after recovery"`
+
+If recovery fails multiple times, the system will log error messages and continue operation.
+
 ## Development Guide
 
 ### 1. Project Structure
