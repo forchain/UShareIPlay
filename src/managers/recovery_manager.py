@@ -93,7 +93,7 @@ class RecoveryManager:
                     continue
 
                 self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
-                self.logger.warning(f"Closed drawer: {drawer_key}")
+                self.logger.info(f"Closed drawer: {drawer_key}")
                 return True
             except Exception as e:
                 self.logger.debug(f"Error on detecting drawer {drawer_key}: {str(e)}")

@@ -103,37 +103,22 @@ class PlaylistCommand(BaseCommand):
             if song_name:
                 topic = song_name.text
 
-        play_button = self.handler.wait_for_element_clickable_plus('play_all', timeout=5)
-        if play_button:
-            self.handler.logger.info("Found play all button")
-            play_button.click()
+        play_button = self.handler.wait_for_element_clickable_plus('play_all_playlist', timeout=5)
+        if not play_button:
+            self.handler.logger.error("Failed to find play all button")
+            return {
+                'error': 'Failed to find play all button',
+            }
 
-            playing_info = self.handler.get_playlist_info()
-            if not 'error' in playing_info:
-                playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
+        play_button.click()
+        self.handler.logger.info("Selected play all button")
 
-            self.controller.title_command.change_title(subject)
-            self.controller.topic_command.change_topic(topic)
-        else:
-            play_button = self.handler.wait_for_element_clickable_plus('play_album')
-            if play_button:
-                self.handler.logger.info("Found play album button")
-                play_button.click()
+        playing_info = self.handler.get_playlist_info()
+        if not 'error' in playing_info:
+             playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
 
-                playing_info = self.handler.get_playlist_info()
-                if not 'error' in playing_info:
-                    playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
-
-                playlist_screen = self.handler.wait_for_element_clickable_plus('playlist_screen')
-                if playlist_screen:
-                    self.handler.logger.info("Found playlist screen")
-                    self.handler.press_back()
-
-                self.controller.title_command.change_title(subject)
-                self.controller.topic_command.change_topic(topic)
-            else:
-                self.handler.logger.error('Failed to find playlist button')
-                return {'error': 'Failed to find play button'}
+        self.controller.title_command.change_title(subject)
+        self.controller.topic_command.change_topic(topic)
         self.handler.list_mode = 'playlist'
         return {
             'playlist': playlist,
