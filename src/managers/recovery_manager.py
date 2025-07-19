@@ -23,7 +23,7 @@ class RecoveryManager:
             'activity_back',
             'h5_back',
             'reminder_ok',
-            'minimize_screen',
+            'profile_back',
         ]
 
         # 抽屉式弹窗列表

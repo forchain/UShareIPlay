@@ -126,6 +126,7 @@ soul:
     party_restore_drawer: 'cn.soulapp.android:id/design_bottom_sheet' # 我创建过的派对
     receive_gift: 'cn.soulapp.android:id/ivReceiveGift' # 获得建群礼>立即领取
     create_room_entry: 'cn.soulapp.android:id/btnCreateRoom' # 推荐>创建派对
+    profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
 
 qq_music:
   package_name: "com.tencent.qqmusic"
