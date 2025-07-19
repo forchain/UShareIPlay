@@ -103,9 +103,9 @@ class PlaylistCommand(BaseCommand):
             if song_name:
                 topic = song_name.text
 
-        play_button = self.handler.wait_for_element_clickable_plus('play_all_playlist', timeout=5)
+        key, play_button = self.handler.wait_for_any_element_plus(['play_all_album', 'play_all_playlist'])
         if not play_button:
-            self.handler.logger.error("Failed to find play all button")
+            self.handler.logger.error("Failed to find play all button (album or playlist)")
             return {
                 'error': 'Failed to find play all button',
             }
