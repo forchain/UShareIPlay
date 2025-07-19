@@ -73,11 +73,11 @@ class RecoveryManager:
                 element = self.handler.try_find_element_plus(button_key, log=False)
                 if not element:
                     continue
-                self.logger.warning(f"发现关闭按钮: {button_key}，正在点击")
+                self.logger.info(f"Clicked close button: {button_key}")
                 element.click()
                 return True
             except Exception as e:
-                self.logger.debug(f"检测关闭按钮 {button_key} 时出错: {str(e)}")
+                self.logger.error(f"Error on detecting close button {button_key}: {str(e)}")
                 continue
 
         return False
