@@ -114,7 +114,7 @@ class RecoveryManager:
                     continue
 
                 element.click()
-                self.logger.warning(f"Processed risk element: {risk_key}")
+                self.logger.info(f"Processed risk element: {risk_key}")
                 return True
             except Exception as e:
                 self.logger.error(f"Error on detecting on risk element: {risk_key} : {str(e)}")
