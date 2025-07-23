@@ -126,6 +126,7 @@ soul:
     party_restore_drawer: 'cn.soulapp.android:id/design_bottom_sheet' # 我创建过的派对
     receive_gift: 'cn.soulapp.android:id/ivReceiveGift' # 获得建群礼>立即领取
     create_room_entry: 'cn.soulapp.android:id/btnCreateRoom' # 推荐>创建派对
+    profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -172,8 +173,8 @@ qq_music:
     accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
-    radar_song: 'com.tencent.qqmusic:id/lxj'
-    radar_singer: 'com.tencent.qqmusic:id/lkl'
+    radar_song: 'com.tencent.qqmusic:id/mf6'
+    radar_singer: 'com.tencent.qqmusic:id/m2w'
     fav_entry: 'com.tencent.qqmusic:id/ij0'
     play_fav: 'com.tencent.qqmusic:id/eki'
     fav_song: 'com.tencent.qqmusic:id/lxj'

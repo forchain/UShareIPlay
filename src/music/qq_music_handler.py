@@ -128,8 +128,8 @@ class QQMusicHandler(AppHandler):
             self.press_back()
             self.logger.info(f"Found play all button, go back")
 
-        search_entry = self.try_find_element_plus('search_entry', log=False)
         go_back = self.try_find_element_plus('go_back')
+        search_entry = self.try_find_element_plus('search_entry', log=False)
         if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
             search_entry.click()
 
