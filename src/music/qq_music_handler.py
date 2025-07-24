@@ -140,6 +140,7 @@ class QQMusicHandler(AppHandler):
 
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
+            self.press_back()
             self.logger.error(f"Cannot find search box")
             return False
         try:
