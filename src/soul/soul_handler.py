@@ -39,7 +39,12 @@ class SoulHandler(AppHandler):
         input_box_entry = self.wait_for_element_clickable_plus('input_box_entry')
         if not input_box_entry:
             self.logger.error(f'cannot find input box entry, might be in loading')
-            return
+            return {'error': 'cannot find input box entry, might be in loading'}
+        go_back = self.try_find_element_plus('go_back_1', log=False)
+        if go_back:
+            go_back.click()
+            self.logger.error("Clicked go back button, might be in chat screen")
+            return {'error': 'cannot find input box entry, might be in chat screen'}
         input_box_entry.click()
         self.logger.info("Clicked input box entry")
 
