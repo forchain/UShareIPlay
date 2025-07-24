@@ -129,6 +129,7 @@ soul:
     create_room_entry: 'cn.soulapp.android:id/btnCreateRoom' # 推荐>创建派对
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
     close_notice_1: 'cn.soulapp.android:id/iv_close_bottom' # 关注成功
+    go_back_2: 'cn.soulapp.android:id/leftImage' # 群聊返回
 
 qq_music:
   package_name: "com.tencent.qqmusic"

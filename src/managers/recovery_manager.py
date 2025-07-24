@@ -17,6 +17,7 @@ class RecoveryManager:
             'party_back',
             'go_back',
             'go_back_1',
+            'go_back_2',
             'close_app',
             'close_notice',
             'close_notice_1',
@@ -146,10 +147,11 @@ class RecoveryManager:
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
 
-            if party_id := self.handler.party_id:
-                if not self._search_and_enter_party(party_id):
-                    self.logger.warning("未找到派对")
-                    return False
+            # TODO: 搜索并进入指定派对
+            # if party_id := self.handler.party_id:
+            #     if not self._search_and_enter_party(party_id):
+            #         self.logger.warning("未找到派对")
+            #         return False
 
             key, element = self.handler.wait_for_any_element_plus(
                 ['party_back', 'create_party_entry', 'create_room_entry'])
