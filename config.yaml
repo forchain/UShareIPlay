@@ -80,6 +80,7 @@ soul:
     title_edit_input: 'cn.soulapp.android:id/et_content'
     title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
     go_back: 'cn.soulapp.android:id/iv_back'
+    go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
     user_count: 'cn.soulapp.android:id/tvUserCount' # 6人
     seat_desk: 'cn.soulapp.android:id/userRoot' #  > left_seat, right_seat
     left_seat: 'cn.soulapp.android:id/leftUserView' # > left_state
@@ -127,6 +128,7 @@ soul:
     receive_gift: 'cn.soulapp.android:id/ivReceiveGift' # 获得建群礼>立即领取
     create_room_entry: 'cn.soulapp.android:id/btnCreateRoom' # 推荐>创建派对
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
+    close_notice_1: 'cn.soulapp.android:id/iv_close_bottom' # 关注成功
 
 qq_music:
   package_name: "com.tencent.qqmusic"
