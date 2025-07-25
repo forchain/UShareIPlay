@@ -23,11 +23,11 @@ class RecoveryManager:
             'close_notice_1',
             'search_back',
             'close_more_menu',
+            'close_party_end',
             'activity_back',
             'h5_back',
             'reminder_ok',
             'profile_back',
-            'close_party_end',
         ]
 
         # 抽屉式弹窗列表
