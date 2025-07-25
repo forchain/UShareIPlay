@@ -27,6 +27,7 @@ class RecoveryManager:
             'h5_back',
             'reminder_ok',
             'profile_back',
+            'close_party_end',
         ]
 
         # 抽屉式弹窗列表
