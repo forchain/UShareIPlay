@@ -294,10 +294,7 @@ class QQMusicHandler(AppHandler):
                 return playing_info
 
             # Click next button
-            next_button = self.wait_for_element_clickable(
-                AppiumBy.ID,
-                self.config['elements']['next_button']
-            )
+            next_button = self.wait_for_element_clickable_plus('next_button')
             next_button.click()
             self.logger.info(f"Clicked next button")
 
