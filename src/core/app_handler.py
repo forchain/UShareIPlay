@@ -686,7 +686,7 @@ class AppHandler:
 
         if not locators:
             self.logger.warning("wait_for_any_element_plus: 没有有效的元素key")
-            return None
+            return None, None
 
         try:
             # Selenium 4.8+ 支持 EC.any_of
@@ -701,7 +701,8 @@ class AppHandler:
                         return key, element
                 except Exception:
                     continue
-            return None
+            self.logger.warning("wait_for_any_element_plus: 找不到对应的key")
+            return None, None
         except WebDriverException as e:
             # Check if this is a UiAutomator2 crash and handle it
             if self._is_uiautomator2_crash(e):
@@ -720,19 +721,20 @@ class AppHandler:
                                     return key, element
                             except Exception:
                                 continue
-                        return None
+                        self.logger.warning("wait_for_any_element_plus: 找不到对应的key")
+                        return None, None
                     except Exception as retry_e:
                         self.logger.error(f"Retry failed after UiAutomator2 recovery: {str(retry_e)}")
-                        return None
+                        return None, None
                 else:
                     self.logger.error("UiAutomator2 recovery failed")
-                    return None
+                    return None, None
             else:
                 self.logger.error(f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}")
-                return None
+                return None, None
         except Exception as e:
             self.logger.error(f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}")
-            return None
+            return None, None
 
     def _is_uiautomator2_crash(self, exception: Exception) -> bool:
         """
