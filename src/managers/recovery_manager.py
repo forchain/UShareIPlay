@@ -23,6 +23,7 @@ class RecoveryManager:
             'close_notice_1',
             'search_back',
             'close_more_menu',
+            'party_ended',
             'activity_back',
             'h5_back',
             'reminder_ok',
