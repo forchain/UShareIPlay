@@ -130,6 +130,7 @@ soul:
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
     close_notice_1: 'cn.soulapp.android:id/iv_close_bottom' # 关注成功
     go_back_2: 'cn.soulapp.android:id/leftImage' # 群聊返回
+    party_ended: '//android.view.View[@resource-id="app"]/android.view.View/android.view.View[1]' # 派对已结束 > X
 
 qq_music:
   package_name: "com.tencent.qqmusic"
