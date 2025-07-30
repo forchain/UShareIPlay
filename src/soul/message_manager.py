@@ -84,7 +84,8 @@ class MessageManager:
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
-            self.handler.logger.error("Failed to find message list")
+            self.handler.press_back()
+            self.handler.logger.error("Failed to find message list, go back")
             return None
 
         # Collapse seats if expanded and update focus count
