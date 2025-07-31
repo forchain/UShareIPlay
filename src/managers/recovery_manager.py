@@ -11,6 +11,7 @@ class RecoveryManager:
 
         # 关闭和返回按钮列表
         self.close_buttons = [
+            'confirm_close',
             'receive_gift',
             'floating_entry',
             'party_hall_back',
