@@ -135,6 +135,8 @@ soul:
     confirm_close_1: '//android.widget.ImageView[@resource-id="cn.soulapp.android:id/img_close"]' # 我知道了
     confirm_close_2: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/confirm"]' # 我知道了
     confirm_close_3: '//android.widget.TextView[@text="我知道了"]'
+    confirm_close_4: '//android.widget.TextView[@text="知道了"]'
+    confirm_close_5: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/btn_sure"]'
 
 qq_music:
   package_name: "com.tencent.qqmusic"
