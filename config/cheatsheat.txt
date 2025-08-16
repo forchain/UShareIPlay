@@ -19,7 +19,7 @@
 :playlist 官方 微醺咖啡厅
 :playlist 官方 微光森林
 :playlist 官方 深度专注
-:playlist 官方 Loft&Chill
+:playlist 官方 Lofi&Chill
 :playlist 官方 慵懒时间
 :playlist 官方 下厨音乐
 :playlist 官方 沐浴美学
@@ -35,10 +35,9 @@
 :singer Kainbeats
 :singer 城之内ミサ
 
-:play Piano Concerto No. 23 in A Major, K. 488 II. Adagio
-:next Good Night Earth-吴开司
-
 :album To the moon and back nadav
 :album Your Light cxlt.
 :album Aquilla Loafy Building
 
+:playlist O老师你快来听听我的歌单，听完就睡着了
+:playlist O老师你快来听听我的歌单，听完就不虚了
