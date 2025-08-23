@@ -145,7 +145,7 @@ qq_music:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
     play_button: "com.tencent.qqmusic:id/kcr"
-    next_button: "com.tencent.qqmusic:id/f4"
+    next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
     player_panel: "com.tencent.qqmusic:id/idm"
     hide_player: "com.tencent.qqmusic:id/na0"
     song_name: "com.tencent.qqmusic:id/mf6"
