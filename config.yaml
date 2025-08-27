@@ -137,6 +137,10 @@ soul:
     confirm_close_3: '//android.widget.TextView[@text="我知道了"]'
     confirm_close_4: '//android.widget.TextView[@text="知道了"]'
     confirm_close_5: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/btn_sure"]'
+    confirm_close_6: 'cn.soulapp.android:id/tv_cancel'
+    confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
+    bottom_drawer_1: 'cn.soulapp.android:id/tslLayout' # 底部抽屉
+
 
 qq_music:
   package_name: "com.tencent.qqmusic"
