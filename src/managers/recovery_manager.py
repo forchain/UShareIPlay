@@ -11,6 +11,8 @@ class RecoveryManager:
 
         # 关闭和返回按钮列表
         self.close_buttons = [
+            'confirm_close_6',
+            'confirm_close_7',
             'confirm_close_4',
             'confirm_close_5',
             'confirm_close_1',
@@ -39,6 +41,7 @@ class RecoveryManager:
 
         # 抽屉式弹窗列表
         self.drawer_elements = [
+            'bottom_drawer_1',
             'online_drawer',
             'share_drawer',
             'input_drawer',
@@ -60,6 +63,24 @@ class RecoveryManager:
 
         self.last_recovery_time = 0
         self.recovery_cooldown = 1  # 恢复操作冷却时间（秒）
+
+    def _set_default_notice(self):
+        """设置默认notice（使用NoticeManager）"""
+        try:
+            from .notice_manager import NoticeManager
+            notice_manager = NoticeManager(self.handler)
+            result = notice_manager.set_default_notice()
+            
+            if 'success' in result:
+                self.logger.info("默认notice设置成功")
+                return True
+            else:
+                self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"设置默认notice时出错: {str(e)}")
+            return False
 
     def is_normal_state(self) -> bool:
         """
@@ -184,6 +205,14 @@ class RecoveryManager:
             if key == 'create_party_button':
                 element.click()
                 self.logger.info("Clicked create party button")
+                
+                # 派对创建成功后，设置默认notice
+                self.logger.info("派对创建成功，准备设置默认notice")
+                if self._set_default_notice():
+                    self.logger.info("默认notice设置成功")
+                else:
+                    self.logger.warning("默认notice设置失败")
+                
                 return True
 
             if key == 'confirm_party':
@@ -196,6 +225,14 @@ class RecoveryManager:
                 if key == 'create_party_button':
                     element.click()
                     self.logger.info("Clicked create party button")
+                    
+                    # 派对创建成功后，设置默认notice
+                    self.logger.info("派对创建成功，准备设置默认notice")
+                    if self._set_default_notice():
+                        self.logger.info("默认notice设置成功")
+                    else:
+                        self.logger.warning("默认notice设置失败")
+                    
                 return True
 
             element.click()
@@ -216,7 +253,14 @@ class RecoveryManager:
                 if key == 'create_party_button':
                     element.click()
                     self.logger.info("Clicked create party button")
-                return True
+
+            # 派对创建成功后，设置默认notice
+            self.logger.info("派对创建成功，准备设置默认notice")
+            if self._set_default_notice():
+                self.logger.info("默认notice设置成功")
+            else:
+                self.logger.warning("默认notice设置失败")
+            return True
 
 
         except Exception as e:
@@ -258,6 +302,7 @@ class RecoveryManager:
         if recovery_performed:
             self.last_recovery_time = current_time
             # self.logger.info("恢复操作执行完成，等待下次检查")
+            
 
         return recovery_performed
 
