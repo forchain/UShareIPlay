@@ -93,64 +93,20 @@ class NoticeCommand(BaseCommand):
             self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")
 
     def _update_notice(self, notice):
-        """Update room notice
-        Args:
-            notice: New notice text
-        Returns:
-            dict: Result with error or success
-        """
+        """Update room notice using NoticeManager"""
         try:
-            # Click little assistant
-            assistant = self.handler.wait_for_element_clickable_plus('little_assistant')
-            if not assistant:
-                return {'error': 'Failed to find little assistant'}
-            assistant.click()
-
-            # Click edit notice entry
-            edit_entry = self.handler.wait_for_element_clickable_plus('edit_notice_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit notice entry'}
-            edit_entry.click()
-
-            close_notice = self.handler.wait_for_element_plus('close_notice')
-            if not close_notice:
-                self.handler.logger.info(f'Close notice not found')
-                return {'error': 'Close notice not found'}
-            # Click customize notice button
-            customize = self.handler.try_find_element_plus('customize_notice_button')
-            if not customize:
-                close_notice.click()
-                self.handler.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
-
+            from ..managers.notice_manager import NoticeManager
+            notice_manager = NoticeManager(self.handler)
+            result = notice_manager.set_notice(notice)
+            
+            if 'success' in result:
                 self.last_update_time = datetime.now()
+                self.current_notice = self.next_notice
                 self.next_notice = None
-                return {'error': 'Failed to find customize notice button'}
-            customize.click()
-
-            # Input new notice
-            notice_input = self.handler.wait_for_element_clickable_plus('edit_notice_input')
-            if not notice_input:
-                return {'error': 'Failed to find notice input'}
-            notice_input.clear()
-            notice_input.send_keys(notice)
-
-            # Click confirm
-            confirm = self.handler.wait_for_element_clickable_plus('edit_notice_confirm')
-            if not confirm:
-                return {'error': 'Failed to find confirm button'}
-            confirm.click()
-
-            self.last_update_time = datetime.now()
-            self.current_notice = self.next_notice
-            self.next_notice = None
-
-            close_notice = self.handler.wait_for_element_plus('close_notice')
-            if close_notice:
-                self.handler.logger.info(f'Hide notice setting dialog')
-                close_notice.click()
-
-            return {'success': True}
-
+                return result
+            else:
+                return result
+                
         except Exception as e:
             self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")
             return {'error': f'Failed to update notice to {notice}'}
