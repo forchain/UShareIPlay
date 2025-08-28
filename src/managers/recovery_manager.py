@@ -11,6 +11,7 @@ class RecoveryManager:
 
         # 关闭和返回按钮列表
         self.close_buttons = [
+            'close_chat',
             'confirm_close_6',
             'confirm_close_7',
             'confirm_close_4',

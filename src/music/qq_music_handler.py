@@ -38,19 +38,20 @@ class QQMusicHandler(AppHandler):
         """Navigate back to home page"""
         # Keep clicking back until no more back buttons found
         n = 0
+        self.press_back()
         while n < 9:
-            search_entry = self.try_find_element_plus('search_entry')
-            if search_entry:
-                go_back = self.try_find_element_plus('go_back')
-                if go_back:
-                    go_back.click()
-                    self.logger.info(f"Clicked go back button")
-                else:
-                    self.logger.info(f"Found search entry, assume we're at home page")
-                    return True
+            key, element = self.wait_for_any_element_plus(['go_back', 'radar_nav'])
+            if key == 'go_back':
+                element.click()
+            elif key == 'radar_nav':
+                self.press_back()
+                self.logger.info("Back to home page")
+                return True
             else:
                 self.press_back()
-                n += 1
+                self.logger.warning("Unknown page")
+                return False
+            n += 1
         return False
 
     def get_playing_info(self):
