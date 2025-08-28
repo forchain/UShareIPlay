@@ -1,8 +1,7 @@
 import traceback
+from datetime import datetime
 
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -95,11 +94,9 @@ class TitleCommand(BaseCommand):
             if not on_time:
                 return
 
-
             # Check if cooldown period has passed
             result = self._update_title(self.next_title)
             if not 'error' in result:
-
                 self.handler.logger.info(f'Title is updated to {self.current_title}')
                 self.handler.send_message(
                     f"Updating title to {self.current_title}"
@@ -146,17 +143,17 @@ class TitleCommand(BaseCommand):
             current_time = datetime.now()
             self.last_update_time = current_time
             self.handler.logger.info(f'updated last title update time to {current_time}')
-            self.current_title = self.next_title
-            self.next_title = None
 
-            title_edit_entry = self.handler.wait_for_element_plus('title_edit_entry')
-            if title_edit_entry:
-                self.handler.logger.info('wait for title edit entry')
-            else:
+            key, element = self.handler.wait_for_any_element_plus(['title_edit_entry', 'title_edit_confirm'])
+            if key == 'title_edit_entry':
+                self.current_title = self.next_title
+                self.next_title = None
+                self.handler.logger.info(f'updated last title edit time to {current_time}')
+            elif key == 'title_edit_confirm':
                 go_back = self.handler.wait_for_element_plus('go_back')
                 if go_back:
                     go_back.click()
-                    self.handler.logger.info('go back to chat room info screen')
+                    self.handler.logger.warning('Update title too frequently, go back to chat room info screen')
 
             self.handler.press_back()
             self.handler.logger.info('Hide edit title dialog')
