@@ -1,7 +1,4 @@
-import traceback
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -101,15 +98,11 @@ class PlayCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
-        self.handler.press_back()
+        self.handler.navigate_to_home()
+        self.handler.logger.info("Navigated to home page")
         radar_nav = self.handler.try_find_element_plus('radar_nav', log=False)
         if not radar_nav:
-            self.handler.press_back()
-            radar_nav = self.handler.try_find_element_plus('radar_nav')
-            if not radar_nav:
-                return {'error': 'Cannot find radar_nav'}
-
-        self.handler.logger.info("Navigated to home page")
+            return {'error': 'Cannot find radar_nav'}
 
         radar_nav.click()
         self.handler.logger.info("Clicked radar navigation button")
