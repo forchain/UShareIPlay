@@ -20,7 +20,7 @@ class TopicCommand(BaseCommand):
         self.last_update_time = None
         self.current_topic = None
         self.next_topic = None
-        self.cooldown_minutes = 5
+        self.cooldown_minutes = 5 + 2
         self.handler = self.soul_handler
 
     def change_topic(self, topic: str):
