@@ -1,10 +1,7 @@
 import traceback
-
-from trio import current_time
+from datetime import datetime
 
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -136,19 +133,21 @@ class TopicCommand(BaseCommand):
             current_time = datetime.now()
             self.last_update_time = current_time
             self.handler.logger.info(f'updated last topic update time to {current_time}')
-            self.current_topic = self.next_topic
-            self.next_topic = None
 
-            input_box_entry = self.handler.wait_for_element_clickable_plus('input_box_entry')
-            if not input_box_entry:
-                self.handler.logger.error('No input box entry found, skip back')
+            key, element = self.handler.wait_for_any_element_plus(['input_box_entry', 'edit_topic_confirm'])
+            if key == 'edit_topic_confirm':
                 self.handler.press_back()
                 self.handler.press_back()
                 self.handler.press_back()
-                self.handler.logger.info('Hide edit topic dialog')
+                self.handler.logger.warning('Update topic too frequently, hide edit topic dialog')
                 return {'error': 'update topic too frequently'}
+            elif key == 'input_box_entry':
+                self.current_topic = self.next_topic
+                self.next_topic = None
+                self.handler.logger.info(f'updated last topic update time to {current_time}')
 
             return {'success': True}
+
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
