@@ -1,7 +1,6 @@
 import traceback
+
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -44,9 +43,67 @@ class InfoCommand(BaseCommand):
             online_user = self.handler.wait_for_element_plus('online_user')
             if online_user:
                 online_users = self.handler.find_elements_plus('online_user')
-                for user in online_users:
-                    user_text = user.text
-                    self.handler.logger.info(f"Online user: {user_text}")
+
+                # 如果在线用户超过5个，先输出前5个
+                if int(current_count[:-1]) > 5:
+                    self.handler.logger.info(f"Found {len(online_users)} online users, processing in batches...")
+
+                    # 输出前5个用户
+                    first_five_names = set()
+                    for i, user in enumerate(online_users[:5]):
+                        user_text = user.text
+                        first_five_names.add(user_text)
+                        self.handler.logger.info(f"Online user {i + 1}: {user_text}")
+
+                    # 从最后一个位置滑动到第一个位置
+                    last_user = online_users[-1]
+                    first_user = online_users[0]
+
+                    # 执行滑动操作：从最后一个用户滑动到第一个用户
+                    self.handler.logger.info("Sliding from last user to first user to refresh list...")
+
+                    try:
+                        # 获取最后一个用户的位置和尺寸
+                        last_location = last_user.location
+                        last_size = last_user.size
+
+                        # 获取第一个用户的位置和尺寸
+                        first_location = first_user.location
+                        first_size = first_user.size
+
+                        # 计算滑动起点（最后一个用户的右侧中心）
+                        start_x = last_location['x'] + last_size['width'] - 10
+                        start_y = last_location['y'] + last_size['height'] // 2
+
+                        # 计算滑动终点（第一个用户的左侧中心）
+                        end_x = first_location['x'] + 10
+                        end_y = first_location['y'] + first_size['height'] // 2
+
+                        # 执行滑动操作
+                        self.handler.driver.swipe(start_x, start_y, end_x, end_y, 1000)
+                        self.handler.logger.info("Swipe operation completed")
+
+                    except Exception as e:
+                        self.handler.log_error(f"Error during swipe operation: {str(e)}")
+
+                    # 重新获取在线用户列表
+                    self.handler.logger.info("Refreshing online users list...")
+                    refreshed_users = self.handler.find_elements_plus('online_user')
+
+                    n = 5
+                    if refreshed_users:
+                        for i, user in enumerate(refreshed_users):
+                            user_text = user.text
+                            if user_text not in first_five_names:
+                                n += 1
+                                self.handler.logger.info(f"New user {n}: {user_text}")
+                    else:
+                        self.handler.logger.warning("Failed to refresh online users list")
+                else:
+                    # 如果用户数量不超过5个，正常输出所有用户
+                    for i, user in enumerate(online_users):
+                        user_text = user.text
+                        self.handler.logger.info(f"Online user {i + 1}: {user_text}")
             else:
                 self.handler.logger.error("No online user found")
 
