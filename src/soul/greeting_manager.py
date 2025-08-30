@@ -105,9 +105,9 @@ class GreetingManager:
             send_gift.click()
             self.handler.logger.info("Clicked send gift")
 
-            bag_tab = self.handler.wait_for_element_clickable_plus('bag_tab')
-            bag_tab.click()
-            self.handler.logger.info("Clicked bag tab")
+            #bag_tab = self.handler.wait_for_element_clickable_plus('bag_tab')
+            #bag_tab.click()
+            #self.handler.logger.info("Clicked bag tab")
 
             # Wait for give gift button to ensure gift panel loaded
             give_gift = self.handler.wait_for_element_clickable_plus('give_gift')
