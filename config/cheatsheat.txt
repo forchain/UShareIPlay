@@ -11,7 +11,8 @@
 :playlist 官方 玫瑰暮色
 :playlist 官方 Indie Music
 :playlist 官方 Alternative
-:playlist CityPop 日系
+:playlist 官方 CityPop 日系
+:playlist 官方 ACG
 
 :playlist 官方 纯音乐
 :playlist 官方 Lofi Girl
@@ -23,6 +24,7 @@
 :playlist 官方 慵懒时间
 :playlist 官方 下厨音乐
 :playlist 官方 沐浴美学
+:playlist 官方 古典
 
 :playlist 百万收藏
 :playlist 红心雷达
