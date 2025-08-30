@@ -58,16 +58,10 @@ class PlayCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
-        self.handler.press_back()
-        my_nav = self.handler.try_find_element_plus('my_nav', log=False)
-        if not my_nav:
-            self.handler.press_back()
-            my_nav = self.handler.try_find_element_plus('my_nav')
-            if not my_nav:
-                return {'error': 'Cannot find my_nav'}
-
+        self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
 
+        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
         my_nav.click()
         self.handler.logger.info("Clicked personal info navigation button")
 
@@ -77,10 +71,10 @@ class PlayCommand(BaseCommand):
         self.handler.logger.info("Clicked favorites button")
 
         # Click on play all button
-        play_fav = self.handler.wait_for_element_clickable_plus('play_fav')
-        song = self.handler.wait_for_element_clickable_plus('fav_song')
+        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
+        song = self.handler.wait_for_element_clickable_plus('song_name')
         song_text = song.text
-        singer = self.handler.wait_for_element_clickable_plus('fav_singer')
+        singer = self.handler.wait_for_element_clickable_plus('singer_name')
         singer_text = singer.text
 
         play_fav.click()
