@@ -199,7 +199,7 @@ qq_music:
     album_text: 'com.tencent.qqmusic:id/lg8'
     album_singer: 'com.tencent.qqmusic:id/lg5'
     lyrics_text: 'com.tencent.qqmusic:id/hoi'
-    playlist_result: 'com.tencent.qqmusic:id/li6'
+    playlist_result: 'com.tencent.qqmusic:id/lj2'
     singer_text: 'com.tencent.qqmusic:id/nc8'
     singer_result: 'com.tencent.qqmusic:id/be2'
     play_all: '//android.widget.TextView[@text="全部播放"]'
