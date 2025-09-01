@@ -140,6 +140,7 @@ soul:
     confirm_close_6: 'cn.soulapp.android:id/tv_cancel'
     confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
     bottom_drawer_1: 'cn.soulapp.android:id/tslLayout' # 底部抽屉
+    bag_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvTab" and @text="背包"]' # 背包
 
 
 qq_music:
@@ -189,10 +190,7 @@ qq_music:
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
     radar_song: 'com.tencent.qqmusic:id/mfc'
     radar_singer: 'com.tencent.qqmusic:id/m2w'
-    fav_entry: 'com.tencent.qqmusic:id/ij0'
-    play_fav: 'com.tencent.qqmusic:id/eki'
-    fav_song: 'com.tencent.qqmusic:id/lxj'
-    fav_singer: 'com.tencent.qqmusic:id/lzn'
+    fav_entry: '//android.widget.TextView[@text="收藏"]'
     lyrics_tab: '//android.widget.RelativeLayout[@content-desc="歌词 按钮"]'
     playlist_tab: '//android.widget.RelativeLayout[@content-desc="歌单 按钮"]'
     singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'

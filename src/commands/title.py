@@ -1,3 +1,4 @@
+import time
 import traceback
 from datetime import datetime
 
@@ -142,18 +143,25 @@ class TitleCommand(BaseCommand):
 
             current_time = datetime.now()
             self.last_update_time = current_time
-            self.handler.logger.info(f'updated last title update time to {current_time}')
+            self.handler.logger.info(
+                f'updated last title update time to {current_time}, current title: {self.current_title}, next title: {self.next_title}')
+            time.sleep(1)
 
             key, element = self.handler.wait_for_any_element_plus(['title_edit_entry', 'title_edit_confirm'])
             if key == 'title_edit_entry':
-                self.current_title = self.next_title
-                self.next_title = None
-                self.handler.logger.info(f'updated last title edit time to {current_time}')
+                if self.next_title:
+                    self.current_title = self.next_title
+                    self.next_title = None
+                    self.handler.logger.info(f'updated current title to {self.current_title}')
+                else:
+                    self.handler.logger.warning(f'Next tile is empty, skip update, current title: {self.current_title}')
             elif key == 'title_edit_confirm':
                 go_back = self.handler.wait_for_element_plus('go_back')
                 if go_back:
                     go_back.click()
                     self.handler.logger.warning('Update title too frequently, go back to chat room info screen')
+            else:
+                self.handler.logger.warning('Failed to update title, unknown error')
 
             self.handler.press_back()
             self.handler.logger.info('Hide edit title dialog')
