@@ -218,7 +218,7 @@ qq_music:
     playlist_item_container: 'com.tencent.qqmusic:id/l_1'
     playlist_song: 'com.tencent.qqmusic:id/mfm'
     playlist_singer: 'com.tencent.qqmusic:id/m36'
-    playlist_current: 'com.tencent.qqmusic:id/eox'
+    playlist_current: 'com.tencent.qqmusic:id/eqk'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
     play_mode: 'com.tencent.qqmusic:id/a9j'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
