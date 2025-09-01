@@ -18,6 +18,7 @@ class GreetingManager:
     def __init__(self, handler):
         """Initialize GreetingManager with handler"""
         self.handler = handler
+        self.last_follower_message_id = None  # 记录上一条 follower message 的 element id
 
     async def process_container_greeting(self, container):
         """Process greeting for follower entering room"""
@@ -29,6 +30,17 @@ class GreetingManager:
             )
             if not follower_message:
                 return None
+
+            # 获取当前 follower message 的 element id
+            current_message_id = follower_message.id
+            
+            # 如果当前消息的 element id 与上一条相同，则跳过
+            if current_message_id == self.last_follower_message_id:
+                # self.handler.logger.info("跳过重复的 follower message")
+                return None
+            
+            # 记录当前消息的 element id
+            self.last_follower_message_id = current_message_id
 
             message_text = follower_message.text
             # Click the message at 25% from top
@@ -92,6 +104,10 @@ class GreetingManager:
                 return False
             send_gift.click()
             self.handler.logger.info("Clicked send gift")
+
+            #bag_tab = self.handler.wait_for_element_clickable_plus('bag_tab')
+            #bag_tab.click()
+            #self.handler.logger.info("Clicked bag tab")
 
             # Wait for give gift button to ensure gift panel loaded
             give_gift = self.handler.wait_for_element_clickable_plus('give_gift')

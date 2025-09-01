@@ -1,3 +1,4 @@
+import time
 import traceback
 from datetime import datetime
 
@@ -132,7 +133,10 @@ class TopicCommand(BaseCommand):
             # note: update status in advance in case failing to find the edit entry
             current_time = datetime.now()
             self.last_update_time = current_time
-            self.handler.logger.info(f'updated last topic update time to {current_time}')
+            self.handler.logger.info(
+                f'updated last topic update time to {current_time}, next topic: {self.next_topic}, current topic: {self.current_topic}')
+
+            time.sleep(1)
 
             key, element = self.handler.wait_for_any_element_plus(['input_box_entry', 'edit_topic_confirm'])
             if key == 'edit_topic_confirm':
@@ -142,9 +146,14 @@ class TopicCommand(BaseCommand):
                 self.handler.logger.warning('Update topic too frequently, hide edit topic dialog')
                 return {'error': 'update topic too frequently'}
             elif key == 'input_box_entry':
-                self.current_topic = self.next_topic
-                self.next_topic = None
-                self.handler.logger.info(f'updated last topic update time to {current_time}')
+                if self.next_topic:
+                    self.current_topic = self.next_topic
+                    self.next_topic = None
+                    self.handler.logger.info(f'updated last topic  to {self.current_topic}')
+                else:
+                    self.handler.logger.warning(f'next topic is empty, {self.current_topic}')
+            else:
+                self.handler.logger.warning(f'unknown key: {key}')
 
             return {'success': True}
 
