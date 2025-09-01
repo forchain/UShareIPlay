@@ -289,6 +289,8 @@ commands:
         :ktv 1/0
       13. play mode
         :mode 0/1/-1
+      14. change room theme
+        :theme theme_name
 
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
@@ -327,6 +329,9 @@ commands:
     response_template: "Change title to {title}"
     
     error_template: "Failed to change title, because {error}"
+  - prefix: "theme"
+    response_template: "Change theme to {theme}"
+    error_template: "Failed to change theme, because {error}"
   - prefix: "end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
