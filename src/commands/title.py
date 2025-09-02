@@ -22,7 +22,10 @@ class TitleCommand(BaseCommand):
         super().__init__(controller)
 
         self.handler = controller.soul_handler
-        self.theme_manager = ThemeManager(self.handler)
+        # Create or get shared theme_manager from controller
+        if not hasattr(controller, 'shared_theme_manager'):
+            controller.shared_theme_manager = ThemeManager(self.handler)
+        self.theme_manager = controller.shared_theme_manager
         self.title_manager = TitleManager(self.handler, self.theme_manager)
 
     def change_title(self, title: str):
@@ -68,33 +71,38 @@ class TitleCommand(BaseCommand):
             return {'error': f'Failed to process title command, {new_title}'}
 
     def update(self):
-        """Check and update title periodically"""
+        """Check and update title periodically with simple retry logic"""
         # super().update()
 
         try:
             if not self.title_manager.get_next_title():
                 return
 
+            # Only attempt update if we can update now (cooldown has passed)
             if not self.title_manager.can_update_now():
                 return
 
-            # Check if cooldown period has passed
             title_to_update = self.title_manager.get_next_title()
-            
-            # Sync theme from UI to ensure we have the latest theme
-            if self.theme_manager:
-                sync_result = self.theme_manager.sync_theme_from_ui()
-                if 'error' not in sync_result:
-                    self.handler.logger.info(f'Synced theme from UI: {sync_result.get("theme", "unknown")}')
-            
             current_theme = self.theme_manager.get_current_theme()
+            
+            self.handler.logger.info(f'Title update attempt: title="{title_to_update}", theme="{current_theme}"')
+            
+            # Attempt to update
             result = self.title_manager.update_title_ui(title_to_update, current_theme)
             
+            # Always update cooldown time after attempt, regardless of success or failure
+            if self.theme_manager:
+                self.theme_manager.update_last_update_time()
+            
             if 'error' not in result:
-                self.handler.logger.info(f'Title is updated to {self.title_manager.get_current_title()}')
+                # Success - update completed
+                self.handler.logger.info(f'标题更新成功: {self.title_manager.get_current_title()}')
                 self.handler.send_message(
-                    f"Updating title to {self.title_manager.get_current_title()}"
+                    f"标题已更新为: {self.title_manager.get_current_title()}"
                 )
+            else:
+                # Failed - will retry after next cooldown period
+                self.handler.logger.info(f'标题更新失败，将在下个周期重试: {result["error"]}')
 
         except Exception as e:
             self.handler.log_error(f"Error in title update: {traceback.format_exc()}")
