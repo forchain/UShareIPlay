@@ -63,6 +63,11 @@ class ThemeCommand(BaseCommand):
                 result = self.title_manager.force_update_title(title_to_update, current_theme)
                 if 'error' not in result:
                     self.handler.logger.info(f'Room title updated successfully with new theme')
+                    
+                    # Sync theme manager with the actual UI state after update
+                    sync_result = self.theme_manager.sync_theme_from_ui()
+                    if 'error' not in sync_result:
+                        self.handler.logger.info(f'Synced theme manager after UI update: {sync_result.get("theme", "unknown")}')
                 else:
                     self.handler.log_warning(f'Failed to update room title with new theme: {result["error"]}')
             else:

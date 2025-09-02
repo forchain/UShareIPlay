@@ -80,6 +80,13 @@ class TitleCommand(BaseCommand):
 
             # Check if cooldown period has passed
             title_to_update = self.title_manager.get_next_title()
+            
+            # Sync theme from UI to ensure we have the latest theme
+            if self.theme_manager:
+                sync_result = self.theme_manager.sync_theme_from_ui()
+                if 'error' not in sync_result:
+                    self.handler.logger.info(f'Synced theme from UI: {sync_result.get("theme", "unknown")}')
+            
             current_theme = self.theme_manager.get_current_theme()
             result = self.title_manager.update_title_ui(title_to_update, current_theme)
             
