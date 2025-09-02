@@ -213,12 +213,12 @@ qq_music:
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
-    playlist_item_container: 'com.tencent.qqmusic:id/l_1'
-    playlist_song: 'com.tencent.qqmusic:id/mfm'
-    playlist_singer: 'com.tencent.qqmusic:id/m36'
+    playlist_item_container: 'com.tencent.qqmusic:id/l_v'
+    playlist_song: 'com.tencent.qqmusic:id/mgm'
+    playlist_singer: 'com.tencent.qqmusic:id/m46'
     playlist_current: 'com.tencent.qqmusic:id/eqk'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
-    play_mode: 'com.tencent.qqmusic:id/a9j'
+    play_mode: 'com.tencent.qqmusic:id/jx0'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
     playlist_screen: 'com.tencent.qqmusic:id/bay' #
     music_tabs: 'com.tencent.qqmusic:id/be4'
