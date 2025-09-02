@@ -156,7 +156,7 @@ class TitleManager:
         """Update room title in UI
         Args:
             title: New title text
-            theme: Theme to use (optional, will use current theme if not provided)
+            theme: Theme to use (optional, will sync from UI or use current theme if not provided)
         Returns:
             dict: Result with error or success
         """
@@ -180,8 +180,22 @@ class TitleManager:
                 return {'error': 'Failed to find title input'}
             title_input.clear()
             
-            # Use provided theme or default
-            current_theme = theme or "享乐"
+            # Determine theme to use
+            if theme:
+                # Use provided theme
+                current_theme = theme
+            elif self.theme_manager:
+                # Sync theme from UI first, then use it
+                sync_result = self.theme_manager.sync_theme_from_ui()
+                if 'error' not in sync_result:
+                    current_theme = self.theme_manager.get_current_theme()
+                else:
+                    # Fallback to manager's current theme
+                    current_theme = self.theme_manager.get_current_theme()
+            else:
+                # Fallback to default
+                current_theme = "享乐"
+            
             title_input.send_keys(f"{current_theme}｜" + title)
             
             # Store the theme that will be used for UI update
