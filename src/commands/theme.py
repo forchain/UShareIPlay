@@ -22,7 +22,10 @@ class ThemeCommand(BaseCommand):
         super().__init__(controller)
 
         self.handler = controller.soul_handler
-        self.theme_manager = ThemeManager(self.handler)
+        # Create or get shared theme_manager from controller
+        if not hasattr(controller, 'shared_theme_manager'):
+            controller.shared_theme_manager = ThemeManager(self.handler)
+        self.theme_manager = controller.shared_theme_manager
         self.title_manager = TitleManager(self.handler, self.theme_manager)
 
     def change_theme(self, theme: str):
@@ -42,15 +45,29 @@ class ThemeCommand(BaseCommand):
         if 'error' in result:
             return result
 
-        # Try to update room title with new theme
-        self._update_room_title_with_new_theme()
+        # Verify theme was set correctly
+        verify_result = self.theme_manager.verify_theme(theme)
+        if 'error' in verify_result:
+            return verify_result
 
-        return {
+        # Try to update room title with new theme
+        ui_update_result = self._update_room_title_with_new_theme()
+
+        response = {
             'theme': f'主题已更新为: {result["theme"]}'
         }
+        
+        # Add UI update result to response
+        if ui_update_result:
+            response.update(ui_update_result)
+
+        return response
 
     def _update_room_title_with_new_theme(self):
-        """Update room title with new theme"""
+        """Update room title with new theme
+        Returns:
+            dict: UI update result or None
+        """
         try:
             # Get current or next title
             title_to_update = self.title_manager.get_title_to_update()
@@ -59,29 +76,39 @@ class ThemeCommand(BaseCommand):
                 current_theme = self.theme_manager.get_current_theme()
                 self.handler.logger.info(f'Updating room title with new theme: {current_theme}｜{title_to_update}')
                 
-                # Force update title with new theme (bypass cooldown for theme changes)
-                result = self.title_manager.force_update_title(title_to_update, current_theme)
-                if 'error' not in result:
-                    self.handler.logger.info(f'Room title updated successfully with new theme')
+                # Check if we can update now (shared cooldown)
+                if self.theme_manager.can_update_now():
+                    # Update title with new theme
+                    result = self.title_manager.update_title_ui(title_to_update, current_theme)
+                    # Always update cooldown time after attempt, regardless of success or failure
+                    self.theme_manager.update_last_update_time()
                     
-                    # Sync theme manager with the actual UI state after update
-                    sync_result = self.theme_manager.sync_theme_from_ui()
-                    if 'error' not in sync_result:
-                        self.handler.logger.info(f'Synced theme manager after UI update: {sync_result.get("theme", "unknown")}')
+                    if 'error' not in result:
+                        self.handler.logger.info(f'Room title updated successfully with new theme')
+                        return {'ui_update': '房间标题已更新'}
+                    else:
+                        # Update failed - will retry in next cycle
+                        self.handler.logger.info(f'Room title update failed, will retry in next cycle: {result["error"]}')
+                        return {'ui_update': f'房间标题更新失败，将在下个周期重试'}
                 else:
-                    self.handler.log_warning(f'Failed to update room title with new theme: {result["error"]}')
+                    remaining_minutes = self.theme_manager.get_remaining_cooldown_minutes()
+                    self.handler.logger.info(f'Cannot update room title now, cooldown remaining: {remaining_minutes} minutes')
+                    return {'ui_update': f'房间标题更新被冷却时间阻止，还需等待{remaining_minutes}分钟'}
             else:
                 self.handler.logger.info('No current or next title to update with new theme')
+                return {'ui_update': '没有标题可以更新'}
                 
         except Exception as e:
             self.handler.log_error(f"Error updating room title with new theme: {str(e)}")
+            return {'ui_update': f'房间标题更新出错: {str(e)}'}
 
     async def process(self, message_info, parameters):
         """Process theme command"""
         try:
-            # Get new theme from parameters
+            # If no parameters, return current theme
             if not parameters:
-                return {'error': '缺少主题参数'}
+                current_theme = self.theme_manager.get_current_theme()
+                return {'theme': f'当前主题: {current_theme}'}
 
             new_theme = ' '.join(parameters)
             return self.change_theme(new_theme)
