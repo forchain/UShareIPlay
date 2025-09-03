@@ -18,8 +18,8 @@ async def run_app():
     # Initialize database
     await init_db()
 
-    # 初始化控制器
-    controller = AppController(config)
+    # 初始化控制器 using singleton pattern
+    controller = AppController.instance(config)
 
     # 启动监控
     return await controller.start_monitoring()

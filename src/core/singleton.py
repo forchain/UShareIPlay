@@ -18,4 +18,7 @@ class Singleton(metaclass=SingletonMeta):
 
     @classmethod
     def instance(cls, *args, **kwargs):
+        # 如果实例已存在且没有传入参数，直接返回现有实例
+        if hasattr(cls, "_instance") and not args and not kwargs:
+            return cls._instance
         return cls(*args, **kwargs)

@@ -7,12 +7,13 @@ from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import StaleElementReferenceException
 
 from ..core.app_handler import AppHandler
+from ..core.singleton import Singleton
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 
-class QQMusicHandler(AppHandler):
+class QQMusicHandler(AppHandler, Singleton):
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
 
