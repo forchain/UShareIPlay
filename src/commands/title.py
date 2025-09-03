@@ -1,6 +1,4 @@
-import time
 import traceback
-from datetime import datetime
 
 from ..core.base_command import BaseCommand
 from ..managers.title_manager import TitleManager
@@ -22,11 +20,9 @@ class TitleCommand(BaseCommand):
         super().__init__(controller)
 
         self.handler = controller.soul_handler
-        # Create or get shared theme_manager from controller
-        if not hasattr(controller, 'shared_theme_manager'):
-            controller.shared_theme_manager = ThemeManager(self.handler)
-        self.theme_manager = controller.shared_theme_manager
-        self.title_manager = TitleManager(self.handler, self.theme_manager)
+        # Use singleton instances to ensure state synchronization
+        self.theme_manager = ThemeManager.instance(self.handler)
+        self.title_manager = TitleManager.instance(self.handler)
 
     def change_title(self, title: str):
         """Change room title with cooldown check
@@ -104,5 +100,5 @@ class TitleCommand(BaseCommand):
                 # Failed - will retry after next cooldown period
                 self.handler.logger.info(f'标题更新失败，将在下个周期重试: {result["error"]}')
 
-        except Exception as e:
+        except Exception:
             self.handler.log_error(f"Error in title update: {traceback.format_exc()}")

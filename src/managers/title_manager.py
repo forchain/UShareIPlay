@@ -1,13 +1,16 @@
 import time
 import traceback
 import logging
-from datetime import datetime
 
-class TitleManager:
-    def __init__(self, handler, theme_manager=None):
+from ..core.singleton import Singleton
+
+class TitleManager(Singleton):
+    def __init__(self, handler):
         self.handler = handler
         self.logger = logging.getLogger('title_manager')
-        self.theme_manager = theme_manager
+        # Get ThemeManager singleton instance
+        from .theme_manager import ThemeManager
+        self.theme_manager = ThemeManager.instance(handler)
         
         self.current_title = None
         self.next_title = None
@@ -245,7 +248,7 @@ class TitleManager:
                 self.handler.press_back()
                 return {'error': 'Failed to update title, unknown error'}
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error in title update: {traceback.format_exc()}")
             return {'error': f'Failed to update title: {title}'}
 
