@@ -6,6 +6,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 
 from .message_manager import MessageManager
 from ..core.app_handler import AppHandler
+from ..core.singleton import Singleton
 
 
 # Constants
@@ -18,7 +19,7 @@ class MessageInfo:
     relation_tag: bool = False  # True if user has relation tag
 
 
-class SoulHandler(AppHandler):
+class SoulHandler(AppHandler, Singleton):
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
         self.message_manager = MessageManager(self)

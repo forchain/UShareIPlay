@@ -14,9 +14,10 @@ import queue
 from ..core.db_service import DBHelper
 from ..managers.seat_manager import init_seat_manager
 from ..managers.recovery_manager import RecoveryManager
+from .singleton import Singleton
 
 
-class AppController:
+class AppController(Singleton):
     def __init__(self, config):
         self.config = config
         
@@ -35,10 +36,10 @@ class AppController:
             []
         )
 
-        # Initialize handlers
-        self.soul_handler = SoulHandler(self.driver, config['soul'], self)
-        self.music_handler = QQMusicHandler(self.driver, config['qq_music'], self)
-        self.logger = self.soul_handler.logger
+        # Initialize handlers using singleton pattern (delayed initialization)
+        self.soul_handler = None
+        self.music_handler = None
+        self.logger = None
 
         # Initialize command parser
         self.command_parser = CommandParser(config['commands'])
@@ -49,9 +50,9 @@ class AppController:
         # Initialize database helper
         self.db_helper = DBHelper()
 
-        # Initialize managers
-        self.seat_manager = init_seat_manager(self.soul_handler)
-        self.recovery_manager = RecoveryManager(self.soul_handler)
+        # Initialize managers (will be done after handlers are initialized)
+        self.seat_manager = None
+        self.recovery_manager = None
 
     def _start_apps(self):
         """在初始化driver之前启动Soul app和QQ Music"""
@@ -118,7 +119,10 @@ class AppController:
                 
             module_path = (Path(__file__).parent.parent / 'commands' / f"{command}.py").resolve()
             if not module_path.exists():
-                self.soul_handler.logger.error(f'module path not exists, {module_path}')
+                if self.logger:
+                    self.logger.error(f'module path not exists, {module_path}')
+                else:
+                    print(f'module path not exists, {module_path}')
                 return None
                 
             package_name = f"src.commands.{command}"
@@ -229,14 +233,64 @@ class AppController:
                 try:
                     module = self._load_command_module(command)
                     if module:
-                        self.logger.info(f"Loaded command module: {command}")
+                        if self.logger:
+                            self.logger.info(f"Loaded command module: {command}")
+                        else:
+                            print(f"Loaded command module: {command}")
                     else:
-                        self.logger.error(f"Failed to load command module: {command}")
+                        if self.logger:
+                            self.logger.error(f"Failed to load command module: {command}")
+                        else:
+                            print(f"Failed to load command module: {command}")
                 except Exception as e:
-                    self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
+                    if self.logger:
+                        self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
+                    else:
+                        print(f"Error loading command {command}: {traceback.format_exc()}")
                 
         except Exception as e:
-            self.logger.error(f"Error loading commands: {traceback.format_exc()}")
+            if self.logger:
+                self.logger.error(f"Error loading commands: {traceback.format_exc()}")
+            else:
+                print(f"Error loading commands: {traceback.format_exc()}")
+
+    def _init_timer_manager(self):
+        """Initialize timer manager with initial timers from config"""
+        try:
+            # Check if timer command is loaded
+            if hasattr(self, 'timer_command') and hasattr(self.timer_command, 'timer_manager'):
+                timer_manager = self.timer_command.timer_manager
+                
+                # Load initial timers from config (force update to ensure config values are used)
+                initial_timers = self.config.get('soul', {}).get('initial_timers', [])
+                if initial_timers:
+                    timer_manager.load_initial_timers(initial_timers, force_update=True)
+                    self.logger.info(f"Loaded/Updated {len(initial_timers)} initial timers from config")
+                else:
+                    self.logger.info("No initial timers configured")
+            else:
+                self.logger.warning("Timer command not loaded, skipping timer initialization")
+                
+        except Exception as e:
+            self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
+
+    def _init_handlers(self):
+        """Initialize handlers after driver is ready"""
+        try:
+            # Initialize handlers using singleton pattern
+            self.soul_handler = SoulHandler.instance(self.driver, self.config['soul'], self)
+            self.music_handler = QQMusicHandler.instance(self.driver, self.config['qq_music'], self)
+            self.logger = self.soul_handler.logger
+            
+            # Initialize managers after handlers are ready
+            self.seat_manager = init_seat_manager(self.soul_handler)
+            self.recovery_manager = RecoveryManager(self.soul_handler)
+            
+            self.logger.info("Handlers and managers initialized successfully")
+            
+        except Exception as e:
+            print(f"Error initializing handlers: {traceback.format_exc()}")
+            raise
 
     async def start_monitoring(self):
         enabled = True
@@ -245,9 +299,15 @@ class AppController:
         last_info = None
         error_count = 0
         
+        # Initialize handlers first
+        self._init_handlers()
+        
         # Load all command modules
         self._load_all_commands()
         self.logger.info("All command modules loaded")
+        
+        # Initialize timer manager with initial timers from config
+        self._init_timer_manager()
         
         # Start console input thread
         input_thread = threading.Thread(target=self._console_input)
