@@ -1,6 +1,4 @@
-import time
-import traceback
-from datetime import datetime
+
 
 from ..core.base_command import BaseCommand
 from ..managers.theme_manager import ThemeManager
@@ -22,11 +20,9 @@ class ThemeCommand(BaseCommand):
         super().__init__(controller)
 
         self.handler = controller.soul_handler
-        # Create or get shared theme_manager from controller
-        if not hasattr(controller, 'shared_theme_manager'):
-            controller.shared_theme_manager = ThemeManager(self.handler)
-        self.theme_manager = controller.shared_theme_manager
-        self.title_manager = TitleManager(self.handler, self.theme_manager)
+        # Use singleton instances to ensure state synchronization
+        self.theme_manager = ThemeManager.instance(self.handler)
+        self.title_manager = TitleManager.instance(self.handler)
 
     def change_theme(self, theme: str):
         """Change room theme
@@ -84,12 +80,12 @@ class ThemeCommand(BaseCommand):
                     self.theme_manager.update_last_update_time()
                     
                     if 'error' not in result:
-                        self.handler.logger.info(f'Room title updated successfully with new theme')
+                        self.handler.logger.info('Room title updated successfully with new theme')
                         return {'ui_update': '房间标题已更新'}
                     else:
                         # Update failed - will retry in next cycle
                         self.handler.logger.info(f'Room title update failed, will retry in next cycle: {result["error"]}')
-                        return {'ui_update': f'房间标题更新失败，将在下个周期重试'}
+                        return {'ui_update': '房间标题更新失败，将在下个周期重试'}
                 else:
                     remaining_minutes = self.theme_manager.get_remaining_cooldown_minutes()
                     self.handler.logger.info(f'Cannot update room title now, cooldown remaining: {remaining_minutes} minutes')

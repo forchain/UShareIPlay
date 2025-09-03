@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime
+from ..core.singleton import Singleton
 
-class ThemeManager:
+class ThemeManager(Singleton):
     def __init__(self, handler):
         self.handler = handler
         self.logger = logging.getLogger('theme_manager')
