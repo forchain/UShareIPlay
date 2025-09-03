@@ -101,10 +101,31 @@ class ThemeCommand(BaseCommand):
     async def process(self, message_info, parameters):
         """Process theme command"""
         try:
-            # If no parameters, return current theme
+            # If no parameters, return detailed status information
             if not parameters:
                 current_theme = self.theme_manager.get_current_theme()
-                return {'theme': f'当前主题: {current_theme}'}
+                current_title = self.title_manager.get_current_title()
+                next_title = self.title_manager.get_next_title()
+                remaining_minutes = self.theme_manager.get_remaining_cooldown_minutes()
+                
+                # Build status message
+                status_parts = [f'当前主题: {current_theme}']
+                
+                if current_title:
+                    status_parts.append(f'当前标题: {current_title}')
+                else:
+                    status_parts.append('当前标题: 未设置')
+                
+                if next_title:
+                    status_parts.append(f'即将更新标题: {next_title}')
+                    if remaining_minutes > 0:
+                        status_parts.append(f'剩余更新时间: {remaining_minutes}分钟')
+                    else:
+                        status_parts.append('剩余更新时间: 可立即更新')
+                else:
+                    status_parts.append('即将更新标题: 无')
+                
+                return {'theme': '\n'.join(status_parts)}
 
             new_theme = ' '.join(parameters)
             return self.change_theme(new_theme)
