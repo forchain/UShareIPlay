@@ -326,11 +326,11 @@ commands:
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
-    response_template: "Change title to {title}"
+    response_template: "{title}"
     
     error_template: "Failed to change title, because {error}"
   - prefix: "theme"
-    response_template: "Change theme to {theme}"
+    response_template: "{theme}"
     error_template: "Failed to change theme, because {error}"
   - prefix: "end"
     response_template: "{success}"
