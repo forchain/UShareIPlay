@@ -81,6 +81,8 @@ class ThemeCommand(BaseCommand):
                     
                     if 'error' not in result:
                         self.handler.logger.info('Room title updated successfully with new theme')
+                        # Clear pending flag since UI update was successful
+                        self.theme_manager.clear_pending_ui_update()
                         return {'ui_update': '房间标题已更新'}
                     else:
                         # Update failed - will retry in next cycle
@@ -141,6 +143,37 @@ class ThemeCommand(BaseCommand):
         return self.theme_manager.get_current_theme()
 
     def update(self):
-        """Update method for background tasks"""
-        # 主题命令不需要定期更新
-        pass
+        """Update method for background tasks - handle theme UI synchronization"""
+        try:
+            # Only process if there's a pending theme UI update
+            if not self.theme_manager.has_pending_ui_update():
+                return
+            
+            # Only attempt update if we can update now (cooldown has passed)
+            if not self.theme_manager.can_update_now():
+                return
+            
+            # Check if there's a title that needs theme synchronization
+            title_to_update = self.title_manager.get_title_to_update()
+            if not title_to_update:
+                return  # No title to update with theme
+            
+            current_theme = self.theme_manager.get_current_theme()
+            self.handler.logger.info(f'Processing pending theme sync: theme="{current_theme}", title="{title_to_update}"')
+            
+            # Attempt to update title with current theme
+            result = self.title_manager.update_title_ui(title_to_update, current_theme)
+            
+            # Always update cooldown time after attempt
+            self.theme_manager.update_last_update_time()
+            
+            if 'error' not in result:
+                self.handler.logger.info(f'Theme synchronized with UI successfully: {current_theme}')
+                # Clear the pending flag since UI update was successful
+                self.theme_manager.clear_pending_ui_update()
+            else:
+                self.handler.logger.info(f'Theme sync failed, will retry later: {result["error"]}')
+                # Keep pending flag set for retry
+                
+        except Exception as e:
+            self.handler.log_error(f"Error in theme update: {str(e)}")

@@ -10,6 +10,7 @@ class ThemeManager(Singleton):
         self.last_update_time = None  # 共享的冷却时间
         self.cooldown_minutes = 10  # 10分钟冷却时间
         self.is_initialized = False  # 是否已初始化
+        self.pending_ui_update = False  # 是否有待更新到UI的主题变化
 
     def get_current_theme(self):
         """Get current theme
@@ -35,8 +36,12 @@ class ThemeManager(Singleton):
 
         # Update theme
         old_theme = self.current_theme
-        self.current_theme = new_theme
-        self.logger.info(f'Theme updated from {old_theme} to {new_theme}')
+        if old_theme != new_theme:
+            self.current_theme = new_theme
+            self.pending_ui_update = True  # Mark that UI needs update
+            self.logger.info(f'Theme updated from {old_theme} to {new_theme}, pending UI update')
+        else:
+            self.logger.info(f'Theme unchanged: {new_theme}')
 
         return {
             'success': True,
@@ -73,6 +78,18 @@ class ThemeManager(Singleton):
         """Update last update time to current time"""
         self.last_update_time = datetime.now()
         self.logger.info(f'Updated last update time to {self.last_update_time}')
+
+    def has_pending_ui_update(self):
+        """Check if there's a pending UI update
+        Returns:
+            bool: True if UI needs update, False otherwise
+        """
+        return self.pending_ui_update
+
+    def clear_pending_ui_update(self):
+        """Clear the pending UI update flag"""
+        self.pending_ui_update = False
+        self.logger.info('Cleared pending UI update flag')
 
     def initialize_from_ui(self):
         """Initialize theme from UI (only for first time initialization)
