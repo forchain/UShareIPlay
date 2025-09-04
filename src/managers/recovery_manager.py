@@ -177,11 +177,6 @@ class RecoveryManager:
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
 
-            # TODO: 搜索并进入指定派对
-            # if party_id := self.handler.party_id:
-            #     if not self._search_and_enter_party(party_id):
-            #         self.logger.warning("未找到派对")
-            #         return False
 
             key, element = self.handler.wait_for_any_element_plus(
                 ['party_back', 'create_party_entry', 'create_room_entry'])
@@ -201,7 +196,34 @@ class RecoveryManager:
                 ['confirm_party', 'restore_party', 'create_party_button'])
             if not element:
                 self.logger.warning("未找到派对创建或恢复按钮")
-                return False
+                search_entry = self.handler.wait_for_element_plus('search_entry')
+                if not search_entry:
+                    self.logger.warning("未找到搜索入口")
+                    return False
+                search_entry.click()
+                self.logger.info("Clicked search entry")
+                search_box = self.handler.wait_for_element_plus('search_box')
+                if not search_box:
+                    self.logger.warning("未找到搜索框")
+                    return False
+                party_id = self.handler.party_id or self.handler.config['default_party_id']
+                search_box.send_keys(party_id)
+                self.logger.info(f"Entered party ID: {party_id}")
+                search_button = self.handler.wait_for_element_plus('search_button')
+                if not search_button:
+                    self.logger.warning("未找到搜索按钮")
+                    return False
+                search_button.click()
+                self.logger.info("Clicked search button")
+
+                party_online = self.handler.wait_for_element_plus('party_online')
+                if not party_online:
+                    self.logger.warning("未找到开启的派对")
+                    return False
+                party_online.click()
+                self.logger.info("Clicked party online")
+                return True
+
 
             if key == 'create_party_button':
                 element.click()
