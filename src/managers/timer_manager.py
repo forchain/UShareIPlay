@@ -13,7 +13,7 @@ class TimerManager(Singleton):
         # Get SoulHandler singleton instance
         from ..soul.soul_handler import SoulHandler
         self.handler = SoulHandler.instance()
-        self.logger = logging.getLogger('timer_manager')
+        self.logger = self.handler.logger
         self.timers: Dict[str, dict] = {}
         self.timer_thread = None
         self.running = False
