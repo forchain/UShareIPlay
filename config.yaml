@@ -7,65 +7,65 @@ soul:
   
   # Initial timers configuration
   initial_timers:
+    - id: "theme_sleep"
+      time: "23:30"
+      message: ":theme 助眠"
+      repeat: true
     - id: "playlist_sleep"
       time: "00:00"
       message: ":playlist Lofi Girl 官方"
       repeat: true
-    - id: "theme_sleep"
-      time: "00:00"
-      message: ":theme 助眠"
-      repeat: true
     - id: "theme_got_to_work"
-      time: "08:00"
+      time: "07:30"
       message: ":theme 🚇"
+      repeat: true
+    - id: "theme_work_morning"
+      time: "09:00"
+      message: ":theme 🐮🐎"
       repeat: true
     - id: "playlist_work_morning"
       time: "09:30"
       message: ":play"
       repeat: true
-    - id: "theme_work_morning"
-      time: "00:00"
-      message: ":theme 🐮🐎"
+    - id: "theme_lunch_break"
+      time: "11:00"
+      message: ":theme 午休"
       repeat: true
     - id: "playlist_lunch_break"
       time: "11:30"
       message: ":playlist 深度专注 官方"
       repeat: true
-    - id: "theme_lunch_break"
-      time: "11:30"
-      message: ":theme 午休"
+    - id: "theme_work_afternoon"
+      time: "12:30"
+      message: ":theme 🐮🐎"
       repeat: true
     - id: "playlist_work_afternoon"
       time: "13:00"
       message: ":playlist 情歌 官方"
       repeat: true
-    - id: "theme_work_afternoon"
-      time: "13:00"
-      message: ":theme 🐮🐎"
+    - id: "theme_go_home"
+      time: "17:30"
+      message: ":theme 🚇"
       repeat: true
     - id: "playlist_go_home"
       time: "18:00"
       message: ":playlist Jazz 官方"
       repeat: true
-    - id: "theme_go_home"
-      time: "18:00"
-      message: ":theme 🚇"
+    - id: "theme_at_home"
+      time: "19:30"
+      message: ":theme 享乐"
       repeat: true
     - id: "playlist_at_home"
       time: "20:00"
       message: ":playlist R&B 官方"
       repeat: true
-    - id: "theme_at_home"
-      time: "20:00"
-      message: ":theme 享乐"
+    - id: "theme_daily"
+      time: "22:30"
+      message: ":theme 日常"
       repeat: true
     - id: "playlist_daily"
       time: "23:00"
       message: ":playlist 微醺咖啡厅 官方"
-      repeat: true
-    - id: "theme_daily"
-      time: "23:00"
-      message: ":theme 日常"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -251,8 +251,8 @@ qq_music:
     accompaniment_label: "com.tencent.qqmusic:id/oqz"
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
-    radar_song: 'com.tencent.qqmusic:id/mfc'
-    radar_singer: 'com.tencent.qqmusic:id/m2w'
+    radar_song: 'com.tencent.qqmusic:id/mg6' #'com.tencent.qqmusic:id/mfc'
+    radar_singer: 'com.tencent.qqmusic:id/m3w' #'com.tencent.qqmusic:id/m2w'
     fav_entry: '//android.widget.TextView[@text="收藏"]'
     lyrics_tab: '//android.widget.RelativeLayout[@content-desc="歌词 按钮"]'
     playlist_tab: '//android.widget.RelativeLayout[@content-desc="歌单 按钮"]'
