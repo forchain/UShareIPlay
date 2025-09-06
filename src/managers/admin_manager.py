@@ -1,12 +1,29 @@
-from ..soul.soul_handler import SoulHandler
+from ..handlers.soul_handler import SoulHandler
 from ..dal import UserDAO
 from ..models import User
+from ..core.singleton import Singleton
 import logging
 
-class AdminManager:
-    def __init__(self, handler: SoulHandler):
-        self.handler = handler
-        self.logger = logging.getLogger('admin_manager')
+class AdminManager(Singleton):
+    def __init__(self):
+        # 延迟初始化 handler，避免循环依赖
+        self._handler = None
+        self._logger = None
+    
+    @property
+    def handler(self):
+        """延迟获取 SoulHandler 实例"""
+        if self._handler is None:
+            from ..handlers.soul_handler import SoulHandler
+            self._handler = SoulHandler.instance()
+        return self._handler
+    
+    @property
+    def logger(self):
+        """延迟获取 logger 实例"""
+        if self._logger is None:
+            self._logger = self.handler.logger
+        return self._logger
 
     async def manage_admin(self, message_info, enable: bool):
         """

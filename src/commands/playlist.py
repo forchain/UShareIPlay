@@ -117,8 +117,13 @@ class PlaylistCommand(BaseCommand):
         if not 'error' in playing_info:
              playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
 
-        self.controller.title_command.change_title(subject)
-        self.controller.topic_command.change_topic(topic)
+        # 使用 title_manager 和 topic_manager 管理标题和话题
+        from ..managers.title_manager import TitleManager
+        from ..managers.topic_manager import TopicManager
+        title_manager = TitleManager.instance()
+        topic_manager = TopicManager.instance()
+        title_manager.change_title(subject)
+        topic_manager.change_topic(topic)
         self.handler.list_mode = 'playlist'
         return {
             'playlist': playlist,

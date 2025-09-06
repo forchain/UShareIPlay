@@ -1,14 +1,10 @@
 from appium import webdriver
 from selenium.common import WebDriverException, StaleElementReferenceException
 from appium.options.common import AppiumOptions
-from ..soul.soul_handler import SoulHandler
-from ..music.qq_music_handler import QQMusicHandler
-from ..core.command_parser import CommandParser
+from ..handlers.soul_handler import SoulHandler
+from ..handlers.qq_music_handler import QQMusicHandler
 import time
 import traceback
-import importlib
-from pathlib import Path
-import sys
 import threading
 import queue
 from ..core.db_service import DBHelper
@@ -41,11 +37,8 @@ class AppController(Singleton):
         self.music_handler = None
         self.logger = None
 
-        # Initialize command parser
-        self.command_parser = CommandParser(config['commands'])
-
-        self.commands_path = Path(__file__).parent.parent / 'commands'
-        self.command_modules = {}  # Cache for loaded command modules
+        # Command manager will be initialized after handlers are ready
+        self.command_manager = None
 
         # Initialize database helper
         self.db_helper = DBHelper()
@@ -111,84 +104,6 @@ class AppController(Singleton):
         server_url = f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
         return webdriver.Remote(command_executor=server_url, options=options)
 
-    def _load_command_module(self, command):
-        """Load command module dynamically"""
-        try:
-            if command in self.command_modules:
-                return self.command_modules[command]
-                
-            module_path = (Path(__file__).parent.parent / 'commands' / f"{command}.py").resolve()
-            if not module_path.exists():
-                if self.logger:
-                    self.logger.error(f'module path not exists, {module_path}')
-                else:
-                    print(f'module path not exists, {module_path}')
-                return None
-                
-            package_name = f"src.commands.{command}"
-            spec = importlib.util.spec_from_file_location(package_name, module_path)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[package_name] = module
-            spec.loader.exec_module(module)
-
-            if not module:
-                self.soul_handler.logger.error('Command module failed to load')
-                return None
-
-            if not hasattr(module, 'command'):
-                self.soul_handler.logger.error('Command module does not have command')
-                return None
-
-            # Create command instance
-            if not hasattr(module, 'create_command'):
-                self.soul_handler.logger.error('Command module does not have create_command')
-                return None
-
-            module.command = module.create_command(self)
-            self.command_modules[command] = module
-            return module
-            
-        except Exception as e:
-            self.soul_handler.log_error(f"Error loading command module {command}: {traceback.format_exc()}")
-            return None
-
-    def _update_commands(self):
-        """Update all loaded commands"""
-        for module in self.command_modules.values():
-            try:
-                if hasattr(module, 'command'):
-                    module.command.update()
-            except Exception as e:
-                self.soul_handler.log_error(f"Error updating command {module.__name__}: {str(e)}")
-
-    def _check_command(self, command):
-        # Try to load command module
-        module = self._load_command_module(command)
-        return module.command if module else None
-
-    async def _process_command(self, command, message_info, command_info):
-        """Process command using module if available
-        Args:
-            message_info: MessageInfo object
-            command_info: dict containing command details
-        Returns:
-            str: Response message
-        """
-        try:
-            parameters= command_info['parameters']
-            result = await command.process(message_info, parameters)
-            
-            if 'error' in result:
-                res = command_info['error_template'].format(
-                    error=result['error'],
-                    user=message_info.nickname,
-                )
-            else:
-                res = f'{command_info['response_template'].format(**result)} @{message_info.nickname}'
-            return res
-        except Exception as e:
-            self.soul_handler.log_error(f"Error processing command {command_info}: {traceback.format_exc()}")
-            return f"Error processing command {command_info}"
 
     def _toggle_console_mode(self):
         """Toggle console mode on Ctrl+P"""
@@ -216,78 +131,50 @@ class AppController(Singleton):
                     self.is_running = False
                 break
 
-    def _load_all_commands(self):
-        """Load all command modules from commands directory
-        Returns:
-            dict: Loaded command modules
-        """
-        try:
-            # Get all .py files in commands directory
-            command_files = [f.stem for f in self.commands_path.glob('*.py') 
-                            if f.is_file() and not f.stem.startswith('__')]
-            
-            self.logger.info(f"Found command files: {command_files}")
-            
-            # Load each command module
-            for command in command_files:
-                try:
-                    module = self._load_command_module(command)
-                    if module:
-                        if self.logger:
-                            self.logger.info(f"Loaded command module: {command}")
-                        else:
-                            print(f"Loaded command module: {command}")
-                    else:
-                        if self.logger:
-                            self.logger.error(f"Failed to load command module: {command}")
-                        else:
-                            print(f"Failed to load command module: {command}")
-                except Exception as e:
-                    if self.logger:
-                        self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
-                    else:
-                        print(f"Error loading command {command}: {traceback.format_exc()}")
-                
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Error loading commands: {traceback.format_exc()}")
-            else:
-                print(f"Error loading commands: {traceback.format_exc()}")
-
-    def _init_timer_manager(self):
-        """Initialize timer manager with initial timers from config"""
-        try:
-            # Check if timer command is loaded
-            if hasattr(self, 'timer_command') and hasattr(self.timer_command, 'timer_manager'):
-                timer_manager = self.timer_command.timer_manager
-                
-                # Load initial timers from config (force update to ensure config values are used)
-                initial_timers = self.config.get('soul', {}).get('initial_timers', [])
-                if initial_timers:
-                    timer_manager.load_initial_timers(initial_timers, force_update=True)
-                    self.logger.info(f"Loaded/Updated {len(initial_timers)} initial timers from config")
-                else:
-                    self.logger.info("No initial timers configured")
-            else:
-                self.logger.warning("Timer command not loaded, skipping timer initialization")
-                
-        except Exception as e:
-            self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
 
 
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
         try:
+            print("开始初始化 handlers...")
+            
             # Initialize handlers using singleton pattern
+            print("初始化 SoulHandler...")
+            print(f"SoulHandler 参数: driver={type(self.driver)}, config={self.config['soul']}")
             self.soul_handler = SoulHandler.instance(self.driver, self.config['soul'], self)
+            print("SoulHandler 初始化完成")
+            print("初始化 QQMusicHandler...")
+            print(f"QQMusicHandler 参数: driver={type(self.driver)}, config={self.config['qq_music']}")
             self.music_handler = QQMusicHandler.instance(self.driver, self.config['qq_music'], self)
+            print("QQMusicHandler 初始化完成")
             self.logger = self.soul_handler.logger
+            print("Handlers 初始化完成")
             
             # Initialize managers after handlers are ready
+            print("初始化 seat_manager...")
             self.seat_manager = init_seat_manager(self.soul_handler)
-            self.recovery_manager = RecoveryManager(self.soul_handler)
+            
+            # Initialize managers using singleton pattern (no parameters needed)
+            print("初始化其他 managers...")
+            from ..managers.topic_manager import TopicManager
+            from ..managers.mic_manager import MicManager
+            from ..managers.music_manager import MusicManager
+            from ..managers.recovery_manager import RecoveryManager
+            from ..managers.command_manager import CommandManager
+            
+            print("创建 manager 实例...")
+            self.topic_manager = TopicManager.instance()
+            self.mic_manager = MicManager.instance()
+            self.music_manager = MusicManager.instance()
+            self.recovery_manager = RecoveryManager.instance()
+            self.command_manager = CommandManager.instance()
+            
+            # Initialize command manager with config
+            print("初始化命令解析器...")
+            self.command_manager.initialize_parser(self.config['commands'])
             
             self.logger.info("Handlers and managers initialized successfully")
+            print("所有 handlers 和 managers 初始化完成")
             
         except Exception as e:
             print(f"Error initializing handlers: {traceback.format_exc()}")
@@ -300,19 +187,28 @@ class AppController(Singleton):
         error_count = 0
         
         # Initialize handlers first
+        print("开始启动监控...")
         self._init_handlers()
         
-        # Load all command modules
-        self._load_all_commands()
+        # Load all command modules using CommandManager
+        print("加载命令模块...")
+        self.command_manager.load_all_commands()
         self.logger.info("All command modules loaded")
+        print("命令模块加载完成")
         
         # Initialize timer manager with initial timers from config
-        self._init_timer_manager()
+        print("初始化定时器管理器...")
+        self.command_manager.initialize_timer_manager(self.config)
+        print("定时器管理器初始化完成")
         
         # Start console input thread
+        print("启动控制台输入线程...")
         input_thread = threading.Thread(target=self._console_input)
         input_thread.daemon = True
         input_thread.start()
+        print("控制台输入线程已启动")
+        
+        print("开始主监控循环...")
 
         while self.is_running:
             try:
@@ -334,23 +230,20 @@ class AppController(Singleton):
                     pass
 
                 # Update all commands
-                self._update_commands()
+                self.command_manager.update_commands()
                 
                 info = self.music_handler.get_playback_info()
                 # ignore state
                 info['state'] = None
                 if info != last_info:
                     last_info = info
-                    if self.music_handler.list_mode == 'singer':
-                        if info['song'].endswith('(Live)'):
-                            if self.music_handler.no_skip > 0:
-                                self.music_handler.no_skip -= 1
-                            else:
-                                self.music_handler.skip_song()
-                    if 'DJ' in info['song'] or 'Remix' in info['song']:
-                        self.music_handler.skip_song()
-
-                    self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
+                    
+                    # 检查是否需要跳过低质量歌曲
+                    song_skipped = self.music_handler.handle_song_quality_check(info)
+                    
+                    # 只有在没有跳过歌曲的情况下才发送播放消息
+                    if not song_skipped:
+                        self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
                 messages = await self.soul_handler.message_manager.get_latest_message()
@@ -362,22 +255,8 @@ class AppController(Singleton):
                     self.soul_handler.send_message(response)
                     response = None
                 if messages:
-                    # Iterate through message info objects
-                    for msg_id, message_info in messages.items():
-                        if self.command_parser.is_valid_command(message_info.content):
-                            command_info = self.command_parser.parse_command(message_info.content)
-                            if command_info:
-                                # Handle different commands using match-case
-                                cmd = command_info['prefix']
-
-                                self.soul_handler.send_message(
-                                    f'Processing :{cmd} command @{message_info.nickname}')
-
-                                command = self._check_command(cmd)
-                                if command:
-                                    response = await self._process_command(command, message_info, command_info)
-                                else:
-                                    self.soul_handler.log_error(f"Unknown command: {cmd}")
+                    # Use CommandManager to handle message commands
+                    response = await self.command_manager.handle_message_commands(messages)
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
                     res = self.music_handler.check_ktv_lyrics()

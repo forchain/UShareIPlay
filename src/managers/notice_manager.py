@@ -1,14 +1,17 @@
 import time
 import traceback
 from typing import Dict
+from ..core.singleton import Singleton
 
 
-class NoticeManager:
+class NoticeManager(Singleton):
     """Notice管理器，统一处理notice的设置操作"""
 
-    def __init__(self, handler):
-        self.handler = handler
-        self.logger = handler.logger
+    def __init__(self):
+        # 获取 SoulHandler 单例实例
+        from ..handlers.soul_handler import SoulHandler
+        self.handler = SoulHandler.instance()
+        self.logger = self.handler.logger
 
     def set_notice(self, notice: str) -> Dict:
         """

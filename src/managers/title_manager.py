@@ -5,21 +5,41 @@ import logging
 from ..core.singleton import Singleton
 
 class TitleManager(Singleton):
-    def __init__(self, handler):
-        self.handler = handler
-        self.logger = logging.getLogger('title_manager')
-        # Get ThemeManager singleton instance
-        from .theme_manager import ThemeManager
-        self.theme_manager = ThemeManager.instance(handler)
+    def __init__(self):
+        # 延迟初始化 handler 和 theme_manager，避免循环依赖
+        self._handler = None
+        self._theme_manager = None
+        self._logger = None
         
         self.current_title = None
         self.next_title = None
         self.is_initialized = False
         
+        # 延迟初始化 UI，避免在初始化时调用 handler
+        self._ui_initialized = False
 
-        
-        # Initialize from UI if no title is set
-        self._initialize_from_ui()
+    @property
+    def handler(self):
+        """延迟获取 SoulHandler 实例"""
+        if self._handler is None:
+            from ..handlers.soul_handler import SoulHandler
+            self._handler = SoulHandler.instance()
+        return self._handler
+    
+    @property
+    def theme_manager(self):
+        """延迟获取 ThemeManager 实例"""
+        if self._theme_manager is None:
+            from .theme_manager import ThemeManager
+            self._theme_manager = ThemeManager.instance()
+        return self._theme_manager
+    
+    @property
+    def logger(self):
+        """延迟获取 logger 实例"""
+        if self._logger is None:
+            self._logger = self.handler.logger
+        return self._logger
 
     def get_current_title(self):
         """Get current title
@@ -113,10 +133,11 @@ class TitleManager(Singleton):
     def _initialize_from_ui(self):
         """Initialize title and theme from UI on startup"""
         try:
-            # Only initialize if not already initialized
-            if not self.is_initialized:
+            # 延迟初始化 UI，只在需要时执行
+            if not self._ui_initialized:
                 self.logger.info("Title not initialized, attempting to initialize from UI")
                 self._parse_title_from_ui()
+                self._ui_initialized = True
             else:
                 self.logger.info("Title already initialized, skipping UI initialization")
         except Exception as e:
@@ -161,7 +182,57 @@ class TitleManager(Singleton):
             return self.theme_manager.can_update_now()
         return True
 
-
+    def change_title(self, title: str) -> dict:
+        """
+        简单的标题修改方法（不包含主题逻辑）
+        用于替代 ContentManager 的功能
+        Args:
+            title: 新标题
+        Returns:
+            dict: 操作结果
+        """
+        try:
+            # 确保 UI 已初始化
+            if not self._ui_initialized:
+                self._initialize_from_ui()
+            
+            if not self.handler.switch_to_app():
+                return {'error': 'Failed to switch to Soul app'}
+            
+            self.logger.info(f"Attempting to change title to: {title}")
+            
+            # 点击标题编辑入口
+            title_edit_entry = self.handler.try_find_element_plus('title_edit_entry')
+            if not title_edit_entry:
+                self.logger.warning("Title edit entry not found")
+                return {'error': 'Title edit entry not found'}
+            
+            title_edit_entry.click()
+            self.logger.info("Clicked title edit entry")
+            
+            # 等待输入框出现
+            title_input = self.handler.wait_for_element_plus('title_edit_input')
+            if not title_input:
+                return {'error': 'Title input field not found'}
+            
+            # 清空并输入新标题
+            title_input.clear()
+            title_input.send_keys(title)
+            self.logger.info(f"Entered title: {title}")
+            
+            # 点击确认按钮
+            confirm_button = self.handler.try_find_element_plus('title_edit_confirm')
+            if not confirm_button:
+                return {'error': 'Title confirm button not found'}
+            
+            confirm_button.click()
+            self.logger.info("Clicked title confirm button")
+            
+            return {'title': title}
+            
+        except Exception as e:
+            self.logger.error(f"Error changing title: {traceback.format_exc()}")
+            return {'error': str(e)}
 
     def update_title_ui(self, title: str, theme: str = None):
         """Update room title in UI (single attempt, no retry logic here)

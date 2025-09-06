@@ -310,25 +310,12 @@ class QQMusicHandler(AppHandler, Singleton):
             }
 
     def skip_song(self):
-        """Skip to next song"""
+        """Skip to next song - delegates to MusicManager"""
         try:
-            # Get current info before skip
-            current_info = self.get_playback_info()
-
-            # Execute shell command to simulate media button press
-            self.driver.execute_script(
-                'mobile: shell',
-                {
-                    'command': 'input keyevent KEYCODE_MEDIA_NEXT'
-                }
-            )
-            self.logger.info(f"Skipped {current_info['song']} by {current_info['singer']}")
-
-            # Return song info
-            return {
-                'song': current_info.get('song', 'Unknown'),
-                'singer': current_info.get('singer', 'Unknown')
-            }
+            # 使用 MusicManager 的系统级跳过功能
+            from ..managers.music_manager import MusicManager
+            music_manager = MusicManager.instance()
+            return music_manager.skip_song()
 
         except Exception as e:
             self.logger.error(f"Error skipping song: {traceback.format_exc()}")
@@ -337,130 +324,114 @@ class QQMusicHandler(AppHandler, Singleton):
                 'singer': 'Unknown'
             }
 
-    def get_volume_level(self):
-        """Get current volume level"""
+    def should_skip_low_quality_song(self, song_info):
+        """
+        检查是否应该跳过低质量歌曲
+        Args:
+            song_info: dict, 包含歌曲信息的字典 {'song': str, 'singer': str, 'album': str}
+        Returns:
+            bool: True if should skip, False otherwise
+        """
         try:
-            # Execute shell command to get volume
-            result = self.driver.execute_script(
-                'mobile: shell',
-                {
-                    'command': 'dumpsys audio'
-                }
-            )
-
-            # Parse volume level
-            if result:
-                # Split by "- STREAM_MUSIC:" first
-                parts = result.split('- STREAM_MUSIC:')
-                if len(parts) > 1:
-                    # Find first streamVolume in second part
-                    match = re.search(r'streamVolume:(\d+)', parts[1])
-                    if match:
-                        volume = int(match.group(1))
-                        print(f"Current volume: {volume}")
-                        return volume
-            return 0
+            song = song_info.get('song', '')
+            singer = song_info.get('singer', '')
+            album = song_info.get('album', '')
+            
+            # 检查是否包含 DJ 或 Remix
+            if 'DJ' in song or 'Remix' in song:
+                self.logger.info(f"Skipping DJ/Remix song: {song}")
+                return True
+            
+            # 针对歌手模式的特殊处理
+            if self.list_mode == 'singer':
+                # 检查是否是 Live 版本
+                if song.endswith('(Live)'):
+                    if self.no_skip > 0:
+                        self.no_skip -= 1
+                        self.logger.info(f"Allowing Live song (remaining skips: {self.no_skip}): {song}")
+                        return False
+                    else:
+                        self.logger.info(f"Skipping Live song (no skips left): {song}")
+                        return True
+            
+            return False
+            
         except Exception as e:
-            print(f"Error getting volume level: {str(e)}")
-            traceback.print_exc()
+            self.logger.error(f"Error checking if should skip song: {traceback.format_exc()}")
+            return False
+
+    def handle_song_quality_check(self, song_info):
+        """
+        处理歌曲质量检查和跳过逻辑
+        Args:
+            song_info: dict, 包含歌曲信息的字典
+        Returns:
+            bool: True if song was skipped, False otherwise
+        """
+        try:
+            if self.should_skip_low_quality_song(song_info):
+                skip_result = self.skip_song()
+                self.logger.info(f"Skipped low quality song: {song_info.get('song', 'Unknown')}")
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error handling song quality check: {traceback.format_exc()}")
+            return False
+
+    def get_volume_level(self):
+        """Get current volume level - delegates to MusicManager"""
+        try:
+            # 使用 MusicManager 的系统级音量获取功能
+            from ..managers.music_manager import MusicManager
+            music_manager = MusicManager.instance()
+            return music_manager.get_volume_level()
+        except Exception as e:
+            self.logger.error(f"Error getting volume level: {str(e)}")
             return 0
 
     def adjust_volume(self, delta=None):
         """
-        Adjust volume level
+        Adjust volume level - delegates to MusicManager
         Args:
             delta: int, positive to increase, negative to decrease, None to just get current level
         Returns:
             dict: Result with level and times if adjusted, or error
         """
         try:
-            vol = self.get_volume_level()
+            from ..managers.music_manager import MusicManager
+            music_manager = MusicManager.instance()
+            
             if delta is None:
                 # Just get current volume
-                return {'volume': vol}
+                current_volume = music_manager.get_volume_level()
+                return {'volume': current_volume}
 
-            # Adjust volume
-            if delta < 0:
-                times = abs(delta) if vol + delta > 0 else vol
-                for i in range(times):
-                    self.press_volume_down()
-                    self.logger.info(f"Decreased volume ({i + 1}/{times})")
-            else:
-                if vol > delta:
-                    times = vol - delta
-                    for i in range(times):
-                        self.press_volume_down()
-                        self.logger.info(f"Decreased volume ({i + 1}/{times})")
-                else:
-                    times = delta - vol
-                    for i in range(times):
-                        self.press_volume_up()
-                        self.logger.info(f"Increased volume ({i + 1}/{times})")
-
-            # Get final volume level
-            vol = self.get_volume_level()
-            self.logger.info(f"Adjusted volume to {vol}")
-            return {
-                'volume': vol,
-            }
+            # Convert delta to target volume
+            current_volume = music_manager.get_volume_level()
+            target_volume = max(0, min(15, current_volume + delta))  # Clamp to 0-15 range
+            
+            # Use MusicManager's adjust_volume with target volume
+            return music_manager.adjust_volume(target_volume)
+            
         except Exception as e:
-            print(f"Error adjusting volume: {traceback.format_exc()}")
-            return {'error': f'Failed to adjust volume to {delta}'}
+            self.logger.error(f"Error adjusting volume: {traceback.format_exc()}")
+            return {'error': f'Failed to adjust volume by {delta}'}
 
     def get_playback_info(self):
-        """Get current playback information including song info and state"""
-        # Get media session info
-        result = self.driver.execute_script(
-            'mobile: shell',
-            {
-                'command': 'dumpsys media_session'
+        """Get current playback information - delegates to MusicManager"""
+        try:
+            # 使用 MusicManager 的系统级播放信息获取功能
+            from ..managers.music_manager import MusicManager
+            music_manager = MusicManager.instance()
+            return music_manager.get_current_song_info()
+        except Exception as e:
+            self.logger.error(f"Error getting playback info: {traceback.format_exc()}")
+            return {
+                'song': 'Unknown',
+                'singer': 'Unknown',
+                'album': 'Unknown',
+                'state': 'Unknown'
             }
-        )
-
-        # Parse metadata
-        metadata = {}
-        state = "Unknown"
-
-        if not result:
-            self.logger.error("Failed to get playback information")
-            return None
-
-        # Get metadata
-        meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
-        if meta_match:
-            meta_parts = meta_match.group(1).split(', ')
-            if len(meta_parts) >= 3:
-                metadata = {
-                    'song': meta_parts[0],
-                    'singer': meta_parts[1],
-                    'album': meta_parts[2]
-                }
-
-        # Get playback state
-        state_match = re.search(r'state=PlaybackState {state=(\d+)', result)
-        if state_match:
-            state_code = int(state_match.group(1))
-            state = {
-                0: "None",
-                1: "Stopped",
-                2: "Paused",
-                3: "Playing",
-                4: "Fast Forwarding",
-                5: "Rewinding",
-                6: "Buffering",
-                7: "Error",
-                8: "Connecting",
-                9: "Skipping to Next",
-                10: "Skipping to Previous",
-                11: "Skipping to Queue Item"
-            }.get(state_code, "Unknown")
-
-        return {
-            'song': metadata.get('song', 'Unknown'),
-            'singer': metadata.get('singer', 'Unknown'),
-            'album': metadata.get('album', 'Unknown'),
-            'state': state
-        }
 
     def toggle_ktv_mode(self, enable):
         """Toggle KTV mode
