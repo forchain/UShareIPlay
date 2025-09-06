@@ -1,8 +1,8 @@
 import time
 import traceback
-import logging
 
 from ..core.singleton import Singleton
+
 
 class TitleManager(Singleton):
     def __init__(self):
@@ -10,11 +10,11 @@ class TitleManager(Singleton):
         self._handler = None
         self._theme_manager = None
         self._logger = None
-        
+
         self.current_title = None
         self.next_title = None
         self.is_initialized = False
-        
+
         # 延迟初始化 UI，避免在初始化时调用 handler
         self._ui_initialized = False
 
@@ -25,7 +25,7 @@ class TitleManager(Singleton):
             from ..handlers.soul_handler import SoulHandler
             self._handler = SoulHandler.instance()
         return self._handler
-    
+
     @property
     def theme_manager(self):
         """延迟获取 ThemeManager 实例"""
@@ -33,7 +33,7 @@ class TitleManager(Singleton):
             from .theme_manager import ThemeManager
             self._theme_manager = ThemeManager.instance()
         return self._theme_manager
-    
+
     @property
     def logger(self):
         """延迟获取 logger 实例"""
@@ -65,11 +65,11 @@ class TitleManager(Singleton):
             return self.next_title
         elif self.current_title:
             return self.current_title
-        
+
         # If both are empty and not initialized, try to parse from UI (only for initial setup)
         if not self.is_initialized:
             return self._parse_title_from_ui()
-        
+
         # If initialized but no title set, return None
         return None
 
@@ -88,15 +88,15 @@ class TitleManager(Singleton):
             if not room_title_element:
                 self.logger.info("Room title element not found")
                 return None
-            
+
             # Get room title text
             room_title_text = self.handler.get_element_text(room_title_element)
             if not room_title_text:
                 self.logger.info("Room title text is empty")
                 return None
-            
+
             self.logger.info(f"Found room title in UI: {room_title_text}")
-            
+
             # Parse theme and title from room name
             # Expected format: "主题｜标题"
             if '｜' in room_title_text:
@@ -104,28 +104,34 @@ class TitleManager(Singleton):
                 if len(parts) == 2:
                     theme_part = parts[0].strip()
                     title_part = parts[1].strip()
-                    
+
                     # Initialize theme manager if available and not already initialized
                     if self.theme_manager and not self.theme_manager.is_initialized:
-                        init_result = self.theme_manager.initialize_from_ui()
-                        if 'error' not in init_result:
-                            self.logger.info(f"Initialized theme from UI: {theme_part}")
+                        # 只有在没有待更新主题的情况下才从 UI 初始化
+                        if not self.theme_manager.pending_ui_update:
+                            init_result = self.theme_manager.initialize_from_ui()
+                            if 'error' not in init_result:
+                                self.logger.info(f"Initialized theme from UI: {theme_part}")
+                        else:
+                            self.logger.info(
+                                f"Theme manager has pending update, skipping UI initialization to preserve new theme")
                     else:
-                        self.logger.info(f"Theme manager already initialized, keeping current theme: {self.theme_manager.get_current_theme() if self.theme_manager else 'None'}")
-                    
+                        self.logger.info(
+                            f"Theme manager already initialized, keeping current theme: {self.theme_manager.get_current_theme() if self.theme_manager else 'None'}")
+
                     # Set current title
                     self.current_title = title_part
                     self.is_initialized = True
                     self.logger.info(f"Initialized current title from UI: {title_part}")
-                    
+
                     return title_part
-            
+
             # If no separator found, treat the whole text as title
             self.current_title = room_title_text
             self.is_initialized = True
             self.logger.info(f"Initialized current title from UI (no theme): {room_title_text}")
             return room_title_text
-            
+
         except Exception as e:
             self.logger.error(f"Error parsing title from UI: {str(e)}")
             return None
@@ -182,58 +188,6 @@ class TitleManager(Singleton):
             return self.theme_manager.can_update_now()
         return True
 
-    def change_title(self, title: str) -> dict:
-        """
-        简单的标题修改方法（不包含主题逻辑）
-        用于替代 ContentManager 的功能
-        Args:
-            title: 新标题
-        Returns:
-            dict: 操作结果
-        """
-        try:
-            # 确保 UI 已初始化
-            if not self._ui_initialized:
-                self._initialize_from_ui()
-            
-            if not self.handler.switch_to_app():
-                return {'error': 'Failed to switch to Soul app'}
-            
-            self.logger.info(f"Attempting to change title to: {title}")
-            
-            # 点击标题编辑入口
-            title_edit_entry = self.handler.try_find_element_plus('title_edit_entry')
-            if not title_edit_entry:
-                self.logger.warning("Title edit entry not found")
-                return {'error': 'Title edit entry not found'}
-            
-            title_edit_entry.click()
-            self.logger.info("Clicked title edit entry")
-            
-            # 等待输入框出现
-            title_input = self.handler.wait_for_element_plus('title_edit_input')
-            if not title_input:
-                return {'error': 'Title input field not found'}
-            
-            # 清空并输入新标题
-            title_input.clear()
-            title_input.send_keys(title)
-            self.logger.info(f"Entered title: {title}")
-            
-            # 点击确认按钮
-            confirm_button = self.handler.try_find_element_plus('title_edit_confirm')
-            if not confirm_button:
-                return {'error': 'Title confirm button not found'}
-            
-            confirm_button.click()
-            self.logger.info("Clicked title confirm button")
-            
-            return {'title': title}
-            
-        except Exception as e:
-            self.logger.error(f"Error changing title: {traceback.format_exc()}")
-            return {'error': str(e)}
-
     def update_title_ui(self, title: str, theme: str = None):
         """Update room title in UI (single attempt, no retry logic here)
         Args:
@@ -242,6 +196,9 @@ class TitleManager(Singleton):
         Returns:
             dict: Result with error or success
         """
+        if not self.handler.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+
         try:
             # Always prioritize theme_manager data over any other source
             if self.theme_manager:
@@ -256,7 +213,7 @@ class TitleManager(Singleton):
                 # Fallback if no theme_manager
                 current_theme = theme if theme else "享乐"
                 self.logger.info(f"Using fallback theme (no theme_manager): {current_theme}")
-            
+
             # Click room title
             room_title = self.handler.wait_for_element_clickable_plus('chat_room_title')
             if not room_title:
@@ -276,7 +233,7 @@ class TitleManager(Singleton):
                 return {'error': 'Failed to find title input'}
             title_input.clear()
             title_input.send_keys(f"{current_theme}｜" + title)
-            
+
             # Click confirm
             confirm = self.handler.wait_for_element_clickable_plus('title_edit_confirm')
             if not confirm:
@@ -288,7 +245,7 @@ class TitleManager(Singleton):
 
             # Check if update was successful by looking for edit entry or confirm button
             key, element = self.handler.wait_for_any_element_plus(['title_edit_entry', 'title_edit_confirm'])
-            
+
             if key == 'title_edit_entry':
                 # Update successful - we're back to edit entry page
                 if self.next_title:
@@ -299,18 +256,18 @@ class TitleManager(Singleton):
                     # Even if no next_title, the UI was updated successfully
                     # This happens when theme is updated but title remains the same
                     self.logger.info(f'UI updated successfully, current title: {self.current_title}')
-                
+
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
                 return {'success': True}
-                
+
             elif key == 'title_edit_confirm':
                 # Update failed - still on confirm page
                 go_back = self.handler.wait_for_element_plus('go_back')
                 if go_back:
                     go_back.click()
                     self.logger.warning('Update title failed, going back to chat room info screen')
-                
+
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
                 return {'error': 'Update failed - still in cooldown period'}
@@ -322,5 +279,3 @@ class TitleManager(Singleton):
         except Exception:
             self.logger.error(f"Error in title update: {traceback.format_exc()}")
             return {'error': f'Failed to update title: {title}'}
-
-

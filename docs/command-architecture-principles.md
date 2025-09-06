@@ -12,7 +12,7 @@
 **❌ 错误做法：**
 ```python
 # 命令直接调用其他命令
-self.controller.title_command.change_title("新标题")
+self.controller.title_command.update_title_ui("新标题")
 self.controller.play_command.play_song("歌曲名")
 ```
 
@@ -25,7 +25,7 @@ from ..managers.music_manager import MusicManager
 content_manager = ContentManager.instance()
 music_manager = MusicManager.instance()
 
-content_manager.change_title("新标题")
+content_manager.update_title_ui("新标题")
 music_manager.play_song("歌曲名")
 ```
 
