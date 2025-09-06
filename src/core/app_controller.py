@@ -274,6 +274,7 @@ class AppController(Singleton):
         except Exception as e:
             self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
 
+
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
         try:
@@ -293,7 +294,6 @@ class AppController(Singleton):
             raise
 
     async def start_monitoring(self):
-        enabled = True
         response = None
         lyrics = None
         last_info = None
@@ -353,7 +353,7 @@ class AppController(Singleton):
                     self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
 
                 # Monitor Soul messages
-                messages = await self.soul_handler.get_latest_message(enabled)
+                messages = await self.soul_handler.message_manager.get_latest_message()
                 # get messages in advance to avoid being floored by responses
                 if lyrics:
                     self.soul_handler.send_message(lyrics)
@@ -369,51 +369,15 @@ class AppController(Singleton):
                             if command_info:
                                 # Handle different commands using match-case
                                 cmd = command_info['prefix']
-                                if cmd == 'enable':
-                                    enabled = ''.join(command_info['parameters']) == "1"
-                                    self.soul_handler.logger.info(f"start_monitoring enabled: {enabled}")
-                                    response = command_info['response_template'].format(
-                                        enabled=enabled
-                                    )
-                                    self.soul_handler.send_message(response)
-
-                                if not enabled:
-                                    continue
 
                                 self.soul_handler.send_message(
                                     f'Processing :{cmd} command @{message_info.nickname}')
 
-                                match command_info['prefix']:
-                                    case 'invite':
-                                        # Get party ID parameter
-                                        if len(command_info['parameters']) > 0:
-                                            party_id = command_info['parameters'][0]
-                                            # Try to join party
-                                            result = self.soul_handler.invite_user(message_info, party_id)
-
-                                            if 'error' in result:
-                                                # Use error template if invitation failed
-                                                response = command_info['error_template'].format(
-                                                    party_id=result['party_id'],
-                                                    error=result['error']
-                                                )
-                                            else:
-                                                # Use success template if invitation succeeded
-                                                response = command_info['response_template'].format(
-                                                    party_id=result['party_id'],
-                                                    user=message_info.nickname
-                                                )
-                                        else:
-                                            response = command_info['error_template'].format(
-                                                party_id='unknown',
-                                                error='Missing party ID parameter'
-                                            )
-                                    case _:
-                                        command = self._check_command(cmd)
-                                        if command:
-                                            response = await self._process_command(command, message_info, command_info)
-                                        else:
-                                            self.soul_handler.log_error(f"Unknown command: {cmd}")
+                                command = self._check_command(cmd)
+                                if command:
+                                    response = await self._process_command(command, message_info, command_info)
+                                else:
+                                    self.soul_handler.log_error(f"Unknown command: {cmd}")
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
                     res = self.music_handler.check_ktv_lyrics()

@@ -28,10 +28,6 @@ class SoulHandler(AppHandler, Singleton):
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
 
-    async def get_latest_message(self, enabled=True):
-        """Get latest messages from the chat"""
-        return await self.message_manager.get_latest_message(enabled)
-
     def send_message(self, message):
         """Send message"""
         self.switch_to_app()
