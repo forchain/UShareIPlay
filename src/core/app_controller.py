@@ -294,9 +294,14 @@ class AppController(Singleton):
                 if response:
                     self.soul_handler.send_message(response)
                     response = None
-                if messages:
-                    # Use CommandManager to handle message commands
+                
+                if messages == 'ABNORMAL_STATE':
+                    # Unable to access message list - abnormal state
+                    self.recovery_manager.mark_abnormal_state()
+                elif messages:
+                    # New messages found - process them
                     response = await self.command_manager.handle_message_commands(messages)
+                # else: messages is None - no new messages (normal state)
                 # Check KTV lyrics if mode is enabled
                 if self.music_handler.ktv_mode:
                     res = self.music_handler.check_ktv_lyrics()
