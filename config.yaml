@@ -8,7 +8,7 @@ soul:
   # Initial timers configuration
   initial_timers:
     - id: "theme_sleep"
-      time: "00:00"
+      time: "23:30"
       message: "theme 助眠"
       repeat: true
     - id: "playlist_sleep"
@@ -17,7 +17,7 @@ soul:
       repeat: true
     - id: "theme_got_to_work"
       time: "07:30"
-      message: ":theme 🚇"
+      message: "theme 🚇"
       repeat: true
     - id: "theme_work_morning"
       time: "09:00"
@@ -41,7 +41,7 @@ soul:
       repeat: true
     - id: "playlist_work_afternoon"
       time: "13:00"
-      message: ":playlist 情歌 官方"
+      message: "playlist 情歌 官方"
       repeat: true
     - id: "theme_go_home"
       time: "17:30"
