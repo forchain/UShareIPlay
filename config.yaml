@@ -8,7 +8,7 @@ soul:
   # Initial timers configuration
   initial_timers:
     - id: "playlist_sleep"
-      time: "00:00"
+      time: "01:34"
       message: ":playlist Lofi Girl 官方"
       repeat: true
     - id: "theme_sleep"
@@ -216,8 +216,8 @@ qq_music:
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
     player_panel: "com.tencent.qqmusic:id/idm"
     hide_player: "com.tencent.qqmusic:id/na0"
-    song_name: "com.tencent.qqmusic:id/mf6"
-    singer_name: "com.tencent.qqmusic:id/mhc"
+    song_name: 'com.tencent.qqmusic:id/mg6' #"com.tencent.qqmusic:id/mf6"
+    singer_name: 'com.tencent.qqmusic:id/mic' #"com.tencent.qqmusic:id/mhc"
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     playing_bar: "com.tencent.qqmusic:id/ha_"
