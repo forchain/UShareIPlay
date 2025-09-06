@@ -94,6 +94,13 @@ class TimerManager(Singleton):
                 
                 # Check each timer
                 for timer_id, timer_data in list(self._timers.items()):
+                    # Validate timer data format
+                    if not isinstance(timer_data, dict):
+                        self.logger.error(f"Invalid timer data format for {timer_id}: {type(timer_data)} - {timer_data}")
+                        # Remove invalid timer data
+                        del self._timers[timer_id]
+                        continue
+                    
                     if not timer_data.get('enabled', False):
                         continue
                     
@@ -215,7 +222,17 @@ class TimerManager(Singleton):
         try:
             if self._timers_file.exists():
                 with open(self._timers_file, 'r', encoding='utf-8') as f:
-                    self._timers = json.load(f)
+                    loaded_timers = json.load(f)
+                
+                # Validate and clean timer data
+                self._timers = {}
+                for timer_id, timer_data in loaded_timers.items():
+                    if isinstance(timer_data, dict):
+                        self._timers[timer_id] = timer_data
+                    else:
+                        self.logger.warning(f"Skipping invalid timer data for {timer_id}: {type(timer_data)} - {timer_data}")
+                
+                self.logger.info(f"Loaded {len(self._timers)} valid timers from file")
         except Exception as e:
             self.logger.error(f"Error loading timers: {str(e)}")
             self._timers = {}

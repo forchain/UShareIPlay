@@ -14,6 +14,8 @@ class RecoveryManager(Singleton):
         self.last_recovery_time = 0
         self.recovery_cooldown = 5  # 5秒冷却时间
         self.manual_mode_enabled = False  # 手动模式标志位
+        self.abnormal_state_detected = False  # 异常状态检测标志
+        self.abnormal_state_count = 0  # 连续异常状态计数
 
         # 关闭和返回按钮列表
         self.close_buttons = [
@@ -101,6 +103,15 @@ class RecoveryManager(Singleton):
         except Exception as e:
             self.logger.debug(f"检测正常状态时出错: {str(e)}")
             return False
+
+    def mark_abnormal_state(self):
+        """
+        标记检测到异常状态（无消息）
+        增加异常状态计数
+        """
+        self.abnormal_state_detected = True
+        self.abnormal_state_count += 1
+        self.logger.debug(f"Marked abnormal state (count: {self.abnormal_state_count})")
 
     def handle_close_buttons(self) -> bool:
         """
@@ -332,8 +343,42 @@ class RecoveryManager(Singleton):
 
         # 首先检查是否处于正常状态
         if self.is_normal_state():
+            # 如果状态正常，重置异常状态标记
+            if self.abnormal_state_detected:
+                self.logger.info("State returned to normal, resetting abnormal state flags")
+                self.abnormal_state_detected = False
+                self.abnormal_state_count = 0
             return False
 
+        # 如果检测到异常状态（无消息），优先执行恢复操作
+        if self.abnormal_state_detected and self.abnormal_state_count >= 1:
+            self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
+            
+            # 2. 处理关闭按钮
+            recovery_performed = self.handle_close_buttons()
+
+            # 3. 处理抽屉元素
+            if not recovery_performed:
+                recovery_performed = self.handle_drawer_elements()
+
+            # 4. 如果还是无法恢复，尝试按返回键
+            if not recovery_performed:
+                self.logger.info("Attempting to press back button to exit abnormal state")
+                self.handler.press_back()
+                recovery_performed = True
+
+            # 5. 处理其他可能的异常情况
+            if not recovery_performed:
+                recovery_performed = self.handle_join_party()
+
+            if recovery_performed:
+                self.last_recovery_time = current_time
+                self.abnormal_state_count = 0  # 重置计数
+                self.logger.info("Recovery operation completed for abnormal state")
+
+            return recovery_performed
+
+        # 常规恢复流程（非异常状态触发）
         # 2. 处理关闭按钮
         recovery_performed = self.handle_close_buttons()
 

@@ -100,17 +100,22 @@ class MessageManager(Singleton):
         return party_id
 
     async def get_latest_message(self):
-        """Get new message contents that weren't seen before"""
+        """Get new message contents that weren't seen before
+        Returns:
+            dict: New messages if any found
+            None: No new messages (normal state)
+            'ABNORMAL_STATE': Unable to access message list (abnormal state)
+        """
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-            return None
+            return 'ABNORMAL_STATE'
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
             # self.handler.press_back()
             self.handler.logger.error("Failed to find message list")
-            return None
+            return 'ABNORMAL_STATE'
 
         # Collapse seats if expanded and update focus count
         seat_manager = self._get_seat_manager()
@@ -125,7 +130,7 @@ class MessageManager(Singleton):
             containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
         except Exception as e:
             self.handler.logger.error(f'cannot find message_list element, might be in loading')
-            return None
+            return 'ABNORMAL_STATE'
 
         # Process each container and collect message info
         current_messages = {}  # Dict to store element_id: MessageInfo pairs
