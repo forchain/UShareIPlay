@@ -3,6 +3,7 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 from appium.options.common import AppiumOptions
 from ..handlers.soul_handler import SoulHandler
 from ..handlers.qq_music_handler import QQMusicHandler
+import asyncio
 import time
 import traceback
 import threading
@@ -160,6 +161,7 @@ class AppController(Singleton):
             from ..managers.mic_manager import MicManager
             from ..managers.music_manager import MusicManager
             from ..managers.recovery_manager import RecoveryManager
+            from ..managers.timer_manager import TimerManager
             from ..managers.command_manager import CommandManager
             
             print("创建 manager 实例...")
@@ -167,6 +169,7 @@ class AppController(Singleton):
             self.mic_manager = MicManager.instance()
             self.music_manager = MusicManager.instance()
             self.recovery_manager = RecoveryManager.instance()
+            self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
             
             # Initialize command manager with config
@@ -179,6 +182,25 @@ class AppController(Singleton):
         except Exception as e:
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
+
+    async def _process_queue_messages(self):
+        """Process messages from the async queue (timer messages, etc.)"""
+        try:
+            from ..core.message_queue import MessageQueue
+            message_queue = MessageQueue.instance()
+            
+            # Get all messages from queue
+            queue_messages = await message_queue.get_all_messages()
+            if queue_messages:
+                self.logger.info(f"Processing {len(queue_messages)} queue messages")
+                
+                # Process all messages through CommandManager
+                response = await self.command_manager.handle_message_commands(queue_messages)
+                if response:
+                    self.soul_handler.send_message(response)
+                    
+        except Exception as e:
+            self.logger.error(f"Error processing queue messages: {str(e)}")
 
     async def start_monitoring(self):
         response = None
@@ -199,6 +221,8 @@ class AppController(Singleton):
         # Initialize timer manager with initial timers from config
         print("初始化定时器管理器...")
         self.command_manager.initialize_timer_manager(self.config)
+        # Start async timer manager
+        await self.timer_manager.start()
         print("定时器管理器初始化完成")
         
         # Start console input thread
@@ -216,7 +240,7 @@ class AppController(Singleton):
                 recovery_performed = self.recovery_manager.check_and_recover()
                 if recovery_performed:
                     # 如果执行了恢复操作，等待一下让界面稳定
-                    time.sleep(1)
+                    await asyncio.sleep(1)
                     continue
                 
                 # Check for console input
@@ -238,13 +262,29 @@ class AppController(Singleton):
                 if info != last_info:
                     last_info = info
                     
-                    # 检查是否需要跳过低质量歌曲
-                    song_skipped = self.music_handler.handle_song_quality_check(info)
-                    
-                    # 只有在没有跳过歌曲的情况下才发送播放消息
-                    if not song_skipped:
-                        self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
+                    # 只有在歌曲信息发生变化时才处理
+                    # 检查歌曲信息是否有效
+                    if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
+                        # 检查是否需要跳过低质量歌曲
+                        song_skipped = self.music_handler.handle_song_quality_check(info)
+                        
+                        # 只有在没有跳过歌曲的情况下才发送播放消息
+                        if not song_skipped:
+                            self.soul_handler.send_message(f"Playing {info['song']} by {info['singer']} in {info['album']}")
+                    else:
+                        # 如果歌曲信息无效，记录错误但不中断监控
+                        if 'error' in info:
+                            if info.get('session_lost', False):
+                                self.logger.warning("Appium session lost, skipping music monitoring temporarily")
+                                # 可以在这里添加重新连接逻辑
+                            else:
+                                self.logger.warning(f"Failed to get song info: {info['error']}")
+                        else:
+                            self.logger.warning("Song info missing required keys")
 
+                # Process queue messages (timer messages, etc.)
+                await self._process_queue_messages()
+                
                 # Monitor Soul messages
                 messages = await self.soul_handler.message_manager.get_latest_message()
                 # get messages in advance to avoid being floored by responses
@@ -265,7 +305,7 @@ class AppController(Singleton):
                     else:
                         lyrics = res['lyrics']
                 else:
-                    time.sleep(1)
+                    await asyncio.sleep(1)
 
                 # clear error once back to normal
                 error_count = 0
@@ -290,3 +330,10 @@ class AppController(Singleton):
                     self.is_running = False
                     return False
         return None
+
+    async def stop(self):
+        """Stop the application"""
+        self.is_running = False
+        # Stop async timer manager
+        await self.timer_manager.stop()
+        self.logger.info("Application stopped")
