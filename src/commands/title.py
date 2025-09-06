@@ -21,8 +21,8 @@ class TitleCommand(BaseCommand):
 
         self.handler = controller.soul_handler
         # Use singleton instances to ensure state synchronization
-        self.theme_manager = ThemeManager.instance(self.handler)
-        self.title_manager = TitleManager.instance(self.handler)
+        self.theme_manager = ThemeManager.instance()
+        self.title_manager = TitleManager.instance()
 
     def change_title(self, title: str):
         """Change room title with cooldown check
