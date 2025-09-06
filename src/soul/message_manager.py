@@ -75,7 +75,7 @@ class MessageManager:
             party_id = self.handler.config['default_party_id']
         return party_id
 
-    async def get_latest_message(self, enabled=True):
+    async def get_latest_message(self):
         """Get new message contents that weren't seen before"""
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
@@ -84,8 +84,8 @@ class MessageManager:
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
-            self.handler.press_back()
-            self.handler.logger.error("Failed to find message list, go back")
+            # self.handler.press_back()
+            self.handler.logger.error("Failed to find message list")
             return None
 
         # Collapse seats if expanded and update focus count

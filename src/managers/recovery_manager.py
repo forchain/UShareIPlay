@@ -8,6 +8,9 @@ class RecoveryManager:
     def __init__(self, handler):
         self.handler = handler
         self.logger = handler.logger
+        self.last_recovery_time = 0
+        self.recovery_cooldown = 5  # 5秒冷却时间
+        self.manual_mode_enabled = False  # 手动模式标志位
 
         # 关闭和返回按钮列表
         self.close_buttons = [
@@ -302,6 +305,10 @@ class RecoveryManager:
         if current_time - self.last_recovery_time < self.recovery_cooldown:
             return False
 
+        # 如果启用了手动模式，跳过自动恢复
+        if self.manual_mode_enabled:
+            return False
+
         self.handler.switch_to_app()
 
         # 1. 处理潜在风险元素（优先级最高，在正常状态检测之前）
@@ -338,6 +345,15 @@ class RecoveryManager:
         self.last_recovery_time = 0  # 重置冷却时间
         return self.check_and_recover()
 
+    def set_manual_mode(self, enabled: bool):
+        """
+        设置手动模式状态
+        Args:
+            enabled: True表示启用手动模式（禁用自动恢复），False表示禁用手动模式（启用自动恢复）
+        """
+        self.manual_mode_enabled = enabled
+        self.logger.info(f"Recovery manager manual mode set to: {enabled}")
+
     def get_status_info(self) -> Dict:
         """
         获取恢复管理器的状态信息
@@ -346,6 +362,7 @@ class RecoveryManager:
             'is_normal_state': self.is_normal_state(),
             'last_recovery_time': self.last_recovery_time,
             'recovery_cooldown': self.recovery_cooldown,
+            'manual_mode_enabled': self.manual_mode_enabled,
             'close_buttons': self.close_buttons,
             'drawer_elements': self.drawer_elements,
             'risk_elements': self.risk_elements
