@@ -47,24 +47,27 @@ class PauseCommand(BaseCommand):
                         'action': 'Paused' if not is_playing else 'Resumed'
                     }
 
+            # 使用 mic_manager 和 music_manager 管理麦克风和音乐播放
+            from ..managers.mic_manager import MicManager
+            from ..managers.music_manager import MusicManager
+            
+            mic_manager = MicManager.instance()
+            music_manager = MusicManager.instance()
+            
             if should_pause:
                 # If pausing, turn off mic first
-                mic_result = self.controller.mic_command.toggle_mic(False)  # Turn mic off
+                mic_result = mic_manager.toggle_mic(False)  # Turn mic off
                 if 'error' in mic_result:
                     self.music_handler.logger.warning(f"Failed to turn off mic: {mic_result['error']}")
 
-            # Execute media control command
-            self.music_handler.driver.execute_script(
-                'mobile: shell',
-                {
-                    'command': 'input keyevent KEYCODE_MEDIA_PLAY_PAUSE'
-                }
-            )
-            self.music_handler.logger.info("Sent media play/pause key event")
+            # Execute pause/resume
+            pause_result = music_manager.pause_resume(should_pause)
+            if 'error' in pause_result:
+                return pause_result
 
             if not should_pause:
                 # If resuming, turn on mic after resuming playback
-                mic_result = self.controller.mic_command.toggle_mic(True)  # Turn mic on
+                mic_result = mic_manager.toggle_mic(True)  # Turn mic on
                 if 'error' in mic_result:
                     self.music_handler.logger.warning(f"Failed to turn on mic: {mic_result['error']}")
 

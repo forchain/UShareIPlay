@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from appium.webdriver.common.appiumby import AppiumBy
 
-from .message_manager import MessageManager
+from ..managers.message_manager import MessageManager
 from ..core.app_handler import AppHandler
 from ..core.singleton import Singleton
 
@@ -21,12 +21,23 @@ class MessageInfo:
 
 class SoulHandler(AppHandler, Singleton):
     def __init__(self, driver, config, controller):
+        print("SoulHandler.__init__ 开始")
         super().__init__(driver, config, controller)
-        self.message_manager = MessageManager(self)
+        print("SoulHandler AppHandler 初始化完成")
+        # 延迟初始化 message_manager，避免循环依赖
+        self._message_manager = None
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
+        print("SoulHandler.__init__ 完成")
+    
+    @property
+    def message_manager(self):
+        """延迟获取 MessageManager 实例"""
+        if self._message_manager is None:
+            self._message_manager = MessageManager.instance()
+        return self._message_manager
 
     def send_message(self, message):
         """Send message"""

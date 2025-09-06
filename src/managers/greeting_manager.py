@@ -2,7 +2,8 @@ import re
 import traceback
 from dataclasses import dataclass
 from ..dal import UserDAO
-from ..managers.seat_manager import seat_manager
+from .seat_manager import seat_manager
+from ..core.singleton import Singleton
 
 
 @dataclass
@@ -14,11 +15,20 @@ class MessageInfo:
     relation_tag: bool = False  # True if user has relation tag
 
 
-class GreetingManager:
-    def __init__(self, handler):
+class GreetingManager(Singleton):
+    def __init__(self):
         """Initialize GreetingManager with handler"""
-        self.handler = handler
+        # 延迟初始化 handler，避免循环依赖
+        self._handler = None
         self.last_follower_message_id = None  # 记录上一条 follower message 的 element id
+    
+    @property
+    def handler(self):
+        """延迟获取 SoulHandler 实例"""
+        if self._handler is None:
+            from ..handlers.soul_handler import SoulHandler
+            self._handler = SoulHandler.instance()
+        return self._handler
 
     async def process_container_greeting(self, container):
         """Process greeting for follower entering room"""

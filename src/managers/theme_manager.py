@@ -3,14 +3,30 @@ from datetime import datetime
 from ..core.singleton import Singleton
 
 class ThemeManager(Singleton):
-    def __init__(self, handler):
-        self.handler = handler
-        self.logger = logging.getLogger('theme_manager')
+    def __init__(self):
+        # 延迟初始化 handler，避免循环依赖
+        self._handler = None
+        self._logger = None
         self.current_theme = "享乐"  # 默认主题
         self.last_update_time = None  # 共享的冷却时间
         self.cooldown_minutes = 10  # 10分钟冷却时间
         self.is_initialized = False  # 是否已初始化
         self.pending_ui_update = False  # 是否有待更新到UI的主题变化
+    
+    @property
+    def handler(self):
+        """延迟获取 SoulHandler 实例"""
+        if self._handler is None:
+            from ..handlers.soul_handler import SoulHandler
+            self._handler = SoulHandler.instance()
+        return self._handler
+    
+    @property
+    def logger(self):
+        """延迟获取 logger 实例"""
+        if self._logger is None:
+            self._logger = self.handler.logger
+        return self._logger
 
     def get_current_theme(self):
         """Get current theme

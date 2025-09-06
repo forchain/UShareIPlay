@@ -1,13 +1,16 @@
 import time
 from typing import Dict
+from ..core.singleton import Singleton
 
 
-class RecoveryManager:
+class RecoveryManager(Singleton):
     """异常检测和恢复管理器，用于检测和处理各种异常情况"""
 
-    def __init__(self, handler):
-        self.handler = handler
-        self.logger = handler.logger
+    def __init__(self):
+        # 获取 SoulHandler 单例实例
+        from ..handlers.soul_handler import SoulHandler
+        self.handler = SoulHandler.instance()
+        self.logger = self.handler.logger
         self.last_recovery_time = 0
         self.recovery_cooldown = 5  # 5秒冷却时间
         self.manual_mode_enabled = False  # 手动模式标志位

@@ -11,7 +11,7 @@ from ..core.singleton import Singleton
 class TimerManager(Singleton):
     def __init__(self):
         # Get SoulHandler singleton instance
-        from ..soul.soul_handler import SoulHandler
+        from ..handlers.soul_handler import SoulHandler
         self.handler = SoulHandler.instance()
         self.logger = self.handler.logger
         self.timers: Dict[str, dict] = {}

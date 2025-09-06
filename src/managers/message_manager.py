@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException
 
+from ..core.singleton import Singleton
 from .greeting_manager import GreetingManager
 
 
@@ -53,20 +54,43 @@ class MessageInfo:
     relation_tag: bool = False  # True if user has relation tag
 
 
-class MessageManager:
-    def __init__(self, handler):
+class MessageManager(Singleton):
+    def __init__(self):
         """Initialize MessageManager with handler, previous messages, recent messages"""
-        self.handler = handler
+        # 延迟初始化 handler，避免循环依赖
+        self._handler = None
+        self._greeting_manager = None
+        self._chat_logger = None
+        
         self.previous_messages = {}
         self.recent_messages = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
-        self.greeting_manager = GreetingManager(handler)
 
-        # Initialize chat logger with config
-        self.chat_logger = get_chat_logger(handler.config)
+    @property
+    def handler(self):
+        """延迟获取 SoulHandler 实例"""
+        if self._handler is None:
+            from ..handlers.soul_handler import SoulHandler
+            self._handler = SoulHandler.instance()
+        return self._handler
+    
+    @property
+    def greeting_manager(self):
+        """延迟获取 GreetingManager 实例"""
+        if self._greeting_manager is None:
+            from .greeting_manager import GreetingManager
+            self._greeting_manager = GreetingManager.instance()
+        return self._greeting_manager
+    
+    @property
+    def chat_logger(self):
+        """延迟获取 chat_logger 实例"""
+        if self._chat_logger is None:
+            self._chat_logger = get_chat_logger(self.handler.config)
+        return self._chat_logger
 
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
-        from ..managers.seat_manager import seat_manager
+        from .seat_manager import seat_manager
         return seat_manager
 
     def get_party_id(self):
@@ -159,8 +183,11 @@ class MessageManager:
                 is_enter, username = self.is_user_enter_message(chat_text)
                 if is_enter:
                     self.handler.logger.info(f"User entered: {username}")
-                    # Notify all commands
-                    for module in self.handler.controller.command_modules.values():
+                    # Notify all commands via CommandManager
+                    from .command_manager import CommandManager
+                    command_manager = CommandManager.instance()
+                    command_modules = command_manager.get_command_modules()
+                    for module in command_modules.values():
                         try:
                             if hasattr(module.command, 'user_enter'):
                                 await module.command.user_enter(username)
