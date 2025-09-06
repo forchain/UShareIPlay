@@ -90,7 +90,7 @@ class GreetingManager(Singleton):
                 )
 
             # If gift sending failed, try to greet
-            if self.send_greeting():
+            if await self.send_greeting():
                 return MessageInfo(
                     content=message_text,
                     nickname=nickname,
@@ -147,8 +147,29 @@ class GreetingManager(Singleton):
             self.handler.log_error(f"Error sending gift: {traceback.format_exc()}")
             return False
 
-    def send_greeting(self):
-        """Send greeting message to follower"""
+    async def send_greeting(self):
+        """Send greeting message to follower (async to prevent blocking)"""
+        import asyncio
+        import concurrent.futures
+        
+        try:
+            # 在线程池中执行UI操作，避免阻塞事件循环
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(executor, self._send_greeting_sync),
+                    timeout=5.0
+                )
+                return result
+        except asyncio.TimeoutError:
+            self.handler.logger.warning("Greeting operation timed out after 5 seconds")
+            return False
+        except Exception as e:
+            self.handler.log_error(f"Error sending greeting: {traceback.format_exc()}")
+            return False
+    
+    def _send_greeting_sync(self):
+        """Synchronous greeting operation"""
         try:
             greet_follower = self.handler.wait_for_element_clickable_plus('greet_follower')
             if not greet_follower:
@@ -168,5 +189,5 @@ class GreetingManager(Singleton):
             return True
 
         except Exception as e:
-            self.handler.log_error(f"Error sending greeting: {traceback.format_exc()}")
+            self.handler.log_error(f"Error in sync greeting operation: {traceback.format_exc()}")
             return False

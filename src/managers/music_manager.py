@@ -75,8 +75,13 @@ class MusicManager(Singleton):
             return {'action': action}
             
         except Exception as e:
-            self.logger.error(f"Error controlling playback: {traceback.format_exc()}")
-            return {'error': str(e)}
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, cannot control playback")
+                return {'error': 'Appium session terminated', 'session_lost': True}
+            else:
+                self.logger.error(f"Error controlling playback: {traceback.format_exc()}")
+                return {'error': error_msg}
     
     def skip_song(self) -> dict:
         """
@@ -105,8 +110,13 @@ class MusicManager(Singleton):
             }
             
         except Exception as e:
-            self.logger.error(f"Error skipping song: {traceback.format_exc()}")
-            return {'error': str(e)}
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, cannot skip song")
+                return {'error': 'Appium session terminated', 'session_lost': True}
+            else:
+                self.logger.error(f"Error skipping song: {traceback.format_exc()}")
+                return {'error': error_msg}
     
     def get_current_song_info(self) -> dict:
         """
@@ -169,8 +179,13 @@ class MusicManager(Singleton):
             }
             
         except Exception as e:
-            self.logger.error(f"Error getting song info: {traceback.format_exc()}")
-            return {'error': str(e)}
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, cannot get song info")
+                return {'error': 'Appium session terminated', 'session_lost': True}
+            else:
+                self.logger.error(f"Error getting song info: {traceback.format_exc()}")
+                return {'error': error_msg}
     
     def get_volume_level(self) -> int:
         """
@@ -200,8 +215,13 @@ class MusicManager(Singleton):
                         return volume
             return 0
         except Exception as e:
-            self.logger.error(f"Error getting volume level: {traceback.format_exc()}")
-            return 0
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, cannot get volume level")
+                return 0
+            else:
+                self.logger.error(f"Error getting volume level: {traceback.format_exc()}")
+                return 0
     
     def adjust_volume(self, target_volume: int) -> dict:
         """
@@ -238,5 +258,10 @@ class MusicManager(Singleton):
             return {'volume': final_volume}
             
         except Exception as e:
-            self.logger.error(f"Error adjusting volume: {traceback.format_exc()}")
-            return {'error': str(e)}
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, cannot adjust volume")
+                return {'error': 'Appium session terminated', 'session_lost': True}
+            else:
+                self.logger.error(f"Error adjusting volume: {traceback.format_exc()}")
+                return {'error': error_msg}

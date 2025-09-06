@@ -126,15 +126,28 @@ class RecoveryManager(Singleton):
         检测并关闭各种抽屉式弹窗界面
         返回True表示执行了操作，False表示没有找到需要处理的抽屉
         """
+        import time
+        
         for drawer_key in self.drawer_elements:
             try:
                 element = self.handler.try_find_element_plus(drawer_key, log=False)
                 if not element:
                     continue
 
-                self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
-                self.logger.info(f"Closed drawer: {drawer_key}")
-                return True
+                # 添加超时保护
+                start_time = time.time()
+                click_success = self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
+                elapsed_time = time.time() - start_time
+                
+                if elapsed_time > 2:  # 如果点击操作超过2秒
+                    self.logger.warning(f"Drawer click operation took {elapsed_time:.2f}s for {drawer_key}")
+                
+                if click_success:
+                    self.logger.info(f"Closed drawer: {drawer_key}")
+                    return True
+                else:
+                    self.logger.warning(f"Failed to close drawer: {drawer_key}")
+                    
             except Exception as e:
                 self.logger.debug(f"Error on detecting drawer {drawer_key}: {str(e)}")
                 continue
