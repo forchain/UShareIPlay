@@ -87,8 +87,25 @@ class TopicCommand(BaseCommand):
             if not on_time:
                 return
 
-            result = self._update_topic(self.next_topic)
-            if not 'error' in result:
+            # Use TopicManager to update topic
+            from ..managers.topic_manager import TopicManager
+            topic_manager = TopicManager.instance()
+            
+            result = topic_manager.change_topic(self.next_topic)
+            
+            # Update local state if successful
+            if 'error' not in result:
+                self.last_update_time = current_time
+                self.handler.logger.info(
+                    f'Updated last topic update time to {current_time}, next topic: {self.next_topic}, current topic: {self.current_topic}')
+                
+                if self.next_topic:
+                    self.current_topic = self.next_topic
+                    self.next_topic = None
+                    self.handler.logger.info(f'Updated current topic to {self.current_topic}')
+                else:
+                    self.handler.logger.warning(f'Next topic is empty, current topic: {self.current_topic}')
+                
                 self.handler.logger.info(f'Topic is updated to {self.current_topic}')
                 self.handler.send_message(
                     f"Updating topic to {self.current_topic}"
@@ -97,67 +114,3 @@ class TopicCommand(BaseCommand):
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
 
-    def _update_topic(self, topic):
-        """Update room topic
-        Args:
-            topic: New topic text
-        Returns:
-            dict: Result with error or success
-        """
-        try:
-            # Click room topic
-            room_topic = self.handler.wait_for_element_clickable_plus('room_topic')
-            if not room_topic:
-                return {'error': 'Failed to find room topic'}
-            room_topic.click()
-
-            # Click edit entry
-            edit_entry = self.handler.wait_for_element_clickable_plus('edit_topic_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit topic entry'}
-            edit_entry.click()
-
-            # Input new topic
-            topic_input = self.handler.wait_for_element_clickable_plus('edit_topic_input')
-            if not topic_input:
-                return {'error': 'Failed to find topic input'}
-            topic_input.clear()
-            topic_input.send_keys(topic)
-
-            # Click confirm
-            confirm = self.handler.wait_for_element_clickable_plus('edit_topic_confirm')
-            if not confirm:
-                return {'error': 'Failed to find confirm button'}
-            confirm.click()
-
-            # note: update status in advance in case failing to find the edit entry
-            current_time = datetime.now()
-            self.last_update_time = current_time
-            self.handler.logger.info(
-                f'updated last topic update time to {current_time}, next topic: {self.next_topic}, current topic: {self.current_topic}')
-
-            time.sleep(1)
-
-            key, element = self.handler.wait_for_any_element_plus(['input_box_entry', 'edit_topic_confirm'])
-            if key == 'edit_topic_confirm':
-                self.handler.press_back()
-                self.handler.press_back()
-                self.handler.press_back()
-                self.handler.logger.warning('Update topic too frequently, hide edit topic dialog')
-                return {'error': 'update topic too frequently'}
-            elif key == 'input_box_entry':
-                if self.next_topic:
-                    self.current_topic = self.next_topic
-                    self.next_topic = None
-                    self.handler.logger.info(f'updated last topic  to {self.current_topic}')
-                else:
-                    self.handler.logger.warning(f'next topic is empty, {self.current_topic}')
-            else:
-                self.handler.logger.warning(f'unknown key: {key}')
-
-            return {'success': True}
-
-
-        except Exception as e:
-            self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
-            return {'error': f'Failed to update topic: {topic}'}

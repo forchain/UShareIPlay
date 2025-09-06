@@ -37,40 +37,50 @@ class TopicManager(Singleton):
             dict: 操作结果
         """
         try:
-            if not self.soul_handler.switch_to_app():
-                return {'error': 'Failed to switch to Soul app'}
-            
-            self.logger.info(f"Attempting to change topic to: {topic}")
-            
-            # 点击话题编辑入口
-            topic_edit_entry = self.soul_handler.try_find_element_plus('edit_topic_entry')
-            if not topic_edit_entry:
-                self.logger.warning("Topic edit entry not found")
-                return {'error': 'Topic edit entry not found'}
-            
-            topic_edit_entry.click()
-            self.logger.info("Clicked topic edit entry")
-            
-            # 等待输入框出现
-            topic_input = self.soul_handler.wait_for_element_plus('edit_topic_input')
+            # Click room topic
+            room_topic = self.soul_handler.wait_for_element_clickable_plus('room_topic')
+            if not room_topic:
+                return {'error': 'Failed to find room topic'}
+            room_topic.click()
+
+            # Click edit entry
+            edit_entry = self.soul_handler.wait_for_element_clickable_plus('edit_topic_entry')
+            if not edit_entry:
+                return {'error': 'Failed to find edit topic entry'}
+            edit_entry.click()
+
+            # Input new topic
+            topic_input = self.soul_handler.wait_for_element_clickable_plus('edit_topic_input')
             if not topic_input:
-                return {'error': 'Topic input field not found'}
-            
-            # 清空并输入新话题
+                return {'error': 'Failed to find topic input'}
             topic_input.clear()
             topic_input.send_keys(topic)
-            self.logger.info(f"Entered topic: {topic}")
-            
-            # 点击确认按钮
-            confirm_button = self.soul_handler.try_find_element_plus('edit_topic_confirm')
-            if not confirm_button:
-                return {'error': 'Topic confirm button not found'}
-            
-            confirm_button.click()
-            self.logger.info("Clicked topic confirm button")
-            
-            return {'topic': topic}
-            
+
+            # Click confirm
+            confirm = self.soul_handler.wait_for_element_clickable_plus('edit_topic_confirm')
+            if not confirm:
+                return {'error': 'Failed to find confirm button'}
+            confirm.click()
+
+            # Wait for completion
+            import time
+            time.sleep(1)
+
+            # Check if update was successful
+            key, element = self.soul_handler.wait_for_any_element_plus(['input_box_entry', 'edit_topic_confirm'])
+            if key == 'edit_topic_confirm':
+                self.soul_handler.press_back()
+                self.soul_handler.press_back()
+                self.soul_handler.press_back()
+                self.logger.warning('Update topic too frequently, hide edit topic dialog')
+                return {'error': 'update topic too frequently'}
+            elif key == 'input_box_entry':
+                self.logger.info(f'Topic updated successfully to: {topic}')
+            else:
+                self.logger.warning(f'Unknown key: {key}')
+
+            return {'success': True, 'topic': topic}
+
         except Exception as e:
             self.logger.error(f"Error changing topic: {traceback.format_exc()}")
-            return {'error': str(e)}
+            return {'error': f'Failed to update topic: {topic}'}
