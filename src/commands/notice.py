@@ -96,7 +96,7 @@ class NoticeCommand(BaseCommand):
         """Update room notice using NoticeManager"""
         try:
             from ..managers.notice_manager import NoticeManager
-            notice_manager = NoticeManager(self.handler)
+            notice_manager = NoticeManager.instance()
             result = notice_manager.set_notice(notice)
             
             if 'success' in result:
