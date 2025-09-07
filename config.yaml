@@ -7,65 +7,149 @@ soul:
   
   # Initial timers configuration
   initial_timers:
-    - id: "theme_sleep"
-      time: "23:30"
-      message: "theme 助眠"
-      repeat: true
     - id: "playlist_sleep"
-      time: "01:34"
+      time: "00:00"
       message: "playlist Lofi Girl 官方"
       repeat: true
-    - id: "theme_got_to_work"
-      time: "07:30"
-      message: "theme 🚇"
-      repeat: true
-    - id: "theme_work_morning"
-      time: "09:00"
-      message: "theme 🐮🐎"
+    - id: "theme_sleep"
+      time: "00:10"
+      message: "theme 助眠"
       repeat: true
     - id: "playlist_work_morning"
       time: "09:30"
       message: "play"
       repeat: true
-    - id: "theme_lunch_break"
-      time: "11:00"
-      message: "theme 午休"
+    - id: "theme_work_morning"
+      time: "09:40"
+      message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_lunch_break"
       time: "11:30"
       message: "playlist 深度专注 官方"
       repeat: true
-    - id: "theme_work_afternoon"
-      time: "12:30"
-      message: "theme 🐮🐎"
+    - id: "theme_lunch_break"
+      time: "11:40"
+      message: "theme 午休"
       repeat: true
     - id: "playlist_work_afternoon"
       time: "13:00"
       message: "playlist 情歌 官方"
       repeat: true
-    - id: "theme_go_home"
-      time: "17:30"
-      message: "theme 🚇"
+    - id: "theme_work_afternoon"
+      time: "13:10"
+      message: "theme 🐮🐎"
       repeat: true
-    - id: "playlist_go_home"
-      time: "18:00"
+    - id: "playlist_home"
+      time: "18:30"
       message: "playlist Jazz 官方"
       repeat: true
-    - id: "theme_at_home"
-      time: "19:30"
+    - id: "theme_home"
+      time: "18:40"
       message: "theme 享乐"
-      repeat: true
-    - id: "playlist_at_home"
-      time: "20:00"
-      message: "playlist R&B 官方"
-      repeat: true
-    - id: "theme_daily"
-      time: "22:30"
-      message: "theme 日常"
       repeat: true
     - id: "playlist_daily"
       time: "23:00"
       message: "playlist 微醺咖啡厅 官方"
+      repeat: true
+    - id: "theme_daily"
+      time: "23:10"
+      message: "theme 日常"
+      repeat: true
+    - id: "help_0"
+      time: "00:00"
+      message: "help"
+      repeat: true
+    - id: "help_1"
+      time: "01:00"
+      message: "help"
+      repeat: true
+    - id: "help_2"
+      time: "02:00"
+      message: "help"
+      repeat: true
+    - id: "help_3"
+      time: "03:00"
+      message: "help"
+      repeat: true
+    - id: "help_4"
+      time: "04:00"
+      message: "help"
+      repeat: true
+    - id: "help_5"
+      time: "05:00"
+      message: "help"
+      repeat: true
+    - id: "help_6"
+      time: "06:00"
+      message: "help"
+      repeat: true
+    - id: "help_7"
+      time: "07:00"
+      message: "help"
+      repeat: true
+    - id: "help_8"
+      time: "08:00"
+      message: "help"
+      repeat: true
+    - id: "help_9"
+      time: "09:00"
+      message: "help"
+      repeat: true
+    - id: "help_10"
+      time: "10:00"
+      message: "help"
+      repeat: true
+    - id: "help_11"
+      time: "11:00"
+      message: "help"
+      repeat: true
+    - id: "help_12"
+      time: "12:00"
+      message: "help"
+      repeat: true
+    - id: "help_13"
+      time: "13:00"
+      message: "help"
+      repeat: true
+    - id: "help_14"
+      time: "14:00"
+      message: "help"
+      repeat: true
+    - id: "help_15"
+      time: "15:00"
+      message: "help"
+      repeat: true
+    - id: "help_16"
+      time: "16:00"
+      message: "help"
+      repeat: true
+    - id: "help_17"
+      time: "17:00"
+      message: "help"
+      repeat: true
+    - id: "help_18"
+      time: "18:00"
+      message: "help"
+      repeat: true
+    - id: "help_19"
+      time: "19:00"
+      message: "help"
+      repeat: true
+    - id: "help_20"
+      time: "20:00"
+      message: "help"
+      repeat: true
+    - id: "help_21"
+      time: "21:00"
+      message: "help"
+      repeat: true
+    - id: "help_22"
+      time: "22:00"
+      message: "help"
+      repeat: true
+    - id: "help_23"
+      time: "23:00"
+      message: "help"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -327,34 +411,38 @@ commands:
   - prefix: "help"
     response_template:  |
       Help
-      1. play music instantly
-        :play song singer 
-      2. add music to playlist
-        :next song singer
-      3. turn on/off accompaniment mode
-        :acc 1/0
-      4. play next song instantly
+      1. 立即播放 
+        :play 歌名 歌手 
+      2. 下一首播放
+        :next 歌名 歌手
+      3. 切歌
         :skip
-      5. pause/resume current song
+      4. 暂停/继续
         :pause 1/0
-      6. Adjust volume (0~15)
+      6. 音量 (0~15)
         :vol n
-      7. view lyrics of playing song
+      7. 歌词
         :lyrics
-      8. view playing song
+      8. 播放信息
         :info
-      9. play music 
-        :playlist music
-      10. play singer 
-        :singer name
-      11. apply/dismiss admin
-        :admin 1/0
-      12. ktv mode
-        :ktv 1/0
-      13. play mode
+      9. 播放歌单
+        :playlist 歌单
+      10. 播放歌手
+        :singer 歌手
+      11. 播放专辑
+        :album 专辑
+      12. 开/关麦
+        :mic 0/1 
+      13. 播放模式, 0列表, 1单曲, -1随机
         :mode 0/1/-1
-      14. change room theme
-        :theme theme_name
+      14. 主题
+        :theme 主题
+      15. 标题
+        :title 标题
+      16. 话题
+        :topic 话题
+      17. 定时
+        :timer add id 时间 命令
 
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
@@ -408,6 +496,9 @@ commands:
   - prefix: "pack"
     response_template: "Successfully opened luck pack {item}"
     error_template: "Failed to open luck pack: {error}"
+  - prefix: "timer"
+    response_template: "{timer}"
+    error_template: "{error}"
 appium:
   host: "192.168.50.103"
   port: 4723

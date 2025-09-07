@@ -74,18 +74,30 @@ class TimerCommand(BaseCommand):
         if timer_id in timers:
             return {'error': f'定时器ID "{timer_id}" 已存在'}
         
-        result = await self.timer_manager.add_timer(timer_id, target_time, message, repeat)
+        # 注意参数顺序：TimerManager.add_timer(timer_id, message, target_time, repeat)
+        result = await self.timer_manager.add_timer(timer_id, message, target_time, repeat)
         
-        if 'error' in result:
-            return result
+        if not result:
+            return {'error': '添加定时器失败'}
         
         repeat_text = " (每日重复)" if repeat else ""
+        # 从管理器获取刚添加的定时器详情
+        timer_data = self.timer_manager.get_timer(timer_id)
+        next_trigger_str = ''
+        if timer_data and timer_data.get('next_trigger'):
+            try:
+                from datetime import datetime
+                next_trigger_dt = datetime.fromisoformat(timer_data['next_trigger'])
+                next_trigger_str = next_trigger_dt.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                next_trigger_str = timer_data.get('next_trigger', '')
+
         return {
             'timer': f'定时器已添加{repeat_text}:\n'
-                    f'ID: {result["timer_id"]}\n'
-                    f'时间: {result["target_time"]}\n'
-                    f'下次触发: {result["next_trigger"]}\n'
-                    f'消息: {result["message"]}'
+                    f'ID: {timer_id}\n'
+                    f'时间: {target_time}\n'
+                    f'下次触发: {next_trigger_str}\n'
+                    f'消息: {message}'
         }
 
     async def _remove_timer(self, parameters):
@@ -100,11 +112,9 @@ class TimerCommand(BaseCommand):
         
         timer_id = parameters[0]
         result = await self.timer_manager.remove_timer(timer_id)
-        
-        if 'error' in result:
-            return result
-        
-        return {'timer': result['message']}
+        if not result:
+            return {'error': f'删除定时器失败: {timer_id} 不存在'}
+        return {'timer': f'定时器 {timer_id} 已删除'}
 
     def _list_timers(self):
         """List all timers
@@ -172,10 +182,10 @@ class TimerCommand(BaseCommand):
         """
         # Clear all timers
         timers = self.timer_manager.get_timers()
+        ok = True
         for timer_id in list(timers.keys()):
-            await self.timer_manager.remove_timer(timer_id)
-        
-        return {'timer': '所有定时器已重置'}
+            ok = ok and await self.timer_manager.remove_timer(timer_id)
+        return {'timer': '所有定时器已重置' if ok else '部分定时器重置失败'}
 
     def update(self):
         """Update method for background tasks"""
