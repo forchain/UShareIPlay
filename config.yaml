@@ -12,7 +12,7 @@ soul:
       message: "playlist Lofi Girl 官方"
       repeat: true
     - id: "theme_sleep"
-      time: "00:10"
+      time: "00:20"
       message: "theme 助眠"
       repeat: true
     - id: "playlist_work_morning"
@@ -20,7 +20,7 @@ soul:
       message: "play"
       repeat: true
     - id: "theme_work_morning"
-      time: "09:40"
+      time: "09:50"
       message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_lunch_break"
@@ -28,7 +28,7 @@ soul:
       message: "playlist 深度专注 官方"
       repeat: true
     - id: "theme_lunch_break"
-      time: "11:40"
+      time: "11:50"
       message: "theme 午休"
       repeat: true
     - id: "playlist_work_afternoon"
@@ -36,7 +36,7 @@ soul:
       message: "playlist 情歌 官方"
       repeat: true
     - id: "theme_work_afternoon"
-      time: "13:10"
+      time: "13:20"
       message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_home"
@@ -44,7 +44,7 @@ soul:
       message: "playlist Jazz 官方"
       repeat: true
     - id: "theme_home"
-      time: "18:40"
+      time: "18:50"
       message: "theme 享乐"
       repeat: true
     - id: "playlist_daily"
@@ -52,7 +52,7 @@ soul:
       message: "playlist 微醺咖啡厅 官方"
       repeat: true
     - id: "theme_daily"
-      time: "23:10"
+      time: "23:20"
       message: "theme 日常"
       repeat: true
     - id: "help_0"
