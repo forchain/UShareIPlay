@@ -77,7 +77,7 @@ class RecoveryManager(Singleton):
         """设置默认notice（使用NoticeManager）"""
         try:
             from .notice_manager import NoticeManager
-            notice_manager = NoticeManager(self.handler)
+            notice_manager = NoticeManager.instance()
             result = notice_manager.set_default_notice()
             
             if 'success' in result:
