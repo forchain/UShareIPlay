@@ -55,9 +55,9 @@ soul:
       time: "23:20"
       message: "theme 日常"
       repeat: true
-    - id: "help_0"
+    - id: "notice_0"
       time: "00:00"
-      message: "help"
+      message: "notice hello, thank you, are you ok?"
       repeat: true
     - id: "help_1"
       time: "01:00"
@@ -127,8 +127,8 @@ soul:
       time: "17:00"
       message: "help"
       repeat: true
-    - id: "help_18"
-      time: "18:00"
+    - id: "notice_18"
+      time: "notice hello, thank you, are you ok?"
       message: "help"
       repeat: true
     - id: "help_19"
