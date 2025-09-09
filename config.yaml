@@ -91,8 +91,8 @@ soul:
       time: "08:00"
       message: "help"
       repeat: true
-    - id: "help_9"
-      time: "09:00"
+    - id: "notice_9"
+      time: "notice hello, thank you, are you ok?"
       message: "help"
       repeat: true
     - id: "help_10"
