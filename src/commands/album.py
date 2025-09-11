@@ -113,7 +113,7 @@ class AlbumCommand(BaseCommand):
         topic_manager = TopicManager.instance()
         topic_manager.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
-        title_manager.update_title_ui(title)
+        title_manager.set_next_title(title)
         self.handler.logger.info(f"changing album title  to {title}")
 
         return {

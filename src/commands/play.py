@@ -86,7 +86,7 @@ class PlayCommand(BaseCommand):
         from ..managers.topic_manager import TopicManager
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
-        title_manager.update_title_ui("O Station")
+        title_manager.set_next_title("O Station")
         topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
@@ -119,7 +119,7 @@ class PlayCommand(BaseCommand):
         from ..managers.topic_manager import TopicManager
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
-        title_manager.update_title_ui("O Radio")
+        title_manager.set_next_title("O Radio")
         topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

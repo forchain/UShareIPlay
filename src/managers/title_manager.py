@@ -255,6 +255,7 @@ class TitleManager(Singleton):
                 else:
                     # Even if no next_title, the UI was updated successfully
                     # This happens when theme is updated but title remains the same
+                    self.current_title = title
                     self.logger.info(f'UI updated successfully, current title: {self.current_title}')
 
                 self.handler.press_back()
