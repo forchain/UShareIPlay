@@ -1,4 +1,6 @@
 import traceback
+
+from ..managers.music_manager import MusicManager
 from ..core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
@@ -26,5 +28,5 @@ class VolumeCommand(BaseCommand):
                 }
 
         # Adjust volume
-        result = self.music_handler.adjust_volume(delta)
+        result = MusicManager.instance().adjust_volume(delta)
         return result

@@ -389,33 +389,6 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error(f"Error getting volume level: {str(e)}")
             return 0
 
-    def adjust_volume(self, delta=None):
-        """
-        Adjust volume level - delegates to MusicManager
-        Args:
-            delta: int, positive to increase, negative to decrease, None to just get current level
-        Returns:
-            dict: Result with level and times if adjusted, or error
-        """
-        try:
-            from ..managers.music_manager import MusicManager
-            music_manager = MusicManager.instance()
-            
-            if delta is None:
-                # Just get current volume
-                current_volume = music_manager.get_volume_level()
-                return {'volume': current_volume}
-
-            # Convert delta to target volume
-            current_volume = music_manager.get_volume_level()
-            target_volume = max(0, min(15, current_volume + delta))  # Clamp to 0-15 range
-            
-            # Use MusicManager's adjust_volume with target volume
-            return music_manager.adjust_volume(target_volume)
-            
-        except Exception as e:
-            self.logger.error(f"Error adjusting volume: {traceback.format_exc()}")
-            return {'error': f'Failed to adjust volume by {delta}'}
 
     def get_playback_info(self):
         """Get current playback information - delegates to MusicManager"""

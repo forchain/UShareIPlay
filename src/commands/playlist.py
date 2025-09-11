@@ -122,7 +122,7 @@ class PlaylistCommand(BaseCommand):
         from ..managers.topic_manager import TopicManager
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
-        title_manager.update_title_ui(subject)
+        title_manager.set_next_title(subject)
         topic_manager.change_topic(topic)
         self.handler.list_mode = 'playlist'
         return {
