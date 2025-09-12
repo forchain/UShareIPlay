@@ -1,14 +1,38 @@
 # U Share I Play
 
-A mobile application for Android that monitors Soul App group chat messages and automatically responds to music playback requests.
+An intelligent Android automation system that transforms Soul App party rooms into fully automated music management platforms. The system provides comprehensive music control, room administration, user management, and interactive features through a sophisticated command-driven architecture.
 
-## Features
+## ✨ Key Features
 
-- Monitor Soul App group chat messages
-- Automatically recognize music playback commands (e.g., ":play 听妈妈的话 周杰伦")
-- Automatically switch to the music app (QQ Music) and search and play the specified song
-- Send play status messages back to Soul App after successful playback
-- Toggle accompaniment mode for karaoke experience
+### 🎵 **Intelligent Music Management**
+- **Smart Playback Control**: Automatically play songs, albums, playlists, and artist collections
+- **Advanced Playback Features**: Volume control, play mode switching, quality detection
+- **KTV Experience**: Lyrics recognition with Tesseract OCR and accompaniment mode
+- **Music Quality Control**: Automatic detection and handling of low-quality tracks
+
+### 🎤 **Comprehensive Room Administration**
+- **Dynamic Room Management**: Real-time room title, topic, theme, and notice updates
+- **Smart Theme System**: Customizable room themes with automatic UI synchronization
+- **Advanced Seat Management**: Reservation system with user levels and permissions
+- **User Administration**: Role-based access control and user level management
+
+### 🤖 **Advanced Automation & Intelligence**
+- **Command Processing**: 20+ intelligent commands with parameter validation
+- **Timer System**: Scheduled tasks and recurring commands with database persistence
+- **Crash Recovery**: Automatic error detection and recovery from app crashes
+- **Database Integration**: SQLite with Tortoise ORM for persistent data storage
+
+### 🎯 **Interactive Social Features**
+- **Greeting System**: Automated user greetings with custom messages and songs
+- **Mic Management**: Intelligent microphone control based on playback state
+- **Focus Tracking**: Real-time monitoring of user activity and engagement
+- **Party Management**: Room creation, joining, and comprehensive administration
+
+### 🔧 **Enterprise-Grade Architecture**
+- **Modular Design**: Manager-based architecture with clear separation of concerns
+- **Singleton Pattern**: Efficient resource management across all components
+- **Async Processing**: Non-blocking operations with message queuing
+- **Extensible Framework**: Easy to add new commands and features
 
 ## Environment Requirements
 
@@ -85,8 +109,8 @@ appium-doctor --android
 ### 5. Install project dependencies
 
 ```bash
-git clone https://github.com/yourusername/SoulMusicBox-Android.git
-cd SoulMusicBox-Android
+git clone https://github.com/yourusername/UShareIPlay.git
+cd UShareIPlay
 # Ensure venv is activated
 source venv/bin/activate
 pip install -r requirements.txt
@@ -202,66 +226,125 @@ adb connect <phone-ip-address>:5555
 ## Project Configuration
 
 ### 1. Configuration File Description
-The `config.yaml` file in the project root directory contains the following configuration:
+The `config.yaml` file contains comprehensive configuration for the entire system:
 
 ```yaml
+# Soul App Configuration
 soul:
     package_name: "cn.soulapp.android"
-    chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
-    elements: # UI elements are defined in the config.yaml file
+  chat_activity: ".component.startup.main.MainActivity"
+  default_party_id: "FM15321640"
+  default_notice: "U Share I Play\n分享音乐 享受快乐"
+  
+  # Initial scheduled timers
+  initial_timers:
+    - id: "playlist_sleep"
+      time: "00:00"
+      message: "playlist Lofi Girl 官方"
+      repeat: true
+    # ... more timers
+  
+  # UI element identifiers for Soul App
+  elements:
+    message_list: "cn.soulapp.android:id/rvMessage"
+    message_content: "cn.soulapp.android:id/tvContent"
+    # ... 100+ element definitions
 
+# QQ Music App Configuration  
 qq_music:
     package_name: "com.tencent.qqmusic"
     search_activity: ".activity.AppStarterActivity"
-    elements: # UI elements are defined in the config.yaml file
+  
+  # UI element identifiers for QQ Music
+  elements:
+    search_entry: "com.tencent.qqmusic:id/sub_edit_text"
+    play_button: "com.tencent.qqmusic:id/kcr"
+    # ... 80+ element definitions
 
-commands: # Commands are defined in the config.yaml file
+# Command System Configuration
+commands:
+  - prefix: "play"
+    response_template: "Playing {song} by {singer} in {album}"
+    error_template: "Failed to play music, because {error}"
+  - prefix: "vol"
+    response_template: "{message}"
+    error_template: "Failed to adjust volume, because {error}"
+  # ... 20+ command configurations
 
+# Appium Server Configuration
 appium:
-    host: "0.0.0.0"
+  host: "192.168.50.103"
     port: 4723
 
+# Device Configuration
 device:
-    name: "192.168.50.151:5555"  # Use your phone's IP:PORT
+  name: "192.168.50.151:5555"
     platform_name: "Android"
     platform_version: "10"
     automation_name: "UiAutomator2"
     no_reset: true
+
+# Logging Configuration
+logging:
+  directory: "../logs"
 ```
 
-The configuration file is divided into several sections:
+### 2. Configuration Sections Explained
 
-1. `soul`: Soul App related configuration
-   - `package_name`: Soul App package name
-   - `chat_activity`: Chat activity path
-   - `elements`: UI element identifiers
+#### **Soul App Configuration**
+- **`package_name`**: Soul App package identifier
+- **`chat_activity`**: Main chat activity class
+- **`default_party_id`**: Default party room ID to join
+- **`default_notice`**: Default room announcement
+- **`initial_timers`**: Scheduled tasks that run automatically
+- **`elements`**: 100+ UI element identifiers for Soul App automation
 
-2. `qq_music`: QQ Music App related configuration
-   - `package_name`: QQ Music package name
-   - `search_activity`: Search activity path
-   - `elements`: UI element identifiers for various features including:
-     - Basic playback controls
-     - Player panel elements
-     - Notification panel controls
-     - Lyrics and song info elements
-     - Accompaniment mode controls
+#### **QQ Music App Configuration**
+- **`package_name`**: QQ Music package identifier
+- **`search_activity`**: Search interface activity
+- **`elements`**: 80+ UI element identifiers for music app automation
 
-3. `commands`: Command configurations
-   - Multiple command configurations with:
-     - `prefix`: Command trigger word (e.g., "play", "skip", "next")
-     - `response_template`: Message template for command response
-     - `error_template`: Message template for command error
+#### **Command System Configuration**
+- **`prefix`**: Command trigger word (e.g., "play", "skip", "vol")
+- **`response_template`**: Success message template with variables
+- **`error_template`**: Error message template
+- **Variables**: `{song}`, `{singer}`, `{album}`, `{volume}`, `{message}`, etc.
 
-4. `appium`: Appium server configuration
-   - `host`: Server host address
-   - `port`: Server port number
+#### **System Configuration**
+- **`appium`**: Server connection settings
+- **`device`**: Android device connection parameters
+- **`logging`**: Log file storage location
 
-5. `device`: Device configuration
-   - `name`: Device ID
-   - `platform_name`: Operating system
-   - `platform_version`: OS version
-   - `automation_name`: Automation framework name
-   - `no_reset`: App reset settings
+### 3. Key Configuration Features
+
+#### **Timer System**
+```yaml
+initial_timers:
+  - id: "playlist_morning"
+    time: "09:00"
+    message: "playlist 早安音乐"
+    repeat: true
+  - id: "theme_evening"
+    time: "20:00"
+    message: "theme 夜曲"
+    repeat: true
+```
+
+#### **Command Templates**
+```yaml
+- prefix: "play"
+  response_template: "Playing {song} by {singer} in {album}"
+  error_template: "Failed to play music, because {error}"
+
+- prefix: "vol"
+  response_template: "{message}"
+  error_template: "Failed to adjust volume, because {error}"
+```
+
+#### **Element Management**
+- **Soul App**: 100+ elements for chat, room management, user interaction
+- **QQ Music**: 80+ elements for music playback, lyrics, accompaniment
+- **Dynamic Updates**: Elements can be updated via Appium Inspector
 
 ### 2. Device Configuration
 
@@ -299,7 +382,7 @@ In addition to the required device configuration, you can customize:
 
 ```bash
 # Activate virtual environment if not already activated
-source venv/bin/activate
+source .venv/bin/activate
 
 # Start Appium server
 appium
@@ -308,22 +391,91 @@ appium
 python main.py
 ```
 
-### 2. Usage Steps
-1. Ensure phone screen is unlocked
-2. Enter target Soul App group chat
-3. Send message using one of the following formats:
-   - `:play song_name artist_name`: Play a song
-   - `:next song_name artist_name`: Add song to play next
-   - `:skip`: Skip to next song
-   - `:pause`: Pause/Continue current playback
-   - `:vol`: Set volume
-   - `:acc 1/0`: Enable/disable accompaniment mode
-   - `:mode <mode_name>`: Switch playback mode (0:normal/-1:random/1:single)
-   Example: ":play 听妈妈的话 周杰伦" or ":mode 1"
-4. Program will automatically:
-   - Switch to QQ Music
-   - Search and play song
-   - Return to Soul and send play status
+### 2. Available Commands
+
+The system supports 20+ commands for comprehensive room and music management:
+
+#### 🎵 Music Control Commands
+- `:play <song> <artist>` - Play specific song immediately
+- `:next <song> <artist>` - Add song to playlist queue
+- `:skip` - Skip to next song in playlist
+- `:pause [0/1]` - Pause (1) or resume (0) playback
+- `:vol [0-15]` - Set volume level (no parameter shows current volume)
+- `:mode [0/1/-1]` - Set play mode (0:normal, 1:single, -1:random)
+
+#### 📀 Content Management Commands
+- `:playlist <name>` - Play specific playlist
+- `:singer <name>` - Play all songs by artist
+- `:album <name>` - Play entire album
+- `:lyrics [groups]` - Display song lyrics (optional group count)
+- `:info` - Show current playback information
+
+#### 🎤 Room Management Commands
+- `:theme <name>` - Set room theme (max 2 characters)
+- `:title <name>` - Set room title
+- `:topic <name>` - Set room topic
+- `:notice <message>` - Set room announcement
+
+#### 🔧 Advanced Feature Commands
+- `:acc [0/1]` - Toggle accompaniment mode for karaoke
+- `:ktv [0/1]` - Toggle KTV mode with lyrics recognition
+- `:mic [0/1]` - Control microphone (1:on, 0:off)
+- `:seat [0/1 <number>]` - Seat management system
+- `:timer <command>` - Timer and scheduling system
+- `:hello <user> "<message>" "<song>"` - Greeting system
+- `:admin [0/1]` - Admin role management
+- `:enable [0/1]` - Recovery system control
+- `:pack` - Open luck packs (auto-triggered when room has 5+ users)
+- `:end` - End party (requires owner's friend)
+- `:invite <party_id>` - Invite users to specific party
+
+### 3. Command Examples
+
+```bash
+# Basic music playback
+:play 听妈妈的话 周杰伦
+:playlist 经典老歌
+:singer 邓丽君
+
+# Room customization
+:theme 音乐
+:title 怀旧金曲
+:topic 经典老歌分享
+:notice 欢迎来到音乐分享房间！
+
+# Advanced features
+:vol 8                    # Set volume to 8
+:vol                      # Show current volume
+:acc 1                    # Enable accompaniment mode
+:ktv 1                    # Enable KTV mode
+:mic 0                    # Turn off microphone
+:seat 1 5                 # Reserve seat number 5
+
+# Timer system
+:timer add morning 08:00 "早上好！" repeat
+:timer add reminder 14:30 "下午茶时间" repeat
+:timer list               # List all timers
+:timer remove morning     # Remove timer
+
+# Greeting system
+:hello 张三 "欢迎回来" "朋友"
+
+# Admin and management
+:admin 1                  # Enable admin mode
+:enable 1                 # Enable recovery system
+:end                      # End the party
+```
+
+### 4. Usage Steps
+1. Ensure phone screen is unlocked and both apps are installed
+2. Enter target Soul App group chat room
+3. Send commands using the format `:command [parameters]`
+4. System will automatically:
+   - Parse and validate commands
+   - Switch between Soul App and QQ Music as needed
+   - Execute requested operations
+   - Send status messages back to the chat
+   - Handle errors gracefully with recovery mechanisms
 
 ## Common Issues and Solutions
 
@@ -408,16 +560,148 @@ If recovery fails multiple times, the system will log error messages and continu
 ### 1. Project Structure
 
 ```bash
-SoulMusicBox-Android/
-├── main.py # Main program entry
-├── config.yaml # Configuration file
-├── requirements.txt # Python dependencies
+UShareIPlay/
+├── main.py                    # Main application entry point
+├── config.yaml               # Comprehensive configuration file
+├── requirements.txt          # Python dependencies
+├── appium.sh                # Appium server startup script
+├── run.sh                   # Application startup script
+├── data/                    # Database storage
+│   └── soul_bot.db          # SQLite database
+├── logs/                    # Application logs
+├── docs/                    # Documentation
+│   ├── command-architecture-principles.md
+│   ├── manager-architecture.md
+│   ├── theme-command.md
+│   └── ...                  # Additional documentation
 ├── src/
-│ ├── soul/ # Soul App related operations
-│ ├── music/ # Music App related operations
-│ └── utils/ # Utility functions
-└── tests/ # Test files
+│   ├── core/                # Core system components
+│   │   ├── app_controller.py    # Main application controller
+│   │   ├── app_handler.py       # Base UI automation handler
+│   │   ├── base_command.py      # Abstract command base class
+│   │   ├── command_parser.py    # Command parsing logic
+│   │   ├── config_loader.py     # Configuration management
+│   │   ├── db_manager.py        # Database connection manager
+│   │   ├── db_service.py        # Database operations
+│   │   ├── message_queue.py     # Async message handling
+│   │   └── singleton.py         # Singleton pattern implementation
+│   ├── handlers/            # App-specific automation handlers
+│   │   ├── qq_music_handler.py  # QQ Music app automation
+│   │   └── soul_handler.py      # Soul app automation
+│   ├── managers/            # Business logic managers
+│   │   ├── admin_manager.py     # User administration
+│   │   ├── command_manager.py   # Command processing
+│   │   ├── greeting_manager.py  # User greeting system
+│   │   ├── message_manager.py   # Message processing
+│   │   ├── mic_manager.py       # Microphone control
+│   │   ├── music_manager.py     # Music playback management
+│   │   ├── notice_manager.py    # Room notice management
+│   │   ├── recovery_manager.py  # Error recovery system
+│   │   ├── seat_manager/        # Seat management system
+│   │   │   ├── __init__.py      # Seat manager initialization
+│   │   │   ├── base.py          # Base seat manager
+│   │   │   ├── focus.py         # Focus tracking
+│   │   │   ├── reservation.py   # Seat reservations
+│   │   │   ├── seat_check.py    # Seat validation
+│   │   │   ├── seat_ui.py       # UI interactions
+│   │   │   └── seating.py       # Seating logic
+│   │   ├── theme_manager.py     # Room theme management
+│   │   ├── timer_manager.py     # Scheduled tasks
+│   │   ├── title_manager.py     # Room title management
+│   │   └── topic_manager.py     # Room topic management
+│   ├── commands/            # Command implementations (20+ commands)
+│   │   ├── acc.py           # Accompaniment mode
+│   │   ├── admin.py         # Admin management
+│   │   ├── album.py         # Album playback
+│   │   ├── enable.py        # Recovery system control
+│   │   ├── end.py           # Party termination
+│   │   ├── hello.py         # User greeting
+│   │   ├── help.py          # Help system
+│   │   ├── info.py          # Playback information
+│   │   ├── invite.py        # Party invitations
+│   │   ├── ktv.py           # KTV mode
+│   │   ├── lyrics.py        # Lyrics display
+│   │   ├── mic.py           # Microphone control
+│   │   ├── mode.py          # Play mode switching
+│   │   ├── next.py          # Add to playlist
+│   │   ├── notice.py        # Room notice
+│   │   ├── pack.py          # Luck pack opening
+│   │   ├── pause.py         # Playback control
+│   │   ├── play.py          # Music playback
+│   │   ├── playlist.py      # Playlist management
+│   │   ├── seat.py          # Seat management
+│   │   ├── singer.py        # Artist playback
+│   │   ├── skip.py          # Skip songs
+│   │   ├── theme.py         # Room theme
+│   │   ├── timer.py         # Timer management
+│   │   ├── title.py         # Room title
+│   │   ├── topic.py         # Room topic
+│   │   └── vol.py           # Volume control
+│   ├── models/              # Data models
+│   │   ├── __init__.py      # Models initialization
+│   │   ├── seat_reservation.py  # Seat reservation model
+│   │   └── user.py          # User model
+│   ├── dal/                 # Data access layer
+│   │   ├── __init__.py      # DAL initialization
+│   │   ├── seat_reservation_dao.py  # Seat reservation DAO
+│   │   └── user_dao.py      # User DAO
+│   └── helpers/             # Utility helpers
+│       └── playlist_parser.py   # Playlist parsing logic
+└── test_*.py                # Test files
 ```
+
+### 2. Architecture Overview
+
+The system follows a **modular, manager-based architecture** with clear separation of concerns:
+
+#### **Core Components (`src/core/`)**
+- **`AppController`**: Main application controller using Singleton pattern
+- **`AppHandler`**: Base class for UI automation with crash recovery
+- **`BaseCommand`**: Abstract base for all command implementations
+- **`CommandParser`**: Intelligent command parsing and validation
+- **`ConfigLoader`**: YAML configuration management
+- **`DatabaseManager`**: SQLite database connection management
+- **`MessageQueue`**: Async message processing system
+- **`Singleton`**: Thread-safe singleton pattern implementation
+
+#### **Handlers (`src/handlers/`)**
+- **`QQMusicHandler`**: QQ Music app automation and music operations
+- **`SoulHandler`**: Soul app automation and chat management
+
+#### **Managers (`src/managers/`)**
+- **`CommandManager`**: Dynamic command loading and processing
+- **`MusicManager`**: Music playback and volume control
+- **`SeatManager`**: Advanced seat reservation system with sub-managers
+- **`TimerManager`**: Scheduled task execution system
+- **`ThemeManager`**: Room theme management with UI synchronization
+- **`TitleManager`**: Room title management with cooldown system
+- **`TopicManager`**: Room topic management
+- **`NoticeManager`**: Room announcement management
+- **`AdminManager`**: User administration and permissions
+- **`GreetingManager`**: Automated user greeting system
+- **`MessageManager`**: Message processing and user interaction
+- **`MicManager`**: Microphone control automation
+- **`RecoveryManager`**: Error detection and recovery system
+
+#### **Commands (`src/commands/`)**
+- **20+ command implementations** for comprehensive functionality
+- Each command inherits from `BaseCommand` and implements `process()` method
+- Commands handle music control, room management, advanced features
+
+#### **Data Layer (`src/models/`, `src/dal/`)**
+- **Tortoise ORM** integration for database operations
+- **User model**: User information and level management
+- **SeatReservation model**: Seat booking system
+- **DAO pattern**: Clean separation of data access logic
+
+### 3. Key Design Patterns
+
+- **Singleton Pattern**: All managers use singleton for resource efficiency
+- **Command Pattern**: Commands are modular and easily extensible
+- **Manager Pattern**: Business logic separated into specialized managers
+- **DAO Pattern**: Clean data access layer separation
+- **Observer Pattern**: Event-driven updates and notifications
+- **Strategy Pattern**: Different handling strategies for various scenarios
 
 ### 2. Development Suggestions
 
