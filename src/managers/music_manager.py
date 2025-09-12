@@ -189,12 +189,12 @@ class MusicManager(Singleton):
     
     def get_volume_level(self) -> int:
         """
-        获取当前音量级别 - 系统级获取
+        Get current volume level - system level
         Returns:
-            int: 音量级别 (0-15)
+            int: Volume level (0-15)
         """
         try:
-            # 通过系统服务获取音量
+            # Get volume through system service
             result = self.driver.execute_script(
                 'mobile: shell',
                 {
@@ -202,18 +202,24 @@ class MusicManager(Singleton):
                 }
             )
 
-            # 解析音量级别
-            if result:
-                # 按 "- STREAM_MUSIC:" 分割
+            # Parse volume level
+            if result and isinstance(result, str):
+                # Split by "- STREAM_MUSIC:"
                 parts = result.split('- STREAM_MUSIC:')
                 if len(parts) > 1:
-                    # 在第二部分中找到第一个 streamVolume
+                    # Find first streamVolume in second part
                     match = re.search(r'streamVolume:(\d+)', parts[1])
                     if match:
                         volume = int(match.group(1))
+                        # Ensure volume is within valid range
+                        volume = max(0, min(15, volume))
                         self.logger.info(f"Current volume: {volume}")
                         return volume
+            
+            # Default fallback
+            self.logger.warning("Could not parse volume level, using default value 0")
             return 0
+            
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
@@ -225,37 +231,52 @@ class MusicManager(Singleton):
     
     def adjust_volume(self, target_volume: int) -> dict:
         """
-        调整音量到指定级别 - 系统级控制
+        Adjust volume to specified level - system level control
         Args:
-            target_volume: 目标音量级别 (0-15)
+            target_volume: Target volume level (0-15)
         Returns:
-            dict: 操作结果
+            dict: Operation result
         """
         try:
+            # Validate target volume
+            if not isinstance(target_volume, int) or target_volume < 0 or target_volume > 15:
+                return {'error': f'Invalid target volume: {target_volume}. Must be integer between 0-15'}
+            
             current_volume = self.get_volume_level()
+            
+            # Ensure current_volume is not None (additional safety check)
+            if current_volume is None:
+                self.logger.error("Failed to get current volume level")
+                return {'error': 'Failed to get current volume level'}
+            
             delta = target_volume - current_volume
             
             if delta == 0:
                 return {'volume': current_volume}
             
-            # 调整音量
+            # Adjust volume
             if delta < 0:
-                # 降低音量
+                # Decrease volume
                 times = abs(delta)
+                self.logger.info(f"Decreasing volume by {times} steps")
                 for i in range(times):
                     self.music_handler.press_volume_down()
                     self.logger.info(f"Decreased volume ({i + 1}/{times})")
             else:
-                # 提高音量
+                # Increase volume
                 times = delta
+                self.logger.info(f"Increasing volume by {times} steps")
                 for i in range(times):
                     self.music_handler.press_volume_up()
                     self.logger.info(f"Increased volume ({i + 1}/{times})")
 
-            # 获取最终音量级别
+            # Get final volume level
             final_volume = self.get_volume_level()
+            if final_volume is None:
+                final_volume = current_volume  # Fallback to original volume
+            
             self.logger.info(f"Adjusted volume to {final_volume}")
-            return {'volume': final_volume}
+            return {'volume': final_volume, 'delta': delta}
             
         except Exception as e:
             error_msg = str(e)
