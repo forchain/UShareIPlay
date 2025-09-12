@@ -394,7 +394,7 @@ commands:
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
-    response_template: "Adjusted volume to {volume}"
+    response_template: "{message}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
@@ -420,7 +420,7 @@ commands:
       4. 暂停/继续
         :pause 1/0
       6. 音量 (0~15)
-        :vol n
+        :vol [n] (不指定参数显示当前音量)
       7. 歌词
         :lyrics
       8. 播放信息
