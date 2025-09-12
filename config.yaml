@@ -7,53 +7,53 @@ soul:
   
   # Initial timers configuration
   initial_timers:
+    - id: "theme_sleep"
+      time: "23:50"
+      message: "theme 助眠"
+      repeat: true
     - id: "playlist_sleep"
       time: "00:00"
       message: "playlist Lofi Girl 官方"
       repeat: true
-    - id: "theme_sleep"
-      time: "00:20"
-      message: "theme 助眠"
+    - id: "theme_work_morning"
+      time: "09:20"
+      message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_work_morning"
       time: "09:30"
       message: "play"
       repeat: true
-    - id: "theme_work_morning"
-      time: "09:50"
-      message: "theme 🐮🐎"
+    - id: "theme_lunch_break"
+      time: "11:20"
+      message: "theme 午休"
       repeat: true
     - id: "playlist_lunch_break"
       time: "11:30"
       message: "playlist 深度专注 官方"
       repeat: true
-    - id: "theme_lunch_break"
-      time: "11:50"
-      message: "theme 午休"
+    - id: "theme_work_afternoon"
+      time: "12:50"
+      message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_work_afternoon"
       time: "13:00"
       message: "playlist 情歌 官方"
       repeat: true
-    - id: "theme_work_afternoon"
-      time: "13:20"
-      message: "theme 🐮🐎"
+    - id: "theme_home"
+      time: "18:20"
+      message: "theme 享乐"
       repeat: true
     - id: "playlist_home"
       time: "18:30"
       message: "playlist Jazz 官方"
       repeat: true
-    - id: "theme_home"
-      time: "18:50"
-      message: "theme 享乐"
+    - id: "theme_daily"
+      time: "22:50"
+      message: "theme 日常"
       repeat: true
     - id: "playlist_daily"
       time: "23:00"
       message: "playlist 微醺咖啡厅 官方"
-      repeat: true
-    - id: "theme_daily"
-      time: "23:20"
-      message: "theme 日常"
       repeat: true
     - id: "notice_0"
       time: "00:00"
