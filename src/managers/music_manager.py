@@ -229,15 +229,23 @@ class MusicManager(Singleton):
                 self.logger.error(f"Error getting volume level: {traceback.format_exc()}")
                 return 0
     
-    def adjust_volume(self, target_volume: int) -> dict:
+    def adjust_volume(self, target_volume: int = None) -> dict:
         """
         Adjust volume to specified level - system level control
         Args:
-            target_volume: Target volume level (0-15)
+            target_volume: Target volume level (0-15) or None to get current volume
         Returns:
             dict: Operation result
         """
         try:
+            # If no target volume specified, return current volume
+            if target_volume is None:
+                current_volume = self.get_volume_level()
+                if current_volume is None:
+                    self.logger.error("Failed to get current volume level")
+                    return {'error': 'Failed to get current volume level'}
+                return {'volume': current_volume, 'current': True}
+            
             # Validate target volume
             if not isinstance(target_volume, int) or target_volume < 0 or target_volume > 15:
                 return {'error': f'Invalid target volume: {target_volume}. Must be integer between 0-15'}
