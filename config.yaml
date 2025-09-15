@@ -345,7 +345,7 @@ qq_music:
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
     album_text: 'com.tencent.qqmusic:id/lg8'
     album_singer: 'com.tencent.qqmusic:id/lg5'
-    lyrics_text: 'com.tencent.qqmusic:id/hoi'
+    lyrics_text: 'com.tencent.qqmusic:id/hpx' #'com.tencent.qqmusic:id/hoi'
     playlist_result: 'com.tencent.qqmusic:id/lj2'
     singer_text: 'com.tencent.qqmusic:id/ndl'
     singer_result: 'com.tencent.qqmusic:id/bj2'
