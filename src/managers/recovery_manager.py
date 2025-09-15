@@ -1,5 +1,6 @@
 import time
 from typing import Dict
+
 from ..core.singleton import Singleton
 
 
@@ -79,14 +80,14 @@ class RecoveryManager(Singleton):
             from .notice_manager import NoticeManager
             notice_manager = NoticeManager.instance()
             result = notice_manager.set_default_notice()
-            
+
             if 'success' in result:
                 self.logger.info("默认notice设置成功")
                 return True
             else:
                 self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"设置默认notice时出错: {str(e)}")
             return False
@@ -138,7 +139,7 @@ class RecoveryManager(Singleton):
         返回True表示执行了操作，False表示没有找到需要处理的抽屉
         """
         import time
-        
+
         for drawer_key in self.drawer_elements:
             try:
                 element = self.handler.try_find_element_plus(drawer_key, log=False)
@@ -149,16 +150,16 @@ class RecoveryManager(Singleton):
                 start_time = time.time()
                 click_success = self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
                 elapsed_time = time.time() - start_time
-                
+
                 if elapsed_time > 2:  # 如果点击操作超过2秒
                     self.logger.warning(f"Drawer click operation took {elapsed_time:.2f}s for {drawer_key}")
-                
+
                 if click_success:
                     self.logger.info(f"Closed drawer: {drawer_key}")
                     return True
                 else:
                     self.logger.warning(f"Failed to close drawer: {drawer_key}")
-                    
+
             except Exception as e:
                 self.logger.debug(f"Error on detecting drawer {drawer_key}: {str(e)}")
                 continue
@@ -207,9 +208,8 @@ class RecoveryManager(Singleton):
             party_hall_entry.click()
             self.logger.info("Clicked party hall entry")
 
-
             key, element = self.handler.wait_for_any_element_plus(
-                ['party_back', 'create_party_entry', 'create_room_entry'])
+                ['party_back', 'search_entry'])
             if not element:
                 self.logger.warning("未找到派对入口")
                 return False
@@ -219,17 +219,8 @@ class RecoveryManager(Singleton):
                 self.logger.info("Clicked back to party")
                 return True
 
-            element.click()
-            self.logger.info("Clicked create party entry")
-
-            key, element = self.handler.wait_for_any_element_plus(
-                ['confirm_party', 'restore_party', 'create_party_button'])
-            if not element:
-                self.logger.warning("未找到派对创建或恢复按钮")
-                search_entry = self.handler.wait_for_element_plus('search_entry')
-                if not search_entry:
-                    self.logger.warning("未找到搜索入口")
-                    return False
+            if key == 'search_entry':
+                search_entry = element
                 search_entry.click()
                 self.logger.info("Clicked search entry")
                 search_box = self.handler.wait_for_element_plus('search_box')
@@ -247,25 +238,41 @@ class RecoveryManager(Singleton):
                 self.logger.info("Clicked search button")
 
                 party_online = self.handler.wait_for_element_plus('party_online')
-                if not party_online:
-                    self.logger.warning("未找到开启的派对")
+                if party_online:
+                    party_online.click()
+                    self.logger.info("Clicked party online")
+                    return True
+                else:
+                    self.logger.warning("派对关闭了")
+                    search_back = self.handler.wait_for_element_plus('search_back')
+                    search_back.click()
+                    self.logger.info("Clicked search back")
                     return False
-                party_online.click()
-                self.logger.info("Clicked party online")
-                return True
 
+            key, element = self.handler.wait_for_any_element_plus(
+                ['create_party_entry', 'create_room_entry'])
+            if not element:
+                self.logger.warning("未找到派对入口")
+                return False
+            element.click()
+            self.logger.info("Clicked create party entry")
+
+            key, element = self.handler.wait_for_any_element_plus(
+                ['confirm_party', 'restore_party', 'create_party_button'])
+            if not element:
+                self.logger.warning("未找到派对创建或恢复按钮")
 
             if key == 'create_party_button':
                 element.click()
                 self.logger.info("Clicked create party button")
-                
+
                 # 派对创建成功后，设置默认notice
                 self.logger.info("派对创建成功，准备设置默认notice")
                 if self._set_default_notice():
                     self.logger.info("默认notice设置成功")
                 else:
                     self.logger.warning("默认notice设置失败")
-                
+
                 return True
 
             if key == 'confirm_party':
@@ -278,14 +285,14 @@ class RecoveryManager(Singleton):
                 if key == 'create_party_button':
                     element.click()
                     self.logger.info("Clicked create party button")
-                    
+
                     # 派对创建成功后，设置默认notice
                     self.logger.info("派对创建成功，准备设置默认notice")
                     if self._set_default_notice():
                         self.logger.info("默认notice设置成功")
                     else:
                         self.logger.warning("默认notice设置失败")
-                    
+
                 return True
 
             element.click()
@@ -353,7 +360,7 @@ class RecoveryManager(Singleton):
         # 如果检测到异常状态（无消息），优先执行恢复操作
         if self.abnormal_state_detected and self.abnormal_state_count >= 1:
             self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
-            
+
             # 2. 处理关闭按钮
             recovery_performed = self.handle_close_buttons()
 
@@ -393,7 +400,6 @@ class RecoveryManager(Singleton):
         if recovery_performed:
             self.last_recovery_time = current_time
             # self.logger.info("恢复操作执行完成，等待下次检查")
-            
 
         return recovery_performed
 
