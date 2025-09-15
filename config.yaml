@@ -345,7 +345,7 @@ qq_music:
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
     album_text: 'com.tencent.qqmusic:id/lg8'
     album_singer: 'com.tencent.qqmusic:id/lg5'
-    lyrics_text: 'com.tencent.qqmusic:id/hoi'
+    lyrics_text: 'com.tencent.qqmusic:id/hpx' #'com.tencent.qqmusic:id/hoi'
     playlist_result: 'com.tencent.qqmusic:id/lj2'
     singer_text: 'com.tencent.qqmusic:id/ndl'
     singer_result: 'com.tencent.qqmusic:id/bj2'
@@ -368,7 +368,7 @@ qq_music:
     play_mode: 'com.tencent.qqmusic:id/jx0'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
     playlist_screen: 'com.tencent.qqmusic:id/bay' #
-    music_tabs: 'com.tencent.qqmusic:id/be4'
+    music_tabs: 'com.tencent.qqmusic:id/bfa' #'com.tencent.qqmusic:id/be4'
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
     play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
