@@ -56,7 +56,15 @@ class QQMusicHandler(AppHandler, Singleton):
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
-        song_element = self.try_find_element_plus("song_name")
+        result_item = self.wait_for_element_plus('result_item')
+        song_element = None
+        singer_element = None
+        if result_item:
+            elements = self.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            if elements:
+                song_element = elements[0]
+                if len(elements) > 1:
+                    singer_element = elements[1]
         if not song_element:
             return {
                 "song": "Unknown",
@@ -64,7 +72,6 @@ class QQMusicHandler(AppHandler, Singleton):
                 "album": "Unknown",
             }
         song = song_element.text
-        singer_element = self.try_find_element_plus("singer_name")
         if not song_element:
             return {
                 "song": song,
@@ -265,26 +272,6 @@ class QQMusicHandler(AppHandler, Singleton):
         return {
             'playlist': result.text,
         }
-
-    def play_music(self, music_query):
-        """Search and play music"""
-        if music_query == '':
-            playing_info = self.play_favorites()
-            return playing_info
-
-        playing_info = self._prepare_music_playback(music_query)
-        if 'error' in playing_info:
-            self.logger.error(f'Failed to play music {music_query}')
-            return playing_info
-
-        song_element = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['song_name']
-        )
-        song_element.click()
-        self.logger.info(f"Select first song")
-
-        return playing_info
 
     def play_next(self, music_query):
         """Search and play next music"""

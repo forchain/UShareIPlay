@@ -1,7 +1,9 @@
 import traceback
 
-from ..helpers.playlist_parser import PlaylistParser
+from appium.webdriver.common.appiumby import AppiumBy
+
 from ..core.base_command import BaseCommand
+from ..helpers.playlist_parser import PlaylistParser
 
 
 def create_command(controller):
@@ -91,15 +93,24 @@ class PlaylistCommand(BaseCommand):
         parser = PlaylistParser()
 
         subject, topic = parser.parse_playlist_name(playlist)
+
+        result_item = self.handler.try_find_element_plus('result_item')
+        song_name = None
+        singer_name = None
+        if result_item:
+            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.LinearLayout')
+            if elements:
+                song_name = self.handler.find_child_element(elements[0], AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                if len(elements) > 1:
+                    singer_name = self.handler.find_child_element(elements[1], AppiumBy.CLASS_NAME, 'android.widget.TextView')
+
         if not subject:
             self.handler.logger.warning('Failed to parse playlist name')
-            singer_name = self.handler.try_find_element_plus('singer_name')
             if singer_name:
                 subject = singer_name.text
 
         if not topic:
             self.handler.logger.warning('Failed to parse playlist topic')
-            song_name = self.handler.try_find_element_plus('song_name')
             if song_name:
                 topic = song_name.text
 
@@ -115,7 +126,7 @@ class PlaylistCommand(BaseCommand):
 
         playing_info = self.handler.get_playlist_info()
         if not 'error' in playing_info:
-             playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
+            playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
 
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ..managers.title_manager import TitleManager
