@@ -1,3 +1,5 @@
+from appium.webdriver.common.appiumby import AppiumBy
+
 from ..core.base_command import BaseCommand
 
 
@@ -46,7 +48,7 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.wait_for_element_clickable_plus('song_name')
+        song_element = self.handler.wait_for_element_clickable_plus('result_item')
         song_element.click()
         self.handler.logger.info(f"Select first song")
 
@@ -70,13 +72,16 @@ class PlayCommand(BaseCommand):
         fav_entry.click()
         self.handler.logger.info("Clicked favorites button")
 
-        # Click on play all button
-        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
-        song = self.handler.wait_for_element_clickable_plus('song_name')
-        song_text = song.text
-        singer = self.handler.wait_for_element_clickable_plus('singer_name')
-        singer_text = singer.text
+        result_item = self.handler.try_find_element_plus('result_item')
+        song_text = None
+        singer_text = None
+        if result_item:
+            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            if len(elements) >= 3:
+                song_text = elements[1].text
+                singer_text = elements[2].text
 
+        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
