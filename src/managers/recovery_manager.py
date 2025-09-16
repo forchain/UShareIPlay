@@ -237,7 +237,11 @@ class RecoveryManager(Singleton):
                 search_button.click()
                 self.logger.info("Clicked search button")
 
-                party_online = self.handler.wait_for_element_plus('party_online')
+                room_card = self.handler.wait_for_element_plus('room_card')
+                if not room_card:
+                    self.logger.warning("未找到派对房间")
+                    return False
+                party_online = self.handler.try_find_element_plus('party_online')
                 if party_online:
                     party_online.click()
                     self.logger.info("Clicked party online")
@@ -247,7 +251,6 @@ class RecoveryManager(Singleton):
                     search_back = self.handler.wait_for_element_plus('search_back')
                     search_back.click()
                     self.logger.info("Clicked search back")
-                    return False
 
             key, element = self.handler.wait_for_any_element_plus(
                 ['create_party_entry', 'create_room_entry'])
