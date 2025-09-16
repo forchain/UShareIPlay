@@ -1,4 +1,3 @@
-import re
 import time
 import traceback
 
@@ -336,12 +335,12 @@ class QQMusicHandler(AppHandler, Singleton):
             song = song_info.get('song', '')
             singer = song_info.get('singer', '')
             album = song_info.get('album', '')
-            
+
             # 检查是否包含 DJ 或 Remix
             if 'DJ' in song or 'Remix' in song:
                 self.logger.info(f"Skipping DJ/Remix song: {song}")
                 return True
-            
+
             # 针对歌手模式的特殊处理
             if self.list_mode == 'singer':
                 # 检查是否是 Live 版本
@@ -353,9 +352,9 @@ class QQMusicHandler(AppHandler, Singleton):
                     else:
                         self.logger.info(f"Skipping Live song (no skips left): {song}")
                         return True
-            
+
             return False
-            
+
         except Exception as e:
             self.logger.error(f"Error checking if should skip song: {traceback.format_exc()}")
             return False
@@ -388,7 +387,6 @@ class QQMusicHandler(AppHandler, Singleton):
         except Exception as e:
             self.logger.error(f"Error getting volume level: {str(e)}")
             return 0
-
 
     def get_playback_info(self):
         """Get current playback information - delegates to MusicManager"""
@@ -690,16 +688,21 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         # Get all songs and singers
-        items = self.driver.find_elements(AppiumBy.ID, self.config['elements']['playlist_item_container'])
+        items = self.driver.find_elements(AppiumBy.XPATH, self.config['elements']['playlist_item_container'])
 
         playlist_info = []
         for item in items:
             try:
-                song = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_song'])
+                elements = self.find_child_elements(item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                if not elements:
+                    self.logger.warning("Failed to find song in playlist")
+                    continue
+
+                song = elements[0]
                 if not song:
                     self.logger.warning("Failed to find song in playlist")
                     continue
-                singer = self.find_child_element(item, AppiumBy.ID, self.config['elements']['playlist_singer'])
+                singer = elements[1]
                 info = f'{song.text}{singer.text}' if singer else song.text
                 playlist_info.append(info)
             except StaleElementReferenceException as e:
