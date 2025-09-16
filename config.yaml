@@ -368,7 +368,7 @@ qq_music:
     play_mode: 'com.tencent.qqmusic:id/jx0'
     singer_screen: 'com.tencent.qqmusic:id/b_k' #
     playlist_screen: 'com.tencent.qqmusic:id/bay' #
-    music_tabs: 'com.tencent.qqmusic:id/bfa' #'com.tencent.qqmusic:id/be4'
+    music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..' 
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
     play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
