@@ -689,6 +689,9 @@ class QQMusicHandler(AppHandler, Singleton):
                 if not song:
                     self.logger.warning("Failed to find song in playlist")
                     continue
+                if len(elements) < 2:
+                    self.logger.warning("Failed to find singer in playlist")
+                    continue
                 singer = elements[1]
                 info = f'{song.text}{singer.text}' if singer else song.text
                 playlist_info.append(info)
