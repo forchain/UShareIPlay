@@ -1,4 +1,5 @@
 import re
+import time
 import traceback
 from ..core.singleton import Singleton
 
@@ -16,6 +17,8 @@ class MusicManager(Singleton):
         self.music_handler = QQMusicHandler.instance()
         self.logger = self.music_handler.logger
         self.driver = self.music_handler.driver
+        self.error_count = 0  # Track consecutive errors for recovery
+        self.max_recovery_attempts = 3  # Maximum recovery attempts
     
     def play_song(self, song_query: str) -> dict:
         """
@@ -48,8 +51,17 @@ class MusicManager(Singleton):
             }
             
         except Exception as e:
-            self.logger.error(f"Error playing song: {traceback.format_exc()}")
-            return {'error': str(e)}
+            error_msg = str(e)
+            if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.play_song(song_query)
+                else:
+                    return {'error': 'Appium session terminated', 'session_lost': True}
+            else:
+                self.logger.error(f"Error playing song: {traceback.format_exc()}")
+                return {'error': error_msg}
     
     def pause_resume(self, should_pause: bool) -> dict:
         """
@@ -77,8 +89,12 @@ class MusicManager(Singleton):
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
-                self.logger.warning("Appium session terminated, cannot control playback")
-                return {'error': 'Appium session terminated', 'session_lost': True}
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.pause_resume(should_pause)
+                else:
+                    return {'error': 'Appium session terminated', 'session_lost': True}
             else:
                 self.logger.error(f"Error controlling playback: {traceback.format_exc()}")
                 return {'error': error_msg}
@@ -112,8 +128,12 @@ class MusicManager(Singleton):
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
-                self.logger.warning("Appium session terminated, cannot skip song")
-                return {'error': 'Appium session terminated', 'session_lost': True}
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.skip_song()
+                else:
+                    return {'error': 'Appium session terminated', 'session_lost': True}
             else:
                 self.logger.error(f"Error skipping song: {traceback.format_exc()}")
                 return {'error': error_msg}
@@ -181,8 +201,12 @@ class MusicManager(Singleton):
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
-                self.logger.warning("Appium session terminated, cannot get song info")
-                return {'error': 'Appium session terminated', 'session_lost': True}
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.get_current_song_info()
+                else:
+                    return {'error': 'Appium session terminated', 'session_lost': True}
             else:
                 self.logger.error(f"Error getting song info: {traceback.format_exc()}")
                 return {'error': error_msg}
@@ -223,8 +247,13 @@ class MusicManager(Singleton):
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
-                self.logger.warning("Appium session terminated, cannot get volume level")
-                return 0
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.get_volume_level()
+                else:
+                    self.logger.warning("Session recovery failed, returning default volume 0")
+                    return 0
             else:
                 self.logger.error(f"Error getting volume level: {traceback.format_exc()}")
                 return 0
@@ -289,8 +318,61 @@ class MusicManager(Singleton):
         except Exception as e:
             error_msg = str(e)
             if "InvalidSessionIdException" in error_msg or "session is either terminated" in error_msg:
-                self.logger.warning("Appium session terminated, cannot adjust volume")
-                return {'error': 'Appium session terminated', 'session_lost': True}
+                self.logger.warning("Appium session terminated, attempting to recover...")
+                if self._handle_session_recovery():
+                    # Retry the operation after successful recovery
+                    return self.adjust_volume(target_volume)
+                else:
+                    return {'error': 'Appium session terminated', 'session_lost': True}
             else:
                 self.logger.error(f"Error adjusting volume: {traceback.format_exc()}")
                 return {'error': error_msg}
+    
+    def _reinitialize_session(self) -> bool:
+        """
+        Reinitialize the Appium session when it becomes invalid
+        Returns:
+            bool: True if reinitialization was successful, False otherwise
+        """
+        try:
+            self.logger.warning("Appium session invalid, attempting to reinitialize...")
+            
+            # Close the current driver
+            try:
+                self.driver.quit()
+            except Exception as e:
+                self.logger.debug(f"Error closing driver: {str(e)}")
+            
+            # Wait a moment for cleanup
+            time.sleep(2)
+            
+            # Reinitialize the driver using the music handler's controller
+            self.driver = self.music_handler.controller._init_driver()
+            
+            # Update the driver reference in music handler
+            self.music_handler.driver = self.driver
+            
+            self.logger.info("Successfully reinitialized Appium session")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reinitialize session: {str(e)}")
+            return False
+
+    def _handle_session_recovery(self) -> bool:
+        """
+        Handle Appium session recovery by reinitializing the driver
+        Returns:
+            bool: True if recovery was successful, False otherwise
+        """
+        # Check if we've exceeded maximum recovery attempts
+        if self.error_count >= self.max_recovery_attempts:
+            self.logger.error(f"Maximum recovery attempts ({self.max_recovery_attempts}) exceeded")
+            return False
+            
+        if self._reinitialize_session():
+            self.error_count = 0  # Reset error count on successful recovery
+            return True
+        else:
+            self.error_count += 1
+            return False
