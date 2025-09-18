@@ -12,6 +12,7 @@ from selenium.webdriver.common.actions import interaction
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.remote.webelement import WebElement
+from typing import Optional, Tuple
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -286,10 +287,6 @@ class AppHandler:
                 self.logger.error(f"Failed to switch to app: {str(e)}")
                 return False
         
-        reminder_ok = self.try_find_element(AppiumBy.ID, self.config['elements']['reminder_ok'], log=False)
-        if reminder_ok:
-            self.logger.debug(f"Found reminder dialog and close")
-            reminder_ok.click()
         time.sleep(0.1)
         return True
 
@@ -677,9 +674,17 @@ class AppHandler:
             self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
             return None
 
-    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10):
+    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10) -> Tuple[Optional[str], Optional[WebElement]]:
         """
-        等待任意一个元素出现，返回(key, element)。超时返回None。
+        等待任意一个元素出现。
+
+        Args:
+            element_keys: 元素key列表（配置中的elements键）
+            timeout: 超时时间（秒）
+
+        Returns:
+            (key, element): 若找到则返回对应的元素key和元素对象
+            (None, None): 超时或未找到时返回
         """
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
