@@ -258,7 +258,6 @@ qq_music:
   # UI element identifiers for QQ Music
   elements:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
-    play_button: "com.tencent.qqmusic:id/kcr"
     # ... 80+ element definitions
 
 # Command System Configuration

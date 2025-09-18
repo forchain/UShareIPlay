@@ -8,11 +8,11 @@ soul:
   # Initial timers configuration
   initial_timers:
     - id: "theme_sleep"
-      time: "23:50"
+      time: "22:50"
       message: "theme 助眠"
       repeat: true
     - id: "playlist_sleep"
-      time: "00:00"
+      time: "23:00"
       message: "playlist Lofi Girl 官方"
       repeat: true
     - id: "theme_work_morning"
@@ -40,19 +40,19 @@ soul:
       message: "playlist 情歌 官方"
       repeat: true
     - id: "theme_home"
-      time: "18:20"
+      time: "17:50"
       message: "theme 享乐"
       repeat: true
     - id: "playlist_home"
-      time: "18:30"
+      time: "18:00"
       message: "playlist Jazz 官方"
       repeat: true
     - id: "theme_daily"
-      time: "22:50"
+      time: "21:50"
       message: "theme 日常"
       repeat: true
     - id: "playlist_daily"
-      time: "23:00"
+      time: "22:00"
       message: "playlist 微醺咖啡厅 官方"
       repeat: true
     - id: "notice_0"
@@ -296,32 +296,22 @@ qq_music:
   elements:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
-    play_button: "com.tencent.qqmusic:id/kcr"
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
-    player_panel: "com.tencent.qqmusic:id/idm"
-    hide_player: "com.tencent.qqmusic:id/na0"
     result_item: 'com.tencent.qqmusic:id/item_layout'
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     playing_bar: "com.tencent.qqmusic:id/ha_"
     current_song: "android:id/title"
     current_singer: "android:id/text"
-    info_dot: "com.tencent.qqmusic:id/c14"
-    details_link: "com.tencent.qqmusic:id/gnw"
     more_in_play_panel: "com.tencent.qqmusic:id/a8r"
     accompaniment_menu: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nr8" and @text="伴唱模式"]'
     accompaniment_switch: "com.tencent.qqmusic:id/or6"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
     full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
-    accompaniment_status: "com.tencent.qqmusic:id/bln"
-#    live_lyrics: "com.tencent.qqmusic:id/e5z"
-    live_lyrics: "com.tencent.qqmusic:id/lbr"
-    accompaniment_tool: "com.tencent.qqmusic:id/ocx"
     lyrics_tool: "com.tencent.qqmusic:id/i2y"
     lyrics_poster: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/jmb" and @text="歌词海报"]'
     lyrics_line: "com.tencent.qqmusic:id/h9e"
     lyrics_end: "//android.view.View"
-    no_lyrics: "com.tencent.qqmusic:id/ndz"
     clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     current_lyrics: "com.tencent.qqmusic:id/l7_"
     content_container: "android:id/content"
@@ -350,10 +340,6 @@ qq_music:
     singer_result: 'com.tencent.qqmusic:id/bj2'
     play_all: '//android.widget.TextView[@text="全部播放"]'
     play_all_mini: 'com.tencent.qqmusic:id/se'
-    singer_container: 'com.tencent.qqmusic:id/hag'
-    play_album: 'com.tencent.qqmusic:id/j98'
-    play_singer: 'com.tencent.qqmusic:id/em7'
-    play_singer_hot: 'com.tencent.qqmusic:id/j0g'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     playlist_item: 'com.tencent.qqmusic:id/ljb'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
@@ -363,8 +349,6 @@ qq_music:
     playlist_current: '//android.widget.ImageView[@content-desc="删除"]/../android.view.View'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
     play_mode: 'com.tencent.qqmusic:id/jx0'
-    singer_screen: 'com.tencent.qqmusic:id/b_k' #
-    playlist_screen: 'com.tencent.qqmusic:id/bay' #
     music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..' 
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
