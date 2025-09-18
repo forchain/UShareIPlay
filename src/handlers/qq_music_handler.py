@@ -239,40 +239,6 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error(f"Error selecting song tab: {traceback.format_exc()}")
             return False
 
-    def play_playlist(self, query: str):
-
-        if not self.query_music(query):
-            return {
-                'error': 'Failed to query music playlist',
-            }
-
-        if not self.select_playlist_tab():
-            return {
-                'error': 'Failed to find playlist tab',
-            }
-        result = self.wait_for_element_clickable(
-            AppiumBy.ID, self.config['elements']['playlist_result']
-        )
-        result.click()
-
-        play_button = self.wait_for_element_clickable(
-            AppiumBy.ID, self.config['elements']['play_playlist']
-        )
-        if play_button:
-            play_button.click()
-        else:
-            play_button = self.wait_for_element_clickable(
-                AppiumBy.ID, self.config['elements']['playlist_item']
-            )
-            if play_button:
-                play_button.click()
-            else:
-                return {'error': 'Failed to find play button'}
-
-        return {
-            'playlist': result.text,
-        }
-
     def play_next(self, music_query):
         """Search and play next music"""
         try:
