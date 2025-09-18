@@ -81,21 +81,21 @@ class AlbumCommand(BaseCommand):
                 'error': 'Failed to select lyrics tab',
             }
 
-        album_text = self.handler.wait_for_element_clickable_plus('album_text')
-        if not album_text:
-            self.handler.logger.error(f"Failed to find album text with query {query}")
-            return {'error': 'Failed to find album text'}
-        topic = album_text.text
-        album_singer = self.handler.try_find_element_plus('album_singer')
-        if not album_singer:
-            self.handler.logger.error(f"Failed to find album singer with query {query}")
-            return {'error': f'Failed to find album singer with query {query}'}
+        album_result = self.handler.find_elements_plus('album_result')
+        if len(album_result) < 2:
+            self.handler.logger.error(f"Failed to find album result with query {query}")
+            return {
+                'error': 'Failed to find album result',
+            }
+        album_name =  album_result[0]
+        album_singer = album_result[1]
+        topic = album_name.text
         title = album_singer.text
 
-        album_text.click()
-        self.handler.logger.info("album text clicked")
+        album_name.click()
+        self.handler.logger.info("album name clicked")
 
-        key, play_button = self.handler.wait_for_any_element_plus(['play_all', 'play_all_mini'])
+        key, play_button = self.handler.wait_for_any_element_plus(['play_all'])
         if not play_button:
             self.handler.logger.error(f"Failed to find play button for query {query}")
             return {'error': 'Failed to find play button'}
