@@ -569,21 +569,6 @@ class QQMusicHandler(AppHandler, Singleton):
         print("Pressed back to clean up interface")
 
         time.sleep(0.5)  # Wait for animation
-        # Try to find and click playing bar if exists
-        playing_bar = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['playing_bar']
-        )
-        if playing_bar:
-            try:
-                playing_bar.click()
-            except StaleElementReferenceException as e:
-                self.logger.error(f"Failed to click playing bar")
-                self.press_back()
-                return {'error': 'Failed to switch to lyrics page, unexpected dialog might pop up'}
-
-            self.logger.info("Found and clicked playing bar")
-            time.sleep(0.5)  # Wait for animation
 
         # Find more menu in play panel
         more_menu = self.wait_for_element(
@@ -705,57 +690,3 @@ class QQMusicHandler(AppHandler, Singleton):
 
         self.logger.info(f"Found {len(playlist_info)} songs in playlist")
         return {'playlist': '\n'.join(playlist_info)}
-
-    def change_play_mode(self, mode):
-        """Change play mode
-        Args:
-            mode: int, 1 for single loop, -1 for random, 0 for list loop
-        Returns:
-            dict: mode info or error
-        """
-        if not self.switch_to_app():
-            return {'error': 'Failed to switch to QQ Music app'}
-
-        # Try to find playing bar
-        playing_bar = self.try_find_element_plus('playing_bar')
-
-        if not playing_bar:
-            # Navigate to home and try again
-            self.navigate_to_home()
-            playing_bar = self.wait_for_element_clickable_plus('playing_bar')
-            if not playing_bar:
-                return {'error': 'Cannot find playing bar'}
-
-        playing_bar.click()
-        self.logger.info("Clicked playing bar")
-
-        # Find play mode button
-        play_mode = self.wait_for_element_clickable_plus('play_mode')
-        if not play_mode:
-            return {'error': 'Cannot find play mode button'}
-
-        # Get current mode
-        current_desc = play_mode.get_attribute('content-desc')
-        target_desc = {
-            1: "单曲循环",
-            -1: "随机播放",
-            0: "列表循环"
-        }.get(mode)
-
-        # Convert mode to display text
-        mode_text = {
-            1: "single loop",
-            -1: "random",
-            0: "list loop"
-        }.get(mode, "unknown")
-
-        # Click until we reach target mode if needed
-        if current_desc != target_desc:
-            while True:
-                play_mode.click()
-                time.sleep(0.5)  # Wait for mode to change
-                new_desc = play_mode.get_attribute('content-desc')
-                if new_desc == target_desc:
-                    break
-
-        return {'mode': mode_text}

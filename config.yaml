@@ -8,52 +8,24 @@ soul:
   # Initial timers configuration
   initial_timers:
     - id: "theme_sleep"
-      time: "22:50"
+      time: "22:00"
       message: "theme 助眠"
       repeat: true
-    - id: "playlist_sleep"
-      time: "23:00"
-      message: "playlist Lofi Girl 官方"
-      repeat: true
     - id: "theme_work_morning"
-      time: "09:20"
+      time: "09:30"
       message: "theme 🐮🐎"
       repeat: true
-    - id: "playlist_work_morning"
-      time: "09:30"
-      message: "play"
-      repeat: true
     - id: "theme_lunch_break"
-      time: "11:20"
-      message: "theme 午休"
-      repeat: true
-    - id: "playlist_lunch_break"
       time: "11:30"
-      message: "playlist 深度专注 官方"
+      message: "theme 午休"
       repeat: true
     - id: "theme_work_afternoon"
       time: "12:50"
       message: "theme 🐮🐎"
       repeat: true
-    - id: "playlist_work_afternoon"
-      time: "13:00"
-      message: "playlist 情歌 官方"
-      repeat: true
     - id: "theme_home"
       time: "17:50"
       message: "theme 享乐"
-      repeat: true
-    - id: "playlist_home"
-      time: "18:00"
-      message: "playlist Jazz 官方"
-      repeat: true
-    - id: "theme_daily"
-      time: "21:50"
-      message: "theme 日常"
-      repeat: true
-    - id: "playlist_daily"
-      time: "22:00"
-      message: "playlist 微醺咖啡厅 官方"
       repeat: true
     - id: "notice_0"
       time: "00:00"
@@ -79,77 +51,81 @@ soul:
       time: "05:00"
       message: "help"
       repeat: true
-    - id: "help_6"
+    - id: "playlist_6"
       time: "06:00"
-      message: "help"
+      message: "playlist 官方 纯音乐"
       repeat: true
-    - id: "help_7"
+    - id: "playlist_7"
       time: "07:00"
-      message: "help"
+      message: "playlist 官方 古典"
       repeat: true
-    - id: "help_8"
+    - id: "playlist_8"
       time: "08:00"
-      message: "help"
+      message: "playlist 官方 Lofi&Chill"
       repeat: true
-    - id: "notice_9"
-      time: "notice hello, thank you, are you ok?"
-      message: "help"
+    - id: "playlist_9"
+      time: "09:00"
+      message: "play"
       repeat: true
-    - id: "help_10"
+    - id: "notice_10"
       time: "10:00"
-      message: "help"
+      message: "notice hello, thank you, are you ok?"
       repeat: true
-    - id: "help_11"
+    - id: "playlist_11"
       time: "11:00"
-      message: "help"
+      message: "playlist 深度专注 官方"
       repeat: true
-    - id: "help_12"
-      time: "12:00"
-      message: "help"
+    - id: "notice_12"
+      time: "10:00"
+      message: "notice sorry, hello, excuse me"
       repeat: true
-    - id: "help_13"
+    - id: "playlist_13"
       time: "13:00"
-      message: "help"
+      message: "playlist 红心雷达"
       repeat: true
-    - id: "help_14"
+    - id: "playlist_14"
       time: "14:00"
-      message: "help"
+      message: "playlist 百万收藏"
       repeat: true
-    - id: "help_15"
+    - id: "playlist_15"
       time: "15:00"
-      message: "help"
+      message: "playlist 热门搜索"
       repeat: true
-    - id: "help_16"
+    - id: "playlist_16"
       time: "16:00"
-      message: "help"
+      message: "playlist KTV热歌 官方"
       repeat: true
-    - id: "help_17"
+    - id: "playlist_17"
       time: "17:00"
-      message: "help"
+      message: "playlist 粤语经典 官方"
       repeat: true
     - id: "notice_18"
-      time: "notice hello, thank you, are you ok?"
-      message: "help"
+      time: "18:00"
+      message: "notice hello, thank you, are you ok?"
       repeat: true
-    - id: "help_19"
+    - id: "playlist_18"
+      time: "18:00"
+      message: "playlist Jazz 官方"
+      repeat: true
+    - id: "playlist_19"
       time: "19:00"
-      message: "help"
+      message: "playlist 官方 慵懒时间"
       repeat: true
-    - id: "help_20"
+    - id: "playlist_20"
       time: "20:00"
-      message: "help"
+      message: "playlist 官方 r&b"
       repeat: true
-    - id: "help_21"
+    - id: "playlist_21"
       time: "21:00"
-      message: "help"
+      message: "playlist 官方 情歌"
       repeat: true
-    - id: "help_22"
+    - id: "playlist_22"
       time: "22:00"
-      message: "help"
+      message: "playlist 官方 纯音乐"
       repeat: true
-    - id: "help_23"
+    - id: "playlist_23"
       time: "23:00"
-      message: "help"
+      message: "playlist Lofi Girl 官方"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -300,24 +276,22 @@ qq_music:
     result_item: 'com.tencent.qqmusic:id/item_layout'
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
-    playing_bar: "com.tencent.qqmusic:id/ha_"
     current_song: "android:id/title"
     current_singer: "android:id/text"
     more_in_play_panel: "com.tencent.qqmusic:id/a8r"
-    accompaniment_menu: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nr8" and @text="伴唱模式"]'
+    accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
     accompaniment_switch: "com.tencent.qqmusic:id/or6"
     song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
     full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
     lyrics_tool: "com.tencent.qqmusic:id/i2y"
-    lyrics_poster: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/jmb" and @text="歌词海报"]'
+    lyrics_poster: '//android.widget.TextView[@text="歌词海报"]'
     lyrics_line: "com.tencent.qqmusic:id/h9e"
     lyrics_end: "//android.view.View"
     clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     current_lyrics: "com.tencent.qqmusic:id/l7_"
     content_container: "android:id/content"
-    reminder_ok: "com.tencent.qqmusic:id/icm"
-    vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
-    accompaniment_tag: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nj0" and @text="伴唱"]'
+    vocal_tag: "//android.widget.TextView[@text='原唱']"
+    accompaniment_tag: '//android.widget.TextView[@text="伴唱"]'
     lyrics_box: "com.tencent.qqmusic:id/jah"
     close_poster: "com.tencent.qqmusic:id/b6w"
     accompaniment_bar: "com.tencent.qqmusic:id/or3"
@@ -348,8 +322,10 @@ qq_music:
     playlist_item_container: '//android.widget.ImageView[@content-desc="删除"]/../android.widget.LinearLayout'
     playlist_current: '//android.widget.ImageView[@content-desc="删除"]/../android.view.View'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
-    play_mode: 'com.tencent.qqmusic:id/jx0'
-    music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..' 
+    play_mode_list: '//android.widget.ImageButton[@content-desc="顺序播放"]'
+    play_mode_single: '//android.widget.ImageButton[@content-desc="单曲循环"]'
+    play_mode_random: '//android.widget.ImageButton[@content-desc="随机播放"]'
+    music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..'
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
     play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
