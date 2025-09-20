@@ -1,15 +1,14 @@
-import traceback
 from ..core.base_command import BaseCommand
-from appium.webdriver.common.appiumby import AppiumBy
-from datetime import datetime, timedelta
-import time
+
 
 def create_command(controller):
     accompaniment_command = AccompanimentCommand(controller)
     controller.accompaniment_command = accompaniment_command
     return accompaniment_command
 
+
 command = None
+
 
 class AccompanimentCommand(BaseCommand):
     def __init__(self, controller):
@@ -38,50 +37,67 @@ class AccompanimentCommand(BaseCommand):
             return {'error': 'Failed to switch to QQ Music app'}
         self.handler.logger.info("Switched to QQ Music app")
 
-        error = self.handler.switch_to_playing_page()
-        if error:
-            return error
+        self.handler.press_back()
+        # 1. 查找四个控件中的任意一个，找不到说明没有在播放
+        found_key, found_element = self.handler.wait_for_any_element_plus([
+            'accompaniment_text_off', 'accompaniment_text_on', 'playing_bar', 'accompaniment_switch'
+        ])
 
-        tag = self.handler.try_find_element_plus('accompaniment_tag')
+        if not found_element:
+            self.handler.logger.warning("No music playing detected")
+            return {'error': 'No music playing, cannot toggle accompaniment mode'}
 
-        if tag:
-            self.handler.logger.info(f"Found accompaniment tag")
-            is_on = True
-        else:
-            is_on = False
+        # 2. 判断找到的是哪种元素并处理
+        if found_key == 'playing_bar':
+            # 找到播放条，需要进入播放页面
+            self.handler.logger.info("Found playing bar, clicking to enter playing page")
+            if not self.handler.click_element_at(found_element):
+                return {'error': 'Failed to click playing bar'}
 
-        # Toggle if needed
-        if (enable and not is_on) or (not enable and is_on):
-            if is_on:
-                tag.click()
-                switch = self.handler.wait_for_element_clickable_plus('accompaniment_switch')
-                switch.click()
+            found_key, found_element = self.handler.wait_for_any_element_plus([
+                'accompaniment_text_off', 'accompaniment_text_on', 'accompaniment_switch'
+            ])
+
+            if not found_element:
+                return {'error': 'Failed to find accompaniment controls after entering playing page'}
+
+        # 3. 如果找到的是accompaniment_switch，说明此前还没激活过伴唱模式
+        if found_key == 'accompaniment_switch':
+            self.handler.logger.info("Found accompaniment switch, activating accompaniment mode")
+            if not self.handler.click_element_at(found_element):
+                return {'error': 'Failed to click accompaniment switch'}
+
+            # 查找伴唱状态按钮
+            button_key, found_button = self.handler.wait_for_any_element_plus([
+                'accompaniment_button_on', 'accompaniment_button_off'
+            ])
+
+            if not found_button:
+                return {'error': 'Failed to find accompaniment state buttons'}
+
+            # 根据找到的按钮类型确定当前状态
+            current_state = button_key == 'accompaniment_button_on'  # True表示已开启
+
+            if enable != current_state:
+                # 需要切换状态，直接点击找到的按钮
+                if not self.handler.click_element_at(found_button):
+                    return {'error': 'Failed to toggle accompaniment state'}
+                self.handler.logger.info(f"Toggled accompaniment state to {'on' if enable else 'off'}")
             else:
-                more_menu = self.handler.wait_for_element_clickable_plus('more_in_play_panel')
-                more_menu.click()
-                self.handler.logger.info(f"Selected more menu")
-                
-                found = False
-                for _ in range(9):
-                    self.handler.press_dpad_down()
-                    acc_menu = self.handler.try_find_element_plus('accompaniment_menu')
-                    if acc_menu:
-                        found = True
-                        acc_menu.click()
-                        self.handler.logger.info(f"Selected accompaniment menu")
-                        
-                        acc_label = self.handler.wait_for_element_clickable_plus(
-                            'accompaniment_label',
-                            timeout=2
-                        )
-                        if acc_label:
-                            # Use new click_element_at method to click at 3/4 width
-                            if not self.handler.click_element_at(acc_label, x_ratio=0.75):
-                                self.handler.logger.error("Failed to click accompaniment label")
-                                return {'error': 'Failed to click accompaniment label'}
-                            break
-                
-                if not found:
-                    return {'error': 'Failed to find accompaniment menu'}
+                self.handler.logger.info(f"Accompaniment state already {'on' if enable else 'off'}, no action needed")
+            self.handler.press_back()
+
+        # 4. 如果找到的是accompaniment_text_off或accompaniment_text_on，说明已经开启过伴奏模式
+        else:
+            # 根据找到的文本类型确定当前状态
+            current_state = found_key == 'accompaniment_text_on'  # True表示已开启
+
+            if enable != current_state:
+                # 需要切换状态，直接点击找到的元素
+                if not self.handler.click_element_at(found_element):
+                    return {'error': f"Failed to {'enable' if enable else 'disable'} accompaniment mode"}
+                self.handler.logger.info(f"{'Enabled' if enable else 'Disabled'} accompaniment mode")
+            else:
+                self.handler.logger.info(f"Accompaniment mode already {'on' if enable else 'off'}, no action needed")
 
         return {'enabled': 'on' if enable else 'off'}
