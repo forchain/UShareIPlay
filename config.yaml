@@ -278,24 +278,13 @@ qq_music:
     skip_button: "android:id/action2"
     current_song: "android:id/title"
     current_singer: "android:id/text"
-    more_in_play_panel: "com.tencent.qqmusic:id/a8r"
-    accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
-    accompaniment_switch: "com.tencent.qqmusic:id/or6"
-    song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
-    full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
-    lyrics_tool: "com.tencent.qqmusic:id/i2y"
-    lyrics_poster: '//android.widget.TextView[@text="歌词海报"]'
-    lyrics_line: "com.tencent.qqmusic:id/h9e"
-    lyrics_end: "//android.view.View"
-    clear_search: '//android.widget.ImageView[@content-desc="清空"]'
-    current_lyrics: "com.tencent.qqmusic:id/l7_"
-    content_container: "android:id/content"
-    vocal_tag: "//android.widget.TextView[@text='原唱']"
-    accompaniment_tag: '//android.widget.TextView[@text="伴唱"]'
-    lyrics_box: "com.tencent.qqmusic:id/jah"
-    close_poster: "com.tencent.qqmusic:id/b6w"
-    accompaniment_bar: "com.tencent.qqmusic:id/or3"
-    accompaniment_label: "com.tencent.qqmusic:id/oqz"
+    playing_favourite: '//android.widget.Button[@content-desc="收藏"]'
+    playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
+    accompaniment_switch: '//android.widget.ImageView[@content-desc="K歌"]'
+    accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
+    accompaniment_text_off: '//android.widget.TextView[@text="已关闭伴唱模式"]'
+    accompaniment_button_on: '//android.widget.ImageView[@content-desc="已开启伴唱模式"]'
+    accompaniment_button_off: '//android.widget.ImageView[@content-desc="已关闭伴唱模式"]'
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
     radar_song: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.LinearLayout/android.widget.Button'
@@ -308,12 +297,10 @@ qq_music:
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
     album_result: '//android.widget.ListView/android.view.ViewGroup//android.widget.TextView'
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
-    playlist_result: 'com.tencent.qqmusic:id/lj2'
-    singer_text: 'com.tencent.qqmusic:id/ndl'
-    singer_result: 'com.tencent.qqmusic:id/bj2'
+    playlist_result: '//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView'
+    singer_text: '//android.widget.ListView//android.widget.TextView'
     play_all: '//android.widget.TextView[@text="全部播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
-    playlist_item: 'com.tencent.qqmusic:id/ljb'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
@@ -462,7 +449,8 @@ logging:
   directory: "../logs"
 
 device:
-  name: "192.168.50.151:5555"
+  name: "554b4e4745413498"
+  #name: "192.168.50.151:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"

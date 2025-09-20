@@ -1,7 +1,5 @@
 import traceback
 
-from appium.webdriver.common.appiumby import AppiumBy
-
 from ..core.base_command import BaseCommand
 
 
@@ -74,14 +72,12 @@ class SingerCommand(BaseCommand):
 
         self.select_singer_tab()
 
-        singer_result = self.handler.wait_for_element_clickable_plus('singer_result')
-        if not singer_result:
+        singer_text = self.handler.wait_for_element_clickable_plus('singer_text')
+        if not singer_text:
             return {
                 'error': 'Failed to find singer result',
             }
 
-        singer_text = self.handler.find_child_element(singer_result, AppiumBy.ID,
-                                                      self.handler.config['elements']['singer_text'])
         singer_text.click()
         self.handler.logger.info("Selected singer result")
 
