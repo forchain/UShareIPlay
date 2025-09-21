@@ -10,6 +10,7 @@ class TitleManager(Singleton):
         self._handler = None
         self._theme_manager = None
         self._logger = None
+        self._notice_manager = None
 
         self.current_title = None
         self.next_title = None
@@ -17,6 +18,10 @@ class TitleManager(Singleton):
 
         # 延迟初始化 UI，避免在初始化时调用 handler
         self._ui_initialized = False
+        
+        # Notice 恢复状态
+        self.pending_notice_restore = False
+        self.restore_notice_content = None
 
     @property
     def handler(self):
@@ -40,6 +45,15 @@ class TitleManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
+
+    @property
+    def notice_manager(self):
+        """延迟获取 NoticeManager 实例"""
+        if self._notice_manager is None:
+            from .notice_manager import NoticeManager
+            self._notice_manager = NoticeManager.instance()
+        return self._notice_manager
+
 
     def get_current_title(self):
         """Get current title
@@ -114,7 +128,7 @@ class TitleManager(Singleton):
                                 self.logger.info(f"Initialized theme from UI: {theme_part}")
                         else:
                             self.logger.info(
-                                f"Theme manager has pending update, skipping UI initialization to preserve new theme")
+                                "Theme manager has pending update, skipping UI initialization to preserve new theme")
                     else:
                         self.logger.info(
                             f"Theme manager already initialized, keeping current theme: {self.theme_manager.get_current_theme() if self.theme_manager else 'None'}")
@@ -135,6 +149,96 @@ class TitleManager(Singleton):
         except Exception as e:
             self.logger.error(f"Error parsing title from UI: {str(e)}")
             return None
+
+    def _check_notice_reset(self):
+        """检查房间notice是否被系统重置，如果是则标记需要恢复
+        Returns:
+            dict: 检查结果
+        """
+        try:
+            # 获取当前房间notice
+            notice_element = self.handler.try_find_element_plus('chat_room_notice', log=False)
+            if not notice_element:
+                self.logger.info("Chat room notice element not found, skipping notice check")
+                return {'skipped': 'Notice element not found'}
+
+            current_notice = self.handler.get_element_text(notice_element)
+            if not current_notice:
+                self.logger.info("Current notice is empty, skipping notice check")
+                return {'skipped': 'Current notice is empty'}
+
+            self.logger.info(f"Current room notice: {current_notice}")
+
+            # 获取系统默认notice列表
+            from ..core.config_loader import ConfigLoader
+            config = ConfigLoader.load_config()
+            system_notices = config.get('soul', {}).get('system_default_notices', [])
+            
+            if not system_notices:
+                self.logger.warning("No system default notices configured, skipping notice check")
+                return {'skipped': 'No system notices configured'}
+
+            # 检查当前notice是否包含任何系统默认notice
+            is_system_reset = False
+            found_system_notice = None
+            for system_notice in system_notices:
+                if system_notice in current_notice:
+                    is_system_reset = True
+                    found_system_notice = system_notice
+                    self.logger.warning(f"Found system default notice in current notice: {system_notice}")
+                    break
+
+            if not is_system_reset:
+                self.logger.info("Current notice is not system reset, no need to restore")
+                # 清除之前的恢复标记
+                self.pending_notice_restore = False
+                self.restore_notice_content = None
+                return {'status': 'No system reset detected'}
+
+            # 标记需要恢复notice到默认值
+            default_notice = config.get('soul', {}).get('default_notice', 'U Share I Play\n分享音乐 享受快乐')
+            self.pending_notice_restore = True
+            self.restore_notice_content = default_notice
+            
+            self.logger.info(f"System reset detected (found: '{found_system_notice}'), will restore notice after title update")
+            return {'detected': True, 'found_notice': found_system_notice, 'will_restore_to': default_notice}
+
+        except Exception as e:
+            self.logger.error(f"Error checking notice reset: {str(e)}")
+            return {'error': f'Error in notice check: {str(e)}'}
+
+    def _restore_notice_if_needed(self):
+        """如果需要，恢复notice到默认值
+        Returns:
+            dict: 恢复结果
+        """
+        if not self.pending_notice_restore or not self.restore_notice_content:
+            return {'skipped': 'No pending notice restore'}
+
+        try:
+            self.logger.info(f"Restoring notice to: {self.restore_notice_content}")
+            
+            # 使用notice_manager恢复notice
+            restore_result = self.notice_manager.set_notice(self.restore_notice_content)
+            
+            # 清除恢复标记
+            self.pending_notice_restore = False
+            restore_content = self.restore_notice_content
+            self.restore_notice_content = None
+            
+            if 'error' in restore_result:
+                self.logger.error(f"Failed to restore notice: {restore_result['error']}")
+                return {'error': f'Failed to restore notice: {restore_result["error"]}'}
+            
+            self.logger.info("Successfully restored notice to default value")
+            return {'success': f'Notice restored to: {restore_content}'}
+
+        except Exception as e:
+            # 清除恢复标记，即使失败也不要重复尝试
+            self.pending_notice_restore = False
+            self.restore_notice_content = None
+            self.logger.error(f"Error restoring notice: {str(e)}")
+            return {'error': f'Error in notice restore: {str(e)}'}
 
     def _initialize_from_ui(self):
         """Initialize title and theme from UI on startup"""
@@ -220,6 +324,19 @@ class TitleManager(Singleton):
                 return {'error': 'Failed to find room title'}
             room_title.click()
 
+            # 在点击编辑入口之前，检查notice是否需要恢复
+            self.logger.info("Checking room notice before editing title")
+            notice_check_result = self._check_notice_reset()
+            
+            if 'error' in notice_check_result:
+                self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
+            elif 'detected' in notice_check_result:
+                self.logger.info("System notice reset detected, will restore after title update")
+            elif 'status' in notice_check_result:
+                self.logger.info(f"Notice check result: {notice_check_result['status']}")
+            elif 'skipped' in notice_check_result:
+                self.logger.info(f"Notice check skipped: {notice_check_result['skipped']}")
+
             # Click edit entry
             edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
             if not edit_entry:
@@ -260,6 +377,16 @@ class TitleManager(Singleton):
 
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
+                
+                # 标题更新成功后，检查是否需要恢复notice
+                notice_restore_result = self._restore_notice_if_needed()
+                if 'success' in notice_restore_result:
+                    self.logger.info(f"Notice restore result: {notice_restore_result['success']}")
+                elif 'error' in notice_restore_result:
+                    self.logger.warning(f"Notice restore failed: {notice_restore_result['error']}")
+                elif 'skipped' in notice_restore_result:
+                    self.logger.debug(f"Notice restore skipped: {notice_restore_result['skipped']}")
+                
                 return {'success': True}
 
             elif key == 'title_edit_confirm':
@@ -271,12 +398,27 @@ class TitleManager(Singleton):
 
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
+                
+                # 标题更新失败，清除notice恢复标记
+                self.pending_notice_restore = False
+                self.restore_notice_content = None
+                
                 return {'error': 'Update failed - still in cooldown period'}
             else:
                 self.logger.warning('Failed to update title, unknown error')
                 self.handler.press_back()
+                
+                # 标题更新失败，清除notice恢复标记
+                self.pending_notice_restore = False
+                self.restore_notice_content = None
+                
                 return {'error': 'Failed to update title, unknown error'}
 
         except Exception:
             self.logger.error(f"Error in title update: {traceback.format_exc()}")
+            
+            # 异常情况下，清除notice恢复标记
+            self.pending_notice_restore = False
+            self.restore_notice_content = None
+            
             return {'error': f'Failed to update title: {title}'}
