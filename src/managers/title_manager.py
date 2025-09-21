@@ -218,7 +218,7 @@ class TitleManager(Singleton):
         try:
             self.logger.info(f"Restoring notice to: {self.restore_notice_content}")
             
-            # 使用notice_manager恢复notice
+            # 使用notice_manager恢复notice（带冷却时间管理）
             restore_result = self.notice_manager.set_notice(self.restore_notice_content)
             
             # 清除恢复标记
@@ -226,12 +226,20 @@ class TitleManager(Singleton):
             restore_content = self.restore_notice_content
             self.restore_notice_content = None
             
-            if 'error' in restore_result:
+            if 'cooldown' in restore_result:
+                # 在冷却中，notice会在冷却时间过后自动设置
+                remaining_minutes = restore_result.get('remaining_minutes', 0)
+                self.logger.info(f"Notice restore in cooldown, will be set in {remaining_minutes} minutes")
+                return {'cooldown': True, 'remaining_minutes': remaining_minutes}
+            elif 'error' in restore_result:
                 self.logger.error(f"Failed to restore notice: {restore_result['error']}")
                 return {'error': f'Failed to restore notice: {restore_result["error"]}'}
-            
-            self.logger.info("Successfully restored notice to default value")
-            return {'success': f'Notice restored to: {restore_content}'}
+            elif 'success' in restore_result:
+                self.logger.info("Successfully restored notice to default value")
+                return {'success': f'Notice restored to: {restore_content}'}
+            else:
+                self.logger.warning(f"Unknown restore result: {restore_result}")
+                return restore_result
 
         except Exception as e:
             # 清除恢复标记，即使失败也不要重复尝试
@@ -382,6 +390,9 @@ class TitleManager(Singleton):
                 notice_restore_result = self._restore_notice_if_needed()
                 if 'success' in notice_restore_result:
                     self.logger.info(f"Notice restore result: {notice_restore_result['success']}")
+                elif 'cooldown' in notice_restore_result:
+                    remaining_minutes = notice_restore_result.get('remaining_minutes', 0)
+                    self.logger.info(f"Notice restore in cooldown, will be set in {remaining_minutes} minutes")
                 elif 'error' in notice_restore_result:
                     self.logger.warning(f"Notice restore failed: {notice_restore_result['error']}")
                 elif 'skipped' in notice_restore_result:
