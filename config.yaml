@@ -75,12 +75,16 @@ soul:
       time: "09:00"
       message: "play"
       repeat: true
-    - id: "notice_10"
+    - id: "playlist_10"
       time: "10:00"
-      message: "notice hello, thank you, are you ok?"
+      message: "playlist 红心雷达"
       repeat: true
     - id: "playlist_11"
-      time: "11:00"
+      time: "10:00"
+      message: "playlist 粤语经典 官方"
+      repeat: true
+    - id: "playlist_12"
+      time: "12:00"
       message: "playlist 深度专注 官方"
       repeat: true
     - id: "notice_12"
@@ -89,7 +93,7 @@ soul:
       repeat: true
     - id: "playlist_13"
       time: "13:00"
-      message: "playlist 红心雷达"
+      message: "playlist 官方 时光乐匣"
       repeat: true
     - id: "playlist_14"
       time: "14:00"
@@ -105,7 +109,7 @@ soul:
       repeat: true
     - id: "playlist_17"
       time: "17:00"
-      message: "playlist 粤语经典 官方"
+      message: "playlist 官方 情歌"
       repeat: true
     - id: "notice_18"
       time: "18:00"
@@ -125,7 +129,7 @@ soul:
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 情歌"
+      message: "playlist 官方 华语怀旧金曲"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
@@ -291,8 +295,8 @@ qq_music:
     accompaniment_switch: '//android.widget.ImageView[@content-desc="K歌"]'
     accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
     accompaniment_text_off: '//android.widget.TextView[@text="已关闭伴唱模式"]'
-    accompaniment_button_on: '//android.widget.ImageView[@content-desc="已开启伴唱模式"]'
-    accompaniment_button_off: '//android.widget.ImageView[@content-desc="已关闭伴唱模式"]'
+    accompaniment_button_on: '//android.widget.ImageView[@content-desc="伴唱已开启"]'
+    accompaniment_button_off: '//android.widget.ImageView[@content-desc="伴唱已关闭"]'
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
     radar_song: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.LinearLayout/android.widget.Button'
