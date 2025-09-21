@@ -140,6 +140,11 @@ class QQMusicHandler(AppHandler, Singleton):
         search_entry = self.try_find_element_plus('search_entry', log=False)
         if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
             search_entry.click()
+        else:
+            self.logger.info(f"Not in search mode, go to home page")
+            self.navigate_to_home()
+            search_entry = self.wait_for_element_clickable_plus('search_entry')
+            search_entry.click()
 
         clear_search = self.try_find_element_plus('clear_search', log=False)
         if clear_search:

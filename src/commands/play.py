@@ -50,7 +50,7 @@ class PlayCommand(BaseCommand):
 
         song_element = self.handler.wait_for_element_clickable_plus('result_item')
         song_element.click()
-        self.handler.logger.info(f"Select first song")
+        self.handler.logger.info("Select first song")
 
         return playing_info
 

@@ -157,7 +157,7 @@ class TitleManager(Singleton):
         """
         try:
             # 获取当前房间notice
-            notice_element = self.handler.try_find_element_plus('chat_room_notice', log=False)
+            notice_element = self.handler.wait_for_element_plus('chat_room_notice')
             if not notice_element:
                 self.logger.info("Chat room notice element not found, skipping notice check")
                 return {'skipped': 'Notice element not found'}
