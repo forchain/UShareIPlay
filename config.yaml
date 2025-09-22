@@ -15,29 +15,9 @@ soul:
 
   # Initial timers configuration
   initial_timers:
-    - id: "theme_sleep"
-      time: "22:00"
-      message: "theme 助眠"
-      repeat: true
-    - id: "theme_work_morning"
-      time: "09:30"
-      message: "theme 🐮🐎"
-      repeat: true
-    - id: "theme_lunch_break"
-      time: "11:30"
-      message: "theme 午休"
-      repeat: true
-    - id: "theme_work_afternoon"
-      time: "12:50"
-      message: "theme 🐮🐎"
-      repeat: true
-    - id: "theme_home"
-      time: "17:50"
-      message: "theme 享乐"
-      repeat: true
     - id: "notice_0"
       time: "00:00"
-      message: "notice hello, thank you, are you ok?"
+      message: "notice sorry, hello, excuse me"
       repeat: true
     - id: "help_1"
       time: "01:00"
@@ -75,21 +55,37 @@ soul:
       time: "09:00"
       message: "play"
       repeat: true
+    - id: "acc_9"
+      time: "09:00"
+      message: "acc 0"
+      repeat: true
+    - id: "theme_work_morning"
+      time: "09:30"
+      message: "theme 🐮🐎"
+      repeat: true
     - id: "playlist_10"
       time: "10:00"
       message: "playlist 红心雷达"
       repeat: true
     - id: "playlist_11"
-      time: "10:00"
+      time: "11:00"
       message: "playlist 粤语经典 官方"
+      repeat: true
+    - id: "theme_lunch_break"
+      time: "11:30"
+      message: "theme 午休"
       repeat: true
     - id: "playlist_12"
       time: "12:00"
       message: "playlist 深度专注 官方"
       repeat: true
     - id: "notice_12"
-      time: "10:00"
-      message: "notice sorry, hello, excuse me"
+      time: "12:00"
+      message: "notice hello, thank you, are you ok?"
+      repeat: true
+    - id: "theme_work_afternoon"
+      time: "13:00"
+      message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_13"
       time: "13:00"
@@ -111,6 +107,10 @@ soul:
       time: "17:00"
       message: "playlist 官方 情歌"
       repeat: true
+    - id: "theme_home"
+      time: "18:00"
+      message: "theme 享乐"
+      repeat: true
     - id: "playlist_18"
       time: "18:00"
       message: "playlist Jazz 官方"
@@ -126,6 +126,14 @@ soul:
     - id: "playlist_21"
       time: "21:00"
       message: "playlist 官方 华语怀旧金曲"
+      repeat: true
+    - id: "theme_sleep"
+      time: "22:00"
+      message: "theme 助眠"
+      repeat: true
+    - id: "acc_sleep"
+      time: "22:00"
+      message: "acc 1"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
