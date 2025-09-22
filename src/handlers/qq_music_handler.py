@@ -140,11 +140,6 @@ class QQMusicHandler(AppHandler, Singleton):
         search_entry = self.try_find_element_plus('search_entry', log=False)
         if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
             search_entry.click()
-        else:
-            self.logger.info(f"Not in search mode, go to home page")
-            self.navigate_to_home()
-            search_entry = self.wait_for_element_clickable_plus('search_entry')
-            search_entry.click()
 
         clear_search = self.try_find_element_plus('clear_search', log=False)
         if clear_search:
@@ -153,9 +148,17 @@ class QQMusicHandler(AppHandler, Singleton):
 
         search_box = self.try_find_element_plus('search_box', log=False)
         if not search_box:
-            self.press_back()
-            self.logger.error(f"Cannot find search box")
-            return False
+            self.logger.info(f"Not in search mode, go to home page")
+            self.navigate_to_home()
+            search_entry = self.wait_for_element_clickable_plus('search_entry')
+            if not search_entry:
+                self.logger.error(f"Failed to find search entry")
+                return False
+            search_entry.click()
+            search_box = self.wait_for_element_clickable_plus('search_box')
+            if not search_box:
+                self.logger.error(f"Failed to find search box")
+                return False
         try:
             search_box.click()
         except StaleElementReferenceException as e:
