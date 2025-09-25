@@ -3,8 +3,8 @@ import os
 import time
 import traceback
 from datetime import datetime
+from typing import Optional, Tuple
 
-import selenium
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException, TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
@@ -12,7 +12,6 @@ from selenium.webdriver.common.actions import interaction
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.remote.webelement import WebElement
-from typing import Optional, Tuple
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -133,10 +132,11 @@ class AppHandler:
         except WebDriverException as e:
             self.logger.error(f"Trace: {traceback.format_exc()}")
             self.logger.error(f"Error: {str(e)}")
-            
+
             # Check if this is a UiAutomator2 crash and handle it
             if self._is_uiautomator2_crash(e):
-                self.logger.warning("Detected UiAutomator2 server crash in wait_for_element_plus, attempting recovery...")
+                self.logger.warning(
+                    "Detected UiAutomator2 server crash in wait_for_element_plus, attempting recovery...")
                 if self._handle_uiautomator2_crash():
                     # Retry the operation after successful recovery
                     try:
@@ -152,7 +152,7 @@ class AppHandler:
                 else:
                     self.logger.error("UiAutomator2 recovery failed")
                     return None
-            
+
             return None
 
     def is_element_clickable(self, element):
@@ -200,7 +200,7 @@ class AppHandler:
         except WebDriverException as e:
             self.logger.error(f"Trace: {traceback.format_exc()}")
             self.logger.error(f"Error: {str(e)}")
-            
+
             # Check if this is a UiAutomator2 crash and handle it
             if self._is_uiautomator2_crash(e):
                 self.logger.warning("Detected UiAutomator2 server crash, attempting recovery...")
@@ -219,7 +219,7 @@ class AppHandler:
                 else:
                     self.logger.error("UiAutomator2 recovery failed")
                     return None
-            
+
             return None
 
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
@@ -244,7 +244,7 @@ class AppHandler:
         except WebDriverException as e:
             self.logger.error(f"Trace: {traceback.format_exc()}")
             self.logger.error(f"Error: {str(e)}")
-            
+
             # Check if this is a UiAutomator2 crash and handle it
             if self._is_uiautomator2_crash(e):
                 self.logger.warning("Detected UiAutomator2 server crash, attempting recovery...")
@@ -262,7 +262,7 @@ class AppHandler:
                 else:
                     self.logger.error("UiAutomator2 recovery failed")
                     return None
-            
+
             return None
 
     def switch_to_app(self):
@@ -286,7 +286,7 @@ class AppHandler:
             else:
                 self.logger.error(f"Failed to switch to app: {str(e)}")
                 return False
-        
+
         time.sleep(0.1)
         return True
 
@@ -416,7 +416,8 @@ class AppHandler:
             except WebDriverException as find_e:
                 # Check if this is a UiAutomator2 crash and handle it
                 if self._is_uiautomator2_crash(find_e):
-                    self.logger.warning("Detected UiAutomator2 server crash in try_find_element_plus, attempting recovery...")
+                    self.logger.warning(
+                        "Detected UiAutomator2 server crash in try_find_element_plus, attempting recovery...")
                     if self._handle_uiautomator2_crash():
                         # Retry the operation after successful recovery
                         try:
@@ -433,7 +434,8 @@ class AppHandler:
                         return None
                 else:
                     if log:
-                        self.logger.warning(f"Failed to find element '{element_key}' with value '{value}': {str(find_e)}")
+                        self.logger.warning(
+                            f"Failed to find element '{element_key}' with value '{value}': {str(find_e)}")
                     return None
             except Exception as find_e:
                 if log:
@@ -674,7 +676,177 @@ class AppHandler:
             self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
             return None
 
-    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10) -> Tuple[Optional[str], Optional[WebElement]]:
+    def _perform_swipe(self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300) -> bool:
+        """在指定坐标执行一次滑动。
+        Args:
+            start_x: 起点 X
+            start_y: 起点 Y
+            end_x: 终点 X
+            end_y: 终点 Y
+            duration_ms: 按下到抬起的持续时间（毫秒）
+        Returns:
+            bool: 是否执行成功
+        """
+        try:
+            actions = ActionChains(self.driver)
+            actions.w3c_actions = ActionBuilder(
+                self.driver,
+                mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
+            )
+            actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
+            actions.w3c_actions.pointer_action.pointer_down()
+            # 将持续时间拆分为多个小步，提升稳定性
+            steps = max(1, int(duration_ms / 50))
+            delta_x = (end_x - start_x) / steps
+            delta_y = (end_y - start_y) / steps
+            current_x = start_x
+            current_y = start_y
+            for _ in range(steps):
+                current_x += delta_x
+                current_y += delta_y
+                actions.w3c_actions.pointer_action.move_to_location(int(current_x), int(current_y))
+                actions.w3c_actions.pointer_action.pause(0.05)
+            actions.w3c_actions.pointer_action.pointer_up()
+            actions.perform()
+            return True
+        except Exception:
+            self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
+            return False
+
+    def scroll_container_until_element(self, element_key: str, container_key: str, direction: str = 'up') -> Tuple[
+        Optional[str], Optional[WebElement]]:
+        """在指定容器内滚动，直到找到目标元素或无法继续滚动。
+
+        参数：
+            element_key: 目标元素在配置中的 key（应为容器的子元素）
+            container_key: 容器元素在配置中的 key
+            direction: 滚动方向，支持 'up'|'down'|'left'|'right'，默认 'up'（自下向上）
+
+        策略：
+            以 'up' 为例：每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
+            若找到则返回 (element_key, element)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界，返回 (None, None)。
+
+        返回：
+            (key, element) 或 (None, None)
+        """
+        try:
+            # 获取容器
+            container = self.wait_for_element_clickable_plus(container_key)
+            if not container:
+                self.logger.warning(f"scroll_container_until_element: 容器未找到: {container_key}")
+                return None, None
+
+            # 方向规范化
+            valid_dirs = {'up', 'down', 'left', 'right'}
+            if direction not in valid_dirs:
+                self.logger.warning(f"scroll_container_until_element: 非法方向 {direction}，使用默认 'up'")
+                direction = 'up'
+
+            # 预计算容器可视坐标
+            loc = container.location
+            size = container.size
+            left = int(loc['x'])
+            top = int(loc['y'])
+            width = int(size['width'])
+            height = int(size['height'])
+
+            # 单次滑动的起止点计算（默认 'up'）
+            def compute_points(dir_name: str):
+                if dir_name == 'up':
+                    start_x = left + int(width * 0.5)
+                    start_y = top + int(height * 0.8)
+                    end_x = left + int(width * 0.5)
+                    end_y = top + int(height * 0.1)
+                    return start_x, start_y, end_x, end_y
+                if dir_name == 'down':
+                    start_x = left + int(width * 0.5)
+                    start_y = top + int(height * 0.2)
+                    end_x = left + int(width * 0.5)
+                    end_y = top + int(height * 0.9)
+                    return start_x, start_y, end_x, end_y
+                if dir_name == 'left':
+                    start_x = left + int(width * 0.8)
+                    start_y = top + int(height * 0.5)
+                    end_x = left + int(width * 0.1)
+                    end_y = top + int(height * 0.5)
+                    return start_x, start_y, end_x, end_y
+                # right
+                start_x = left + int(width * 0.2)
+                start_y = top + int(height * 0.5)
+                end_x = left + int(width * 0.9)
+                end_y = top + int(height * 0.5)
+                return start_x, start_y, end_x, end_y
+
+            # 页面无变化检测：通过 page_source 哈希判断
+            def snapshot() -> int:
+                try:
+                    return hash(self.driver.page_source)
+                except Exception:
+                    return 0
+
+            # 开始循环滑动查找
+            prev_hash = snapshot()
+            stable_rounds = 0
+            max_stable_rounds = 2  # 连续多次无变化则认为到达边界
+            max_swipes = 50
+
+            for _ in range(max_swipes):
+                # 尝试在容器内查找目标
+                found = self.find_child_element_plus(container, element_key)
+                if found:
+                    return element_key, found
+
+                # 计算滑动坐标并执行滑动
+                sx, sy, ex, ey = compute_points(direction)
+                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=400)
+                if not ok:
+                    self.logger.warning("scroll_container_until_element: 滑动失败，终止")
+                    return None, None
+
+                time.sleep(0.35)
+
+                # 滑动后再试一次（元素可能已进入可视区）
+                found = self.find_child_element_plus(container, element_key)
+                if found:
+                    return element_key, found
+
+                # 判断是否到底/到边（页面无变化）
+                cur_hash = snapshot()
+                if cur_hash == prev_hash:
+                    stable_rounds += 1
+                else:
+                    stable_rounds = 0
+                    prev_hash = cur_hash
+
+                if stable_rounds >= max_stable_rounds:
+                    self.logger.info("scroll_container_until_element: 已到达边界，未找到目标元素")
+                    return None, None
+
+            self.logger.info("scroll_container_until_element: 达到最大滑动次数，未找到目标元素")
+            return None, None
+        except WebDriverException as e:
+            # UiAutomator2 崩溃处理
+            if self._is_uiautomator2_crash(e):
+                self.logger.warning(
+                    "Detected UiAutomator2 server crash in scroll_container_until_element, attempting recovery...")
+                if self._handle_uiautomator2_crash():
+                    try:
+                        return self.scroll_container_until_element(element_key, container_key, direction)
+                    except Exception as retry_e:
+                        self.logger.error(f"Retry failed after UiAutomator2 recovery: {str(retry_e)}")
+                        return None, None
+                else:
+                    self.logger.error("UiAutomator2 recovery failed in scroll_container_until_element")
+                    return None, None
+            else:
+                self.logger.error(f"scroll_container_until_element error: {traceback.format_exc()}")
+                return None, None
+        except Exception:
+            self.logger.error(f"scroll_container_until_element error: {traceback.format_exc()}")
+            return None, None
+
+    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10) -> Tuple[
+        Optional[str], Optional[WebElement]]:
         """
         等待任意一个元素出现。
 
@@ -721,7 +893,8 @@ class AppHandler:
         except WebDriverException as e:
             # Check if this is a UiAutomator2 crash and handle it
             if self._is_uiautomator2_crash(e):
-                self.logger.warning("Detected UiAutomator2 server crash in wait_for_any_element_plus, attempting recovery...")
+                self.logger.warning(
+                    "Detected UiAutomator2 server crash in wait_for_any_element_plus, attempting recovery...")
                 if self._handle_uiautomator2_crash():
                     # Retry the operation after successful recovery
                     try:
@@ -776,32 +949,32 @@ class AppHandler:
         """
         try:
             self.logger.warning("UiAutomator2 server crashed, attempting to reinitialize driver...")
-            
+
             # Close the current driver
             try:
                 self.driver.quit()
             except Exception as e:
                 self.logger.debug(f"Error closing driver: {str(e)}")
-            
+
             # Wait a moment for cleanup
             time.sleep(2)
-            
+
             # Reinitialize the driver using the controller's method
             self.driver = self.controller._init_driver()
-            
+
             # Update the driver reference in the controller
             self.controller.driver = self.driver
-            
+
             # Update driver references in handlers
             self.controller.soul_handler.driver = self.driver
             self.controller.music_handler.driver = self.driver
-            
+
             # Switch back to the app
             self.switch_to_app()
-            
+
             self.logger.info("Driver reinitialization completed successfully")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Failed to reinitialize driver: {str(e)}")
             return False
