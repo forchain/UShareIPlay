@@ -63,7 +63,10 @@ class NoticeCommand(BaseCommand):
             
             # 如果notice处理完成，发送消息通知
             if result and 'success' in result:
-                notice_content = result.get('success', '').replace('Notice restored to: ', '')
+                # Extract notice content from success message
+                success_message = result.get('success', '')
+                notice_content = str(success_message).replace('Notice restored to: ', '')
+                
                 self.handler.logger.info(f'Notice update completed: {notice_content}')
                 self.handler.send_message(f"Notice updated to: {notice_content}")
 
