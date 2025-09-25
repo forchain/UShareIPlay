@@ -124,11 +124,6 @@ class QQMusicHandler(AppHandler, Singleton):
             self.press_back()
             self.logger.info(f"minimize playing window")
 
-        minimize_player = self.try_find_element_plus('minimize_player', log=False)
-        if minimize_player:
-            minimize_player.click()
-            self.logger.info(f"minimize player")
-
         play_all_singer = self.try_find_element_plus('play_all_singer', log=False)
         play_all_album = self.try_find_element_plus('play_all_album', log=False)
         play_all_playlist = self.try_find_element_plus('play_all_playlist', log=False)

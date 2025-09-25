@@ -40,7 +40,7 @@ class AccompanimentCommand(BaseCommand):
         self.handler.press_back()
         # 1. 查找四个控件中的任意一个，找不到说明没有在播放
         found_key, found_element = self.handler.wait_for_any_element_plus([
-            'accompaniment_text_off', 'accompaniment_text_on', 'playing_bar', 'accompaniment_switch'
+            'accompaniment_text_off', 'accompaniment_text_on', 'playing_bar', 'more_entry'
         ])
 
         if not found_element:
@@ -55,17 +55,31 @@ class AccompanimentCommand(BaseCommand):
                 return {'error': 'Failed to click playing bar'}
 
             found_key, found_element = self.handler.wait_for_any_element_plus([
-                'accompaniment_text_off', 'accompaniment_text_on', 'accompaniment_switch'
+                'accompaniment_text_off', 'accompaniment_text_on', 'more_entry'
             ])
 
             if not found_element:
                 return {'error': 'Failed to find accompaniment controls after entering playing page'}
 
         # 3. 如果找到的是accompaniment_switch，说明此前还没激活过伴唱模式
-        if found_key == 'accompaniment_switch':
-            self.handler.logger.info("Found accompaniment switch, activating accompaniment mode")
+        if found_key == 'more_entry':
+
+            accompaniment_switch = self.handler.try_find_element_plus('accompaniment_switch')
+            # if disabled, return
+            if accompaniment_switch and accompaniment_switch.get_attribute('enabled') == 'false':
+                return {'error': 'Accompaniment mode is disabled'}
+
+            self.handler.logger.info("Found accompaniment more menu entry, activating accompaniment mode")
             if not self.handler.click_element_at(found_element):
                 return {'error': 'Failed to click accompaniment switch'}
+
+            # 查找伴唱菜单
+            button_key, found_button = self.handler.scroll_container_until_element('accompaniment_menu',
+                                                                                   'menu_container')
+            if found_button is None:
+                return {'error': 'Failed to find accompaniment menu'}
+            found_button.click()
+            self.handler.logger.info("Clicked accompaniment menu")
 
             # 查找伴唱状态按钮
             button_key, found_button = self.handler.wait_for_any_element_plus([
@@ -73,7 +87,7 @@ class AccompanimentCommand(BaseCommand):
             ])
 
             if not found_button:
-                return {'error': 'Failed to find accompaniment state buttons'}
+                return {'error': 'Failed to find accompaniment menu'}
 
             # 根据找到的按钮类型确定当前状态
             current_state = button_key == 'accompaniment_button_on'  # True表示已开启

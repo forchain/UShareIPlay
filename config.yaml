@@ -41,11 +41,11 @@ soul:
       repeat: true
     - id: "playlist_6"
       time: "06:00"
-      message: "playlist 官方 Lofi&Chill"
+      message: "playlist 官方 冥想瑜伽"
       repeat: true
     - id: "playlist_7"
       time: "07:00"
-      message: "playlist 官方 微光森林"
+      message: "playlist 官方 浪漫主义"
       repeat: true
     - id: "playlist_8"
       time: "08:00"
@@ -296,7 +296,7 @@ qq_music:
     current_singer: "android:id/text"
     playing_favourite: '//android.widget.Button[@content-desc="收藏"]'
     playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
-    accompaniment_switch: '//android.widget.ImageView[@content-desc="K歌"]'
+    accompaniment_switch: '//android.view.ViewGroup[@content-desc="K歌"]/android.widget.ImageView'
     accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
     accompaniment_text_off: '//android.widget.TextView[@text="已关闭伴唱模式"]'
     accompaniment_button_on: '//android.widget.ImageView[@content-desc="伴唱已开启"]'
@@ -335,9 +335,11 @@ qq_music:
     playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
     play_next: '//android.widget.ImageView[@content-desc="下一首"]'
 
-    minimize_player: 'com.tencent.qqmusic:id/cp9'
-
     cancel_drawer: '//android.widget.TextView[@text="取消"]'
+
+    more_entry: '//android.widget.ImageButton[@content-desc="更多"]'
+    menu_container: '//androidx.recyclerview.widget.RecyclerView'
+    accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
