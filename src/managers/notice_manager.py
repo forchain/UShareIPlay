@@ -138,7 +138,7 @@ class NoticeManager(Singleton):
                 close_notice.click()
                 
             self.logger.info(f"成功设置notice: {notice}")
-            return {'success': True}
+            return {'success': f'Notice restored to: {notice}'}
             
         except Exception:
             self.logger.error(f"设置notice时出错: {traceback.format_exc()}")
