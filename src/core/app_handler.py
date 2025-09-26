@@ -1166,21 +1166,18 @@ class AppHandler:
                 return found_key, found_element
 
             elif found_key in back_keys:
-                self.logger.info(f"找到返回按钮: {found_key}，点击返回")
                 if self.click_element_at(found_element):
-                    time.sleep(1)  # 等待页面切换
+                    self.logger.info(f"找到返回按钮: {found_key}，点击返回")
                 else:
                     self.logger.warning(f"点击返回按钮失败: {found_key}")
                     # 尝试系统返回键作为备选
                     self.press_back()
-                    time.sleep(1)
 
             elif found_key in interference_keys:
                 self.logger.info(f"发现干扰元素: {found_key}，按系统返回键隐藏")
                 if not self.press_back():
                     self.logger.error("按系统返回键失败")
                     return None, None
-                time.sleep(1)
 
             elif found_key == home_key:
                 self.logger.warning(f"已回到首页: {home_key}，无法继续返回")
