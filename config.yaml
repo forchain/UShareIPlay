@@ -4,14 +4,14 @@ soul:
   # default_party_id: "FM18633292"
   default_party_id: "FM15321640"
   default_notice: "U Share I Play\n分享音乐 享受快乐"
-  
+
   # 系统默认notice列表，如果房间notice包含这些内容说明被系统重置了
   system_default_notices:
     - "弹唱大会"
     - "Souler们在随便聊聊ing"
-  
+
   # 派对智能重启配置
-  party_restart_minutes: 1200        # 触发重启的时间（分钟），默认20小时
+  party_restart_minutes: 1200 # 触发重启的时间（分钟），默认20小时
 
   # Initial timers configuration
   initial_timers:
@@ -166,7 +166,7 @@ soul:
     party_hall: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='派对大厅']"
     end_party: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='关闭派对']"
     confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="关闭房间"]'
-    more_menu_container: 'cn.soulapp.android:id/moreRootView'
+    more_menu_container: "cn.soulapp.android:id/moreRootView"
     search_entry: "cn.soulapp.android:id/ivSearch"
     search_box: "cn.soulapp.android:id/commonViewEtSearch"
     search_button: "cn.soulapp.android:id/flRight"
@@ -196,91 +196,91 @@ soul:
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
     claim_reward: "cn.soulapp.android:id/tvCheckReward" # 立即领取/已领取
-    room_topic: 'cn.soulapp.android:id/tvStudyRoomTitle'
-    edit_topic_entry: 'cn.soulapp.android:id/tvCustomTopic'
-    edit_topic_input: 'cn.soulapp.android:id/et_input_message'
-    edit_topic_confirm: 'cn.soulapp.android:id/tvConfim'
-    little_assistant: 'cn.soulapp.android:id/ivLittleAssistant'
-    edit_notice_entry: 'cn.soulapp.android:id/ivEdit'
+    room_topic: "cn.soulapp.android:id/tvStudyRoomTitle"
+    edit_topic_entry: "cn.soulapp.android:id/tvCustomTopic"
+    edit_topic_input: "cn.soulapp.android:id/et_input_message"
+    edit_topic_confirm: "cn.soulapp.android:id/tvConfim"
+    little_assistant: "cn.soulapp.android:id/ivLittleAssistant"
+    edit_notice_entry: "cn.soulapp.android:id/ivEdit"
     customize_notice_button: '//android.view.View[@text="自定义"]'
     customize_notice_disabled: '//android.view.View[@text="修改自定义"]'
-    edit_notice_input: '//android.widget.EditText'
+    edit_notice_input: "//android.widget.EditText"
     edit_notice_confirm: '//android.view.View[@text="确认提交"]'
-    empty_seat: 'cn.soulapp.android:id/leftTvDefaultName'
+    empty_seat: "cn.soulapp.android:id/leftTvDefaultName"
     up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
-    edit_announcement_entry: 'cn.soulapp.android:id/ivEdit'
+    edit_announcement_entry: "cn.soulapp.android:id/ivEdit"
     customize_announcement_button: '//android.view.View[@text="自定义"]'
-    edit_announcement_input: '//android.widget.EditText'
+    edit_announcement_input: "//android.widget.EditText"
     edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
-    confirm_seat: 'cn.soulapp.android:id/tvOperation'
-    chat_room_title: 'cn.soulapp.android:id/tvChatRoomTitle'
-    chat_room_notice: 'cn.soulapp.android:id/tv_notice'
-    title_edit_entry: 'cn.soulapp.android:id/iv_edit'
-    title_edit_input: 'cn.soulapp.android:id/et_content'
-    title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
-    go_back: 'cn.soulapp.android:id/iv_back'
+    confirm_seat: "cn.soulapp.android:id/tvOperation"
+    chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
+    chat_room_notice: "cn.soulapp.android:id/tv_notice"
+    title_edit_entry: "cn.soulapp.android:id/iv_edit"
+    title_edit_input: "cn.soulapp.android:id/et_content"
+    title_edit_confirm: "cn.soulapp.android:id/tv_confirm"
+    go_back: "cn.soulapp.android:id/iv_back"
     go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
-    user_count: 'cn.soulapp.android:id/tvUserCount' # 6人
-    seat_desk: 'cn.soulapp.android:id/userRoot' #  > left_seat, right_seat
-    left_seat: 'cn.soulapp.android:id/leftUserView' # > left_state
-    left_state: 'cn.soulapp.android:id/leftClState' # > left_label
-    right_seat: 'cn.soulapp.android:id/rightUserView' # > right_state
-    right_state: 'cn.soulapp.android:id/rightClState' # > right_label
-    left_label: 'cn.soulapp.android:id/leftTvLabelH' #  群主, 管理, 1,3,5,7,9,11
-    right_label: 'cn.soulapp.android:id/rightTvLabelH' # 群主, 管理, 2,4,6,8,10,12
-    luck_pack: 'cn.soulapp.android:id/tvLbLabelPack' # 福袋 / 2个奖励
-    luck_item: 'cn.soulapp.android:id/name' # 初级福袋/中级福袋/高级福袋
-    use_pack: 'cn.soulapp.android:id/tvUse' # 使用
-    soul_power: 'cn.soulapp.android:id/soulPower' # +12灵魂力
-    give_gift: 'cn.soulapp.android:id/btnSend' # 赠送
-    gift_tool: 'cn.soulapp.android:id/ivGift'
+    user_count: "cn.soulapp.android:id/tvUserCount" # 6人
+    seat_desk: "cn.soulapp.android:id/userRoot" #  > left_seat, right_seat
+    left_seat: "cn.soulapp.android:id/leftUserView" # > left_state
+    left_state: "cn.soulapp.android:id/leftClState" # > left_label
+    right_seat: "cn.soulapp.android:id/rightUserView" # > right_state
+    right_state: "cn.soulapp.android:id/rightClState" # > right_label
+    left_label: "cn.soulapp.android:id/leftTvLabelH" #  群主, 管理, 1,3,5,7,9,11
+    right_label: "cn.soulapp.android:id/rightTvLabelH" # 群主, 管理, 2,4,6,8,10,12
+    luck_pack: "cn.soulapp.android:id/tvLbLabelPack" # 福袋 / 2个奖励
+    luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋
+    use_pack: "cn.soulapp.android:id/tvUse" # 使用
+    soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
+    give_gift: "cn.soulapp.android:id/btnSend" # 赠送
+    gift_tool: "cn.soulapp.android:id/ivGift"
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
-    follower_name: 'cn.soulapp.android:id/tvName' # Outlier
-    follower_message: 'cn.soulapp.android:id/tvFollowUserContent' # 你关注的Outlier进入房间啦，打个招呼吧～
-    greet_follower: 'cn.soulapp.android:id/tvFollowUserNotify' # 打招呼
-    send_gift: 'cn.soulapp.android:id/tv_send_four_leaf' # 送礼物
-    follow_status: 'cn.soulapp.android:id/tv_follow' # 已关注/关注
-    focus_count: 'cn.soulapp.android:id/tvStudyRoomDesc' # 1人专注中
-    close_app: 'android:id/aerr_close' # Close app
-    seat_off: 'cn.soulapp.android:id/tvSeatDownUp' # 抱下
-    souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
-    user_name: 'cn.soulapp.android:id/tvUserName' # Joyer
-    online_users: 'cn.soulapp.android:id/rvBannedUsers' # 在线用户
-    bottom_drawer: 'cn.soulapp.android:id/action_bar_root'
-    online_user: 'cn.soulapp.android:id/tvName' # Outlier
+    follower_name: "cn.soulapp.android:id/tvName" # Outlier
+    follower_message: "cn.soulapp.android:id/tvFollowUserContent" # 你关注的Outlier进入房间啦，打个招呼吧～
+    greet_follower: "cn.soulapp.android:id/tvFollowUserNotify" # 打招呼
+    send_gift: "cn.soulapp.android:id/tv_send_four_leaf" # 送礼物
+    follow_status: "cn.soulapp.android:id/tv_follow" # 已关注/关注
+    focus_count: "cn.soulapp.android:id/tvStudyRoomDesc" # 1人专注中
+    close_app: "android:id/aerr_close" # Close app
+    seat_off: "cn.soulapp.android:id/tvSeatDownUp" # 抱下
+    souler_name: "cn.soulapp.android:id/tv_name" # Outlier
+    user_name: "cn.soulapp.android:id/tvUserName" # Joyer
+    online_users: "cn.soulapp.android:id/rvBannedUsers" # 在线用户
+    bottom_drawer: "cn.soulapp.android:id/action_bar_root"
+    online_user: "cn.soulapp.android:id/tvName" # Outlier
     close_notice: '//android.view.View[@text="关闭公告"]'
     search_back: "cn.soulapp.android:id/ivSearchBack"
     close_chat: "cn.soulapp.android:id/tv_btn_close" # 先不聊了
     close_more_menu: "cn.soulapp.android:id/ivBack" # more_menu 的关闭按钮
     activity_back: '//android.widget.Image[@text="此图片未加标签。打开右上角的“更多选项”菜单即可获取图片说明。"]' # 活动页面, 天赋共鸣，群主红包， ...
-    close_button: 'cn.soulapp.android:id/ivClose' # 关闭按钮, X 按钮
-    h5_back: 'cn.soulapp.android:id/h5_title_back' # 关闭H5页面
-    group_back: 'cn.soulapp.android:id/fans_back' # 关闭我的派对群页面
-    online_drawer: 'cn.soulapp.android:id/touch_close' # 在线用户抽屉
-    share_drawer: 'cn.soulapp.android:id/slide_bar' # 分享至好友抽屉
-    input_drawer: 'cn.soulapp.android:id/clSecondContainer' # 输入框抽屉
-    room_id: 'cn.soulapp.android:id/tvRoomId'
-    room_card: 'cn.soulapp.android:id/roomCard'
-    party_hall_back: 'cn.soulapp.android:id/img_back'
+    close_button: "cn.soulapp.android:id/ivClose" # 关闭按钮, X 按钮
+    h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
+    group_back: "cn.soulapp.android:id/fans_back" # 关闭我的派对群页面
+    online_drawer: "cn.soulapp.android:id/touch_close" # 在线用户抽屉
+    share_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉
+    input_drawer: "cn.soulapp.android:id/clSecondContainer" # 输入框抽屉
+    room_id: "cn.soulapp.android:id/tvRoomId"
+    room_card: "cn.soulapp.android:id/roomCard"
+    party_hall_back: "cn.soulapp.android:id/img_back"
     claim_reward_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvCheckReward" and @text="立即领取"]'
-    party_restore_drawer: 'cn.soulapp.android:id/design_bottom_sheet' # 我创建过的派对
-    receive_gift: 'cn.soulapp.android:id/ivReceiveGift' # 获得建群礼>立即领取
-    create_room_entry: 'cn.soulapp.android:id/btnCreateRoom' # 推荐>创建派对
+    party_restore_drawer: "cn.soulapp.android:id/design_bottom_sheet" # 我创建过的派对
+    receive_gift: "cn.soulapp.android:id/ivReceiveGift" # 获得建群礼>立即领取
+    create_room_entry: "cn.soulapp.android:id/btnCreateRoom" # 推荐>创建派对
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
-    close_notice_1: 'cn.soulapp.android:id/iv_close_bottom' # 关注成功
-    go_back_2: 'cn.soulapp.android:id/leftImage' # 群聊返回
+    close_notice_1: "cn.soulapp.android:id/iv_close_bottom" # 关注成功
+    go_back_2: "cn.soulapp.android:id/leftImage" # 群聊返回
     party_ended: '//android.view.View[@resource-id="app"]/android.view.View/android.view.View[1]/android.view.View[1]' # 派对已关闭 > X
     confirm_close_1: '//android.widget.ImageView[@resource-id="cn.soulapp.android:id/img_close"]' # 我知道了
     confirm_close_2: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/confirm"]' # 我知道了
     confirm_close_3: '//android.widget.TextView[@text="我知道了"]'
     confirm_close_4: '//android.widget.TextView[@text="知道了"]'
     confirm_close_5: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/btn_sure"]'
-    confirm_close_6: 'cn.soulapp.android:id/tv_cancel'
+    confirm_close_6: "cn.soulapp.android:id/tv_cancel"
     confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
-    bottom_drawer_1: 'cn.soulapp.android:id/tslLayout' # 底部抽屉
+    bottom_drawer_1: "cn.soulapp.android:id/tslLayout" # 底部抽屉
     bag_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvTab" and @text="背包"]' # 背包
-
+    home_nav: "cn.soulapp.android:id/main_tab_planet" #  星球
 
 qq_music:
   package_name: "com.tencent.qqmusic"
@@ -288,8 +288,9 @@ qq_music:
   elements:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
+    clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
-    result_item: 'com.tencent.qqmusic:id/item_layout'
+    result_item: "com.tencent.qqmusic:id/item_layout"
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     current_song: "android:id/title"
@@ -311,10 +312,10 @@ qq_music:
     singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'
     song_tab: '//android.widget.RelativeLayout[@content-desc="歌曲 按钮"]'
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
-    album_result: '//android.widget.ListView/android.view.ViewGroup//android.widget.TextView'
+    album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
-    playlist_result: '//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView'
-    singer_text: '//android.widget.ListView//android.widget.TextView'
+    playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
+    singer_text: "//android.widget.ListView//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
@@ -338,8 +339,9 @@ qq_music:
     cancel_drawer: '//android.widget.TextView[@text="取消"]'
 
     more_entry: '//android.widget.ImageButton[@content-desc="更多"]'
-    menu_container: '//androidx.recyclerview.widget.RecyclerView'
+    menu_container: "//androidx.recyclerview.widget.RecyclerView"
     accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
+    home_nav: '//android.view.ViewGroup[@content-desc="首页"]'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
@@ -439,7 +441,7 @@ commands:
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
     response_template: "{title}"
-    
+
     error_template: "Failed to change title, because {error}"
   - prefix: "theme"
     response_template: "{theme}"
@@ -467,9 +469,9 @@ logging:
   directory: "../logs"
 
 device:
-  #name: "554b4e4745413498"
-  name: "192.168.50.151:5555"
+  name: "554b4e4745413498"
+  #  name: "192.168.50.151:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
-  no_reset: true 
+  no_reset: true
