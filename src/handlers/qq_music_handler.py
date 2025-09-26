@@ -114,61 +114,44 @@ class QQMusicHandler(AppHandler, Singleton):
             return False
         self.logger.info(f"Switched to QQ Music app")
 
-        # Check if we're already in search mode
-        playlist_header = self.try_find_element_plus('playlist_header', log=False)
-        play_next = self.try_find_element_plus('play_next', log=False)
-        minimize_screen = self.try_find_element_plus('minimize_screen', log=False)
-        playing_record = self.try_find_element_plus('playing_record', log=False)
-        cancel_drawer = self.try_find_element_plus('cancel_drawer', log=False)
-        if playlist_header or play_next or minimize_screen or playing_record or cancel_drawer:
-            self.press_back()
-            self.logger.info(f"minimize playing window")
-
-        play_all_singer = self.try_find_element_plus('play_all_singer', log=False)
-        play_all_album = self.try_find_element_plus('play_all_album', log=False)
-        play_all_playlist = self.try_find_element_plus('play_all_playlist', log=False)
-        if play_all_singer or play_all_album or play_all_playlist:
-            self.press_back()
-            self.logger.info(f"Found play all button, go back")
-
-        go_back = self.try_find_element_plus('go_back')
-        search_entry = self.try_find_element_plus('search_entry', log=False)
-        if search_entry and not go_back:  # must check go_back!, otherwise it might be a cached search entry
-            search_entry.click()
-
-        clear_search = self.try_find_element_plus('clear_search', log=False)
-        if clear_search:
-            clear_search.click()
-            self.logger.info(f"Clear search")
-
-        search_box = self.try_find_element_plus('search_box', log=False)
-        if not search_box:
-            self.logger.info(f"Not in search mode, go to home page")
-            self.navigate_to_home()
-            search_entry = self.wait_for_element_clickable_plus('search_entry')
-            if not search_entry:
-                self.logger.error(f"Failed to find search entry")
+        key, element = self.wait_for_any_element_plus(
+            ['clear_search', 'search_entry', 'go_back', 'playlist_header', 'play_next', 'minimize_screen',
+             'playing_record', 'cancel_drawer', 'play_all_singer', 'play_all_album', 'play_all_playlist'])
+        if key == 'go_back':
+            element.click()
+            self.logger.info(f"Clicked go back button from which page that system back button is not working")
+            if not self.search_from_home():
+                self.logger.error(f"Failed to search from home page")
                 return False
-            search_entry.click()
-            search_box = self.wait_for_element_clickable_plus('search_box')
-            if not search_box:
-                self.logger.error(f"Failed to find search box")
+        elif key == 'clear_search' or key == 'search_entry':
+            element.click()
+            self.logger.info(f"Clear search and focus search box")
+        else:
+            if not self.search_from_home():
+                self.logger.error(f"Failed to search from home page")
                 return False
-        try:
+
+        search_box = self.wait_for_element_clickable_plus('search_box')
+        if search_box:
             search_box.click()
-        except StaleElementReferenceException as e:
-            self.logger.warning("Failed to click search box")
-            search_box = self.wait_for_element_clickable_plus('search_box')
-            if search_box:
-                search_box.click()
-                self.logger.info(f"Clicked search box")
-            else:
-                self.logger.error(f"failed to find search box")
-                return False
+            self.logger.info(f"Clicked search box")
+        else:
+            self.logger.error(f"failed to find search box")
+            return False
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
         self.paste_text()
+        return True
+
+    def search_from_home(self):
+        self.navigate_to_home()
+        search_entry = self.wait_for_element_clickable_plus('search_entry')
+        if not search_entry:
+            self.logger.error(f"Failed to find search entry")
+            return False
+        search_entry.click()
+        self.logger.info(f"Clicked search entry from home page")
         return True
 
     def _prepare_music_playback(self, music_query):
