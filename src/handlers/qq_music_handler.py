@@ -146,27 +146,17 @@ class QQMusicHandler(AppHandler, Singleton):
             search_entry = self.wait_for_element_clickable_plus('search_entry')
             search_entry.click()
 
-        clear_search = self.try_find_element_plus('clear_search', log=False)
-        if clear_search:
-            clear_search.click()
-            self.logger.info(f"Clear search")
-
-        search_box = self.try_find_element_plus('search_box', log=False)
-        if not search_box:
-            self.press_back()
-            self.logger.error(f"Cannot find search box")
-            return False
-        try:
+        search_box = self.wait_for_element_clickable_plus('search_box')
+        if search_box:
+            clear_search = self.try_find_element_plus('clear_search', log=False)
+            if clear_search:
+                clear_search.click()
+                self.logger.info(f"Clear search")
             search_box.click()
-        except StaleElementReferenceException as e:
-            self.logger.warning("Failed to click search box")
-            search_box = self.wait_for_element_clickable_plus('search_box')
-            if search_box:
-                search_box.click()
-                self.logger.info(f"Clicked search box")
-            else:
-                self.logger.error(f"failed to find search box")
-                return False
+            self.logger.info(f"Clicked search box")
+        else:
+            self.logger.error(f"failed to find search box")
+            return False
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
