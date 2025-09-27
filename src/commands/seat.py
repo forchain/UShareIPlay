@@ -21,7 +21,7 @@ class SeatCommand(BaseCommand):
         try:
             if not parameters:
                 # No parameters - find and take an available seat for owner
-                return seat_manager.seating.find_owner_seat()
+                return seat_manager.seating.find_owner_seat(force_relocate=True)
 
             # Parse parameters
             if len(parameters) == 0:
