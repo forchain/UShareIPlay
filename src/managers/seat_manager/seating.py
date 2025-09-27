@@ -7,30 +7,17 @@ import traceback
 class SeatingManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
-        self.seat_ui = SeatUIManager(handler)
+        if not hasattr(self, 'seat_ui'):
+            self.seat_ui = SeatUIManager(handler)
+        elif handler and self.seat_ui.handler is None:
+            self.seat_ui.handler = handler
 
-    def _check_owner_seated(self, desk, seat_desks) -> dict:
-        """Check if owner is already seated in the desk
-        Args:
-            desk: The desk to check
-            seat_desks: List of all desks for index calculation
-        Returns:
-            dict: Success if owner is seated, None otherwise
-        """
-        left_label = self.handler.find_child_element_plus(desk, 'left_label')
-        right_label = self.handler.find_child_element_plus(desk, 'right_label')
-        
-        left_text = left_label.text if left_label else 'None'
-        right_text = right_label.text if right_label else 'None'
-        
-        if (left_text == '群主') or (right_text == '群主'):
-            desk_index = seat_desks.index(desk)
-            self.handler.logger.info(f"Owner is already seated at desk {desk_index + 1}, {'left' if left_text == '群主' else 'right'} side")
-            return {'success': 'Owner is already seated'}
-            
-        return None
+        if not hasattr(self, 'current_desk_index'):
+            self.current_desk_index = 0
+        if not hasattr(self, 'current_side'):
+            self.current_side = None
 
-    def find_owner_seat(self) -> dict:
+    def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
@@ -46,23 +33,52 @@ class SeatingManager(SeatManagerBase):
                 self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
-            # Try to find a seat next to someone
-            for desk in seat_desks:
-                result = self._try_find_seat_next_to_someone(desk)
-                if result:
-                    return result
+            if self.current_desk_index >= len(seat_desks):
+                self.current_desk_index = 0
 
-            # Check if owner is already seated before trying any available seat
-            for desk in seat_desks:
-                result = self._check_owner_seated(desk, seat_desks)
-                if result:
-                    return result
+            owner_position = self._get_owner_position(seat_desks)
+            if owner_position:
+                self.current_desk_index = owner_position['desk_index']
+                self.current_side = owner_position['side']
 
-            # If no seats next to someone found and owner is not seated, try any available seat
-            for desk in seat_desks:
-                result = self._try_find_any_available_seat(desk)
-                if result:
-                    return result
+                if owner_position['has_neighbor'] and not force_relocate:
+                    self.handler.logger.info(
+                        f"Owner already accompanying {owner_position['neighbor_label']} at desk {owner_position['desk_index'] + 1}"
+                    )
+                    return {'success': 'Owner already has a companion'}
+
+            start_index = self.current_desk_index
+            if owner_position:
+                start_index = (owner_position['desk_index'] + 1) % len(seat_desks)
+
+            scan_order = self._build_scan_order(len(seat_desks), start_index)
+            first_empty_candidate = None
+
+            for desk_index in scan_order:
+                desk = seat_desks[desk_index]
+                desk_info = self._collect_desk_info(desk)
+
+                companion_candidate = self._select_companion_candidate(desk_info)
+                if companion_candidate:
+                    return self._take_seat(
+                        desk_index,
+                        companion_candidate['seat'],
+                        neighbor_label=companion_candidate['neighbor_label']
+                    )
+
+                if not first_empty_candidate:
+                    empty_candidate = self._select_empty_candidate(desk_info)
+                    if empty_candidate:
+                        first_empty_candidate = {
+                            'desk_index': desk_index,
+                            'seat': empty_candidate
+                        }
+
+            if first_empty_candidate:
+                return self._take_seat(
+                    first_empty_candidate['desk_index'],
+                    first_empty_candidate['seat']
+                )
 
             return {'error': 'No available seats found'}
 
@@ -70,67 +86,105 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
 
-    def _try_find_seat_next_to_someone(self, desk) -> dict:
-        """Try to find a seat next to someone in the container"""
-        if self.handler is None:
-            return None
+    def _get_owner_position(self, seat_desks):
+        for index, desk in enumerate(seat_desks):
+            desk_info = self._collect_desk_info(desk)
+            left = desk_info['left']
+            right = desk_info['right']
 
-        # Check both seats in this container
+            if left['is_owner']:
+                has_neighbor = right['occupied'] and not right['is_owner']
+                return {
+                    'desk_index': index,
+                    'side': 'left',
+                    'has_neighbor': has_neighbor,
+                    'neighbor_label': right['label'] if has_neighbor else ''
+                }
+
+            if right['is_owner']:
+                has_neighbor = left['occupied'] and not left['is_owner']
+                return {
+                    'desk_index': index,
+                    'side': 'right',
+                    'has_neighbor': has_neighbor,
+                    'neighbor_label': left['label'] if has_neighbor else ''
+                }
+
+        return None
+
+    def _collect_desk_info(self, desk):
+        left_seat = self.handler.find_child_element_plus(desk, 'left_seat')
+        right_seat = self.handler.find_child_element_plus(desk, 'right_seat')
         left_state = self.handler.find_child_element_plus(desk, 'left_state')
         right_state = self.handler.find_child_element_plus(desk, 'right_state')
-        left_label = self.handler.find_child_element_plus(desk, 'left_label')
-        right_label = self.handler.find_child_element_plus(desk, 'right_label')
+        left_label_element = self.handler.find_child_element_plus(desk, 'left_label')
+        right_label_element = self.handler.find_child_element_plus(desk, 'right_label')
 
-        # If owner is in left seat and right seat has someone
-        if left_label and left_label.text == '群主' and right_state:
-            neighbor_label = right_label.text if right_label else 'Unknown'
-            self.handler.logger.info(f"Owner is in left seat and already has {neighbor_label} in right seat, skipping")
-            return {'success': f'Owner is in left seat and already has {neighbor_label} in right seat'}
-            
-        # If owner is in right seat and left seat has someone
-        if right_label and right_label.text == '群主' and left_state:
-            neighbor_label = left_label.text if left_label else 'Unknown'
-            self.handler.logger.info(f"Owner is in right seat and already has {neighbor_label} in left seat, skipping")
-            return {'success': f'Owner is in right seat and already has {neighbor_label} in left seat'}
+        left_label = left_label_element.text if left_label_element else ''
+        right_label = right_label_element.text if right_label_element else ''
 
-        # If left seat is empty and right seat has someone
-        if not left_state and right_state and (not right_label or right_label.text != '群主'):
-            left_seat = self.handler.find_child_element_plus(desk, 'left_seat')
-            if left_seat:
-                left_seat.click()
-                self.handler.logger.info("Clicked left seat next to occupied right seat")
-                return self._confirm_seat()
+        return {
+            'left': {
+                'element': left_seat,
+                'occupied': bool(left_state),
+                'label': left_label,
+                'is_owner': left_label == '群主',
+                'side': 'left'
+            },
+            'right': {
+                'element': right_seat,
+                'occupied': bool(right_state),
+                'label': right_label,
+                'is_owner': right_label == '群主',
+                'side': 'right'
+            }
+        }
 
-        # If right seat is empty and left seat has someone
-        if not right_state and left_state and (not left_label or left_label.text != '群主'):
-            right_seat = self.handler.find_child_element_plus(desk, 'right_seat')
-            if right_seat:
-                right_seat.click()
-                self.handler.logger.info("Clicked right seat next to occupied left seat")
-                return self._confirm_seat()
+    def _select_companion_candidate(self, desk_info):
+        left = desk_info['left']
+        right = desk_info['right']
 
-        return None
+        if right['element'] and left['occupied'] and not left['is_owner'] and not right['occupied']:
+            return {'seat': right, 'neighbor_label': left['label'] or 'Unknown'}
 
-    def _try_find_any_available_seat(self, container) -> dict:
-        """Try to find any available seat in the container"""
-        if self.handler is None:
-            return None
-
-        left_seat = self.handler.find_child_element_plus(container, 'left_seat')
-        left_state = self.handler.find_child_element_plus(container, 'left_state')
-        if left_seat and not left_state:
-            left_seat.click()
-            self.handler.logger.info("Clicked available left seat")
-            return self._confirm_seat()
-
-        right_seat = self.handler.find_child_element_plus(container, 'right_seat')
-        right_state = self.handler.find_child_element_plus(container, 'right_state')
-        if right_seat and not right_state:
-            right_seat.click()
-            self.handler.logger.info("Clicked available right seat")
-            return self._confirm_seat()
+        if left['element'] and right['occupied'] and not right['is_owner'] and not left['occupied']:
+            return {'seat': left, 'neighbor_label': right['label'] or 'Unknown'}
 
         return None
+
+    def _select_empty_candidate(self, desk_info):
+        for seat in (desk_info['left'], desk_info['right']):
+            if seat['element'] and not seat['occupied'] and not seat['is_owner']:
+                return seat
+        return None
+
+    def _build_scan_order(self, total_count, start_index):
+        return [(start_index + offset) % total_count for offset in range(total_count)]
+
+    def _take_seat(self, desk_index, seat_info, neighbor_label=None):
+        if self.handler is None or not seat_info or not seat_info.get('element'):
+            return {'error': 'Seat element not available'}
+
+        try:
+            seat_info['element'].click()
+            if neighbor_label:
+                self.handler.logger.info(
+                    f"Accompanying {neighbor_label} at desk {desk_index + 1}, {seat_info['side']} seat"
+                )
+            else:
+                self.handler.logger.info(
+                    f"Taking empty {seat_info['side']} seat at desk {desk_index + 1}"
+                )
+
+            result = self._confirm_seat()
+            if result.get('success'):
+                self.current_desk_index = desk_index
+                self.current_side = seat_info['side']
+            return result
+
+        except Exception:
+            self.handler.log_error(f"Error while clicking seat: {traceback.format_exc()}")
+            return {'error': 'Failed to click seat'}
 
     def _confirm_seat(self) -> dict:
         """Confirm seat selection"""
