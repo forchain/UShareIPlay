@@ -11,7 +11,7 @@ soul:
     - "Souler们在随便聊聊ing"
 
   # 派对智能重启配置
-  party_restart_minutes: 1200 # 触发重启的时间（分钟），默认20小时
+  party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
 
   # Initial timers configuration
   initial_timers:

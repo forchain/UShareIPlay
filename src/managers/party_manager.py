@@ -66,8 +66,8 @@ class PartyManager(Singleton):
                 return
 
             # Only auto manage if current hour is between 12 and 24 (noon to midnight)
-            if current_hour < 12:
-                return
+            # if current_hour < 12:
+            #     return
 
             # 检查是否达到触发时间（分钟）
             minutes_since_init = (current_time - self.init_time).total_seconds() / 60
