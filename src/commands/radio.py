@@ -39,115 +39,162 @@ class RadioCommand(BaseCommand):
                 return self._handle_sleep_healing()
             return {"error": f"Unsupported radio keyword: {keyword}"}
         except Exception as exc:
-            self.music_handler.logger.error(f"Radio command failed for keyword {keyword}: {exc}")
-            return {"error": f"Failed to execute radio command: {exc}"}
+            return self._report_error(f"Radio command failed for keyword {keyword}: {exc}")
+
+    def _report_error(self, message: str):
+        self.music_handler.logger.error(message)
+        self.soul_handler.send_message(message)
+        return {"error": message}
 
     def _ensure_playlist_text(self):
         playlist_info = self.music_handler.get_playlist_info()
         if "error" in playlist_info:
-            raise RuntimeError(playlist_info["error"])
+            return None, self._report_error(playlist_info["error"])
         playlist_text = playlist_info.get("playlist", "").strip()
         if not playlist_text:
-            raise RuntimeError("Playlist content is empty")
-        return playlist_text
+            return None, self._report_error("Playlist content is empty")
+        return playlist_text, None
 
     def _navigate_home(self):
         if not self.music_handler.switch_to_app():
-            raise RuntimeError("Cannot switch to QQ Music")
+            return self._report_error("Cannot switch to QQ Music")
         if not self.music_handler.navigate_to_home():
-            raise RuntimeError("Failed to navigate to home in QQ Music")
+            return self._report_error("Failed to navigate to home in QQ Music")
+        return None
 
     def _switch_back_to_soul(self):
         if not self.soul_handler.switch_to_app():
-            raise RuntimeError("Failed to switch back to Soul app")
+            return self._report_error("Failed to switch back to Soul app")
+        return None
 
     def _set_room_context(self, room_name: str, topic_text: Optional[str] = None):
         title_result = self.title_manager.set_next_title(room_name)
         if "error" in title_result:
-            raise RuntimeError(title_result["error"])
+            return self._report_error(title_result["error"])
         if topic_text:
             topic_value = topic_text.strip()
             if topic_value:
                 topic_result = self.topic_manager.change_topic(topic_value)
                 if "error" in topic_result:
-                    raise RuntimeError(topic_result["error"])
+                    return self._report_error(topic_result["error"])
+        return None
 
     def _send_playlist_message(self, playlist_text: str):
         result = self.soul_handler.send_message(playlist_text)
         if isinstance(result, dict) and "error" in result:
-            raise RuntimeError(result["error"])
+            return self._report_error(result["error"])
+        return None
 
     def _handle_guess_like(self):
-        self._navigate_home()
+        error = self._navigate_home()
+        if error:
+            return error
         guess_title = self.music_handler.wait_for_element_clickable_plus("guess_title")
         guess_topic = self.music_handler.wait_for_element_plus("guess_topic")
         if not guess_title or not guess_topic:
-            raise RuntimeError("Failed to locate guess like radio elements")
+            return self._report_error("Failed to locate guess like radio elements")
+        guess_title_text = guess_topic.text
         guess_topic_text = guess_topic.text
         guess_title.click()
-        playlist_text = self._ensure_playlist_text()
-        self._switch_back_to_soul()
-        self._set_room_context("guess_like", guess_topic_text)
-        self._send_playlist_message(playlist_text)
+        playlist_text, error = self._ensure_playlist_text()
+        if error:
+            return error
+        error = self._switch_back_to_soul()
+        if error:
+            return error
+        error = self._set_room_context(guess_title_text, guess_topic_text)
+        if error:
+            return error
+        error = self._send_playlist_message(playlist_text)
+        if error:
+            return error
         return {"playlist": playlist_text}
 
     def _handle_daily_30(self):
-        self._navigate_home()
+        error = self._navigate_home()
+        if error:
+            return error
         daily_title = self.music_handler.wait_for_element_clickable_plus("daily_title")
         daily_topic = self.music_handler.wait_for_element_plus("daily_topic")
         if not daily_title or not daily_topic:
-            raise RuntimeError("Failed to locate daily radio elements")
+            return self._report_error("Failed to locate daily radio elements")
         daily_title_text = daily_title.text
         daily_topic_text = daily_topic.text
         daily_title.click()
-        playlist_text = self._ensure_playlist_text()
-        self._switch_back_to_soul()
-        self._set_room_context(daily_title_text, daily_topic_text)
-        self._send_playlist_message(playlist_text)
+        playlist_text, error = self._ensure_playlist_text()
+        if error:
+            return error
+        error = self._switch_back_to_soul()
+        if error:
+            return error
+        error = self._set_room_context(daily_title_text, daily_topic_text)
+        if error:
+            return error
+        error = self._send_playlist_message(playlist_text)
+        if error:
+            return error
         return {"playlist": playlist_text}
 
     def _handle_collection(self):
-        self._navigate_home()
+        error = self._navigate_home()
+        if error:
+            return error
         collection_title = self.music_handler.wait_for_element_clickable_plus("collection_title")
         collection_topic = self.music_handler.wait_for_element_plus("collection_topic")
         if not collection_title or not collection_topic:
-            raise RuntimeError("Failed to locate collection radio elements")
+            return self._report_error("Failed to locate collection radio elements")
         collection_title_text = collection_title.text
         collection_topic_text = collection_topic.text
         collection_title.click()
         play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
         if not play_button:
-            raise RuntimeError("Failed to find collection play button")
+            return self._report_error("Failed to find collection play button")
         play_button.click()
-        playlist_text = self._ensure_playlist_text()
-        self._switch_back_to_soul()
-        self._set_room_context(collection_title_text, collection_topic_text)
-        self._send_playlist_message(playlist_text)
+        playlist_text, error = self._ensure_playlist_text()
+        if error:
+            return error
+        error = self._switch_back_to_soul()
+        if error:
+            return error
+        error = self._set_room_context(collection_title_text, collection_topic_text)
+        if error:
+            return error
+        error = self._send_playlist_message(playlist_text)
+        if error:
+            return error
         return {"playlist": playlist_text}
 
     def _handle_sleep_healing(self):
-        self._navigate_home()
+        error = self._navigate_home()
+        if error:
+            return error
         healing_tab = self.music_handler.wait_for_element_clickable_plus("healing_tab")
         if not healing_tab:
-            raise RuntimeError("Failed to locate healing tab")
+            return self._report_error("Failed to locate healing tab")
         healing_room_name = healing_tab.text
         healing_tab.click()
         play_healing = self.music_handler.wait_for_element_clickable_plus("play_healing")
         if not play_healing:
-            raise RuntimeError("Failed to find healing play button")
+            return self._report_error("Failed to find healing play button")
         play_healing.click()
         playlist_info = self.music_handler.get_playlist_info()
         if "error" in playlist_info:
-            raise RuntimeError(playlist_info["error"])
+            return self._report_error(playlist_info["error"])
         playlist_text = playlist_info.get("playlist", "").strip()
         if not playlist_text:
-            raise RuntimeError("Playlist content is empty")
+            return self._report_error("Playlist content is empty")
         first_song = playlist_text.splitlines()[0] if playlist_text else ""
         recommend_tab = self.music_handler.wait_for_element_clickable_plus("recommend_tab")
         if not recommend_tab:
-            raise RuntimeError("Failed to switch back to recommend tab")
+            return self._report_error("Failed to switch back to recommend tab")
         recommend_tab.click()
-        self._switch_back_to_soul()
-        self._set_room_context(healing_room_name, first_song or None)
-        self._send_playlist_message(playlist_text)
+        error = self._switch_back_to_soul()
+        if error:
+            return error
+        error = self._set_room_context(healing_room_name, first_song or None)
+        if error:
+            return error
+        error = self._send_playlist_message(playlist_text)
+        if error:
+            return error
         return {"playlist": playlist_text}
