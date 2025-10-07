@@ -114,7 +114,7 @@ class PlaylistCommand(BaseCommand):
             if song_name:
                 topic = song_name.text
 
-        key, play_button = self.handler.wait_for_any_element_plus(['play_all_album', 'play_all_playlist'])
+        key, play_button = self.handler.wait_for_any_element_plus(['play_all', 'play_all_playlist'])
         if not play_button:
             self.handler.logger.error("Failed to find play all button (album or playlist)")
             return {
