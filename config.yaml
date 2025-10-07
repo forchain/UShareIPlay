@@ -331,7 +331,6 @@ qq_music:
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
     play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
-    play_all_album: '//android.widget.TextView[@text="全部播放"]'
     play_all_singer: '//android.widget.TextView[@text="播放最热歌曲"]'
     playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
     play_next: '//android.widget.ImageView[@content-desc="下一首"]'

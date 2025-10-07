@@ -115,7 +115,7 @@ class QQMusicHandler(AppHandler, Singleton):
         self.logger.info(f"Switched to QQ Music app")
 
         key, element = self.navigate_to_element('search_box',
-                                                ['play_all_album', 'play_all_singer', 'play_all_playlist'])
+                                                ['play_all', 'play_all_singer', 'play_all_playlist'])
         if key == 'home_nav':
             search_entry = self.wait_for_element_plus('search_entry')
             if not search_entry:

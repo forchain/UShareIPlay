@@ -130,6 +130,10 @@ class RadioCommand(BaseCommand):
         daily_title_text = daily_title.text
         daily_topic_text = self._extract_primary_topic(daily_topic.text)
         daily_title.click()
+        play_all = self.music_handler.wait_for_element_clickable_plus("play_all")
+        if not play_all:
+            return self._report_error("Failed to locate play all button")
+        play_all.click()
         playlist_text, error = self._ensure_playlist_text()
         if error:
             return error
