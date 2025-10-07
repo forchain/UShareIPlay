@@ -197,10 +197,8 @@ class RadioCommand(BaseCommand):
         if not playlist_text:
             return self._report_error("Playlist content is empty")
         first_song = playlist_text.splitlines()[0] if playlist_text else ""
-        recommend_tab = self.music_handler.wait_for_element_clickable_plus("recommend_tab")
-        if not recommend_tab:
-            return self._report_error("Failed to switch back to recommend tab")
-        recommend_tab.click()
+        if not self.music_handler.navigate_to_home():
+            return self._report_error("Failed to navigate to home")
         error = self._switch_back_to_soul()
         if error:
             return error

@@ -40,10 +40,10 @@ class QQMusicHandler(AppHandler, Singleton):
         n = 0
         self.press_back()
         while n < 9:
-            key, element = self.wait_for_any_element_plus(['go_back', 'radar_nav'])
+            key, element = self.wait_for_any_element_plus(['go_back', 'home_nav'])
             if key == 'go_back':
                 element.click()
-            elif key == 'radar_nav':
+            elif key == 'home_nav':
                 self.press_back()
                 self.logger.info("Back to home page")
                 return True

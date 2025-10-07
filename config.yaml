@@ -350,7 +350,6 @@ qq_music:
     daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
     healing_tab: '//android.widget.TextView[@text="耳伴疗愈"]'
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
-    recommend_tab: '//android.widget.TextView[@text="推荐"]'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
