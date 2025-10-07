@@ -344,9 +344,14 @@ qq_music:
     home_nav: '//android.view.ViewGroup[@content-desc="首页"]'
     play_collection: '//android.widget.Button[@content-desc="播放"]'
     collection_title: '//android.widget.Button[@content-desc="播放"]/../android.widget.TextView'
-    guess_like: '//android.widget.TextView[@text="猜你喜欢"]'
-    daily_30: '//android.widget.TextView[@text="每日30首"]'
+    collection_topic: '//android.widget.ImageView[@content-desc="收藏"]/../android.widget.TextView'
+    guess_title: '//android.widget.TextView[@text="猜你喜欢"]'
+    guess_topic: '//android.widget.TextView[@text="猜你喜欢"]/../android.widget.TextView'
+    daily_title: '//android.widget.TextView[@text="每日30首"]'
+    daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
     healing_tab: '//android.widget.TextView[@text="耳伴疗愈"]'
+    play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
+    recommend_tab: '//android.widget.TextView[@text="推荐"]'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
@@ -429,6 +434,9 @@ commands:
   - prefix: "playlist"
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
+  - prefix: "radio"
+    response_template: "{playlist}"
+    error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
