@@ -85,6 +85,15 @@ class RadioCommand(BaseCommand):
             return self._report_error(result["error"])
         return None
 
+    def _extract_primary_topic(self, raw_topic: Optional[str]) -> Optional[str]:
+        if not raw_topic:
+            return None
+        parts = [segment.strip() for segment in raw_topic.split("-") if segment.strip()]
+        if not parts:
+            cleaned_topic = raw_topic.strip()
+            return cleaned_topic or None
+        return parts[0]
+
     def _handle_guess_like(self):
         error = self._navigate_home()
         if error:
@@ -93,8 +102,8 @@ class RadioCommand(BaseCommand):
         guess_topic = self.music_handler.wait_for_element_plus("guess_topic")
         if not guess_title or not guess_topic:
             return self._report_error("Failed to locate guess like radio elements")
-        guess_title_text = guess_topic.text
-        guess_topic_text = guess_topic.text
+        guess_title_text = guess_title.text
+        guess_topic_text = self._extract_primary_topic(guess_topic.text)
         guess_title.click()
         playlist_text, error = self._ensure_playlist_text()
         if error:
@@ -119,7 +128,7 @@ class RadioCommand(BaseCommand):
         if not daily_title or not daily_topic:
             return self._report_error("Failed to locate daily radio elements")
         daily_title_text = daily_title.text
-        daily_topic_text = daily_topic.text
+        daily_topic_text = self._extract_primary_topic(daily_topic.text)
         daily_title.click()
         playlist_text, error = self._ensure_playlist_text()
         if error:
@@ -144,7 +153,7 @@ class RadioCommand(BaseCommand):
         if not collection_title or not collection_topic:
             return self._report_error("Failed to locate collection radio elements")
         collection_title_text = collection_title.text
-        collection_topic_text = collection_topic.text
+        collection_topic_text = self._extract_primary_topic(collection_topic.text)
         collection_title.click()
         play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
         if not play_button:
