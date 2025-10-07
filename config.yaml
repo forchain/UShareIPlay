@@ -41,23 +41,19 @@ soul:
       repeat: true
     - id: "playlist_6"
       time: "06:00"
-      message: "playlist 官方 冥想瑜伽"
+      message: "playlist 官方 纯音乐"
       repeat: true
     - id: "playlist_7"
       time: "07:00"
-      message: "playlist 官方 浪漫主义"
+      message: "playlist 官方 微醺咖啡厅"
       repeat: true
     - id: "playlist_8"
       time: "08:00"
-      message: "playlist 官方 古典"
+      message: "playlist Jazz 官方"
       repeat: true
     - id: "playlist_9"
       time: "09:00"
       message: "play"
-      repeat: true
-    - id: "acc_9"
-      time: "09:00"
-      message: "acc 0"
       repeat: true
     - id: "theme_work_morning"
       time: "09:30"
@@ -67,9 +63,9 @@ soul:
       time: "10:00"
       message: "playlist 红心雷达"
       repeat: true
-    - id: "playlist_11"
+    - id: "radio_11"
       time: "11:00"
-      message: "playlist 粤语经典 官方"
+      message: "radio guess"
       repeat: true
     - id: "theme_lunch_break"
       time: "11:30"
@@ -83,13 +79,13 @@ soul:
       time: "12:00"
       message: "notice hello, thank you, are you ok?"
       repeat: true
-    - id: "theme_work_afternoon"
+    - id: "radio_13"
       time: "13:00"
-      message: "theme 🐮🐎"
+      message: "radio daily"
       repeat: true
-    - id: "playlist_13"
-      time: "13:00"
-      message: "playlist 官方 时光乐匣"
+    - id: "theme_work_afternoon"
+      time: "13:30"
+      message: "theme 🐮🐎"
       repeat: true
     - id: "playlist_14"
       time: "14:00"
@@ -103,21 +99,21 @@ soul:
       time: "16:00"
       message: "playlist KTV热歌 官方"
       repeat: true
-    - id: "playlist_17"
+    - id: "radio_17"
       time: "17:00"
-      message: "playlist 官方 情歌"
-      repeat: true
-    - id: "theme_home"
-      time: "18:00"
-      message: "theme 享乐"
+      message: "radio collection"
       repeat: true
     - id: "playlist_18"
       time: "18:00"
-      message: "playlist Jazz 官方"
+      message: "playlist 官方 冥想瑜伽"
+      repeat: true
+    - id: "theme_home"
+      time: "18:30"
+      message: "theme 享乐"
       repeat: true
     - id: "playlist_19"
       time: "19:00"
-      message: "playlist 官方 微醺咖啡厅"
+      message: "playlist 官方 古典"
       repeat: true
     - id: "playlist_20"
       time: "20:00"
@@ -125,23 +121,19 @@ soul:
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 华语怀旧金曲"
-      repeat: true
-    - id: "theme_sleep"
-      time: "22:00"
-      message: "theme 助眠"
-      repeat: true
-    - id: "acc_sleep"
-      time: "22:00"
-      message: "acc 1"
+      message: "playlist 官方 粤语经典"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
-      message: "playlist 官方 纯音乐"
-      repeat: true
-    - id: "playlist_23"
-      time: "23:00"
       message: "playlist Lofi Girl 官方"
+      repeat: true
+    - id: "theme_sleep"
+      time: "22:30"
+      message: "theme 助眠"
+      repeat: true
+    - id: "radio_23"
+      time: "23:00"
+      message: "radio sleep"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -413,6 +405,8 @@ commands:
         :topic 话题
       17. 定时
         :timer add id 时间 命令
+      18. 电台
+        :radio guess/daily/collection/sleep
 
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
