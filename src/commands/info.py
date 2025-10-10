@@ -20,16 +20,21 @@ class InfoCommand(BaseCommand):
 
     async def process(self, message_info, parameters):
         result = self.music_handler.get_playback_info()
-        result['player'] = self.controller.player_name
         
-        # 追加在线用户列表
-        from ..managers.online_user_manager import OnlineUserManager
-        online_manager = OnlineUserManager.instance()
-        online_users = online_manager.get_online_users()
+        # 追加播放器信息和在线用户列表
+        from ..managers.info_manager import InfoManager
+        info_manager = InfoManager.instance()
+        result['player'] = info_manager.player_name
+        
+        online_users = info_manager.get_online_users()
         if online_users:
             result['online_users'] = f"在线用户 ({len(online_users)}人): {', '.join(sorted(online_users))}"
         else:
             result['online_users'] = "在线用户列表暂未更新"
+        
+        # 追加派对时长信息
+        party_duration = info_manager.get_party_duration_info()
+        result['party_duration'] = party_duration if party_duration else ""
         
         return result
 
@@ -121,10 +126,10 @@ class InfoCommand(BaseCommand):
                         all_online_user_names.add(user_text)
                         self.handler.logger.info(f"Online user {i + 1}: {user_text}")
                 
-                # 更新在线用户列表到 OnlineUserManager
-                from ..managers.online_user_manager import OnlineUserManager
-                online_manager = OnlineUserManager.instance()
-                online_manager.update_online_users(list(all_online_user_names))
+                # 更新在线用户列表到 InfoManager
+                from ..managers.info_manager import InfoManager
+                info_manager = InfoManager.instance()
+                info_manager.update_online_users(list(all_online_user_names))
             else:
                 self.handler.logger.error("No online user found")
 
