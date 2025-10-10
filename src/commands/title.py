@@ -61,10 +61,32 @@ class TitleCommand(BaseCommand):
                 return {'error': 'Missing title parameter'}
 
             new_title = ' '.join(parameters)
+            
+            # Check if title contains | and first part is exactly 2 characters
+            if '|' in new_title:
+                parts = new_title.split('|', 1)
+                if len(parts) == 2:
+                    theme_part = parts[0].strip()
+                    title_part = parts[1].strip()
+                    
+                    # If first part is exactly 2 characters, treat it as theme
+                    if len(theme_part) == 2:
+                        # Set theme (in-memory only, no UI operation)
+                        theme_result = self.theme_manager.set_theme(theme_part)
+                        if 'error' in theme_result:
+                            return theme_result
+                        
+                        self.handler.logger.info(f"Parsed theme and title: theme='{theme_part}', title='{title_part}'")
+                        
+                        # Set title (in-memory only, no UI operation)
+                        # UI will be updated in update() with both theme and title
+                        return self.change_title(title_part)
+            
+            # Default behavior: use entire string as title
             return self.change_title(new_title)
         except Exception as e:
             self.handler.log_error(f"Error processing title command: {str(e)}")
-            return {'error': f'Failed to process title command, {new_title}'}
+            return {'error': f'Failed to process title command'}
 
     def update(self):
         """Check and update title periodically with simple retry logic"""
