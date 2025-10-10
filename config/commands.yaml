@@ -1,4 +1,0 @@
-- prefix: mic
-  description: "Turn microphone on/off"
-  response_template: "已将麦克风设为{state} @{user}"
-  error_template: "设置麦克风失败: {error} @{user}" 

@@ -22,13 +22,16 @@ class PlayCommand(BaseCommand):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
 
+        from ..managers.info_manager import InfoManager
+        info_manager = InfoManager.instance()
+
         if query == '?':
             playing_info = self.play_favorites()
-            self.controller.player_name = message_info.nickname
+            info_manager.player_name = message_info.nickname
             return playing_info
         elif query == '':
             playing_info = self.play_radar()
-            self.controller.player_name = message_info.nickname
+            info_manager.player_name = message_info.nickname
             return playing_info
         else:
             playing_info = self.play_song(query)

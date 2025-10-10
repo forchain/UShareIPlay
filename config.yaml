@@ -307,7 +307,7 @@ qq_music:
     album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
-    singer_text: "//android.widget.ListView//android.widget.TextView"
+    singer_text: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
@@ -418,7 +418,8 @@ commands:
     response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
-    response_template: "Playing {song} by {singer} in {album}, playlist from {player}"
+    response_template: "Playing {song} by {singer} in {album}\n player: {player}\n{online_users}\n{party_duration}"
+
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     response_template: "Playing {singer}"

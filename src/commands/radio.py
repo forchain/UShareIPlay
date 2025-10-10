@@ -22,21 +22,43 @@ class RadioCommand(BaseCommand):
         self.soul_handler: SoulHandler = controller.soul_handler
         self.title_manager = TitleManager.instance()
         self.topic_manager = TopicManager.instance()
+        
+        # 延迟初始化 InfoManager
+        self._info_manager = None
+    
+    @property
+    def info_manager(self):
+        """延迟获取 InfoManager 实例"""
+        if self._info_manager is None:
+            from ..managers.info_manager import InfoManager
+            self._info_manager = InfoManager.instance()
+        return self._info_manager
 
     async def process(self, message_info, parameters):
         if not parameters:
             return {"error": "Missing radio keyword"}
 
+        # 添加播放器保护逻辑
+        player_name = self.info_manager.player_name
+        # 排除系统用户 Joyer 和 Timer
+        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer"]:
+            # 检查之前的播放者是否还在线
+            if self.info_manager.is_user_online(player_name):
+                self.music_handler.logger.info(f"{message_info.nickname} 尝试播放电台，但 {player_name} 正在播放")
+                return {'error': f'{player_name} 正在播放歌单，请等待'}
+
         keyword = parameters[0].lower()
         try:
             if keyword == "guess":
-                return self._handle_guess_like()
+                return self._handle_guess_like(message_info)
             if keyword == "daily":
-                return self._handle_daily_30()
+                return self._handle_daily_30(message_info)
             if keyword == "collection":
-                return self._handle_collection()
+                return self._handle_collection(message_info)
             if keyword == "sleep":
-                return self._handle_sleep_healing()
+                return self._handle_sleep_healing(message_info)
+            if keyword == "radar":
+                return self._handle_radar(message_info)
             return {"error": f"Unsupported radio keyword: {keyword}"}
         except Exception as exc:
             return self._report_error(f"Radio command failed for keyword {keyword}: {exc}")
@@ -94,7 +116,7 @@ class RadioCommand(BaseCommand):
             return cleaned_topic or None
         return parts[0]
 
-    def _handle_guess_like(self):
+    def _handle_guess_like(self, message_info):
         error = self._navigate_home()
         if error:
             return error
@@ -117,9 +139,11 @@ class RadioCommand(BaseCommand):
         error = self._send_playlist_message(playlist_text)
         if error:
             return error
+        # 更新播放器名称
+        self.info_manager.player_name = message_info.nickname
         return {"playlist": playlist_text}
 
-    def _handle_daily_30(self):
+    def _handle_daily_30(self, message_info):
         error = self._navigate_home()
         if error:
             return error
@@ -146,9 +170,11 @@ class RadioCommand(BaseCommand):
         error = self._send_playlist_message(playlist_text)
         if error:
             return error
+        # 更新播放器名称
+        self.info_manager.player_name = message_info.nickname
         return {"playlist": playlist_text}
 
-    def _handle_collection(self):
+    def _handle_collection(self, message_info):
         error = self._navigate_home()
         if error:
             return error
@@ -175,9 +201,11 @@ class RadioCommand(BaseCommand):
         error = self._send_playlist_message(playlist_text)
         if error:
             return error
+        # 更新播放器名称
+        self.info_manager.player_name = message_info.nickname
         return {"playlist": playlist_text}
 
-    def _handle_sleep_healing(self):
+    def _handle_sleep_healing(self, message_info):
         error = self._navigate_home()
         if error:
             return error
@@ -208,4 +236,45 @@ class RadioCommand(BaseCommand):
         error = self._send_playlist_message(playlist_text)
         if error:
             return error
+        # 更新播放器名称
+        self.info_manager.player_name = message_info.nickname
         return {"playlist": playlist_text}
+    
+    def _handle_radar(self, message_info):
+        """Handle radar radio station"""
+        error = self._navigate_home()
+        if error:
+            return error
+        
+        # 点击 radar 导航
+        radar_nav = self.music_handler.try_find_element_plus('radar_nav', log=False)
+        if not radar_nav:
+            return self._report_error("Cannot find radar_nav")
+        
+        radar_nav.click()
+        self.music_handler.logger.info("Clicked radar navigation button")
+        
+        # 获取 radar 歌曲和歌手信息
+        radar_song = self.music_handler.wait_for_element_clickable_plus('radar_song')
+        radar_singer = self.music_handler.wait_for_element_clickable_plus('radar_singer')
+        
+        if not radar_song or not radar_singer:
+            return self._report_error("Failed to locate radar song or singer elements")
+        
+        song_text = radar_song.text
+        singer_text = radar_singer.text
+        
+        # 切换回 Soul
+        error = self._switch_back_to_soul()
+        if error:
+            return error
+        
+        # 设置房间标题和话题
+        error = self._set_room_context("O Radio", song_text)
+        if error:
+            return error
+        
+        # 更新播放器名称
+        self.info_manager.player_name = message_info.nickname
+        
+        return {"song": song_text, "singer": singer_text, "album": ""}
