@@ -26,7 +26,18 @@ class PlaylistCommand(BaseCommand):
         if len(parameters) == 0:
             playing_info = self.handler.get_playlist_info()
         else:
-            self.controller.player_name = message_info.nickname
+            # 检查是否有其他用户正在播放列表
+            from ..managers.info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            player_name = info_manager.player_name
+            # 排除系统用户 Joyer 和 Timer
+            if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer"]:
+                # 检查之前的播放者是否还在线
+                if info_manager.is_user_online(player_name):
+                    self.handler.logger.info(f"{message_info.nickname} 尝试播放歌单，但 {player_name} 正在播放")
+                    return {'error': f'{player_name} 正在播放歌单，请等待'}
+            
+            info_manager.player_name = message_info.nickname
             self.soul_handler.ensure_mic_active()
             playing_info = self.play_playlist(query)
 

@@ -25,7 +25,6 @@ class AppController(Singleton):
         self.input_queue = queue.Queue()
         self.is_running = True
         self.in_console_mode = False
-        self.player_name = 'Outlier'
 
         # Initialize handlers using singleton pattern (delayed initialization)
         self.soul_handler = None
