@@ -409,6 +409,18 @@ class TitleManager(Singleton):
 
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
+
+                # 标题更新成功后，检查是否需要恢复notice
+                notice_restore_result = self._restore_notice_if_needed()
+                if 'success' in notice_restore_result:
+                    self.logger.info(f"Notice restore result: {notice_restore_result['success']}")
+                elif 'cooldown' in notice_restore_result:
+                    remaining_minutes = notice_restore_result.get('remaining_minutes', 0)
+                    self.logger.info(f"Notice restore in cooldown, will be set in {remaining_minutes} minutes")
+                elif 'error' in notice_restore_result:
+                    self.logger.warning(f"Notice restore failed: {notice_restore_result['error']}")
+                elif 'skipped' in notice_restore_result:
+                    self.logger.debug(f"Notice restore skipped: {notice_restore_result['skipped']}")
                 
                 # 标题更新失败，清除notice恢复标记
                 self.pending_notice_restore = False
