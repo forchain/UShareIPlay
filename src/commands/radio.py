@@ -263,6 +263,15 @@ class RadioCommand(BaseCommand):
         
         song_text = radar_song.text
         singer_text = radar_singer.text
+
+        try:
+            radar_song.click()
+        except Exception:
+            self.music_handler.logger.warning("Failed to click radar song element, continuing with current playback state")
+
+        playlist_text, error = self._ensure_playlist_text()
+        if error:
+            return error
         
         # 切换回 Soul
         error = self._switch_back_to_soul()
@@ -273,8 +282,17 @@ class RadioCommand(BaseCommand):
         error = self._set_room_context("O Radio", song_text)
         if error:
             return error
+
+        error = self._send_playlist_message(playlist_text)
+        if error:
+            return error
         
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
         
-        return {"song": song_text, "singer": singer_text, "album": ""}
+        return {
+            "playlist": playlist_text,
+            "song": song_text,
+            "singer": singer_text,
+            "album": ""
+        }
