@@ -335,7 +335,7 @@ qq_music:
     home_nav: '//android.view.ViewGroup[@content-desc="首页"]'
     play_collection: '//android.widget.Button[@content-desc="播放"]'
     collection_title: '//android.widget.Button[@content-desc="播放"]/../android.widget.TextView'
-    collection_topic: '//android.widget.ImageView[@content-desc="收藏"]/../android.widget.TextView'
+    collection_topic: '//android.widget.ImageView[@content-desc="收藏" or @content-desc="取消收藏"]/../android.widget.TextView'
     guess_title: '//android.widget.TextView[@text="猜你喜欢"]'
     guess_topic: '//android.widget.TextView[@text="猜你喜欢"]/../android.widget.TextView'
     daily_title: '//android.widget.TextView[@text="每日30首"]'
