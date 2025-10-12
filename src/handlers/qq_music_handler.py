@@ -40,8 +40,8 @@ class QQMusicHandler(AppHandler, Singleton):
         n = 0
         self.press_back()
         while n < 9:
-            key, element = self.wait_for_any_element_plus(['go_back', 'home_nav'])
-            if key == 'go_back':
+            key, element = self.wait_for_any_element_plus(['go_back', 'minimize_screen', 'home_nav'])
+            if key == 'go_back' or key == 'minimize_screen':
                 element.click()
             elif key == 'home_nav':
                 self.press_back()

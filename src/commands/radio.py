@@ -22,10 +22,10 @@ class RadioCommand(BaseCommand):
         self.soul_handler: SoulHandler = controller.soul_handler
         self.title_manager = TitleManager.instance()
         self.topic_manager = TopicManager.instance()
-        
+
         # 延迟初始化 InfoManager
         self._info_manager = None
-    
+
     @property
     def info_manager(self):
         """延迟获取 InfoManager 实例"""
@@ -239,45 +239,40 @@ class RadioCommand(BaseCommand):
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
         return {"playlist": playlist_text}
-    
+
     def _handle_radar(self, message_info):
         """Handle radar radio station"""
         error = self._navigate_home()
         if error:
             return error
-        
+
         # 点击 radar 导航
         radar_nav = self.music_handler.try_find_element_plus('radar_nav', log=False)
         if not radar_nav:
             return self._report_error("Cannot find radar_nav")
-        
+
         radar_nav.click()
         self.music_handler.logger.info("Clicked radar navigation button")
-        
+
         # 获取 radar 歌曲和歌手信息
         radar_song = self.music_handler.wait_for_element_clickable_plus('radar_song')
         radar_singer = self.music_handler.wait_for_element_clickable_plus('radar_singer')
-        
+
         if not radar_song or not radar_singer:
             return self._report_error("Failed to locate radar song or singer elements")
-        
+
         song_text = radar_song.text
         singer_text = radar_singer.text
-
-        try:
-            radar_song.click()
-        except Exception:
-            self.music_handler.logger.warning("Failed to click radar song element, continuing with current playback state")
 
         playlist_text, error = self._ensure_playlist_text()
         if error:
             return error
-        
+
         # 切换回 Soul
         error = self._switch_back_to_soul()
         if error:
             return error
-        
+
         # 设置房间标题和话题
         error = self._set_room_context("O Radio", song_text)
         if error:
@@ -286,10 +281,10 @@ class RadioCommand(BaseCommand):
         error = self._send_playlist_message(playlist_text)
         if error:
             return error
-        
+
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
-        
+
         return {
             "playlist": playlist_text,
             "song": song_text,

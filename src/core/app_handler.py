@@ -1138,7 +1138,7 @@ class AppHandler:
             (None, None): 未找到或出错时返回
         """
         if back_keys is None:
-            back_keys = ["go_back"]
+            back_keys = ["go_back", "minimize_screen"]
         if interference_keys is None:
             interference_keys = []
 
