@@ -182,7 +182,7 @@ class RadioCommand(BaseCommand):
         collection_topic = self.music_handler.wait_for_element_plus("collection_topic")
         if not collection_title or not collection_topic:
             return self._report_error("Failed to locate collection radio elements")
-        collection_title_text = collection_title.text
+        collection_title_text = self.soul_handler.try_get_attribute(collection_title, 'content-desc') or "Unknown"
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         collection_title.click()
         play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
@@ -212,7 +212,8 @@ class RadioCommand(BaseCommand):
         healing_tab = self.music_handler.wait_for_element_clickable_plus("healing_tab")
         if not healing_tab:
             return self._report_error("Failed to locate healing tab")
-        healing_room_name = healing_tab.text
+        healing_room_name = "耳畔疗愈"
+        # healing_room_name = healing_tab.text
         healing_tab.click()
         play_healing = self.music_handler.wait_for_element_clickable_plus("play_healing")
         if not play_healing:
