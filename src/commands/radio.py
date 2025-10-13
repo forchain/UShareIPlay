@@ -41,7 +41,7 @@ class RadioCommand(BaseCommand):
         # 添加播放器保护逻辑
         player_name = self.info_manager.player_name
         # 排除系统用户 Joyer 和 Timer
-        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer"]:
+        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier"]:
             # 检查之前的播放者是否还在线
             if self.info_manager.is_user_online(player_name):
                 self.music_handler.logger.info(f"{message_info.nickname} 尝试播放电台，但 {player_name} 正在播放")
