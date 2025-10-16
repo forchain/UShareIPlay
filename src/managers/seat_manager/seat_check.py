@@ -166,7 +166,8 @@ class SeatCheckManager(SeatManagerBase):
         user = await UserDAO.get_by_username(username)
         souler = await UserDAO.get_by_username(souler_name_text)
         if user and souler and user.level <= souler.level:
-            self.handler.logger.info(f"Souler {souler_name_text} does not have higher level ({souler.level}) than {username} ({user.level}), skipping")
+            self.handler.logger.info(
+                f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
             return
 
         seat_off.click()
