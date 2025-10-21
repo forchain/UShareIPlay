@@ -167,6 +167,7 @@ class SeatCheckManager(SeatManagerBase):
         if souler_name_text == username:
             self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
             # No message needed - user is already seated successfully
+            self.handler.press_back()
             return
 
         user = await UserDAO.get_by_username(username)
@@ -174,6 +175,7 @@ class SeatCheckManager(SeatManagerBase):
         if user and souler and user.level <= souler.level:
             self.handler.logger.info(
                 f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
+            self.handler.press_back()
             self.handler.send_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
             return
 
