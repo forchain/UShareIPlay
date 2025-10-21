@@ -28,9 +28,6 @@ class SeatCheckManager(SeatManagerBase):
 
             self.handler.logger.info(f"Found reservation for user {username} on seat {user_reservation.seat_number}")
 
-            # Send welcome message to confirm seat reservation process started
-            self.handler.send_message(f"Welcome {username}!")
-
             # Check if reservation is still valid
             now = datetime.now()
             self.handler.logger.info(f"Current time: {now}")
@@ -145,6 +142,9 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.logger.warning(f"No occupant for seat {seat_number}")
             return
         self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text if seat_label else 'None'}")
+        
+        # Send welcome message only when seat is occupied to reduce message frequency
+        self.handler.send_message(f"Welcome {username}!")
 
         # Click the specific seat element
         seat_element.click()
