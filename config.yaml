@@ -51,29 +51,29 @@ soul:
       time: "08:00"
       message: "playlist Jazz 官方"
       repeat: true
-    - id: "playlist_9"
+    - id: "radio_9"
       time: "09:00"
-      message: "play"
+      message: "radio radar"
       repeat: true
     - id: "theme_work_morning"
       time: "09:30"
       message: "theme 🐮🐎"
       repeat: true
-    - id: "playlist_10"
+    - id: "radio_10"
       time: "10:00"
-      message: "playlist 红心雷达"
-      repeat: true
-    - id: "radio_11"
-      time: "11:00"
       message: "radio guess"
+      repeat: true
+    - id: "playlist_11"
+      time: "11:00"
+      message: "playlist 深度专注 官方"
       repeat: true
     - id: "theme_lunch_break"
       time: "11:30"
       message: "theme 午休"
       repeat: true
-    - id: "playlist_12"
+    - id: "radio_12"
       time: "12:00"
-      message: "playlist 深度专注 官方"
+      message: "radio sleep"
       repeat: true
     - id: "notice_12"
       time: "12:00"
@@ -85,12 +85,11 @@ soul:
       repeat: true
     - id: "theme_work_afternoon"
       time: "13:30"
-      message: "theme 🐮🐎"
+      message: "theme 搬砖"
       repeat: true
     - id: "playlist_14"
       time: "14:00"
-      message: "playlist 百万收藏"
-      repeat: true
+      message: "playlist 红心雷达"
     - id: "playlist_15"
       time: "15:00"
       message: "playlist 热门搜索"
@@ -99,13 +98,13 @@ soul:
       time: "16:00"
       message: "playlist KTV热歌 官方"
       repeat: true
-    - id: "radio_17"
+    - id: "playlist_17"
       time: "17:00"
-      message: "radio collection"
+      message: "playlist 百万收藏"
       repeat: true
-    - id: "playlist_18"
+    - id: "radio_18"
       time: "18:00"
-      message: "playlist 官方 冥想瑜伽"
+      message: "radio collection"
       repeat: true
     - id: "theme_home"
       time: "18:30"
@@ -131,9 +130,9 @@ soul:
       time: "22:30"
       message: "theme 助眠"
       repeat: true
-    - id: "radio_23"
+    - id: "playlist_23"
       time: "23:00"
-      message: "radio sleep"
+      message: "playlist 今天换一个睡眠歌单试试呢"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -226,6 +225,7 @@ soul:
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
     give_gift: "cn.soulapp.android:id/btnSend" # 赠送
+    use_item: "cn.soulapp.android:id/mConfirm" # 使用
     gift_tool: "cn.soulapp.android:id/ivGift"
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
     follower_name: "cn.soulapp.android:id/tvName" # Outlier

@@ -1,9 +1,10 @@
 import re
 import traceback
 from dataclasses import dataclass
-from ..dal import UserDAO
+
 from .seat_manager import seat_manager
 from ..core.singleton import Singleton
+from ..dal import UserDAO
 
 
 @dataclass
@@ -21,7 +22,7 @@ class GreetingManager(Singleton):
         # 延迟初始化 handler，避免循环依赖
         self._handler = None
         self.last_follower_message_id = None  # 记录上一条 follower message 的 element id
-    
+
     @property
     def handler(self):
         """延迟获取 SoulHandler 实例"""
@@ -43,12 +44,12 @@ class GreetingManager(Singleton):
 
             # 获取当前 follower message 的 element id
             current_message_id = follower_message.id
-            
+
             # 如果当前消息的 element id 与上一条相同，则跳过
             if current_message_id == self.last_follower_message_id:
                 # self.handler.logger.info("跳过重复的 follower message")
                 return None
-            
+
             # 记录当前消息的 element id
             self.last_follower_message_id = current_message_id
 
@@ -66,7 +67,7 @@ class GreetingManager(Singleton):
                 return None
 
             # Get nickname from message
-            nickname_element = self.handler.try_find_element_plus('souler_name', log= False)
+            nickname_element = self.handler.try_find_element_plus('souler_name', log=False)
             if not nickname_element:
                 self.handler.logger.error("Failed to find nickname of message")
                 self.handler.press_back()
@@ -115,19 +116,20 @@ class GreetingManager(Singleton):
             send_gift.click()
             self.handler.logger.info("Clicked send gift")
 
-            #bag_tab = self.handler.wait_for_element_clickable_plus('bag_tab')
-            #bag_tab.click()
-            #self.handler.logger.info("Clicked bag tab")
+            # bag_tab = self.handler.wait_for_element_clickable_plus('bag_tab')
+            # bag_tab.click()
+            # self.handler.logger.info("Clicked bag tab")
 
             # Wait for give gift button to ensure gift panel loaded
-            give_gift = self.handler.wait_for_element_clickable_plus('give_gift')
-            if not give_gift:
+            key, element = self.handler.wait_for_any_element_plus(['give_gift', 'use_item'])
+            if key == 'use_pack' or not key:
                 self.handler.logger.error("Failed to find give gift button")
                 bottom_drawer = self.handler.try_find_element_plus('bottom_drawer', log=False)
                 if bottom_drawer:
                     self.handler.click_element_at(bottom_drawer, x_ratio=0.5, y_ratio=-0.01)
                     self.handler.logger.info(f'Hid gift panel')
                 return False
+            give_gift = element
 
             # Try to find and send soul power gift
             soul_power = self.handler.try_find_element_plus('soul_power', log=False)
@@ -151,7 +153,7 @@ class GreetingManager(Singleton):
         """Send greeting message to follower (async to prevent blocking)"""
         import asyncio
         import concurrent.futures
-        
+
         try:
             # 在线程池中执行UI操作，避免阻塞事件循环
             loop = asyncio.get_event_loop()
@@ -167,7 +169,7 @@ class GreetingManager(Singleton):
         except Exception as e:
             self.handler.log_error(f"Error sending greeting: {traceback.format_exc()}")
             return False
-    
+
     def _send_greeting_sync(self):
         """Synchronous greeting operation"""
         try:
