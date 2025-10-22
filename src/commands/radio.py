@@ -36,7 +36,7 @@ class RadioCommand(BaseCommand):
 
     async def process(self, message_info, parameters):
         if not parameters:
-            return {"error": "Missing radio keyword"}
+            return self._handle_collection(message_info)
 
         # 添加播放器保护逻辑
         player_name = self.info_manager.player_name
@@ -47,8 +47,6 @@ class RadioCommand(BaseCommand):
                 self.music_handler.logger.info(f"{message_info.nickname} 尝试播放电台，但 {player_name} 正在播放")
                 return {'error': f'{player_name} 正在播放歌单，请等待'}
 
-        if len(parameters) < 1:
-            return self._handle_collection(message_info)
         keyword = parameters[0].lower()
         try:
             if keyword == "guess":
