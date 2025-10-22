@@ -181,8 +181,8 @@ class RadioCommand(BaseCommand):
         key, element = self.music_handler.wait_for_any_element_plus(["play_collection", "pause_collection"])
         if key == "pause_collection":
             self.music_handler.logger.info("正在播放精选，刷新")
-            more_collection = self.music_handler.wait_for_element_clickable_plus("more_collection")
-            more_collection.click()
+            home_nav = self.music_handler.wait_for_element_clickable_plus("home_nav")
+            home_nav.click()
             play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
         elif key == "play_collection":
             play_button = element
