@@ -36,7 +36,7 @@ class RadioCommand(BaseCommand):
 
     async def process(self, message_info, parameters):
         if not parameters:
-            return {"error": "Missing radio keyword"}
+            return self._handle_collection(message_info)
 
         # 添加播放器保护逻辑
         player_name = self.info_manager.player_name
@@ -178,16 +178,25 @@ class RadioCommand(BaseCommand):
         error = self._navigate_home()
         if error:
             return error
+        key, element = self.music_handler.wait_for_any_element_plus(["play_collection", "pause_collection"])
+        if key == "pause_collection":
+            self.music_handler.logger.info("正在播放精选，刷新")
+            home_nav = self.music_handler.wait_for_element_clickable_plus("home_nav")
+            home_nav.click()
+            play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
+        elif key == "play_collection":
+            play_button = element
+        else:
+            return self._report_error("Failed to find collection play button")
+        if not play_button:
+            return self._report_error("Failed to find collection play button")
+
         collection_title = self.music_handler.wait_for_element_clickable_plus("collection_title")
         collection_topic = self.music_handler.wait_for_element_plus("collection_topic")
         if not collection_title or not collection_topic:
             return self._report_error("Failed to locate collection radio elements")
         collection_title_text = self.soul_handler.try_get_attribute(collection_title, 'content-desc') or "Unknown"
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
-        collection_title.click()
-        play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
-        if not play_button:
-            return self._report_error("Failed to find collection play button")
         play_button.click()
         playlist_text, error = self._ensure_playlist_text()
         if error:
