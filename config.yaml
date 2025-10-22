@@ -334,6 +334,7 @@ qq_music:
     accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
     home_nav: '//android.view.ViewGroup[@content-desc="首页"]'
     play_collection: '//android.widget.Button[@content-desc="播放"]'
+    pause_collection: '//android.widget.Button[@content-desc="暂停"]'
     collection_title: '//android.widget.Button[@content-desc="播放"]/../android.widget.TextView'
     collection_topic: '//android.widget.ImageView[@content-desc="收藏" or @content-desc="取消收藏"]/../android.widget.TextView'
     guess_title: '//android.widget.TextView[@text="猜你喜欢"]'
@@ -475,7 +476,7 @@ logging:
   directory: "../logs"
 
 device:
-#  name: "554b4e4745413498"
+  #  name: "554b4e4745413498"
   name: "192.168.50.151:5555"
   platform_name: "Android"
   platform_version: "10"
