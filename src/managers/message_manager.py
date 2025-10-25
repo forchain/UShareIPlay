@@ -8,6 +8,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException
 
 from ..core.singleton import Singleton
+from ..core.log_formatter import ColoredFormatter
 from .greeting_manager import GreetingManager
 
 
@@ -40,7 +41,13 @@ def get_chat_logger(config=None):
             chat_logger.handlers.clear()
         log_file = f'{log_dir}/chat.log'
         handler = logging.FileHandler(log_file, encoding='utf-8')
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%m-%d %H:%M:%S'))
+        # Use ColoredFormatter without colors for file logging
+        formatter = ColoredFormatter(
+            fmt='%(asctime)s [%(levelname)s] %(message)s',
+            datefmt='%m-%d %H:%M:%S',
+            use_colors=False
+        )
+        handler.setFormatter(formatter)
         chat_logger.addHandler(handler)
     return chat_logger
 

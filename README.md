@@ -288,6 +288,20 @@ logging:
   directory: "../logs"
 ```
 
+#### **Enhanced Logging Format**
+The system uses an enhanced logging format with:
+- **Short timestamps**: `MM-DD HH:MM:SS` format (e.g., `10-25 17:35:17`)
+- **Abbreviated log levels**: D (DEBUG), I (INFO), W (WARNING), E (ERROR), C (CRITICAL)
+- **Color coding**: WARNING messages in yellow, ERROR messages in red (console only)
+- **Detailed context**: Function name and line number for easy debugging
+
+Example log output:
+```
+10-25 17:35:17 [I]process_command:145 - Processing play command
+10-25 17:35:18 [W]switch_to_app:203 - Element not found, retrying...
+10-25 17:35:19 [E]execute_action:478 - Failed to execute action: timeout
+```
+
 ### 2. Configuration Sections Explained
 
 #### **Soul App Configuration**

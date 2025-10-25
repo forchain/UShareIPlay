@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 from appium.webdriver.common.appiumby import AppiumBy
+from .log_formatter import ColoredFormatter
 from selenium.common.exceptions import (
     StaleElementReferenceException,
     WebDriverException,
@@ -82,12 +83,21 @@ class AppHandler:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
 
-        # Create formatter
-        formatter = logging.Formatter(
-            "[%(levelname)s]%(funcName)s:%(lineno)d - %(message)s"
+        # Create formatters with timestamp and short level names
+        # File formatter without colors
+        file_formatter = ColoredFormatter(
+            fmt="%(asctime)s [%(levelname)s]%(funcName)s:%(lineno)d - %(message)s",
+            datefmt="%m-%d %H:%M:%S",
+            use_colors=False
         )
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
+        # Console formatter with colors
+        console_formatter = ColoredFormatter(
+            fmt="%(asctime)s [%(levelname)s]%(funcName)s:%(lineno)d - %(message)s",
+            datefmt="%m-%d %H:%M:%S",
+            use_colors=True
+        )
+        file_handler.setFormatter(file_formatter)
+        console_handler.setFormatter(console_formatter)
 
         # Add handlers to logger
         logger.addHandler(file_handler)
