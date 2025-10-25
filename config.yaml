@@ -420,7 +420,7 @@ commands:
     response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
-    response_template: "Playing {song} by {singer} in {album}\n player: {player}\n{online_users}\n{party_duration}"
+    response_template: "Playing {current_playlist}\n Player: {player}\n{online_users}\n{party_duration}"
 
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
