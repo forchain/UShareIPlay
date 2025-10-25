@@ -49,6 +49,12 @@ class PartyManager(Singleton):
             self.trigger_minutes = self.handler.config.get('party_restart_minutes', 720)
             self.logger.info(f"派对管理器已初始化，触发时间: {self.trigger_minutes}分钟")
 
+    def reset_party_time(self):
+        """Reset party creation time to current time"""
+        current_time = datetime.now()
+        self.init_time = current_time
+        self.logger.info(f"Party creation time reset to: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     def update(self):
         """检查并自动管理派对"""
         try:
@@ -89,7 +95,7 @@ class PartyManager(Singleton):
                 if end_success:
                     self.logger.info("派对关闭成功")
                     # 重置初始化时间，重新开始计时
-                    self.init_time = current_time
+                    self.reset_party_time()
                     self.logger.info("已重置重启功能状态，重新开始计时")
                 else:
                     self.logger.error("派对关闭失败")

@@ -97,14 +97,28 @@ class SingerCommand(BaseCommand):
 
         play_button = self.handler.wait_for_element_clickable_plus('play_all_singer')
         if not play_button:
-            self.handler.logger.error(f"Cannot find play singer button")
+            self.handler.logger.error("Cannot find play singer button")
             return {'error': 'Failed to find play button'}
         play_button.click()
 
-        info = self.handler.get_playback_info()
-        topic = info['song'] if info else singer_name
-
         self.handler.logger.info("Clicked play singer result")
+
+        # Get playlist info from UI instead of ADB
+        playing_info = self.handler.get_playlist_info()
+        if 'error' in playing_info:
+            self.handler.logger.error(f"Failed to get playlist info: {playing_info['error']}")
+            return playing_info
+        
+        # Extract first song from playlist as topic
+        playlist_text = playing_info.get('playlist', '')
+        if playlist_text:
+            first_song = playlist_text.split('\n')[0].strip()
+            topic = first_song if first_song else singer_name
+        else:
+            topic = singer_name
+        
+        # Format playlist with singer name
+        formatted_playlist = f'Playing {singer_name}\n\n{playlist_text}'
 
         self.handler.list_mode = 'singer'
 
@@ -117,5 +131,5 @@ class SingerCommand(BaseCommand):
         topic_manager.change_topic(topic)
 
         return {
-            'singer': singer_name,
+            'singer': formatted_playlist,
         }

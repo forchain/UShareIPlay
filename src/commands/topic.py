@@ -87,6 +87,11 @@ class TopicCommand(BaseCommand):
             if not on_time:
                 return
 
+            # Update cooldown time BEFORE attempting operation
+            self.last_update_time = current_time
+            self.handler.logger.info(
+                f'Updated last topic update time to {current_time}, next topic: {self.next_topic}')
+
             # Use TopicManager to update topic
             from ..managers.topic_manager import TopicManager
             topic_manager = TopicManager.instance()
@@ -95,10 +100,6 @@ class TopicCommand(BaseCommand):
             
             # Update local state if successful
             if 'error' not in result:
-                self.last_update_time = current_time
-                self.handler.logger.info(
-                    f'Updated last topic update time to {current_time}, next topic: {self.next_topic}, current topic: {self.current_topic}')
-                
                 if self.next_topic:
                     self.current_topic = self.next_topic
                     self.next_topic = None
@@ -110,6 +111,8 @@ class TopicCommand(BaseCommand):
                 self.handler.send_message(
                     f"Updating topic to {self.current_topic}"
                 )
+            else:
+                self.handler.logger.warning(f'Failed to update topic: {result.get("error")}')
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
