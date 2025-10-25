@@ -41,8 +41,17 @@ class SeatCommand(BaseCommand):
                     return await seat_manager.reservation.reserve_seat(message_info.nickname, seat_number)
                 except ValueError:
                     return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
+            elif command == '2' and len(parameters) == 2:
+                # Sit at specific seat position
+                try:
+                    seat_number = int(parameters[1])
+                    if seat_number < 1 or seat_number > 12:
+                        return {'error': 'Invalid seat number. Must be between 1 and 12'}
+                    return seat_manager.seating.sit_at_specific_seat(seat_number)
+                except ValueError:
+                    return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
             else:
-                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>]'}
+                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>]'}
 
         except Exception as e:
             self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")

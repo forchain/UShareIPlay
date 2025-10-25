@@ -419,7 +419,7 @@ The system supports 20+ commands for comprehensive room and music management:
 - `:acc [0/1]` - Toggle accompaniment mode for karaoke
 - `:ktv [0/1]` - Toggle KTV mode with lyrics recognition
 - `:mic [0/1]` - Control microphone (1:on, 0:off)
-- `:seat [0/1 <number>]` - Seat management system
+- `:seat [0/1 <number>|2 <number>]` - Seat management system
 - `:timer <command>` - Timer and scheduling system
 - `:hello <user> "<message>" "<song>"` - Greeting system
 - `:admin [0/1]` - Admin role management
@@ -449,6 +449,7 @@ The system supports 20+ commands for comprehensive room and music management:
 :ktv 1                    # Enable KTV mode
 :mic 0                    # Turn off microphone
 :seat 1 5                 # Reserve seat number 5
+:seat 2 5                 # Sit at seat number 5 immediately
 
 # Timer system
 :timer add morning 08:00 "早上好！" repeat
