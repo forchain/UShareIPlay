@@ -59,6 +59,7 @@ class SeatingManager(SeatManagerBase):
                 self._ensure_row_visible(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
+                self.handler.logger.debug(f"desk_info: {desk_info}" )
 
                 companion_candidate = self._select_companion_candidate(desk_info)
                 if companion_candidate:
