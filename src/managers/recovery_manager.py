@@ -101,6 +101,25 @@ class RecoveryManager(Singleton):
             self.logger.error(f"设置默认notice时出错: {str(e)}")
             return False
 
+    def _seat_owner_after_party_creation(self):
+        """Seat the owner after party creation/restoration"""
+        try:
+            time.sleep(1.5)  # Wait for party UI to stabilize
+            
+            from ..managers.seat_manager import seat_manager
+            self.logger.info("Attempting to seat owner after party creation")
+            result = seat_manager.seating.find_owner_seat()
+            
+            if 'success' in result:
+                self.logger.info("Owner successfully seated")
+                return True
+            else:
+                self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error seating owner: {str(e)}")
+            return False
+
     def is_normal_state(self) -> bool:
         """
         检测是否处于正常状态
@@ -288,6 +307,9 @@ class RecoveryManager(Singleton):
                 else:
                     self.logger.warning("默认notice设置失败")
 
+                # Seat the owner after party creation
+                self._seat_owner_after_party_creation()
+
                 return True
 
             if key == 'confirm_party':
@@ -310,6 +332,9 @@ class RecoveryManager(Singleton):
                         self.logger.info("默认notice设置成功")
                     else:
                         self.logger.warning("默认notice设置失败")
+
+                    # Seat the owner after party creation
+                    self._seat_owner_after_party_creation()
 
                 return True
 
@@ -341,6 +366,10 @@ class RecoveryManager(Singleton):
                 self.logger.info("默认notice设置成功")
             else:
                 self.logger.warning("默认notice设置失败")
+
+            # Seat the owner after party creation
+            self._seat_owner_after_party_creation()
+
             return True
 
 
