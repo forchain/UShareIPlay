@@ -202,10 +202,10 @@ class RadioCommand(BaseCommand):
         if not collection_title or not collection_topic:
             return self._report_error("Failed to locate collection radio elements")
         collection_title_text = self.soul_handler.try_get_attribute(collection_title, 'content-desc') or "Unknown"
-        splitter = '也在听'
+        splitter = '音频按钮'
         # Truncate text after splitter if present
         if splitter in collection_title_text:
-            collection_title_text = collection_title_text.split(splitter)[0] + splitter
+            collection_title_text = collection_title_text.split(splitter)[0] 
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
         playlist_text, error = self._ensure_playlist_text()
