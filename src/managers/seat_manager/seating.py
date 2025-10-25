@@ -55,6 +55,8 @@ class SeatingManager(SeatManagerBase):
             first_empty_candidate = None
 
             for desk_index in scan_order:
+                # Ensure the row containing this desk is visible
+                self._ensure_row_visible(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
 
@@ -160,6 +162,45 @@ class SeatingManager(SeatManagerBase):
 
     def _build_scan_order(self, total_count, start_index):
         return [(start_index + offset) % total_count for offset in range(total_count)]
+
+    def _ensure_row_visible(self, desk_index, seat_desks):
+        """Ensure the row containing the desk is visible by scrolling if needed"""
+        if not seat_desks or len(seat_desks) < 3:
+            return
+        
+        # Calculate which row the desk belongs to (row_index = desk_index // 2)
+        row_index = desk_index // 2
+        
+        # Row 1 (desk_index 2-3) is always visible, no scrolling needed
+        if row_index == 1:
+            return
+        
+        # Use second row's first desk (index 2) as reference for scrolling
+        reference_desk = seat_desks[2]
+        desk_height = reference_desk.size['height']
+        
+        if row_index == 0:  # First row (desk_index 0-1)
+            # Scroll down one row height to show first row
+            self.handler.driver.swipe(
+                reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                reference_desk.location['y'] + reference_desk.size['height'] // 2,
+                reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                reference_desk.location['y'] + reference_desk.size['height'] // 2 + desk_height,
+                1000
+            )
+            time.sleep(0.5)  # Wait for scroll animation
+            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index}")
+        elif row_index == 2:  # Third row (desk_index 4-5)
+            # Scroll up one row height to show third row
+            self.handler.driver.swipe(
+                reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                reference_desk.location['y'] + reference_desk.size['height'] // 2,
+                reference_desk.location['x'] + reference_desk.size['width'] // 2,
+                reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
+                1000
+            )
+            time.sleep(0.5)  # Wait for scroll animation
+            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index}")
 
     def _take_seat(self, desk_index, seat_info, neighbor_label=None):
         if self.handler is None or not seat_info or not seat_info.get('element'):
