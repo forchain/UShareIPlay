@@ -141,6 +141,9 @@ class RadioCommand(BaseCommand):
             return error
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
+        # 设置歌单类型和名称
+        self.music_handler.list_mode = 'radio'
+        self.info_manager.current_playlist_name = guess_title_text
         return {"playlist": playlist_text}
 
     def _handle_daily_30(self, message_info):
@@ -172,6 +175,9 @@ class RadioCommand(BaseCommand):
             return error
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
+        # 设置歌单类型和名称
+        self.music_handler.list_mode = 'radio'
+        self.info_manager.current_playlist_name = daily_title_text
         return {"playlist": playlist_text}
 
     def _handle_collection(self, message_info):
@@ -212,6 +218,9 @@ class RadioCommand(BaseCommand):
             return error
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
+        # 设置歌单类型和名称
+        self.music_handler.list_mode = 'radio'
+        self.info_manager.current_playlist_name = collection_title_text
         return {"playlist": playlist_text}
 
     def _handle_sleep_healing(self, message_info):
@@ -248,6 +257,9 @@ class RadioCommand(BaseCommand):
             return error
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
+        # 设置歌单类型和名称
+        self.music_handler.list_mode = 'radio'
+        self.info_manager.current_playlist_name = healing_room_name
         return {"playlist": playlist_text}
 
     def _handle_radar(self, message_info):
@@ -294,6 +306,9 @@ class RadioCommand(BaseCommand):
 
         # 更新播放器名称
         self.info_manager.player_name = message_info.nickname
+        # 设置歌单类型和名称
+        self.music_handler.list_mode = 'radio'
+        self.info_manager.current_playlist_name = "O Radio"
 
         return {
             "playlist": playlist_text,
