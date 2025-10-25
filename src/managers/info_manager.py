@@ -18,6 +18,7 @@ class InfoManager(Singleton):
         self._party_manager = None
         self._online_users: Set[str] = set()
         self._player_name: str = "Joyer"  # 默认播放器名称
+        self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
     
     @property
     def handler(self):
@@ -52,6 +53,17 @@ class InfoManager(Singleton):
         """设置播放器名称"""
         self._player_name = value
         self.logger.info(f"Player name set to: {value}")
+    
+    @property
+    def current_playlist_name(self) -> str:
+        """获取当前歌单名称（完整原始名称）"""
+        return self._current_playlist_name
+    
+    @current_playlist_name.setter
+    def current_playlist_name(self, value: str):
+        """设置当前歌单名称"""
+        self._current_playlist_name = value
+        self.logger.info(f"Playlist name set to: {value}")
     
     def update_online_users(self, users: List[str]):
         """
@@ -127,6 +139,32 @@ class InfoManager(Singleton):
             
         except Exception:
             self.logger.error(f"Error getting party duration info: {traceback.format_exc()}")
+            return None
+    
+    def get_playlist_info(self) -> Optional[dict]:
+        """
+        获取当前歌单信息
+        
+        Returns:
+            Optional[dict]: 歌单信息，包含 'type' (歌单类型) 和 'name' (完整歌单名称)
+                          如果没有活跃歌单则返回 None
+        """
+        try:
+            if not self._current_playlist_name:
+                return None
+            
+            # 获取歌单类型 from music_handler.list_mode
+            from ..handlers.qq_music_handler import QQMusicHandler
+            music_handler = QQMusicHandler.instance()
+            playlist_type = music_handler.list_mode if music_handler else 'unknown'
+            
+            return {
+                'type': playlist_type,
+                'name': self._current_playlist_name
+            }
+            
+        except Exception:
+            self.logger.error(f"Error getting playlist info: {traceback.format_exc()}")
             return None
 
 

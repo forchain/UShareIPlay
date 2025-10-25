@@ -36,6 +36,23 @@ class InfoCommand(BaseCommand):
         party_duration = info_manager.get_party_duration_info()
         result['party_duration'] = party_duration if party_duration else ""
         
+        # 追加当前歌单信息
+        playlist_info = info_manager.get_playlist_info()
+        if playlist_info and playlist_info.get('name'):
+            playlist_type_map = {
+                'singer': '歌手',
+                'playlist': '歌单', 
+                'album': '专辑',
+                'radio': '电台',
+                'favorites': '收藏',
+                'radar': '雷达',
+                'unknown': '未知'
+            }
+            ptype = playlist_type_map.get(playlist_info['type'], playlist_info['type'])
+            result['current_playlist'] = f"[{ptype}] {playlist_info['name']} (by {result['player']})"
+        else:
+            result['current_playlist'] = "暂无活跃歌单"
+        
         return result
 
     def update(self):

@@ -121,12 +121,17 @@ class AlbumCommand(BaseCommand):
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ..managers.title_manager import TitleManager
         from ..managers.topic_manager import TopicManager
+        from ..managers.info_manager import InfoManager
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
         topic_manager.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
         title_manager.set_next_title(title)
         self.handler.logger.info(f"changing album title  to {title}")
+        
+        # 存储完整的歌单名称到 InfoManager
+        info_manager = InfoManager.instance()
+        info_manager.current_playlist_name = f"{title} - {topic}"
 
         return {
             'album': topic
