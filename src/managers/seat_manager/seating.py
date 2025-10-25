@@ -17,6 +17,52 @@ class SeatingManager(SeatManagerBase):
         if not hasattr(self, 'current_side'):
             self.current_side = None
 
+    def sit_at_specific_seat(self, seat_number: int) -> dict:
+        """Sit at a specific seat position (1-12)"""
+        if self.handler is None:
+            return {'error': 'Handler not initialized'}
+
+        try:
+            # Convert seat number to desk index and side
+            # Odd numbers = left seat, Even numbers = right seat
+            desk_index = (seat_number - 1) // 2
+            side = 'left' if seat_number % 2 == 1 else 'right'
+
+            # Expand seats if needed
+            self.seat_ui.expand_seats()
+            time.sleep(0.5)  # Wait for expansion animation
+
+            # Find all seat desks
+            seat_desks = self.handler.find_elements_plus('seat_desk')
+            if not seat_desks:
+                self.handler.logger.error("Failed to find seat desks")
+                return {'error': 'Failed to find seat desks'}
+
+            if desk_index >= len(seat_desks):
+                return {'error': f'Desk {desk_index + 1} does not exist'}
+
+            # Ensure the target row is visible
+            self._ensure_row_visible(desk_index, seat_desks)
+
+            # Get the specific desk and collect its info
+            desk = seat_desks[desk_index]
+            desk_info = self._collect_desk_info(desk)
+
+            # Get the target seat info
+            target_seat = desk_info[side]
+
+            # Check if the target seat is occupied
+            if target_seat['occupied']:
+                return {'error': f'Seat {seat_number} is already occupied by {target_seat["label"]}'}
+
+            # Take the seat
+            self.handler.logger.info(f"Sitting at seat {seat_number} (desk {desk_index + 1}, {side} side)")
+            return self._take_seat(desk_index, target_seat)
+
+        except Exception as e:
+            self.handler.log_error(f"Error sitting at specific seat: {traceback.format_exc()}")
+            return {'error': f'Failed to sit at seat {seat_number}: {str(e)}'}
+
     def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
@@ -59,7 +105,7 @@ class SeatingManager(SeatManagerBase):
                 self._ensure_row_visible(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
-                self.handler.logger.debug(f"desk_info: {desk_info}" )
+                # self.handler.logger.debug(f"desk_info: {desk_info}" )
 
                 companion_candidate = self._select_companion_candidate(desk_info)
                 if companion_candidate:
