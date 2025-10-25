@@ -17,6 +17,7 @@ class RecoveryManager(Singleton):
         self.manual_mode_enabled = False  # 手动模式标志位
         self.abnormal_state_detected = False  # 异常状态检测标志
         self.abnormal_state_count = 0  # 连续异常状态计数
+        self._party_manager = None  # 延迟初始化，避免循环依赖
 
         # 关闭和返回按钮列表
         self.close_buttons = [
@@ -74,6 +75,14 @@ class RecoveryManager(Singleton):
         self.last_recovery_time = 0
         self.recovery_cooldown = 1  # 恢复操作冷却时间（秒）
 
+    @property
+    def party_manager(self):
+        """Lazy load PartyManager instance"""
+        if self._party_manager is None:
+            from ..managers.party_manager import PartyManager
+            self._party_manager = PartyManager.instance()
+        return self._party_manager
+
     def _set_default_notice(self):
         """设置默认notice（使用NoticeManager）"""
         try:
@@ -90,6 +99,25 @@ class RecoveryManager(Singleton):
 
         except Exception as e:
             self.logger.error(f"设置默认notice时出错: {str(e)}")
+            return False
+
+    def _seat_owner_after_party_creation(self):
+        """Seat the owner after party creation/restoration"""
+        try:
+            time.sleep(1.5)  # Wait for party UI to stabilize
+            
+            from ..managers.seat_manager import seat_manager
+            self.logger.info("Attempting to seat owner after party creation")
+            result = seat_manager.seating.find_owner_seat()
+            
+            if 'success' in result:
+                self.logger.info("Owner successfully seated")
+                return True
+            else:
+                self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error seating owner: {str(e)}")
             return False
 
     def is_normal_state(self) -> bool:
@@ -269,12 +297,18 @@ class RecoveryManager(Singleton):
                 element.click()
                 self.logger.info("Clicked create party button")
 
+                # 派对创建成功后，重置派对时间
+                self.party_manager.reset_party_time()
+
                 # 派对创建成功后，设置默认notice
                 self.logger.info("派对创建成功，准备设置默认notice")
                 if self._set_default_notice():
                     self.logger.info("默认notice设置成功")
                 else:
                     self.logger.warning("默认notice设置失败")
+
+                # Seat the owner after party creation
+                self._seat_owner_after_party_creation()
 
                 return True
 
@@ -289,12 +323,18 @@ class RecoveryManager(Singleton):
                     element.click()
                     self.logger.info("Clicked create party button")
 
+                    # 派对创建成功后，重置派对时间
+                    self.party_manager.reset_party_time()
+
                     # 派对创建成功后，设置默认notice
                     self.logger.info("派对创建成功，准备设置默认notice")
                     if self._set_default_notice():
                         self.logger.info("默认notice设置成功")
                     else:
                         self.logger.warning("默认notice设置失败")
+
+                    # Seat the owner after party creation
+                    self._seat_owner_after_party_creation()
 
                 return True
 
@@ -317,12 +357,19 @@ class RecoveryManager(Singleton):
                     element.click()
                     self.logger.info("Clicked create party button")
 
+            # 派对创建成功后，重置派对时间
+            self.party_manager.reset_party_time()
+
             # 派对创建成功后，设置默认notice
             self.logger.info("派对创建成功，准备设置默认notice")
             if self._set_default_notice():
                 self.logger.info("默认notice设置成功")
             else:
                 self.logger.warning("默认notice设置失败")
+
+            # Seat the owner after party creation
+            self._seat_owner_after_party_creation()
+
             return True
 
 
