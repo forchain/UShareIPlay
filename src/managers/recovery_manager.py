@@ -17,6 +17,7 @@ class RecoveryManager(Singleton):
         self.manual_mode_enabled = False  # 手动模式标志位
         self.abnormal_state_detected = False  # 异常状态检测标志
         self.abnormal_state_count = 0  # 连续异常状态计数
+        self._party_manager = None  # 延迟初始化，避免循环依赖
 
         # 关闭和返回按钮列表
         self.close_buttons = [
@@ -73,6 +74,14 @@ class RecoveryManager(Singleton):
 
         self.last_recovery_time = 0
         self.recovery_cooldown = 1  # 恢复操作冷却时间（秒）
+
+    @property
+    def party_manager(self):
+        """Lazy load PartyManager instance"""
+        if self._party_manager is None:
+            from ..managers.party_manager import PartyManager
+            self._party_manager = PartyManager.instance()
+        return self._party_manager
 
     def _set_default_notice(self):
         """设置默认notice（使用NoticeManager）"""
@@ -269,6 +278,9 @@ class RecoveryManager(Singleton):
                 element.click()
                 self.logger.info("Clicked create party button")
 
+                # 派对创建成功后，重置派对时间
+                self.party_manager.reset_party_time()
+
                 # 派对创建成功后，设置默认notice
                 self.logger.info("派对创建成功，准备设置默认notice")
                 if self._set_default_notice():
@@ -288,6 +300,9 @@ class RecoveryManager(Singleton):
                 if key == 'create_party_button':
                     element.click()
                     self.logger.info("Clicked create party button")
+
+                    # 派对创建成功后，重置派对时间
+                    self.party_manager.reset_party_time()
 
                     # 派对创建成功后，设置默认notice
                     self.logger.info("派对创建成功，准备设置默认notice")
@@ -316,6 +331,9 @@ class RecoveryManager(Singleton):
                 if key == 'create_party_button':
                     element.click()
                     self.logger.info("Clicked create party button")
+
+            # 派对创建成功后，重置派对时间
+            self.party_manager.reset_party_time()
 
             # 派对创建成功后，设置默认notice
             self.logger.info("派对创建成功，准备设置默认notice")
