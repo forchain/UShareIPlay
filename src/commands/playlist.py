@@ -122,7 +122,7 @@ class PlaylistCommand(BaseCommand):
                 subject = singer_name.text
 
         if not topic:
-            self.handler.logger.warning('Failed to parse playlist topic')
+            self.handler.logger.info('Failed to parse playlist topic')
             if song_name:
                 topic = song_name.text
 
