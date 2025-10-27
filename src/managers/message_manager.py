@@ -194,7 +194,7 @@ class MessageManager(Singleton):
             if not chat_text in self.recent_messages:
                 is_enter, username = self.is_user_enter_message(chat_text)
                 if is_enter:
-                    self.handler.logger.info(f"User entered: {username}")
+                    self.handler.logger.critical(f"User entered: {username}")
                     # Notify all commands via CommandManager
                     from .command_manager import CommandManager
                     command_manager = CommandManager.instance()
