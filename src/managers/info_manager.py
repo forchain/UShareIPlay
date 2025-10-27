@@ -82,7 +82,7 @@ class InfoManager(Singleton):
                 
                 if users_who_left:
                     for username in users_who_left:
-                        self.logger.info(f"User left: {username}")
+                        self.logger.critical(f"User left: {username}")
                         # Notify commands via CommandManager
                         self._notify_user_leave(username)
             
