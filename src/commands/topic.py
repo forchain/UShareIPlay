@@ -21,7 +21,7 @@ class TopicCommand(BaseCommand):
         self.last_update_time = None
         self.current_topic = None
         self.next_topic = None
-        self.cooldown_minutes = 5 + 2
+        self.cooldown_minutes = 5
         self.handler = self.soul_handler
 
     def change_topic(self, topic: str):
@@ -95,9 +95,9 @@ class TopicCommand(BaseCommand):
             # Use TopicManager to update topic
             from ..managers.topic_manager import TopicManager
             topic_manager = TopicManager.instance()
-            
+
             result = topic_manager.change_topic(self.next_topic)
-            
+
             # Update local state if successful
             if 'error' not in result:
                 if self.next_topic:
@@ -106,7 +106,7 @@ class TopicCommand(BaseCommand):
                     self.handler.logger.info(f'Updated current topic to {self.current_topic}')
                 else:
                     self.handler.logger.warning(f'Next topic is empty, current topic: {self.current_topic}')
-                
+
                 self.handler.logger.info(f'Topic is updated to {self.current_topic}')
                 self.handler.send_message(
                     f"Updating topic to {self.current_topic}"
@@ -116,4 +116,3 @@ class TopicCommand(BaseCommand):
 
         except Exception as e:
             self.handler.log_error(f"Error in topic update: {traceback.format_exc()}")
-

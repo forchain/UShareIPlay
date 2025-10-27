@@ -236,3 +236,17 @@ class CommandManager(Singleton):
     def get_command_modules(self):
         """获取所有已加载的命令模块"""
         return self.command_modules
+    
+    async def notify_user_leave(self, username: str):
+        """
+        Notify all commands when a user leaves
+        
+        Args:
+            username: Username of the user who left
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, 'user_leave'):
+                    await module.command.user_leave(username)
+            except Exception as e:
+                self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")

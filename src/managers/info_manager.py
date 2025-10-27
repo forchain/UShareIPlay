@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 from typing import Set, List, Optional
 from datetime import datetime
@@ -73,11 +74,38 @@ class InfoManager(Singleton):
             users: 在线用户名列表
         """
         try:
-            self._online_users = set(users)
+            new_users_set = set(users)
+            
+            # Detect users who left (were in old set but not in new set)
+            if self._online_users:  # Only check if we have previous data
+                users_who_left = self._online_users - new_users_set
+                
+                if users_who_left:
+                    for username in users_who_left:
+                        self.logger.critical(f"User left: {username}")
+                        # Notify commands via CommandManager
+                        self._notify_user_leave(username)
+            
+            # Update the set
+            self._online_users = new_users_set
             self.logger.info(f"Updated online users list: {len(self._online_users)} users")
             self.logger.debug(f"Online users: {', '.join(sorted(self._online_users))}")
         except Exception:
             self.logger.error(f"Error updating online users: {traceback.format_exc()}")
+    
+    def _notify_user_leave(self, username: str):
+        """
+        Notify all commands that a user has left
+        
+        Args:
+            username: Username of the user who left
+        """
+        try:
+            from .command_manager import CommandManager
+            command_manager = CommandManager.instance()
+            asyncio.create_task(command_manager.notify_user_leave(username))
+        except Exception:
+            self.logger.error(f"Error notifying user leave: {traceback.format_exc()}")
     
     def is_user_online(self, username: str) -> bool:
         """

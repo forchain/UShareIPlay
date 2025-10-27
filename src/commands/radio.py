@@ -101,12 +101,6 @@ class RadioCommand(BaseCommand):
                     return self._report_error(topic_result["error"])
         return None
 
-    def _send_playlist_message(self, playlist_text: str):
-        result = self.soul_handler.send_message(playlist_text)
-        if isinstance(result, dict) and "error" in result:
-            return self._report_error(result["error"])
-        return None
-
     def _extract_primary_topic(self, raw_topic: Optional[str]) -> Optional[str]:
         if not raw_topic:
             return None
@@ -134,9 +128,6 @@ class RadioCommand(BaseCommand):
         if error:
             return error
         error = self._set_room_context(guess_title_text, guess_topic_text)
-        if error:
-            return error
-        error = self._send_playlist_message(playlist_text)
         if error:
             return error
         # 更新播放器名称
@@ -168,9 +159,6 @@ class RadioCommand(BaseCommand):
         if error:
             return error
         error = self._set_room_context(daily_title_text, daily_topic_text)
-        if error:
-            return error
-        error = self._send_playlist_message(playlist_text)
         if error:
             return error
         # 更新播放器名称
@@ -205,7 +193,7 @@ class RadioCommand(BaseCommand):
         splitter = '音频按钮'
         # Truncate text after splitter if present
         if splitter in collection_title_text:
-            collection_title_text = collection_title_text.split(splitter)[0] 
+            collection_title_text = collection_title_text.split(splitter)[0]
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
         playlist_text, error = self._ensure_playlist_text()
@@ -215,9 +203,6 @@ class RadioCommand(BaseCommand):
         if error:
             return error
         error = self._set_room_context(collection_title_text, collection_topic_text)
-        if error:
-            return error
-        error = self._send_playlist_message(playlist_text)
         if error:
             return error
         # 更新播放器名称
@@ -254,9 +239,6 @@ class RadioCommand(BaseCommand):
         if error:
             return error
         error = self._set_room_context(healing_room_name, first_song or None)
-        if error:
-            return error
-        error = self._send_playlist_message(playlist_text)
         if error:
             return error
         # 更新播放器名称
@@ -301,10 +283,6 @@ class RadioCommand(BaseCommand):
 
         # 设置房间标题和话题
         error = self._set_room_context("O Radio", song_text)
-        if error:
-            return error
-
-        error = self._send_playlist_message(playlist_text)
         if error:
             return error
 
