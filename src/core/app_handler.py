@@ -1190,7 +1190,7 @@ class AppHandler:
                     return None, None
 
             elif found_key == home_key:
-                self.logger.warning(f"已回到首页: {home_key}，无法继续返回")
+                self.logger.info(f"已回到首页: {home_key}，无法继续返回")
                 return found_key, found_element
 
             else:

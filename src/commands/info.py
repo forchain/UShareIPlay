@@ -141,7 +141,7 @@ class InfoCommand(BaseCommand):
                     for i, user in enumerate(online_users):
                         user_text = user.text
                         all_online_user_names.add(user_text)
-                        self.handler.logger.info(f"Online user {i + 1}: {user_text}")
+                        # self.handler.logger.info(f"Online user {i + 1}: {user_text}")
                 
                 # 更新在线用户列表到 InfoManager
                 from ..managers.info_manager import InfoManager

@@ -112,7 +112,7 @@ class SingerCommand(BaseCommand):
         # Extract first song from playlist as topic
         playlist_text = playing_info.get('playlist', '')
         if playlist_text:
-            first_song = playlist_text.split('\n')[0].strip()
+            first_song = playlist_text.split('-')[0].strip()
             topic = first_song if first_song else singer_name
         else:
             topic = singer_name
