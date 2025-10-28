@@ -79,7 +79,7 @@ class TimerManager(Singleton):
     
     async def _timer_loop(self):
         """异步定时器主循环"""
-        self.logger.info(f"Timer loop started with {len(self._timers)} timers")
+        # self.logger.info(f"Timer loop started with {len(self._timers)} timers")
         loop_count = 0
         
         while self._running:

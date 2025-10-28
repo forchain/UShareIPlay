@@ -569,6 +569,14 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
 
+        playlist_info = []
+        playlist_first = self.driver.find_elements(AppiumBy.XPATH, self.config['elements']['playlist_first'])
+        if len(playlist_first) > 0:
+            first_song = playlist_first[0].text
+            first_singer = playlist_first[1].text if len(playlist_first) > 1 else ''
+            info = f'{first_song}{first_singer}'
+            playlist_info.append(info)
+
         can_scroll = True
         try:
             playing_loc = playlist_current.location
@@ -601,7 +609,6 @@ class QQMusicHandler(AppHandler, Singleton):
         # Get all songs and singers
         items = self.driver.find_elements(AppiumBy.XPATH, self.config['elements']['playlist_item_container'])
 
-        playlist_info = []
         for item in items:
             try:
                 elements = self.find_child_elements(item, AppiumBy.CLASS_NAME, 'android.widget.TextView')

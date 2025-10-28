@@ -54,7 +54,7 @@ class SoulHandler(AppHandler, Singleton):
             self.logger.error("Clicked go back button, might be in chat screen")
             return {'error': 'cannot find input box entry, might be in chat screen'}
         input_box_entry.click()
-        self.logger.info("Clicked input box entry")
+        # self.logger.info("Clicked input box entry")
 
         # Now find and interact with the actual input box
         input_box = self.wait_for_element_clickable_plus('input_box')
@@ -75,10 +75,10 @@ class SoulHandler(AppHandler, Singleton):
             }
 
         send_button.click()
-        self.logger.info("Clicked send button")
+        # self.logger.info("Clicked send button")
 
         self.click_element_at(input_box, 0.5, -1)
-        self.logger.info("Hide input dialog")
+        # self.logger.info("Hide input dialog")
 
     def invite_user(self, message_info: MessageInfo, party_id: str):
         """
