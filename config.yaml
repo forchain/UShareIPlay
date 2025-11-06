@@ -19,25 +19,25 @@ soul:
       time: "00:00"
       message: "notice sorry, hello, excuse me"
       repeat: true
-    - id: "help_1"
+    - id: "radio_1"
       time: "01:00"
-      message: "help"
+      message: "radio sleep"
       repeat: true
-    - id: "help_2"
+    - id: "radio_2"
       time: "02:00"
-      message: "help"
+      message: "radio sleep"
       repeat: true
-    - id: "help_3"
+    - id: "radio_3"
       time: "03:00"
-      message: "help"
+      message: "radio sleep"
       repeat: true
-    - id: "help_4"
+    - id: "radio_4"
       time: "04:00"
-      message: "help"
+      message: "radio sleep"
       repeat: true
-    - id: "help_5"
+    - id: "radio_5"
       time: "05:00"
-      message: "help"
+      message: "radio sleep"
       repeat: true
     - id: "playlist_6"
       time: "06:00"
@@ -132,7 +132,7 @@ soul:
       repeat: true
     - id: "playlist_23"
       time: "23:00"
-      message: "playlist 今天换一个睡眠歌单试试呢"
+      message: "radio sleep"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
