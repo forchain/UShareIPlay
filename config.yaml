@@ -19,25 +19,9 @@ soul:
       time: "00:00"
       message: "notice sorry, hello, excuse me"
       repeat: true
-    - id: "radio_1"
+    - id: "help_1"
       time: "01:00"
-      message: "radio sleep"
-      repeat: true
-    - id: "radio_2"
-      time: "02:00"
-      message: "radio sleep"
-      repeat: true
-    - id: "radio_3"
-      time: "03:00"
-      message: "radio sleep"
-      repeat: true
-    - id: "radio_4"
-      time: "04:00"
-      message: "radio sleep"
-      repeat: true
-    - id: "radio_5"
-      time: "05:00"
-      message: "radio sleep"
+      message: "help"
       repeat: true
     - id: "playlist_6"
       time: "06:00"
@@ -51,41 +35,41 @@ soul:
       time: "08:00"
       message: "playlist Jazz 官方"
       repeat: true
+    - id: "theme_morning"
+      time: "09:00"
+      message: "title 燃烧吧骄傲的少年 🔥"
+      repeat: true
     - id: "radio_9"
       time: "09:00"
       message: "radio radar"
-      repeat: true
-    - id: "theme_work_morning"
-      time: "09:30"
-      message: "theme 🐮🐎"
       repeat: true
     - id: "radio_10"
       time: "10:00"
       message: "radio guess"
       repeat: true
-    - id: "playlist_11"
+    - id: "radio_11"
       time: "11:00"
-      message: "playlist 深度专注 官方"
+      message: "radio daily"
       repeat: true
-    - id: "theme_lunch_break"
-      time: "11:30"
-      message: "theme 午休"
-      repeat: true
-    - id: "radio_12"
+    - id: "theme_noon"
       time: "12:00"
-      message: "radio sleep"
+      message: "title 放松一下 午休"
+      repeat: true
+    - id: "playlist_12"
+      time: "12:00"
+      message: "playlist 深度专注 官方"
       repeat: true
     - id: "notice_12"
       time: "12:00"
       message: "notice hello, thank you, are you ok?"
       repeat: true
+    - id: "theme_afternoon"
+      time: "13:00"
+      message: "title 赤子之心 💪"
+      repeat: true
     - id: "radio_13"
       time: "13:00"
-      message: "radio daily"
-      repeat: true
-    - id: "theme_work_afternoon"
-      time: "13:30"
-      message: "theme 搬砖"
+      message: "radio"
       repeat: true
     - id: "playlist_14"
       time: "14:00"
@@ -107,28 +91,28 @@ soul:
       message: "radio collection"
       repeat: true
     - id: "theme_home"
-      time: "18:30"
-      message: "theme 享乐"
+      time: "19:00"
+      message: "title 差不多该回窝了 🏠"
       repeat: true
     - id: "playlist_19"
       time: "19:00"
-      message: "playlist 官方 古典"
+      message: "playlist 官方 粤语经典"
       repeat: true
     - id: "playlist_20"
       time: "20:00"
-      message: "playlist 官方 r&b"
+      message: "playlist 官方 古典"
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 粤语经典"
+      message: "playlist 官方 r&b"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
       message: "playlist Lofi Girl 官方"
       repeat: true
     - id: "theme_sleep"
-      time: "22:30"
-      message: "theme 助眠"
+      time: "23:00"
+      message: "title 早睡早起 助眠"
       repeat: true
     - id: "playlist_23"
       time: "23:00"

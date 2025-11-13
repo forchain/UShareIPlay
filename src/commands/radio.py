@@ -219,8 +219,7 @@ class RadioCommand(BaseCommand):
         healing_tab = self.music_handler.wait_for_element_clickable_plus("healing_tab")
         if not healing_tab:
             return self._report_error("Failed to locate healing tab")
-        healing_room_name = "耳畔疗愈"
-        # healing_room_name = healing_tab.text
+        healing_room_name = healing_tab.text
         healing_tab.click()
         play_healing = self.music_handler.wait_for_element_clickable_plus("play_healing")
         if not play_healing:
