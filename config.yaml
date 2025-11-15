@@ -229,6 +229,7 @@ soul:
     search_back: "cn.soulapp.android:id/ivSearchBack"
     close_chat: "cn.soulapp.android:id/tv_btn_close" # 先不聊了
     close_more_menu: "cn.soulapp.android:id/ivBack" # more_menu 的关闭按钮
+    reload_button: "cn.soulapp.android:id/tvBtnState" # 重新加载
     activity_back: '//android.widget.Image[@text="此图片未加标签。打开右上角的“更多选项”菜单即可获取图片说明。"]' # 活动页面, 天赋共鸣，群主红包， ...
     close_button: "cn.soulapp.android:id/ivClose" # 关闭按钮, X 按钮
     h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
