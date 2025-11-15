@@ -31,6 +31,8 @@ class RecoveryManager(Singleton):
             'confirm_close_3',
             'confirm_close',
 
+            'close_more_menu',
+            'reload_button',
             'receive_gift',
             'floating_entry',
             'party_hall_back',
@@ -42,7 +44,6 @@ class RecoveryManager(Singleton):
             'close_notice',
             'close_notice_1',
             'search_back',
-            'close_more_menu',
             'party_ended',
             'activity_back',
             'h5_back',
