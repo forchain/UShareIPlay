@@ -37,7 +37,7 @@ soul:
       repeat: true
     - id: "theme_morning"
       time: "09:00"
-      message: "title 燃烧吧骄傲的少年 🔥"
+      message: "title 四十更惑 加油"
       repeat: true
     - id: "radio_9"
       time: "09:00"
