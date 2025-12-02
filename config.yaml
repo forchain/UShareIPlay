@@ -177,16 +177,12 @@ soul:
     edit_topic_confirm: "cn.soulapp.android:id/tvConfim"
     little_assistant: "cn.soulapp.android:id/ivLittleAssistant"
     edit_notice_entry: "cn.soulapp.android:id/ivEdit"
-    customize_notice_button: '//android.view.View[@text="自定义"]'
+    customize_notice_button: '//android.widget.TextView[@text="自定义"]'
     customize_notice_disabled: '//android.view.View[@text="修改自定义"]'
     edit_notice_input: "//android.widget.EditText"
-    edit_notice_confirm: '//android.view.View[@text="确认提交"]'
+    edit_notice_confirm: '//android.widget.TextView[@text="确认提交"]'
     empty_seat: "cn.soulapp.android:id/leftTvDefaultName"
     up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
-    edit_announcement_entry: "cn.soulapp.android:id/ivEdit"
-    customize_announcement_button: '//android.view.View[@text="自定义"]'
-    edit_announcement_input: "//android.widget.EditText"
-    edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
     confirm_seat: "cn.soulapp.android:id/tvOperation"
     chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
