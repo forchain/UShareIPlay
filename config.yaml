@@ -209,7 +209,7 @@ soul:
     gift_tool: "cn.soulapp.android:id/ivGift"
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
     follower_name: "cn.soulapp.android:id/tvName" # Outlier
-    follower_message: "cn.soulapp.android:id/tvFollowUserContent" # 你关注的Outlier进入房间啦，打个招呼吧～
+    follower_message: "cn.soulapp.android:id/tvFollowUserContent" # 你关注的Outlier进入房间啦，打个招呼吧～/你的兄弟 Outlier进来啦～
     greet_follower: "cn.soulapp.android:id/tvFollowUserNotify" # 打招呼
     send_gift: "cn.soulapp.android:id/tv_send_four_leaf" # 送礼物
     follow_status: "cn.soulapp.android:id/tv_follow" # 已关注/关注
