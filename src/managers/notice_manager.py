@@ -108,7 +108,7 @@ class NoticeManager(Singleton):
                 return {'error': 'Close notice not found'}
                 
             # 点击自定义按钮
-            customize = self.handler.try_find_element_plus('customize_notice_button')
+            customize = self.handler.wait_for_element_clickable_plus(['customize_notice', 'modify_notice'])
             if not customize:
                 close_notice.click()
                 self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
