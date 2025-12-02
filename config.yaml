@@ -165,7 +165,7 @@ soul:
     party_online: "cn.soulapp.android:id/tvOnline"
     planet_tab: "cn.soulapp.android:id/main_tab_planet" #  星球
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
-    create_party_entry: "cn.soulapp.android:id/iv_create" #  创建派对
+    create_party_entry: "cn.soulapp.android:id/iv_create_room" #  创建派对
     create_party_button: "cn.soulapp.android:id/createRoomBtn"
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
