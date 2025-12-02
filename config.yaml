@@ -225,7 +225,7 @@ soul:
     online_users: "cn.soulapp.android:id/rvBannedUsers" # 在线用户
     bottom_drawer: "cn.soulapp.android:id/action_bar_root"
     online_user: "cn.soulapp.android:id/tvName" # Outlier
-    close_notice: '//android.view.View[@text="关闭公告"]'
+    close_notice: '//android.widget.TextView[@text="关闭公告"]'
     search_back: "cn.soulapp.android:id/ivSearchBack"
     close_chat: "cn.soulapp.android:id/tv_btn_close" # 先不聊了
     close_more_menu: "cn.soulapp.android:id/ivBack" # more_menu 的关闭按钮
