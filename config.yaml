@@ -140,7 +140,7 @@ soul:
     more_menu: "cn.soulapp.android:id/ivChatMore"
     party_hall: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='派对大厅']"
     end_party: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='关闭派对']"
-    confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="关闭房间"]'
+    confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="解散派对"]'
     more_menu_container: "cn.soulapp.android:id/moreRootView"
     search_entry: "cn.soulapp.android:id/ivSearch"
     search_box: "cn.soulapp.android:id/commonViewEtSearch"
