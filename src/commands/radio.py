@@ -93,12 +93,12 @@ class RadioCommand(BaseCommand):
         title_result = self.title_manager.set_next_title(room_name)
         if "error" in title_result:
             return self._report_error(title_result["error"])
-        if topic_text:
-            topic_value = topic_text.strip()
-            if topic_value:
-                topic_result = self.topic_manager.change_topic(topic_value)
-                if "error" in topic_result:
-                    return self._report_error(topic_result["error"])
+        if topic_value := topic_text.strip() if topic_text else None:
+            if '-' in topic_value:
+                topic_value = topic_value.split("-")[0].strip()
+            topic_result = self.topic_manager.change_topic(topic_value)
+            if "error" in topic_result:
+                return self._report_error(topic_result["error"])
         return None
 
     def _extract_primary_topic(self, raw_topic: Optional[str]) -> Optional[str]:
@@ -194,6 +194,15 @@ class RadioCommand(BaseCommand):
         # Truncate text after splitter if present
         if splitter in collection_title_text:
             collection_title_text = collection_title_text.split(splitter)[0]
+        splitter = '「'
+        # Truncate text after splitter if present
+        if splitter in collection_title_text:
+            collection_title_text = collection_title_text.split(splitter)[0]
+        splitter = '」'
+        # Truncate text after splitter if present
+        if splitter in collection_title_text:
+            collection_title_text = collection_title_text.split(splitter)[0]
+
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
         playlist_text, error = self._ensure_playlist_text()
