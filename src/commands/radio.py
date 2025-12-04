@@ -197,7 +197,7 @@ class RadioCommand(BaseCommand):
         splitter = '「'
         # Truncate text after splitter if present
         if splitter in collection_title_text:
-            collection_title_text = collection_title_text.split(splitter)[0]
+            collection_title_text = collection_title_text.split(splitter)[1]
         splitter = '」'
         # Truncate text after splitter if present
         if splitter in collection_title_text:
