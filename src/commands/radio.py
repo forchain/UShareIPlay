@@ -231,14 +231,23 @@ class RadioCommand(BaseCommand):
             return self._report_error("Failed to locate search entry")
         search_entry.click()
 
-        self.music_handler.set_clipboard_text("音乐疗愈")
-        self.music_handler.paste_text()
+        search_shortcuts = self.music_handler.wait_for_element_clickable_plus("search_shortcuts")
+        if not search_shortcuts:
+            return self._report_error("Failed to locate search shortcuts")
 
-        healing_tab = self.music_handler.wait_for_element_clickable_plus("healing_tab")
-        if not healing_tab:
-            return self._report_error("Failed to locate healing tab")
-        healing_room_name = healing_tab.text
-        healing_tab.click()
+        healing_room_name = "音乐疗愈"
+        healing_shortcut = self.music_handler.find_child_element_plus(search_shortcuts, "healing_shortcut")
+        if healing_shortcut:
+            healing_room_name = healing_shortcut.text
+            healing_shortcut.click()
+        else:
+            self.music_handler.log_warning("Failed to locate healing shortcut")
+            self.music_handler.set_clipboard_text(healing_room_name)
+            self.music_handler.paste_text()
+            healing_tab = self.music_handler.wait_for_element_clickable_plus("healing_tab")
+            if not healing_tab:
+                return self._report_error("Failed to locate healing tab")
+            healing_tab.click()
 
         play_healing = self.music_handler.wait_for_element_clickable_plus("play_healing")
         if not play_healing:
