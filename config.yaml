@@ -324,7 +324,9 @@ qq_music:
     guess_topic: '//android.widget.TextView[@text="猜你喜欢"]/../android.widget.TextView'
     daily_title: '//android.widget.TextView[@text="每日30首"]'
     daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
-    healing_tab: '//android.widget.TextView[@text="助眠解压"]'
+    search_shortcuts: '//android.widget.TextView[@text="歌手"]/../..'
+    healing_shortcut: '//android.widget.TextView[@text="助眠解压"]'
+    healing_tab: '//android.widget.TextView[@text="睡眠模式"]/../../../../../../android.widget.LinearLayout/android.view.ViewGroup/android.widget.ImageView'
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
 commands:
   - prefix: "play"
