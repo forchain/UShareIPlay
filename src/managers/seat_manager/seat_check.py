@@ -146,6 +146,8 @@ class SeatCheckManager(SeatManagerBase):
         # Send welcome message only when seat is occupied to reduce message frequency
         self.handler.send_message(f"Welcome {username}!")
 
+        # wait for input dialog disappear
+        time.sleep(1)
         # Click the specific seat element
         seat_element.click()
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
