@@ -1,6 +1,7 @@
 import traceback
 
 from ..core.base_command import BaseCommand
+import re
 
 
 def create_command(controller):
@@ -72,88 +73,121 @@ class InfoCommand(BaseCommand):
             user_count_elem.click()
             self.handler.logger.info("Clicked user count element")
 
-            online_user = self.handler.wait_for_element_plus('online_user')
-            if online_user:
-                online_users = self.handler.find_elements_plus('online_user')
-                
-                # 收集所有在线用户名
-                all_online_user_names = set()
+            # 等待在线用户列表容器出现，然后在容器内循环上滑直到 no_more_data
+            online_container = self.handler.wait_for_element_plus('online_users')
+            if not online_container:
+                self.handler.logger.error("Online users container not found")
+                return
 
-                # 如果在线用户超过5个，先输出前5个
-                if int(current_count[:-1]) > 5:
-                    self.handler.logger.info(f"Found {len(online_users)} online users, processing in batches...")
+            # 解析目标人数（例如 "6人"）
+            target_count = None
+            try:
+                m = re.search(r"(\d+)", current_count or "")
+                target_count = int(m.group(1)) if m else None
+            except Exception:
+                target_count = None
 
-                    # 输出前5个用户
-                    first_five_names = set()
-                    for i, user in enumerate(online_users[:5]):
-                        user_text = user.text
-                        first_five_names.add(user_text)
-                        all_online_user_names.add(user_text)
-                        self.handler.logger.info(f"Online user {i + 1}: {user_text}")
+            all_online_user_names = set()
+            prev_size = 0
+            no_new_rounds = 0
+            max_no_new_rounds = 2
+            max_swipes = 50
 
-                    # 从最后一个位置滑动到第一个位置
-                    last_user = online_users[-1]
-                    first_user = online_users[0]
+            # 预计算容器内滑动坐标：手指向上滑（列表向上滚动）
+            try:
+                loc = online_container.location
+                size = online_container.size
+                left = int(loc["x"])
+                top = int(loc["y"])
+                width = int(size["width"])
+                height = int(size["height"])
 
-                    # 执行滑动操作：从最后一个用户滑动到第一个用户
-                    self.handler.logger.info("Sliding from last user to first user to refresh list...")
+                swipe_x = left + int(width * 0.5)
+                start_y = top + int(height * 0.8)
+                end_y = top + int(height * 0.2)
+            except Exception:
+                self.handler.logger.warning("Failed to compute container swipe coordinates, fallback to default swipe")
+                swipe_x = None
+                start_y = None
+                end_y = None
 
-                    try:
-                        # 获取最后一个用户的位置和尺寸
-                        last_location = last_user.location
-                        last_size = last_user.size
-
-                        # 获取第一个用户的位置和尺寸
-                        first_location = first_user.location
-                        first_size = first_user.size
-
-                        # 计算滑动起点（最后一个用户的右侧中心）
-                        start_x = last_location['x'] + last_size['width'] - 10
-                        start_y = last_location['y'] + last_size['height'] // 2
-
-                        # 计算滑动终点（第一个用户的左侧中心）
-                        end_x = first_location['x'] + 10
-                        end_y = first_location['y'] + first_size['height'] // 2
-
-                        # 执行滑动操作
-                        self.handler.driver.swipe(start_x, start_y, end_x, end_y, 1000)
-                        self.handler.logger.info("Swipe operation completed")
-
-                    except Exception as e:
-                        self.handler.log_error(f"Error during swipe operation: {str(e)}")
-
-                    # 重新获取在线用户列表
-                    self.handler.logger.info("Refreshing online users list...")
-                    refreshed_users = self.handler.find_elements_plus('online_user')
-
-                    n = 5
-                    if refreshed_users:
-                        for i, user in enumerate(refreshed_users):
+            for swipe_idx in range(max_swipes + 1):
+                # 采集当前可见用户（容器内）
+                visible_users = self.handler.find_child_elements_plus(online_container, 'online_user')
+                if visible_users:
+                    for user in visible_users:
+                        try:
                             user_text = user.text
-                            all_online_user_names.add(user_text)
-                            if user_text not in first_five_names:
-                                n += 1
-                                self.handler.logger.info(f"New user {n}: {user_text}")
-                    else:
-                        self.handler.logger.warning("Failed to refresh online users list")
+                            if user_text:
+                                all_online_user_names.add(user_text)
+                        except Exception:
+                            continue
+
+                # 停止条件 1：到底提示出现
+                try:
+                    no_more = self.handler.try_find_element_plus('no_more_data', log=False)
+                    if no_more and no_more.is_displayed():
+                        self.handler.logger.info("Detected no_more_data, stop scrolling online users.")
+                        break
+                except Exception:
+                    # ignore detection errors, continue scrolling with other stop conditions
+                    pass
+
+                # 停止条件 2：已收集人数达到目标人数（更快结束）
+                if target_count is not None and len(all_online_user_names) >= target_count:
+                    self.handler.logger.info(
+                        f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling."
+                    )
+                    break
+
+                # 停止条件 3：连续多轮无新增（兜底）
+                if len(all_online_user_names) == prev_size:
+                    no_new_rounds += 1
                 else:
-                    # 如果用户数量不超过5个，正常输出所有用户
-                    for i, user in enumerate(online_users):
-                        user_text = user.text
-                        all_online_user_names.add(user_text)
-                        # self.handler.logger.info(f"Online user {i + 1}: {user_text}")
-                
-                # 更新在线用户列表到 InfoManager
-                from ..managers.info_manager import InfoManager
-                info_manager = InfoManager.instance()
-                info_manager.update_online_users(list(all_online_user_names))
-            else:
-                self.handler.logger.error("No online user found")
+                    no_new_rounds = 0
+                    prev_size = len(all_online_user_names)
+
+                if no_new_rounds >= max_no_new_rounds:
+                    self.handler.logger.info(
+                        f"No new users found for {no_new_rounds} rounds, stop scrolling."
+                    )
+                    break
+
+                # 最后一次循环不再滑动（max_swipes 达到）
+                if swipe_idx >= max_swipes:
+                    self.handler.logger.info("Reached max_swipes, stop scrolling online users.")
+                    break
+
+                # 执行一次上滑
+                try:
+                    if swipe_x is not None:
+                        ok = self.handler._perform_swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
+                        if not ok:
+                            self.handler.logger.warning("Swipe failed, stop scrolling online users.")
+                            break
+                    else:
+                        # 兼容兜底：使用 driver.swipe 做一次中等幅度上滑
+                        self.handler.driver.swipe(500, 1500, 500, 800, 600)
+                except Exception as e:
+                    self.handler.log_error(f"Error during swipe operation: {str(e)}")
+                    break
+
+                # 等待列表加载稳定
+                try:
+                    import time
+                    time.sleep(0.35)
+                except Exception:
+                    pass
+
+            # 更新在线用户列表到 InfoManager
+            from ..managers.info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            info_manager.update_online_users(list(all_online_user_names))
 
             bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
             if bottom_drawer:
-                self.handler.logger.info(f'Hide online users dialog')
+                self.handler.logger.info('Hide online users dialog')
                 self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
 
-        except Exception as e:
+        except Exception:
             self.handler.log_error(f"Error checking user count: {traceback.format_exc()}")

@@ -112,7 +112,7 @@ soul:
       repeat: true
     - id: "theme_sleep"
       time: "23:00"
-      message: "title 早睡早起 助眠"
+      message: "title 早睡早起 💤"
       repeat: true
     - id: "playlist_23"
       time: "23:00"
@@ -219,6 +219,7 @@ soul:
     souler_name: "cn.soulapp.android:id/tv_name" # Outlier
     user_name: "cn.soulapp.android:id/tvUserName" # Joyer
     online_users: "cn.soulapp.android:id/rvBannedUsers" # 在线用户
+    no_more_data: "cn.soulapp.android:id/load_more_load_end_view" # No more data
     bottom_drawer: "cn.soulapp.android:id/action_bar_root"
     online_user: "cn.soulapp.android:id/tvName" # Outlier
     close_notice: '//android.widget.TextView[@text="关闭公告"]'
