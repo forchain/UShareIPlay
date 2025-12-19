@@ -2,7 +2,6 @@ import re
 import traceback
 from dataclasses import dataclass
 
-from .seat_manager import seat_manager
 from ..core.singleton import Singleton
 from ..dal import UserDAO
 
@@ -79,8 +78,6 @@ class GreetingManager(Singleton):
             # If user is followed, create user record
             self.handler.logger.info(f"User {nickname} is followed, creating user record")
             await UserDAO.get_or_create(nickname)
-
-            await seat_manager.check.check_seats_on_entry(nickname)
 
             # Try to send gift first
             if self.send_gift():

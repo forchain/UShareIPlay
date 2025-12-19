@@ -85,6 +85,15 @@ class InfoManager(Singleton):
                         self.logger.critical(f"User left: {username}")
                         # Notify commands via CommandManager
                         self._notify_user_leave(username)
+                
+                # Detect users who entered (are in new set but not in old set)
+                users_who_entered = new_users_set - self._online_users
+                
+                if users_who_entered:
+                    for username in users_who_entered:
+                        self.logger.critical(f"User entered: {username}")
+                        # Notify commands via CommandManager
+                        self._notify_user_enter(username)
             
             # Update the set
             self._online_users = new_users_set
@@ -106,6 +115,20 @@ class InfoManager(Singleton):
             asyncio.create_task(command_manager.notify_user_leave(username))
         except Exception:
             self.logger.error(f"Error notifying user leave: {traceback.format_exc()}")
+    
+    def _notify_user_enter(self, username: str):
+        """
+        Notify all commands that a user has entered
+        
+        Args:
+            username: Username of the user who entered
+        """
+        try:
+            from .command_manager import CommandManager
+            command_manager = CommandManager.instance()
+            asyncio.create_task(command_manager.notify_user_enter(username))
+        except Exception:
+            self.logger.error(f"Error notifying user enter: {traceback.format_exc()}")
     
     def is_user_online(self, username: str) -> bool:
         """

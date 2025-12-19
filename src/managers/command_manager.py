@@ -250,3 +250,17 @@ class CommandManager(Singleton):
                     await module.command.user_leave(username)
             except Exception as e:
                 self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
+    
+    async def notify_user_enter(self, username: str):
+        """
+        Notify all commands when a user enters
+        
+        Args:
+            username: Username of the user who entered
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, 'user_enter'):
+                    await module.command.user_enter(username)
+            except Exception as e:
+                self.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
