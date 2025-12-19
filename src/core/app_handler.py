@@ -778,6 +778,25 @@ class AppHandler:
             self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
             return None
 
+    def find_child_elements_plus(self, parent, element_key: str) -> list:
+        """Find child elements using element key from config within a parent container.
+        Args:
+            parent: Parent WebElement to search within
+            element_key: Key in config elements section
+        Returns:
+            List[WebElement]: child elements (empty list if not found / error)
+        """
+        try:
+            if not parent:
+                return []
+            locator_type, value = self._get_locator(element_key)
+            return parent.find_elements(locator_type, value)
+        except Exception as e:
+            self.logger.debug(
+                f"Failed to find child elements {element_key}: {str(e)}"
+            )
+            return []
+
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
