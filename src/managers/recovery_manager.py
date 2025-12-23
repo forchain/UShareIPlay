@@ -451,14 +451,13 @@ class RecoveryManager(Singleton):
                 self.abnormal_state_detected = False
                 self.abnormal_state_count = 0
             return False
-        else:
-            self.mark_abnormal_state()
+        # 找不到房名可能因为房名还没显示，不能认为是异常状态
+        # else:
+        #     self.mark_abnormal_state()
 
-        if not self.abnormal_state_detected:
-            return False
-
-        # 如果检测到异常状态（无消息），优先执行恢复操作
-        self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
+        if self.abnormal_state_detected:
+            # 如果检测到异常状态（无消息），优先执行恢复操作
+            self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
 
         # 1. 优先处理退出的情况
         recovery_performed = self.handle_join_party()
