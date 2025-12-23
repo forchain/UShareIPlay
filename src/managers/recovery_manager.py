@@ -1,7 +1,8 @@
+import asyncio
 import time
-from typing import Dict
 
 from ..core.singleton import Singleton
+from ..handlers.soul_handler import MessageInfo
 
 
 class RecoveryManager(Singleton):
@@ -63,13 +64,13 @@ class RecoveryManager(Singleton):
         self.drawer_elements = [
             # 无法用返回键代替
             'input_drawer',
-            'bottom_drawer_1',
 
             # 不确定是否可以被返回键代替
             # 'party_restore_drawer'
-            
-            # 可以被返回键代替
+            # 'bottom_drawer_1',
             # 'online_drawer',
+
+            # 可以被返回键代替
             # 'share_drawer',
         ]
 
@@ -134,6 +135,27 @@ class RecoveryManager(Singleton):
             self.logger.error(f"Error seating owner: {str(e)}")
             return False
 
+    def _execute_radio_after_creation(self):
+        """创建房间后执行 radio 命令"""
+        try:
+            if not hasattr(self.handler, 'controller') or not hasattr(self.handler.controller, 'radio_command'):
+                self.logger.warning("Radio command not available, skipping")
+                return
+
+            # 创建 MessageInfo 对象
+            message_info = MessageInfo(
+                content="radio",
+                nickname="Joyer",
+                avatar_element=None,
+                relation_tag=False
+            )
+
+            # 执行 radio 命令（默认 collection，参数为空列表）
+            asyncio.run(self.handler.controller.radio_command.process(message_info, []))
+            self.logger.info("Radio command executed after party creation")
+        except Exception as e:
+            self.logger.error(f"Failed to execute radio command after party creation: {str(e)}")
+
     def is_normal_state(self) -> bool:
         """
         检测是否处于正常状态
@@ -141,8 +163,17 @@ class RecoveryManager(Singleton):
         """
         try:
             room_id = self.handler.try_find_element_plus('room_id', log=False)
+            if room_id is None:
+                self.logger.warning("Room ID not found")
+                return False
+
+            room_id_text = room_id.text
+            if not room_id_text.startswith("FM"):
+                self.logger.warning(f"Room ID:{room_id_text} does not start with FM, skip")
+                return True
+
             party_id = self.handler.config.get('default_party_id')
-            return room_id is not None and room_id.text == party_id
+            return room_id_text == party_id
         except Exception as e:
             self.logger.debug(f"检测正常状态时出错: {str(e)}")
             return False
@@ -383,6 +414,9 @@ class RecoveryManager(Singleton):
 
             # Seat the owner after party creation
             self._seat_owner_after_party_creation()
+
+            # 执行 radio 命令
+            self._execute_radio_after_creation()
 
             return True
 
