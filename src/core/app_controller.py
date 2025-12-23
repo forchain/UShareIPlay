@@ -287,6 +287,8 @@ class AppController(Singleton):
                     # New messages found - process them
                     response = await self.command_manager.handle_message_commands(messages)
                 else:
+                    # No new messages - check for risk elements
+                    self.recovery_manager.handle_risk_elements()
                     await asyncio.sleep(1)
 
                 # clear error once back to normal
