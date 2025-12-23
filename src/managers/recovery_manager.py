@@ -150,9 +150,19 @@ class RecoveryManager(Singleton):
                 relation_tag=False
             )
 
-            # 执行 radio 命令（默认 collection，参数为空列表）
-            asyncio.run(self.handler.controller.radio_command.process(message_info, []))
-            self.logger.info("Radio command executed after party creation")
+            async def _run_radio():
+                try:
+                    # 执行 radio 命令（默认 collection，参数为空列表）
+                    await self.handler.controller.radio_command.process(message_info, [])
+                    self.logger.info("Radio command executed after party creation")
+                except Exception as e:
+                    self.logger.error(
+                        f"Radio command task failed after party creation: {str(e)}"
+                    )
+
+            # 当前 check_and_recover 是在已有事件循环中被调用的，这里不能再用 asyncio.run
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run_radio())
         except Exception as e:
             self.logger.error(f"Failed to execute radio command after party creation: {str(e)}")
 
