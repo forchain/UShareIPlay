@@ -63,9 +63,9 @@ class RecoveryManager(Singleton):
         self.drawer_elements = [
             # 无法用返回键代替
             'input_drawer',
+            'bottom_drawer_1',
 
             # 不确定是否可以被返回键代替
-            # 'bottom_drawer_1',
             # 'party_restore_drawer'
             
             # 可以被返回键代替
