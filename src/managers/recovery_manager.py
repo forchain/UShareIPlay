@@ -164,7 +164,6 @@ class RecoveryManager(Singleton):
         try:
             room_id = self.handler.try_find_element_plus('room_id', log=False)
             if room_id is None:
-                self.logger.warning("Room ID not found")
                 return False
 
             room_id_text = room_id.text
@@ -455,9 +454,11 @@ class RecoveryManager(Singleton):
         # else:
         #     self.mark_abnormal_state()
 
-        if self.abnormal_state_detected:
-            # 如果检测到异常状态（无消息），优先执行恢复操作
-            self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
+        if not self.abnormal_state_detected:
+            return False
+
+        # 如果检测到异常状态（无消息），优先执行恢复操作
+        self.logger.warning(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
 
         # 1. 优先处理退出的情况
         recovery_performed = self.handle_join_party()
@@ -480,8 +481,6 @@ class RecoveryManager(Singleton):
             self.last_recovery_time = current_time
             self.abnormal_state_count = 0  # 重置计数
             self.logger.info("Recovery operation completed for abnormal state")
-
-            return recovery_performed
 
         return recovery_performed
 
