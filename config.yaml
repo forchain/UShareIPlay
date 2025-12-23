@@ -76,19 +76,19 @@ soul:
       message: "playlist 红心雷达"
     - id: "playlist_15"
       time: "15:00"
-      message: "playlist 热门搜索"
+      message: "playlist 官方 欧美精选"
       repeat: true
     - id: "playlist_16"
       time: "16:00"
-      message: "playlist KTV热歌 官方"
+      message: "playlist 官方 R&B"
       repeat: true
     - id: "playlist_17"
       time: "17:00"
-      message: "playlist 百万收藏"
+      message: "playlist 官方 粤语经典"
       repeat: true
-    - id: "radio_18"
+    - id: "playlist_18"
       time: "18:00"
-      message: "radio collection"
+      message: "playlist 官方 情歌"
       repeat: true
     - id: "theme_home"
       time: "19:00"
@@ -96,19 +96,19 @@ soul:
       repeat: true
     - id: "playlist_19"
       time: "19:00"
-      message: "playlist 官方 粤语经典"
+      message: "playlist 百万收藏"
       repeat: true
     - id: "playlist_20"
       time: "20:00"
-      message: "playlist 官方 古典"
+      message: "playlist 热门搜索"
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 r&b"
+      message: "playlist 官方 古典"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
-      message: "playlist Lofi Girl 官方"
+      message: "playlist Lofi Girl 专属陪伴"
       repeat: true
     - id: "theme_sleep"
       time: "23:00"
