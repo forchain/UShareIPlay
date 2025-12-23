@@ -21,43 +21,56 @@ class RecoveryManager(Singleton):
 
         # 关闭和返回按钮列表
         self.close_buttons = [
-            'close_chat',
-            'confirm_close_6',
-            'confirm_close_7',
-            'confirm_close_4',
-            'confirm_close_5',
-            'confirm_close_1',
-            'confirm_close_2',
-            'confirm_close_3',
-            'confirm_close',
-
-            'close_more_menu',
-            'reload_button',
-            'receive_gift',
             'floating_entry',
-            'party_hall_back',
-            'party_back',
-            'go_back',
-            'go_back_1',
-            'go_back_2',
-            'close_app',
-            'close_notice',
-            'close_notice_1',
-            'search_back',
             'party_ended',
-            'activity_back',
-            'h5_back',
-            'reminder_ok',
-            'profile_back',
+
+            # 如果无法用返回键，则在此添加
+
+            # 如果用返回键会造成潜在问题，则在此添加
+
+            # 可以用返回按钮代替，暂时不检查，提高效率
+            # 'party_hall_back',
+            # 'search_back',
+            # 'close_more_menu',
+
+            # 不确定是否可以用返回键代替
+            # 'reload_button',
+            # 'close_chat',
+            # 'confirm_close_6',
+            # 'confirm_close_7',
+            # 'confirm_close_4',
+            # 'confirm_close_5',
+            # 'confirm_close_1',
+            # 'confirm_close_2',
+            # 'confirm_close_3',
+            # 'confirm_close',
+
+            # 'go_back',
+            # 'go_back_1',
+            # 'go_back_2',
+            # 'close_notice',
+            # 'close_notice_1',
+            # 'h5_back',
+            # 'receive_gift',
+            # 'party_back',
+            # 'close_app',
+            # 'activity_back',
+            # 'reminder_ok',
+            # 'profile_back',
         ]
 
         # 抽屉式弹窗列表
         self.drawer_elements = [
-            'bottom_drawer_1',
-            'online_drawer',
-            'share_drawer',
+            # 无法用返回键代替
             'input_drawer',
-            'party_restore_drawer'
+
+            # 不确定是否可以被返回键代替
+            # 'bottom_drawer_1',
+            # 'party_restore_drawer'
+            
+            # 可以被返回键代替
+            # 'online_drawer',
+            # 'share_drawer',
         ]
 
         # 潜在风险元素列表（虽然不挡住输入框，但可能因误操作导致不稳定）
@@ -106,11 +119,11 @@ class RecoveryManager(Singleton):
         """Seat the owner after party creation/restoration"""
         try:
             time.sleep(1.5)  # Wait for party UI to stabilize
-            
+
             from ..managers.seat_manager import seat_manager
             self.logger.info("Attempting to seat owner after party creation")
             result = seat_manager.seating.find_owner_seat()
-            
+
             if 'success' in result:
                 self.logger.info("Owner successfully seated")
                 return True
@@ -396,9 +409,6 @@ class RecoveryManager(Singleton):
 
         self.handler.switch_to_app()
 
-        # 1. 处理潜在风险元素（优先级最高，在正常状态检测之前）
-        self.handle_risk_elements()
-
         # 首先检查是否处于正常状态
         if self.is_normal_state():
             # 如果状态正常，重置异常状态标记
@@ -407,50 +417,38 @@ class RecoveryManager(Singleton):
                 self.abnormal_state_detected = False
                 self.abnormal_state_count = 0
             return False
+        else:
+            self.mark_abnormal_state()
+
+        if not self.abnormal_state_detected:
+            return False
 
         # 如果检测到异常状态（无消息），优先执行恢复操作
-        if self.abnormal_state_detected and self.abnormal_state_count >= 1:
-            self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
+        self.logger.info(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
 
-            # 2. 处理关闭按钮
-            recovery_performed = self.handle_close_buttons()
+        # 1. 优先处理退出的情况
+        recovery_performed = self.handle_join_party()
 
-            # 3. 处理抽屉元素
-            if not recovery_performed:
-                recovery_performed = self.handle_drawer_elements()
-
-            # 4. 如果还是无法恢复，尝试按返回键
-            if not recovery_performed:
-                self.logger.info("Attempting to press back button to exit abnormal state")
-                self.handler.press_back()
-                recovery_performed = True
-
-            # 5. 处理其他可能的异常情况
-            if not recovery_performed:
-                recovery_performed = self.handle_join_party()
-
-            if recovery_performed:
-                self.last_recovery_time = current_time
-                self.abnormal_state_count = 0  # 重置计数
-                self.logger.info("Recovery operation completed for abnormal state")
-
-            return recovery_performed
-
-        # 常规恢复流程（非异常状态触发）
         # 2. 处理关闭按钮
-        recovery_performed = self.handle_close_buttons()
+        if not recovery_performed:
+            recovery_performed = self.handle_close_buttons()
 
         # 3. 处理抽屉元素
         if not recovery_performed:
             recovery_performed = self.handle_drawer_elements()
 
-        # 4. 处理其他可能的异常情况
+        # 4. 如果还是无法恢复，尝试按返回键
         if not recovery_performed:
-            recovery_performed = self.handle_join_party()
+            self.logger.info("Attempting to press back button to exit abnormal state")
+            self.handler.press_back()
+            recovery_performed = True
 
         if recovery_performed:
             self.last_recovery_time = current_time
-            # self.logger.info("恢复操作执行完成，等待下次检查")
+            self.abnormal_state_count = 0  # 重置计数
+            self.logger.info("Recovery operation completed for abnormal state")
+
+            return recovery_performed
 
         return recovery_performed
 
@@ -471,17 +469,3 @@ class RecoveryManager(Singleton):
         """
         self.manual_mode_enabled = enabled
         self.logger.info(f"Recovery manager manual mode set to: {enabled}")
-
-    def get_status_info(self) -> Dict:
-        """
-        获取恢复管理器的状态信息
-        """
-        return {
-            'is_normal_state': self.is_normal_state(),
-            'last_recovery_time': self.last_recovery_time,
-            'recovery_cooldown': self.recovery_cooldown,
-            'manual_mode_enabled': self.manual_mode_enabled,
-            'close_buttons': self.close_buttons,
-            'drawer_elements': self.drawer_elements,
-            'risk_elements': self.risk_elements
-        }
