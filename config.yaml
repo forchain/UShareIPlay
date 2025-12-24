@@ -120,6 +120,7 @@ soul:
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
+    message_container: "//androidx.recyclerview.widget.RecyclerView[@resource-id='cn.soulapp.android:id/rvMessage']/android.view.ViewGroup"
     message_content: "cn.soulapp.android:id/tvContent"
     input_box_entry: "cn.soulapp.android:id/tvChat"
     input_box: "cn.soulapp.android:id/etInputView"

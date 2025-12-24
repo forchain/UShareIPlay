@@ -13,48 +13,7 @@
 - 关键分支加 logger（info/debug/warning/error）。
 - 额外写入 NDJSON 到 `.cursor/debug.log`，便于你之后按 runId 回放每轮发生了什么。
 """
-
-import logging
-import re
 import traceback
-from collections import deque
-from dataclasses import dataclass
-
-from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import StaleElementReferenceException
-
-from ..core.singleton import Singleton
-from ..core.log_formatter import ColoredFormatter
-
-# region agent log
-# Debug mode: 将关键状态写到 NDJSON（便于你离线对齐每次循环的分支与数据）
-import json
-import os
-import time
-
-_DEBUG_LOG_PATH = "/home/tony/github.com/forchain/UShareIPlay/.cursor/debug.log"
-
-
-def _dbg(hypothesis_id: str, location: str, message: str, data=None, run_id: str = "review-1"):
-    try:
-        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
-        payload = {
-            "sessionId": "debug-session",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data or {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        # debug 日志失败不影响主逻辑
-        pass
-
-
-# endregion
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -166,11 +125,11 @@ class MessageManager(Singleton):
         current_messages = {}  # Dict to store element_id: MessageInfo pairs
 
         for container in containers:
-            message_info = await self.process_container_message(container)
+            command_info = await self.process_container_command(container)
             greeting_info = await self.greeting_manager.process_container_greeting(container)
 
-            if message_info:
-                current_messages[container.id] = message_info
+            if command_info:
+                current_messages[container.id] = command_info
             if greeting_info:
                 current_messages[container.id] = greeting_info
                 # NOTE: 这里的写法 `content := greeting_info.content and ...` 在 Python 里会先计算 and，
@@ -185,22 +144,16 @@ class MessageManager(Singleton):
                         self.handler.logger.debug(
                             f"[greeting] appended to recent_messages: {content!r}"
                         )
-                        _dbg("Hc", "message_manager.py:get_messages_from_containers",
-                             "append_recent_from_greeting",
-                             {"value": repr(content), "type": str(type(content))})
                 except Exception:
                     self.handler.logger.warning(
                         f"[greeting] failed to append recent: {traceback.format_exc()}"
                     )
-                    _dbg("Hc", "message_manager.py:get_messages_from_containers",
-                         "append_recent_from_greeting_failed",
-                         {"trace": traceback.format_exc()})
 
         # Update previous message IDs and return new messages
         new_messages = {}  # Changed from list to dict
-        for element_id, message_info in current_messages.items():
+        for element_id, command_info in current_messages.items():
             if element_id not in self.previous_messages:
-                new_messages[element_id] = message_info  # Store as dict
+                new_messages[element_id] = command_info  # Store as dict
 
         self.previous_messages = current_messages
         return new_messages if new_messages else None
@@ -214,17 +167,12 @@ class MessageManager(Singleton):
         """
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-            _dbg("H1", "message_manager.py:get_latest_messages", "switch_to_app_failed")
-            return 'ABNORMAL_STATE'
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
             # self.handler.press_back()
             self.handler.logger.error("Failed to find message list")
-            _dbg("H1", "message_manager.py:get_latest_messages", "message_list_not_found", {
-                "screen": "unknown",
-            })
             return 'ABNORMAL_STATE'
 
         # Collapse seats if expanded and update focus count
@@ -237,32 +185,17 @@ class MessageManager(Singleton):
 
         # Get all ViewGroup containers
         try:
-            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+            containers = self.handler.find_elements_plus('message_container')
         except Exception as e:
             self.handler.logger.error('cannot find message_list element, might be in loading')
-            _dbg("H1", "message_manager.py:get_latest_messages", "find_elements_failed", {
-                "error": str(e),
-            })
             return 'ABNORMAL_STATE'
 
         if len(containers) == 0:
             self.handler.logger.error("No message containers found")
-            _dbg("H1", "message_manager.py:get_latest_messages", "no_containers")
             return 'ABNORMAL_STATE'
 
         new_chat = self.get_chat_text(containers[0])
         latest_chat = self.get_chat_text(containers[len(containers) - 1])
-        is_chat_missed = len(self.recent_chats) > 0 and new_chat not in self.recent_chats if new_chat else False
-
-        self.handler.logger.debug(
-            f"[messages] containers={len(containers)} new_chat={new_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed}"
-        )
-        _dbg("H4", "message_manager.py:get_latest_messages", "screen_snapshot", {
-            "container_count": len(containers),
-            "new_chat": new_chat,
-            "missed": is_chat_missed,
-            "recent": [repr(x) for x in list(self.recent_chats)],
-        })
 
         new_messages = {}
         # NOTE: 这里你希望取 recent_messages 的最后一条作为锚点（last_chat）。
@@ -272,42 +205,33 @@ class MessageManager(Singleton):
         except Exception:
             last_chat = None
             self.handler.logger.error(f"[messages] compute last_chat failed: {traceback.format_exc()}")
-            _dbg("Hc", "message_manager.py:get_latest_messages", "last_message_compute_failed", {
-                "trace": traceback.format_exc(),
-                "recent": [repr(x) for x in list(self.recent_chats)],
-            })
+
+        is_chat_missed = len(self.recent_chats) > 0 and (
+                new_chat not in self.recent_chats) and new_chat != last_chat and latest_chat != last_chat
+
+        # self.handler.logger.debug(
+        #     f"[messages] containers={len(containers)} new_chat={new_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed}"
+        # )
         if not is_chat_missed:
             # NOTE: get_messages_from_containers 是 async，这里需要 await 才会真正执行。
             # 先加日志观测返回类型；后续根据运行时证据再决定是否统一修正。
             try:
                 new_messages = await self.get_messages_from_containers(containers)
-                _dbg("H4", "message_manager.py:get_latest_messages", "no_miss_processed", {
-                    "new_count": len(new_messages) if isinstance(new_messages, dict) else None,
-                    "type": str(type(new_messages)),
-                })
             except Exception:
                 self.handler.logger.error(f"[messages] no_miss processing failed: {traceback.format_exc()}")
-                _dbg("Hc", "message_manager.py:get_latest_messages", "no_miss_processing_failed", {
-                    "trace": traceback.format_exc(),
-                })
                 return 'ABNORMAL_STATE'
         else:
             # scroll back to the missing element
             self.handler.logger.warning(
-                f"[messages] missed detected. new_chat not in recent. last_chat(anchor)={last_chat!r}"
+                f"[messages] missed detected. new_chat not in recent. last_chat(anchor)={last_chat!r} recent_chats={self.recent_chats!r}"
             )
-            _dbg("H4", "message_manager.py:get_latest_messages", "miss_detected", {
-                "new_chat": new_chat,
-                "anchor": last_chat,
-            })
 
             # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），
             # 说明没有历史锚点，不需要回翻，直接处理当前屏幕的消息即可。
             if last_chat is None:
-                self.handler.logger.info(
-                    "[messages] no anchor (recent_chats empty), skip backscroll, process current screen"
-                )
-                _dbg("H4", "message_manager.py:get_latest_messages", "no_anchor_skip_backscroll", {})
+                # self.handler.logger.info(
+                #     "[messages] no anchor (recent_chats empty), skip backscroll, process current screen"
+                # )
                 # 直接处理当前屏幕，走正常流程
                 new_messages = await self.get_messages_from_containers(containers)
                 return new_messages if new_messages else None
@@ -322,32 +246,28 @@ class MessageManager(Singleton):
                     'content-desc',
                     last_chat,
                 )
-                self.handler.logger.debug(f"[messages] scroll_container_until_element {latest_chat} returned {key}, {element}")
+                # self.handler.logger.debug(
+                #     f"[messages] scroll_container_until_element {latest_chat} returned {key}, {element}")
             except Exception:
                 self.handler.logger.error(
                     f"[messages] scroll_container_until_element crashed: {traceback.format_exc()}")
-                _dbg("Hc", "message_manager.py:get_latest_messages", "scroll_to_anchor_failed", {
-                    "trace": traceback.format_exc(),
-                    "anchor": last_chat,
-                })
                 return 'ABNORMAL_STATE'
-            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+            containers = self.handler.find_elements_plus('message_container')
+            new_containers = []
+            is_new_container = False
+            for container in containers:
+                chat = self.get_chat_text(container)
+                if is_new_container:
+                    new_containers.append(chat)
+
+                if chat == last_chat:
+                    is_new_container = True
+
+            new_messages = {}
             self.previous_messages = {}
-            messages = await self.get_messages_from_containers(containers)
-            is_new_message = False
-            # NOTE: messages 是 dict 时，直接 for message in messages 会遍历 key（element_id），不是 MessageInfo。
-            # 这里先按你当前写法补日志观测 messages 的真实类型与迭代对象。
-            _dbg("Hc", "message_manager.py:get_latest_messages", "backfill_first_screen_type", {
-                "type": str(type(messages)),
-                "keys_sample": list(messages.keys())[:3] if isinstance(messages, dict) else None,
-            })
-            for element_id, message in (messages.items() if isinstance(messages, dict) else []):
-                if getattr(message, "content", None) and message.content not in self.recent_chats:
-                    if is_new_message:
-                        new_messages[element_id] = message
-                        self.previous_messages[element_id] = message
-                    if message.content == latest_chat:
-                        is_new_message = True
+            messages = await self.get_messages_from_containers(new_containers)
+            if messages:
+                new_messages = messages
 
             # 预计算容器可视坐标
             loc = message_list.location
@@ -366,27 +286,23 @@ class MessageManager(Singleton):
             is_scrolled_to_latest = False
             for i in range(max_tries):
                 self.handler._perform_swipe(sx, sy, ex, ey)
-                containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+                containers = self.handler.find_elements_plus('message_container')
+
                 messages = await self.get_messages_from_containers(containers)
-                # NOTE: get_messages_from_containers 可能返回 None（当没有新消息时），需要检查
-                if not isinstance(messages, dict):
-                    self.handler.logger.debug(
-                        f"[messages] scroll loop {i}: no new messages (got {type(messages).__name__})"
-                    )
-                    _dbg("H4", "message_manager.py:get_latest_messages", "scroll_loop_no_messages", {
-                        "iteration": i,
-                        "messages_type": str(type(messages)),
-                    })
-                    continue
-                for element_id, message in messages.items():
-                    new_element_id = element_id
-                    if element_id in new_messages:
-                        new_element_id = f"{element_id}_{i}"
-                        self.handler.logger.warning(
-                            f"Duplicate message found: {message.content}, new element id:{new_element_id}")
-                    new_messages[new_element_id] = message
-                    if message.content == last_chat:
+                if messages:
+                    for element_id, message in messages.items():
+                        new_element_id = element_id
+                        if element_id in new_messages:
+                            new_element_id = f"{element_id}_{i}"
+                            self.handler.logger.warning(
+                                f"Duplicate message found: {message.content}, new element id:{new_element_id}")
+                        new_messages[new_element_id] = message
+
+                for container in containers:
+                    chat = self.get_chat_text(container)
+                    if chat == latest_chat:
                         is_scrolled_to_latest = True
+
                 if is_scrolled_to_latest:
                     break
 
@@ -419,7 +335,7 @@ class MessageManager(Singleton):
         chat_text = content_desc if content_desc and content_desc != 'null' else message_text
         return chat_text
 
-    async def process_container_message(self, container):
+    async def process_container_command(self, container):
         """Process a single message container and return MessageInfo"""
         try:
             chat_text = self.get_chat_text(container)
