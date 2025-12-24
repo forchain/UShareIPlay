@@ -301,6 +301,17 @@ class MessageManager(Singleton):
                 "anchor": last_chat,
             })
 
+            # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），
+            # 说明没有历史锚点，不需要回翻，直接处理当前屏幕的消息即可。
+            if last_chat is None:
+                self.handler.logger.info(
+                    "[messages] no anchor (recent_chats empty), skip backscroll, process current screen"
+                )
+                _dbg("H4", "message_manager.py:get_latest_messages", "no_anchor_skip_backscroll", {})
+                # 直接处理当前屏幕，走正常流程
+                new_messages = await self.get_messages_from_containers(containers)
+                return new_messages if new_messages else None
+
             try:
                 # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
                 # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
@@ -356,6 +367,16 @@ class MessageManager(Singleton):
                 self.handler._perform_swipe(sx, sy, ex, ey)
                 containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
                 messages = await self.get_messages_from_containers(containers)
+                # NOTE: get_messages_from_containers 可能返回 None（当没有新消息时），需要检查
+                if not isinstance(messages, dict):
+                    self.handler.logger.debug(
+                        f"[messages] scroll loop {i}: no new messages (got {type(messages).__name__})"
+                    )
+                    _dbg("H4", "message_manager.py:get_latest_messages", "scroll_loop_no_messages", {
+                        "iteration": i,
+                        "messages_type": str(type(messages)),
+                    })
+                    continue
                 for element_id, message in messages.items():
                     new_element_id = element_id
                     if element_id in new_messages:
