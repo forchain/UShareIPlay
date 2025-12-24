@@ -252,7 +252,7 @@ class MessageManager(Singleton):
 
         first_chat = self.get_chat_text(containers[0])
         latest_chat = self.get_chat_text(containers[len(containers) - 1])
-        is_chat_missed = first_chat not in self.recent_chats if first_chat else False
+        is_chat_missed = len(self.recent_chats) > 0 and first_chat not in self.recent_chats if first_chat else False
 
         self.handler.logger.debug(
             f"[messages] containers={len(containers)} first_chat={first_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed} recent={list(self.recent_chats)!r}"
