@@ -924,6 +924,13 @@ class AppHandler:
                 # 尝试在容器内查找目标
                 found = self.find_child_element_plus(container, element_key)
                 if found:
+                    self.logger.debug(f'[messages]1 attribute_name: {attribute_name} attribute_value:{attribute_value}')
+                    if attribute_name and attribute_value:
+                        attribute = self.try_get_attribute(found, attribute_name)
+                        self.logger.debug(
+                            f'[messages]2 attribute:{attribute} attribute_name: {attribute_name} attribute_value:{attribute_value}')
+                        if attribute == attribute_value:
+                            return element_key, found
                     return element_key, found
 
                 # 计算滑动坐标并执行滑动
@@ -947,7 +954,6 @@ class AppHandler:
                             f'[messages]2 attribute:{attribute} attribute_name: {attribute_name} attribute_value:{attribute_value}')
                         if attribute == attribute_value:
                             return element_key, found
-
                     return element_key, found
 
                 # 判断是否到底/到边（页面无变化）
