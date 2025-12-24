@@ -251,11 +251,11 @@ class MessageManager(Singleton):
             return 'ABNORMAL_STATE'
 
         first_chat = self.get_chat_text(containers[0])
-        last_chat = self.get_chat_text(containers[len(containers) - 1])
+        latest_chat = self.get_chat_text(containers[len(containers) - 1])
         is_chat_missed = first_chat not in self.recent_chats if first_chat else False
 
         self.handler.logger.debug(
-            f"[messages] containers={len(containers)} first_chat={first_chat!r} missed={is_chat_missed} recent={list(self.recent_chats)!r}"
+            f"[messages] containers={len(containers)} first_chat={first_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed} recent={list(self.recent_chats)!r}"
         )
         _dbg("H4", "message_manager.py:get_latest_messages", "screen_snapshot", {
             "container_count": len(containers),
@@ -334,7 +334,7 @@ class MessageManager(Singleton):
                     if is_new_message:
                         new_messages[element_id] = message
                         self.previous_messages[element_id] = message
-                    if message.content == last_chat:
+                    if message.content == latest_chat:
                         is_new_message = True
 
             # 预计算容器可视坐标
