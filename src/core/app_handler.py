@@ -838,7 +838,8 @@ class AppHandler:
             return False
 
     def scroll_container_until_element(
-            self, element_key: str, container_key: str, direction: str = "up"
+            self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
+            attribute_value: str = None
     ) -> Tuple[Optional[str], Optional[WebElement]]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
@@ -939,6 +940,11 @@ class AppHandler:
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
                 if found:
+                    if attribute_name and attribute_value:
+                        attribute = self.handler.try_get_attribute(found, attribute_name)
+                        if attribute == attribute_value:
+                            return element_key, found
+
                     return element_key, found
 
                 # 判断是否到底/到边（页面无变化）
