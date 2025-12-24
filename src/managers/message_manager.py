@@ -250,16 +250,16 @@ class MessageManager(Singleton):
             _dbg("H1", "message_manager.py:get_latest_messages", "no_containers")
             return 'ABNORMAL_STATE'
 
-        first_chat = self.get_chat_text(containers[0])
+        new_chat = self.get_chat_text(containers[0])
         latest_chat = self.get_chat_text(containers[len(containers) - 1])
-        is_chat_missed = len(self.recent_chats) > 0 and first_chat not in self.recent_chats if first_chat else False
+        is_chat_missed = len(self.recent_chats) > 0 and new_chat not in self.recent_chats if new_chat else False
 
         self.handler.logger.debug(
-            f"[messages] containers={len(containers)} first_chat={first_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed} recent={list(self.recent_chats)!r}"
+            f"[messages] containers={len(containers)} new_chat={new_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed}"
         )
         _dbg("H4", "message_manager.py:get_latest_messages", "screen_snapshot", {
             "container_count": len(containers),
-            "first_chat": first_chat,
+            "new_chat": new_chat,
             "missed": is_chat_missed,
             "recent": [repr(x) for x in list(self.recent_chats)],
         })
@@ -294,10 +294,10 @@ class MessageManager(Singleton):
         else:
             # scroll back to the missing element
             self.handler.logger.warning(
-                f"[messages] missed detected. first_chat not in recent. last_chat(anchor)={last_chat!r}"
+                f"[messages] missed detected. new_chat not in recent. last_chat(anchor)={last_chat!r}"
             )
             _dbg("H4", "message_manager.py:get_latest_messages", "miss_detected", {
-                "first_chat": first_chat,
+                "new_chat": new_chat,
                 "anchor": last_chat,
             })
 
@@ -315,13 +315,14 @@ class MessageManager(Singleton):
             try:
                 # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
                 # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
-                self.handler.scroll_container_until_element(
+                key, element = self.handler.scroll_container_until_element(
                     'message_content',
                     'message_list',
                     'down',
                     'content-desc',
                     last_chat,
                 )
+                self.handler.logger.debug(f"[messages] scroll_container_until_element {latest_chat} returned {key}, {element}")
             except Exception:
                 self.handler.logger.error(
                     f"[messages] scroll_container_until_element crashed: {traceback.format_exc()}")
