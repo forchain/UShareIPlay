@@ -32,7 +32,7 @@ import json
 import os
 import time
 
-_DEBUG_LOG_PATH = "/Users/tonyoutlier/github.com/forchain/UShareIPlay/.cursor/debug.log"
+_DEBUG_LOG_PATH = "/home/tony/github.com/forchain/UShareIPlay/.cursor/debug.log"
 
 
 def _dbg(hypothesis_id: str, location: str, message: str, data=None, run_id: str = "review-1"):
