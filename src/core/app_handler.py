@@ -931,7 +931,8 @@ class AppHandler:
                             f'[messages]2 attribute:{attribute} attribute_name: {attribute_name} attribute_value:{attribute_value}')
                         if attribute == attribute_value:
                             return element_key, found
-                    return element_key, found
+                    else:
+                        return element_key, found
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
@@ -954,7 +955,8 @@ class AppHandler:
                             f'[messages]2 attribute:{attribute} attribute_name: {attribute_name} attribute_value:{attribute_value}')
                         if attribute == attribute_value:
                             return element_key, found
-                    return element_key, found
+                    else:
+                        return element_key, found
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()
