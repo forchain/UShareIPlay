@@ -940,8 +940,11 @@ class AppHandler:
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
                 if found:
+                    self.logger.debug(f'[messages]1 attribute_name: {attribute_name} attribute_value:{attribute_value}')
                     if attribute_name and attribute_value:
-                        attribute = self.handler.try_get_attribute(found, attribute_name)
+                        attribute = self.try_get_attribute(found, attribute_name)
+                        self.logger.debug(
+                            f'[messages]2 attribute:{attribute} attribute_name: {attribute_name} attribute_value:{attribute_value}')
                         if attribute == attribute_value:
                             return element_key, found
 
