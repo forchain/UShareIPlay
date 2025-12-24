@@ -31,12 +31,13 @@ class PlaylistCommand(BaseCommand):
             info_manager = InfoManager.instance()
             player_name = info_manager.player_name
             # 排除系统用户 Joyer 和 Timer
-            if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier"]:
+            if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer",
+                                                                                            "Outlier"]:
                 # 检查之前的播放者是否还在线
                 if info_manager.is_user_online(player_name):
                     self.handler.logger.info(f"{message_info.nickname} 尝试播放歌单，但 {player_name} 正在播放")
                     return {'error': f'{player_name} 正在播放歌单，请等待'}
-            
+
             info_manager.player_name = message_info.nickname
             self.soul_handler.ensure_mic_active()
             playing_info = self.play_playlist(query)
@@ -47,15 +48,13 @@ class PlaylistCommand(BaseCommand):
         """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""
         try:
             # Try to find playlist tab first
-            playlist_tab = self.handler.try_find_element_plus('playlist_tab')
-            if not playlist_tab:
-                # If not found, scroll music_tabs to find it
-                music_tabs = self.handler.try_find_element_plus('music_tabs')
-                if not music_tabs:
-                    self.handler.logger.error("Failed to find music tabs")
-                    return False
+            key, element = self.handler.wait_for_any_element_plus(['playlist_tab', 'music_tabs'])
 
+            if key == 'playlist_tab':
+                playlist_tab = element
+            elif key == 'music_tabs':
                 # Get size and location for scrolling
+                music_tabs = element
                 size = music_tabs.size
                 location = music_tabs.location
 
@@ -73,6 +72,9 @@ class PlaylistCommand(BaseCommand):
                 if not playlist_tab:
                     self.handler.logger.error("Failed to find playlist tab after scrolling")
                     return False
+            else:
+                self.handler.logger.error("Failed to find music tabs or playlist tab")
+                return False
 
             playlist_tab.click()
             self.handler.logger.info("Selected playlist tab")
@@ -114,7 +116,8 @@ class PlaylistCommand(BaseCommand):
             if elements:
                 song_name = self.handler.find_child_element(elements[0], AppiumBy.CLASS_NAME, 'android.widget.TextView')
                 if len(elements) > 1:
-                    singer_name = self.handler.find_child_element(elements[1], AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                    singer_name = self.handler.find_child_element(elements[1], AppiumBy.CLASS_NAME,
+                                                                  'android.widget.TextView')
 
         if not subject:
             self.handler.logger.warning('Failed to parse playlist name')
@@ -149,11 +152,11 @@ class PlaylistCommand(BaseCommand):
         title_manager.set_next_title(subject)
         topic_manager.change_topic(topic)
         self.handler.list_mode = 'playlist'
-        
+
         # 存储完整的歌单名称到 InfoManager
         info_manager = InfoManager.instance()
         info_manager.current_playlist_name = original_playlist_name
-        
+
         return {
             'playlist': playlist,
         }
