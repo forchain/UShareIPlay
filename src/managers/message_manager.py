@@ -245,6 +245,9 @@ class MessageManager(Singleton):
             try:
                 # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
                 # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
+                from ..managers.recovery_manager import RecoveryManager
+                recovery_manager = RecoveryManager.instance()
+                recovery_manager.handle_risk_elements()
                 key, element = self.handler.scroll_container_until_element(
                     'message_content',
                     'message_list',
