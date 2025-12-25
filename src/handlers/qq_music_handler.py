@@ -166,6 +166,11 @@ class QQMusicHandler(AppHandler, Singleton):
                 studio_version.click()
                 self.logger.info("Alter to studio version")
 
+                first_song = self.wait_for_element_plus('first_song')
+                if not first_song:
+                    self.logger.error(f"Failed to find first song")
+                    return None
+
         playing_info = self.get_playing_info()
         if not playing_info:
             self.logger.warning(f"No playing info found for query: {music_query}")
