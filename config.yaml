@@ -266,6 +266,7 @@ qq_music:
     clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
     result_item: "com.tencent.qqmusic:id/item_layout"
+    first_song: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"][1]//android.widget.TextView'
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     current_song: "android:id/title"
@@ -294,6 +295,8 @@ qq_music:
     play_all: '//android.widget.TextView[@text="全部播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
+    song_title: '//android.widget.TextView[@text="单曲"]'
+    song_version: '//android.widget.TextView[@text="全部展开"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
     playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
     playlist_item_container: '//android.widget.ImageView[@content-desc="删除"]/../android.widget.LinearLayout'
