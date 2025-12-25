@@ -149,6 +149,7 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
+        time.sleep(1)
         key, element = self.wait_for_any_element_plus(['song_title', 'music_tabs'])
         if key == 'song_title':
             self.logger.info("Already in player general screen")
@@ -161,6 +162,18 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
+        time.sleep(1)
+
+        song_version = self.try_find_element_plus('song_version')
+        if song_version:
+            song_version.click()
+            self.logger.info(f"Clicked song version")
+
+            studio_version = self.wait_for_element_clickable_plus('studio_version')
+            if studio_version:
+                studio_version.click()
+                self.logger.info("Alter to studio version")
+
         playing_info = self.get_playing_info()
         if not playing_info:
             self.logger.warning(f"No playing info found for query: {music_query}")
@@ -169,23 +182,11 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        self.logger.info(f"Found playing info: {playing_info}")
-
         if self.list_mode == 'singer':
             if playing_info['song'].endswith('(Live)') or (
                     playing_info['singer'] and playing_info['singer'] == playing_info['album']):
                 self.no_skip += 1
-
-        song_version = self.try_find_element_plus('song_version')
-        if song_version:
-            song_version.click()
-            self.logger.info(f"Clicked song version")
-
-        studio_version = self.try_find_element_plus('studio_version', log=False)
-        if studio_version:
-            studio_version.click()
-            self.logger.info("Alter to studio version")
-
+        self.logger.info(f"Found playing info: {playing_info}")
         return playing_info
 
     def select_song_tab(self):
