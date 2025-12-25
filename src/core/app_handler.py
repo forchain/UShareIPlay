@@ -839,7 +839,7 @@ class AppHandler:
 
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
-            attribute_value: str = None
+            attribute_value: str = None, max_swipes: int = 10
     ) -> Tuple[Optional[str], Optional[WebElement]]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
@@ -847,6 +847,7 @@ class AppHandler:
             element_key: 目标元素在配置中的 key（应为容器的子元素）
             container_key: 容器元素在配置中的 key
             direction: 滚动方向，支持 'up'|'down'|'left'|'right'，默认 'up'（自下向上）
+            max_swipes: 最多滑动次数，默认 10 次
 
         策略：
             以 'up' 为例：每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
@@ -918,7 +919,6 @@ class AppHandler:
             prev_hash = snapshot()
             stable_rounds = 0
             max_stable_rounds = 2  # 连续多次无变化则认为到达边界
-            max_swipes = 50
 
             for _ in range(max_swipes):
                 # 尝试在容器内查找目标
