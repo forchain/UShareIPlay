@@ -293,7 +293,7 @@ class MessageManager(Singleton):
             max_tries = 10
             is_scrolled_to_latest = False
             for i in range(max_tries):
-                self.handler._perform_swipe(sx, sy, ex, ey)
+                self.handler._perform_swipe(sx, sy, ex, ey, 100)
                 containers = self.handler.find_elements_plus('message_container')
 
                 messages = await self.get_messages_from_containers(containers)
