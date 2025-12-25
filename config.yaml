@@ -39,17 +39,17 @@ soul:
       time: "09:00"
       message: "title 四十更惑 加油"
       repeat: true
-    - id: "radio_9"
+    - id: "playlist_9"
       time: "09:00"
-      message: "radio radar"
+      message: "playlist 官方 慵懒时间"
       repeat: true
-    - id: "radio_10"
+    - id: "playlist_10"
       time: "10:00"
-      message: "radio guess"
+      message: "playlist 官方 R&B"
       repeat: true
-    - id: "radio_11"
+    - id: "playlist_11"
       time: "11:00"
-      message: "radio daily"
+      message: "playlist 官方 欧美精选"
       repeat: true
     - id: "theme_noon"
       time: "12:00"
@@ -67,28 +67,28 @@ soul:
       time: "13:00"
       message: "title 赤子之心 💪"
       repeat: true
-    - id: "radio_13"
+    - id: "playlist_13"
       time: "13:00"
-      message: "radio"
-      repeat: true
-    - id: "playlist_14"
-      time: "14:00"
-      message: "playlist 红心雷达"
-    - id: "playlist_15"
-      time: "15:00"
-      message: "playlist 官方 欧美精选"
-      repeat: true
-    - id: "playlist_16"
-      time: "16:00"
-      message: "playlist 官方 R&B"
-      repeat: true
-    - id: "playlist_17"
-      time: "17:00"
       message: "playlist 官方 粤语经典"
+      repeat: true
+    - id: "radio_14"
+      time: "14:00"
+      message: "radio"
+    - id: "radio_15"
+      time: "15:00"
+      message: "radio radar"
+      repeat: true
+    - id: "radio_16"
+      time: "16:00"
+      message: "radio guess"
+      repeat: true
+    - id: "radio_17"
+      time: "17:00"
+      message: "radio daily"
       repeat: true
     - id: "playlist_18"
       time: "18:00"
-      message: "playlist 官方 情歌"
+      message: "playlist 红心雷达"
       repeat: true
     - id: "theme_home"
       time: "19:00"
@@ -96,15 +96,15 @@ soul:
       repeat: true
     - id: "playlist_19"
       time: "19:00"
-      message: "playlist 百万收藏"
+      message: "playlist 官方 古典"
       repeat: true
     - id: "playlist_20"
       time: "20:00"
-      message: "playlist 热门搜索"
+      message: "playlist 官方 下厨音乐"
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 古典"
+      message: "playlist 官方 Lofi&Chill"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
@@ -120,6 +120,7 @@ soul:
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
+    message_container: "//androidx.recyclerview.widget.RecyclerView[@resource-id='cn.soulapp.android:id/rvMessage']/android.view.ViewGroup"
     message_content: "cn.soulapp.android:id/tvContent"
     input_box_entry: "cn.soulapp.android:id/tvChat"
     input_box: "cn.soulapp.android:id/etInputView"

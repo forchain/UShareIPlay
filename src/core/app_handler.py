@@ -838,7 +838,8 @@ class AppHandler:
             return False
 
     def scroll_container_until_element(
-            self, element_key: str, container_key: str, direction: str = "up"
+            self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
+            attribute_value: str = None
     ) -> Tuple[Optional[str], Optional[WebElement]]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
@@ -923,23 +924,33 @@ class AppHandler:
                 # 尝试在容器内查找目标
                 found = self.find_child_element_plus(container, element_key)
                 if found:
-                    return element_key, found
+                    if attribute_name and attribute_value:
+                        attribute = self.try_get_attribute(found, attribute_name)
+                        if attribute == attribute_value:
+                            return element_key, found
+                    else:
+                        return element_key, found
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
-                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=400)
+                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=100)
                 if not ok:
                     self.logger.warning(
                         "scroll_container_until_element: 滑动失败，终止"
                     )
                     return None, None
 
-                time.sleep(0.35)
+                time.sleep(0.1)
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
                 if found:
-                    return element_key, found
+                    if attribute_name and attribute_value:
+                        attribute = self.try_get_attribute(found, attribute_name)
+                        if attribute == attribute_value:
+                            return element_key, found
+                    else:
+                        return element_key, found
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()

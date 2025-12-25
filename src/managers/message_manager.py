@@ -1,16 +1,19 @@
+"""
+消息获取与补漏（MessageManager）
+
+"""
 import logging
 import re
 import traceback
 from collections import deque
 from dataclasses import dataclass
 
-from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException
 
 from ..core.singleton import Singleton
 from ..core.log_formatter import ColoredFormatter
-from .greeting_manager import GreetingManager
 
+import os
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -19,7 +22,7 @@ chat_logger = None
 def get_chat_logger(config=None):
     """Get or create chat logger with configurable directory"""
     global chat_logger
-    import yaml, os
+    import yaml
     if chat_logger is None:
         # 直接加载全局 config.yaml
         try:
@@ -68,9 +71,9 @@ class MessageManager(Singleton):
         self._handler = None
         self._greeting_manager = None
         self._chat_logger = None
-        
+
         self.previous_messages = {}
-        self.recent_messages = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
+        self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
 
     @property
     def handler(self):
@@ -79,7 +82,7 @@ class MessageManager(Singleton):
             from ..handlers.soul_handler import SoulHandler
             self._handler = SoulHandler.instance()
         return self._handler
-    
+
     @property
     def greeting_manager(self):
         """延迟获取 GreetingManager 实例"""
@@ -87,7 +90,7 @@ class MessageManager(Singleton):
             from .greeting_manager import GreetingManager
             self._greeting_manager = GreetingManager.instance()
         return self._greeting_manager
-    
+
     @property
     def chat_logger(self):
         """延迟获取 chat_logger 实例"""
@@ -106,7 +109,56 @@ class MessageManager(Singleton):
             party_id = self.handler.config['default_party_id']
         return party_id
 
-    async def get_latest_message(self):
+    async def get_messages_from_containers(self, containers):
+        """
+        将 UI containers 转成 current_messages/new_messages（用于命令执行）。
+
+        说明：
+        - `current_messages` 以 container.id 为 key，值为 MessageInfo（或 greeting_info）。
+        - 通过 `previous_messages` 做差集，得到本轮“新增容器”的消息。
+
+        风险点（仅注释，不在此处改行为）：
+        - 你这里把 greeting_info 放进 `recent_messages` 的方式用了 walrus 组合表达式，
+          很容易把 bool 存进 deque（见下方日志会记录）。
+        """
+        # Process each container and collect message info
+        current_messages = {}  # Dict to store element_id: MessageInfo pairs
+
+        for container in containers:
+            command_info = await self.process_container_command(container)
+            greeting_info = await self.greeting_manager.process_container_greeting(container)
+
+            if command_info:
+                current_messages[container.id] = command_info
+            if greeting_info:
+                current_messages[container.id] = greeting_info
+                # NOTE: 这里的写法 `content := greeting_info.content and ...` 在 Python 里会先计算 and，
+                # 最终 content 可能是 bool，而不是文本；这会污染 recent_messages。
+                # 先加日志观测，后续再用证据决定是否要改为：
+                #   content = greeting_info.content
+                #   if content and content not in self.recent_messages: ...
+                try:
+                    content = getattr(greeting_info, "content", None)
+                    if content and content not in self.recent_chats:
+                        self.recent_chats.append(content)
+                        self.handler.logger.debug(
+                            f"[greeting] appended to recent_messages: {content!r}"
+                        )
+                except Exception:
+                    self.handler.logger.warning(
+                        f"[greeting] failed to append recent: {traceback.format_exc()}"
+                    )
+
+        # Update previous message IDs and return new messages
+        new_messages = {}  # Changed from list to dict
+        for element_id, command_info in current_messages.items():
+            if element_id not in self.previous_messages:
+                new_messages[element_id] = command_info  # Store as dict
+
+        self.previous_messages = current_messages
+        return new_messages if new_messages else None
+
+    async def get_latest_messages(self):
         """Get new message contents that weren't seen before
         Returns:
             dict: New messages if any found
@@ -115,7 +167,6 @@ class MessageManager(Singleton):
         """
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-            return 'ABNORMAL_STATE'
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
@@ -134,30 +185,133 @@ class MessageManager(Singleton):
 
         # Get all ViewGroup containers
         try:
-            containers = message_list.find_elements(AppiumBy.CLASS_NAME, "android.view.ViewGroup")
+            containers = self.handler.find_elements_plus('message_container')
         except Exception as e:
-            self.handler.logger.error(f'cannot find message_list element, might be in loading')
+            self.handler.logger.error('cannot find message_list element, might be in loading')
             return 'ABNORMAL_STATE'
 
-        # Process each container and collect message info
-        current_messages = {}  # Dict to store element_id: MessageInfo pairs
+        if len(containers) == 0:
+            self.handler.logger.error("No message containers found")
+            return 'ABNORMAL_STATE'
 
+        new_chat = None
+        latest_chat = None
         for container in containers:
-            message_info = await self.process_container_message(container)
-            greeting_info = await self.greeting_manager.process_container_greeting(container)
+            chat = self.get_chat_text(container)
+            if not new_chat and chat:
+                new_chat = chat
+            if chat:
+                latest_chat = chat
 
-            if message_info:
-                current_messages[container.id] = message_info
-            if greeting_info:
-                current_messages[container.id] = greeting_info
+        new_messages = {}
+        # NOTE: 这里你希望取 recent_messages 的最后一条作为锚点（last_chat）。
+        # 当前写法在 Python 中会报错（deque - int 不合法），先加 try/except 让日志把问题打出来。
+        try:
+            last_chat = self.recent_chats[-1] if len(self.recent_chats) > 0 else None
+        except Exception:
+            last_chat = None
+            self.handler.logger.error(f"[messages] compute last_chat failed: {traceback.format_exc()}")
 
-        # Update previous message IDs and return new messages
-        new_messages = {}  # Changed from list to dict
-        for element_id, message_info in current_messages.items():
-            if element_id not in self.previous_messages:
-                new_messages[element_id] = message_info  # Store as dict
+        is_chat_missed = new_chat and len(self.recent_chats) > 0 and (
+                new_chat not in self.recent_chats) and new_chat != last_chat and latest_chat != last_chat
 
-        self.previous_messages = current_messages
+        # self.handler.logger.debug(
+        #     f"[messages] containers={len(containers)} new_chat={new_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed}"
+        # )
+        if not is_chat_missed:
+            # NOTE: get_messages_from_containers 是 async，这里需要 await 才会真正执行。
+            # 先加日志观测返回类型；后续根据运行时证据再决定是否统一修正。
+            try:
+                new_messages = await self.get_messages_from_containers(containers)
+            except Exception:
+                self.handler.logger.error(f"[messages] no_miss processing failed: {traceback.format_exc()}")
+                return 'ABNORMAL_STATE'
+        else:
+            # scroll back to the missing element
+            self.handler.logger.warning(
+                f"[messages] missed detected. new_chat={new_chat} not in recent. last_chat(anchor)={last_chat!r} recent_chats={self.recent_chats!r}"
+            )
+
+            # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），
+            # 说明没有历史锚点，不需要回翻，直接处理当前屏幕的消息即可。
+            if last_chat is None:
+                # self.handler.logger.info(
+                #     "[messages] no anchor (recent_chats empty), skip backscroll, process current screen"
+                # )
+                # 直接处理当前屏幕，走正常流程
+                new_messages = await self.get_messages_from_containers(containers)
+                return new_messages if new_messages else None
+
+            try:
+                # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
+                # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
+                key, element = self.handler.scroll_container_until_element(
+                    'message_content',
+                    'message_list',
+                    'down',
+                    'content-desc',
+                    last_chat,
+                )
+                # self.handler.logger.debug(
+                #     f"[messages] scroll_container_until_element {latest_chat} returned {key}, {element}")
+            except Exception:
+                self.handler.logger.error(
+                    f"[messages] scroll_container_until_element crashed: {traceback.format_exc()}")
+                return 'ABNORMAL_STATE'
+            containers = self.handler.find_elements_plus('message_container')
+            new_containers = []
+            is_new_container = False
+            for container in containers:
+                chat = self.get_chat_text(container)
+                if is_new_container:
+                    new_containers.append(chat)
+
+                if chat == last_chat:
+                    is_new_container = True
+
+            new_messages = {}
+            self.previous_messages = {}
+            messages = await self.get_messages_from_containers(new_containers)
+            if messages:
+                new_messages = messages
+
+            # 预计算容器可视坐标
+            loc = message_list.location
+            size = message_list.size
+            left = int(loc["x"])
+            top = int(loc["y"])
+            width = int(size["width"])
+            height = int(size["height"])
+
+            sx = int(left + width / 2)
+            sy = int(top + height * 0.9)
+            ex = sx
+            ey = int(top + height * 0.1)
+
+            max_tries = 10
+            is_scrolled_to_latest = False
+            for i in range(max_tries):
+                self.handler._perform_swipe(sx, sy, ex, ey)
+                containers = self.handler.find_elements_plus('message_container')
+
+                messages = await self.get_messages_from_containers(containers)
+                if messages:
+                    for element_id, message in messages.items():
+                        new_element_id = element_id
+                        if element_id in new_messages:
+                            new_element_id = f"{element_id}_{i}"
+                            self.handler.logger.warning(
+                                f"Duplicate message found: {message.content}, new element id:{new_element_id}")
+                        new_messages[new_element_id] = message
+
+                for container in containers:
+                    chat = self.get_chat_text(container)
+                    if chat and chat == latest_chat:
+                        is_scrolled_to_latest = True
+
+                if is_scrolled_to_latest:
+                    break
+
         return new_messages if new_messages else None
 
     def is_user_enter_message(self, message: str) -> tuple[bool, str]:
@@ -173,25 +327,29 @@ class MessageManager(Singleton):
             return True, match.group(1)
         return False, ""
 
-    async def process_container_message(self, container):
+    def get_chat_text(self, container):
+        # Check if container has valid message content
+        content_element = self.handler.find_child_element_plus(
+            container,
+            'message_content'
+        )
+        if not content_element:
+            return None
+
+        message_text = content_element.text
+        content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
+        chat_text = content_desc if content_desc and content_desc != 'null' else message_text
+        return chat_text
+
+    async def process_container_command(self, container):
         """Process a single message container and return MessageInfo"""
         try:
-            # Check if container has valid message content
-            content_element = self.handler.find_child_element_plus(
-                container,
-                'message_content'
-            )
-            if not content_element:
+            chat_text = self.get_chat_text(container)
+            if not chat_text:
                 return None
 
-            message_text = content_element.text
-            content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
-            chat_text = content_desc if content_desc and content_desc != 'null' else message_text
-
-            # Check if container has valid sender avatar
-
             # Check for duplicate message
-            if not chat_text in self.recent_messages:
+            if chat_text not in self.recent_chats:
                 is_enter, username = self.is_user_enter_message(chat_text)
                 if is_enter:
                     self.handler.logger.critical(f"User entered: {username}")
@@ -203,11 +361,11 @@ class MessageManager(Singleton):
                         try:
                             if hasattr(module.command, 'user_enter'):
                                 await module.command.user_enter(username)
-                        except Exception as e:
+                        except Exception:
                             self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
                         continue
                 self.chat_logger.info(chat_text)
-                self.recent_messages.append(chat_text)
+                self.recent_chats.append(chat_text)
 
             # Parse message content using pattern
             pattern = r'souler\[.+\]说：:(.+)'
@@ -244,6 +402,6 @@ class MessageManager(Singleton):
         except StaleElementReferenceException:
             self.handler.logger.warning("Message element became stale")
             return None
-        except Exception as e:
+        except Exception:
             self.handler.logger.error(f"Error processing message container: {traceback.format_exc()}")
             return None
