@@ -53,6 +53,7 @@ class GreetingManager(Singleton):
             self.last_follower_message_id = current_message_id
 
             message_text = follower_message.text
+
             # Click the message at 25% from top
             x_ratio = 0.45 if message_text.startswith('你关注的') else 0.75
             if not self.handler.click_element_at(follower_message, x_ratio=x_ratio, y_ratio=0.25):

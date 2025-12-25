@@ -275,7 +275,7 @@ class AppController(Singleton):
                 await self._process_queue_messages()
 
                 # Monitor Soul messages
-                messages = await self.soul_handler.message_manager.get_latest_message()
+                messages = await self.soul_handler.message_manager.get_latest_messages()
                 if response:
                     self.soul_handler.send_message(response)
                     response = None
