@@ -1,19 +1,19 @@
 """
 消息获取与补漏（MessageManager）
 
-你当前实现的核心意图（我按代码结构理解）：
-- 每轮从 `message_list` 容器读取可见消息容器（ViewGroup）。
-- 用 `recent_messages` 作为“最近看到过的原始 chat_text”缓存（当前 maxlen=3）。
-- 以当前屏第一条 `first_text` 与 `recent_messages` 对比，判断是否发生“漏看/错过”：
-  - 未漏看：直接处理当前屏容器，找出新的 element_id 消息用于命令执行。
-  - 漏看：先向下回翻，直到屏内出现“上一条 last_message”（锚点），再从锚点之后补处理一屏；
-         接着向上翻若干次，直到回到最新（通过 first_text 命中判定）。
-
-本文件新增内容（不改变你原有策略，只增强可观测性）：
-- 关键分支加 logger（info/debug/warning/error）。
-- 额外写入 NDJSON 到 `.cursor/debug.log`，便于你之后按 runId 回放每轮发生了什么。
 """
+import logging
+import re
 import traceback
+from collections import deque
+from dataclasses import dataclass
+
+from selenium.common.exceptions import StaleElementReferenceException
+
+from ..core.singleton import Singleton
+from ..core.log_formatter import ColoredFormatter
+
+import os
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
