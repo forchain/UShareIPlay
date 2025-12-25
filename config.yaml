@@ -266,6 +266,7 @@ qq_music:
     clear_search: '//android.widget.ImageView[@content-desc="清空"]'
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
     result_item: "com.tencent.qqmusic:id/item_layout"
+    first_song: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"][1]//android.widget.TextView'
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
     current_song: "android:id/title"

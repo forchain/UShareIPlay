@@ -56,15 +56,13 @@ class QQMusicHandler(AppHandler, Singleton):
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
-        result_item = self.wait_for_element_clickable_plus('result_item')
         song_element = None
         singer_element = None
-        if result_item:
-            elements = self.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
-            if elements:
-                song_element = elements[0]
-                if len(elements) > 1:
-                    singer_element = elements[1]
+        elements = self.find_elements_plus('first_song')
+        if elements:
+            song_element = elements[0]
+            if len(elements) > 1:
+                singer_element = elements[1]
         if not song_element:
             return {
                 "song": "Unknown",
@@ -72,7 +70,7 @@ class QQMusicHandler(AppHandler, Singleton):
                 "album": "Unknown",
             }
         song = song_element.text
-        if not song_element:
+        if not singer_element:
             return {
                 "song": song,
                 "singer": "Unknown",
@@ -111,7 +109,7 @@ class QQMusicHandler(AppHandler, Singleton):
         """Common logic for preparing music playback"""
         if not self.switch_to_app():
             self.logger.info(f"Failed to switched to QQ Music app")
-            return False
+            return None
         self.logger.info(f"Switched to QQ Music app")
 
         key, element = self.navigate_to_element('search_box',
@@ -120,7 +118,7 @@ class QQMusicHandler(AppHandler, Singleton):
             search_entry = self.wait_for_element_plus('search_entry')
             if not search_entry:
                 self.logger.info(f"Search entry not found")
-                return False
+                return None
             search_entry.click()
         elif key == 'search_box':
             clear_search = self.try_find_element_plus('clear_search')
@@ -134,35 +132,29 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.info(f"Clicked search box")
         else:
             self.logger.error(f"failed to find search box")
-            return False
+            return None
 
         # Use clipboard operations from parent class
         self.set_clipboard_text(music_query)
         self.paste_text()
-        return True
+        return key
 
     def _prepare_music_playback(self, music_query):
-        if not self.query_music(music_query):
+        from_key = self.query_music(music_query)
+        if not from_key:
             self.logger.error(f"Failed to query music query: {music_query}")
             playing_info = {
                 'error': f"Failed to query music: {music_query}"
             }
             return playing_info
 
-        time.sleep(1)
-        key, element = self.wait_for_any_element_plus(['song_title', 'music_tabs'])
-        if key == 'song_title':
-            self.logger.info("Already in player general screen")
-        elif key == 'music_tabs':
+        if from_key != 'home_nav':
             self.select_song_tab()
-        else:
-            self.logger.error(f"No entry to query music query: {music_query}")
-            playing_info = {
-                'error': f"No entry to query music: {music_query}"
-            }
-            return playing_info
 
-        time.sleep(1)
+        first_song = self.wait_for_element_plus('first_song')
+        if not first_song:
+            self.logger.error(f"Failed to find first song")
+            return None
 
         song_version = self.try_find_element_plus('song_version')
         if song_version:
