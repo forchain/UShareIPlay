@@ -191,8 +191,7 @@ class MessageManager(Singleton):
             return 'ABNORMAL_STATE'
 
         if len(containers) == 0:
-            self.handler.logger.error("No message containers found")
-            return 'ABNORMAL_STATE'
+            return None
 
         new_chat = None
         latest_chat = None
@@ -294,7 +293,7 @@ class MessageManager(Singleton):
             max_tries = 10
             is_scrolled_to_latest = False
             for i in range(max_tries):
-                self.handler._perform_swipe(sx, sy, ex, ey)
+                self.handler._perform_swipe(sx, sy, ex, ey, 100)
                 containers = self.handler.find_elements_plus('message_container')
 
                 messages = await self.get_messages_from_containers(containers)
@@ -339,9 +338,12 @@ class MessageManager(Singleton):
         if not content_element:
             return None
 
-        message_text = content_element.text
-        content_desc = self.handler.try_get_attribute(content_element, 'content-desc')
-        chat_text = content_desc if content_desc and content_desc != 'null' else message_text
+        chat_text = self.handler.try_get_attribute(content_element, 'content-desc')
+        if not chat_text or chat_text == 'null':
+            try:
+                chat_text = content_element.text
+            except StaleElementReferenceException:
+                chat_text = None
         return chat_text
 
     async def process_container_command(self, container):
