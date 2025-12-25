@@ -885,26 +885,26 @@ class AppHandler:
             def compute_points(dir_name: str):
                 if dir_name == "up":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.7)
+                    start_y = top + int(height * 0.9)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.3)
+                    end_y = top + int(height * 0.1)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "down":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.3)
+                    start_y = top + int(height * 0.1)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.7)
+                    end_y = top + int(height * 0.9)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "left":
-                    start_x = left + int(width * 0.7)
+                    start_x = left + int(width * 0.9)
                     start_y = top + int(height * 0.5)
-                    end_x = left + int(width * 0.3)
+                    end_x = left + int(width * 0.1)
                     end_y = top + int(height * 0.5)
                     return start_x, start_y, end_x, end_y
                 # right
-                start_x = left + int(width * 0.3)
+                start_x = left + int(width * 0.1)
                 start_y = top + int(height * 0.5)
-                end_x = left + int(width * 0.7)
+                end_x = left + int(width * 0.9)
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
@@ -925,9 +925,11 @@ class AppHandler:
                 found = self.find_child_element_plus(container, element_key)
                 if found:
                     if attribute_name and attribute_value:
-                        attribute = self.try_get_attribute(found, attribute_name)
-                        if attribute == attribute_value:
-                            return element_key, found
+                        elements = self.find_child_elements_plus(container, element_key)
+                        for element in elements:
+                            attribute = self.try_get_attribute(element, attribute_name)
+                            if attribute == attribute_value:
+                                return element_key, element
                     else:
                         return element_key, found
 
@@ -940,15 +942,15 @@ class AppHandler:
                     )
                     return None, None
 
-                time.sleep(0.2)
-
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
                 if found:
                     if attribute_name and attribute_value:
-                        attribute = self.try_get_attribute(found, attribute_name)
-                        if attribute == attribute_value:
-                            return element_key, found
+                        elements = self.find_child_elements_plus(container, element_key)
+                        for element in elements:
+                            attribute = self.try_get_attribute(element, attribute_name)
+                            if attribute == attribute_value:
+                                return element_key, element
                     else:
                         return element_key, found
 
