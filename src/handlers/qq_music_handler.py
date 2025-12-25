@@ -56,7 +56,7 @@ class QQMusicHandler(AppHandler, Singleton):
 
     def get_playing_info(self):
         """Get current playing song and singer info"""
-        result_item = self.wait_for_element_plus('result_item')
+        result_item = self.wait_for_element_clickable_plus('result_item')
         song_element = None
         singer_element = None
         if result_item:
