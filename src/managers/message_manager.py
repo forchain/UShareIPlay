@@ -223,7 +223,7 @@ class MessageManager(Singleton):
         else:
             # scroll back to the missing element
             self.handler.logger.warning(
-                f"[messages] missed detected. new_chat not in recent. last_chat(anchor)={last_chat!r} recent_chats={self.recent_chats!r}"
+                f"[messages] missed detected. new_chat={new_chat} not in recent. last_chat(anchor)={last_chat!r} recent_chats={self.recent_chats!r}"
             )
 
             # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），

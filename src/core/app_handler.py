@@ -933,14 +933,14 @@ class AppHandler:
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
-                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=400)
+                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=100)
                 if not ok:
                     self.logger.warning(
                         "scroll_container_until_element: 滑动失败，终止"
                     )
                     return None, None
 
-                time.sleep(0.35)
+                time.sleep(0.1)
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
