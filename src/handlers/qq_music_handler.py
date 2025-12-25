@@ -149,7 +149,17 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        self.select_song_tab()
+        key, element = self.wait_for_any_element_plus(['song_title', 'music_tabs'])
+        if key == 'song_title':
+            self.logger.info("Already in player general screen")
+        elif key == 'music_tabs':
+            self.select_song_tab()
+        else:
+            self.logger.error(f"No entry to query music query: {music_query}")
+            playing_info = {
+                'error': f"No entry to query music: {music_query}"
+            }
+            return playing_info
 
         playing_info = self.get_playing_info()
         if not playing_info:
@@ -165,6 +175,11 @@ class QQMusicHandler(AppHandler, Singleton):
             if playing_info['song'].endswith('(Live)') or (
                     playing_info['singer'] and playing_info['singer'] == playing_info['album']):
                 self.no_skip += 1
+
+        song_version = self.try_find_element_plus('song_version')
+        if song_version:
+            song_version.click()
+            self.logger.info(f"Clicked song version")
 
         studio_version = self.try_find_element_plus('studio_version', log=False)
         if studio_version:
