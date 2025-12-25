@@ -191,8 +191,7 @@ class MessageManager(Singleton):
             return 'ABNORMAL_STATE'
 
         if len(containers) == 0:
-            self.handler.logger.error("No message containers found")
-            return 'ABNORMAL_STATE'
+            return None
 
         new_chat = None
         latest_chat = None
