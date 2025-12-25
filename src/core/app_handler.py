@@ -885,26 +885,26 @@ class AppHandler:
             def compute_points(dir_name: str):
                 if dir_name == "up":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.8)
+                    start_y = top + int(height * 0.7)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.1)
+                    end_y = top + int(height * 0.3)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "down":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.2)
+                    start_y = top + int(height * 0.3)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.9)
+                    end_y = top + int(height * 0.7)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "left":
-                    start_x = left + int(width * 0.8)
+                    start_x = left + int(width * 0.7)
                     start_y = top + int(height * 0.5)
-                    end_x = left + int(width * 0.1)
+                    end_x = left + int(width * 0.3)
                     end_y = top + int(height * 0.5)
                     return start_x, start_y, end_x, end_y
                 # right
-                start_x = left + int(width * 0.2)
+                start_x = left + int(width * 0.3)
                 start_y = top + int(height * 0.5)
-                end_x = left + int(width * 0.9)
+                end_x = left + int(width * 0.7)
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
