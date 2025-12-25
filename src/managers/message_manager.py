@@ -194,8 +194,14 @@ class MessageManager(Singleton):
             self.handler.logger.error("No message containers found")
             return 'ABNORMAL_STATE'
 
-        new_chat = self.get_chat_text(containers[0])
-        latest_chat = self.get_chat_text(containers[len(containers) - 1])
+        new_chat = None
+        latest_chat = None
+        for container in containers:
+            chat = self.get_chat_text(container)
+            if not new_chat and chat:
+                new_chat = chat
+            if chat:
+                latest_chat = chat
 
         new_messages = {}
         # NOTE: 这里你希望取 recent_messages 的最后一条作为锚点（last_chat）。
@@ -206,7 +212,7 @@ class MessageManager(Singleton):
             last_chat = None
             self.handler.logger.error(f"[messages] compute last_chat failed: {traceback.format_exc()}")
 
-        is_chat_missed = len(self.recent_chats) > 0 and (
+        is_chat_missed = new_chat and len(self.recent_chats) > 0 and (
                 new_chat not in self.recent_chats) and new_chat != last_chat and latest_chat != last_chat
 
         # self.handler.logger.debug(
@@ -300,7 +306,7 @@ class MessageManager(Singleton):
 
                 for container in containers:
                     chat = self.get_chat_text(container)
-                    if chat == latest_chat:
+                    if chat and chat == latest_chat:
                         is_scrolled_to_latest = True
 
                 if is_scrolled_to_latest:
