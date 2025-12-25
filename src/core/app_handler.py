@@ -940,7 +940,7 @@ class AppHandler:
                     )
                     return None, None
 
-                # time.sleep(0.1)
+                time.sleep(0.1)
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 found = self.find_child_element_plus(container, element_key)
