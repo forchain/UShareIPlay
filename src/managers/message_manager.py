@@ -132,22 +132,9 @@ class MessageManager(Singleton):
                 current_messages[container.id] = command_info
             if greeting_info:
                 current_messages[container.id] = greeting_info
-                # NOTE: 这里的写法 `content := greeting_info.content and ...` 在 Python 里会先计算 and，
-                # 最终 content 可能是 bool，而不是文本；这会污染 recent_messages。
-                # 先加日志观测，后续再用证据决定是否要改为：
-                #   content = greeting_info.content
-                #   if content and content not in self.recent_messages: ...
-                try:
-                    content = getattr(greeting_info, "content", None)
-                    if content and content not in self.recent_chats:
-                        self.recent_chats.append(content)
-                        self.handler.logger.debug(
-                            f"[greeting] appended to recent_messages: {content!r}"
-                        )
-                except Exception:
-                    self.handler.logger.warning(
-                        f"[greeting] failed to append recent: {traceback.format_exc()}"
-                    )
+                #  log only, no need to save in recent messages
+                if chat := greeting_info.content:
+                    self.chat_logger.info(chat)
 
         # Update previous message IDs and return new messages
         new_messages = {}  # Changed from list to dict
