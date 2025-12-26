@@ -86,17 +86,24 @@ class SeatingManager(SeatManagerBase):
             if owner_position:
                 self.current_desk_index = owner_position['desk_index']
                 self.current_side = owner_position['side']
+                self.handler.logger.info(
+                    f"Owner found at desk {owner_position['desk_index']}, side {owner_position['side']}, "
+                    f"has_neighbor: {owner_position['has_neighbor']}, force_relocate: {force_relocate}"
+                )
 
                 if owner_position['has_neighbor'] and not force_relocate:
                     self.handler.logger.info(
                         f"Owner already accompanying {owner_position['neighbor_label']} at desk {owner_position['desk_index']}"
                     )
                     return {'success': 'Owner already has a companion'}
+            else:
+                self.handler.logger.info("Owner not found on any seat, will scan for available seat")
 
             start_index = self.current_desk_index
             if owner_position:
                 start_index = (owner_position['desk_index'] + 1) % len(seat_desks)
 
+            self.handler.logger.info(f"Starting seat scan from index {start_index}, total desks: {len(seat_desks)}")
             scan_order = self._build_scan_order(len(seat_desks), start_index)
             first_empty_candidate = None
 
@@ -126,6 +133,10 @@ class SeatingManager(SeatManagerBase):
 
             if first_empty_candidate:
                 # Ensure the row containing the target seat is visible before taking it
+                self.handler.logger.info(
+                    f"Found empty seat candidate at desk {first_empty_candidate['desk_index']}, "
+                    f"side {first_empty_candidate['seat']['side']}"
+                )
                 self._ensure_row_visible(first_empty_candidate['desk_index'], seat_desks)
                 return self._take_seat(
                     first_empty_candidate['desk_index'],
@@ -133,6 +144,7 @@ class SeatingManager(SeatManagerBase):
                     seat_desks=seat_desks
                 )
 
+            self.handler.logger.warning("No available seats found after scanning all desks")
             return {'error': 'No available seats found'}
 
         except Exception as e:

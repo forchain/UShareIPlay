@@ -123,13 +123,19 @@ class RecoveryManager(Singleton):
 
             from ..managers.seat_manager import seat_manager
             self.logger.info("Attempting to seat owner after party creation")
-            result = seat_manager.seating.find_owner_seat()
+            # Force relocate to ensure owner gets seated even if already on a seat without neighbor
+            result = seat_manager.seating.find_owner_seat(force_relocate=True)
 
             if 'success' in result:
                 self.logger.info("Owner successfully seated")
                 return True
             else:
-                self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
+                error_msg = result.get('error', 'Unknown error')
+                # If owner already has a companion, that's also considered success
+                if 'already has a companion' in result.get('success', ''):
+                    self.logger.info("Owner already has a companion, seating not needed")
+                    return True
+                self.logger.warning(f"Failed to seat owner: {error_msg}")
                 return False
         except Exception as e:
             self.logger.error(f"Error seating owner: {str(e)}")
