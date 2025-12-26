@@ -238,7 +238,7 @@ class MessageManager(Singleton):
                     'message_content',
                     'message_list',
                     'down',
-                    'content-desc',
+                    'content-desc|text',
                     last_chat,
                 )
                 # self.handler.logger.debug(

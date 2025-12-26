@@ -915,23 +915,38 @@ class AppHandler:
                 except Exception:
                     return 0
 
+
             # 开始循环滑动查找
             prev_hash = snapshot()
             stable_rounds = 0
             max_stable_rounds = 2  # 连续多次无变化则认为到达边界
 
-            for _ in range(max_swipes):
-                # 尝试在容器内查找目标
+            # 查找目标元素的辅助函数
+            def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
+                """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
                 found = self.find_child_element_plus(container, element_key)
                 if found:
                     if attribute_name and attribute_value:
                         elements = self.find_child_elements_plus(container, element_key)
                         for element in elements:
-                            attribute = self.try_get_attribute(element, attribute_name)
-                            if attribute == attribute_value:
+                            attr_list = attribute_name.split('|')
+                            any_match = False
+                            for attr in attr_list:
+                                value = self.try_get_attribute(element, attr)
+                                if value == attribute_value:
+                                    any_match = True
+                                    break
+                            if any_match:
                                 return element_key, element
                     else:
                         return element_key, found
+                return None, None
+
+            for _ in range(max_swipes):
+                # 尝试在容器内查找目标
+                key, element = find_target_element()
+                if element:
+                    return key, element
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
@@ -943,16 +958,9 @@ class AppHandler:
                     return None, None
 
                 # 滑动后再试一次（元素可能已进入可视区）
-                found = self.find_child_element_plus(container, element_key)
-                if found:
-                    if attribute_name and attribute_value:
-                        elements = self.find_child_elements_plus(container, element_key)
-                        for element in elements:
-                            attribute = self.try_get_attribute(element, attribute_name)
-                            if attribute == attribute_value:
-                                return element_key, element
-                    else:
-                        return element_key, found
+                key, element = find_target_element()
+                if element:
+                    return key, element
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()
