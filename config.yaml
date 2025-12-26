@@ -291,7 +291,7 @@ qq_music:
     album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
-    singer_play: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
+    play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
     singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
     singer_text: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放"]'
