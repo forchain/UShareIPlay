@@ -39,7 +39,7 @@ class SeatingManager(SeatManagerBase):
                 return {'error': 'Failed to find seat desks'}
 
             if desk_index >= len(seat_desks):
-                return {'error': f'Desk {desk_index + 1} does not exist'}
+                return {'error': f'Desk {desk_index} does not exist'}
 
             # Ensure the target row is visible
             self._ensure_row_visible(desk_index, seat_desks)
@@ -56,8 +56,8 @@ class SeatingManager(SeatManagerBase):
                 return {'error': f'Seat {seat_number} is already occupied by {target_seat["label"]}'}
 
             # Take the seat
-            self.handler.logger.info(f"Sitting at seat {seat_number} (desk {desk_index + 1}, {side} side)")
-            return self._take_seat(desk_index, target_seat)
+            self.handler.logger.info(f"Sitting at seat {seat_number} (desk {desk_index}, {side} side)")
+            return self._take_seat(desk_index, target_seat, seat_desks=seat_desks)
 
         except Exception as e:
             self.handler.log_error(f"Error sitting at specific seat: {traceback.format_exc()}")
@@ -89,7 +89,7 @@ class SeatingManager(SeatManagerBase):
 
                 if owner_position['has_neighbor'] and not force_relocate:
                     self.handler.logger.info(
-                        f"Owner already accompanying {owner_position['neighbor_label']} at desk {owner_position['desk_index'] + 1}"
+                        f"Owner already accompanying {owner_position['neighbor_label']} at desk {owner_position['desk_index']}"
                     )
                     return {'success': 'Owner already has a companion'}
 
@@ -112,7 +112,8 @@ class SeatingManager(SeatManagerBase):
                     return self._take_seat(
                         desk_index,
                         companion_candidate['seat'],
-                        neighbor_label=companion_candidate['neighbor_label']
+                        neighbor_label=companion_candidate['neighbor_label'],
+                        seat_desks=seat_desks
                     )
 
                 if not first_empty_candidate:
@@ -124,9 +125,12 @@ class SeatingManager(SeatManagerBase):
                         }
 
             if first_empty_candidate:
+                # Ensure the row containing the target seat is visible before taking it
+                self._ensure_row_visible(first_empty_candidate['desk_index'], seat_desks)
                 return self._take_seat(
                     first_empty_candidate['desk_index'],
-                    first_empty_candidate['seat']
+                    first_empty_candidate['seat'],
+                    seat_desks=seat_desks
                 )
 
             return {'error': 'No available seats found'}
@@ -214,18 +218,18 @@ class SeatingManager(SeatManagerBase):
         """Ensure the row containing the desk is visible by scrolling if needed"""
         if not seat_desks or len(seat_desks) < 3:
             return
-        
+
         # Calculate which row the desk belongs to (row_index = desk_index // 2)
         row_index = desk_index // 2
-        
+
         # Row 1 (desk_index 2-3) is always visible, no scrolling needed
         if row_index == 1:
             return
-        
+
         # Use second row's first desk (index 2) as reference for scrolling
         reference_desk = seat_desks[2]
         desk_height = reference_desk.size['height']
-        
+
         if row_index == 0:  # First row (desk_index 0-1)
             # Scroll down one row height to show first row
             self.handler.driver.swipe(
@@ -249,19 +253,23 @@ class SeatingManager(SeatManagerBase):
             time.sleep(0.5)  # Wait for scroll animation
             self.handler.logger.info(f"Scrolled to show third row for desk {desk_index}")
 
-    def _take_seat(self, desk_index, seat_info, neighbor_label=None):
+    def _take_seat(self, desk_index, seat_info, neighbor_label=None, seat_desks=None):
         if self.handler is None or not seat_info or not seat_info.get('element'):
             return {'error': 'Seat element not available'}
 
         try:
+            # Ensure the row containing this seat is visible before clicking
+            if seat_desks:
+                self._ensure_row_visible(desk_index, seat_desks)
+            
             seat_info['element'].click()
             if neighbor_label:
                 self.handler.logger.info(
-                    f"Accompanying {neighbor_label} at desk {desk_index + 1}, {seat_info['side']} seat"
+                    f"Accompanying {neighbor_label} at desk {desk_index}, {seat_info['side']} seat"
                 )
             else:
                 self.handler.logger.info(
-                    f"Taking empty {seat_info['side']} seat at desk {desk_index + 1}"
+                    f"Taking empty {seat_info['side']} seat at desk {desk_index}"
                 )
 
             result = self._confirm_seat()
