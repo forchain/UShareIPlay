@@ -44,7 +44,7 @@ class QQMusicHandler(AppHandler, Singleton):
             if key == 'go_back' or key == 'minimize_screen':
                 element.click()
             elif key == 'home_nav':
-                self.press_back()
+                # self.press_back()
                 self.logger.info("Back to home page")
                 return True
             else:
