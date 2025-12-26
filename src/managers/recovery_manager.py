@@ -128,12 +128,18 @@ class RecoveryManager(Singleton):
 
             if 'success' in result:
                 self.logger.info("Owner successfully seated")
+                # Trigger focus count check after seating to simulate seat count change event
+                time.sleep(0.5)  # Wait a bit for UI to update
+                seat_manager.focus.reset_and_check()
                 return True
             else:
                 error_msg = result.get('error', 'Unknown error')
                 # If owner already has a companion, that's also considered success
                 if 'already has a companion' in result.get('success', ''):
                     self.logger.info("Owner already has a companion, seating not needed")
+                    # Still trigger focus count check even if already has companion
+                    time.sleep(0.5)  # Wait a bit for UI to update
+                    seat_manager.focus.reset_and_check()
                     return True
                 self.logger.warning(f"Failed to seat owner: {error_msg}")
                 return False
