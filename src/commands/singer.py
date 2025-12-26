@@ -116,15 +116,15 @@ class SingerCommand(BaseCommand):
             self.handler.logger.info("Selected singer play")
         else:
             self.select_singer_tab()
-            singer_text = self.handler.try_find_element_plus("singer_name")
-            if not singer_text:
+            singer_result = self.handler.wait_for_element_clickable_plus("singer_result")
+            if not singer_result:
                 return {
                     "error": "Failed to find singer result",
                 }
 
-            singer_text.click()
+            singer_result.click()
             self.handler.logger.info("Selected singer result")
-            singer_name = singer_text.text
+            singer_name = singer_result.text
 
             play_button = self.handler.wait_for_element_clickable_plus("play_all")
             if not play_button:
