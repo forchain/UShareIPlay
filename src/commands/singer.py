@@ -77,12 +77,27 @@ class SingerCommand(BaseCommand):
 
     def play_singer(self, query: str):
 
-        if not self.handler.query_music(query):
+        from_key = self.handler.query_music(query)
+        if not from_key:
             return {
-                'error': 'Failed to query singer',
+                'error': f'Failed to query singer {query}',
             }
 
-        self.select_singer_tab()
+        if from_key == 'home_nav': 
+            first_song = self.handler.wait_for_element_plus('first_song')
+            if not first_song:
+                self.handler.logger.error("Failed to find first song")
+                return {
+                    'error': 'Failed to find first song',
+                }
+            singer_label = self.handler.try_find_element_plus('singer_label')
+            if singer_label:
+                singer_play = self.handler.try_find_element_plus('singer_play')
+                if singer_play:
+                    singer_play.click()
+                    self.handler.logger.info("Selected singer play")
+        else:
+            self.select_singer_tab()
 
         singer_text = self.handler.wait_for_element_clickable_plus('singer_text')
         if not singer_text:
