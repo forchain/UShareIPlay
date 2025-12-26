@@ -293,7 +293,7 @@ qq_music:
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
     play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
     singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
-    singer_text: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
+    singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
