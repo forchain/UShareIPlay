@@ -214,9 +214,7 @@ class MessageManager(Singleton):
                 return 'ABNORMAL_STATE'
         else:
             # scroll back to the missing element
-            self.handler.logger.warning(
-                f"[messages] missed detected. new_chat={new_chat} not in recent. last_chat(anchor)={last_chat!r} recent_chats={self.recent_chats!r}"
-            )
+            self.handler.logger.warning(f"new_chat={new_chat}. \nlast_chat={last_chat!r} ")
 
             # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），
             # 说明没有历史锚点，不需要回翻，直接处理当前屏幕的消息即可。

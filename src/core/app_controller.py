@@ -276,16 +276,13 @@ class AppController(Singleton):
 
                 # Monitor Soul messages
                 messages = await self.soul_handler.message_manager.get_latest_messages()
-                if response:
-                    self.soul_handler.send_message(response)
-                    response = None
 
                 if messages == 'ABNORMAL_STATE':
                     # Unable to access message list - abnormal state
                     self.recovery_manager.mark_abnormal_state()
                 elif messages:
                     # New messages found - process them
-                    response = await self.command_manager.handle_message_commands(messages)
+                    await self.command_manager.handle_message_commands(messages)
                 else:
                     # No new messages - check for risk elements
                     self.recovery_manager.handle_risk_elements()

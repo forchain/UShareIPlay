@@ -426,7 +426,7 @@ commands:
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
-    response_template: "Change topic to {topic}"
+    response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
   - prefix: "notice"
     response_template: "Change notice to {notice}"

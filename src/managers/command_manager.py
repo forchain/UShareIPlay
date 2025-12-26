@@ -11,17 +11,17 @@ class CommandManager(Singleton):
     命令管理器 - 管理所有命令相关的逻辑
     单例模式，提供统一的命令管理服务
     """
-    
+
     def __init__(self):
         # 延迟初始化 handler 和 logger，避免循环依赖
         self._handler = None
         self._logger = None
-        
+
         # 命令相关属性
         self.commands_path = Path(__file__).parent.parent / 'commands'
         self.command_modules = {}  # Cache for loaded command modules
         self.command_parser = None  # Will be initialized when needed
-    
+
     @property
     def handler(self):
         """延迟获取 SoulHandler 实例"""
@@ -29,14 +29,14 @@ class CommandManager(Singleton):
             from ..handlers.soul_handler import SoulHandler
             self._handler = SoulHandler.instance()
         return self._handler
-    
+
     @property
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
-        
+
     def initialize_parser(self, commands_config):
         """
         初始化命令解析器
@@ -45,18 +45,18 @@ class CommandManager(Singleton):
         """
         self.command_parser = CommandParser(commands_config)
         self.logger.info("Command parser initialized")
-        
+
     def load_command_module(self, command):
         """Load command module dynamically"""
         try:
             if command in self.command_modules:
                 return self.command_modules[command]
-                
+
             module_path = (Path(__file__).parent.parent / 'commands' / f"{command}.py").resolve()
             if not module_path.exists():
                 self.logger.error(f'module path not exists, {module_path}')
                 return None
-                
+
             package_name = f"src.commands.{command}"
             spec = importlib.util.spec_from_file_location(package_name, module_path)
             module = importlib.util.module_from_spec(spec)
@@ -79,11 +79,11 @@ class CommandManager(Singleton):
             # 获取 AppController 单例实例
             from ..core.app_controller import AppController
             controller = AppController.instance()
-            
+
             module.command = module.create_command(controller)
             self.command_modules[command] = module
             return module
-            
+
         except Exception as e:
             self.logger.error(f"Error loading command module {command}: {traceback.format_exc()}")
             return None
@@ -95,11 +95,11 @@ class CommandManager(Singleton):
         """
         try:
             # Get all .py files in commands directory
-            command_files = [f.stem for f in self.commands_path.glob('*.py') 
-                            if f.is_file() and not f.stem.startswith('__')]
-            
+            command_files = [f.stem for f in self.commands_path.glob('*.py')
+                             if f.is_file() and not f.stem.startswith('__')]
+
             self.logger.info(f"Found command files: {command_files}")
-            
+
             # Load each command module
             for command in command_files:
                 try:
@@ -110,7 +110,7 @@ class CommandManager(Singleton):
                         self.logger.error(f"Failed to load command module: {command}")
                 except Exception as e:
                     self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
-                
+
         except Exception as e:
             self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
@@ -140,7 +140,7 @@ class CommandManager(Singleton):
         try:
             parameters = command_info['parameters']
             result = await command.process(message_info, parameters)
-            
+
             if 'error' in result:
                 res = command_info['error_template'].format(
                     error=result['error'],
@@ -174,7 +174,7 @@ class CommandManager(Singleton):
             timer_module = self.command_modules.get('timer')
             if timer_module and hasattr(timer_module, 'command') and hasattr(timer_module.command, 'timer_manager'):
                 timer_manager = timer_module.command.timer_manager
-                
+
                 # Load initial timers from config (force update to ensure config values are used)
                 initial_timers = config.get('soul', {}).get('initial_timers', [])
                 if initial_timers:
@@ -189,7 +189,7 @@ class CommandManager(Singleton):
                             'enabled': timer_config.get('enabled', True)
                         }
                         converted_timers.append(converted_timer)
-                    
+
                     # Store initial timers for later loading when timer manager starts
                     # Timer manager will load existing timers first, then these will be added if needed
                     timer_manager._initial_timers = converted_timers
@@ -199,7 +199,7 @@ class CommandManager(Singleton):
                     self.logger.info("No initial timers configured")
             else:
                 self.logger.warning("Timer command not loaded, skipping timer initialization")
-                
+
         except Exception as e:
             self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
 
@@ -211,8 +211,8 @@ class CommandManager(Singleton):
         Returns:
             str: 响应消息（如果有的话）
         """
-        response = None
-        
+        success_count = 0
+
         if messages:
             # Iterate through message info objects
             for msg_id, message_info in messages.items():
@@ -228,15 +228,19 @@ class CommandManager(Singleton):
                         command = self.get_command(cmd)
                         if command:
                             response = await self.process_command(command, message_info, command_info)
+                            self.handler.send_message(response)
+                            success_count += 1
                         else:
                             self.logger.error(f"Unknown command: {cmd}")
-        
-        return response
+
+        self.logger.info(f"{success_count}/{len(messages)} commands processed")
+
+        return success_count
 
     def get_command_modules(self):
         """获取所有已加载的命令模块"""
         return self.command_modules
-    
+
     async def notify_user_leave(self, username: str):
         """
         Notify all commands when a user leaves
@@ -250,7 +254,7 @@ class CommandManager(Singleton):
                     await module.command.user_leave(username)
             except Exception as e:
                 self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
-    
+
     async def notify_user_enter(self, username: str):
         """
         Notify all commands when a user enters
