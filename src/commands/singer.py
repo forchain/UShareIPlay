@@ -93,6 +93,7 @@ class SingerCommand(BaseCommand):
                 "error": f"Failed to query singer {query}",
             }
 
+        is_shortcut = False
         if from_key == "home_nav":
             first_song = self.handler.wait_for_element_plus("first_song")
             if not first_song:
@@ -100,18 +101,18 @@ class SingerCommand(BaseCommand):
                 return {
                     "error": "Failed to find first song",
                 }
-            singer_name = self.handler.try_find_element_plus("singer_name")
-            if not singer_name:
-                return {
-                    "error": "Failed to find singer name",
-                }
-            singer_name = singer_name.text
-            singer_play = self.handler.try_find_element_plus("singer_play")
-            if not singer_play:
+            singer_name_element = self.handler.try_find_element_plus("singer_name")
+            if singer_name_element:
+                singer_name = singer_name_element.text
+                is_shortcut = True
+
+        if is_shortcut:
+            play_singer = self.handler.try_find_element_plus("play_singer")
+            if not play_singer:
                 return {
                     "error": "Failed to find singer play",
                 }
-            singer_play.click()
+            play_singer.click()
             self.handler.logger.info("Selected singer play")
         else:
             self.select_singer_tab()
