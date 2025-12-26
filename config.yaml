@@ -294,7 +294,7 @@ qq_music:
     play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
     singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
-    play_all: '//android.widget.TextView[@text="全部播放"]'
+    play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     song_title: '//android.widget.TextView[@text="单曲"]'
@@ -312,7 +312,6 @@ qq_music:
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
     play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
-    play_all_singer: '//android.widget.TextView[@text="播放最热歌曲"]'
     playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
     play_next: '//android.widget.ImageView[@content-desc="下一首"]'
 
