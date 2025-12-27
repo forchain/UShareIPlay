@@ -20,6 +20,8 @@ class InfoManager(Singleton):
         self._online_users: Set[str] = set()
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
+        self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
+        self._last_playback_info = None  # 上次的播放信息，用于检测变化
     
     @property
     def handler(self):
@@ -217,5 +219,79 @@ class InfoManager(Singleton):
         except Exception:
             self.logger.error(f"Error getting playlist info: {traceback.format_exc()}")
             return None
+    
+    def update_playback_info_cache(self):
+        """
+        更新播放信息缓存
+        获取播放信息并更新缓存
+        """
+        try:
+            # 获取播放信息
+            from ..handlers.qq_music_handler import QQMusicHandler
+            music_handler = QQMusicHandler.instance()
+            info = music_handler.get_playback_info()
+            # ignore state
+            info['state'] = None
+            self._playback_info_cache = info
+        except Exception as e:
+            self.logger.error(f"Error updating playback info cache: {traceback.format_exc()}")
+            # 即使出错也更新缓存，避免缓存过期
+            self._playback_info_cache = {
+                'error': str(e),
+                'song': 'Unknown',
+                'singer': 'Unknown',
+                'album': 'Unknown',
+                'state': None
+            }
+    
+    def get_playback_info_cache(self) -> Optional[dict]:
+        """
+        获取播放信息缓存
+        
+        Returns:
+            Optional[dict]: 播放信息，如果缓存未初始化则返回 None
+        """
+        return self._playback_info_cache
+    
+    def update(self):
+        """
+        更新播放信息，检测变化并处理质量检测、发送消息等
+        这个方法会在主循环中被调用
+        """
+        try:
+            # 从缓存获取播放信息
+            info = self.get_playback_info_cache()
+            if info is None:
+                return
+            
+            # 检查歌曲信息是否变化
+            if info != self._last_playback_info:
+                self._last_playback_info = info.copy() if info else None
+
+                # 只有在歌曲信息发生变化时才处理
+                # 检查歌曲信息是否有效
+                if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
+                    # 检查是否需要跳过低质量歌曲
+                    from ..handlers.qq_music_handler import QQMusicHandler
+                    music_handler = QQMusicHandler.instance()
+                    song_skipped = music_handler.handle_song_quality_check(info)
+
+                    # 只有在没有跳过歌曲的情况下才发送播放消息
+                    if not song_skipped:
+                        self.handler.send_message(
+                            f"Playing {info['song']} by {info['singer']} in {info['album']}")
+                else:
+                    # 如果歌曲信息无效，记录错误但不中断监控
+                    if 'error' in info:
+                        if info.get('session_lost', False):
+                            self.logger.warning("Appium session lost, skipping music monitoring temporarily")
+                            # 可以在这里添加重新连接逻辑
+                        else:
+                            self.logger.warning(f"Failed to get song info: {info['error']}")
+                    else:
+                        self.logger.warning("Song info missing required keys")
+                        
+        except Exception:
+            self.logger.error(f"Error in info manager update: {traceback.format_exc()}")
 
 
