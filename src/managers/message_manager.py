@@ -13,6 +13,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 from ..core.singleton import Singleton
 from ..core.log_formatter import ColoredFormatter
 from ..managers.recovery_manager import RecoveryManager
+from ..models.message_info import MessageInfo
 
 import os
 
@@ -54,15 +55,6 @@ def get_chat_logger(config=None):
         handler.setFormatter(formatter)
         chat_logger.addHandler(handler)
     return chat_logger
-
-
-@dataclass
-class MessageInfo:
-    """Data class for message information"""
-    content: str
-    nickname: str
-    avatar_element: object  # WebElement for avatar, always exists
-    relation_tag: bool = False  # True if user has relation tag
 
 
 class MessageManager(Singleton):
