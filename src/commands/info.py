@@ -20,11 +20,21 @@ class InfoCommand(BaseCommand):
         self.last_user_count = None
 
     async def process(self, message_info, parameters):
-        result = self.music_handler.get_playback_info()
-        
-        # 追加播放器信息和在线用户列表
+        # 从缓存获取播放信息
         from ..managers.info_manager import InfoManager
         info_manager = InfoManager.instance()
+        result = info_manager.get_playback_info_cache()
+        
+        # 如果缓存未初始化，使用默认值
+        if result is None:
+            result = {
+                'song': 'Unknown',
+                'singer': 'Unknown',
+                'album': 'Unknown',
+                'state': None
+            }
+        
+        # 追加播放器信息和在线用户列表
         result['player'] = info_manager.player_name
         
         online_users = info_manager.get_online_users()
@@ -57,8 +67,14 @@ class InfoCommand(BaseCommand):
         return result
 
     def update(self):
-        """Check and log user count changes"""
+        """Check and log user count changes, and update playback info"""
         try:
+            # Update info manager (handles playback info changes, quality check, etc.)
+            from ..managers.info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            info_manager.update()
+            
+            # Check and log user count changes
             user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
             if not user_count_elem:
                 return
