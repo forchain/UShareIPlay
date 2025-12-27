@@ -41,11 +41,13 @@ class AppController(Singleton):
         self.seat_manager = None
         self.recovery_manager = None
 
+        # Non-UI operations task
+        self._non_ui_task = None
+
     def _start_apps(self):
         """在初始化driver之前启动Soul app和QQ Music"""
         try:
             import subprocess
-            import time
 
             print("正在启动应用...")
 
@@ -113,6 +115,7 @@ class AppController(Singleton):
                 user_input = input("Console> " if self.in_console_mode else "")
                 # Process all input, including empty strings (just pressing Enter)
                 self.input_queue.put(user_input)
+                self.logger.info(f"Console input: {user_input}")
             except EOFError:
                 continue
             except KeyboardInterrupt:
@@ -191,9 +194,40 @@ class AppController(Singleton):
         except Exception as e:
             self.logger.error(f"Error processing queue messages: {str(e)}")
 
+    def _non_ui_operations(self):
+        """
+        执行所有非 UI 操作（包括 ADB 操作）
+        这个方法包含所有可能阻塞主循环的操作，会在后台线程中执行
+        只负责更新播放信息缓存到 InfoManager
+        """
+        try:
+            # 更新缓存到 InfoManager（内部会获取播放信息）
+            from ..managers.info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            info_manager.update_playback_info_cache()
+        except Exception as e:
+            self.logger.error(f"Error in non-UI operations: {traceback.format_exc()}")
+
+    async def _async_non_ui_operations_loop(self):
+        """
+        异步后台任务，定期执行非 UI 操作
+        使用 asyncio.to_thread() 将同步操作放到线程池执行
+        """
+        while self.is_running:
+            try:
+                # 使用 asyncio.to_thread() 在后台线程执行同步操作
+                await asyncio.to_thread(self._non_ui_operations)
+                # 每2-3秒执行一次
+                await asyncio.sleep(2)
+            except asyncio.CancelledError:
+                self.logger.info("Non-UI operations loop cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in async non-UI operations loop: {traceback.format_exc()}")
+                # 出错后等待一段时间再继续
+                await asyncio.sleep(2)
+
     async def start_monitoring(self):
-        response = None
-        last_info = None
         error_count = 0
 
         # Initialize handlers first
@@ -220,6 +254,11 @@ class AppController(Singleton):
         input_thread.start()
         print("控制台输入线程已启动")
 
+        # Start non-UI operations background task
+        print("启动非 UI 操作后台任务...")
+        self._non_ui_task = asyncio.create_task(self._async_non_ui_operations_loop())
+        print("非 UI 操作后台任务已启动")
+
         print("开始主监控循环...")
 
         while self.is_running:
@@ -243,33 +282,6 @@ class AppController(Singleton):
 
                 # Update all commands
                 self.command_manager.update_commands()
-
-                info = self.music_handler.get_playback_info()
-                # ignore state
-                info['state'] = None
-                if info != last_info:
-                    last_info = info
-
-                    # 只有在歌曲信息发生变化时才处理
-                    # 检查歌曲信息是否有效
-                    if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
-                        # 检查是否需要跳过低质量歌曲
-                        song_skipped = self.music_handler.handle_song_quality_check(info)
-
-                        # 只有在没有跳过歌曲的情况下才发送播放消息
-                        if not song_skipped:
-                            self.soul_handler.send_message(
-                                f"Playing {info['song']} by {info['singer']} in {info['album']}")
-                    else:
-                        # 如果歌曲信息无效，记录错误但不中断监控
-                        if 'error' in info:
-                            if info.get('session_lost', False):
-                                self.logger.warning("Appium session lost, skipping music monitoring temporarily")
-                                # 可以在这里添加重新连接逻辑
-                            else:
-                                self.logger.warning(f"Failed to get song info: {info['error']}")
-                        else:
-                            self.logger.warning("Song info missing required keys")
 
                 # Process queue messages (timer messages, etc.)
                 await self._process_queue_messages()
@@ -315,6 +327,15 @@ class AppController(Singleton):
     async def stop(self):
         """Stop the application"""
         self.is_running = False
+        
+        # Cancel non-UI operations task
+        if self._non_ui_task:
+            self._non_ui_task.cancel()
+            try:
+                await self._non_ui_task
+            except asyncio.CancelledError:
+                pass
+        
         # Stop async timer manager
         await self.timer_manager.stop()
         self.logger.info("Application stopped")
