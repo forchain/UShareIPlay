@@ -12,6 +12,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from ..core.singleton import Singleton
 from ..core.log_formatter import ColoredFormatter
+from ..managers.recovery_manager import RecoveryManager
 
 import os
 
@@ -71,6 +72,7 @@ class MessageManager(Singleton):
         self._handler = None
         self._greeting_manager = None
         self._chat_logger = None
+        self._recovery_manager = RecoveryManager.instance()
 
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
@@ -152,15 +154,19 @@ class MessageManager(Singleton):
             None: No new messages (normal state)
             'ABNORMAL_STATE': Unable to access message list (abnormal state)
         """
-        if not self.handler.switch_to_app():
-            self.handler.logger.error("Failed to switch to Soul app")
+        manual_mode_enabled = self._recovery_manager.manual_mode_enabled
+        if not manual_mode_enabled:
+            if not self.handler.switch_to_app():
+                self.handler.logger.error("Failed to switch to Soul app")
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
-            # self.handler.press_back()
-            self.handler.logger.error("Failed to find message list")
-            return 'ABNORMAL_STATE'
+            if manual_mode_enabled:
+                return None
+            else:
+                self.handler.logger.error("Failed to find message list")
+                return 'ABNORMAL_STATE'
 
         # Collapse seats if expanded and update focus count
         seat_manager = self._get_seat_manager()
@@ -229,9 +235,7 @@ class MessageManager(Singleton):
             try:
                 # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
                 # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
-                from ..managers.recovery_manager import RecoveryManager
-                recovery_manager = RecoveryManager.instance()
-                recovery_manager.handle_risk_elements()
+                self._recovery_manager.handle_risk_elements()
                 key, element = self.handler.scroll_container_until_element(
                     'message_content',
                     'message_list',
