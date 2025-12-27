@@ -2,7 +2,7 @@ import asyncio
 import time
 
 from ..core.singleton import Singleton
-from ..handlers.soul_handler import MessageInfo
+from ..models.message_info import MessageInfo
 
 
 class RecoveryManager(Singleton):

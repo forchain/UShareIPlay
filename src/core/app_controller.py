@@ -290,14 +290,16 @@ class AppController(Singleton):
                     # New messages found - process them
                     await self.command_manager.handle_message_commands(messages)
                 else:
-                    # Process queue messages (timer messages, etc.)
-                    await self._process_queue_messages()
+                    if not self.recovery_manager.manual_mode_enabled:
+                        # Process queue messages (timer messages, etc.)
+                        await self._process_queue_messages()
 
-                    # No new messages - check for risk elements
-                    self.recovery_manager.handle_risk_elements()
+                        # No new messages - check for risk elements
+                        self.recovery_manager.handle_risk_elements()
 
-                    # Update all commands
-                    self.command_manager.update_commands()
+                        # Update all commands
+                        self.command_manager.update_commands()
+
                     await asyncio.sleep(1)
 
                 # clear error once back to normal

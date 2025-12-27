@@ -1,22 +1,12 @@
 import time
 import traceback
-from dataclasses import dataclass
 
 from appium.webdriver.common.appiumby import AppiumBy
 
 from ..managers.message_manager import MessageManager
 from ..core.app_handler import AppHandler
 from ..core.singleton import Singleton
-
-
-# Constants
-@dataclass
-class MessageInfo:
-    """Data class for message information"""
-    content: str
-    nickname: str
-    avatar_element: object  # WebElement for avatar, always exists
-    relation_tag: bool = False  # True if user has relation tag
+from ..models.message_info import MessageInfo
 
 
 class SoulHandler(AppHandler, Singleton):

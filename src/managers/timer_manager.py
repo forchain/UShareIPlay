@@ -132,7 +132,7 @@ class TimerManager(Singleton):
             self.logger.info(f"Timer {timer_id} triggered: {message}")
             
             # Create MessageInfo for queue
-            from ..handlers.soul_handler import MessageInfo
+            from ..models.message_info import MessageInfo
             message_info = MessageInfo(
                 content=message,
                 nickname="Timer",

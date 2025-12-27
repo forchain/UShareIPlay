@@ -1,18 +1,9 @@
 import re
 import traceback
-from dataclasses import dataclass
 
 from ..core.singleton import Singleton
 from ..dal import UserDAO
-
-
-@dataclass
-class MessageInfo:
-    """Data class for message information"""
-    content: str
-    nickname: str
-    avatar_element: object  # WebElement for avatar, always exists
-    relation_tag: bool = False  # True if user has relation tag
+from ..models.message_info import MessageInfo
 
 
 class GreetingManager(Singleton):
