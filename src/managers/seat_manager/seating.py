@@ -124,6 +124,18 @@ class SeatingManager(SeatManagerBase):
                         }
 
             if first_empty_candidate:
+                # Re-find seat desks as elements may have changed after scrolling
+                seat_desks = self.handler.find_elements_plus('seat_desk')
+                if seat_desks:
+                    # Ensure the row containing the target seat is visible before taking it
+                    self._ensure_row_visible(first_empty_candidate['desk_index'], seat_desks)
+                    # Re-collect desk info to get fresh element references
+                    desk = seat_desks[first_empty_candidate['desk_index']]
+                    desk_info = self._collect_desk_info(desk)
+                    # Update the seat element reference
+                    side = first_empty_candidate['seat']['side']
+                    first_empty_candidate['seat'] = desk_info[side]
+                
                 return self._take_seat(
                     first_empty_candidate['desk_index'],
                     first_empty_candidate['seat']
