@@ -90,7 +90,7 @@ class TimerManager(Singleton):
                 # 每60次循环（约1分钟）记录一次状态
                 if loop_count % 60 == 0:
                     enabled_timers = sum(1 for t in self._timers.values() if t.get('enabled', False))
-                    self.logger.debug(f"Timer loop running: {enabled_timers}/{len(self._timers)} timers enabled")
+                    # self.logger.debug(f"Timer loop running: {enabled_timers}/{len(self._timers)} timers enabled")
                 
                 # Check each timer
                 for timer_id, timer_data in list(self._timers.items()):
