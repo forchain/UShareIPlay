@@ -67,7 +67,7 @@ class SeatingManager(SeatManagerBase):
         """Find and take an available seat for owner"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
-        
+
         self.handler.logger.info(f"[find_owner_seat] 函数被调用，force_relocate={force_relocate}")
 
         try:
@@ -140,7 +140,7 @@ class SeatingManager(SeatManagerBase):
                 except Exception as e:
                     # If refreshing fails, log but continue with original candidate
                     self.handler.logger.warning(f"Failed to refresh seat element before taking seat: {str(e)}")
-                
+
                 return self._take_seat(
                     first_empty_candidate['desk_index'],
                     first_empty_candidate['seat']
@@ -231,18 +231,18 @@ class SeatingManager(SeatManagerBase):
         """Ensure the row containing the desk is visible by scrolling if needed"""
         if not seat_desks or len(seat_desks) < 3:
             return
-        
+
         # Calculate which row the desk belongs to (row_index = desk_index // 2)
         row_index = desk_index // 2
-        
+
         # Row 1 (desk_index 2-3) is always visible, no scrolling needed
         if row_index == 1:
             return
-        
+
         # Use second row's first desk (index 2) as reference for scrolling
         reference_desk = seat_desks[2]
         desk_height = reference_desk.size['height']
-        
+
         if row_index == 0:  # First row (desk_index 0-1)
             # Scroll down one row height to show first row
             self.handler.driver.swipe(
@@ -253,7 +253,7 @@ class SeatingManager(SeatManagerBase):
                 1000
             )
             time.sleep(0.5)  # Wait for scroll animation
-            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index}")
+            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
         elif row_index == 2:  # Third row (desk_index 4-5)
             # Scroll up one row height to show third row
             self.handler.driver.swipe(
@@ -264,7 +264,7 @@ class SeatingManager(SeatManagerBase):
                 1000
             )
             time.sleep(0.5)  # Wait for scroll animation
-            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index}")
+            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
 
     def _take_seat(self, desk_index, seat_info, neighbor_label=None):
         if self.handler is None or not seat_info or not seat_info.get('element'):
