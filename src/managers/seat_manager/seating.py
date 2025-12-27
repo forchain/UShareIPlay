@@ -68,8 +68,6 @@ class SeatingManager(SeatManagerBase):
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
-        self.handler.logger.info(f"[find_owner_seat] 函数被调用，force_relocate={force_relocate}")
-
         try:
             # Expand seats if needed
             self.seat_ui.expand_seats()
