@@ -259,23 +259,6 @@ class AppController(Singleton):
         self._non_ui_task = asyncio.create_task(self._async_non_ui_operations_loop())
         print("非 UI 操作后台任务已启动")
 
-        # Check if party already exists and seat owner if needed
-        print("检查派对状态并尝试给群主找座位...")
-        try:
-            if self.recovery_manager.is_normal_state():
-                self.logger.info("检测到派对已存在，尝试给群主找座位")
-                from ..managers.seat_manager import seat_manager
-                result = seat_manager.seating.find_owner_seat()
-                if 'success' in result:
-                    self.logger.info("服务器启动时成功给群主找到座位")
-                else:
-                    self.logger.warning(f"服务器启动时给群主找座位失败: {result.get('error', 'Unknown error')}")
-            else:
-                self.logger.info("派对不存在或状态异常，跳过座位检查")
-        except Exception as e:
-            self.logger.error(f"服务器启动时检查座位出错: {str(e)}")
-        print("座位检查完成")
-
         print("开始主监控循环...")
 
         while self.is_running:
