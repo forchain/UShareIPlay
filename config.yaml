@@ -100,7 +100,7 @@ soul:
       repeat: true
     - id: "playlist_20"
       time: "20:00"
-      message: "playlist 官方 下厨音乐"
+      message: "playlist 官方 电子"
       repeat: true
     - id: "playlist_21"
       time: "21:00"

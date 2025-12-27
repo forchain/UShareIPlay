@@ -280,12 +280,6 @@ class AppController(Singleton):
                 except queue.Empty:
                     pass
 
-                # Update all commands
-                self.command_manager.update_commands()
-
-                # Process queue messages (timer messages, etc.)
-                await self._process_queue_messages()
-
                 # Monitor Soul messages
                 messages = await self.soul_handler.message_manager.get_latest_messages()
 
@@ -296,8 +290,14 @@ class AppController(Singleton):
                     # New messages found - process them
                     await self.command_manager.handle_message_commands(messages)
                 else:
+                    # Process queue messages (timer messages, etc.)
+                    await self._process_queue_messages()
+
                     # No new messages - check for risk elements
                     self.recovery_manager.handle_risk_elements()
+
+                    # Update all commands
+                    self.command_manager.update_commands()
                     await asyncio.sleep(1)
 
                 # clear error once back to normal
@@ -327,7 +327,7 @@ class AppController(Singleton):
     async def stop(self):
         """Stop the application"""
         self.is_running = False
-        
+
         # Cancel non-UI operations task
         if self._non_ui_task:
             self._non_ui_task.cancel()
@@ -335,7 +335,7 @@ class AppController(Singleton):
                 await self._non_ui_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Stop async timer manager
         await self.timer_manager.stop()
         self.logger.info("Application stopped")
