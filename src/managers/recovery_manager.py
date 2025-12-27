@@ -192,9 +192,13 @@ class RecoveryManager(Singleton):
         标记检测到异常状态（无消息）
         增加异常状态计数
         """
+        if self.manual_mode_enabled:
+            return False
+
         self.abnormal_state_detected = True
         self.abnormal_state_count += 1
         self.logger.debug(f"Marked abnormal state (count: {self.abnormal_state_count})")
+        return True
 
     def handle_close_buttons(self) -> bool:
         """
