@@ -115,7 +115,7 @@ class AppController(Singleton):
                 user_input = input("Console> " if self.in_console_mode else "")
                 # Process all input, including empty strings (just pressing Enter)
                 self.input_queue.put(user_input)
-                self.logger.info(f"Console input: {user_input}")
+                self.logger.critical(f"{user_input}")
             except EOFError:
                 continue
             except KeyboardInterrupt:
