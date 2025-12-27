@@ -11,6 +11,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     WebDriverException,
     TimeoutException,
+    InvalidSessionIdException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions import interaction
@@ -361,9 +362,32 @@ class AppHandler:
         """Press Android back button"""
         try:
             self.driver.press_keycode(4)  # Android back key code
-        except WebDriverException as e:
+        except (InvalidSessionIdException, WebDriverException) as e:
+            error_msg = str(e)
+            # Check if this is a session invalid error
+            if isinstance(e, InvalidSessionIdException) or "session is either terminated" in error_msg or "InvalidSessionIdException" in error_msg:
+                self.logger.warning(
+                    "Detected invalid session in press_back, attempting recovery..."
+                )
+                if self._handle_uiautomator2_crash():
+                    # Retry the operation after successful recovery
+                    try:
+                        self.driver.press_keycode(4)  # Android back key code
+                        self.error_count = 0
+                        self.logger.debug("Pressed back button after session recovery")
+                        return True
+                    except Exception as retry_e:
+                        self.error_count += 1
+                        self.logger.error(
+                            f"Retry failed after session recovery in press_back: {str(retry_e)}"
+                        )
+                        return False
+                else:
+                    self.error_count += 1
+                    self.logger.error("Session recovery failed in press_back")
+                    return False
             # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
+            elif self._is_uiautomator2_crash(e):
                 self.logger.warning(
                     "Detected UiAutomator2 server crash in press_back, attempting recovery..."
                 )
