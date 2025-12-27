@@ -124,17 +124,20 @@ class SeatingManager(SeatManagerBase):
                         }
 
             if first_empty_candidate:
-                # Re-find seat desks as elements may have changed after scrolling
-                seat_desks = self.handler.find_elements_plus('seat_desk')
-                if seat_desks:
-                    # Ensure the row containing the target seat is visible before taking it
+                # Ensure the row containing the target seat is visible before taking it
+                # This is important because we may have scrolled to other rows during scanning
+                try:
                     self._ensure_row_visible(first_empty_candidate['desk_index'], seat_desks)
-                    # Re-collect desk info to get fresh element references
+                    # Re-collect desk info to get fresh element references after scrolling
                     desk = seat_desks[first_empty_candidate['desk_index']]
                     desk_info = self._collect_desk_info(desk)
-                    # Update the seat element reference
+                    # Update the seat element reference to ensure it's still valid
                     side = first_empty_candidate['seat']['side']
-                    first_empty_candidate['seat'] = desk_info[side]
+                    if side in desk_info and desk_info[side].get('element'):
+                        first_empty_candidate['seat'] = desk_info[side]
+                except Exception as e:
+                    # If refreshing fails, log but continue with original candidate
+                    self.handler.logger.warning(f"Failed to refresh seat element before taking seat: {str(e)}")
                 
                 return self._take_seat(
                     first_empty_candidate['desk_index'],
