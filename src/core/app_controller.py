@@ -11,7 +11,6 @@ from .singleton import Singleton
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
-from ..managers.seat_manager import init_seat_manager
 
 
 class AppController(Singleton):
@@ -143,26 +142,26 @@ class AppController(Singleton):
             self.logger = self.soul_handler.logger
             print("Handlers 初始化完成")
 
-            # Initialize managers after handlers are ready
-            print("初始化 seat_manager...")
-            self.seat_manager = init_seat_manager(self.soul_handler)
-
             # Initialize managers using singleton pattern (no parameters needed)
-            print("初始化其他 managers...")
             from ..managers.topic_manager import TopicManager
             from ..managers.mic_manager import MicManager
             from ..managers.music_manager import MusicManager
             from ..managers.recovery_manager import RecoveryManager
             from ..managers.timer_manager import TimerManager
             from ..managers.command_manager import CommandManager
+            from ..managers.info_manager import InfoManager
+            from ..managers.seat_manager import init_seat_manager
 
+            # Initialize managers after handlers are ready
             print("创建 manager 实例...")
+            self.seat_manager = init_seat_manager(self.soul_handler)
             self.topic_manager = TopicManager.instance()
             self.mic_manager = MicManager.instance()
             self.music_manager = MusicManager.instance()
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
+            self.info_manager = InfoManager.instance()
 
             # Initialize command manager with config
             print("初始化命令解析器...")
@@ -194,20 +193,6 @@ class AppController(Singleton):
         except Exception as e:
             self.logger.error(f"Error processing queue messages: {str(e)}")
 
-    def _non_ui_operations(self):
-        """
-        执行所有非 UI 操作（包括 ADB 操作）
-        这个方法包含所有可能阻塞主循环的操作，会在后台线程中执行
-        只负责更新播放信息缓存到 InfoManager
-        """
-        try:
-            # 更新缓存到 InfoManager（内部会获取播放信息）
-            from ..managers.info_manager import InfoManager
-            info_manager = InfoManager.instance()
-            info_manager.update_playback_info_cache()
-        except Exception as e:
-            self.logger.error(f"Error in non-UI operations: {traceback.format_exc()}")
-
     async def _async_non_ui_operations_loop(self):
         """
         异步后台任务，定期执行非 UI 操作
@@ -215,9 +200,6 @@ class AppController(Singleton):
         """
         while self.is_running:
             try:
-                # 使用 asyncio.to_thread() 在后台线程执行同步操作
-                await asyncio.to_thread(self._non_ui_operations)
-                # 每2-3秒执行一次
                 await asyncio.sleep(2)
             except asyncio.CancelledError:
                 self.logger.info("Non-UI operations loop cancelled")
@@ -316,6 +298,9 @@ class AppController(Singleton):
 
                         # Update all commands
                         self.command_manager.update_commands()
+
+                    # update playback info
+                    self.info_manager.update_playback_info_cache()
 
                     await asyncio.sleep(1)
 
