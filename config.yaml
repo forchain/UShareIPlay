@@ -293,6 +293,7 @@ qq_music:
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
     play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
     singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
+    play_singer_1: '//android.widget.ImageView[starts-with(@content-desc, "播放歌手: ")]'
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
@@ -331,7 +332,8 @@ qq_music:
     daily_title: '//android.widget.TextView[@text="每日30首"]'
     daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
     search_shortcuts: '//android.widget.TextView[@text="歌手"]/../..'
-    healing_shortcut: '//android.widget.TextView[@text="助眠解压"]'
+    healing_shortcut: '//android.widget.TextView[@text="解压"]'
+    healing_nav: '//android.widget.TextView[@text="疗愈"]'
     healing_tab: '//android.widget.TextView[@text="睡眠模式"]/../../../../../../android.widget.LinearLayout/android.view.ViewGroup/android.widget.ImageView'
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
 commands:
