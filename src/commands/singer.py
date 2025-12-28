@@ -27,9 +27,9 @@ class SingerCommand(BaseCommand):
         player_name = info_manager.player_name
         # 排除系统用户 Joyer 和 Timer
         if (
-            player_name
-            and player_name != message_info.nickname
-            and player_name not in ["Joyer", "Timer", "Outlier"]
+                player_name
+                and player_name != message_info.nickname
+                and player_name not in ["Joyer", "Timer", "Outlier"]
         ):
             # 检查之前的播放者是否还在线
             if info_manager.is_user_online(player_name):
@@ -93,7 +93,8 @@ class SingerCommand(BaseCommand):
                 "error": f"Failed to query singer {query}",
             }
 
-        is_shortcut = False
+        play_singer = None
+        singer_name = 'Unknown'
         if from_key == "home_nav":
             first_song = self.handler.wait_for_element_plus("first_song")
             if not first_song:
@@ -101,17 +102,15 @@ class SingerCommand(BaseCommand):
                 return {
                     "error": "Failed to find first song",
                 }
-            singer_name_element = self.handler.try_find_element_plus("singer_name")
-            if singer_name_element:
-                singer_name = singer_name_element.text
-                is_shortcut = True
+            if play_singer:= self.handler.try_find_element_plus("play_singer_1"):
+                if singer_name := self.handler.try_get_attribute(play_singer, "content-desc"):
+                    singer_name = singer_name.split(': ')[1]
+                    singer_name = singer_name.split('的歌曲')[0]
+            elif play_singer := self.handler.try_find_element_plus("play_singer"):
+                if singer_name_element := self.handler.try_find_element_plus("singer_name"):
+                    singer_name = singer_name_element.text
 
-        if is_shortcut:
-            play_singer = self.handler.try_find_element_plus("play_singer")
-            if not play_singer:
-                return {
-                    "error": "Failed to find singer play",
-                }
+        if play_singer:
             play_singer.click()
             self.handler.logger.info("Selected singer play")
         else:
