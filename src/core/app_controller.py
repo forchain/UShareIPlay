@@ -1,6 +1,7 @@
 import asyncio
 import queue
 import threading
+import time
 import traceback
 
 from appium import webdriver
@@ -39,9 +40,13 @@ class AppController(Singleton):
         # Initialize managers (will be done after handlers are initialized)
         self.seat_manager = None
         self.recovery_manager = None
+        self.music_manager = None
 
         # Non-UI operations task
         self._non_ui_task = None
+        
+        # Driver重建防护标志
+        self._is_reinitializing = False
 
     def _start_apps(self):
         """在初始化driver之前启动Soul app和QQ Music"""
@@ -97,6 +102,69 @@ class AppController(Singleton):
 
         server_url = f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
         return webdriver.Remote(command_executor=server_url, options=options)
+
+    def reinitialize_driver(self) -> bool:
+        """
+        统一的driver重建入口
+        所有组件检测到driver失效时必须调用此方法
+        """
+        # 防止重入（虽然顺序执行，但加个保险）
+        if self._is_reinitializing:
+            if self.logger:
+                self.logger.warning("Driver正在重建中，跳过重复请求")
+            return False
+            
+        self._is_reinitializing = True
+        try:
+            if self.logger:
+                self.logger.warning("==== 开始重建driver ====")
+            
+            # 1. 关闭旧driver
+            try:
+                self.driver.quit()
+            except Exception as e:
+                if self.logger:
+                    self.logger.debug(f"关闭旧driver出错: {str(e)}")
+            
+            # 2. 等待清理
+            time.sleep(2)
+            
+            # 3. 创建新driver
+            self.driver = self._init_driver()
+            if self.logger:
+                self.logger.info("新driver创建成功")
+            
+            # 4. 更新所有组件的driver引用
+            if self.soul_handler:
+                self.soul_handler.driver = self.driver
+                if self.logger:
+                    self.logger.debug("更新 soul_handler.driver")
+                
+            if self.music_handler:
+                self.music_handler.driver = self.driver
+                if self.logger:
+                    self.logger.debug("更新 music_handler.driver")
+            
+            # 5. 更新music_manager（关键修复！）
+            if hasattr(self, 'music_manager') and self.music_manager:
+                self.music_manager.driver = self.driver
+                if self.logger:
+                    self.logger.debug("更新 music_manager.driver")
+            
+            # 6. 切换回应用
+            if self.soul_handler:
+                self.soul_handler.switch_to_app()
+            
+            if self.logger:
+                self.logger.info("==== Driver重建完成 ====")
+            return True
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
+            return False
+        finally:
+            self._is_reinitializing = False
 
     def _toggle_console_mode(self):
         """Toggle console mode on Ctrl+P"""
