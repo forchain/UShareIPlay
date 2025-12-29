@@ -627,9 +627,9 @@ class AppHandler:
             # 2. 按下
             # 3. 在给定时长内移动到终点
             # 4. 抬起
-            self.logger.debug(
-                f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
-            )
+            # self.logger.debug(
+            #     f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
+            # )
 
             actions = ActionChains(self.driver)
             actions.w3c_actions = ActionBuilder(
