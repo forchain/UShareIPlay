@@ -7,11 +7,10 @@ from typing import Optional, Tuple
 
 from appium.webdriver.common.appiumby import AppiumBy
 from .log_formatter import ColoredFormatter
+from .driver_decorator import with_driver_recovery
 from selenium.common.exceptions import (
     StaleElementReferenceException,
-    WebDriverException,
     TimeoutException,
-    InvalidSessionIdException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions import interaction
@@ -122,6 +121,7 @@ class AppHandler:
         """Log warning level message"""
         self.logger.warning(message)
 
+    @with_driver_recovery
     def wait_for_element(self, locator_type, locator_value, timeout=10):
         """Wait for element to be present and return it"""
         try:
@@ -137,6 +137,7 @@ class AppHandler:
             self.logger.warning(f"Error: {str(e)}")
             return None
 
+    @with_driver_recovery
     def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
         """Enhanced wait_for_element using just element key"""
         try:
@@ -146,40 +147,10 @@ class AppHandler:
             )
             self.logger.debug(f"Found  element: {element_key}")
             return element
-        except TimeoutException as e:
+        except TimeoutException:
             self.logger.warning(
                 f"Element {element_key}:{value} not found within {timeout} seconds "
             )
-            return None
-        except WebDriverException as e:
-            self.logger.error(f"Trace: {traceback.format_exc()}")
-            self.logger.error(f"Error: {str(e)}")
-
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in wait_for_element_plus, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        locator_type, value = self._get_locator(element_key)
-                        element = WebDriverWait(self.driver, timeout).until(
-                            EC.presence_of_element_located((locator_type, value))
-                        )
-                        self.logger.debug(
-                            f"Found element after recovery: {element_key}"
-                        )
-                        return element
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                        )
-                        return None
-                else:
-                    self.logger.error("UiAutomator2 recovery failed")
-                    return None
-
             return None
 
     def is_element_clickable(self, element):
@@ -209,6 +180,7 @@ class AppHandler:
             self.logger.warning(f"Error checking if element is clickable: {str(e)}")
             return False
 
+    @with_driver_recovery
     def wait_for_element_clickable_plus(
             self, element_key: str, timeout: int = 10
     ) -> WebElement:
@@ -220,45 +192,16 @@ class AppHandler:
             )
             self.logger.debug(f"Found clickable element: {element_key}")
             return element
-        except TimeoutException as e:
+        except TimeoutException:
             self.logger.warning(
                 f"Clickable element {element_key}:{value} not found within {timeout} seconds "
             )
             return None
-        except StaleElementReferenceException as e:
+        except StaleElementReferenceException:
             self.logger.warning(f"Stale element reference for {element_key}:{value}")
             return None
-        except WebDriverException as e:
-            self.logger.error(f"Trace: {traceback.format_exc()}")
-            self.logger.error(f"Error: {str(e)}")
 
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        locator_type, value = self._get_locator(element_key)
-                        element = WebDriverWait(self.driver, timeout).until(
-                            EC.element_to_be_clickable((locator_type, value))
-                        )
-                        self.logger.debug(
-                            f"Found clickable element after recovery: {element_key}"
-                        )
-                        return element
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                        )
-                        return None
-                else:
-                    self.logger.error("UiAutomator2 recovery failed")
-                    return None
-
-            return None
-
+    @with_driver_recovery
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
         """
         Wait for element to be clickable and return it
@@ -275,80 +218,32 @@ class AppHandler:
             )
             self.logger.debug(f"Found clickable element: {locator_value}")
             return element
-        except TimeoutException as e:
+        except TimeoutException:
             self.logger.warning(
                 f"Clickable element not found within {timeout} seconds: {locator_value}"
             )
             return None
-        except WebDriverException as e:
-            self.logger.error(f"Trace: {traceback.format_exc()}")
-            self.logger.error(f"Error: {str(e)}")
 
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        element = WebDriverWait(self.driver, timeout).until(
-                            EC.element_to_be_clickable((locator_type, locator_value))
-                        )
-                        self.logger.debug(
-                            f"Found clickable element after recovery: {locator_value}"
-                        )
-                        return element
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                        )
-                        return None
-                else:
-                    self.logger.error("UiAutomator2 recovery failed")
-                    return None
-
-            return None
-
+    @with_driver_recovery
     def switch_to_app(self):
         """Switch to specified app"""
-        try:
-            self.driver.activate_app(self.config["package_name"])
-        except WebDriverException as e:
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in switch_to_app, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        self.driver.activate_app(self.config["package_name"])
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery in switch_to_app: {str(retry_e)}"
-                        )
-                        return False
-                else:
-                    self.logger.error("UiAutomator2 recovery failed in switch_to_app")
-                    return False
-            else:
-                self.logger.error(f"Failed to switch to app: {str(e)}")
-                return False
-
+        self.driver.activate_app(self.config["package_name"])
         time.sleep(0.1)
         return True
 
+    @with_driver_recovery
     def close_app(self):
         """关闭应用"""
         self.driver.terminate_app(self.config["package_name"])
 
+    @with_driver_recovery
     def switch_to_activity(self, activity):
         """Switch to the specified activity"""
         package_name = self.config["package_name"]
         command = f"am start -n {package_name}/{activity}"
         self.driver.execute_script("mobile: shell", {"command": command})
 
+    @with_driver_recovery
     def press_enter(self, element):
         """
         Press Enter key on the given element
@@ -358,82 +253,33 @@ class AppHandler:
         self.driver.press_keycode(66)
         self.logger.debug("Pressed Return Key")
 
+    @with_driver_recovery
     def press_back(self):
         """Press Android back button"""
-        try:
-            self.driver.press_keycode(4)  # Android back key code
-        except (InvalidSessionIdException, WebDriverException) as e:
-            error_msg = str(e)
-            # Check if this is a session invalid error
-            if isinstance(e, InvalidSessionIdException) or "session is either terminated" in error_msg or "InvalidSessionIdException" in error_msg:
-                self.logger.warning(
-                    "Detected invalid session in press_back, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        self.driver.press_keycode(4)  # Android back key code
-                        self.error_count = 0
-                        self.logger.debug("Pressed back button after session recovery")
-                        return True
-                    except Exception as retry_e:
-                        self.error_count += 1
-                        self.logger.error(
-                            f"Retry failed after session recovery in press_back: {str(retry_e)}"
-                        )
-                        return False
-                else:
-                    self.error_count += 1
-                    self.logger.error("Session recovery failed in press_back")
-                    return False
-            # Check if this is a UiAutomator2 crash and handle it
-            elif self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in press_back, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        self.driver.press_keycode(4)  # Android back key code
-                        self.error_count = 0
-                        self.logger.debug("Pressed back button after recovery")
-                        return True
-                    except Exception as retry_e:
-                        self.error_count += 1
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery in press_back: {str(retry_e)}"
-                        )
-                        return False
-                else:
-                    self.error_count += 1
-                    self.logger.error("UiAutomator2 recovery failed in press_back")
-                    return False
-            else:
-                self.error_count += 1
-                self.logger.error(
-                    f"Failed to press back button, times: {self.error_count}, trace:{traceback.format_exc()} error: {str(e)}"
-                )
-                return False
-
+        self.driver.press_keycode(4)  # Android back key code
         self.error_count = 0
         self.logger.debug("Pressed back button")
         return True
 
+    @with_driver_recovery
     def press_dpad_down(self):
         """Press Android DPAD down button"""
         self.driver.press_keycode(20)  # KEYCODE_DPAD_DOWN
         self.logger.debug("Pressed DPAD down button")
 
+    @with_driver_recovery
     def press_volume_up(self):
         """Press Android volume up button"""
         self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
         self.logger.debug("Pressed volume up button")
 
+    @with_driver_recovery
     def press_volume_down(self):
         """Press Android volume down button"""
         self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
         self.logger.debug("Pressed volume down button")
 
+    @with_driver_recovery
     def press_right_key(self, times=1):
         """Simulate pressing the right key multiple times
         Args:
@@ -445,6 +291,7 @@ class AppHandler:
             )
             time.sleep(0.1)  # Small delay between key presses
 
+    @with_driver_recovery
     def try_find_element_plus(
             self, element_key: str, log=False, clickable=False
     ) -> WebElement:
@@ -466,78 +313,39 @@ class AppHandler:
                     f"Using locator type {locator_type} with value '{value}'"
                 )
 
-            try:
-                element = self.driver.find_element(locator_type, value)
-                if element:
-                    if log:
-                        try:
-                            element_text = element.text
-                            element_attrs = {
-                                "displayed": element.is_displayed(),
-                                "enabled": element.is_enabled(),
-                                "text": element_text,
-                            }
-                            # Try to get additional attributes
-                            for attr in ["content-desc", "resource-id", "className"]:
-                                element_attrs[attr] = element.get_attribute(attr)
-
-                            self.logger.info(
-                                f"Found element '{element_key}': {element_attrs}"
-                            )
-                        except Exception as attr_e:
-                            self.logger.warning(
-                                f"Found element '{element_key}' but couldn't get attributes: {str(attr_e)}"
-                            )
-
-                    if clickable:
-                        if log:
-                            self.logger.info(
-                                f"Waiting for element '{element_key}' to be clickable"
-                            )
-                        element = self.wait_for_element_clickable_plus(element_key)
-                        if element and log:
-                            self.logger.info(
-                                f"Element '{element_key}' is now clickable"
-                            )
-                return element
-            except WebDriverException as find_e:
-                # Check if this is a UiAutomator2 crash and handle it
-                if self._is_uiautomator2_crash(find_e):
-                    self.logger.warning(
-                        "Detected UiAutomator2 server crash in try_find_element_plus, attempting recovery..."
-                    )
-                    if self._handle_uiautomator2_crash():
-                        # Retry the operation after successful recovery
-                        try:
-                            element = self.driver.find_element(locator_type, value)
-                            if element and clickable:
-                                element = self.wait_for_element_clickable_plus(
-                                    element_key
-                                )
-                            return element
-                        except Exception as retry_e:
-                            if log:
-                                self.logger.warning(
-                                    f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                                )
-                            return None
-                    else:
-                        self.logger.error(
-                            "UiAutomator2 recovery failed in try_find_element_plus"
-                        )
-                        return None
-                else:
-                    if log:
-                        self.logger.warning(
-                            f"Failed to find element '{element_key}' with value '{value}': {str(find_e)}"
-                        )
-                    return None
-            except Exception as find_e:
+            element = self.driver.find_element(locator_type, value)
+            if element:
                 if log:
-                    self.logger.warning(
-                        f"Failed to find element '{element_key}' with value '{value}': {str(find_e)}"
-                    )
-                return None
+                    try:
+                        element_text = element.text
+                        element_attrs = {
+                            "displayed": element.is_displayed(),
+                            "enabled": element.is_enabled(),
+                            "text": element_text,
+                        }
+                        # Try to get additional attributes
+                        for attr in ["content-desc", "resource-id", "className"]:
+                            element_attrs[attr] = element.get_attribute(attr)
+
+                        self.logger.info(
+                            f"Found element '{element_key}': {element_attrs}"
+                        )
+                    except Exception as attr_e:
+                        self.logger.warning(
+                            f"Found element '{element_key}' but couldn't get attributes: {str(attr_e)}"
+                        )
+
+                if clickable:
+                    if log:
+                        self.logger.info(
+                            f"Waiting for element '{element_key}' to be clickable"
+                        )
+                    element = self.wait_for_element_clickable_plus(element_key)
+                    if element and log:
+                        self.logger.info(
+                            f"Element '{element_key}' is now clickable"
+                        )
+            return element
 
         except Exception as e:
             if log:
@@ -546,6 +354,7 @@ class AppHandler:
                 )
             return None
 
+    @with_driver_recovery
     def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
         """Try to find element and return it"""
         try:
@@ -553,36 +362,6 @@ class AppHandler:
             if element and clickable:
                 element = self.wait_for_element_clickable(locator_type, locator_value)
             return element
-        except WebDriverException as e:
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in try_find_element, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        element = self.driver.find_element(locator_type, locator_value)
-                        if element and clickable:
-                            element = self.wait_for_element_clickable(
-                                locator_type, locator_value
-                            )
-                        return element
-                    except Exception as retry_e:
-                        if log:
-                            self.logger.warning(
-                                f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                            )
-                        return None
-                else:
-                    self.logger.error(
-                        "UiAutomator2 recovery failed in try_find_element"
-                    )
-                    return None
-            else:
-                if log:
-                    self.logger.warning(f"Element not found: {locator_value}")
-                return None
         except Exception as e:
             if log:
                 self.logger.warning(
@@ -590,6 +369,7 @@ class AppHandler:
                 )
             return None
 
+    @with_driver_recovery
     def wait_for_element_polling(
             self, locator_type, locator_value, timeout=10, poll_frequency=0.5
     ):
@@ -619,6 +399,7 @@ class AppHandler:
         )
         return None
 
+    @with_driver_recovery
     def wait_for_element_clickable_polling(
             self, locator_type, locator_value, timeout=10, poll_frequency=0.5
     ):
@@ -650,6 +431,7 @@ class AppHandler:
         )
         return None
 
+    @with_driver_recovery
     def set_clipboard_text(self, text):
         """Set clipboard text using Appium's native method
         Args:
@@ -658,6 +440,7 @@ class AppHandler:
         self.driver.set_clipboard_text(text)
         self.logger.debug(f"Copied '{text}' to clipboard")
 
+    @with_driver_recovery
     def paste_text(self):
         """Execute paste operation using Android keycode"""
         self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
@@ -674,7 +457,7 @@ class AppHandler:
         """
         try:
             return parent.find_element(locator_type, locator_value)
-        except Exception as e:
+        except Exception:
             # print(f"Child element not found: {locator_value}")
             # print(f"Error: {str(e)}")
             return None
@@ -690,7 +473,7 @@ class AppHandler:
         """
         try:
             return parent.find_elements(locator_type, locator_value)
-        except Exception as e:
+        except Exception:
             # print(f"Child elements not found: {locator_value}")
             # print(f"Error: {str(e)}")
             return []
@@ -727,6 +510,7 @@ class AppHandler:
         locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
         return locator_type, value
 
+    @with_driver_recovery
     def find_elements_plus(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
         try:
@@ -738,6 +522,7 @@ class AppHandler:
             )
             return []
 
+    @with_driver_recovery
     def click_element_at(
             self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0
     ):
@@ -780,7 +565,7 @@ class AppHandler:
             self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
             return True
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error clicking element: {traceback.format_exc()}")
             return False
 
@@ -798,8 +583,8 @@ class AppHandler:
                 return self.find_child_element(parent, AppiumBy.XPATH, element_id)
             else:
                 return self.find_child_element(parent, AppiumBy.ID, element_id)
-        except Exception as e:
-            self.logger.debug(f"Failed to find child element {element_key}: {str(e)}")
+        except Exception:
+            self.logger.debug(f"Failed to find child element {element_key}")
             return None
 
     def find_child_elements_plus(self, parent, element_key: str) -> list:
@@ -815,16 +600,18 @@ class AppHandler:
                 return []
             locator_type, value = self._get_locator(element_key)
             return parent.find_elements(locator_type, value)
-        except Exception as e:
+        except Exception:
             self.logger.debug(
-                f"Failed to find child elements {element_key}: {str(e)}"
+                f"Failed to find child elements {element_key}"
             )
             return []
 
+    @with_driver_recovery
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
-        """在指定坐标执行一次滑动。
+        """在指定坐标执行一次滑动（简化为单段 W3C 手势，避免复杂链路导致 InvalidElementState）。
+
         Args:
             start_x: 起点 X
             start_y: 起点 Y
@@ -835,32 +622,41 @@ class AppHandler:
             bool: 是否执行成功
         """
         try:
+            # 一些设备/系统版本对复杂多步 W3C actions 支持不稳定，这里改为：
+            # 1. 移动到起点
+            # 2. 按下
+            # 3. 在给定时长内移动到终点
+            # 4. 抬起
+            # self.logger.debug(
+            #     f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
+            # )
+
             actions = ActionChains(self.driver)
             actions.w3c_actions = ActionBuilder(
                 self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
             )
-            actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
-            actions.w3c_actions.pointer_action.pointer_down()
-            # 将持续时间拆分为多个小步，提升稳定性
-            steps = max(1, int(duration_ms / 50))
-            delta_x = (end_x - start_x) / steps
-            delta_y = (end_y - start_y) / steps
-            current_x = start_x
-            current_y = start_y
-            for _ in range(steps):
-                current_x += delta_x
-                current_y += delta_y
-                actions.w3c_actions.pointer_action.move_to_location(
-                    int(current_x), int(current_y)
-                )
-                actions.w3c_actions.pointer_action.pause(0.05)
-            actions.w3c_actions.pointer_action.pointer_up()
+
+            pointer = actions.w3c_actions.pointer_action
+
+            # 起点
+            pointer.move_to_location(start_x, start_y)
+            pointer.pointer_down()
+
+            # 在 duration_ms 时间内完成从起点到终点的移动
+            # Appium / W3C 要求 duration 以秒为单位，通过 pause 来体现
+            pointer.move_to_location(end_x, end_y)
+            pointer.pause(max(0.01, duration_ms / 1000.0))
+
+            # 结束
+            pointer.pointer_up()
+
             actions.perform()
             return True
         except Exception:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
             return False
 
+    @with_driver_recovery
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
             attribute_value: str = None, max_swipes: int = 10
@@ -1004,38 +800,13 @@ class AppHandler:
                 "scroll_container_until_element: 达到最大滑动次数，未找到目标元素"
             )
             return None, None
-        except WebDriverException as e:
-            # UiAutomator2 崩溃处理
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in scroll_container_until_element, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    try:
-                        return self.scroll_container_until_element(
-                            element_key, container_key, direction
-                        )
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                        )
-                        return None, None
-                else:
-                    self.logger.error(
-                        "UiAutomator2 recovery failed in scroll_container_until_element"
-                    )
-                    return None, None
-            else:
-                self.logger.error(
-                    f"scroll_container_until_element error: {traceback.format_exc()}"
-                )
-                return None, None
         except Exception:
             self.logger.error(
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
             return None, None
 
+    @with_driver_recovery
     def wait_for_any_element_plus(
             self, element_keys: list, timeout: int = 10
     ) -> Tuple[Optional[str], Optional[WebElement]]:
@@ -1084,110 +855,11 @@ class AppHandler:
                     continue
             self.logger.warning("wait_for_any_element_plus: 找不到对应的key")
             return None, None
-        except WebDriverException as e:
-            # Check if this is a UiAutomator2 crash and handle it
-            if self._is_uiautomator2_crash(e):
-                self.logger.warning(
-                    "Detected UiAutomator2 server crash in wait_for_any_element_plus, attempting recovery..."
-                )
-                if self._handle_uiautomator2_crash():
-                    # Retry the operation after successful recovery
-                    try:
-                        element = WebDriverWait(self.driver, timeout).until(
-                            EC.any_of(
-                                *[
-                                    EC.presence_of_element_located(locator)
-                                    for locator in locators
-                                ]
-                            )
-                        )
-                        # 找到是哪个key
-                        for locator, key in key_map.items():
-                            try:
-                                found = self.driver.find_element(*locator)
-                                if found and found.id == element.id:
-                                    return key, element
-                            except Exception:
-                                continue
-                        self.logger.warning(
-                            "wait_for_any_element_plus: 找不到对应的key"
-                        )
-                        return None, None
-                    except Exception as retry_e:
-                        self.logger.error(
-                            f"Retry failed after UiAutomator2 recovery: {str(retry_e)}"
-                        )
-                        return None, None
-                else:
-                    self.logger.error("UiAutomator2 recovery failed")
-                    return None, None
-            else:
-                self.logger.error(
-                    f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}"
-                )
-                return None, None
         except Exception as e:
             self.logger.error(
                 f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}"
             )
             return None, None
-
-    def _is_uiautomator2_crash(self, exception: Exception) -> bool:
-        """
-        Check if the exception indicates a UiAutomator2 server crash
-        Args:
-            exception: The exception to check
-        Returns:
-            bool: True if it's a UiAutomator2 crash, False otherwise
-        """
-        error_message = str(exception).lower()
-        crash_indicators = [
-            "uiautomator2 server",
-            "instrumentation process is not running",
-            "probably crashed",
-            "cannot be proxied to uiautomator2 server",
-        ]
-        return any(indicator in error_message for indicator in crash_indicators)
-
-    def _reinitialize_driver(self) -> bool:
-        """
-        Reinitialize the driver when UiAutomator2 crashes
-        Returns:
-            bool: True if reinitialization was successful, False otherwise
-        """
-        try:
-            self.logger.warning(
-                "UiAutomator2 server crashed, attempting to reinitialize driver..."
-            )
-
-            # Close the current driver
-            try:
-                self.driver.quit()
-            except Exception as e:
-                self.logger.debug(f"Error closing driver: {str(e)}")
-
-            # Wait a moment for cleanup
-            time.sleep(2)
-
-            # Reinitialize the driver using the controller's method
-            self.driver = self.controller._init_driver()
-
-            # Update the driver reference in the controller
-            self.controller.driver = self.driver
-
-            # Update driver references in handlers
-            self.controller.soul_handler.driver = self.driver
-            self.controller.music_handler.driver = self.driver
-
-            # Switch back to the app
-            self.switch_to_app()
-
-            self.logger.info("Driver reinitialization completed successfully")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to reinitialize driver: {str(e)}")
-            return False
 
     def navigate_to_element(
             self,
@@ -1265,16 +937,3 @@ class AppHandler:
         # 达到最大尝试次数
         self.logger.error(f"导航失败：达到最大尝试次数 {max_attempts}")
         return None, None
-
-    def _handle_uiautomator2_crash(self) -> bool:
-        """
-        Handle UiAutomator2 server crash by reinitializing the driver
-        Returns:
-            bool: True if recovery was successful, False otherwise
-        """
-        if self._reinitialize_driver():
-            self.error_count = 0  # Reset error count on successful recovery
-            return True
-        else:
-            self.error_count += 1
-            return False
