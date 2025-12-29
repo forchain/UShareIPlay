@@ -610,7 +610,8 @@ class AppHandler:
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
-        """在指定坐标执行一次滑动。
+        """在指定坐标执行一次滑动（简化为单段 W3C 手势，避免复杂链路导致 InvalidElementState）。
+
         Args:
             start_x: 起点 X
             start_y: 起点 Y
@@ -621,26 +622,34 @@ class AppHandler:
             bool: 是否执行成功
         """
         try:
+            # 一些设备/系统版本对复杂多步 W3C actions 支持不稳定，这里改为：
+            # 1. 移动到起点
+            # 2. 按下
+            # 3. 在给定时长内移动到终点
+            # 4. 抬起
+            self.logger.debug(
+                f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
+            )
+
             actions = ActionChains(self.driver)
             actions.w3c_actions = ActionBuilder(
                 self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
             )
-            actions.w3c_actions.pointer_action.move_to_location(start_x, start_y)
-            actions.w3c_actions.pointer_action.pointer_down()
-            # 将持续时间拆分为多个小步，提升稳定性
-            steps = max(1, int(duration_ms / 50))
-            delta_x = (end_x - start_x) / steps
-            delta_y = (end_y - start_y) / steps
-            current_x = start_x
-            current_y = start_y
-            for _ in range(steps):
-                current_x += delta_x
-                current_y += delta_y
-                actions.w3c_actions.pointer_action.move_to_location(
-                    int(current_x), int(current_y)
-                )
-                actions.w3c_actions.pointer_action.pause(0.05)
-            actions.w3c_actions.pointer_action.pointer_up()
+
+            pointer = actions.w3c_actions.pointer_action
+
+            # 起点
+            pointer.move_to_location(start_x, start_y)
+            pointer.pointer_down()
+
+            # 在 duration_ms 时间内完成从起点到终点的移动
+            # Appium / W3C 要求 duration 以秒为单位，通过 pause 来体现
+            pointer.move_to_location(end_x, end_y)
+            pointer.pause(max(0.01, duration_ms / 1000.0))
+
+            # 结束
+            pointer.pointer_up()
+
             actions.perform()
             return True
         except Exception:
