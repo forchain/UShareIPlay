@@ -148,7 +148,13 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        if from_key != 'home_nav':
+        need_select_tab = True
+        if from_key == 'home_nav':
+            if list_title := self.wait_for_element_plus('list_title'):
+                if list_title.text == '单曲':
+                    need_select_tab = False
+
+        if need_select_tab:
             self.select_song_tab()
 
         first_song = self.wait_for_element_plus('first_song')
