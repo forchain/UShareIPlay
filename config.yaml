@@ -304,7 +304,6 @@ qq_music:
     playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
     playlist_item_container: '//android.widget.ImageView[@content-desc="删除"]/../android.widget.LinearLayout'
     playlist_current: '//android.widget.ImageView[@content-desc="删除"]/../android.view.View'
-    playlist_first: '//android.widget.ImageView[@content-desc="删除"]/../android.view.View/../android.widget.LinearLayout/android.widget.TextView'
     playlist_header: '//android.widget.TextView[@text="正在播放"]'
     play_mode_list: '//android.widget.ImageButton[@content-desc="顺序播放"]'
     play_mode_single: '//android.widget.ImageButton[@content-desc="单曲循环"]'

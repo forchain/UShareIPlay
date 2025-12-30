@@ -583,20 +583,17 @@ class QQMusicHandler(AppHandler, Singleton):
             return {'error': 'Failed to find playlist playing'}
 
         playlist_info = []
-        # playlist_first = self.driver.find_elements(AppiumBy.XPATH, self.config['elements']['playlist_first'])
-        # if len(playlist_first) > 0:
-        #     first_song = playlist_first[0].text
-        #     first_singer = playlist_first[1].text if len(playlist_first) > 1 else ''
-        #     info = f'{first_song}{first_singer}'
-        #     playlist_info.append(info)
 
         can_scroll = True
+        playlist_first = None
         try:
             playing_loc = playlist_current.location
             playing_size = playlist_current.size
             items = self.find_elements_plus('playlist_item_container')
             if len(items) == 0:
                 can_scroll = False
+            else:
+                playlist_first = items[0]
         except StaleElementReferenceException as e:
             self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
             playing_loc = None
@@ -608,8 +605,8 @@ class QQMusicHandler(AppHandler, Singleton):
         if can_scroll:
             # Calculate swipe coordinates
             start_x = playing_loc['x'] + playing_size['width'] // 2
-            start_y = playing_loc['y']
-            end_y = items[0].location['y']
+            start_y = playing_loc['y'] + playing_size['height'] // 2
+            end_y = playlist_first.location['y']
 
             # Swipe playing element up to title position
             self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
