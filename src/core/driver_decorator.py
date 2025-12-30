@@ -26,32 +26,14 @@ def with_driver_recovery(func):
         try:
             return func(self, *args, **kwargs)
         except (InvalidSessionIdException, WebDriverException) as e:
-            error_msg = str(e)
-
-            # 获取logger（优先从self，否则从handler）
-            logger = getattr(self, 'logger', None)
-            if logger is None and hasattr(self, 'handler'):
-                logger = getattr(self.handler, 'logger', None)
-
-            if logger:
-                logger.warning(f"{func.__name__} 检测到driver session失效")
-
             # 获取controller并触发重建
-            controller = _get_controller(self)
-            if controller:
-                success = controller.reinitialize_driver()
-                if logger:
-                    if success:
-                        logger.info(f"Driver重建成功，{func.__name__} 返回错误")
-                    else:
-                        logger.error(f"Driver重建失败，{func.__name__} 返回错误")
+            if controller := _get_controller(self):
+                if controller.reinitialize_driver():
+                    print(f"Driver重建成功，{func.__name__} ")
+                    return func(self, *args, **kwargs)
 
-            # 不重试，直接返回错误
-            return {
-                'error': 'Driver session失效已重建',
-                'method': func.__name__,
-                'original_error': error_msg
-            }
+            print(f"Driver重建失败，{func.__name__}, error:{e}")
+            return None
 
     return wrapper
 
