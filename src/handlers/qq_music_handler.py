@@ -605,7 +605,7 @@ class QQMusicHandler(AppHandler, Singleton):
 
         for item in items:
             try:
-                elements = self.find_child_elements_plus(item, 'android.widget.TextView')
+                elements = self.driver.find_elements(item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
                 if not elements:
                     self.logger.warning("Failed to find song in playlist")
                     continue
