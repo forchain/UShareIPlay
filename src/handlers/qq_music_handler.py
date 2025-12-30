@@ -584,39 +584,28 @@ class QQMusicHandler(AppHandler, Singleton):
 
         playlist_info = []
 
-        can_scroll = True
-        playlist_first = None
+        items = []
         try:
             playing_loc = playlist_current.location
             playing_size = playlist_current.size
             items = self.find_elements_plus('playlist_item_container')
-            if len(items) == 0:
-                can_scroll = False
-            else:
+            if len(items) > 0:
                 playlist_first = items[0]
-                if playing_loc == playlist_first:
-                    can_scroll = False
+                start_x = playing_loc['x'] + playing_size['width'] // 2
+                start_y = playing_loc['y'] + playing_size['height'] // 2
+                end_y = playlist_first.location['y']
+                if end_y - start_y > playlist_first.size['height']:
+                    self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
+                    self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
+
         except StaleElementReferenceException as e:
             self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
-            playing_loc = None
-            playing_size = None
-            can_scroll = False
 
         # Get all songs and singers
 
-        if can_scroll:
-            # Calculate swipe coordinates
-            start_x = playing_loc['x'] + playing_size['width'] // 2
-            start_y = playing_loc['y'] + playing_size['height'] // 2
-            end_y = playlist_first.location['y']
-
-            # Swipe playing element up to title position
-            self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
-            self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
-
         for item in items:
             try:
-                elements = self.find_child_elements(item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                elements = self.find_child_elements_plus(item, 'android.widget.TextView')
                 if not elements:
                     self.logger.warning("Failed to find song in playlist")
                     continue
