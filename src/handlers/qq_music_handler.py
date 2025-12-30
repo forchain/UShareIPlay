@@ -594,6 +594,8 @@ class QQMusicHandler(AppHandler, Singleton):
                 can_scroll = False
             else:
                 playlist_first = items[0]
+                if playing_loc == playlist_first:
+                    can_scroll = False
         except StaleElementReferenceException as e:
             self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
             playing_loc = None
