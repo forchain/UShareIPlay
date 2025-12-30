@@ -12,7 +12,7 @@ command = None
 class AdminCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
-        self.admin_manager = AdminManager(controller.soul_handler)
+        self.admin_manager = AdminManager()
 
     async def process(self, message_info, parameters):
         # Get parameter

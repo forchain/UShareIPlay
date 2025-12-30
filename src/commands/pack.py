@@ -1,24 +1,29 @@
 import traceback
+
 from ..core.base_command import BaseCommand
+
 
 def create_command(controller):
     pack_command = PackCommand(controller)
     controller.pack_command = pack_command
     return pack_command
 
+
 command = None
+
 
 class PackCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = self.soul_handler
         self.auto_mode = False
+        self.previous_count = 0  # Track previous user count
 
     async def process(self, message_info, parameters):
         """Process pack command to open luck pack"""
         try:
             # Check if user has relation tag (is a close friend)
-            if not message_info.relation_tag:
+            if not message_info.relation_tag and message_info.nickname != 'Joyer':
                 return {'error': 'Only close friends can open luck packs'}
 
             self.auto_mode = False  # Manual mode
@@ -42,9 +47,12 @@ class PackCommand(BaseCommand):
 
             try:
                 count = int(''.join(filter(str.isdigit, count_text)))
-                if count > 5:
-                    self.auto_mode = True  # Auto mode
-                    self.open_luck_pack(user_count=count)  # Pass user count as parameter
+                # Only check if count has changed
+                if count != self.previous_count:
+                    self.previous_count = count  # Update previous count
+                    if count > 5:
+                        self.auto_mode = True  # Auto mode
+                        self.open_luck_pack(user_count=count)  # Pass user count as parameter
             except ValueError:
                 self.handler.logger.error(f"Failed to parse user count: {count_text}")
 
@@ -82,7 +90,8 @@ class PackCommand(BaseCommand):
             if self.auto_mode and user_count is not None:
                 item_text = luck_item.text
                 # If less than 10 people, only allow low/medium level packs
-                if user_count <= 10 and not ("初级" in item_text or "中级" in item_text or "一级" in item_text or "二级" in item_text):
+                if user_count <= 10 and not (
+                        "初级" in item_text or "中级" in item_text or "一级" in item_text or "二级" in item_text):
                     self.handler.logger.info(f"Skipping high level pack with {user_count} users: {item_text}")
                     self.handler.press_back()
                     return {'error': 'Skipping high level pack (not enough users)'}
