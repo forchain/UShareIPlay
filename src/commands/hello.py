@@ -68,9 +68,14 @@ class HelloCommand(BaseCommand):
                 self.handler.send_message(greeting)
                 self.handler.logger.info(f"Sent greeting to {username} from {sender}")
                 
-                # Play the song
-                self.controller.play_command.play_song(song)
-                self.handler.logger.info(f"Playing song: {song}")
+                # 使用 music_manager 播放歌曲
+                from ..managers.music_manager import MusicManager
+                music_manager = MusicManager.instance()
+                play_result = music_manager.play_song(song)
+                if 'error' not in play_result:
+                    self.handler.logger.info(f"Playing song: {song}")
+                else:
+                    self.handler.logger.warning(f"Failed to play song {song}: {play_result['error']}")
                 
                 # Remove this hello from the list
                 self.pending_hellos[username].pop(0)

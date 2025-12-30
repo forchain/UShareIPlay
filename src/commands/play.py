@@ -1,7 +1,6 @@
-import traceback
+from appium.webdriver.common.appiumby import AppiumBy
+
 from ..core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
 
 
 def create_command(controller):
@@ -23,13 +22,16 @@ class PlayCommand(BaseCommand):
         query = ' '.join(parameters)
         self.soul_handler.ensure_mic_active()
 
+        from ..managers.info_manager import InfoManager
+        info_manager = InfoManager.instance()
+
         if query == '?':
             playing_info = self.play_favorites()
-            self.controller.player_name = message_info.nickname
+            info_manager.player_name = message_info.nickname
             return playing_info
         elif query == '':
             playing_info = self.play_radar()
-            self.controller.player_name = message_info.nickname
+            info_manager.player_name = message_info.nickname
             return playing_info
         else:
             playing_info = self.play_song(query)
@@ -49,9 +51,9 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.wait_for_element_clickable_plus('song_name')
+        song_element = self.handler.wait_for_element_clickable_plus('result_item')
         song_element.click()
-        self.handler.logger.info(f"Select first song")
+        self.handler.logger.info("Select first song")
 
         return playing_info
 
@@ -61,16 +63,10 @@ class PlayCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
-        self.handler.press_back()
-        my_nav = self.handler.try_find_element_plus('my_nav', log=False)
-        if not my_nav:
-            self.handler.press_back()
-            my_nav = self.handler.try_find_element_plus('my_nav')
-            if not my_nav:
-                return {'error': 'Cannot find my_nav'}
-
+        self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
 
+        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
         my_nav.click()
         self.handler.logger.info("Clicked personal info navigation button")
 
@@ -79,19 +75,27 @@ class PlayCommand(BaseCommand):
         fav_entry.click()
         self.handler.logger.info("Clicked favorites button")
 
-        # Click on play all button
-        play_fav = self.handler.wait_for_element_clickable_plus('play_fav')
-        song = self.handler.wait_for_element_clickable_plus('fav_song')
-        song_text = song.text
-        singer = self.handler.wait_for_element_clickable_plus('fav_singer')
-        singer_text = singer.text
+        result_item = self.handler.try_find_element_plus('result_item')
+        song_text = None
+        singer_text = None
+        if result_item:
+            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            if len(elements) >= 3:
+                song_text = elements[1].text
+                singer_text = elements[2].text
 
+        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
         self.handler.list_mode = 'favorites'
-        self.controller.title_command.change_title("O Station")
-        self.controller.topic_command.change_topic(song_text)
+        # 使用 title_manager 和 topic_manager 管理标题和话题
+        from ..managers.title_manager import TitleManager
+        from ..managers.topic_manager import TopicManager
+        title_manager = TitleManager.instance()
+        topic_manager = TopicManager.instance()
+        title_manager.set_next_title("O Station")
+        topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
 
@@ -101,15 +105,11 @@ class PlayCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
-        self.handler.press_back()
+        self.handler.navigate_to_home()
+        self.handler.logger.info("Navigated to home page")
         radar_nav = self.handler.try_find_element_plus('radar_nav', log=False)
         if not radar_nav:
-            self.handler.press_back()
-            radar_nav = self.handler.try_find_element_plus('radar_nav')
-            if not radar_nav:
-                return {'error': 'Cannot find radar_nav'}
-
-        self.handler.logger.info("Navigated to home page")
+            return {'error': 'Cannot find radar_nav'}
 
         radar_nav.click()
         self.handler.logger.info("Clicked radar navigation button")
@@ -122,7 +122,12 @@ class PlayCommand(BaseCommand):
         singer = self.handler.wait_for_element_clickable_plus('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
-        self.controller.title_command.change_title("O Radio")
-        self.controller.topic_command.change_topic(song_text)
+        # 使用 title_manager 和 topic_manager 管理标题和话题
+        from ..managers.title_manager import TitleManager
+        from ..managers.topic_manager import TopicManager
+        title_manager = TitleManager.instance()
+        topic_manager = TopicManager.instance()
+        title_manager.set_next_title("O Radio")
+        topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

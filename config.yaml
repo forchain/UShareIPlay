@@ -1,8 +1,126 @@
 soul:
   package_name: "cn.soulapp.android"
-  chat_activity: ".cpnt_voiceparty.soulhouse.SoulHouseActivity"
+  chat_activity: ".component.startup.main.MainActivity"
+  # default_party_id: "FM18633292"
+  default_party_id: "FM15321640"
+  default_notice: "U Share I Play\n分享音乐 享受快乐"
+
+  # 系统默认notice列表，如果房间notice包含这些内容说明被系统重置了
+  system_default_notices:
+    - "弹唱大会"
+    - "Souler们在随便聊聊ing"
+
+  # 派对智能重启配置
+  party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
+
+  # Initial timers configuration
+  initial_timers:
+    - id: "notice_0"
+      time: "00:00"
+      message: "notice sorry, hello, excuse me"
+      repeat: true
+    - id: "help_1"
+      time: "01:00"
+      message: "help"
+      repeat: true
+    - id: "playlist_6"
+      time: "06:00"
+      message: "playlist 官方 纯音乐"
+      repeat: true
+    - id: "playlist_7"
+      time: "07:00"
+      message: "playlist 官方 微醺咖啡厅"
+      repeat: true
+    - id: "playlist_8"
+      time: "08:00"
+      message: "playlist Jazz 官方"
+      repeat: true
+    - id: "theme_morning"
+      time: "09:00"
+      message: "title 四十更惑 加油"
+      repeat: true
+    - id: "playlist_9"
+      time: "09:00"
+      message: "playlist 官方 慵懒时间"
+      repeat: true
+    - id: "playlist_10"
+      time: "10:00"
+      message: "playlist 官方 R&B"
+      repeat: true
+    - id: "playlist_11"
+      time: "11:00"
+      message: "playlist 官方 欧美精选"
+      repeat: true
+    - id: "theme_noon"
+      time: "12:00"
+      message: "title 放松一下 午休"
+      repeat: true
+    - id: "playlist_12"
+      time: "12:00"
+      message: "playlist 深度专注 官方"
+      repeat: true
+    - id: "notice_12"
+      time: "12:00"
+      message: "notice hello, thank you, are you ok?"
+      repeat: true
+    - id: "theme_afternoon"
+      time: "13:00"
+      message: "title 赤子之心 💪"
+      repeat: true
+    - id: "playlist_13"
+      time: "13:00"
+      message: "playlist 官方 粤语经典"
+      repeat: true
+    - id: "radio_14"
+      time: "14:00"
+      message: "radio"
+    - id: "radio_15"
+      time: "15:00"
+      message: "radio radar"
+      repeat: true
+    - id: "radio_16"
+      time: "16:00"
+      message: "radio guess"
+      repeat: true
+    - id: "radio_17"
+      time: "17:00"
+      message: "radio daily"
+      repeat: true
+    - id: "playlist_18"
+      time: "18:00"
+      message: "playlist 红心雷达"
+      repeat: true
+    - id: "theme_home"
+      time: "19:00"
+      message: "title 差不多该回窝了 🏠"
+      repeat: true
+    - id: "playlist_19"
+      time: "19:00"
+      message: "playlist 官方 古典"
+      repeat: true
+    - id: "playlist_20"
+      time: "20:00"
+      message: "playlist 官方 电子"
+      repeat: true
+    - id: "playlist_21"
+      time: "21:00"
+      message: "playlist 官方 Lofi&Chill"
+      repeat: true
+    - id: "playlist_22"
+      time: "22:00"
+      message: "playlist Lofi Girl 专属陪伴"
+      repeat: true
+    - id: "theme_sleep"
+      time: "23:00"
+      message: "title 早睡早起 💤"
+      repeat: true
+    - id: "playlist_23"
+      time: "23:00"
+      message: "radio sleep"
+      repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
+    message_container: "//androidx.recyclerview.widget.RecyclerView[@resource-id='cn.soulapp.android:id/rvMessage']/android.view.ViewGroup"
     message_content: "cn.soulapp.android:id/tvContent"
     input_box_entry: "cn.soulapp.android:id/tvChat"
     input_box: "cn.soulapp.android:id/etInputView"
@@ -23,8 +141,8 @@ soul:
     more_menu: "cn.soulapp.android:id/ivChatMore"
     party_hall: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='派对大厅']"
     end_party: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='关闭派对']"
-    confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="关闭房间"]'
-    more_menu_container: 'cn.soulapp.android:id/moreRootView'
+    confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="解散派对"]'
+    more_menu_container: "cn.soulapp.android:id/moreRootView"
     search_entry: "cn.soulapp.android:id/ivSearch"
     search_box: "cn.soulapp.android:id/commonViewEtSearch"
     search_button: "cn.soulapp.android:id/flRight"
@@ -32,7 +150,7 @@ soul:
     parties_search: "cn.soulapp.android:id/rvParties"
     grab_mic: "cn.soulapp.android:id/ivUpSeat"
     confirm_mic: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认']"
-    toggle_mic: "cn.soulapp.android:id/ivMic"
+    toggle_mic: "cn.soulapp.android:id/ivMicButton"
     square_tab: "cn.soulapp.android:id/main_tab_square"
     party_tab: "//android.widget.LinearLayout[@content-desc='派对']"
     no_party_from_home: "cn.soulapp.android:id/tvEmptyContent"
@@ -44,147 +162,179 @@ soul:
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_back: "cn.soulapp.android:id/tv_look"
     expand_seats: "cn.soulapp.android:id/tvHandleUserList" # 收起座位/展开座位
+    collapse_seats: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvHandleUserList" and @text="收起座位"]'
     party_online: "cn.soulapp.android:id/tvOnline"
-    planet_tab: "cn.soulapp.android:id/main_tab_planet"
+    planet_tab: "cn.soulapp.android:id/main_tab_planet" #  星球
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
-    create_party_entry: "cn.soulapp.android:id/tv_create"
+    create_party_entry: "cn.soulapp.android:id/iv_create_room" #  创建派对
     create_party_button: "cn.soulapp.android:id/createRoomBtn"
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
-    claim_reward: "cn.soulapp.android:id/tvCheckReward"
-    room_topic: 'cn.soulapp.android:id/tvStudyRoomTitle'
-    edit_topic_entry: 'cn.soulapp.android:id/tvCustomTopic'
-    edit_topic_input: 'cn.soulapp.android:id/et_input_message'
-    edit_topic_confirm: 'cn.soulapp.android:id/tvConfim'
-    little_assistant: 'cn.soulapp.android:id/ivLittleAssistant'
-    edit_notice_entry: 'cn.soulapp.android:id/ivEdit'
-    customize_notice_button: '//android.view.View[@text="自定义"]'
-    edit_notice_input: '//android.widget.EditText'
-    edit_notice_confirm: '//android.view.View[@text="确认提交"]'
-    empty_seat: 'cn.soulapp.android:id/leftTvDefaultName'
+    claim_reward: "cn.soulapp.android:id/tvCheckReward" # 立即领取/已领取
+    room_topic: "cn.soulapp.android:id/tvStudyRoomTitle"
+    edit_topic_entry: "cn.soulapp.android:id/tvCustomTopic"
+    edit_topic_input: "cn.soulapp.android:id/et_input_message"
+    edit_topic_confirm: "cn.soulapp.android:id/tvConfim"
+    little_assistant: "cn.soulapp.android:id/ivLittleAssistant"
+    edit_notice_entry: "cn.soulapp.android:id/ivEdit"
+    customize_notice_button: '//android.widget.TextView[@text="自定义"]'
+    modify_notice_button: '//android.widget.TextView[@text="修改自定义"]'
+    edit_notice_input: "//android.widget.EditText"
+    edit_notice_confirm: '//android.widget.TextView[@text="确认提交"]'
+    empty_seat: "cn.soulapp.android:id/leftTvDefaultName"
     up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
-    edit_announcement_entry: 'cn.soulapp.android:id/ivEdit'
-    customize_announcement_button: '//android.view.View[@text="自定义"]'
-    edit_announcement_input: '//android.widget.EditText'
-    edit_announcement_confirm: '//android.view.View[@text="确认提交"]'
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
-    confirm_seat: 'cn.soulapp.android:id/tvOperation'
-    chat_room_title: 'cn.soulapp.android:id/tvChatRoomTitle'
-    title_edit_entry: 'cn.soulapp.android:id/iv_edit'
-    title_edit_input: 'cn.soulapp.android:id/et_content'
-    title_edit_confirm: 'cn.soulapp.android:id/tv_confirm'
-    go_back: 'cn.soulapp.android:id/iv_back'
-    user_count: 'cn.soulapp.android:id/tvUserCount' # 6人
-    seat_desk: 'cn.soulapp.android:id/userRoot' #  > left_seat, right_seat
-    left_seat: 'cn.soulapp.android:id/leftUserView' # > left_state
-    left_state: 'cn.soulapp.android:id/leftClState' # > left_label
-    right_seat: 'cn.soulapp.android:id/rightUserView' # > right_state
-    right_state: 'cn.soulapp.android:id/rightClState' # > right_label
-    left_label: 'cn.soulapp.android:id/leftTvLabelH' #  群主, 管理, 1,3,5,7,9,11
-    right_label: 'cn.soulapp.android:id/rightTvLabelH' # 群主, 管理, 2,4,6,8,10,12
-    luck_pack: 'cn.soulapp.android:id/tvLbLabelPack' # 福袋 / 2个奖励
-    luck_item: 'cn.soulapp.android:id/name' # 初级福袋/中级福袋/高级福袋
-    use_pack: 'cn.soulapp.android:id/tvUse' # 使用
-    soul_power: 'cn.soulapp.android:id/soulPower' # +12灵魂力
-    give_gift: 'cn.soulapp.android:id/mConfirm' # 赠送
-    gift_tool: 'cn.soulapp.android:id/ivGift'
+    confirm_seat: "cn.soulapp.android:id/tvOperation"
+    chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
+    chat_room_notice: "cn.soulapp.android:id/tv_notice"
+    title_edit_entry: "cn.soulapp.android:id/iv_edit"
+    title_edit_input: "cn.soulapp.android:id/et_content"
+    title_edit_confirm: "cn.soulapp.android:id/tv_confirm"
+    go_back: "cn.soulapp.android:id/iv_back"
+    go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
+    user_count: "cn.soulapp.android:id/tvUserCount" # 6人
+    seat_desk: "cn.soulapp.android:id/userRoot" #  > left_seat, right_seat
+    left_seat: "cn.soulapp.android:id/leftUserView" # > left_state
+    left_state: "cn.soulapp.android:id/leftClState" # > left_label
+    right_seat: "cn.soulapp.android:id/rightUserView" # > right_state
+    right_state: "cn.soulapp.android:id/rightClState" # > right_label
+    left_label: "cn.soulapp.android:id/leftTvLabelH" #  群主, 管理, 1,3,5,7,9,11
+    right_label: "cn.soulapp.android:id/rightTvLabelH" # 群主, 管理, 2,4,6,8,10,12
+    luck_pack: "cn.soulapp.android:id/tvLbLabelPack" # 福袋 / 2个奖励
+    luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋
+    use_pack: "cn.soulapp.android:id/tvUse" # 使用
+    soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
+    give_gift: "cn.soulapp.android:id/btnSend" # 赠送
+    use_item: "cn.soulapp.android:id/mConfirm" # 使用
+    gift_tool: "cn.soulapp.android:id/ivGift"
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
-    follower_name: 'cn.soulapp.android:id/tvName' # Outlier
-    follower_message: 'cn.soulapp.android:id/tvFollowUserContent' # 你关注的Outlier进入房间啦，打个招呼吧～
-    greet_follower: 'cn.soulapp.android:id/tvFollowUserNotify' # 打招呼
-    send_gift: 'cn.soulapp.android:id/tv_send_four_leaf' # 送礼物
-    follow_status: 'cn.soulapp.android:id/tv_follow' # 已关注/关注
-    focus_count: 'cn.soulapp.android:id/tvStudyRoomDesc' # 1人专注中
-    close_app: 'android:id/aerr_close' # Close app
-    seat_off: 'cn.soulapp.android:id/tvSeatDownUp' # 抱下
-    souler_name: 'cn.soulapp.android:id/tv_name' # Outlier
-    user_name: 'cn.soulapp.android:id/tvUserName' # Joyer
-    online_users: 'cn.soulapp.android:id/rvBannedUsers' # 在线用户
+    follower_name: "cn.soulapp.android:id/tvName" # Outlier
+    follower_message: "cn.soulapp.android:id/tvFollowUserContent" # 你关注的Outlier进入房间啦，打个招呼吧～/你的兄弟 Outlier进来啦～
+    greet_follower: "cn.soulapp.android:id/tvFollowUserNotify" # 打招呼
+    send_gift: "cn.soulapp.android:id/tv_send_four_leaf" # 送礼物
+    follow_status: "cn.soulapp.android:id/tv_follow" # 已关注/关注
+    focus_count: "cn.soulapp.android:id/tvStudyRoomDesc" # 1人专注中
+    close_app: "android:id/aerr_close" # Close app
+    seat_off: "cn.soulapp.android:id/tvSeatDownUp" # 抱下
+    souler_name: "cn.soulapp.android:id/tv_name" # Outlier
+    user_name: "cn.soulapp.android:id/tvUserName" # Joyer
+    online_users: "cn.soulapp.android:id/rvBannedUsers" # 在线用户
+    no_more_data: "cn.soulapp.android:id/load_more_load_end_view" # No more data
+    bottom_drawer: "cn.soulapp.android:id/action_bar_root"
+    online_user: "cn.soulapp.android:id/tvName" # Outlier
+    close_notice: '//android.widget.TextView[@text="关闭公告"]'
+    search_back: "cn.soulapp.android:id/ivSearchBack"
+    close_chat: "cn.soulapp.android:id/tv_btn_close" # 先不聊了
+    close_more_menu: "cn.soulapp.android:id/ivBack" # more_menu 的关闭按钮
+    reload_button: "cn.soulapp.android:id/tvBtnState" # 重新加载
+    activity_back: '//android.widget.Image[@text="此图片未加标签。打开右上角的“更多选项”菜单即可获取图片说明。"]' # 活动页面, 天赋共鸣，群主红包， ...
+    close_button: "cn.soulapp.android:id/ivClose" # 关闭按钮, X 按钮
+    h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
+    group_back: "cn.soulapp.android:id/fans_back" # 关闭我的派对群页面
+    online_drawer: "cn.soulapp.android:id/touch_close" # 在线用户抽屉
+    share_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉
+    input_drawer: "cn.soulapp.android:id/clSecondContainer" # 输入框抽屉
+    room_id: "cn.soulapp.android:id/tvRoomId"
+    room_card: "cn.soulapp.android:id/roomCard"
+    party_hall_back: "cn.soulapp.android:id/img_back"
+    claim_reward_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvCheckReward" and @text="立即领取"]'
+    party_restore_drawer: "cn.soulapp.android:id/design_bottom_sheet" # 我创建过的派对
+    receive_gift: "cn.soulapp.android:id/ivReceiveGift" # 获得建群礼>立即领取
+    create_room_entry: "cn.soulapp.android:id/btnCreateRoom" # 推荐>创建派对
+    profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
+    close_notice_1: "cn.soulapp.android:id/iv_close_bottom" # 关注成功
+    go_back_2: "cn.soulapp.android:id/leftImage" # 群聊返回
+    party_ended: '//android.view.View[@resource-id="app"]/android.view.View/android.view.View[1]/android.view.View[1]' # 派对已关闭 > X
+    confirm_close_1: '//android.widget.ImageView[@resource-id="cn.soulapp.android:id/img_close"]' # 我知道了
+    confirm_close_2: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/confirm"]' # 我知道了
+    confirm_close_3: '//android.widget.TextView[@text="我知道了"]'
+    confirm_close_4: '//android.widget.TextView[@text="知道了"]'
+    confirm_close_5: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/btn_sure"]'
+    confirm_close_6: "cn.soulapp.android:id/tv_cancel"
+    confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
+    bottom_drawer_1: "cn.soulapp.android:id/tslLayout" # 底部抽屉
+    bag_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvTab" and @text="背包"]' # 背包
+    home_nav: "cn.soulapp.android:id/main_tab_planet" #  星球
 
 qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
   elements:
-    search_entry: "com.tencent.qqmusic:id/c8x"
+    search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
-    play_button: "com.tencent.qqmusic:id/kcr"
-    next_button: "com.tencent.qqmusic:id/f4"
-    player_panel: "com.tencent.qqmusic:id/idm"
-    hide_player: "com.tencent.qqmusic:id/na0"
-    song_name: "com.tencent.qqmusic:id/lxj"
-    singer_name: "com.tencent.qqmusic:id/lzn"
+    clear_search: '//android.widget.ImageView[@content-desc="清空"]'
+    next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
+    result_item: "com.tencent.qqmusic:id/item_layout"
+    first_song: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"][1]//android.widget.TextView'
     pause_button: "android:id/action1"
     skip_button: "android:id/action2"
-    playing_bar: "com.tencent.qqmusic:id/ha_"
     current_song: "android:id/title"
     current_singer: "android:id/text"
-    info_dot: "com.tencent.qqmusic:id/c14"
-    details_link: "com.tencent.qqmusic:id/gnw"
-    more_in_play_panel: "com.tencent.qqmusic:id/a8r"
-    accompaniment_menu: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nr8" and @text="伴唱模式"]'
-    accompaniment_switch: "com.tencent.qqmusic:id/or6"
-    song_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]"
-    full_lyrics: "//android.view.View[@resource-id='js_app']/android.view.View/android.view.View[2]/android.view.View[last()]"
-    accompaniment_status: "com.tencent.qqmusic:id/bln"
-#    live_lyrics: "com.tencent.qqmusic:id/e5z"
-    live_lyrics: "com.tencent.qqmusic:id/lbr"
-    accompaniment_tool: "com.tencent.qqmusic:id/ocx"
-    lyrics_tool: "com.tencent.qqmusic:id/i2y"
-    lyrics_poster: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/jmb" and @text="歌词海报"]'
-    lyrics_line: "com.tencent.qqmusic:id/h9e"
-    lyrics_end: "//android.view.View"
-    no_lyrics: "com.tencent.qqmusic:id/ndz"
-    clear_search: "com.tencent.qqmusic:id/l1a"
-    current_lyrics: "com.tencent.qqmusic:id/l7_"
-    content_container: "android:id/content"
-    reminder_ok: "com.tencent.qqmusic:id/icm"
-    vocal_tag: "//android.widget.TextView[@resource-id='com.tencent.qqmusic:id/n6i' and @text='原唱']"
-    accompaniment_tag: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/nj0" and @text="伴唱"]'
-    lyrics_box: "com.tencent.qqmusic:id/jah"
-    close_poster: "com.tencent.qqmusic:id/b6w"
-    accompaniment_bar: "com.tencent.qqmusic:id/or3"
-    accompaniment_label: "com.tencent.qqmusic:id/oqz"
+    playing_favourite: '//android.widget.Button[@content-desc="收藏"]'
+    playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
+    accompaniment_switch: '//android.view.ViewGroup[@content-desc="K歌"]/android.widget.ImageView'
+    accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
+    accompaniment_text_off: '//android.widget.TextView[@text="已关闭伴唱模式"]'
+    accompaniment_button_on: '//android.widget.ImageView[@content-desc="伴唱已开启"]'
+    accompaniment_button_off: '//android.widget.ImageView[@content-desc="伴唱已关闭"]'
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
-    radar_song: 'com.tencent.qqmusic:id/lxj'
-    radar_singer: 'com.tencent.qqmusic:id/lkl'
-    fav_entry: 'com.tencent.qqmusic:id/ij0'
-    play_fav: 'com.tencent.qqmusic:id/eki'
-    fav_song: 'com.tencent.qqmusic:id/lxj'
-    fav_singer: 'com.tencent.qqmusic:id/lzn'
-    lyrics_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌词"]'
-    playlist_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌单"]'
-    singer_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌手"]'
-    song_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="歌曲"]'
-    album_tab: '//android.widget.TextView[@resource-id="com.tencent.qqmusic:id/efo" and @text="专辑"]'
-    album_text: 'com.tencent.qqmusic:id/kzn'
-    album_singer: 'com.tencent.qqmusic:id/kzk'
-    lyrics_text: 'com.tencent.qqmusic:id/h8u'
-    playlist_result: 'com.tencent.qqmusic:id/l1l'
-    singer_text: 'com.tencent.qqmusic:id/muo'
-    singer_result: 'com.tencent.qqmusic:id/l2b'
-    play_all: '//android.widget.TextView[@text="全部播放"]'
-    play_all_mini: 'com.tencent.qqmusic:id/se'
-    singer_container: 'com.tencent.qqmusic:id/hag'
-    play_album: 'com.tencent.qqmusic:id/j98'
-    play_singer: 'com.tencent.qqmusic:id/em7'
-    play_singer_hot: 'com.tencent.qqmusic:id/j0g'
-    singer_tabs: 'com.tencent.qqmusic:id/b_h'
-    playlist_item: 'com.tencent.qqmusic:id/ljb'
-    go_back: 'com.tencent.qqmusic:id/a0q'
+    radar_song: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.LinearLayout/android.widget.Button'
+    radar_singer: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout/android.widget.Button'
+    fav_entry: '//android.widget.TextView[@text="收藏"]'
+    lyrics_tab: '//android.widget.RelativeLayout[@content-desc="歌词 按钮"]'
+    playlist_tab: '//android.widget.RelativeLayout[@content-desc="歌单 按钮"]'
+    singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'
+    song_tab: '//android.widget.RelativeLayout[@content-desc="歌曲 按钮"]'
+    album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
+    album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
+    lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
+    playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
+    play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
+    singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
+    play_singer_1: '//android.widget.ImageView[starts-with(@content-desc, "播放歌手: ")]'
+    singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
+    play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
+    singer_tabs: '//android.widget.TextView[@text="歌曲"]'
+    go_back: '//android.widget.ImageButton[@content-desc="返回"]'
+    song_title: '//android.widget.TextView[@text="单曲"]'
+    song_version: '//android.widget.TextView[@text="全部展开"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'
-    playlist_entry_floating: 'com.tencent.qqmusic:id/is5'
-    playlist_entry_playing: 'com.tencent.qqmusic:id/a9i'
-    playlist_item_container: 'com.tencent.qqmusic:id/gsa'
-    playlist_song: 'com.tencent.qqmusic:id/lxy'
-    playlist_singer: 'com.tencent.qqmusic:id/lkv'
-    playlist_playing: 'com.tencent.qqmusic:id/ee4'
-    playlist_header: 'com.tencent.qqmusic:id/je8'
-    play_mode: 'com.tencent.qqmusic:id/a9j'
-    singer_screen: 'com.tencent.qqmusic:id/b_k' #
-    playlist_screen: 'com.tencent.qqmusic:id/bay' #
-    music_tabs: 'com.tencent.qqmusic:id/b_h'
+    playlist_entry: '//android.widget.ImageView[@content-desc="歌曲队列"]'
+    playlist_item_container: '//android.widget.ImageView[@content-desc="删除"]/../android.widget.LinearLayout'
+    playlist_current: '//android.widget.ImageView[@content-desc="删除"]/../android.view.View'
+    playlist_header: '//android.widget.TextView[@text="正在播放"]'
+    play_mode_list: '//android.widget.ImageButton[@content-desc="顺序播放"]'
+    play_mode_single: '//android.widget.ImageButton[@content-desc="单曲循环"]'
+    play_mode_random: '//android.widget.ImageButton[@content-desc="随机播放"]'
+    music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..'
+
+    minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
+    play_all_playlist: '//android.widget.ImageView[@content-desc="全部播放"]'
+    playing_record: '//android.view.ViewGroup[@content-desc="专辑封面"]'
+    play_next: '//android.widget.ImageView[@content-desc="下一首"]'
+
+    cancel_drawer: '//android.widget.TextView[@text="取消"]'
+
+    more_entry: '//android.widget.ImageButton[@content-desc="更多"]'
+    menu_container: "//androidx.recyclerview.widget.RecyclerView"
+    accompaniment_menu: '//android.widget.TextView[@text="伴唱模式"]'
+    home_nav: '//android.view.ViewGroup[@content-desc="首页"]'
+    play_collection: '//android.widget.Button[@content-desc="播放"]'
+    pause_collection: '//android.widget.Button[@content-desc="暂停"]'
+    more_collection: '//android.widget.ImageView[@content-desc="更多"]'
+    collection_title: '//android.widget.Button[@content-desc="播放"]/../android.widget.TextView'
+    collection_topic: '//android.widget.ImageView[@content-desc="收藏" or @content-desc="取消收藏"]/../android.widget.TextView'
+    guess_title: '//android.widget.TextView[@text="猜你喜欢"]'
+    guess_topic: '//android.widget.TextView[@text="猜你喜欢"]/../android.widget.TextView'
+    daily_title: '//android.widget.TextView[@text="每日30首"]'
+    daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
+    search_shortcuts: '//android.widget.TextView[@text="歌手"]/../..'
+    healing_shortcut: '//android.widget.TextView[@text="解压"]'
+    healing_nav: '//android.widget.TextView[@text="疗愈"]'
+    healing_tab: '//android.widget.TextView[@text="睡眠模式"]/../../../../../../android.widget.LinearLayout/android.view.ViewGroup/android.widget.ImageView'
+    play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
 commands:
   - prefix: "play"
     response_template: "Playing {song} by {singer} in {album}"
@@ -199,7 +349,7 @@ commands:
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
-    response_template: "Adjusted volume to {volume}"
+    response_template: "{message}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     response_template: "Accompaniment mode {enabled}"
@@ -211,45 +361,58 @@ commands:
     response_template: "KTV mode {enabled}"
     error_template: "Failed to toggle KTV mode, because {error}"
   - prefix: "enable"
-    response_template: "Enabled: {enabled}"
+    response_template: "Recovery manager: {recovery_enabled}"
+    error_template: "Failed to toggle recovery manager: {error}"
   - prefix: "help"
-    response_template:  |
-      Help
-      1. play music instantly
-        :play song singer 
-      2. add music to playlist
-        :next song singer
-      3. turn on/off accompaniment mode
-        :acc 1/0
-      4. play next song instantly
+    response_template: |
+      帮助
+      1. 立即播放 
+        :play 歌名 歌手 
+      2. 下一首播放
+        :next 歌名 歌手
+      3. 切歌
         :skip
-      5. pause/resume current song
+      4. 暂停/继续
         :pause 1/0
-      6. Adjust volume (0~15)
-        :vol n
-      7. view lyrics of playing song
+      6. 音量 (0~15)
+        :vol [n] (不指定参数显示当前音量)
+      7. 歌词
         :lyrics
-      8. view playing song
+      8. 播放信息
         :info
-      9. play music 
-        :playlist music
-      10. play singer 
-        :singer name
-      11. apply/dismiss admin
-        :admin 1/0
-      12. ktv mode
-        :ktv 1/0
-      13. play mode
+      9. 播放歌单
+        :playlist 歌单
+      10. 播放歌手
+        :singer 歌手
+      11. 播放专辑
+        :album 专辑
+      12. 开/关麦
+        :mic 0/1 
+      13. 播放模式, 0列表, 1单曲, -1随机
         :mode 0/1/-1
+      14. 主题
+        :theme 主题
+      15. 标题
+        :title 标题
+      16. 话题
+        :topic 话题
+      17. 定时
+        :timer add id 时间 命令
+      18. 电台
+        :radio guess/daily/collection/sleep
 
   - prefix: "invite"
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
+  - prefix: "recovery"
+    response_template: "{status}"
+    error_template: "Recovery command failed: {error}"
   - prefix: "admin"
     response_template: "{action} {user} as administrator"
     error_template: "Failed to invite {user} as administrator, because {error}"
   - prefix: "info"
-    response_template: "Playing {song} by {singer} in {album}, playlist from {player}"
+    response_template: "Playing {current_playlist}\n{online_users}\n{party_duration}"
+
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     response_template: "Playing {singer}"
@@ -257,11 +420,14 @@ commands:
   - prefix: "playlist"
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
+  - prefix: "radio"
+    response_template: "{playlist}"
+    error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
-    response_template: "Change topic to {topic}"
+    response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
   - prefix: "notice"
     response_template: "Change notice to {notice}"
@@ -273,9 +439,12 @@ commands:
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
-    response_template: "Change title to {title}"
-    
+    response_template: "{title}"
+
     error_template: "Failed to change title, because {error}"
+  - prefix: "theme"
+    response_template: "{theme}"
+    error_template: "Failed to change theme, because {error}"
   - prefix: "end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
@@ -288,13 +457,20 @@ commands:
   - prefix: "pack"
     response_template: "Successfully opened luck pack {item}"
     error_template: "Failed to open luck pack: {error}"
+  - prefix: "timer"
+    response_template: "{timer}"
+    error_template: "{error}"
 appium:
   host: "192.168.50.103"
   port: 4723
 
+logging:
+  directory: "../logs"
+
 device:
-  name: "192.168.50.152:5555"
+  #  name: "554b4e4745413498"
+  name: "192.168.50.151:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
-  no_reset: true 
+  no_reset: true
