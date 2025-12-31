@@ -26,6 +26,7 @@ class RecoveryManager(Singleton):
             'party_ended',
 
             # 如果无法用返回键，则在此添加
+            'confirm_close_3',
 
             # 如果用返回键会造成潜在问题，则在此添加
 
@@ -43,7 +44,6 @@ class RecoveryManager(Singleton):
             # 'confirm_close_5',
             # 'confirm_close_1',
             # 'confirm_close_2',
-            # 'confirm_close_3',
             # 'confirm_close',
 
             # 'go_back',
