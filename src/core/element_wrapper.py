@@ -36,6 +36,17 @@ class ElementWrapper:
         return self._xml_element.get('text', '')
 
     @property
+    def content(self) -> str:
+        """获取元素内容，优先使用 content-desc，如果没有则使用 text"""
+        content_desc = self._xml_element.get('content-desc', '')
+        if content_desc and content_desc != 'null':
+            return content_desc
+        text = self._xml_element.get('text', '')
+        if text:
+            return text
+        return ''
+
+    @property
     def tag(self) -> str:
         """获取元素标签名"""
         return self._xml_element.tag

@@ -314,25 +314,6 @@ class MessageManager(Singleton):
             if not chat_text:
                 return None
 
-            # Check for duplicate message
-            if chat_text not in self.recent_chats:
-                is_enter, username = self.is_user_enter_message(chat_text)
-                if is_enter:
-                    self.handler.logger.critical(f"User entered: {username}")
-                    # Notify all commands via CommandManager
-                    from .command_manager import CommandManager
-                    command_manager = CommandManager.instance()
-                    command_modules = command_manager.get_command_modules()
-                    for module in command_modules.values():
-                        try:
-                            if hasattr(module.command, 'user_enter'):
-                                await module.command.user_enter(username)
-                        except Exception:
-                            self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
-                        continue
-                self.chat_logger.info(chat_text)
-                self.recent_chats.append(chat_text)
-
             # Parse message content using pattern
             pattern = r'souler\[.+\]说：:(.+)'
             match = re.match(pattern, chat_text)

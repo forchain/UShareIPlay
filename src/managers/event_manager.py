@@ -204,7 +204,7 @@ class EventManager(Singleton):
         except Exception as e:
             self.logger.error(f"Error loading events: {traceback.format_exc()}")
 
-    def _find_element_in_page_source(self, root: etree._Element, element_key: str) -> Optional[etree._Element]:
+    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[etree._Element]:
         """
         在 page_source 中查找元素
         
@@ -215,6 +215,7 @@ class EventManager(Singleton):
         Args:
             root: page_source 的根元素
             element_key: 配置中的元素 key
+            module: 事件模块（可选），用于检查 __multiple__ 属性
             
         Returns:
             找到的 lxml Element，未找到返回 None
@@ -228,10 +229,16 @@ class EventManager(Singleton):
             if element_value.startswith('//'):
                 # XPath 方式
                 results = root.xpath(element_value)
-                return results[0] if results else None
             else:
                 # ID 方式：查找 resource-id 匹配的元素
                 results = root.xpath(f"//*[@resource-id='{element_value}']")
+            
+            # 检查模块是否有 __multiple__ 属性
+            if module and hasattr(module, '__multiple__') and module.__multiple__:
+                # 返回所有匹配的元素（作为列表的第一个元素，实际是列表）
+                return results if results else None
+            else:
+                # 返回第一个元素（默认行为）
                 return results[0] if results else None
         except Exception as e:
             self.logger.debug(f"Error finding element {element_key}: {str(e)}")
@@ -262,24 +269,42 @@ class EventManager(Singleton):
             # 遍历所有注册的元素 key
             for element_key, module_name in self.element_to_event.items():
                 try:
-                    # 在 page_source 中查找元素
-                    xml_element = self._find_element_in_page_source(root, element_key)
+                    # 获取事件模块
+                    module = self.event_modules.get(module_name)
+                    
+                    # 在 page_source 中查找元素（传递 module 以检查 __multiple__ 属性）
+                    xml_element = self._find_element_in_page_source(root, element_key, module)
 
                     if xml_element is not None:
                         # 元素存在，触发事件
-                        module = self.event_modules.get(module_name)
                         if module and hasattr(module, 'event'):
-                            # 创建元素包装器
-                            wrapper = ElementWrapper(xml_element, self.handler, element_key)
-                            # 调用事件处理函数
-                            result = module.event.handle(element_key, wrapper)
-                            triggered_count += 1
-                            # self.logger.debug(f"Event triggered for {element_key}")
-                            
-                            # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
-                            if result is True:
-                                self.logger.debug(f"Event {element_key} returned True, stopping event processing")
-                                break
+                            # 检查是否是多个元素（列表）
+                            if isinstance(xml_element, list):
+                                # 多个元素，为每个元素创建 wrapper，然后将 wrapper 列表传给 handle
+                                wrapper_list = []
+                                for elem in xml_element:
+                                    wrapper = ElementWrapper(elem, self.handler, element_key)
+                                    wrapper_list.append(wrapper)
+                                
+                                # 直接将 wrapper 列表传给 handle（handle 方法会判断是否是列表）
+                                result = module.event.handle(element_key, wrapper_list)
+                                triggered_count += 1
+                                
+                                # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
+                                if result is True:
+                                    self.logger.debug(f"Event {element_key} returned True, stopping event processing")
+                                    break
+                            else:
+                                # 单个元素，创建包装器并调用处理函数
+                                wrapper = ElementWrapper(xml_element, self.handler, element_key)
+                                result = module.event.handle(element_key, wrapper)
+                                triggered_count += 1
+                                # self.logger.debug(f"Event triggered for {element_key}")
+                                
+                                # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
+                                if result is True:
+                                    self.logger.debug(f"Event {element_key} returned True, stopping event processing")
+                                    break
 
                 except Exception as e:
                     self.logger.error(f"Error processing event for {element_key}: {str(e)}")

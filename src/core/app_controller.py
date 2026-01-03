@@ -46,7 +46,7 @@ class AppController(Singleton):
 
         # Non-UI operations task
         self._non_ui_task = None
-        
+
         # Driver重建防护标志
         self._is_reinitializing = False
 
@@ -115,52 +115,52 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.warning("Driver正在重建中，跳过重复请求")
             return False
-            
+
         self._is_reinitializing = True
         try:
             if self.logger:
                 self.logger.warning("==== 开始重建driver ====")
-            
+
             # 1. 关闭旧driver
             try:
                 self.driver.quit()
             except Exception as e:
                 if self.logger:
                     self.logger.debug(f"关闭旧driver出错: {str(e)}")
-            
+
             # 2. 等待清理
             time.sleep(2)
-            
+
             # 3. 创建新driver
             self.driver = self._init_driver()
             if self.logger:
                 self.logger.info("新driver创建成功")
-            
+
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
                 self.soul_handler.driver = self.driver
                 if self.logger:
                     self.logger.debug("更新 soul_handler.driver")
-                
+
             if self.music_handler:
                 self.music_handler.driver = self.driver
                 if self.logger:
                     self.logger.debug("更新 music_handler.driver")
-            
+
             # 5. 更新music_manager（关键修复！）
             if hasattr(self, 'music_manager') and self.music_manager:
                 self.music_manager.driver = self.driver
                 if self.logger:
                     self.logger.debug("更新 music_manager.driver")
-            
+
             # 6. 切换回应用
             if self.soul_handler:
                 self.soul_handler.switch_to_app()
-            
+
             if self.logger:
                 self.logger.info("==== Driver重建完成 ====")
             return True
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
@@ -362,30 +362,6 @@ class AppController(Singleton):
                 except queue.Empty:
                     pass
 
-                # Monitor Soul messages
-                messages = await self.soul_handler.message_manager.get_latest_messages()
-
-                if messages == 'ABNORMAL_STATE':
-                    # Unable to access message list - abnormal state
-                    self.recovery_manager.mark_abnormal_state()
-                elif messages:
-                    # New messages found - process them
-                    await self.command_manager.handle_message_commands(messages)
-                else:
-                    if not self.recovery_manager.manual_mode_enabled:
-                        # Process queue messages (timer messages, etc.)
-                        await self._process_queue_messages()
-
-                        # No new messages - check for risk elements
-                        # self.recovery_manager.handle_risk_elements()
-
-                        # Update all commands
-                        self.command_manager.update_commands()
-
-                    # update playback info
-                    self.info_manager.update_playback_info_cache()
-
-                    await asyncio.sleep(1)
 
                 # clear error once back to normal
                 error_count = 0

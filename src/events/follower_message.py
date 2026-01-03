@@ -71,7 +71,7 @@ class FollowerMessageEvent(BaseEvent):
             # 记录到聊天日志
             from ..managers.message_manager import get_chat_logger
             chat_logger = get_chat_logger(self.handler.config)
-            chat_logger.info(message_text)
+            chat_logger.critical(message_text)
 
             # 解析用户名
             nickname = self._parse_nickname(message_text)
