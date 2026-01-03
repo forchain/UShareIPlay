@@ -269,7 +269,7 @@ class EventManager(Singleton):
                             # 调用事件处理函数
                             module.event.handle(element_key, wrapper)
                             triggered_count += 1
-                            self.logger.debug(f"Event triggered for {element_key}")
+                            # self.logger.debug(f"Event triggered for {element_key}")
 
                 except Exception as e:
                     self.logger.error(f"Error processing event for {element_key}: {str(e)}")
