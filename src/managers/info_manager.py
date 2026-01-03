@@ -19,6 +19,7 @@ class InfoManager(Singleton):
         self._party_manager = None
         self._online_users: Set[str] = set()
         self._user_count: Optional[int] = None  # 在线人数
+        self._room_id: Optional[str] = None  # 房间ID
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
@@ -176,10 +177,33 @@ class InfoManager(Singleton):
             self.logger.info(f"User count updated: {self._user_count} -> {value}")
         self._user_count = value
     
+    @property
+    def room_id(self) -> Optional[str]:
+        """
+        获取房间ID
+        
+        Returns:
+            Optional[str]: 房间ID，如果未初始化则返回 None
+        """
+        return self._room_id
+    
+    @room_id.setter
+    def room_id(self, value: str):
+        """
+        设置房间ID
+        
+        Args:
+            value: 房间ID
+        """
+        if self._room_id != value:
+            self.logger.info(f"Room ID updated: {self._room_id} -> {value}")
+        self._room_id = value
+    
     def clear(self):
         """清空在线用户列表"""
         self._online_users.clear()
         self._user_count = None
+        self._room_id = None
         self.logger.info("Cleared online users list")
     
     def get_party_duration_info(self) -> Optional[str]:
