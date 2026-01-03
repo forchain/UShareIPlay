@@ -376,14 +376,7 @@ class AppController(Singleton):
 
         while self.is_running:
             try:
-                # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
-                page_source = self.event_manager.get_page_source()
-
-                # 处理事件（基于 page_source 检测元素并触发事件）
-                if page_source:
-                    self.event_manager.process_events(page_source)
-
-                # Check for console input
+                # Check for console input (高优先级，在事件管理器前处理)
                 try:
                     while not self.input_queue.empty():
                         message = self.input_queue.get_nowait()
@@ -392,6 +385,13 @@ class AppController(Singleton):
                             self.soul_handler.send_message(message)
                 except queue.Empty:
                     pass
+
+                # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
+                page_source = self.event_manager.get_page_source()
+
+                # 处理事件（基于 page_source 检测元素并触发事件）
+                if page_source:
+                    self.event_manager.process_events(page_source)
 
                 # clear error once back to normal
                 error_count = 0

@@ -314,6 +314,14 @@ class EventManager(Singleton):
         except Exception as e:
             self.logger.error(f"Error in process_events: {traceback.format_exc()}")
 
+        # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
+        if triggered_count == 0:
+            try:
+                self.handler.press_back()
+                self.logger.warning("No events triggered, pressed back to exit unknown page")
+            except Exception as e:
+                self.logger.debug(f"Failed to press back: {str(e)}")
+
         return triggered_count
 
     def get_page_source(self) -> Optional[str]:
