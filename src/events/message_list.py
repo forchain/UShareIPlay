@@ -21,7 +21,7 @@ class MessageListEvent(BaseEvent):
         """
         # 默认实现：输出元素信息
         element_id = element_wrapper.get_attribute('resource-id') if element_wrapper else 'Unknown'
-        self.logger.debug(f"MessageListEvent: key={key}, id={element_id}")
+        # self.logger.debug(f"MessageListEvent: key={key}, id={element_id}")
         
         # 这里可以添加自定义逻辑，例如：
         # - 检查是否有新消息
