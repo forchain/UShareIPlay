@@ -74,17 +74,21 @@ class InfoCommand(BaseCommand):
             info_manager = InfoManager.instance()
             info_manager.update()
             
-            # Check and log user count changes
-            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
-            if not user_count_elem:
+            # Check and log user count changes (从 InfoManager 读取)
+            current_count = info_manager.user_count
+            if current_count is None:
                 return
 
-            current_count = user_count_elem.text
             if current_count == self.last_user_count:
                 return
 
             self.handler.logger.info(f"User count changed: {self.last_user_count} -> {current_count}")
             self.last_user_count = current_count
+
+            # 点击 user_count 元素打开在线用户列表
+            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
+            if not user_count_elem:
+                return
 
             user_count_elem.click()
             self.handler.logger.info("Clicked user count element")
@@ -95,13 +99,8 @@ class InfoCommand(BaseCommand):
                 self.handler.logger.error("Online users container not found")
                 return
 
-            # 解析目标人数（例如 "6人"）
-            target_count = None
-            try:
-                m = re.search(r"(\d+)", current_count or "")
-                target_count = int(m.group(1)) if m else None
-            except Exception:
-                target_count = None
+            # 解析目标人数（从 InfoManager 获取）
+            target_count = current_count
 
             all_online_user_names = set()
             prev_size = 0
