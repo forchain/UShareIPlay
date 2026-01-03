@@ -89,7 +89,7 @@ class FollowerMessageEvent(BaseEvent):
                 self.logger.warning(f"Failed to parse nickname from message: {message_text}")
 
             # 等待并点击打招呼按钮
-            greet_follower = self.handler.wait_for_element_clickable_plus('greet_follower', timeout=3)
+            greet_follower = self.handler.try_find_element_plus('greet_follower')
             if not greet_follower:
                 self.logger.warning("Failed to find greet button")
                 return False

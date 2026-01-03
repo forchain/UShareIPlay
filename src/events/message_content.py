@@ -10,10 +10,10 @@ __multiple__ = True
 import re
 import asyncio
 
-from managers.info_manager import InfoManager
-from managers.recovery_manager import RecoveryManager
-from managers.command_manager import CommandManager
-from managers.message_manager import MessageManager
+from ..managers.info_manager import InfoManager
+from ..managers.recovery_manager import RecoveryManager
+from ..managers.command_manager import CommandManager
+from ..managers.message_manager import MessageManager
 from ..core.base_event import BaseEvent
 
 
@@ -23,10 +23,10 @@ class MessageContentEvent(BaseEvent):
     def _is_user_enter_message(self, message: str) -> tuple[bool, str]:
         """
         检查消息是否是用户进入通知
-        
+
         Args:
             message: 消息文本
-            
+
         Returns:
             tuple[bool, str]: (是否是进入消息, 用户名)
         """
@@ -39,16 +39,16 @@ class MessageContentEvent(BaseEvent):
     def handle(self, key: str, element_wrapper):
         """
         处理消息内容事件
-        
+
         处理消息内容元素列表：
         1. 遍历所有消息，记录新消息到日志
         2. 检查用户进入消息
         3. 如果满足命令格式，调用 get_latest_messages 获取命令
-        
+
         Args:
             key: 触发事件的元素 key，这里是 'message_content'
             element_wrapper: ElementWrapper 实例或 ElementWrapper 列表（当 __multiple__ = True 时）
-            
+
         Returns:
             bool: 默认返回 False，不中断后续处理
         """
@@ -66,10 +66,12 @@ class MessageContentEvent(BaseEvent):
 
             # 获取 MessageManager 实例，使用其 recent_chats
             from ..managers.message_manager import MessageManager
+
             message_manager = MessageManager.instance()
 
             # 获取聊天日志记录器
             from ..managers.message_manager import get_chat_logger
+
             chat_logger = get_chat_logger(self.handler.config)
 
             # 标记是否有命令消息
@@ -92,18 +94,18 @@ class MessageContentEvent(BaseEvent):
                     # 通知所有命令
                     asyncio.create_task(self._notify_user_enter(username))
 
-                # 记录到聊天日志
-                chat_logger.info(chat_text)
-                
                 # 添加到 recent_chats（维护最近的消息列表）
                 message_manager.recent_chats.append(chat_text)
 
                 # 检查是否满足命令格式
-                pattern = r'souler\[.+\]说：:(.+)'
+                pattern = r"souler\[.+\]说：:(.+)"
                 match = re.match(pattern, chat_text)
                 if match:
                     # 标记有命令消息
                     has_command_message = True
+                    chat_logger.critical(chat_text)
+                else:
+                    chat_logger.info(chat_text)
 
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
@@ -127,17 +129,19 @@ class MessageContentEvent(BaseEvent):
         """处理命令消息 - 调用 get_latest_messages 获取命令"""
         try:
             message_manager = MessageManager.instance()
-            
+
             # 调用 get_latest_messages 获取命令消息
             messages = await message_manager.get_latest_messages()
-            
+
             if messages:
                 # 有新的命令消息，触发命令处理
                 command_manager = CommandManager.instance()
                 await command_manager.handle_message_commands(messages)
-            elif messages == 'ABNORMAL_STATE':
+            elif messages == "ABNORMAL_STATE":
                 self.handler.press_back()
-                self.logger.error("Failed to get latest messages, press back to exit abnormal state")
+                self.logger.error(
+                    "Failed to get latest messages, press back to exit abnormal state"
+                )
             elif messages is None:
                 recovery_manager = RecoveryManager.instance()
                 if not recovery_manager.manual_mode_enabled:
@@ -171,12 +175,9 @@ class MessageContentEvent(BaseEvent):
 
                 # 通过 CommandManager 处理所有消息
                 command_manager = CommandManager.instance()
-                response = await command_manager.handle_message_commands(
-                    queue_messages
-                )
+                response = await command_manager.handle_message_commands(queue_messages)
                 if response:
                     self.handler.send_message(response)
 
         except Exception as e:
             self.logger.error(f"Error processing queue messages: {str(e)}")
-

@@ -280,7 +280,6 @@ class AppController(Singleton):
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
-
     async def _async_non_ui_operations_loop(self):
         """
         异步后台任务，定期执行非 UI 操作
@@ -366,10 +365,7 @@ class AppController(Singleton):
                     pass
 
                 # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
-                page_source = self.event_manager.get_page_source()
-
-                # 处理事件（基于 page_source 检测元素并触发事件）
-                if page_source:
+                if page_source := self.event_manager.get_page_source():
                     self.event_manager.process_events(page_source)
 
                 # clear error once back to normal
@@ -379,6 +375,9 @@ class AppController(Singleton):
                         f"[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}"
                     )
                     return False
+
+                # 关键：让出事件循环时间片，否则 create_task() 排队的协程无法执行
+                await asyncio.sleep(1)
             except KeyboardInterrupt:
                 if not self.in_console_mode:
                     print("\nEntering console mode. Press Ctrl+C to exit...")
