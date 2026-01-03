@@ -62,7 +62,6 @@ class MessageManager(Singleton):
         """Initialize MessageManager with handler, previous messages, recent messages"""
         # 延迟初始化 handler，避免循环依赖
         self._handler = None
-        self._greeting_manager = None
         self._chat_logger = None
         self._recovery_manager = RecoveryManager.instance()
 
@@ -76,14 +75,6 @@ class MessageManager(Singleton):
             from ..handlers.soul_handler import SoulHandler
             self._handler = SoulHandler.instance()
         return self._handler
-
-    @property
-    def greeting_manager(self):
-        """延迟获取 GreetingManager 实例"""
-        if self._greeting_manager is None:
-            from .greeting_manager import GreetingManager
-            self._greeting_manager = GreetingManager.instance()
-        return self._greeting_manager
 
     @property
     def chat_logger(self):
@@ -120,15 +111,10 @@ class MessageManager(Singleton):
 
         for container in containers:
             command_info = await self.process_container_command(container)
-            greeting_info = await self.greeting_manager.process_container_greeting(container)
+            # Greeting 逻辑已迁移到事件系统，不再需要在这里处理
 
             if command_info:
                 current_messages[container.id] = command_info
-            if greeting_info:
-                current_messages[container.id] = greeting_info
-                #  log only, no need to save in recent messages
-                if chat := greeting_info.content:
-                    self.chat_logger.info(chat)
 
         # Update previous message IDs and return new messages
         new_messages = {}  # Changed from list to dict
