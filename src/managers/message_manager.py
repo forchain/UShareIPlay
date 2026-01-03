@@ -44,16 +44,29 @@ def get_chat_logger(config=None):
         # Clear any existing handlers
         if chat_logger.hasHandlers():
             chat_logger.handlers.clear()
+        
         log_file = f'{log_dir}/chat.log'
-        handler = logging.FileHandler(log_file, encoding='utf-8')
-        # Use ColoredFormatter without colors for file logging
-        formatter = ColoredFormatter(
+        
+        # File handler (without colors)
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_formatter = ColoredFormatter(
             fmt='%(asctime)s [%(levelname)s] %(message)s',
             datefmt='%m-%d %H:%M:%S',
             use_colors=False
         )
-        handler.setFormatter(formatter)
-        chat_logger.addHandler(handler)
+        file_handler.setFormatter(file_formatter)
+        chat_logger.addHandler(file_handler)
+        
+        # Console handler (with colors for critical level highlighting)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = ColoredFormatter(
+            fmt='%(asctime)s [%(levelname)s] %(message)s',
+            datefmt='%m-%d %H:%M:%S',
+            use_colors=True
+        )
+        console_handler.setFormatter(console_formatter)
+        chat_logger.addHandler(console_handler)
     return chat_logger
 
 
