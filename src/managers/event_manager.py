@@ -9,7 +9,7 @@ import importlib
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from lxml import etree
 
@@ -160,7 +160,12 @@ class EventManager(Singleton):
             self.event_modules[module_name] = module
 
             # 建立元素 key 到模块的映射
-            element_keys = self._parse_module_name(module_name)
+            # 优先使用 __elements__ 字段，如果不存在则从文件名解析
+            if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
+                element_keys = module.__elements__
+            else:
+                element_keys = self._parse_module_name(module_name)
+            
             for key in element_keys:
                 self.element_to_event[key] = module_name
 
@@ -267,9 +272,14 @@ class EventManager(Singleton):
                             # 创建元素包装器
                             wrapper = ElementWrapper(xml_element, self.handler, element_key)
                             # 调用事件处理函数
-                            module.event.handle(element_key, wrapper)
+                            result = module.event.handle(element_key, wrapper)
                             triggered_count += 1
                             # self.logger.debug(f"Event triggered for {element_key}")
+                            
+                            # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
+                            if result is True:
+                                self.logger.debug(f"Event {element_key} returned True, stopping event processing")
+                                break
 
                 except Exception as e:
                     self.logger.error(f"Error processing event for {element_key}: {str(e)}")

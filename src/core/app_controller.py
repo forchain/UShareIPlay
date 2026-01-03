@@ -377,7 +377,7 @@ class AppController(Singleton):
                         await self._process_queue_messages()
 
                         # No new messages - check for risk elements
-                        self.recovery_manager.handle_risk_elements()
+                        # self.recovery_manager.handle_risk_elements()
 
                         # Update all commands
                         self.command_manager.update_commands()

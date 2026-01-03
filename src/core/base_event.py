@@ -36,9 +36,13 @@ class BaseEvent(ABC):
             key: 触发事件的元素 key（来自 config.yaml 中的 elements）
             element_wrapper: ElementWrapper 实例，包装了从 page_source 解析出的元素
         
+        Returns:
+            bool: 如果返回 True，将中断后续事件处理，进入下一轮循环。默认返回 None/False。
+        
         默认实现输出元素的 key 和 resource-id
         子类应该重写此方法以实现具体的事件处理逻辑
         """
         element_id = element_wrapper.get_attribute('resource-id') if element_wrapper else 'Unknown'
         self.logger.info(f"Event triggered: key={key}, id={element_id}")
+        return False
 

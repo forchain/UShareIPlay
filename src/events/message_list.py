@@ -18,6 +18,9 @@ class MessageListEvent(BaseEvent):
         Args:
             key: 触发事件的元素 key，这里是 'message_list'
             element_wrapper: ElementWrapper 实例，包装了消息列表元素
+            
+        Returns:
+            bool: 默认返回 False，不中断后续处理
         """
         # 默认实现：输出元素信息
         element_id = element_wrapper.get_attribute('resource-id') if element_wrapper else 'Unknown'
@@ -27,4 +30,6 @@ class MessageListEvent(BaseEvent):
         # - 检查是否有新消息
         # - 获取消息内容
         # - 触发消息处理
+        
+        return False
 
