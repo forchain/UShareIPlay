@@ -41,6 +41,8 @@ def get_chat_logger(config=None):
         # Create chat logger
         chat_logger = logging.getLogger('chat')
         chat_logger.setLevel(logging.INFO)
+        # 禁用传播到父 logger，避免被其他 logger 的处理器处理（丢失颜色）
+        chat_logger.propagate = False
         # Clear any existing handlers
         if chat_logger.hasHandlers():
             chat_logger.handlers.clear()
