@@ -1,5 +1,4 @@
 from .base import SeatManagerBase
-from .focus import FocusManager
 from .reservation import ReservationManager
 from .seat_check import SeatCheckManager
 from .seat_ui import SeatUIManager
@@ -22,7 +21,7 @@ class SeatManager(SeatManagerBase):
         if not hasattr(self, 'initialized'):
             super().__init__(handler)
             # Initialize component managers
-            self.focus = FocusManager(handler)
+            # FocusManager 已迁移到事件系统，不再需要
             self.reservation = ReservationManager(handler)
             self.check = SeatCheckManager(handler)
             self.ui = SeatUIManager(handler)
@@ -33,7 +32,6 @@ class SeatManager(SeatManagerBase):
             # 如果已经初始化过，但handler为None，更新handler
             logging.getLogger('seat_manager').info(f"更新 SeatManager 的 handler: {handler}")
             self.handler = handler
-            self.focus.handler = handler
             self.reservation.handler = handler
             self.check.handler = handler
             self.ui.handler = handler

@@ -62,12 +62,12 @@ class MessageManager(Singleton):
         """Initialize MessageManager with handler, previous messages, recent messages"""
         # 延迟初始化 handler，避免循环依赖
         self._handler = None
-        self._greeting_manager = None
         self._chat_logger = None
         self._recovery_manager = RecoveryManager.instance()
 
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
+        self.latest_chats = deque(maxlen=3)
 
     @property
     def handler(self):
@@ -76,14 +76,6 @@ class MessageManager(Singleton):
             from ..handlers.soul_handler import SoulHandler
             self._handler = SoulHandler.instance()
         return self._handler
-
-    @property
-    def greeting_manager(self):
-        """延迟获取 GreetingManager 实例"""
-        if self._greeting_manager is None:
-            from .greeting_manager import GreetingManager
-            self._greeting_manager = GreetingManager.instance()
-        return self._greeting_manager
 
     @property
     def chat_logger(self):
@@ -120,15 +112,10 @@ class MessageManager(Singleton):
 
         for container in containers:
             command_info = await self.process_container_command(container)
-            greeting_info = await self.greeting_manager.process_container_greeting(container)
+            # Greeting 逻辑已迁移到事件系统，不再需要在这里处理
 
             if command_info:
                 current_messages[container.id] = command_info
-            if greeting_info:
-                current_messages[container.id] = greeting_info
-                #  log only, no need to save in recent messages
-                if chat := greeting_info.content:
-                    self.chat_logger.info(chat)
 
         # Update previous message IDs and return new messages
         new_messages = {}  # Changed from list to dict
@@ -160,13 +147,7 @@ class MessageManager(Singleton):
                 self.handler.logger.error("Failed to find message list")
                 return 'ABNORMAL_STATE'
 
-        # Collapse seats if expanded and update focus count
-        seat_manager = self._get_seat_manager()
-
-        # 更新焦点计数
-        if seat_manager and hasattr(seat_manager, 'focus'):
-            # self.handler.logger.info("更新焦点计数...")
-            seat_manager.focus.update()
+        # 专注数监控已迁移到事件系统，不再需要手动调用
 
         # Get all ViewGroup containers
         try:
@@ -180,8 +161,7 @@ class MessageManager(Singleton):
 
         new_chat = None
         latest_chat = None
-        for container in containers:
-            chat = self.get_chat_text(container)
+        for chat in self.latest_chats:
             if not new_chat and chat:
                 new_chat = chat
             if chat:
@@ -227,7 +207,7 @@ class MessageManager(Singleton):
             try:
                 # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
                 # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
-                self._recovery_manager.handle_risk_elements()
+                # self._recovery_manager.handle_risk_elements()
                 key, element = self.handler.scroll_container_until_element(
                     'message_content',
                     'message_list',
@@ -333,25 +313,6 @@ class MessageManager(Singleton):
             chat_text = self.get_chat_text(container)
             if not chat_text:
                 return None
-
-            # Check for duplicate message
-            if chat_text not in self.recent_chats:
-                is_enter, username = self.is_user_enter_message(chat_text)
-                if is_enter:
-                    self.handler.logger.critical(f"User entered: {username}")
-                    # Notify all commands via CommandManager
-                    from .command_manager import CommandManager
-                    command_manager = CommandManager.instance()
-                    command_modules = command_manager.get_command_modules()
-                    for module in command_modules.values():
-                        try:
-                            if hasattr(module.command, 'user_enter'):
-                                await module.command.user_enter(username)
-                        except Exception:
-                            self.handler.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
-                        continue
-                self.chat_logger.info(chat_text)
-                self.recent_chats.append(chat_text)
 
             # Parse message content using pattern
             pattern = r'souler\[.+\]说：:(.+)'
