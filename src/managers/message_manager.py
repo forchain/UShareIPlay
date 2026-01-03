@@ -160,13 +160,7 @@ class MessageManager(Singleton):
                 self.handler.logger.error("Failed to find message list")
                 return 'ABNORMAL_STATE'
 
-        # Collapse seats if expanded and update focus count
-        seat_manager = self._get_seat_manager()
-
-        # 更新焦点计数
-        if seat_manager and hasattr(seat_manager, 'focus'):
-            # self.handler.logger.info("更新焦点计数...")
-            seat_manager.focus.update()
+        # 专注数监控已迁移到事件系统，不再需要手动调用
 
         # Get all ViewGroup containers
         try:

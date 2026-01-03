@@ -27,6 +27,7 @@ class BaseEvent(ABC):
         """
         self.handler = handler
         self.logger = handler.logger
+        self.controller = handler.controller if hasattr(handler, 'controller') else None
 
     def handle(self, key: str, element_wrapper):
         """
