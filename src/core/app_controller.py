@@ -12,6 +12,7 @@ from .singleton import Singleton
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
+from ..managers.event_manager import EventManager
 
 
 class AppController(Singleton):
@@ -41,6 +42,7 @@ class AppController(Singleton):
         self.seat_manager = None
         self.recovery_manager = None
         self.music_manager = None
+        self.event_manager = None
 
         # Non-UI operations task
         self._non_ui_task = None
@@ -235,6 +237,12 @@ class AppController(Singleton):
             print("初始化命令解析器...")
             self.command_manager.initialize_parser(self.config['commands'])
 
+            # Initialize event manager
+            print("初始化事件管理器...")
+            self.event_manager = EventManager.instance()
+            self.event_manager.initialize()
+            print("事件管理器初始化完成")
+
             self.logger.info("Handlers and managers initialized successfully")
             print("所有 handlers 和 managers 初始化完成")
 
@@ -330,6 +338,13 @@ class AppController(Singleton):
 
         while self.is_running:
             try:
+                # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
+                page_source = self.event_manager.get_page_source()
+
+                # 处理事件（基于 page_source 检测元素并触发事件）
+                if page_source:
+                    self.event_manager.process_events(page_source)
+
                 # 异常检测和恢复 - 在每次循环的最开始执行
                 recovery_performed = self.recovery_manager.check_and_recover()
                 if recovery_performed:
