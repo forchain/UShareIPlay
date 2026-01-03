@@ -7,14 +7,14 @@
 
 __multiple__ = True
 
-import re
 import asyncio
+import re
 
-from ..managers.info_manager import InfoManager
-from ..managers.recovery_manager import RecoveryManager
-from ..managers.command_manager import CommandManager
-from ..managers.message_manager import MessageManager
 from ..core.base_event import BaseEvent
+from ..managers.command_manager import CommandManager
+from ..managers.info_manager import InfoManager
+from ..managers.message_manager import MessageManager
+from ..managers.recovery_manager import RecoveryManager
 
 
 class MessageContentEvent(BaseEvent):
@@ -84,7 +84,7 @@ class MessageContentEvent(BaseEvent):
                     continue
 
                 # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.recent_chats:
+                if chat_text in message_manager.latest_chats:
                     continue
 
                 # 检查用户进入消息
@@ -95,7 +95,7 @@ class MessageContentEvent(BaseEvent):
                     asyncio.create_task(self._notify_user_enter(username))
 
                 # 添加到 recent_chats（维护最近的消息列表）
-                message_manager.recent_chats.append(chat_text)
+                message_manager.latest_chats.append(chat_text)
 
                 # 检查是否满足命令格式
                 pattern = r"souler\[.+\]说：:(.+)"
@@ -132,6 +132,9 @@ class MessageContentEvent(BaseEvent):
 
             # 调用 get_latest_messages 获取命令消息
             messages = await message_manager.get_latest_messages()
+
+            message_manager.recent_chats = message_manager.latest_chats
+            message_manager.latest_chats = []
 
             if messages:
                 # 有新的命令消息，触发命令处理

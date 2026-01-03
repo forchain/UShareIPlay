@@ -67,6 +67,7 @@ class MessageManager(Singleton):
 
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
+        self.latest_chats = deque(maxlen=3)
 
     @property
     def handler(self):
@@ -160,8 +161,7 @@ class MessageManager(Singleton):
 
         new_chat = None
         latest_chat = None
-        for container in containers:
-            chat = self.get_chat_text(container)
+        for chat in self.latest_chats:
             if not new_chat and chat:
                 new_chat = chat
             if chat:
