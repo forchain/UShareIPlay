@@ -148,22 +148,14 @@ class PartyManager(Singleton):
         返回人数，如果获取失败返回-1
         """
         try:
-            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
-            if not user_count_elem:
+            # 从 InfoManager 获取在线人数
+            from .info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            user_count = info_manager.user_count
+            
+            if user_count is None:
                 return -1
-
-            user_count_text = user_count_elem.text
-            # 解析人数文本，例如 "5人" -> 5
-            if '人' in user_count_text:
-                count_str = user_count_text.replace('人', '').strip()
-                try:
-                    return int(count_str)
-                except ValueError:
-                    self.logger.warning(f"无法解析人数文本: {user_count_text}")
-                    return -1
-            else:
-                self.logger.warning(f"人数文本格式异常: {user_count_text}")
-                return -1
+            return user_count
 
         except Exception as e:
             self.logger.error(f"获取派对人数时出错: {traceback.format_exc()}")
