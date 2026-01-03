@@ -280,27 +280,6 @@ class AppController(Singleton):
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
-    async def _process_queue_messages(self):
-        """Process messages from the async queue (timer messages, etc.)"""
-        try:
-            from ..core.message_queue import MessageQueue
-
-            message_queue = MessageQueue.instance()
-
-            # Get all messages from queue
-            queue_messages = await message_queue.get_all_messages()
-            if queue_messages:
-                self.logger.info(f"Processing {len(queue_messages)} queue messages")
-
-                # Process all messages through CommandManager
-                response = await self.command_manager.handle_message_commands(
-                    queue_messages
-                )
-                if response:
-                    self.soul_handler.send_message(response)
-
-        except Exception as e:
-            self.logger.error(f"Error processing queue messages: {str(e)}")
 
     async def _async_non_ui_operations_loop(self):
         """

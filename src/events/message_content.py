@@ -157,3 +157,26 @@ class MessageContentEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error processing command messages: {str(e)}")
 
+    async def _process_queue_messages(self):
+        """处理异步队列中的消息（定时器消息等）"""
+        try:
+            from ..core.message_queue import MessageQueue
+
+            message_queue = MessageQueue.instance()
+
+            # 获取队列中的所有消息
+            queue_messages = await message_queue.get_all_messages()
+            if queue_messages:
+                self.logger.info(f"Processing {len(queue_messages)} queue messages")
+
+                # 通过 CommandManager 处理所有消息
+                command_manager = CommandManager.instance()
+                response = await command_manager.handle_message_commands(
+                    queue_messages
+                )
+                if response:
+                    self.handler.send_message(response)
+
+        except Exception as e:
+            self.logger.error(f"Error processing queue messages: {str(e)}")
+
