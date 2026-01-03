@@ -136,9 +136,8 @@ class MessageContentEvent(BaseEvent):
                 command_manager = CommandManager.instance()
                 await command_manager.handle_message_commands(messages)
             elif messages == 'ABNORMAL_STATE':
-                recovery_manager = RecoveryManager.instance()
-                recovery_manager.mark_abnormal_state()
-                self.logger.error("Failed to get latest messages")
+                self.handler.press_back()
+                self.logger.error("Failed to get latest messages, press back to exit abnormal state")
             elif messages is None:
                 recovery_manager = RecoveryManager.instance()
                 if not recovery_manager.manual_mode_enabled:

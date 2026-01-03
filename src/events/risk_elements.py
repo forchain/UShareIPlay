@@ -12,10 +12,14 @@
 
 __event__ = "RiskElementsEvent"
 __elements__ = [
-    'claim_reward_button',
-    'new_message_tip',
-    'close_button',
     'collapse_seats',
+    'new_message_tip',
+    'floating_entry',
+
+    'close_button',
+    'claim_reward_button',
+    'party_ended',
+    'confirm_close_3',
 ]
 
 from ..core.base_event import BaseEvent

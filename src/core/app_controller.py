@@ -58,26 +58,42 @@ class AppController(Singleton):
             print("正在启动应用...")
 
             # 启动QQ Music
-            qq_music_package = self.config['qq_music']['package_name']
+            qq_music_package = self.config["qq_music"]["package_name"]
             print(f"正在启动QQ Music: {qq_music_package}")
 
             # 使用adb启动QQ Music
-            subprocess.run([
-                'adb', '-s', self.config['device']['name'],
-                'shell', 'am', 'start', '-n',
-                f"{qq_music_package}/{self.config['qq_music']['search_activity']}"
-            ], check=True)
+            subprocess.run(
+                [
+                    "adb",
+                    "-s",
+                    self.config["device"]["name"],
+                    "shell",
+                    "am",
+                    "start",
+                    "-n",
+                    f"{qq_music_package}/{self.config['qq_music']['search_activity']}",
+                ],
+                check=True,
+            )
 
             # 启动Soul app
-            soul_package = self.config['soul']['package_name']
+            soul_package = self.config["soul"]["package_name"]
             print(f"正在启动Soul app: {soul_package}")
 
             # 使用adb启动Soul app
-            subprocess.run([
-                'adb', '-s', self.config['device']['name'],
-                'shell', 'am', 'start', '-n',
-                f"{soul_package}/{self.config['soul']['chat_activity']}"
-            ], check=True)
+            subprocess.run(
+                [
+                    "adb",
+                    "-s",
+                    self.config["device"]["name"],
+                    "shell",
+                    "am",
+                    "start",
+                    "-n",
+                    f"{soul_package}/{self.config['soul']['chat_activity']}",
+                ],
+                check=True,
+            )
 
             print("应用启动完成")
 
@@ -92,17 +108,23 @@ class AppController(Singleton):
         options = AppiumOptions()
 
         # 设置基本能力
-        options.set_capability('platformName', self.config['device']['platform_name'])
-        options.set_capability('platformVersion', self.config['device']['platform_version'])
-        options.set_capability('deviceName', self.config['device']['name'])
-        options.set_capability('automationName', self.config['device']['automation_name'])
-        options.set_capability('noReset', self.config['device']['no_reset'])
+        options.set_capability("platformName", self.config["device"]["platform_name"])
+        options.set_capability(
+            "platformVersion", self.config["device"]["platform_version"]
+        )
+        options.set_capability("deviceName", self.config["device"]["name"])
+        options.set_capability(
+            "automationName", self.config["device"]["automation_name"]
+        )
+        options.set_capability("noReset", self.config["device"]["no_reset"])
 
         # 设置应用信息
-        options.set_capability('appPackage', self.config['soul']['package_name'])
-        options.set_capability('appActivity', self.config['soul']['chat_activity'])
+        options.set_capability("appPackage", self.config["soul"]["package_name"])
+        options.set_capability("appActivity", self.config["soul"]["chat_activity"])
 
-        server_url = f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
+        server_url = (
+            f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
+        )
         return webdriver.Remote(command_executor=server_url, options=options)
 
     def reinitialize_driver(self) -> bool:
@@ -148,7 +170,7 @@ class AppController(Singleton):
                     self.logger.debug("更新 music_handler.driver")
 
             # 5. 更新music_manager（关键修复！）
-            if hasattr(self, 'music_manager') and self.music_manager:
+            if hasattr(self, "music_manager") and self.music_manager:
                 self.music_manager.driver = self.driver
                 if self.logger:
                     self.logger.debug("更新 music_manager.driver")
@@ -202,12 +224,20 @@ class AppController(Singleton):
 
             # Initialize handlers using singleton pattern
             print("初始化 SoulHandler...")
-            print(f"SoulHandler 参数: driver={type(self.driver)}, config={self.config['soul']}")
-            self.soul_handler = SoulHandler.instance(self.driver, self.config['soul'], self)
+            print(
+                f"SoulHandler 参数: driver={type(self.driver)}, config={self.config['soul']}"
+            )
+            self.soul_handler = SoulHandler.instance(
+                self.driver, self.config["soul"], self
+            )
             print("SoulHandler 初始化完成")
             print("初始化 QQMusicHandler...")
-            print(f"QQMusicHandler 参数: driver={type(self.driver)}, config={self.config['qq_music']}")
-            self.music_handler = QQMusicHandler.instance(self.driver, self.config['qq_music'], self)
+            print(
+                f"QQMusicHandler 参数: driver={type(self.driver)}, config={self.config['qq_music']}"
+            )
+            self.music_handler = QQMusicHandler.instance(
+                self.driver, self.config["qq_music"], self
+            )
             print("QQMusicHandler 初始化完成")
             self.logger = self.soul_handler.logger
             print("Handlers 初始化完成")
@@ -235,7 +265,7 @@ class AppController(Singleton):
 
             # Initialize command manager with config
             print("初始化命令解析器...")
-            self.command_manager.initialize_parser(self.config['commands'])
+            self.command_manager.initialize_parser(self.config["commands"])
 
             # Initialize event manager
             print("初始化事件管理器...")
@@ -254,6 +284,7 @@ class AppController(Singleton):
         """Process messages from the async queue (timer messages, etc.)"""
         try:
             from ..core.message_queue import MessageQueue
+
             message_queue = MessageQueue.instance()
 
             # Get all messages from queue
@@ -262,7 +293,9 @@ class AppController(Singleton):
                 self.logger.info(f"Processing {len(queue_messages)} queue messages")
 
                 # Process all messages through CommandManager
-                response = await self.command_manager.handle_message_commands(queue_messages)
+                response = await self.command_manager.handle_message_commands(
+                    queue_messages
+                )
                 if response:
                     self.soul_handler.send_message(response)
 
@@ -281,7 +314,9 @@ class AppController(Singleton):
                 self.logger.info("Non-UI operations loop cancelled")
                 break
             except Exception as e:
-                self.logger.error(f"Error in async non-UI operations loop: {traceback.format_exc()}")
+                self.logger.error(
+                    f"Error in async non-UI operations loop: {traceback.format_exc()}"
+                )
                 # 出错后等待一段时间再继续
                 await asyncio.sleep(2)
 
@@ -323,11 +358,14 @@ class AppController(Singleton):
             if self.recovery_manager.is_normal_state():
                 self.logger.info("检测到派对已存在，尝试给群主找座位")
                 from ..managers.seat_manager import seat_manager
+
                 result = seat_manager.seating.find_owner_seat()
-                if 'success' in result:
+                if "success" in result:
                     self.logger.info("服务器启动时成功给群主找到座位")
                 else:
-                    self.logger.warning(f"服务器启动时给群主找座位失败: {result.get('error', 'Unknown error')}")
+                    self.logger.warning(
+                        f"服务器启动时给群主找座位失败: {result.get('error', 'Unknown error')}"
+                    )
             else:
                 self.logger.info("派对不存在或状态异常，跳过座位检查")
         except Exception as e:
@@ -345,13 +383,6 @@ class AppController(Singleton):
                 if page_source:
                     self.event_manager.process_events(page_source)
 
-                # 异常检测和恢复 - 在每次循环的最开始执行
-                recovery_performed = self.recovery_manager.check_and_recover()
-                if recovery_performed:
-                    # 如果执行了恢复操作，等待一下让界面稳定
-                    await asyncio.sleep(1)
-                    continue
-
                 # Check for console input
                 try:
                     while not self.input_queue.empty():
@@ -362,12 +393,12 @@ class AppController(Singleton):
                 except queue.Empty:
                     pass
 
-
                 # clear error once back to normal
                 error_count = 0
                 if self.soul_handler.error_count > 9:
                     self.soul_handler.log_error(
-                        f'[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}')
+                        f"[start_monitoring]too many errors, try to rerun, traceback: {traceback.format_exc()}"
+                    )
                     return False
             except KeyboardInterrupt:
                 if not self.in_console_mode:
@@ -378,9 +409,13 @@ class AppController(Singleton):
                     self.is_running = False
                     return True
             except StaleElementReferenceException as e:
-                self.soul_handler.log_error(f'[start_monitoring]stale element, traceback: {traceback.format_exc()}')
+                self.soul_handler.log_error(
+                    f"[start_monitoring]stale element, traceback: {traceback.format_exc()}"
+                )
             except WebDriverException as e:
-                self.soul_handler.log_error(f'[start_monitoring]unknown error, traceback: {traceback.format_exc()}')
+                self.soul_handler.log_error(
+                    f"[start_monitoring]unknown error, traceback: {traceback.format_exc()}"
+                )
                 error_count += 1
                 if error_count > 9:
                     self.is_running = False
