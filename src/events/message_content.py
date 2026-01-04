@@ -83,8 +83,7 @@ class MessageContentEvent(BaseEvent):
                     continue
 
                 # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                # if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
-                if chat_text in message_manager.latest_chats:
+                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
                     continue
 
                 # 检查用户进入消息
