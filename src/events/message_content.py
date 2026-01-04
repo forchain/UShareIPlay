@@ -110,6 +110,9 @@ class MessageContentEvent(BaseEvent):
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
                 asyncio.create_task(self._process_command_messages())
+            else:
+                # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
+                asyncio.create_task(self._process_update_logic())
 
             return False
 
@@ -145,24 +148,26 @@ class MessageContentEvent(BaseEvent):
                 self.logger.error(
                     "Failed to get latest messages, press back to exit abnormal state"
                 )
-            elif messages is None:
-                recovery_manager = RecoveryManager.instance()
-                if not recovery_manager.manual_mode_enabled:
-                    # Process queue messages (timer messages, etc.)
-                    await self._process_queue_messages()
-
-                    # Update all commands
-                    command_manager = CommandManager.instance()
-                    command_manager.update_commands()
-
-                # update playback info
-                info_manager = InfoManager.instance()
-                info_manager.update_playback_info_cache()
-
-                await asyncio.sleep(1)
-                self.logger.error("No new messages")
         except Exception as e:
             self.logger.error(f"Error processing command messages: {str(e)}")
+
+    async def _process_update_logic(self):
+        """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
+        try:
+            recovery_manager = RecoveryManager.instance()
+            if not recovery_manager.manual_mode_enabled:
+                # Process queue messages (timer messages, etc.)
+                await self._process_queue_messages()
+
+                # Update all commands
+                command_manager = CommandManager.instance()
+                command_manager.update_commands()
+
+            # update playback info
+            info_manager = InfoManager.instance()
+            info_manager.update_playback_info_cache()
+        except Exception as e:
+            self.logger.error(f"Error processing update logic: {str(e)}")
 
     async def _process_queue_messages(self):
         """处理异步队列中的消息（定时器消息等）"""
