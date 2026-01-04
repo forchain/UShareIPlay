@@ -12,7 +12,6 @@ import re
 from ..core.base_event import BaseEvent
 from ..managers.command_manager import CommandManager
 from ..managers.info_manager import InfoManager
-from ..managers.message_manager import MessageManager
 from ..managers.recovery_manager import RecoveryManager
 
 
@@ -76,15 +75,44 @@ class MessageContentEvent(BaseEvent):
             # 标记是否有命令消息
             has_command_message = False
 
-            # 处理所有消息元素
-            for wrapper in wrapper_list:
-                chat_text = wrapper.content
-                if not chat_text:
-                    continue
+            message_manager.latest_chats.clear()
+            recent_len = len(message_manager.recent_chats)
+            wrappers_len = len(wrapper_list)
+            missed = False
+            if recent_len == 0:
+                for wrapper in wrapper_list:
+                    if chat_text := wrapper.content:
+                        message_manager.latest_chats.append(chat_text)
+            else:
+                for i in range(recent_len):
+                    no_new = False
+                    for j in range(wrappers_len):
+                        wrapper = wrapper_list[j]
+                        chat_text = wrapper.content
+                        if not chat_text:
+                            continue
+                        ii = i + j
+                        if ii < recent_len:
+                            recent_chat = message_manager.recent_chats[ii]
+                            if chat_text != recent_chat:
+                                break
+                            if ii == recent_len - 1 and j == wrappers_len - 1:
+                                no_new = True
+                                break
+                        else:
+                            message_manager.latest_chats.append(chat_text)
+                    if no_new:
+                        break
+                    if len(message_manager.latest_chats) > 0:
+                        break
+                    elif i == recent_len - 1:
+                        missed = True
+                        for wrapper in wrapper_list:
+                            if chat_text := wrapper.content:
+                                message_manager.latest_chats.append(chat_text)
 
-                # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
-                    continue
+            # 处理所有消息元素
+            for chat_text in message_manager.latest_chats:
 
                 # 检查用户进入消息
                 is_enter, username = self._is_user_enter_message(chat_text)
@@ -92,9 +120,6 @@ class MessageContentEvent(BaseEvent):
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
                     await self._notify_user_enter(username)
-
-                # 添加到 recent_chats（维护最近的消息列表）
-                message_manager.latest_chats.append(chat_text)
 
                 # 检查是否满足命令格式
                 pattern = r"souler\[.+\]说：:(.+)"
@@ -106,23 +131,22 @@ class MessageContentEvent(BaseEvent):
                 else:
                     chat_logger.info(chat_text)
 
+            handled = False
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
                 messages = await message_manager.get_latest_messages()
-                await self._process_command_messages(messages)
+                handled = await self._process_command_messages(messages)
             else:
                 await self._process_update_logic()
 
-            # if message_manager.is_messages_missed():
-            #     messages = await message_manager.get_missed_messages()
-            #     await self._process_command_messages(messages)
+            if missed:
+                messages = await message_manager.get_missed_messages()
+                handled = await self._process_command_messages(messages)
 
-            # message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
-            # message_manager.latest_chats.clear()
 
-            return False
+            return handled
 
         except Exception as e:
             self.logger.error(f"Error processing message content event: {str(e)}")
@@ -139,19 +163,21 @@ class MessageContentEvent(BaseEvent):
     async def _process_command_messages(self, messages):
         """处理命令消息 - 调用 get_latest_messages 获取命令"""
         try:
-            message_manager = MessageManager.instance()
 
             if messages:
                 # 有新的命令消息，触发命令处理
                 command_manager = CommandManager.instance()
                 await command_manager.handle_message_commands(messages)
+                return True
             elif messages == "ABNORMAL_STATE":
                 self.handler.press_back()
                 self.logger.error(
                     "Failed to get latest messages, press back to exit abnormal state"
                 )
+            return False
         except Exception as e:
             self.logger.error(f"Error processing command messages: {str(e)}")
+            return False
 
     async def _process_update_logic(self):
         """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
