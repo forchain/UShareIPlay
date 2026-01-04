@@ -18,7 +18,6 @@ from ..managers.recovery_manager import RecoveryManager
 
 class MessageContentEvent(BaseEvent):
     """消息内容事件处理器"""
-    is_last_command = False
 
     def _is_user_enter_message(self, message: str) -> tuple[bool, str]:
         """
@@ -107,19 +106,10 @@ class MessageContentEvent(BaseEvent):
                 else:
                     chat_logger.info(chat_text)
 
-            if self.is_last_command:
-                self.logger.critical(f'recent_chats:{message_manager.recent_chats}')
-                self.logger.critical(f'latest_chats:{message_manager.latest_chats}')
-                self.logger.critical(f'is_messages_missed:{message_manager.is_messages_missed()}')
-
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
                 messages = await message_manager.get_latest_messages()
                 await self._process_command_messages(messages)
-                self.is_last_command = True
-
-            else:
-                self.is_last_command = False
 
             if message_manager.is_messages_missed():
                 messages = await message_manager.get_missed_messages()
