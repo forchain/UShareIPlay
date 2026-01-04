@@ -15,7 +15,7 @@ class FocusCountEvent(BaseEvent):
     # 类变量，维护上一次的专注数
     previous_focus_count = None
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理专注数事件
         

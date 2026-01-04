@@ -10,7 +10,7 @@ from ..core.base_event import BaseEvent
 class NewMessageTipEvent(BaseEvent):
     """新消息提示事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理新消息提示事件
         

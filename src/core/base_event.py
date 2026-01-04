@@ -29,7 +29,7 @@ class BaseEvent(ABC):
         self.logger = handler.logger
         self.controller = handler.controller if hasattr(handler, 'controller') else None
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理事件（默认实现）
         

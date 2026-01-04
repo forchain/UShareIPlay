@@ -10,7 +10,7 @@ from ..core.base_event import BaseEvent
 class RoomIdEvent(BaseEvent):
     """房间ID事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理房间ID事件
         

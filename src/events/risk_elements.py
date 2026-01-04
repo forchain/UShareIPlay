@@ -28,7 +28,7 @@ from ..core.base_event import BaseEvent
 class RiskElementsEvent(BaseEvent):
     """风险元素事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理风险元素事件
         
