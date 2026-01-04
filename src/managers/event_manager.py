@@ -297,7 +297,7 @@ class EventManager(Singleton):
                             else:
                                 # 单个元素，创建包装器并调用处理函数
                                 wrapper = ElementWrapper(xml_element, self.handler, element_key)
-                                result = module.event.handle(element_key, wrapper)
+                                result = await module.event.handle(element_key, wrapper)
                                 triggered_count += 1
                                 # self.logger.debug(f"Event triggered for {element_key}")
                                 
