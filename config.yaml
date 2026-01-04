@@ -298,6 +298,7 @@ qq_music:
     play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
+    list_title: '//android.widget.TextView[@text="单曲" or @text="视频" or @text="专辑" or @text="歌单"]'
     song_title: '//android.widget.TextView[@text="单曲"]'
     song_version: '//android.widget.TextView[@text="全部展开"]'
     studio_version: '//android.widget.RelativeLayout[@content-desc="录音室版 按钮"]'

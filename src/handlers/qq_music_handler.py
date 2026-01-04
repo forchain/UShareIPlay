@@ -148,7 +148,13 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        if from_key != 'home_nav':
+        need_select_tab = True
+        if from_key == 'home_nav':
+            if list_title := self.wait_for_element_plus('list_title'):
+                if list_title.text == '单曲':
+                    need_select_tab = False
+
+        if need_select_tab:
             self.select_song_tab()
 
         first_song = self.wait_for_element_plus('first_song')
@@ -611,10 +617,10 @@ class QQMusicHandler(AppHandler, Singleton):
 
                 song = elements[0]
                 if not song:
-                    self.logger.warning("Failed to find song in playlist")
+                    self.logger.info("Failed to find song in playlist")
                     continue
                 if len(elements) < 2:
-                    self.logger.warning("Failed to find singer in playlist")
+                    self.logger.info("Failed to find singer in playlist")
                     continue
                 singer = elements[1]
                 info = f'{song.text}{singer.text}' if singer else song.text

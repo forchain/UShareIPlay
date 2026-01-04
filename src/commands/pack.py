@@ -35,26 +35,20 @@ class PackCommand(BaseCommand):
     def update(self):
         """Check room count and auto open pack if needed"""
         try:
-            # Get user count element
-            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
-            if not user_count_elem:
+            # 从 InfoManager 获取在线人数
+            from ..managers.info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            count = info_manager.user_count
+            
+            if count is None:
                 return
 
-            # Extract number from text like "房间人数: 3"
-            count_text = user_count_elem.text
-            if not count_text:
-                return
-
-            try:
-                count = int(''.join(filter(str.isdigit, count_text)))
-                # Only check if count has changed
-                if count != self.previous_count:
-                    self.previous_count = count  # Update previous count
-                    if count > 5:
-                        self.auto_mode = True  # Auto mode
-                        self.open_luck_pack(user_count=count)  # Pass user count as parameter
-            except ValueError:
-                self.handler.logger.error(f"Failed to parse user count: {count_text}")
+            # Only check if count has changed
+            if count != self.previous_count:
+                self.previous_count = count  # Update previous count
+                if count > 5:
+                    self.auto_mode = True  # Auto mode
+                    self.open_luck_pack(user_count=count)  # Pass user count as parameter
 
         except Exception as e:
             self.handler.log_error(f"Error in pack update: {traceback.format_exc()}")
