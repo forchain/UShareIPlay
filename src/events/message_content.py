@@ -114,6 +114,8 @@ class MessageContentEvent(BaseEvent):
                 # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
                 await self._process_update_logic()
 
+            message_manager.recent_chats = copy.copy(message_manager.latest_chats)
+
             return False
 
         except Exception as e:
@@ -135,8 +137,6 @@ class MessageContentEvent(BaseEvent):
 
             # 调用 get_latest_messages 获取命令消息
             messages = await message_manager.get_latest_messages()
-
-            message_manager.recent_chats = copy.copy(message_manager.latest_chats)
 
             if messages:
                 # 有新的命令消息，触发命令处理
