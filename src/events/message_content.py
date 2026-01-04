@@ -81,6 +81,7 @@ class MessageContentEvent(BaseEvent):
             wrappers_len = len(wrapper_list)
             missed = False
             for i in range(recent_len):
+                no_new = False
                 for j in range(wrappers_len):
                     wrapper = wrapper_list[j]
                     chat_text = wrapper.content
@@ -91,8 +92,13 @@ class MessageContentEvent(BaseEvent):
                         recent_chat = message_manager.recent_chats[ii]
                         if chat_text != recent_chat:
                             break
+                        if ii == recent_len - 1 and j == wrappers_len - 1:
+                            no_new = True
+                            break
                     else:
                         message_manager.latest_chats.append(chat_text)
+                if no_new:
+                    break
                 if len(message_manager.latest_chats) > 0:
                     break
                 elif i == recent_len - 1:
