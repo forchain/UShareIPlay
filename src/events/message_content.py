@@ -128,6 +128,7 @@ class MessageContentEvent(BaseEvent):
                 # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
                 await self._process_update_logic()
 
+            message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
             message_manager.latest_chats.clear()
