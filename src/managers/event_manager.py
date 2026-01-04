@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 
 from lxml import etree
 
+from ..core.driver_decorator import with_driver_recovery
 from ..core.singleton import Singleton
 from ..core.element_wrapper import ElementWrapper
 
@@ -324,6 +325,7 @@ class EventManager(Singleton):
 
         return triggered_count
 
+    @with_driver_recovery
     def get_page_source(self) -> Optional[str]:
         """
         获取当前页面的 page_source
@@ -331,11 +333,7 @@ class EventManager(Singleton):
         Returns:
             页面源码 XML 字符串，失败返回 None
         """
-        try:
-            return self.handler.driver.page_source
-        except Exception as e:
-            self.logger.error(f"Failed to get page_source: {str(e)}")
-            return None
+        return self.handler.driver.page_source
 
     def get_event(self, element_key: str):
         """
