@@ -36,7 +36,7 @@ class MessageContentEvent(BaseEvent):
             return True, match.group(1)
         return False, ""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理消息内容事件
 
@@ -84,7 +84,7 @@ class MessageContentEvent(BaseEvent):
                     continue
 
                 # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
+                if chat_text in message_manager.latest_chats:
                     continue
 
                 # 检查用户进入消息
@@ -92,7 +92,7 @@ class MessageContentEvent(BaseEvent):
                 if is_enter:
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
-                    asyncio.create_task(self._notify_user_enter(username))
+                    await self._notify_user_enter(username)
 
                 # 添加到 recent_chats（维护最近的消息列表）
                 message_manager.latest_chats.append(chat_text)
@@ -109,10 +109,10 @@ class MessageContentEvent(BaseEvent):
 
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
-                asyncio.create_task(self._process_command_messages())
+                await self._process_command_messages()
             else:
                 # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
-                asyncio.create_task(self._process_update_logic())
+                await self._process_update_logic()
 
             return False
 
@@ -137,7 +137,6 @@ class MessageContentEvent(BaseEvent):
             messages = await message_manager.get_latest_messages()
 
             message_manager.recent_chats = message_manager.latest_chats
-            message_manager.latest_chats = []
 
             if messages:
                 # 有新的命令消息，触发命令处理

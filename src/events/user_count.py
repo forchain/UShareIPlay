@@ -12,7 +12,7 @@ from ..core.base_event import BaseEvent
 class UserCountEvent(BaseEvent):
     """在线人数事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理在线人数事件
         
@@ -63,4 +63,3 @@ class UserCountEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error processing user count event: {str(e)}")
             return False
-

@@ -42,7 +42,7 @@ class FollowerMessageEvent(BaseEvent):
         
         return None
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理关注者消息事件
         
@@ -80,8 +80,7 @@ class FollowerMessageEvent(BaseEvent):
                 try:
                     from ..dal.user_dao import UserDAO
                     # 在事件循环中创建任务
-                    loop = asyncio.get_event_loop()
-                    loop.create_task(UserDAO.get_or_create(nickname))
+                    await UserDAO.get_or_create(nickname)
                     self.logger.info(f"Creating user record for: {nickname}")
                 except Exception as e:
                     self.logger.error(f"Error creating user record: {str(e)}")
