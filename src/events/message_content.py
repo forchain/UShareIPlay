@@ -118,10 +118,10 @@ class MessageContentEvent(BaseEvent):
             #     messages = await message_manager.get_missed_messages()
             #     await self._process_command_messages(messages)
 
-            # message_manager.recent_chats.clear()
+            message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
-            # message_manager.latest_chats.clear()
+            message_manager.latest_chats.clear()
 
             return False
 
