@@ -7,7 +7,7 @@
 
 __multiple__ = True
 
-import asyncio
+import copy
 import re
 
 from ..core.base_event import BaseEvent
@@ -137,6 +137,7 @@ class MessageContentEvent(BaseEvent):
             messages = await message_manager.get_latest_messages()
 
             message_manager.recent_chats = message_manager.latest_chats
+            message_manager.recent_chats = copy.copy(message_manager.latest_chats)
 
             if messages:
                 # 有新的命令消息，触发命令处理

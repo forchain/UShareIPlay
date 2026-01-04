@@ -12,9 +12,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from lxml import etree
+from selenium.common.exceptions import (
+    InvalidSessionIdException,
+    WebDriverException
+)
 
 from ..core.singleton import Singleton
 from ..core.element_wrapper import ElementWrapper
+from ..core.driver_decorator import with_driver_recovery
 
 
 class EventManager(Singleton):
@@ -165,7 +170,7 @@ class EventManager(Singleton):
                 element_keys = module.__elements__
             else:
                 element_keys = self._parse_module_name(module_name)
-            
+
             for key in element_keys:
                 self.element_to_event[key] = module_name
 
@@ -204,7 +209,8 @@ class EventManager(Singleton):
         except Exception as e:
             self.logger.error(f"Error loading events: {traceback.format_exc()}")
 
-    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[etree._Element]:
+    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[
+        etree._Element]:
         """
         在 page_source 中查找元素
         
@@ -232,7 +238,7 @@ class EventManager(Singleton):
             else:
                 # ID 方式：查找 resource-id 匹配的元素
                 results = root.xpath(f"//*[@resource-id='{element_value}']")
-            
+
             # 检查模块是否有 __multiple__ 属性
             if module and hasattr(module, '__multiple__') and module.__multiple__:
                 # 返回所有匹配的元素（作为列表的第一个元素，实际是列表）
@@ -271,7 +277,7 @@ class EventManager(Singleton):
                 try:
                     # 获取事件模块
                     module = self.event_modules.get(module_name)
-                    
+
                     # 在 page_source 中查找元素（传递 module 以检查 __multiple__ 属性）
                     xml_element = self._find_element_in_page_source(root, element_key, module)
 
@@ -285,11 +291,11 @@ class EventManager(Singleton):
                                 for elem in xml_element:
                                     wrapper = ElementWrapper(elem, self.handler, element_key)
                                     wrapper_list.append(wrapper)
-                                
+
                                 # 直接将 wrapper 列表传给 handle（handle 方法会判断是否是列表）
                                 result = await module.event.handle(element_key, wrapper_list)
                                 triggered_count += 1
-                                
+
                                 # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
                                 if result is True:
                                     self.logger.debug(f"Event {element_key} returned True, stopping event processing")
@@ -300,7 +306,7 @@ class EventManager(Singleton):
                                 result = await module.event.handle(element_key, wrapper)
                                 triggered_count += 1
                                 # self.logger.debug(f"Event triggered for {element_key}")
-                                
+
                                 # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
                                 if result is True:
                                     self.logger.debug(f"Event {element_key} returned True, stopping event processing")
@@ -324,6 +330,7 @@ class EventManager(Singleton):
 
         return triggered_count
 
+    @with_driver_recovery
     def get_page_source(self) -> Optional[str]:
         """
         获取当前页面的 page_source
@@ -331,11 +338,7 @@ class EventManager(Singleton):
         Returns:
             页面源码 XML 字符串，失败返回 None
         """
-        try:
-            return self.handler.driver.page_source
-        except Exception as e:
-            self.logger.error(f"Failed to get page_source: {str(e)}")
-            return None
+        return self.handler.driver.page_source
 
     def get_event(self, element_key: str):
         """
@@ -362,4 +365,3 @@ class EventManager(Singleton):
             元素 key 列表
         """
         return list(self.element_to_event.keys())
-
