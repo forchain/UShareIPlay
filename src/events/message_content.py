@@ -84,7 +84,7 @@ class MessageContentEvent(BaseEvent):
                     continue
 
                 # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
+                if chat_text in message_manager.latest_chats:
                     continue
 
                 # 检查用户进入消息
@@ -137,7 +137,6 @@ class MessageContentEvent(BaseEvent):
             messages = await message_manager.get_latest_messages()
 
             message_manager.recent_chats = message_manager.latest_chats
-            message_manager.latest_chats = []
 
             if messages:
                 # 有新的命令消息，触发命令处理
