@@ -177,7 +177,7 @@ class MessageManager(Singleton):
             self.handler.logger.error(f"[messages] compute last_chat failed: {traceback.format_exc()}")
 
         is_chat_missed = new_chat and len(self.recent_chats) > 0 and (
-                new_chat not in self.recent_chats) and new_chat != last_chat and latest_chat != last_chat
+                new_chat not in self.recent_chats) and (last_chat not in self.latest_chats)
 
         # self.handler.logger.debug(
         #     f"[messages] containers={len(containers)} new_chat={new_chat!r} latest_chat={latest_chat!r} missed={is_chat_missed}"
