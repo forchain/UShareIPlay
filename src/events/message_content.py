@@ -110,18 +110,17 @@ class MessageContentEvent(BaseEvent):
             if has_command_message:
                 messages = await message_manager.get_latest_messages()
                 await self._process_command_messages(messages)
-
-            if message_manager.is_messages_missed():
-                messages = await message_manager.get_missed_messages()
-                await self._process_command_messages(messages)
-            elif not has_command_message:
-                # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
+            else:
                 await self._process_update_logic()
 
-            message_manager.recent_chats.clear()
+            # if message_manager.is_messages_missed():
+            #     messages = await message_manager.get_missed_messages()
+            #     await self._process_command_messages(messages)
+
+            # message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
-            message_manager.latest_chats.clear()
+            # message_manager.latest_chats.clear()
 
             return False
 
