@@ -76,15 +76,33 @@ class MessageContentEvent(BaseEvent):
             # 标记是否有命令消息
             has_command_message = False
 
-            # 处理所有消息元素
-            for wrapper in wrapper_list:
-                chat_text = wrapper.content
-                if not chat_text:
-                    continue
+            message_manager.latest_chats.clear()
+            recent_len = len(message_manager.latest_chats)
+            wrappers_len = len(wrapper_list)
+            missed = False
+            for i in range(recent_len):
+                for j in range(wrappers_len):
+                    wrapper = wrapper_list[j]
+                    chat_text = wrapper.content
+                    if not chat_text:
+                        continue
+                    ii = i + j
+                    if ii < recent_len:
+                        recent_chat = message_manager.recent_chats[ii]
+                        if chat_text != recent_chat:
+                            break
+                    else:
+                        message_manager.latest_chats.append(chat_text)
+                if len(message_manager.latest_chats) > 0:
+                    break
+                elif i == recent_len - 1:
+                    missed = True
+                    for wrapper in wrapper_list:
+                        if chat_text := wrapper.content:
+                            message_manager.latest_chats.append(chat_text)
 
-                # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
-                    continue
+            # 处理所有消息元素
+            for chat_text in message_manager.latest_chats:
 
                 # 检查用户进入消息
                 is_enter, username = self._is_user_enter_message(chat_text)
@@ -92,9 +110,6 @@ class MessageContentEvent(BaseEvent):
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
                     await self._notify_user_enter(username)
-
-                # 添加到 recent_chats（维护最近的消息列表）
-                message_manager.latest_chats.append(chat_text)
 
                 # 检查是否满足命令格式
                 pattern = r"souler\[.+\]说：:(.+)"
@@ -113,9 +128,9 @@ class MessageContentEvent(BaseEvent):
             else:
                 await self._process_update_logic()
 
-            # if message_manager.is_messages_missed():
-            #     messages = await message_manager.get_missed_messages()
-            #     await self._process_command_messages(messages)
+            if missed:
+                messages = await message_manager.get_missed_messages()
+                await self._process_command_messages(messages)
 
             # message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
