@@ -8,6 +8,7 @@
 __multiple__ = True
 
 import asyncio
+import os
 import re
 
 from ..core.base_event import BaseEvent
@@ -15,6 +16,23 @@ from ..managers.command_manager import CommandManager
 from ..managers.info_manager import InfoManager
 from ..managers.message_manager import MessageManager
 from ..managers.recovery_manager import RecoveryManager
+
+# Get project root directory
+# Priority: 1. Environment variable DEBUG_LOG_DIR, 2. Relative path from this file
+_DEBUG_LOG_DIR = os.environ.get('DEBUG_LOG_DIR')
+if _DEBUG_LOG_DIR:
+    # Use environment variable if set
+    _DEBUG_LOG_DIR = os.path.expanduser(_DEBUG_LOG_DIR)  # Support ~ in path
+else:
+    # Default: relative path from this file (two levels up)
+    _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    _DEBUG_LOG_DIR = os.path.join(_PROJECT_ROOT, '.cursor')
+
+_DEBUG_LOG_PATH = os.path.join(_DEBUG_LOG_DIR, 'debug.log')
+
+# Ensure .cursor directory exists
+if not os.path.exists(_DEBUG_LOG_DIR):
+    os.makedirs(_DEBUG_LOG_DIR, exist_ok=True)
 
 
 class MessageContentEvent(BaseEvent):
@@ -106,9 +124,20 @@ class MessageContentEvent(BaseEvent):
                     chat_logger.critical(chat_text)
                 else:
                     chat_logger.info(chat_text)
+            
+            # #region agent log
+            with open(_DEBUG_LOG_PATH, 'a') as f:
+                import json
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"message_content.py:110","message":"After processing all messages, checking has_command_message","data":{"has_command_message":has_command_message},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            # #endregion
 
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
+                # #region agent log
+                with open(_DEBUG_LOG_PATH, 'a') as f:
+                    import json
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"message_content.py:112","message":"has_command_message is True, calling _process_command_messages","data":{"has_command_message":has_command_message},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                # #endregion
                 asyncio.create_task(self._process_command_messages())
 
             return False
@@ -133,19 +162,40 @@ class MessageContentEvent(BaseEvent):
             # 调用 get_latest_messages 获取命令消息
             messages = await message_manager.get_latest_messages()
 
+            # #region agent log
+            with open(_DEBUG_LOG_PATH, 'a') as f:
+                import json
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B","location":"message_content.py:134","message":"get_latest_messages returned","data":{"messages_type":str(type(messages)),"messages_value":str(messages),"messages_is_none":messages is None,"messages_bool":bool(messages),"messages_eq_abnormal":messages == "ABNORMAL_STATE"},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            # #endregion
+
             message_manager.recent_chats = message_manager.latest_chats
             message_manager.latest_chats = []
 
             if messages:
+                # #region agent log
+                with open(_DEBUG_LOG_PATH, 'a') as f:
+                    import json
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B","location":"message_content.py:139","message":"Entered if messages branch","data":{"messages_type":str(type(messages)),"messages_value":str(messages)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                # #endregion
                 # 有新的命令消息，触发命令处理
                 command_manager = CommandManager.instance()
                 await command_manager.handle_message_commands(messages)
             elif messages == "ABNORMAL_STATE":
+                # #region agent log
+                with open(_DEBUG_LOG_PATH, 'a') as f:
+                    import json
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B","location":"message_content.py:143","message":"Entered elif messages == ABNORMAL_STATE branch","data":{},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                # #endregion
                 self.handler.press_back()
                 self.logger.error(
                     "Failed to get latest messages, press back to exit abnormal state"
                 )
             elif messages is None:
+                # #region agent log
+                with open(_DEBUG_LOG_PATH, 'a') as f:
+                    import json
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B","location":"message_content.py:148","message":"Entered elif messages is None branch","data":{},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                # #endregion
                 recovery_manager = RecoveryManager.instance()
                 if not recovery_manager.manual_mode_enabled:
                     # Process queue messages (timer messages, etc.)
@@ -161,7 +211,18 @@ class MessageContentEvent(BaseEvent):
 
                 await asyncio.sleep(1)
                 self.logger.error("No new messages")
+            else:
+                # #region agent log
+                with open(_DEBUG_LOG_PATH, 'a') as f:
+                    import json
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B","location":"message_content.py:163","message":"None of the branches executed (else branch)","data":{"messages_type":str(type(messages)),"messages_value":str(messages),"messages_is_none":messages is None,"messages_bool":bool(messages)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                # #endregion
         except Exception as e:
+            # #region agent log
+            with open(_DEBUG_LOG_PATH, 'a') as f:
+                import json
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"message_content.py:165","message":"Exception in _process_command_messages","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            # #endregion
             self.logger.error(f"Error processing command messages: {str(e)}")
 
     async def _process_queue_messages(self):
