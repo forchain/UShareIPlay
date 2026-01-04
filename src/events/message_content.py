@@ -111,6 +111,9 @@ class MessageContentEvent(BaseEvent):
             if has_command_message:
                 messages = await message_manager.get_latest_messages()
                 await self._process_command_messages(messages)
+                self.logger.critical(f'recent_chats:{message_manager.recent_chats}')
+                self.logger.critical(f'latest_chats:{message_manager.latest_chats}')
+                self.logger.critical(f'is_messages_missed:{message_manager.is_messages_missed()}')
 
             if message_manager.is_messages_missed():
                 messages = await message_manager.get_missed_messages()
