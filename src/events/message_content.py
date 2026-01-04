@@ -109,8 +109,13 @@ class MessageContentEvent(BaseEvent):
 
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
-                await self._process_command_messages()
-            else:
+                messages = message_manager.get_latest_messages()
+                await self._process_command_messages(messages)
+
+            if message_manager.is_messages_missed():
+                messages = message_manager.get_missed_messages()
+                await self._process_command_messages(messages)
+            elif not has_command_message:
                 # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
                 await self._process_update_logic()
 
@@ -130,13 +135,10 @@ class MessageContentEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
 
-    async def _process_command_messages(self):
+    async def _process_command_messages(self, messages):
         """处理命令消息 - 调用 get_latest_messages 获取命令"""
         try:
             message_manager = MessageManager.instance()
-
-            # 调用 get_latest_messages 获取命令消息
-            messages = await message_manager.get_latest_messages()
 
             if messages:
                 # 有新的命令消息，触发命令处理
