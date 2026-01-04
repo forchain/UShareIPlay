@@ -11,7 +11,7 @@ from ..core.base_event import BaseEvent
 class PlanetTabEvent(BaseEvent):
     """星球标签事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理星球标签事件
 

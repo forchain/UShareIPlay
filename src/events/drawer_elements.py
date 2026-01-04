@@ -24,7 +24,7 @@ from ..core.base_event import BaseEvent
 class DrawerElementsEvent(BaseEvent):
     """抽屉式弹窗事件处理器"""
 
-    def handle(self, key: str, element_wrapper):
+    async def handle(self, key: str, element_wrapper):
         """
         处理抽屉式弹窗事件
 

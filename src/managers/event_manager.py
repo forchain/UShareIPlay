@@ -244,7 +244,7 @@ class EventManager(Singleton):
             self.logger.debug(f"Error finding element {element_key}: {str(e)}")
             return None
 
-    def process_events(self, page_source: str) -> int:
+    async def process_events(self, page_source: str) -> int:
         """
         处理事件：解析 page_source，检测元素并触发对应事件
         
@@ -287,7 +287,7 @@ class EventManager(Singleton):
                                     wrapper_list.append(wrapper)
                                 
                                 # 直接将 wrapper 列表传给 handle（handle 方法会判断是否是列表）
-                                result = module.event.handle(element_key, wrapper_list)
+                                result = await module.event.handle(element_key, wrapper_list)
                                 triggered_count += 1
                                 
                                 # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
