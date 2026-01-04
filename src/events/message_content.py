@@ -7,7 +7,6 @@
 
 __multiple__ = True
 
-import copy
 import re
 
 from ..core.base_event import BaseEvent
@@ -84,7 +83,7 @@ class MessageContentEvent(BaseEvent):
                     continue
 
                 # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats:
+                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
                     continue
 
                 # 检查用户进入消息
@@ -109,10 +108,20 @@ class MessageContentEvent(BaseEvent):
 
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
-                await self._process_command_messages()
-            else:
+                messages = await message_manager.get_latest_messages()
+                await self._process_command_messages(messages)
+
+            if message_manager.is_messages_missed():
+                messages = await message_manager.get_missed_messages()
+                await self._process_command_messages(messages)
+            elif not has_command_message:
                 # 没有命令消息时，执行更新逻辑（定时器、播放信息等）
                 await self._process_update_logic()
+
+            message_manager.recent_chats.clear()
+            for chat in message_manager.latest_chats:
+                message_manager.recent_chats.append(chat)
+            message_manager.latest_chats.clear()
 
             return False
 
@@ -128,15 +137,10 @@ class MessageContentEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
 
-    async def _process_command_messages(self):
+    async def _process_command_messages(self, messages):
         """处理命令消息 - 调用 get_latest_messages 获取命令"""
         try:
             message_manager = MessageManager.instance()
-
-            # 调用 get_latest_messages 获取命令消息
-            messages = await message_manager.get_latest_messages()
-
-            message_manager.recent_chats = copy.copy(message_manager.latest_chats)
 
             if messages:
                 # 有新的命令消息，触发命令处理
