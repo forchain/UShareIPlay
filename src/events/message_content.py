@@ -120,7 +120,7 @@ class MessageContentEvent(BaseEvent):
             # message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
-            message_manager.latest_chats.clear()
+            # message_manager.latest_chats.clear()
 
             return False
 
