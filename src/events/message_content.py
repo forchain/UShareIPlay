@@ -130,6 +130,7 @@ class MessageContentEvent(BaseEvent):
                 await self._process_update_logic()
 
             message_manager.recent_chats = copy.copy(message_manager.latest_chats)
+            message_manager.latest_chats.clear()
 
             return False
 
