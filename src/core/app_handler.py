@@ -773,7 +773,7 @@ class AppHandler:
                 ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=100)
                 if not ok:
                     self.logger.warning(
-                        "scroll_container_until_element: 滑动失败，终止"
+                        f"scroll_container_until_element: 滑动失败，终止:{element_key}"
                     )
                     return None, None
 
@@ -791,13 +791,13 @@ class AppHandler:
                     prev_hash = cur_hash
 
                 if stable_rounds >= max_stable_rounds:
-                    self.logger.info(
-                        "scroll_container_until_element: 已到达边界，未找到目标元素"
+                    self.logger.warning(
+                        f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
                     )
                     return None, None
 
-            self.logger.info(
-                "scroll_container_until_element: 达到最大滑动次数，未找到目标元素"
+            self.logger.warning(
+                f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
             )
             return None, None
         except Exception:

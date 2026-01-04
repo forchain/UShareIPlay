@@ -66,8 +66,6 @@ class SeatCommand(BaseCommand):
             self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
 
     def update(self):
-        """Update focus count"""
-        try:
-            seat_manager.focus.update()
-        except Exception as e:
-            self.handler.log_error(f"Error updating focus count: {traceback.format_exc()}")
+        """Update method - focus count monitoring has been migrated to event system"""
+        # 专注数监控已迁移到事件系统，不再需要手动调用
+        pass

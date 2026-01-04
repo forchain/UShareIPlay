@@ -26,6 +26,7 @@ class RecoveryManager(Singleton):
             'party_ended',
 
             # 如果无法用返回键，则在此添加
+            'confirm_close_3',
 
             # 如果用返回键会造成潜在问题，则在此添加
 
@@ -43,7 +44,6 @@ class RecoveryManager(Singleton):
             # 'confirm_close_5',
             # 'confirm_close_1',
             # 'confirm_close_2',
-            # 'confirm_close_3',
             # 'confirm_close',
 
             # 'go_back',
@@ -172,11 +172,14 @@ class RecoveryManager(Singleton):
         最快速的方法就是检测输入框是否存在
         """
         try:
-            room_id = self.handler.try_find_element_plus('room_id', log=False)
-            if room_id is None:
+            # 从 InfoManager 获取房间ID
+            from .info_manager import InfoManager
+            info_manager = InfoManager.instance()
+            room_id_text = info_manager.room_id
+            
+            if room_id_text is None:
                 return False
 
-            room_id_text = room_id.text
             if not room_id_text.startswith("FM"):
                 self.logger.warning(f"Room ID:{room_id_text} does not start with FM, skip")
                 return True
