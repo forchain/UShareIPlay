@@ -291,8 +291,8 @@ qq_music:
     album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
-    play_singer: '//android.widget.TextView[@content-desc="歌手"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
-    singer_name: '//android.widget.TextView[@content-desc="歌手"]/../android.widget.RelativeLayout/android.widget.TextView'
+    play_singer: '//android.widget.TextView[@content-desc="歌手" or @content-desc="演奏家"]/../..//android.widget.LinearLayout/android.widget.LinearLayout/android.widget.ImageView'
+    singer_name: '//android.widget.TextView[@content-desc="歌手" or @content-desc="演奏家"]/../android.widget.RelativeLayout/android.widget.TextView'
     play_singer_1: '//android.widget.ImageView[starts-with(@content-desc, "播放歌手: ")]'
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
