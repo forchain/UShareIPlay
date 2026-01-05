@@ -66,11 +66,11 @@ class AppController(Singleton):
         await self.ui_lock.acquire()
         try:
             if self.logger and reason:
-                self.logger.debug(f"[ui_lock] acquired: {reason}")
+                self.logger.critical(f"[ui_lock] acquired: {reason}")
             yield
         finally:
             if self.logger and reason:
-                self.logger.debug(f"[ui_lock] released: {reason}")
+                self.logger.critical(f"[ui_lock] released: {reason}")
             self.ui_lock.release()
 
     def _start_apps(self):
