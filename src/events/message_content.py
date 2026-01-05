@@ -182,14 +182,12 @@ class MessageContentEvent(BaseEvent):
     async def _process_update_logic(self):
         """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
         try:
-            recovery_manager = RecoveryManager.instance()
-            if not recovery_manager.manual_mode_enabled:
-                # Process queue messages (timer messages, etc.)
-                await self._process_queue_messages()
+            # Process queue messages (timer messages, etc.)
+            await self._process_queue_messages()
 
-                # Update all commands
-                command_manager = CommandManager.instance()
-                command_manager.update_commands()
+            # Update all commands
+            command_manager = CommandManager.instance()
+            command_manager.update_commands()
 
             # update playback info
             info_manager = InfoManager.instance()

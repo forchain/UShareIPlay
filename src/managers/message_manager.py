@@ -3,19 +3,17 @@
 
 """
 import logging
+import os
 import re
 import traceback
 from collections import deque
-from dataclasses import dataclass
 
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ..core.singleton import Singleton
 from ..core.log_formatter import ColoredFormatter
+from ..core.singleton import Singleton
 from ..managers.recovery_manager import RecoveryManager
 from ..models.message_info import MessageInfo
-
-import os
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -141,19 +139,14 @@ class MessageManager(Singleton):
             None: No new messages (normal state)
             'ABNORMAL_STATE': Unable to access message list (abnormal state)
         """
-        manual_mode_enabled = self._recovery_manager.manual_mode_enabled
-        if not manual_mode_enabled:
-            if not self.handler.switch_to_app():
-                self.handler.logger.error("Failed to switch to Soul app")
+        if not self.handler.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
-            if manual_mode_enabled:
-                return None
-            else:
-                self.handler.logger.error("Failed to find message list")
-                return 'ABNORMAL_STATE'
+            self.handler.logger.error("Failed to find message list")
+            return 'ABNORMAL_STATE'
 
         # 专注数监控已迁移到事件系统，不再需要手动调用
 
@@ -277,19 +270,14 @@ class MessageManager(Singleton):
             None: No new messages (normal state)
             'ABNORMAL_STATE': Unable to access message list (abnormal state)
         """
-        manual_mode_enabled = self._recovery_manager.manual_mode_enabled
-        if not manual_mode_enabled:
-            if not self.handler.switch_to_app():
-                self.handler.logger.error("Failed to switch to Soul app")
+        if not self.handler.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
 
         # Get message list container
         message_list = self.handler.try_find_element_plus('message_list', log=False)
         if not message_list:
-            if manual_mode_enabled:
-                return None
-            else:
-                self.handler.logger.error("Failed to find message list")
-                return 'ABNORMAL_STATE'
+            self.handler.logger.error("Failed to find message list")
+            return 'ABNORMAL_STATE'
 
         # 专注数监控已迁移到事件系统，不再需要手动调用
 

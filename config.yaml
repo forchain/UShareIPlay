@@ -361,9 +361,6 @@ commands:
   - prefix: "ktv"
     response_template: "KTV mode {enabled}"
     error_template: "Failed to toggle KTV mode, because {error}"
-  - prefix: "enable"
-    response_template: "Recovery manager: {recovery_enabled}"
-    error_template: "Failed to toggle recovery manager: {error}"
   - prefix: "help"
     response_template: |
       帮助
