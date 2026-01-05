@@ -4,7 +4,6 @@ import traceback
 from pathlib import Path
 from ..core.singleton import Singleton
 from ..core.command_parser import CommandParser
-from ..core.app_controller import AppController
 
 
 class CommandManager(Singleton):
@@ -141,6 +140,8 @@ class CommandManager(Singleton):
         try:
             parameters = command_info['parameters']
             # UI 互斥：命令执行期间禁止 EventManager 的“未知页面自动 back”打断弹窗/子页面流程
+            # 延迟导入避免循环依赖
+            from ..core.app_controller import AppController
             result = {'error': 'unknown'}
             if controller := AppController.instance():
                 async with controller.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):

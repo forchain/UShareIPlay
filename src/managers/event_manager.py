@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 
 from lxml import etree
 
-from ..core.app_controller import AppController
 from ..core.driver_decorator import with_driver_recovery
 from ..core.singleton import Singleton
 from ..core.element_wrapper import ElementWrapper
@@ -321,6 +320,8 @@ class EventManager(Singleton):
         if triggered_count == 0:
             try:
                 # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
+                # 延迟导入避免循环依赖
+                from ..core.app_controller import AppController
                 if controller := AppController.instance():
                     if ui_lock := controller.ui_lock:
                         if ui_lock.locked():
