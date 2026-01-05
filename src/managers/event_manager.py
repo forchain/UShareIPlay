@@ -328,6 +328,7 @@ class EventManager(Singleton):
                             self.logger.debug(
                                 "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
                         else:
+                            self.handler.switch_to_app()
                             self.handler.press_back()
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
 
