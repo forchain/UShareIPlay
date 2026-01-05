@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import queue
 import threading
 import time
@@ -47,8 +48,30 @@ class AppController(Singleton):
         # Non-UI operations task
         self._non_ui_task = None
 
+        # 全局 UI 互斥锁：
+        # 用于防止后台事件循环（如未知页面自动 back）与命令/UI任务并发操作同一界面。
+        # 注意：锁只在 async 逻辑中使用；同步 handler 方法不直接 await。
+        self.ui_lock: asyncio.Lock = asyncio.Lock()
+
         # Driver重建防护标志
         self._is_reinitializing = False
+
+    @asynccontextmanager
+    async def ui_session(self, reason: str = ""):
+        """
+        获取 UI 独占执行权（异步）。
+        约定：所有可能改变页面结构/弹窗状态的后台任务（命令、自动处理等）应持有该锁，
+        EventManager 的兜底 press_back 也会尊重该锁。
+        """
+        await self.ui_lock.acquire()
+        try:
+            if self.logger and reason:
+                self.logger.critical(f"[ui_lock] acquired: {reason}")
+            yield
+        finally:
+            if self.logger and reason:
+                self.logger.critical(f"[ui_lock] released: {reason}")
+            self.ui_lock.release()
 
     def _start_apps(self):
         """在初始化driver之前启动Soul app和QQ Music"""
@@ -183,7 +206,7 @@ class AppController(Singleton):
                 self.logger.info("==== Driver重建完成 ====")
             return True
 
-        except Exception as e:
+        except Exception:
             if self.logger:
                 self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
             return False
@@ -276,7 +299,7 @@ class AppController(Singleton):
             self.logger.info("Handlers and managers initialized successfully")
             print("所有 handlers 和 managers 初始化完成")
 
-        except Exception as e:
+        except Exception:
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
@@ -291,7 +314,7 @@ class AppController(Singleton):
             except asyncio.CancelledError:
                 self.logger.info("Non-UI operations loop cancelled")
                 break
-            except Exception as e:
+            except Exception:
                 self.logger.error(
                     f"Error in async non-UI operations loop: {traceback.format_exc()}"
                 )
@@ -386,11 +409,11 @@ class AppController(Singleton):
                     print("\nStopping the monitoring...")
                     self.is_running = False
                     return True
-            except StaleElementReferenceException as e:
+            except StaleElementReferenceException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]stale element, traceback: {traceback.format_exc()}"
                 )
-            except WebDriverException as e:
+            except WebDriverException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]unknown error, traceback: {traceback.format_exc()}"
                 )

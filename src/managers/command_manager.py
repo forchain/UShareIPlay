@@ -84,7 +84,7 @@ class CommandManager(Singleton):
             self.command_modules[command] = module
             return module
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error loading command module {command}: {traceback.format_exc()}")
             return None
 
@@ -108,10 +108,10 @@ class CommandManager(Singleton):
                         self.logger.info(f"Loaded command module: {command}")
                     else:
                         self.logger.error(f"Failed to load command module: {command}")
-                except Exception as e:
+                except Exception:
                     self.logger.error(f"Error loading command {command}: {traceback.format_exc()}")
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
     def update_commands(self):
@@ -139,7 +139,13 @@ class CommandManager(Singleton):
         """
         try:
             parameters = command_info['parameters']
-            result = await command.process(message_info, parameters)
+            # UI 互斥：命令执行期间禁止 EventManager 的“未知页面自动 back”打断弹窗/子页面流程
+            # 延迟导入避免循环依赖
+            from ..core.app_controller import AppController
+            result = {'error': 'unknown'}
+            if controller := AppController.instance():
+                async with controller.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
+                    result = await command.process(message_info, parameters)
 
             if 'error' in result:
                 res = command_info['error_template'].format(
@@ -149,7 +155,7 @@ class CommandManager(Singleton):
             else:
                 res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
             return res
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error processing command {command_info}: {traceback.format_exc()}")
             return f"Error processing command {command_info}"
 
@@ -200,7 +206,7 @@ class CommandManager(Singleton):
             else:
                 self.logger.warning("Timer command not loaded, skipping timer initialization")
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
 
     async def handle_message_commands(self, messages):
@@ -252,7 +258,7 @@ class CommandManager(Singleton):
             try:
                 if hasattr(module.command, 'user_leave'):
                     await module.command.user_leave(username)
-            except Exception as e:
+            except Exception:
                 self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
 
     async def notify_user_enter(self, username: str):
@@ -266,5 +272,5 @@ class CommandManager(Singleton):
             try:
                 if hasattr(module.command, 'user_enter'):
                     await module.command.user_enter(username)
-            except Exception as e:
+            except Exception:
                 self.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
