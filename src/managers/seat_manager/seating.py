@@ -248,9 +248,8 @@ class SeatingManager(SeatManagerBase):
                 reference_desk.location['y'] + reference_desk.size['height'] // 2,
                 reference_desk.location['x'] + reference_desk.size['width'] // 2,
                 reference_desk.location['y'] + reference_desk.size['height'] // 2 + desk_height,
-                1000
+                100
             )
-            time.sleep(0.5)  # Wait for scroll animation
             self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
         elif row_index == 2:  # Third row (desk_index 4-5)
             # Scroll up one row height to show third row
@@ -259,9 +258,8 @@ class SeatingManager(SeatManagerBase):
                 reference_desk.location['y'] + reference_desk.size['height'] // 2,
                 reference_desk.location['x'] + reference_desk.size['width'] // 2,
                 reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
-                1000
+                100
             )
-            time.sleep(0.5)  # Wait for scroll animation
             self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
 
     def _take_seat(self, desk_index, seat_info, neighbor_label=None):
