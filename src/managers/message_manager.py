@@ -339,13 +339,14 @@ class MessageManager(Singleton):
                 return None
 
             # Parse message content using pattern
-            pattern = r'souler\[.+\]说：:(.+)'
+            pattern = r'souler\[(.+)\]说：:(.+)'
             match = re.match(pattern, chat_text)
             if not match:
                 return None
 
             # Extract actual message content
-            message_content = match.group(1).strip()
+            nickname = match.group(1).strip()
+            message_content = match.group(2).strip()
 
             # Get avatar element
             avatar_element = self.handler.find_child_element_plus(
@@ -354,13 +355,6 @@ class MessageManager(Singleton):
             )
             if not avatar_element:
                 return None
-
-            # Get nickname
-            nickname_element = self.handler.find_child_element_plus(
-                container,
-                'sender_nickname'
-            )
-            nickname = nickname_element.text if nickname_element else "Unknown"
 
             # Check for relation tag
             relation_tag = bool(self.handler.find_child_element_plus(
