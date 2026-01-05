@@ -1,9 +1,9 @@
 import asyncio
-from contextlib import asynccontextmanager
 import queue
 import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 
 from appium import webdriver
 from appium.options.common import AppiumOptions
@@ -375,6 +375,7 @@ class AppController(Singleton):
 
         print("开始主监控循环...")
 
+        paused = False
         while self.is_running:
             try:
                 # Check for console input (高优先级，在事件管理器前处理)
@@ -383,9 +384,16 @@ class AppController(Singleton):
                         message = self.input_queue.get_nowait()
                         # Only send non-empty messages
                         if message.strip():
-                            self.soul_handler.send_message(message)
+                            if message == '!stop':
+                                paused = not paused
+                            else:
+                                self.soul_handler.send_message(message)
+
                 except queue.Empty:
                     pass
+
+                if paused:
+                    continue
 
                 # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
                 if page_source := self.event_manager.get_page_source():
