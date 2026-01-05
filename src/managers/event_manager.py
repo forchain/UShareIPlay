@@ -166,14 +166,14 @@ class EventManager(Singleton):
                 element_keys = module.__elements__
             else:
                 element_keys = self._parse_module_name(module_name)
-            
+
             for key in element_keys:
                 self.element_to_event[key] = module_name
 
             self.logger.info(f"Loaded event module: {module_name} -> {class_name}, keys: {element_keys}")
             return module
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error loading event module {module_name}: {traceback.format_exc()}")
             return None
 
@@ -199,13 +199,14 @@ class EventManager(Singleton):
                         self.logger.info(f"Loaded event module: {module_name}")
                     else:
                         self.logger.error(f"Failed to load event module: {module_name}")
-                except Exception as e:
+                except Exception:
                     self.logger.error(f"Error loading event {module_name}: {traceback.format_exc()}")
 
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error loading events: {traceback.format_exc()}")
 
-    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[etree._Element]:
+    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[
+        etree._Element]:
         """
         在 page_source 中查找元素
         
@@ -233,7 +234,7 @@ class EventManager(Singleton):
             else:
                 # ID 方式：查找 resource-id 匹配的元素
                 results = root.xpath(f"//*[@resource-id='{element_value}']")
-            
+
             # 检查模块是否有 __multiple__ 属性
             if module and hasattr(module, '__multiple__') and module.__multiple__:
                 # 返回所有匹配的元素（作为列表的第一个元素，实际是列表）
@@ -272,7 +273,7 @@ class EventManager(Singleton):
                 try:
                     # 获取事件模块
                     module = self.event_modules.get(module_name)
-                    
+
                     # 在 page_source 中查找元素（传递 module 以检查 __multiple__ 属性）
                     xml_element = self._find_element_in_page_source(root, element_key, module)
 
@@ -286,11 +287,11 @@ class EventManager(Singleton):
                                 for elem in xml_element:
                                     wrapper = ElementWrapper(elem, self.handler, element_key)
                                     wrapper_list.append(wrapper)
-                                
+
                                 # 直接将 wrapper 列表传给 handle（handle 方法会判断是否是列表）
                                 result = await module.event.handle(element_key, wrapper_list)
                                 triggered_count += 1
-                                
+
                                 # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
                                 if result is True:
                                     self.logger.debug(f"Event {element_key} returned True, stopping event processing")
@@ -301,7 +302,7 @@ class EventManager(Singleton):
                                 result = await module.event.handle(element_key, wrapper)
                                 triggered_count += 1
                                 # self.logger.debug(f"Event triggered for {element_key}")
-                                
+
                                 # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
                                 if result is True:
                                     self.logger.debug(f"Event {element_key} returned True, stopping event processing")
@@ -312,14 +313,24 @@ class EventManager(Singleton):
 
         except etree.XMLSyntaxError as e:
             self.logger.error(f"Failed to parse page_source: {str(e)}")
-        except Exception as e:
+        except Exception:
             self.logger.error(f"Error in process_events: {traceback.format_exc()}")
 
         # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
         if triggered_count == 0:
             try:
-                self.handler.press_back()
-                self.logger.warning("No events triggered, pressed back to exit unknown page")
+                # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
+                # 延迟导入避免循环依赖
+                from ..core.app_controller import AppController
+                if controller := AppController.instance():
+                    if ui_lock := controller.ui_lock:
+                        if ui_lock.locked():
+                            self.logger.debug(
+                                "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
+                        else:
+                            self.handler.press_back()
+                            self.logger.warning("No events triggered, pressed back to exit unknown page")
+
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")
 
@@ -329,7 +340,7 @@ class EventManager(Singleton):
     def get_page_source(self) -> Optional[str]:
         """
         获取当前页面的 page_source
-        
+
         Returns:
             页面源码 XML 字符串，失败返回 None
         """
@@ -338,10 +349,10 @@ class EventManager(Singleton):
     def get_event(self, element_key: str):
         """
         根据元素 key 获取对应的事件实例
-        
+
         Args:
             element_key: 元素 key
-            
+
         Returns:
             事件实例或 None
         """
@@ -355,9 +366,8 @@ class EventManager(Singleton):
     def get_registered_elements(self) -> List[str]:
         """
         获取所有已注册的元素 key 列表
-        
+
         Returns:
             元素 key 列表
         """
         return list(self.element_to_event.keys())
-
