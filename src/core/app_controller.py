@@ -1,4 +1,5 @@
 import asyncio
+import os
 import queue
 import threading
 import time
@@ -20,10 +21,11 @@ class AppController(Singleton):
     def __init__(self, config):
         self.config = config
 
-        # 在初始化driver之前先启动应用
-        self._start_apps()
-
+        # 先创建主driver（会自动启动Soul app）
         self.driver = self._init_driver()
+        
+        # 使用主driver启动其他应用
+        self._start_apps()
         self.input_queue = queue.Queue()
         self.is_running = True
         self.in_console_mode = False
@@ -74,57 +76,40 @@ class AppController(Singleton):
             self.ui_lock.release()
 
     def _start_apps(self):
-        """在初始化driver之前启动Soul app和QQ Music"""
+        """通过Appium server启动QQ Music（Soul app已在创建driver时自动启动）"""
         try:
-            import subprocess
-
-            print("正在启动应用...")
+            print("正在通过Appium server启动QQ Music...")
 
             # 启动QQ Music
             qq_music_package = self.config["qq_music"]["package_name"]
-            print(f"正在启动QQ Music: {qq_music_package}")
+            qq_music_activity = self.config["qq_music"]["search_activity"]
+            print(f"正在启动QQ Music: {qq_music_package}/{qq_music_activity}")
 
-            # 使用adb启动QQ Music
-            subprocess.run(
-                [
-                    "adb",
-                    "-s",
-                    self.config["device"]["name"],
-                    "shell",
-                    "am",
-                    "start",
-                    "-n",
-                    f"{qq_music_package}/{self.config['qq_music']['search_activity']}",
-                ],
-                check=True,
+            # 兼容：某些环境下 driver 可能是 Selenium WebDriver（无 start_activity）。
+            # 通过 Appium server 执行 mobile: shell 来启动 Activity（不直连 adb）。
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {qq_music_package}/{qq_music_activity}"},
             )
+            print("QQ Music启动成功")
+            time.sleep(1)  # 等待应用启动
 
-            # 启动Soul app
+            # 切换回Soul app（主driver默认指向Soul app）
             soul_package = self.config["soul"]["package_name"]
-            print(f"正在启动Soul app: {soul_package}")
+            soul_activity = self.config["soul"]["chat_activity"]
+            print(f"切换回Soul app: {soul_package}/{soul_activity}")
 
-            # 使用adb启动Soul app
-            subprocess.run(
-                [
-                    "adb",
-                    "-s",
-                    self.config["device"]["name"],
-                    "shell",
-                    "am",
-                    "start",
-                    "-n",
-                    f"{soul_package}/{self.config['soul']['chat_activity']}",
-                ],
-                check=True,
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {soul_package}/{soul_activity}"},
             )
+            print("Soul app已激活")
+            time.sleep(1)  # 等待应用切换
 
             print("应用启动完成")
 
-        except subprocess.CalledProcessError as e:
-            print(f"启动应用失败: {str(e)}")
-            raise
         except Exception as e:
-            print(f"启动应用时发生错误: {str(e)}")
+            print(f"通过Appium启动应用时发生错误: {str(e)}")
             raise
 
     def _init_driver(self):
@@ -140,14 +125,18 @@ class AppController(Singleton):
             "automationName", self.config["device"]["automation_name"]
         )
         options.set_capability("noReset", self.config["device"]["no_reset"])
+        options.set_capability("appium:adbExecTimeout", 2000)
+        options.set_capability("appium:suppressKillServer", False)
 
         # 设置应用信息
         options.set_capability("appPackage", self.config["soul"]["package_name"])
         options.set_capability("appActivity", self.config["soul"]["chat_activity"])
 
-        server_url = (
-            f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
-        )
+        # 优先从环境变量读取，如果没有再从配置文件读取
+        appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
+        appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
+        
+        server_url = f"http://{appium_host}:{appium_port}"
         return webdriver.Remote(command_executor=server_url, options=options)
 
     def reinitialize_driver(self) -> bool:
