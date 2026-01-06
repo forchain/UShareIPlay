@@ -159,7 +159,8 @@ class AppController(Singleton):
 
             # 1. 关闭旧driver
             try:
-                self.driver.quit()
+                # self.driver.quit()
+                self.logger.debug('skip quitting')
             except Exception as e:
                 if self.logger:
                     self.logger.debug(f"关闭旧driver出错: {str(e)}")
