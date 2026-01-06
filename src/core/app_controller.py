@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
-from selenium.webdriver.remote.remote_connection import RemoteConnection
 
 from .singleton import Singleton
 from ..core.db_service import DBHelper
@@ -24,7 +23,7 @@ class AppController(Singleton):
 
         # 先创建主driver（会自动启动Soul app）
         self.driver = self._init_driver()
-        
+
         # 使用主driver启动其他应用
         self._start_apps()
         self.input_queue = queue.Queue()
@@ -126,8 +125,6 @@ class AppController(Singleton):
             "automationName", self.config["device"]["automation_name"]
         )
         options.set_capability("noReset", self.config["device"]["no_reset"])
-        options.set_capability("appium:adbExecTimeout", 2000)
-        options.set_capability("appium:suppressKillServer", False)
 
         # 设置应用信息
         options.set_capability("appPackage", self.config["soul"]["package_name"])
@@ -136,10 +133,9 @@ class AppController(Singleton):
         # 优先从环境变量读取，如果没有再从配置文件读取
         appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
-        
+
         server_url = f"http://{appium_host}:{appium_port}"
-        executor = RemoteConnection(server_url, keep_alive=False)
-        return webdriver.Remote(command_executor=executor, options=options)
+        return webdriver.Remote(command_executor=server_url, options=options)
 
     def reinitialize_driver(self) -> bool:
         """
@@ -157,13 +153,13 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.warning("==== 开始重建driver ====")
 
+            # !!! quit will introduce significant performance issue
             # 1. 关闭旧driver
-            try:
-                # self.driver.quit()
-                self.logger.debug('skip quitting')
-            except Exception as e:
-                if self.logger:
-                    self.logger.debug(f"关闭旧driver出错: {str(e)}")
+            # try:
+            #     self.driver.quit()
+            # except Exception as e:
+            #     if self.logger:
+            #         self.logger.debug(f"关闭旧driver出错: {str(e)}")
 
             # 2. 等待清理
             time.sleep(2)
@@ -172,8 +168,6 @@ class AppController(Singleton):
             self.driver = self._init_driver()
             if self.logger:
                 self.logger.info("新driver创建成功")
-
-            self._start_apps()
 
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
