@@ -84,8 +84,13 @@ class AppController(Singleton):
             qq_music_package = self.config["qq_music"]["package_name"]
             qq_music_activity = self.config["qq_music"]["search_activity"]
             print(f"正在启动QQ Music: {qq_music_package}/{qq_music_activity}")
-            
-            self.driver.start_activity(qq_music_package, qq_music_activity)
+
+            # 兼容：某些环境下 driver 可能是 Selenium WebDriver（无 start_activity）。
+            # 通过 Appium server 执行 mobile: shell 来启动 Activity（不直连 adb）。
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {qq_music_package}/{qq_music_activity}"},
+            )
             print("QQ Music启动成功")
             time.sleep(1)  # 等待应用启动
 
@@ -93,8 +98,11 @@ class AppController(Singleton):
             soul_package = self.config["soul"]["package_name"]
             soul_activity = self.config["soul"]["chat_activity"]
             print(f"切换回Soul app: {soul_package}/{soul_activity}")
-            
-            self.driver.start_activity(soul_package, soul_activity)
+
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {soul_package}/{soul_activity}"},
+            )
             print("Soul app已激活")
             time.sleep(1)  # 等待应用切换
 
