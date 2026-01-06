@@ -170,6 +170,8 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.info("新driver创建成功")
 
+            self._start_apps()
+
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
                 self.soul_handler.driver = self.driver
