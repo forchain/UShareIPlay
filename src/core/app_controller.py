@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
+from selenium.webdriver.remote.remote_connection import RemoteConnection
 
 from .singleton import Singleton
 from ..core.db_service import DBHelper
@@ -137,7 +138,8 @@ class AppController(Singleton):
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
         
         server_url = f"http://{appium_host}:{appium_port}"
-        return webdriver.Remote(command_executor=server_url, options=options)
+        executor = RemoteConnection(server_url, keep_alive=False)
+        return webdriver.Remote(command_executor=executor, options=options)
 
     def reinitialize_driver(self) -> bool:
         """
