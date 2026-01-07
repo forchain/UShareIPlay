@@ -391,13 +391,13 @@ class AppController(Singleton):
                                 self.soul_handler.logger.critical(f'paused: {paused}')
                             else:
                                 pattern = r':(.+) .+'
-                                is_command = re.match(pattern, message)
-                                if is_command:
+                                command = re.match(pattern, message)
+                                if command:
                                     return None
                                     # Create MessageInfo for queue
                                     from ..models.message_info import MessageInfo
                                     message_info = MessageInfo(
-                                        content=message,
+                                        content=command.group(1).strip(),
                                         nickname="Console",
                                         avatar_element=None,
                                         relation_tag=True  # Timer messages are always authorized
