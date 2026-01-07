@@ -391,23 +391,23 @@ class AppController(Singleton):
                                 paused = not paused
                                 self.soul_handler.logger.critical(f'paused: {paused}')
                             else:
-                                pattern = r':(.+)'
-                                command = re.match(pattern, message)
-                                if command:
-                                    # Create MessageInfo for queue
-                                    from ..models.message_info import MessageInfo
-                                    message_info = MessageInfo(
-                                        content=command.group(1).strip(),
-                                        nickname="Console",
-                                        avatar_element=None,
-                                        relation_tag=True  # Timer messages are always authorized
-                                    )
-
-                                    # Add message to queue
-                                    message_queue = MessageQueue.instance()
-                                    await message_queue.put_message(message_info)
-                                    self.logger.info(f"Console message added to queue: {message}")
-                                else:
+                                # pattern = r':(.+)'
+                                # command = re.match(pattern, message)
+                                # if command:
+                                #     # Create MessageInfo for queue
+                                #     from ..models.message_info import MessageInfo
+                                #     message_info = MessageInfo(
+                                #         content=command.group(1).strip(),
+                                #         nickname="Console",
+                                #         avatar_element=None,
+                                #         relation_tag=True  # Timer messages are always authorized
+                                #     )
+                                #
+                                #     # Add message to queue
+                                #     message_queue = MessageQueue.instance()
+                                #     await message_queue.put_message(message_info)
+                                #     self.logger.info(f"Console message added to queue: {message}")
+                                # else:
                                     self.soul_handler.send_message(message)
 
                 except queue.Empty:
