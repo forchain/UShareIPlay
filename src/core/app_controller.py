@@ -1,6 +1,7 @@
 import asyncio
 import os
 import queue
+import re
 import threading
 import time
 import traceback
@@ -387,9 +388,27 @@ class AppController(Singleton):
                         if message.strip():
                             if message == '!stop':
                                 paused = not paused
-                                self.soul_handler.logger.info(f'paused: {paused}')
+                                self.soul_handler.logger.critical(f'paused: {paused}')
                             else:
-                                self.soul_handler.send_message(message)
+                                pattern = r':(.+) .+'
+                                is_command = re.match(pattern, message)
+                                if is_command:
+                                    return None
+                                    # Create MessageInfo for queue
+                                    from ..models.message_info import MessageInfo
+                                    message_info = MessageInfo(
+                                        content=message,
+                                        nickname="Console",
+                                        avatar_element=None,
+                                        relation_tag=True  # Timer messages are always authorized
+                                    )
+
+                                    # Add message to queue
+                                    message_queue = MessageQueue.instance()
+                                    await message_queue.put_message(message_info)
+                                    self.logger.info(f"Console message added to queue: {message}")
+                                else:
+                                    self.soul_handler.send_message(message)
 
                 except queue.Empty:
                     pass
