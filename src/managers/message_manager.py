@@ -11,6 +11,7 @@ from collections import deque
 from selenium.common.exceptions import StaleElementReferenceException
 
 from ..core.log_formatter import ColoredFormatter
+from ..core.message_queue import MessageQueue
 from ..core.singleton import Singleton
 from ..managers.recovery_manager import RecoveryManager
 from ..models.message_info import MessageInfo
@@ -132,136 +133,52 @@ class MessageManager(Singleton):
         self.previous_messages = current_messages
         return new_messages if new_messages else None
 
-    async def get_missed_messages(self):
-        """Get new message contents that weren't seen before
-        Returns:
-            dict: New messages if any found
-            None: No new messages (normal state)
-            'ABNORMAL_STATE': Unable to access message list (abnormal state)
-        """
+    async def process_missed_messages(self):
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-
-        # Get message list container
-        message_list = self.handler.try_find_element_plus('message_list', log=False)
-        if not message_list:
-            self.handler.logger.error("Failed to find message list")
-            return 'ABNORMAL_STATE'
-
-        # 专注数监控已迁移到事件系统，不再需要手动调用
+            return None
 
         # Get all ViewGroup containers
-        try:
-            containers = self.handler.find_elements_plus('message_container')
-        except Exception as e:
-            self.handler.logger.error('cannot find message_list element, might be in loading')
-            return 'ABNORMAL_STATE'
+        containers = self.handler.find_elements_plus('message_container')
 
         if len(containers) == 0:
             return None
 
-        new_chat = None
-        latest_chat = None
-        for chat in self.latest_chats:
-            if not new_chat and chat:
-                new_chat = chat
-            if chat:
-                latest_chat = chat
-
-        new_messages = {}
-        # NOTE: 这里你希望取 recent_messages 的最后一条作为锚点（last_chat）。
-        # 当前写法在 Python 中会报错（deque - int 不合法），先加 try/except 让日志把问题打出来。
-        try:
-            last_chat = self.recent_chats[-1] if len(self.recent_chats) > 0 else None
-        except Exception:
-            last_chat = None
-            self.handler.logger.error(f"[messages] compute last_chat failed: {traceback.format_exc()}")
+        last_chat = self.recent_chats[-1] if len(self.recent_chats) > 0 else None
 
         # scroll back to the missing element
-        self.handler.logger.info(f"scanning missing commands. \nnew_chat={new_chat} \nlast_chat={last_chat}")
+        self.handler.logger.info(f"last_chat={last_chat}")
 
-        # NOTE: 如果 last_chat 是 None（recent_chats 为空，通常是首次运行或重启后），
-        # 说明没有历史锚点，不需要回翻，直接处理当前屏幕的消息即可。
-        if last_chat is None:
-            # self.handler.logger.info(
-            #     "[messages] no anchor (recent_chats empty), skip backscroll, process current screen"
-            # )
-            # 直接处理当前屏幕，走正常流程
-            new_messages = await self.get_messages_from_containers(containers)
-            return new_messages if new_messages else None
+        key, element, attribute_values = self.handler.scroll_container_until_element(
+            'message_content',
+            'message_list',
+            'down',
+            'content-desc|text',
+            last_chat,
+        )
+        if not key:
+            return None
 
-        try:
-            # AppHandler.scroll_container_until_element 会在容器内滑动直到出现某个 child element。
-            # 你这里传入 attribute_name/content-desc + attribute_value=last_chat，用于“按原始串定位锚点”。
-            # self._recovery_manager.handle_risk_elements()
-            key, element = self.handler.scroll_container_until_element(
-                'message_content',
-                'message_list',
-                'down',
-                'content-desc|text',
-                last_chat,
-            )
-            # self.handler.logger.debug(
-            #     f"[messages] scroll_container_until_element {latest_chat} returned {key}, {element}")
-        except Exception:
-            self.handler.logger.error(
-                f"[messages] scroll_container_until_element crashed: {traceback.format_exc()}")
-            return 'ABNORMAL_STATE'
-        containers = self.handler.find_elements_plus('message_container')
-        new_containers = []
-        is_new_container = False
-        for container in containers:
-            chat = self.get_chat_text(container)
-            if is_new_container:
-                new_containers.append(chat)
+        command_set = set()
+        for chat in attribute_values:
+            # Parse message content using pattern
+            pattern = r'souler\[(.+)\]说：:(.+)'
+            match = re.match(pattern, chat)
+            if not match:
+                continue
 
-            if chat == last_chat:
-                is_new_container = True
+            # Extract actual message content
+            nickname = match.group(1).strip()
+            message_content = match.group(2).strip()
+            command = MessageInfo(message_content, nickname, None, True)
+            command_set.add(command)
 
-        new_messages = {}
-        self.previous_messages = {}
-        messages = await self.get_messages_from_containers(new_containers)
-        if messages:
-            new_messages = messages
+        message_queue = MessageQueue.instance()
+        for command in command_set:
+            await message_queue.put_message(command)
+            self.logger.info(f"Missed command added to queue: {command}")
 
-        # 预计算容器可视坐标
-        loc = message_list.location
-        size = message_list.size
-        left = int(loc["x"])
-        top = int(loc["y"])
-        width = int(size["width"])
-        height = int(size["height"])
-
-        sx = int(left + width / 2)
-        sy = int(top + height * 0.9)
-        ex = sx
-        ey = int(top + height * 0.1)
-
-        max_tries = 10
-        is_scrolled_to_latest = False
-        for i in range(max_tries):
-            self.handler._perform_swipe(sx, sy, ex, ey, 100)
-            containers = self.handler.find_elements_plus('message_container')
-
-            messages = await self.get_messages_from_containers(containers)
-            if messages:
-                for element_id, message in messages.items():
-                    new_element_id = element_id
-                    if element_id in new_messages:
-                        new_element_id = f"{element_id}_{i}"
-                        self.handler.logger.warning(
-                            f"Duplicate message found: {message.content}, new element id:{new_element_id}")
-                    new_messages[new_element_id] = message
-
-            for container in containers:
-                chat = self.get_chat_text(container)
-                if chat and chat == latest_chat:
-                    is_scrolled_to_latest = True
-
-            if is_scrolled_to_latest:
-                break
-
-        return new_messages if new_messages else None
+        return command_set
 
     async def get_latest_messages(self):
         """Get new message contents that weren't seen before

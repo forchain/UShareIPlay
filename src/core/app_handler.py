@@ -660,22 +660,28 @@ class AppHandler:
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
             attribute_value: str = None, max_swipes: int = 10
-    ) -> Tuple[Optional[str], Optional[WebElement]]:
+    ) -> Tuple[Optional[str], Optional[WebElement], list]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
         参数：
             element_key: 目标元素在配置中的 key（应为容器的子元素）
             container_key: 容器元素在配置中的 key
             direction: 滚动方向，支持 'up'|'down'|'left'|'right'，默认 'up'（自下向上）
+            attribute_name: 要匹配的属性名（支持 | 分隔的多个属性）
+            attribute_value: 要匹配的属性值
             max_swipes: 最多滑动次数，默认 10 次
 
         策略：
             以 'up' 为例：每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
-            若找到则返回 (element_key, element)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界，返回 (None, None)。
+            若找到则返回 (element_key, element, attribute_values)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界，返回 (None, None, attribute_values)。
 
         返回：
-            (key, element) 或 (None, None)
+            (key, element, attribute_values): 找到目标元素时返回
+            (None, None, attribute_values): 未找到目标元素时返回
+            attribute_values: 搜索过程中找到的所有目标元素的 attribute 值列表，按元素出现顺序排列
         """
+        # 收集所有找到的元素的 attribute 值列表
+        attribute_values_list = []
         try:
             # 获取容器
             container = self.wait_for_element_clickable_plus(container_key)
@@ -683,7 +689,7 @@ class AppHandler:
                 self.logger.warning(
                     f"scroll_container_until_element: 容器未找到: {container_key}"
                 )
-                return None, None
+                return None, None, attribute_values_list
 
             # 方向规范化
             valid_dirs = {"up", "down", "left", "right"}
@@ -740,6 +746,9 @@ class AppHandler:
             prev_hash = snapshot()
             stable_rounds = 0
             max_stable_rounds = 2  # 连续多次无变化则认为到达边界
+            
+            # 收集所有找到的元素的 attribute 值列表
+            attribute_values_list = []
 
             # 查找目标元素的辅助函数
             def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
@@ -749,7 +758,18 @@ class AppHandler:
                     if attribute_name and attribute_value:
                         elements = self.find_child_elements_plus(container, element_key)
                         for element in elements:
+                            # 收集所有找到的元素的 attribute 值（不管是否匹配）
                             attr_list = attribute_name.split('|')
+                            collected_value = None
+                            for attr in attr_list:
+                                value = self.try_get_attribute(element, attr)
+                                if value is not None:
+                                    collected_value = value
+                                    break
+                            if collected_value is not None:
+                                attribute_values_list.append(collected_value)
+                            
+                            # 检查是否匹配目标值
                             any_match = False
                             for attr in attr_list:
                                 value = self.try_get_attribute(element, attr)
@@ -759,6 +779,25 @@ class AppHandler:
                             if any_match:
                                 return element_key, element
                     else:
+                        # 如果没有指定属性匹配，也收集所有找到的元素
+                        elements = self.find_child_elements_plus(container, element_key)
+                        for element in elements:
+                            if attribute_name:
+                                attr_list = attribute_name.split('|')
+                                for attr in attr_list:
+                                    value = self.try_get_attribute(element, attr)
+                                    if value is not None:
+                                        attribute_values_list.append(value)
+                                        break
+                            else:
+                                # 如果没有指定属性名，优先使用 content-desc，如果没有则使用 text
+                                content_desc = self.try_get_attribute(element, "content-desc")
+                                if content_desc is not None:
+                                    attribute_values_list.append(content_desc)
+                                else:
+                                    text = self.try_get_attribute(element, "text")
+                                    if text is not None:
+                                        attribute_values_list.append(text)
                         return element_key, found
                 return None, None
 
@@ -766,7 +805,11 @@ class AppHandler:
                 # 尝试在容器内查找目标
                 key, element = find_target_element()
                 if element:
-                    return key, element
+                    # 根据滚动方向决定是否需要反转列表
+                    # "down" 和 "right" 方向：手指向下/右滑动时，内容从新到旧显示，需要反转
+                    if direction in ("down", "right"):
+                        attribute_values_list.reverse()
+                    return key, element, attribute_values_list
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
@@ -775,12 +818,18 @@ class AppHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 滑动失败，终止:{element_key}"
                     )
-                    return None, None
+                    # 根据滚动方向决定是否需要反转列表
+                    if direction in ("down", "right"):
+                        attribute_values_list.reverse()
+                    return None, None, attribute_values_list
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 key, element = find_target_element()
                 if element:
-                    return key, element
+                    # 根据滚动方向决定是否需要反转列表
+                    if direction in ("down", "right"):
+                        attribute_values_list.reverse()
+                    return key, element, attribute_values_list
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()
@@ -794,17 +843,26 @@ class AppHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
                     )
-                    return None, None
+                    # 根据滚动方向决定是否需要反转列表
+                    if direction in ("down", "right"):
+                        attribute_values_list.reverse()
+                    return None, None, attribute_values_list
 
             self.logger.warning(
                 f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
             )
-            return None, None
+            # 根据滚动方向决定是否需要反转列表
+            if direction in ("down", "right"):
+                attribute_values_list.reverse()
+            return None, None, attribute_values_list
         except Exception:
             self.logger.error(
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
-            return None, None
+            # 根据滚动方向决定是否需要反转列表
+            if direction in ("down", "right"):
+                attribute_values_list.reverse()
+            return None, None, attribute_values_list
 
     @with_driver_recovery
     def wait_for_any_element_plus(
