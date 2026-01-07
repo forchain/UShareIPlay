@@ -159,7 +159,8 @@ class MessageManager(Singleton):
         if not key:
             return None
 
-        command_set = set()
+        command_set = set[str]()
+        nickname_map = {}
         for chat in attribute_values:
             # Parse message content using pattern
             pattern = r'souler\[(.+)\]说：:(.+)'
@@ -169,13 +170,14 @@ class MessageManager(Singleton):
 
             # Extract actual message content
             nickname = match.group(1).strip()
-            message_content = match.group(2).strip()
-            command = MessageInfo(message_content, nickname, None, True)
+            command = match.group(2).strip()
             command_set.add(command)
+            nickname_map[command] = nickname
 
         message_queue = MessageQueue.instance()
         for command in command_set:
-            await message_queue.put_message(command)
+            message = MessageInfo(command, nickname_map[command], None, True)
+            await message_queue.put_message(message)
             self.logger.info(f"Missed command added to queue: {command}")
 
         return command_set
