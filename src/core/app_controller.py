@@ -169,6 +169,14 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.info("新driver创建成功")
 
+            # Optimize driver settings
+            self.driver.update_settings({
+                "waitForIdleTimeout": 0,  # Don't wait for idle state
+                "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+                "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+            })
+            self.logger.info("Optimized driver settings")
+
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
                 self.soul_handler.driver = self.driver

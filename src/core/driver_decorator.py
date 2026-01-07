@@ -5,6 +5,8 @@ from selenium.common.exceptions import (
     WebDriverException
 )
 
+from src.core.app_controller import AppController
+
 
 def with_driver_recovery(func):
     """
@@ -27,7 +29,7 @@ def with_driver_recovery(func):
             return func(self, *args, **kwargs)
         except (InvalidSessionIdException, WebDriverException) as e:
             # 获取controller并触发重建
-            if controller := _get_controller(self):
+            if controller := AppController.instance():
                 if controller.reinitialize_driver():
                     print(f"Driver重建成功，{func.__name__} ")
                     return func(self, *args, **kwargs)
@@ -36,20 +38,3 @@ def with_driver_recovery(func):
             return None
 
     return wrapper
-
-
-def _get_controller(obj):
-    """获取controller引用的辅助函数"""
-    # 直接从对象获取
-    if hasattr(obj, 'controller'):
-        return obj.controller
-
-    # 从handler获取
-    if hasattr(obj, 'handler') and hasattr(obj.handler, 'controller'):
-        return obj.handler.controller
-
-    # 从music_handler获取
-    if hasattr(obj, 'music_handler') and hasattr(obj.music_handler, 'controller'):
-        return obj.music_handler.controller
-
-    return None
