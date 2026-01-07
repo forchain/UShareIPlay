@@ -1,7 +1,6 @@
 import asyncio
 import time
 
-from ..core.app_controller import AppController
 from ..core.singleton import Singleton
 from ..models.message_info import MessageInfo
 
