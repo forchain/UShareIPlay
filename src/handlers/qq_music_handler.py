@@ -22,13 +22,6 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
 
-        # Optimize driver settings
-        self.driver.update_settings({
-            "waitForIdleTimeout": 0,  # Don't wait for idle state
-            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
-            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
-        })
-
     def hide_player(self):
         self.press_back()
         self.logger.info("Hide player panel")

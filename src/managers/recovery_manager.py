@@ -63,9 +63,6 @@ class RecoveryManager(Singleton):
     def _execute_radio_after_creation(self):
         """创建房间后执行 radio 命令"""
         try:
-            if not hasattr(self.handler, 'controller') or not hasattr(self.handler.controller, 'radio_command'):
-                self.logger.warning("Radio command not available, skipping")
-                return
 
             # 创建 MessageInfo 对象
             message_info = MessageInfo(
