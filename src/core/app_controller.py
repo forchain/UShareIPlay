@@ -393,7 +393,6 @@ class AppController(Singleton):
                                 pattern = r':(.+)'
                                 command = re.match(pattern, message)
                                 if command:
-                                    return None
                                     # Create MessageInfo for queue
                                     from ..models.message_info import MessageInfo
                                     message_info = MessageInfo(
