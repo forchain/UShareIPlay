@@ -140,8 +140,7 @@ class MessageContentEvent(BaseEvent):
                 await self._process_update_logic()
 
             if missed:
-                messages = await message_manager.get_missed_messages()
-                handled = await self._process_command_messages(messages)
+                await message_manager.process_missed_messages()
 
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
