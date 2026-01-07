@@ -306,8 +306,6 @@ class InfoManager(Singleton):
         if info is None:
             return
 
-        self._last_playback_info = info.copy() if info else None
-
         # 只有在歌曲信息发生变化时才处理
         # 检查歌曲信息是否有效
         if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
@@ -344,6 +342,7 @@ class InfoManager(Singleton):
 
             # 检查歌曲信息是否变化
             if info != self._last_playback_info:
+                self._last_playback_info = info.copy() if info else None
                 self.send_playing_message()
 
         except Exception:
