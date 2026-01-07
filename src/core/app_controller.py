@@ -11,8 +11,8 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
-from .singleton import Singleton
 from .message_queue import MessageQueue
+from .singleton import Singleton
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
@@ -379,6 +379,7 @@ class AppController(Singleton):
         print("开始主监控循环...")
 
         paused = False
+        is_timer_on = True
         while self.is_running:
             try:
                 # Check for console input (高优先级，在事件管理器前处理)
@@ -390,6 +391,13 @@ class AppController(Singleton):
                             if message == '!stop':
                                 paused = not paused
                                 self.soul_handler.logger.critical(f'paused: {paused}')
+                            elif message == '!timer':
+                                is_timer_on = not is_timer_on
+                                if is_timer_on and not self.timer_manager.is_running():
+                                    await self.timer_manager.start()
+                                elif not is_timer_on and self.timer_manager.is_running():
+                                    await self.timer_manager.stop()
+                                self.soul_handler.logger.critical(f'is_timer_on:{is_timer_on} is_running:{self.timer_manager.is_running()}')
                             else:
                                 pattern = r':(.+)'
                                 command = re.match(pattern, message)
