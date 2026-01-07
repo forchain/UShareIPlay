@@ -180,6 +180,10 @@ class MessageManager(Singleton):
             await message_queue.put_message(message)
             self.handler.logger.info(f"Missed command added to queue: {command}")
 
+        from info_manager import InfoManager
+        info_manager = InfoManager.instance()
+        info_manager.send_playing_message()
+
         return command_set
 
     async def get_latest_messages(self):
