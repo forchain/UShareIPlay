@@ -1,6 +1,7 @@
 import asyncio
 import os
 import queue
+import re
 import threading
 import time
 import traceback
@@ -11,6 +12,7 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from .singleton import Singleton
+from .message_queue import MessageQueue
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
@@ -135,7 +137,13 @@ class AppController(Singleton):
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
 
         server_url = f"http://{appium_host}:{appium_port}"
-        return webdriver.Remote(command_executor=server_url, options=options)
+        driver = webdriver.Remote(command_executor=server_url, options=options)
+        driver.update_settings({
+            "waitForIdleTimeout": 0,  # Don't wait for idle state
+            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+        })
+        return driver
 
     def reinitialize_driver(self) -> bool:
         """
@@ -153,21 +161,28 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.warning("==== 开始重建driver ====")
 
-            # !!! quit will introduce significant performance issue
             # 1. 关闭旧driver
-            # try:
-            #     self.driver.quit()
-            # except Exception as e:
-            #     if self.logger:
-            #         self.logger.debug(f"关闭旧driver出错: {str(e)}")
+            try:
+                self.driver.quit()
+            except Exception as e:
+                if self.logger:
+                    self.logger.debug(f"关闭旧driver出错: {str(e)}")
 
             # 2. 等待清理
-            time.sleep(2)
+            time.sleep(1)
 
             # 3. 创建新driver
             self.driver = self._init_driver()
             if self.logger:
                 self.logger.info("新driver创建成功")
+
+            # Optimize driver settings
+            self.driver.update_settings({
+                "waitForIdleTimeout": 0,  # Don't wait for idle state
+                "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+                "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+            })
+            self.logger.info("Optimized driver settings")
 
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
@@ -374,8 +389,26 @@ class AppController(Singleton):
                         if message.strip():
                             if message == '!stop':
                                 paused = not paused
+                                self.soul_handler.logger.critical(f'paused: {paused}')
                             else:
-                                self.soul_handler.send_message(message)
+                                pattern = r':(.+)'
+                                command = re.match(pattern, message)
+                                if command:
+                                    # Create MessageInfo for queue
+                                    from ..models.message_info import MessageInfo
+                                    message_info = MessageInfo(
+                                        content=command.group(1).strip(),
+                                        nickname="Console",
+                                        avatar_element=None,
+                                        relation_tag=True  # Timer messages are always authorized
+                                    )
+
+                                    # Add message to queue
+                                    message_queue = MessageQueue.instance()
+                                    await message_queue.put_message(message_info)
+                                    self.logger.info(f"Console message added to queue: {message}")
+                                else:
+                                    self.soul_handler.send_message(message)
 
                 except queue.Empty:
                     pass

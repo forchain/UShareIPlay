@@ -211,7 +211,7 @@ class MessageContentEvent(BaseEvent):
                 command_manager = CommandManager.instance()
                 response = await command_manager.handle_message_commands(queue_messages)
                 if response:
-                    self.handler.send_message(response)
+                    self.logger.info(response)
 
         except Exception as e:
             self.logger.error(f"Error processing queue messages: {str(e)}")

@@ -27,7 +27,7 @@ class BaseEvent(ABC):
         """
         self.handler = handler
         self.logger = handler.logger
-        self.controller = handler.controller if hasattr(handler, 'controller') else None
+        self.controller = handler.controller
 
     async def handle(self, key: str, element_wrapper):
         """
@@ -46,4 +46,3 @@ class BaseEvent(ABC):
         element_id = element_wrapper.get_attribute('resource-id') if element_wrapper else 'Unknown'
         self.logger.info(f"Event triggered: key={key}, id={element_id}")
         return False
-
