@@ -12,6 +12,7 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from .singleton import Singleton
+from .message_queue import MessageQueue
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
