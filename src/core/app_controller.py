@@ -388,7 +388,7 @@ class AppController(Singleton):
                         if message.strip():
                             if message == '!stop':
                                 paused = not paused
-                                self.logger.info(f'paused: {paused}')
+                                self.soul_handler.logger.info(f'paused: {paused}')
                             else:
                                 self.soul_handler.send_message(message)
 
