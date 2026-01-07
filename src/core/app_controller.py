@@ -390,7 +390,7 @@ class AppController(Singleton):
                                 paused = not paused
                                 self.soul_handler.logger.critical(f'paused: {paused}')
                             else:
-                                pattern = r':(.+) .+'
+                                pattern = r':(.+)'
                                 command = re.match(pattern, message)
                                 if command:
                                     return None
