@@ -67,6 +67,7 @@ class MessageManager(Singleton):
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
         self.latest_chats = deque(maxlen=3)
+        self.missed_lock = True
 
     @property
     def handler(self):
@@ -134,6 +135,10 @@ class MessageManager(Singleton):
         return new_messages if new_messages else None
 
     async def process_missed_messages(self):
+        if self.missed_lock:
+            self.missed_lock = False
+            return None
+
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
             return None
@@ -147,7 +152,7 @@ class MessageManager(Singleton):
         last_chat = self.recent_chats[-1] if len(self.recent_chats) > 0 else None
 
         # scroll back to the missing element
-        self.handler.logger.info(f"last_chat={last_chat}")
+        self.handler.logger.critical(f"last_chat={last_chat}")
 
         key, element, attribute_values = self.handler.scroll_container_until_element(
             'message_content',
@@ -164,7 +169,7 @@ class MessageManager(Singleton):
         for chat in attribute_values:
             if last_chat == chat:
                 continue
-                
+
             # Parse message content using pattern
             pattern = r'souler\[(.+)\]说：:(.+)'
 
@@ -187,6 +192,8 @@ class MessageManager(Singleton):
         from .info_manager import InfoManager
         info_manager = InfoManager.instance()
         info_manager.send_playing_message()
+
+        self.missed_lock = True
 
         return command_set
 
