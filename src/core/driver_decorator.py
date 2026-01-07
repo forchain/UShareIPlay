@@ -5,8 +5,6 @@ from selenium.common.exceptions import (
     WebDriverException
 )
 
-from src.core.app_controller import AppController
-
 
 def with_driver_recovery(func):
     """
@@ -28,6 +26,8 @@ def with_driver_recovery(func):
         try:
             return func(self, *args, **kwargs)
         except (InvalidSessionIdException, WebDriverException) as e:
+            # 延迟导入避免循环依赖
+            from ..core.app_controller import AppController
             # 获取controller并触发重建
             if controller := AppController.instance():
                 if controller.reinitialize_driver():
