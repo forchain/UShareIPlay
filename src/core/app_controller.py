@@ -141,7 +141,6 @@ class AppController(Singleton):
             "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
             "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
         })
-        self.logger.info("Driver initialized")
         return webdriver.Remote(command_executor=server_url, options=options)
 
     def reinitialize_driver(self) -> bool:
