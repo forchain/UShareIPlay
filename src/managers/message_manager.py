@@ -178,7 +178,7 @@ class MessageManager(Singleton):
         for command in command_set:
             message = MessageInfo(command, nickname_map[command], None, True)
             await message_queue.put_message(message)
-            self.logger.info(f"Missed command added to queue: {command}")
+            self.handler.logger.info(f"Missed command added to queue: {command}")
 
         return command_set
 
