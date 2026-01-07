@@ -660,7 +660,7 @@ class AppHandler:
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
             attribute_value: str = None, max_swipes: int = 10
-    ) -> Tuple[Optional[str], Optional[WebElement], list]:
+    ) -> Tuple[Optional[str], Optional[WebElement], list[str]]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
         参数：
