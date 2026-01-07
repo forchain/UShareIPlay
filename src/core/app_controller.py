@@ -379,7 +379,6 @@ class AppController(Singleton):
         print("开始主监控循环...")
 
         paused = False
-        is_timer_on = True
         while self.is_running:
             try:
                 # Check for console input (高优先级，在事件管理器前处理)
@@ -392,12 +391,11 @@ class AppController(Singleton):
                                 paused = not paused
                                 self.soul_handler.logger.critical(f'paused: {paused}')
                             elif message == '!timer':
-                                is_timer_on = not is_timer_on
-                                if is_timer_on and not self.timer_manager.is_running():
-                                    await self.timer_manager.start()
-                                elif not is_timer_on and self.timer_manager.is_running():
+                                if self.timer_manager.is_running():
                                     await self.timer_manager.stop()
-                                self.soul_handler.logger.critical(f'is_timer_on:{is_timer_on} is_running:{self.timer_manager.is_running()}')
+                                else:
+                                    await self.timer_manager.start()
+                                self.soul_handler.logger.critical(f'is_running:{self.timer_manager.is_running()}')
                             else:
                                 pattern = r':(.+)'
                                 command = re.match(pattern, message)
