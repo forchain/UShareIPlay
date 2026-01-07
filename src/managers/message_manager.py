@@ -162,8 +162,12 @@ class MessageManager(Singleton):
         command_set = set[str]()
         nickname_map = {}
         for chat in attribute_values:
+            if last_chat == chat:
+                continue
+                
             # Parse message content using pattern
             pattern = r'souler\[(.+)\]说：:(.+)'
+
             match = re.match(pattern, chat)
             if not match:
                 continue
