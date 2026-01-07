@@ -135,6 +135,13 @@ class AppController(Singleton):
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
 
         server_url = f"http://{appium_host}:{appium_port}"
+        driver = webdriver.Remote(command_executor=server_url, options=options)
+        driver.update_settings({
+            "waitForIdleTimeout": 0,  # Don't wait for idle state
+            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+        })
+        self.logger.info("Driver initialized")
         return webdriver.Remote(command_executor=server_url, options=options)
 
     def reinitialize_driver(self) -> bool:
@@ -153,16 +160,15 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.warning("==== 开始重建driver ====")
 
-            # !!! quit will introduce significant performance issue
             # 1. 关闭旧driver
-            # try:
-            #     self.driver.quit()
-            # except Exception as e:
-            #     if self.logger:
-            #         self.logger.debug(f"关闭旧driver出错: {str(e)}")
+            try:
+                self.driver.quit()
+            except Exception as e:
+                if self.logger:
+                    self.logger.debug(f"关闭旧driver出错: {str(e)}")
 
             # 2. 等待清理
-            time.sleep(2)
+            time.sleep(1)
 
             # 3. 创建新driver
             self.driver = self._init_driver()
@@ -382,6 +388,7 @@ class AppController(Singleton):
                         if message.strip():
                             if message == '!stop':
                                 paused = not paused
+                                self.logger.info(f'paused: {paused}')
                             else:
                                 self.soul_handler.send_message(message)
 
