@@ -337,6 +337,13 @@ class AppController(Singleton):
         self.logger.info("All command modules loaded")
         print("命令模块加载完成")
 
+        # Initialize keyword system and load keywords from config
+        print("初始化关键字系统...")
+        from ..managers.keyword_manager import KeywordManager
+        keyword_manager = KeywordManager.instance()
+        await keyword_manager.load_keywords_from_config()
+        print("关键字系统初始化完成")
+
         # Initialize timer manager with initial timers from config
         print("初始化定时器管理器...")
         self.command_manager.initialize_timer_manager(self.config)
