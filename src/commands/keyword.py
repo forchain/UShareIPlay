@@ -35,6 +35,7 @@ class KeywordCommand(BaseCommand):
             parameters[2]: (可选) 公开性（1=公开，0=私有，省略=切换）
         """
         try:
+            self.handler.logger.info(f"Keyword command received: parameters={parameters}")
             if not parameters:
                 return {'error': '缺少参数'}
             

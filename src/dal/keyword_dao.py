@@ -5,13 +5,12 @@ from src.models.user import User
 
 class KeywordDAO:
     @staticmethod
-    async def create(keyword: str, command: str, source: str, 
+    async def create(keyword: str, command: str, 
                      creator_id: Optional[int] = None, is_public: bool = True) -> Keyword:
         """Create a new keyword"""
         return await Keyword.create(
             keyword=keyword,
             command=command,
-            source=source,
             creator_id=creator_id,
             is_public=is_public
         )
@@ -53,9 +52,9 @@ class KeywordDAO:
         return False
 
     @staticmethod
-    async def delete_by_source(source: str) -> int:
-        """Delete all keywords by source"""
-        deleted_count = await Keyword.filter(source=source).delete()
+    async def delete_config_keywords() -> int:
+        """Delete all config keywords (creator_id is None)"""
+        deleted_count = await Keyword.filter(creator_id__isnull=True).delete()
         return deleted_count
 
     @staticmethod

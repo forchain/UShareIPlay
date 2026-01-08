@@ -45,12 +45,12 @@ class KeywordManager(Singleton):
     async def load_keywords_from_config(self):
         """从配置文件加载关键字到数据库
         
-        1. 清除所有 source='config' 的关键字
+        1. 清除所有配置关键字（creator_id is None）
         2. 重新导入配置文件中的关键字
         """
         try:
-            # 清除配置来源的关键字
-            deleted_count = await KeywordDAO.delete_by_source('config')
+            # 清除配置关键字（creator_id is None）
+            deleted_count = await KeywordDAO.delete_config_keywords()
             self.logger.info(f"Cleared {deleted_count} config keywords")
             
             # 加载关键字配置文件
@@ -88,17 +88,20 @@ class KeywordManager(Singleton):
                     await KeywordDAO.create(
                         keyword=kw,
                         command=command,
-                        source='config',
-                        creator_id=None,  # 配置来源没有创建者
+                        creator_id=None,  # 配置关键字 creator_id 为 None
                         is_public=is_public
                     )
                     loaded_count += 1
                     self.logger.info(f"Loaded config keyword: {kw}")
             
             self.logger.info(f"Loaded {loaded_count} keywords from config")
+            print(f"关键字系统初始化完成：加载了 {loaded_count} 个关键字")
             
-        except Exception:
-            self.logger.error(f"Error loading keywords from config: {traceback.format_exc()}")
+        except Exception as e:
+            error_msg = f"Error loading keywords from config: {traceback.format_exc()}"
+            self.logger.error(error_msg)
+            print(f"关键字加载失败: {str(e)}")
+            traceback.print_exc()
 
     async def find_keyword(self, keyword: str, username: str) -> Optional[Keyword]:
         """查找匹配的关键字
@@ -174,7 +177,6 @@ class KeywordManager(Singleton):
                 await KeywordDAO.create(
                     keyword=kw,
                     command=command,
-                    source='user',
                     creator_id=user.id,
                     is_public=is_public
                 )
@@ -217,8 +219,8 @@ class KeywordManager(Singleton):
             if not kw:
                 return {'error': f'关键字 "{keyword}" 不存在'}
             
-            # 检查权限
-            if kw.source == 'config':
+            # 检查权限（creator_id is None 表示配置关键字）
+            if kw.creator_id is None:
                 return {'error': '不能修改配置关键字'}
             
             if not kw.creator or kw.creator.username != username:
@@ -255,8 +257,8 @@ class KeywordManager(Singleton):
             if not kw:
                 return {'error': f'关键字 "{keyword}" 不存在'}
             
-            # 检查权限
-            if kw.source == 'config':
+            # 检查权限（creator_id is None 表示配置关键字）
+            if kw.creator_id is None:
                 return {'error': '不能删除配置关键字'}
             
             if not kw.creator or kw.creator.username != username:
