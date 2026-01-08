@@ -152,6 +152,9 @@ class CommandManager(Singleton):
                     error=result['error'],
                     user=message_info.nickname,
                 )
+            elif 'message' in result:
+                # keyword 命令返回的是 message 字段
+                res = f'{result["message"]} @{message_info.nickname}'
             else:
                 res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
             return res
@@ -234,10 +237,12 @@ class CommandManager(Singleton):
                         command = self.get_command(cmd)
                         if command:
                             response = await self.process_command(command, message_info, command_info)
-                            self.handler.send_message(response)
+                            if response:
+                                self.handler.send_message(response)
                             success_count += 1
                         else:
                             self.logger.error(f"Unknown command: {cmd}")
+                            self.handler.send_message(f"Unknown command: {cmd} @{message_info.nickname}")
 
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
