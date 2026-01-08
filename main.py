@@ -21,7 +21,7 @@ async def run_app():
     # 初始化控制器 using singleton pattern
     controller = AppController.instance(config)
 
-    # 启动监控
+    # 启动监控（会在内部初始化关键字系统）
     return await controller.start_monitoring()
 
 async def main():
