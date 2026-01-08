@@ -161,6 +161,7 @@ class MessageManager(Singleton):
             'content-desc|text',
             last_chat,
         )
+        self.missed_lock = True
         if not key:
             return None
 
@@ -192,8 +193,6 @@ class MessageManager(Singleton):
         from .info_manager import InfoManager
         info_manager = InfoManager.instance()
         info_manager.send_playing_message()
-
-        self.missed_lock = True
 
         return command_set
 
