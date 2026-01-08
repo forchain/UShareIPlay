@@ -272,7 +272,7 @@ class MessageManager(Singleton):
                 return None
 
             # Parse message content using pattern
-            pattern = r'souler\[(.+)\]说：(:.+)'
+            pattern = r'souler\[(.+)\]说：:(.+)'
             match = re.match(pattern, chat_text)
             if not match:
                 return None
