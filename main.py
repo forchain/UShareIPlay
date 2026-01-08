@@ -21,6 +21,11 @@ async def run_app():
     # 初始化控制器 using singleton pattern
     controller = AppController.instance(config)
 
+    # 初始化关键字系统并加载配置
+    from src.managers.keyword_manager import KeywordManager
+    keyword_manager = KeywordManager.instance()
+    await keyword_manager.load_keywords_from_config()
+
     # 启动监控
     return await controller.start_monitoring()
 

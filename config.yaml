@@ -1,4 +1,5 @@
 soul:
+  owner_username: "Joyer"
   package_name: "cn.soulapp.android"
   chat_activity: ".component.startup.main.MainActivity"
   # default_party_id: "FM18633292"
@@ -17,106 +18,106 @@ soul:
   initial_timers:
     - id: "notice_0"
       time: "00:00"
-      message: "notice sorry, hello, excuse me"
+      message: ":notice sorry, hello, excuse me"
       repeat: true
     - id: "help_1"
       time: "01:00"
-      message: "help"
+      message: ":help"
       repeat: true
     - id: "playlist_6"
       time: "06:00"
-      message: "playlist 官方 纯音乐"
+      message: ":playlist 官方 纯音乐"
       repeat: true
     - id: "playlist_7"
       time: "07:00"
-      message: "playlist 官方 微醺咖啡厅"
+      message: ":playlist 官方 微醺咖啡厅"
       repeat: true
     - id: "playlist_8"
       time: "08:00"
-      message: "playlist Jazz 官方"
+      message: ":playlist Jazz 官方"
       repeat: true
     - id: "theme_morning"
       time: "09:00"
-      message: "title 四十更惑 加油"
+      message: ":title 四十更惑 加油"
       repeat: true
     - id: "playlist_9"
       time: "09:00"
-      message: "playlist 官方 慵懒时间"
+      message: ":playlist 官方 慵懒时间"
       repeat: true
     - id: "playlist_10"
       time: "10:00"
-      message: "playlist 官方 R&B"
+      message: ":playlist 官方 R&B"
       repeat: true
     - id: "playlist_11"
       time: "11:00"
-      message: "playlist 官方 欧美精选"
+      message: ":playlist 官方 欧美精选"
       repeat: true
     - id: "theme_noon"
       time: "12:00"
-      message: "title 放松一下 午休"
+      message: ":title 放松一下 午休"
       repeat: true
     - id: "playlist_12"
       time: "12:00"
-      message: "playlist 深度专注 官方"
+      message: ":playlist 深度专注 官方"
       repeat: true
     - id: "notice_12"
       time: "12:00"
-      message: "notice hello, thank you, are you ok?"
+      message: ":notice hello, thank you, are you ok?"
       repeat: true
     - id: "theme_afternoon"
       time: "13:00"
-      message: "title 赤子之心 💪"
+      message: ":title 赤子之心 💪"
       repeat: true
     - id: "playlist_13"
       time: "13:00"
-      message: "playlist 官方 粤语经典"
+      message: ":playlist 官方 粤语经典"
       repeat: true
     - id: "radio_14"
       time: "14:00"
-      message: "radio"
+      message: ":radio"
     - id: "radio_15"
       time: "15:00"
-      message: "radio radar"
+      message: ":radio radar"
       repeat: true
     - id: "radio_16"
       time: "16:00"
-      message: "radio guess"
+      message: ":radio guess"
       repeat: true
     - id: "radio_17"
       time: "17:00"
-      message: "radio daily"
+      message: ":radio daily"
       repeat: true
     - id: "playlist_18"
       time: "18:00"
-      message: "playlist 红心雷达"
+      message: ":playlist 红心雷达"
       repeat: true
     - id: "theme_home"
       time: "19:00"
-      message: "title 差不多该回窝了 🏠"
+      message: ":title 差不多该回窝了 🏠"
       repeat: true
     - id: "playlist_19"
       time: "19:00"
-      message: "playlist 官方 古典"
+      message: ":playlist 官方 古典"
       repeat: true
     - id: "playlist_20"
       time: "20:00"
-      message: "playlist 官方 电子"
+      message: ":playlist 官方 电子"
       repeat: true
     - id: "playlist_21"
       time: "21:00"
-      message: "playlist 官方 Lofi&Chill"
+      message: ":playlist 官方 Lofi&Chill"
       repeat: true
     - id: "playlist_22"
       time: "22:00"
-      message: "playlist Lofi Girl 专属陪伴"
+      message: ":playlist Lofi Girl 专属陪伴"
       repeat: true
     - id: "theme_sleep"
       time: "23:00"
-      message: "title 早睡早起 💤"
+      message: ":title 早睡早起 💤"
       repeat: true
     - id: "playlist_23"
       time: "23:00"
-      message: "radio sleep"
+      message: ":radio sleep"
       repeat: true
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
@@ -459,6 +460,9 @@ commands:
   - prefix: "timer"
     response_template: "{timer}"
     error_template: "{error}"
+  - prefix: "keyword"
+    response_template: "{message}"
+    error_template: "关键字操作失败: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

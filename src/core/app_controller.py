@@ -397,7 +397,7 @@ class AppController(Singleton):
                                     await self.timer_manager.start()
                                 self.soul_handler.logger.critical(f'is_running:{self.timer_manager.is_running()}')
                             else:
-                                pattern = r':(.+)'
+                                pattern = r'(:.+)'
                                 command = re.match(pattern, message)
                                 if command:
                                     # Create MessageInfo for queue
