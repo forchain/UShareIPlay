@@ -16,7 +16,8 @@ __elements__ = [
     'new_message_tip',
     'floating_entry',
 
-    'close_button',
+    # conflicts with '关闭组件' in party  hall
+    # 'close_button',
     'claim_reward_button',
     'party_ended',
     'confirm_close_3',
