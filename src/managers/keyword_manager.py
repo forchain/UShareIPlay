@@ -157,8 +157,8 @@ class KeywordManager(Singleton):
                 existing = await KeywordDAO.get_by_keyword(kw)
                 
                 if existing:
-                    # 检查覆盖权限
-                    if existing.source == 'config':
+                    # 检查覆盖权限（creator_id is None 表示配置关键字）
+                    if existing.creator_id is None:
                         failed_keywords.append(f"{kw}(配置关键字不可覆盖)")
                         continue
                     
