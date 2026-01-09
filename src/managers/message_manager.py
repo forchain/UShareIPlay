@@ -67,7 +67,6 @@ class MessageManager(Singleton):
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
         self.latest_chats = deque(maxlen=3)
-        self.missed_lock = True
 
     @property
     def handler(self):
@@ -135,9 +134,6 @@ class MessageManager(Singleton):
         return new_messages if new_messages else None
 
     async def process_missed_messages(self):
-        if self.missed_lock:
-            self.missed_lock = False
-            return None
 
         if not self.handler.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
@@ -161,7 +157,11 @@ class MessageManager(Singleton):
             'content-desc|text',
             last_chat,
         )
-        self.missed_lock = True
+
+        # send the playing message to scroll to the bottom of the chat history rapidly, no matter if found the key or not
+        from .info_manager import InfoManager
+        InfoManager.instance().send_playing_message()
+
         if not key:
             return None
 
@@ -189,10 +189,6 @@ class MessageManager(Singleton):
             message = MessageInfo(command, nickname_map[command], None, True)
             await message_queue.put_message(message)
             self.handler.logger.info(f"Missed command added to queue: {command}")
-
-        from .info_manager import InfoManager
-        info_manager = InfoManager.instance()
-        info_manager.send_playing_message()
 
         return command_set
 
