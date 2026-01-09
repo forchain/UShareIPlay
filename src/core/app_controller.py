@@ -411,9 +411,7 @@ class AppController(Singleton):
                                     from ..models.message_info import MessageInfo
                                     message_info = MessageInfo(
                                         content=command.group(1).strip(),
-                                        nickname="Console",
-                                        avatar_element=None,
-                                        relation_tag=True  # Timer messages are always authorized
+                                        nickname="Console"
                                     )
 
                                     # Add message to queue
