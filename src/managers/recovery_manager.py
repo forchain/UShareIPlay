@@ -13,82 +13,7 @@ class RecoveryManager(Singleton):
         from ..handlers.soul_handler import SoulHandler
         self.handler = SoulHandler.instance()
         self.logger = self.handler.logger
-        self.last_recovery_time = 0
-        self.recovery_cooldown = 5  # 5秒冷却时间
-        self.manual_mode_enabled = False  # 手动模式标志位
-        self.abnormal_state_detected = False  # 异常状态检测标志
-        self.abnormal_state_count = 0  # 连续异常状态计数
         self._party_manager = None  # 延迟初始化，避免循环依赖
-
-        # 关闭和返回按钮列表
-        self.close_buttons = [
-            'floating_entry',
-            'party_ended',
-
-            # 如果无法用返回键，则在此添加
-            'confirm_close_3',
-
-            # 如果用返回键会造成潜在问题，则在此添加
-
-            # 可以用返回按钮代替，暂时不检查，提高效率
-            # 'party_hall_back',
-            # 'search_back',
-            # 'close_more_menu',
-
-            # 不确定是否可以用返回键代替
-            # 'reload_button',
-            # 'close_chat',
-            # 'confirm_close_6',
-            # 'confirm_close_7',
-            # 'confirm_close_4',
-            # 'confirm_close_5',
-            # 'confirm_close_1',
-            # 'confirm_close_2',
-            # 'confirm_close',
-
-            # 'go_back',
-            # 'go_back_1',
-            # 'go_back_2',
-            # 'close_notice',
-            # 'close_notice_1',
-            # 'h5_back',
-            # 'receive_gift',
-            # 'party_back',
-            # 'close_app',
-            # 'activity_back',
-            # 'reminder_ok',
-            # 'profile_back',
-        ]
-
-        # 抽屉式弹窗列表
-        self.drawer_elements = [
-            # 无法用返回键代替
-            'input_drawer',
-
-            # 不确定是否可以被返回键代替
-            # 'party_restore_drawer'
-            # 'bottom_drawer_1',
-            # 'online_drawer',
-
-            # 可以被返回键代替
-            # 'share_drawer',
-        ]
-
-        # 潜在风险元素列表（虽然不挡住输入框，但可能因误操作导致不稳定）
-        self.risk_elements = [
-            'claim_reward_button',
-            'new_message_tip',
-            'close_button',
-            'collapse_seats',
-        ]
-
-        # 正常状态的关键元素
-        self.normal_state_elements = [
-            'input_box_entry'
-        ]
-
-        self.last_recovery_time = 0
-        self.recovery_cooldown = 1  # 恢复操作冷却时间（秒）
 
     @property
     def party_manager(self):
@@ -138,16 +63,11 @@ class RecoveryManager(Singleton):
     def _execute_radio_after_creation(self):
         """创建房间后执行 radio 命令"""
         try:
-            if not hasattr(self.handler, 'controller') or not hasattr(self.handler.controller, 'radio_command'):
-                self.logger.warning("Radio command not available, skipping")
-                return
 
             # 创建 MessageInfo 对象
             message_info = MessageInfo(
                 content="radio",
-                nickname="Joyer",
-                avatar_element=None,
-                relation_tag=False
+                nickname="Joyer"
             )
 
             async def _run_radio():
@@ -176,7 +96,7 @@ class RecoveryManager(Singleton):
             from .info_manager import InfoManager
             info_manager = InfoManager.instance()
             room_id_text = info_manager.room_id
-            
+
             if room_id_text is None:
                 return False
 
@@ -189,92 +109,6 @@ class RecoveryManager(Singleton):
         except Exception as e:
             self.logger.debug(f"检测正常状态时出错: {str(e)}")
             return False
-
-    def mark_abnormal_state(self):
-        """
-        标记检测到异常状态（无消息）
-        增加异常状态计数
-        """
-        if self.manual_mode_enabled:
-            return False
-
-        self.abnormal_state_detected = True
-        self.abnormal_state_count += 1
-        self.logger.debug(f"Marked abnormal state (count: {self.abnormal_state_count})")
-        return True
-
-    def handle_close_buttons(self) -> bool:
-        """
-        检测并点击各种关闭或返回按钮
-        返回True表示执行了操作，False表示没有找到需要处理的按钮
-        """
-        for button_key in self.close_buttons:
-            try:
-                element = self.handler.try_find_element_plus(button_key, log=False)
-                if not element:
-                    continue
-                self.logger.info(f"Clicked close button: {button_key}")
-                element.click()
-                return True
-            except Exception as e:
-                self.logger.error(f"Error on detecting close button {button_key}: {str(e)}")
-                continue
-
-        return False
-
-    def handle_drawer_elements(self) -> bool:
-        """
-        检测并关闭各种抽屉式弹窗界面
-        返回True表示执行了操作，False表示没有找到需要处理的抽屉
-        """
-        import time
-
-        for drawer_key in self.drawer_elements:
-            try:
-                element = self.handler.try_find_element_plus(drawer_key, log=False)
-                if not element:
-                    continue
-
-                # 添加超时保护
-                start_time = time.time()
-                click_success = self.handler.click_element_at(element, x_ratio=0.3, y_ratio=0, y_offset=-200)
-                elapsed_time = time.time() - start_time
-
-                if elapsed_time > 2:  # 如果点击操作超过2秒
-                    self.logger.warning(f"Drawer click operation took {elapsed_time:.2f}s for {drawer_key}")
-
-                if click_success:
-                    self.logger.info(f"Closed drawer: {drawer_key}")
-                    return True
-                else:
-                    self.logger.warning(f"Failed to close drawer: {drawer_key}")
-
-            except Exception as e:
-                self.logger.debug(f"Error on detecting drawer {drawer_key}: {str(e)}")
-                continue
-
-        return False
-
-    def handle_risk_elements(self) -> bool:
-        """
-        检测并处理潜在风险元素
-        这些元素虽然不直接影响输入框，但可能因误操作导致界面不稳定
-        返回True表示执行了操作，False表示没有找到需要处理的元素
-        """
-        for risk_key in self.risk_elements:
-            try:
-                element = self.handler.try_find_element_plus(risk_key, log=False)
-                if not element:
-                    continue
-
-                element.click()
-                self.logger.info(f"Processed risk element: {risk_key}")
-                return True
-            except Exception as e:
-                self.logger.error(f"Error on detecting on risk element: {risk_key} : {str(e)}")
-                continue
-
-        return False
 
     def handle_join_party(self) -> bool:
         """
@@ -441,80 +275,3 @@ class RecoveryManager(Singleton):
             self.logger.debug(f"检测首页时出错: {str(e)}")
 
         return False
-
-    def check_and_recover(self) -> bool:
-        """
-        检查异常状态并执行恢复操作
-        返回True表示执行了恢复操作，False表示状态正常或无需恢复
-        """
-        current_time = time.time()
-
-        # 检查冷却时间
-        if current_time - self.last_recovery_time < self.recovery_cooldown:
-            return False
-
-        # 如果启用了手动模式，跳过自动恢复
-        if self.manual_mode_enabled:
-            return False
-
-        self.handler.switch_to_app()
-
-        # 首先检查是否处于正常状态
-        if self.is_normal_state():
-            # 如果状态正常，重置异常状态标记
-            if self.abnormal_state_detected:
-                self.logger.info("State returned to normal, resetting abnormal state flags")
-                self.abnormal_state_detected = False
-                self.abnormal_state_count = 0
-            return False
-        # 找不到房名可能因为房名还没显示，不能认为是异常状态
-        # else:
-        #     self.mark_abnormal_state()
-
-        if not self.abnormal_state_detected:
-            return False
-
-        # 如果检测到异常状态（无消息），优先执行恢复操作
-        self.logger.warning(f"Abnormal state detected (count: {self.abnormal_state_count}), attempting recovery")
-
-        # 1. 优先处理退出的情况
-        recovery_performed = self.handle_join_party()
-
-        # 2. 处理关闭按钮
-        if not recovery_performed:
-            recovery_performed = self.handle_close_buttons()
-
-        # 3. 处理抽屉元素
-        if not recovery_performed:
-            recovery_performed = self.handle_drawer_elements()
-
-        # 4. 如果还是无法恢复，尝试按返回键
-        if not recovery_performed:
-            self.logger.info("Attempting to press back button to exit abnormal state")
-            self.handler.press_back()
-            recovery_performed = True
-
-        if recovery_performed:
-            self.last_recovery_time = current_time
-            self.abnormal_state_count = 0  # 重置计数
-            self.logger.info("Recovery operation completed for abnormal state")
-
-        return recovery_performed
-
-    def force_recovery(self) -> bool:
-        """
-        强制执行恢复操作，忽略冷却时间
-        用于紧急情况下的恢复
-        """
-        self.logger.warning("执行强制恢复操作")
-        self.last_recovery_time = 0  # 重置冷却时间
-        return self.check_and_recover()
-
-    def set_manual_mode(self, enabled: bool):
-        """
-        设置手动模式状态
-        Args:
-            enabled: True表示启用手动模式（禁用自动恢复），False表示禁用手动模式（启用自动恢复）
-        """
-        self.manual_mode_enabled = enabled
-        self.logger.info(f"Recovery manager manual mode set to: {enabled}")

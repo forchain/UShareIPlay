@@ -80,8 +80,11 @@ class SoulHandler(AppHandler, Singleton):
             dict: Result of invitation
         """
         try:
-            # Check relation tag
-            if not message_info.relation_tag:
+            # Check if user level >= 3
+            from ..dal.user_dao import UserDAO
+            import asyncio
+            user = asyncio.run(UserDAO.get_or_create(message_info.nickname))
+            if user.level < 3:
                 return {
                     'error': '必须群主关注的人才能邀请群主入群',
                     'party_id': party_id

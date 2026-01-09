@@ -32,36 +32,71 @@ class AdminManager(Singleton):
         Returns:
             dict: Result of operation with user info
         """
-        # Check relation tag
-        if not message_info.relation_tag and message_info.nickname != 'Joyer':
+        # Check if user level >= 3
+        user = await UserDAO.get_or_create(message_info.nickname)
+        if user.level < 3:
             return {
-                'error': 'Only friends of owner can apply administrators',
+                'error': 'Only close friends can apply administrators',
                 'user': message_info.nickname,
             }
 
-        # Check if user is a close friend and level >= 5
-        user = await UserDAO.get_or_create(message_info.nickname)
-        if not user or user.level < 5:
+        # Check if user level >= 5 for admin operations
+        if user.level < 5:
             return {
                 'error': 'Only close friends with level >= 5 can apply administrators',
                 'user': message_info.nickname,
             }
 
-        # Click avatar to open profile
-        avatar = message_info.avatar_element
-        if avatar:
-            try:
-                avatar.click()
-                self.logger.info("Clicked sender avatar")
-            except Exception as e:
-                self.logger.error('Avatar element is unavailable')
-                return {
-                    'error': 'Avatar element is unavailable',
-                    'user': message_info.nickname,
-                }
-        else:
+        # Open online users list to find and click the user
+        user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
+        if not user_count_elem:
             return {
-                'error': 'Avatar element not found',
+                'error': 'Failed to open online users list',
+                'user': message_info.nickname,
+            }
+        
+        user_count_elem.click()
+        self.logger.info("Opened online users list")
+        
+        # Wait for online users container
+        online_container = self.handler.wait_for_element_plus('online_users')
+        if not online_container:
+            return {
+                'error': 'Failed to find online users container',
+                'user': message_info.nickname,
+            }
+        
+        # Find the user in online users list
+        key, user_elem, _ = self.handler.scroll_container_until_element(
+            'online_user', 
+            'online_users', 
+            'up', 
+            'text', 
+            message_info.nickname
+        )
+        
+        if not user_elem:
+            # Close online users list
+            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+            if bottom_drawer:
+                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+            return {
+                'error': 'User not found in online users list',
+                'user': message_info.nickname,
+            }
+        
+        # Click the user element to open profile
+        try:
+            user_elem.click()
+            self.logger.info(f"Clicked user element for {message_info.nickname}")
+        except Exception as e:
+            self.logger.error(f'Failed to click user element: {str(e)}')
+            # Close online users list
+            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+            if bottom_drawer:
+                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+            return {
+                'error': 'Failed to click user element',
                 'user': message_info.nickname,
             }
 

@@ -56,7 +56,9 @@ class UserCountEvent(BaseEvent):
             # 更新 InfoManager 中的在线人数
             from ..managers.info_manager import InfoManager
             info_manager = InfoManager.instance()
-            info_manager.user_count = user_count
+            if user_count != info_manager.user_count:
+                info_manager.user_count = user_count
+                await info_manager.refresh_online_users()
 
             return False
 
