@@ -19,6 +19,7 @@ class InfoManager(Singleton):
         self._party_manager = None
         self._online_users: Set[str] = set()
         self._user_count: Optional[int] = None  # 在线人数
+        self._last_user_count: Optional[int] = None  # 上次的在线人数，用于检测变化
         self._room_id: Optional[str] = None  # 房间ID
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
@@ -329,9 +330,183 @@ class InfoManager(Singleton):
             else:
                 self.logger.warning("Song info missing required keys")
 
+    def check_and_update_user_count(self):
+        """
+        检查并更新在线用户人数，如果人数变化则更新在线用户列表和用户等级
+        这个方法会在主循环中被调用
+        """
+        try:
+            # 检查用户人数是否变化
+            current_count = self._user_count
+            if current_count is None:
+                return
+            
+            if current_count == self._last_user_count:
+                return
+            
+            self.logger.info(f"User count changed: {self._last_user_count} -> {current_count}")
+            self._last_user_count = current_count
+            
+            # 点击 user_count 元素打开在线用户列表
+            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
+            if not user_count_elem:
+                return
+            
+            user_count_elem.click()
+            self.logger.info("Clicked user count element")
+            
+            # 等待在线用户列表容器出现
+            online_container = self.handler.wait_for_element_plus('online_users')
+            if not online_container:
+                self.logger.error("Online users container not found")
+                return
+            
+            # 解析目标人数
+            target_count = current_count
+            
+            all_online_user_names = set()
+            prev_size = 0
+            no_new_rounds = 0
+            max_no_new_rounds = 2
+            max_swipes = 50
+            
+            # 预计算容器内滑动坐标：手指向上滑（列表向上滚动）
+            try:
+                loc = online_container.location
+                size = online_container.size
+                left = int(loc["x"])
+                top = int(loc["y"])
+                width = int(size["width"])
+                height = int(size["height"])
+                
+                swipe_x = left + int(width * 0.5)
+                start_y = top + int(height * 0.8)
+                end_y = top + int(height * 0.2)
+            except Exception:
+                self.logger.warning("Failed to compute container swipe coordinates, fallback to default swipe")
+                swipe_x = None
+                start_y = None
+                end_y = None
+            
+            for swipe_idx in range(max_swipes + 1):
+                # 采集当前可见的用户容器
+                visible_containers = self.handler.find_child_elements_plus(online_container, 'user_container')
+                if visible_containers:
+                    for container in visible_containers:
+                        try:
+                            # 获取容器内的用户名
+                            user_elem = self.handler.find_child_element_plus(container, 'online_user')
+                            if not user_elem:
+                                continue
+                            
+                            username = user_elem.text
+                            if not username:
+                                continue
+                            
+                            # 如果是新用户，处理关注状态和等级更新
+                            if username not in all_online_user_names:
+                                all_online_user_names.add(username)
+                                
+                                # 获取关注状态
+                                follow_state_elem = self.handler.find_child_element_plus(container, 'follow_state')
+                                follow_state = follow_state_elem.text if follow_state_elem else None
+                                
+                                # 根据关注状态更新用户等级
+                                from ..dal.user_dao import UserDAO
+                                
+                                async def update_user_level():
+                                    try:
+                                        # 确保用户存在
+                                        user = await UserDAO.get_or_create(username)
+                                        
+                                        # 根据关注状态更新等级
+                                        if follow_state:
+                                            if "密友" in follow_state:
+                                                await UserDAO.update_level_if_lower(username, 3)
+                                            elif "我关注的" in follow_state:
+                                                await UserDAO.update_level_if_lower(username, 2)
+                                            elif "关注了我" in follow_state:
+                                                await UserDAO.update_level_if_lower(username, 1)
+                                        # 如果没有关注状态，等级保持为 0（默认值）
+                                    except Exception as e:
+                                        self.logger.error(f"Error updating user level for {username}: {str(e)}")
+                                
+                                # 异步执行等级更新
+                                asyncio.create_task(update_user_level())
+                        except Exception:
+                            continue
+                
+                # 停止条件 1：到底提示出现
+                try:
+                    no_more = self.handler.try_find_element_plus('no_more_data', log=False)
+                    if no_more and no_more.is_displayed():
+                        self.logger.info("Detected no_more_data, stop scrolling online users.")
+                        break
+                except Exception:
+                    # ignore detection errors, continue scrolling with other stop conditions
+                    pass
+                
+                # 停止条件 2：已收集人数达到目标人数（更快结束）
+                if target_count is not None and len(all_online_user_names) >= target_count:
+                    self.logger.info(
+                        f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling."
+                    )
+                    break
+                
+                # 停止条件 3：连续多轮无新增（兜底）
+                if len(all_online_user_names) == prev_size:
+                    no_new_rounds += 1
+                else:
+                    no_new_rounds = 0
+                    prev_size = len(all_online_user_names)
+                
+                if no_new_rounds >= max_no_new_rounds:
+                    self.logger.info(
+                        f"No new users found for {no_new_rounds} rounds, stop scrolling."
+                    )
+                    break
+                
+                # 最后一次循环不再滑动（max_swipes 达到）
+                if swipe_idx >= max_swipes:
+                    self.logger.info("Reached max_swipes, stop scrolling online users.")
+                    break
+                
+                # 执行一次上滑
+                try:
+                    if swipe_x is not None:
+                        ok = self.handler._perform_swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
+                        if not ok:
+                            self.logger.warning("Swipe failed, stop scrolling online users.")
+                            break
+                    else:
+                        # 兼容兜底：使用 driver.swipe 做一次中等幅度上滑
+                        self.handler.driver.swipe(500, 1500, 500, 800, 600)
+                except Exception as e:
+                    self.logger.error(f"Error during swipe operation: {str(e)}")
+                    break
+                
+                # 等待列表加载稳定
+                try:
+                    import time
+                    time.sleep(0.35)
+                except Exception:
+                    pass
+            
+            # 更新在线用户列表
+            self.update_online_users(list(all_online_user_names))
+            
+            # 关闭在线用户列表
+            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+            if bottom_drawer:
+                self.logger.info('Hide online users dialog')
+                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+        
+        except Exception:
+            self.logger.error(f"Error checking user count: {traceback.format_exc()}")
+
     def update(self):
         """
-        更新播放信息，检测变化并处理质量检测、发送消息等
+        更新播放信息和在线用户信息，检测变化并处理
         这个方法会在主循环中被调用
         """
         try:
