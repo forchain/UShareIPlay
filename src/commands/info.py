@@ -69,6 +69,3 @@ class InfoCommand(BaseCommand):
         
         # Update playback info (handles playback info changes, quality check, etc.)
         info_manager.update()
-        
-        # Check and update user count (handles online users list update and user level update)
-        info_manager.check_and_update_user_count()

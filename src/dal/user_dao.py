@@ -41,7 +41,7 @@ class UserDAO:
         Returns:
             Updated user or None if user doesn't exist
         """
-        user = await User.get_or_none(username=username)
+        user = await UserDAO.get_or_create(username=username)
         if user and user.level < target_level:
             user.level = target_level
             await user.save()
