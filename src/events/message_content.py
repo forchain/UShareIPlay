@@ -45,6 +45,13 @@ class MessageContentEvent(BaseEvent):
 
             if not wrapper_list:
                 return False
+            content_list = []
+            for wrapper in wrapper_list:
+                if content := wrapper.content:
+                    pattern = r'.+在.+的派对中给.+送出了【.+】'
+                    if re.match(pattern, content):
+                        continue
+                    content_list.append(content)
 
             # 获取 MessageManager 实例，使用其 recent_chats
             from ..managers.message_manager import MessageManager
@@ -61,45 +68,40 @@ class MessageContentEvent(BaseEvent):
 
             message_manager.latest_chats.clear()
             recent_len = len(message_manager.recent_chats)
-            wrappers_len = len(wrapper_list)
+            content_len = len(content_list)
             missed = False
             if recent_len == 0:
-                for wrapper in wrapper_list:
-                    if chat_text := wrapper.content:
-                        message_manager.latest_chats.append(chat_text)
+                for content in content_list:
+                    message_manager.latest_chats.append(content)
             else:
                 for i in range(recent_len):
                     no_new = False
-                    for j in range(wrappers_len):
-                        wrapper = wrapper_list[j]
-                        chat_text = wrapper.content
-                        if not chat_text:
-                            continue
+                    for j in range(content_len):
+                        content = content_list[j]
                         ii = i + j
                         if ii < recent_len:
                             recent_chat = message_manager.recent_chats[ii]
-                            if chat_text != recent_chat:
+                            if content != recent_chat:
                                 break
-                            if ii == recent_len - 1 and j == wrappers_len - 1:
+                            if ii == recent_len - 1 and j == content_len - 1:
                                 no_new = True
                                 break
                         else:
-                            message_manager.latest_chats.append(chat_text)
+                            message_manager.latest_chats.append(content)
                     if no_new:
                         break
                     if len(message_manager.latest_chats) > 0:
                         break
                     elif i == recent_len - 1:
                         missed = True
-                        for wrapper in wrapper_list:
-                            if chat_text := wrapper.content:
-                                message_manager.latest_chats.append(chat_text)
+                        for content in content_list:
+                            message_manager.latest_chats.append(content)
 
             # 处理所有消息元素
-            for chat_text in message_manager.latest_chats:
+            for content in message_manager.latest_chats:
 
                 # 检查用户进入消息
-                is_enter, username = message_manager.is_user_enter_message(chat_text)
+                is_enter, username = message_manager.is_user_enter_message(content)
                 if is_enter:
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
@@ -107,7 +109,7 @@ class MessageContentEvent(BaseEvent):
 
                 # === 新增：检查 @我 + 关键字格式 ===
                 at_pattern = r"souler\[(.+)\]说：@我\s+(.+)"
-                at_match = re.match(at_pattern, chat_text)
+                at_match = re.match(at_pattern, content)
                 if at_match:
                     username = at_match.group(1)
                     keyword_text = at_match.group(2)
@@ -124,18 +126,18 @@ class MessageContentEvent(BaseEvent):
                         # 没有匹配，执行默认关键字
                         await keyword_manager.execute_default_keyword(username)
 
-                    chat_logger.critical(chat_text)
+                    chat_logger.critical(content)
                     continue  # 跳过后续的命令检测
 
                 # 检查是否满足命令格式
                 pattern = r"souler\[.+\]说：(:.+)"
-                match = re.match(pattern, chat_text)
+                match = re.match(pattern, content)
                 if match:
                     # 标记有命令消息
                     has_command_message = True
-                    chat_logger.critical(chat_text)
+                    chat_logger.critical(content)
                 else:
-                    chat_logger.info(chat_text)
+                    chat_logger.info(content)
 
             handled = False
             # 如果有命令消息，调用 get_latest_messages 获取命令
