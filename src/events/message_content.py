@@ -48,7 +48,7 @@ class MessageContentEvent(BaseEvent):
             content_list = []
             for wrapper in wrapper_list:
                 if content := wrapper.content:
-                    pattern = r'.+在.+的派对中给.+送出了【.+】'
+                    pattern = r'.+送出了【.+】'
                     if re.match(pattern, content):
                         continue
                     content_list.append(content)
