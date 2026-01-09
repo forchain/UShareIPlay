@@ -48,9 +48,6 @@ class MessageContentEvent(BaseEvent):
             content_list = []
             for wrapper in wrapper_list:
                 if content := wrapper.content:
-                    pattern = r'.+送出了【.+】'
-                    if re.match(pattern, content):
-                        continue
                     content_list.append(content)
 
             # 获取 MessageManager 实例，使用其 recent_chats
