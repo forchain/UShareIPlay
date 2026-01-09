@@ -18,8 +18,7 @@ class InfoManager(Singleton):
         self._logger = None
         self._party_manager = None
         self._online_users: Set[str] = set()
-        self._user_count: Optional[int] = None  # 在线人数
-        self._last_user_count: Optional[int] = None  # 上次的在线人数，用于检测变化
+        self._user_count: Optional[int] = None  # 在线人数（上次记录的值）
         self._room_id: Optional[str] = None  # 房间ID
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
@@ -336,22 +335,45 @@ class InfoManager(Singleton):
         这个方法会在主循环中被调用
         """
         try:
-            # 检查用户人数是否变化
-            current_count = self._user_count
-            if current_count is None:
-                return
-            
-            if current_count == self._last_user_count:
-                return
-            
-            self.logger.info(f"User count changed: {self._last_user_count} -> {current_count}")
-            self._last_user_count = current_count
-            
-            # 点击 user_count 元素打开在线用户列表
+            # 从 UI 读取最新的用户人数
             user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
             if not user_count_elem:
                 return
             
+            # 解析人数文本
+            user_count_text = user_count_elem.text
+            if not user_count_text:
+                return
+            
+            import re
+            current_count = None
+            if '人' in user_count_text:
+                count_str = user_count_text.replace('人', '').strip()
+                try:
+                    current_count = int(count_str)
+                except ValueError:
+                    self.logger.warning(f"无法解析人数文本: {user_count_text}")
+                    return
+            else:
+                # 尝试提取所有数字
+                match = re.search(r'(\d+)', user_count_text)
+                if match:
+                    try:
+                        current_count = int(match.group(1))
+                    except ValueError:
+                        self.logger.warning(f"无法解析人数文本: {user_count_text}")
+                        return
+                else:
+                    self.logger.warning(f"人数文本格式异常: {user_count_text}")
+                    return
+            
+            # 检查人数是否变化
+            if current_count == self._user_count:
+                return
+            
+            self.logger.info(f"User count changed: {self._user_count} -> {current_count}")
+            
+            # 点击 user_count 元素打开在线用户列表
             user_count_elem.click()
             self.logger.info("Clicked user count element")
             
@@ -417,7 +439,7 @@ class InfoManager(Singleton):
                                 async def update_user_level():
                                     try:
                                         # 确保用户存在
-                                        user = await UserDAO.get_or_create(username)
+                                        await UserDAO.get_or_create(username)
                                         
                                         # 根据关注状态更新等级
                                         if follow_state:
@@ -500,6 +522,9 @@ class InfoManager(Singleton):
             if bottom_drawer:
                 self.logger.info('Hide online users dialog')
                 self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+            
+            # 更新记录的人数
+            self._user_count = current_count
         
         except Exception:
             self.logger.error(f"Error checking user count: {traceback.format_exc()}")
