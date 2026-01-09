@@ -138,9 +138,7 @@ class TimerManager(Singleton):
             from ..models.message_info import MessageInfo
             message_info = MessageInfo(
                 content=message,
-                nickname="Timer",
-                avatar_element=None,
-                relation_tag=True  # Timer messages are always authorized
+                nickname="Timer"
             )
 
             # Add message to queue

@@ -222,27 +222,31 @@ class CommandManager(Singleton):
         """
         success_count = 0
 
-        if messages:
-            # Iterate through message info objects
-            for msg_id, message_info in messages.items():
-                if self.is_valid_command(message_info.content):
-                    command_info = self.parse_command(message_info.content)
-                    if command_info:
-                        # Handle different commands using match-case
-                        cmd = command_info['prefix']
+        if not messages:
+            return success_count
 
-                        self.handler.send_message(
-                            f'Processing :{cmd} command @{message_info.nickname}')
+        # Iterate through message info objects
+        for message_info in messages:
+            # remove leading :
+            content = message_info.content[1:]
+            if self.is_valid_command(content):
+                command_info = self.parse_command(content)
+                if command_info:
+                    # Handle different commands using match-case
+                    cmd = command_info['prefix']
 
-                        command = self.get_command(cmd)
-                        if command:
-                            response = await self.process_command(command, message_info, command_info)
-                            if response:
-                                self.handler.send_message(response)
-                            success_count += 1
-                        else:
-                            self.logger.error(f"Unknown command: {cmd}")
-                            self.handler.send_message(f"Unknown command: {cmd} @{message_info.nickname}")
+                    self.handler.send_message(
+                        f'Processing :{cmd} command @{message_info.nickname}')
+
+                    command = self.get_command(cmd)
+                    if command:
+                        response = await self.process_command(command, message_info, command_info)
+                        if response:
+                            self.handler.send_message(response)
+                        success_count += 1
+                    else:
+                        self.logger.error(f"Unknown command: {cmd}")
+                        self.handler.send_message(f"Unknown command: {cmd} @{message_info.nickname}")
 
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 

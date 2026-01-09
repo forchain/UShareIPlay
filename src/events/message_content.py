@@ -18,22 +18,6 @@ from ..managers.info_manager import InfoManager
 class MessageContentEvent(BaseEvent):
     """消息内容事件处理器"""
 
-    def _is_user_enter_message(self, message: str) -> tuple[bool, str]:
-        """
-        检查消息是否是用户进入通知
-
-        Args:
-            message: 消息文本
-
-        Returns:
-            tuple[bool, str]: (是否是进入消息, 用户名)
-        """
-        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
-        match = re.match(pattern, message)
-        if match:
-            return True, match.group(1)
-        return False, ""
-
     async def handle(self, key: str, element_wrapper):
         """
         处理消息内容事件
@@ -115,7 +99,7 @@ class MessageContentEvent(BaseEvent):
             for chat_text in message_manager.latest_chats:
 
                 # 检查用户进入消息
-                is_enter, username = self._is_user_enter_message(chat_text)
+                is_enter, username = message_manager.is_user_enter_message(chat_text)
                 if is_enter:
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
@@ -127,11 +111,11 @@ class MessageContentEvent(BaseEvent):
                 if at_match:
                     username = at_match.group(1)
                     keyword_text = at_match.group(2)
-                    
+
                     # 查找并执行关键字
                     from ..managers.keyword_manager import KeywordManager
                     keyword_manager = KeywordManager.instance()
-                    
+
                     keyword_record = await keyword_manager.find_keyword(keyword_text, username)
                     if keyword_record:
                         # 找到匹配的关键字，执行
@@ -139,7 +123,7 @@ class MessageContentEvent(BaseEvent):
                     else:
                         # 没有匹配，执行默认关键字
                         await keyword_manager.execute_default_keyword(username)
-                    
+
                     chat_logger.critical(chat_text)
                     continue  # 跳过后续的命令检测
 
@@ -156,8 +140,7 @@ class MessageContentEvent(BaseEvent):
             handled = False
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
-                messages = await message_manager.get_latest_messages()
-                handled = await self._process_command_messages(messages)
+                await message_manager.process_new_messages()
             else:
                 await self._process_update_logic()
 
@@ -180,25 +163,6 @@ class MessageContentEvent(BaseEvent):
             await command_manager.notify_user_enter(username)
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
-
-    async def _process_command_messages(self, messages):
-        """处理命令消息 - 调用 get_latest_messages 获取命令"""
-        try:
-
-            if messages:
-                # 有新的命令消息，触发命令处理
-                command_manager = CommandManager.instance()
-                await command_manager.handle_message_commands(messages)
-                return True
-            elif messages == "ABNORMAL_STATE":
-                self.handler.press_back()
-                self.logger.error(
-                    "Failed to get latest messages, press back to exit abnormal state"
-                )
-            return False
-        except Exception as e:
-            self.logger.error(f"Error processing command messages: {str(e)}")
-            return False
 
     async def _process_update_logic(self):
         """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
@@ -236,40 +200,34 @@ class MessageContentEvent(BaseEvent):
             queue_messages = await message_queue.get_all_messages()
             if not queue_messages:
                 return
-                
+
             self.logger.info(f"Processing {len(queue_messages)} queue messages")
-            
+
             # 处理每条队列消息
-            command_messages = {}
-            
+            command_messages = []
+
             for msg_id, message_info in queue_messages.items():
                 # 分割多命令/消息（用分号分隔）
                 parts = message_info.content.split(';')
-                
+
                 for idx, part in enumerate(parts):
                     part = part.strip()
                     if not part:
                         continue
-                    
+
                     # 替换占位符
                     part = part.replace('{user_name}', message_info.nickname)
-                    
+
                     if part.startswith(':'):
-                        # 命令消息：去掉冒号前缀后放入命令队列
-                        command_content = part[1:]  # 去掉冒号
                         cmd_msg = MessageInfo(
-                            content=command_content,  # 不含冒号
-                            nickname=message_info.nickname,
-                            avatar_element=message_info.avatar_element,
-                            relation_tag=message_info.relation_tag
+                            content=part,
+                            nickname=message_info.nickname
                         )
-                        # 使用唯一ID
-                        unique_id = f"{msg_id}_{idx}"
-                        command_messages[unique_id] = cmd_msg
+                        command_messages.append(cmd_msg)
                     else:
                         # 普通消息：直接发送
                         self.handler.send_message(part)
-            
+
             # 批量处理命令消息
             if command_messages:
                 command_manager = CommandManager.instance()

@@ -67,9 +67,7 @@ class RecoveryManager(Singleton):
             # 创建 MessageInfo 对象
             message_info = MessageInfo(
                 content="radio",
-                nickname="Joyer",
-                avatar_element=None,
-                relation_tag=False
+                nickname="Joyer"
             )
 
             async def _run_radio():

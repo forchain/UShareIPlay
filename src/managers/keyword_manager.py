@@ -290,9 +290,7 @@ class KeywordManager(Singleton):
             message_queue = MessageQueue.instance()
             message_info = MessageInfo(
                 content=command,  # 保留完整格式（包括冒号和分号）
-                nickname=username,
-                avatar_element=None,
-                relation_tag=True
+                nickname=username
             )
             
             await message_queue.put_message(message_info)
@@ -322,9 +320,7 @@ class KeywordManager(Singleton):
             message_queue = MessageQueue.instance()
             message_info = MessageInfo(
                 content=command,
-                nickname=username,
-                avatar_element=None,
-                relation_tag=True
+                nickname=username
             )
             
             await message_queue.put_message(message_info)
