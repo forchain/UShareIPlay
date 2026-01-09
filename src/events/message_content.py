@@ -8,32 +8,15 @@
 __multiple__ = True
 
 import re
+import traceback
 
 from ..core.base_event import BaseEvent
 from ..managers.command_manager import CommandManager
 from ..managers.info_manager import InfoManager
-from ..managers.message_manager import MessageManager
-from ..managers.recovery_manager import RecoveryManager
 
 
 class MessageContentEvent(BaseEvent):
     """消息内容事件处理器"""
-
-    def _is_user_enter_message(self, message: str) -> tuple[bool, str]:
-        """
-        检查消息是否是用户进入通知
-
-        Args:
-            message: 消息文本
-
-        Returns:
-            tuple[bool, str]: (是否是进入消息, 用户名)
-        """
-        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
-        match = re.match(pattern, message)
-        if match:
-            return True, match.group(1)
-        return False, ""
 
     async def handle(self, key: str, element_wrapper):
         """
@@ -62,6 +45,13 @@ class MessageContentEvent(BaseEvent):
 
             if not wrapper_list:
                 return False
+            content_list = []
+            for wrapper in wrapper_list:
+                if content := wrapper.content:
+                    pattern = r'.+送出了【.+】'
+                    if re.match(pattern, content):
+                        continue
+                    content_list.append(content)
 
             # 获取 MessageManager 实例，使用其 recent_chats
             from ..managers.message_manager import MessageManager
@@ -76,56 +66,96 @@ class MessageContentEvent(BaseEvent):
             # 标记是否有命令消息
             has_command_message = False
 
-            # 处理所有消息元素
-            for wrapper in wrapper_list:
-                chat_text = wrapper.content
-                if not chat_text:
-                    continue
+            message_manager.latest_chats.clear()
+            recent_len = len(message_manager.recent_chats)
+            content_len = len(content_list)
+            missed = False
+            if recent_len == 0:
+                for content in content_list:
+                    message_manager.latest_chats.append(content)
+            else:
+                for i in range(recent_len):
+                    no_new = False
+                    for j in range(content_len):
+                        content = content_list[j]
+                        ii = i + j
+                        if ii < recent_len:
+                            recent_chat = message_manager.recent_chats[ii]
+                            if content != recent_chat:
+                                break
+                            if ii == recent_len - 1 and j == content_len - 1:
+                                no_new = True
+                                break
+                        else:
+                            message_manager.latest_chats.append(content)
+                    if no_new:
+                        break
+                    if len(message_manager.latest_chats) > 0:
+                        break
+                    elif i == recent_len - 1:
+                        missed = True
+                        for content in content_list:
+                            message_manager.latest_chats.append(content)
 
-                # 检查是否是新消息（使用 message_manager 的 recent_chats）
-                if chat_text in message_manager.latest_chats or chat_text in message_manager.recent_chats:
-                    continue
+            # 处理所有消息元素
+            for content in message_manager.latest_chats:
 
                 # 检查用户进入消息
-                is_enter, username = self._is_user_enter_message(chat_text)
+                is_enter, username = message_manager.is_user_enter_message(content)
                 if is_enter:
                     self.logger.critical(f"User entered: {username}")
                     # 通知所有命令
                     await self._notify_user_enter(username)
 
-                # 添加到 recent_chats（维护最近的消息列表）
-                message_manager.latest_chats.append(chat_text)
+                # === 新增：检查 @我 + 关键字格式 ===
+                at_pattern = r"souler\[(.+)\]说：@我\s+(.+)"
+                at_match = re.match(at_pattern, content)
+                if at_match:
+                    username = at_match.group(1)
+                    keyword_text = at_match.group(2)
+
+                    # 查找并执行关键字
+                    from ..managers.keyword_manager import KeywordManager
+                    keyword_manager = KeywordManager.instance()
+
+                    keyword_record = await keyword_manager.find_keyword(keyword_text, username)
+                    if keyword_record:
+                        # 找到匹配的关键字，执行
+                        await keyword_manager.execute_keyword(keyword_record, username)
+                    else:
+                        # 没有匹配，执行默认关键字
+                        await keyword_manager.execute_default_keyword(username)
+
+                    chat_logger.critical(content)
+                    continue  # 跳过后续的命令检测
 
                 # 检查是否满足命令格式
-                pattern = r"souler\[.+\]说：:(.+)"
-                match = re.match(pattern, chat_text)
+                pattern = r"souler\[.+\]说：(:.+)"
+                match = re.match(pattern, content)
                 if match:
                     # 标记有命令消息
                     has_command_message = True
-                    chat_logger.critical(chat_text)
+                    chat_logger.critical(content)
                 else:
-                    chat_logger.info(chat_text)
+                    chat_logger.info(content)
 
+            handled = False
             # 如果有命令消息，调用 get_latest_messages 获取命令
             if has_command_message:
-                messages = await message_manager.get_latest_messages()
-                await self._process_command_messages(messages)
+                await message_manager.process_new_messages()
             else:
                 await self._process_update_logic()
 
-            # if message_manager.is_messages_missed():
-            #     messages = await message_manager.get_missed_messages()
-            #     await self._process_command_messages(messages)
+            if missed:
+                await message_manager.process_missed_messages()
 
-            # message_manager.recent_chats.clear()
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
-            # message_manager.latest_chats.clear()
 
-            return False
+            return handled
 
-        except Exception as e:
-            self.logger.error(f"Error processing message content event: {str(e)}")
+        except Exception:
+            self.logger.error(f"Error processing message content event: {traceback.format_exc()}")
             return False
 
     async def _notify_user_enter(self, username: str):
@@ -136,34 +166,15 @@ class MessageContentEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
 
-    async def _process_command_messages(self, messages):
-        """处理命令消息 - 调用 get_latest_messages 获取命令"""
-        try:
-            message_manager = MessageManager.instance()
-
-            if messages:
-                # 有新的命令消息，触发命令处理
-                command_manager = CommandManager.instance()
-                await command_manager.handle_message_commands(messages)
-            elif messages == "ABNORMAL_STATE":
-                self.handler.press_back()
-                self.logger.error(
-                    "Failed to get latest messages, press back to exit abnormal state"
-                )
-        except Exception as e:
-            self.logger.error(f"Error processing command messages: {str(e)}")
-
     async def _process_update_logic(self):
         """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
         try:
-            recovery_manager = RecoveryManager.instance()
-            if not recovery_manager.manual_mode_enabled:
-                # Process queue messages (timer messages, etc.)
-                await self._process_queue_messages()
+            # Process queue messages (timer messages, etc.)
+            await self._process_queue_messages()
 
-                # Update all commands
-                command_manager = CommandManager.instance()
-                command_manager.update_commands()
+            # Update all commands
+            command_manager = CommandManager.instance()
+            command_manager.update_commands()
 
             # update playback info
             info_manager = InfoManager.instance()
@@ -172,22 +183,57 @@ class MessageContentEvent(BaseEvent):
             self.logger.error(f"Error processing update logic: {str(e)}")
 
     async def _process_queue_messages(self):
-        """处理异步队列中的消息（定时器消息等）"""
+        """处理异步队列中的消息（定时器消息等）
+        
+        统一处理流程：
+        1. 消息保留完整格式（包括 : 前缀和 ; 分隔符）
+        2. 检测到 : 前缀后，去掉冒号
+        3. 调用 handle_message_commands 处理（不含冒号）
+        4. 非命令消息直接发送
+        """
         try:
             from ..core.message_queue import MessageQueue
+            from ..models.message_info import MessageInfo
+            import traceback
 
             message_queue = MessageQueue.instance()
 
             # 获取队列中的所有消息
             queue_messages = await message_queue.get_all_messages()
-            if queue_messages:
-                self.logger.info(f"Processing {len(queue_messages)} queue messages")
+            if not queue_messages:
+                return
 
-                # 通过 CommandManager 处理所有消息
+            self.logger.info(f"Processing {len(queue_messages)} queue messages")
+
+            # 处理每条队列消息
+            command_messages = []
+
+            for msg_id, message_info in queue_messages.items():
+                # 分割多命令/消息（用分号分隔）
+                parts = message_info.content.split(';')
+
+                for idx, part in enumerate(parts):
+                    part = part.strip()
+                    if not part:
+                        continue
+
+                    # 替换占位符
+                    part = part.replace('{user_name}', message_info.nickname)
+
+                    if part.startswith(':'):
+                        cmd_msg = MessageInfo(
+                            content=part,
+                            nickname=message_info.nickname
+                        )
+                        command_messages.append(cmd_msg)
+                    else:
+                        # 普通消息：直接发送
+                        self.handler.send_message(part)
+
+            # 批量处理命令消息
+            if command_messages:
                 command_manager = CommandManager.instance()
-                response = await command_manager.handle_message_commands(queue_messages)
-                if response:
-                    self.handler.send_message(response)
+                await command_manager.handle_message_commands(command_messages)
 
-        except Exception as e:
-            self.logger.error(f"Error processing queue messages: {str(e)}")
+        except Exception:
+            self.logger.error(f"Error processing queue messages: {traceback.format_exc()}")

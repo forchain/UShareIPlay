@@ -22,13 +22,6 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
 
-        # Optimize driver settings
-        self.driver.update_settings({
-            "waitForIdleTimeout": 0,  # Don't wait for idle state
-            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
-            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
-        })
-
     def hide_player(self):
         self.press_back()
         self.logger.info("Hide player panel")
@@ -113,7 +106,7 @@ class QQMusicHandler(AppHandler, Singleton):
         self.logger.info(f"Switched to QQ Music app")
 
         key, element = self.navigate_to_element('search_box',
-                                                ['play_all', 'play_all_playlist'])
+                                                ['play_all', 'play_all_playlist', 'fav_entry'])
         if key == 'home_nav':
             search_entry = self.wait_for_element_plus('search_entry')
             if not search_entry:
@@ -162,20 +155,23 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error(f"Failed to find first song")
             return None
 
-        song_version = self.try_find_element_plus('song_version')
-        if song_version:
-            song_version.click()
-            self.logger.info(f"Clicked song version")
+        studio_version = self.try_find_element_plus('studio_version')
+        if not studio_version:
+            song_version = self.try_find_element_plus('song_version')
+            if song_version:
+                song_version.click()
+                self.logger.info(f"Clicked song version")
 
-            studio_version = self.wait_for_element_clickable_plus('studio_version')
-            if studio_version:
-                studio_version.click()
-                self.logger.info("Alter to studio version")
+                studio_version = self.wait_for_element_clickable_plus('studio_version')
 
-                first_song = self.wait_for_element_plus('first_song')
-                if not first_song:
-                    self.logger.error(f"Failed to find first song")
-                    return None
+        if studio_version:
+            studio_version.click()
+            self.logger.info("Alter to studio version")
+
+            first_song = self.wait_for_element_plus('first_song')
+            if not first_song:
+                self.logger.error(f"Failed to find first song")
+                return None
 
         playing_info = self.get_playing_info()
         if not playing_info:

@@ -25,11 +25,11 @@ class PlayCommand(BaseCommand):
         from ..managers.info_manager import InfoManager
         info_manager = InfoManager.instance()
 
-        if query == '?':
+        if query == '':
             playing_info = self.play_favorites()
             info_manager.player_name = message_info.nickname
             return playing_info
-        elif query == '':
+        elif query == '?':
             playing_info = self.play_radar()
             info_manager.player_name = message_info.nickname
             return playing_info

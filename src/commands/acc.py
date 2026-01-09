@@ -74,7 +74,7 @@ class AccompanimentCommand(BaseCommand):
                 return {'error': 'Failed to click accompaniment switch'}
 
             # 查找伴唱菜单
-            button_key, found_button = self.handler.scroll_container_until_element('accompaniment_menu',
+            button_key, found_button, _ = self.handler.scroll_container_until_element('accompaniment_menu',
                                                                                    'menu_container')
             if found_button is None:
                 return {'error': 'Failed to find accompaniment menu'}

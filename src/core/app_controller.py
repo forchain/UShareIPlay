@@ -1,13 +1,17 @@
 import asyncio
+import os
 import queue
+import re
 import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 
 from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from .message_queue import MessageQueue
 from .singleton import Singleton
 from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
@@ -19,10 +23,11 @@ class AppController(Singleton):
     def __init__(self, config):
         self.config = config
 
-        # 在初始化driver之前先启动应用
-        self._start_apps()
-
+        # 先创建主driver（会自动启动Soul app）
         self.driver = self._init_driver()
+
+        # 使用主driver启动其他应用
+        self._start_apps()
         self.input_queue = queue.Queue()
         self.is_running = True
         self.in_console_mode = False
@@ -47,61 +52,66 @@ class AppController(Singleton):
         # Non-UI operations task
         self._non_ui_task = None
 
+        # 全局 UI 互斥锁：
+        # 用于防止后台事件循环（如未知页面自动 back）与命令/UI任务并发操作同一界面。
+        # 注意：锁只在 async 逻辑中使用；同步 handler 方法不直接 await。
+        self.ui_lock: asyncio.Lock = asyncio.Lock()
+
         # Driver重建防护标志
         self._is_reinitializing = False
 
-    def _start_apps(self):
-        """在初始化driver之前启动Soul app和QQ Music"""
+    @asynccontextmanager
+    async def ui_session(self, reason: str = ""):
+        """
+        获取 UI 独占执行权（异步）。
+        约定：所有可能改变页面结构/弹窗状态的后台任务（命令、自动处理等）应持有该锁，
+        EventManager 的兜底 press_back 也会尊重该锁。
+        """
+        await self.ui_lock.acquire()
         try:
-            import subprocess
+            if self.logger and reason:
+                self.logger.critical(f"[ui_lock] acquired: {reason}")
+            yield
+        finally:
+            if self.logger and reason:
+                self.logger.critical(f"[ui_lock] released: {reason}")
+            self.ui_lock.release()
 
-            print("正在启动应用...")
+    def _start_apps(self):
+        """通过Appium server启动QQ Music（Soul app已在创建driver时自动启动）"""
+        try:
+            print("正在通过Appium server启动QQ Music...")
 
             # 启动QQ Music
             qq_music_package = self.config["qq_music"]["package_name"]
-            print(f"正在启动QQ Music: {qq_music_package}")
+            qq_music_activity = self.config["qq_music"]["search_activity"]
+            print(f"正在启动QQ Music: {qq_music_package}/{qq_music_activity}")
 
-            # 使用adb启动QQ Music
-            subprocess.run(
-                [
-                    "adb",
-                    "-s",
-                    self.config["device"]["name"],
-                    "shell",
-                    "am",
-                    "start",
-                    "-n",
-                    f"{qq_music_package}/{self.config['qq_music']['search_activity']}",
-                ],
-                check=True,
+            # 兼容：某些环境下 driver 可能是 Selenium WebDriver（无 start_activity）。
+            # 通过 Appium server 执行 mobile: shell 来启动 Activity（不直连 adb）。
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {qq_music_package}/{qq_music_activity}"},
             )
+            print("QQ Music启动成功")
+            time.sleep(1)  # 等待应用启动
 
-            # 启动Soul app
+            # 切换回Soul app（主driver默认指向Soul app）
             soul_package = self.config["soul"]["package_name"]
-            print(f"正在启动Soul app: {soul_package}")
+            soul_activity = self.config["soul"]["chat_activity"]
+            print(f"切换回Soul app: {soul_package}/{soul_activity}")
 
-            # 使用adb启动Soul app
-            subprocess.run(
-                [
-                    "adb",
-                    "-s",
-                    self.config["device"]["name"],
-                    "shell",
-                    "am",
-                    "start",
-                    "-n",
-                    f"{soul_package}/{self.config['soul']['chat_activity']}",
-                ],
-                check=True,
+            self.driver.execute_script(
+                "mobile: shell",
+                {"command": f"am start -n {soul_package}/{soul_activity}"},
             )
+            print("Soul app已激活")
+            time.sleep(1)  # 等待应用切换
 
             print("应用启动完成")
 
-        except subprocess.CalledProcessError as e:
-            print(f"启动应用失败: {str(e)}")
-            raise
         except Exception as e:
-            print(f"启动应用时发生错误: {str(e)}")
+            print(f"通过Appium启动应用时发生错误: {str(e)}")
             raise
 
     def _init_driver(self):
@@ -122,10 +132,18 @@ class AppController(Singleton):
         options.set_capability("appPackage", self.config["soul"]["package_name"])
         options.set_capability("appActivity", self.config["soul"]["chat_activity"])
 
-        server_url = (
-            f"http://{self.config['appium']['host']}:{self.config['appium']['port']}"
-        )
-        return webdriver.Remote(command_executor=server_url, options=options)
+        # 优先从环境变量读取，如果没有再从配置文件读取
+        appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
+        appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
+
+        server_url = f"http://{appium_host}:{appium_port}"
+        driver = webdriver.Remote(command_executor=server_url, options=options)
+        driver.update_settings({
+            "waitForIdleTimeout": 0,  # Don't wait for idle state
+            "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+            "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+        })
+        return driver
 
     def reinitialize_driver(self) -> bool:
         """
@@ -151,12 +169,20 @@ class AppController(Singleton):
                     self.logger.debug(f"关闭旧driver出错: {str(e)}")
 
             # 2. 等待清理
-            time.sleep(2)
+            time.sleep(1)
 
             # 3. 创建新driver
             self.driver = self._init_driver()
             if self.logger:
                 self.logger.info("新driver创建成功")
+
+            # Optimize driver settings
+            self.driver.update_settings({
+                "waitForIdleTimeout": 0,  # Don't wait for idle state
+                "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
+                "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
+            })
+            self.logger.info("Optimized driver settings")
 
             # 4. 更新所有组件的driver引用
             if self.soul_handler:
@@ -183,7 +209,7 @@ class AppController(Singleton):
                 self.logger.info("==== Driver重建完成 ====")
             return True
 
-        except Exception as e:
+        except Exception:
             if self.logger:
                 self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
             return False
@@ -276,7 +302,7 @@ class AppController(Singleton):
             self.logger.info("Handlers and managers initialized successfully")
             print("所有 handlers 和 managers 初始化完成")
 
-        except Exception as e:
+        except Exception:
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
@@ -291,7 +317,7 @@ class AppController(Singleton):
             except asyncio.CancelledError:
                 self.logger.info("Non-UI operations loop cancelled")
                 break
-            except Exception as e:
+            except Exception:
                 self.logger.error(
                     f"Error in async non-UI operations loop: {traceback.format_exc()}"
                 )
@@ -310,6 +336,13 @@ class AppController(Singleton):
         self.command_manager.load_all_commands()
         self.logger.info("All command modules loaded")
         print("命令模块加载完成")
+
+        # Initialize keyword system and load keywords from config
+        print("初始化关键字系统...")
+        from ..managers.keyword_manager import KeywordManager
+        keyword_manager = KeywordManager.instance()
+        await keyword_manager.load_keywords_from_config()
+        print("关键字系统初始化完成")
 
         # Initialize timer manager with initial timers from config
         print("初始化定时器管理器...")
@@ -352,6 +385,7 @@ class AppController(Singleton):
 
         print("开始主监控循环...")
 
+        paused = False
         while self.is_running:
             try:
                 # Check for console input (高优先级，在事件管理器前处理)
@@ -360,9 +394,38 @@ class AppController(Singleton):
                         message = self.input_queue.get_nowait()
                         # Only send non-empty messages
                         if message.strip():
-                            self.soul_handler.send_message(message)
+                            if message == '!stop':
+                                paused = not paused
+                                self.soul_handler.logger.critical(f'paused: {paused}')
+                            elif message == '!timer':
+                                if self.timer_manager.is_running():
+                                    await self.timer_manager.stop()
+                                else:
+                                    await self.timer_manager.start()
+                                self.soul_handler.logger.critical(f'is_running:{self.timer_manager.is_running()}')
+                            else:
+                                pattern = r'(:.+)'
+                                command = re.match(pattern, message)
+                                if command:
+                                    # Create MessageInfo for queue
+                                    from ..models.message_info import MessageInfo
+                                    message_info = MessageInfo(
+                                        content=command.group(1).strip(),
+                                        nickname="Console"
+                                    )
+
+                                    # Add message to queue
+                                    message_queue = MessageQueue.instance()
+                                    await message_queue.put_message(message_info)
+                                    self.logger.info(f"Console message added to queue: {message}")
+                                else:
+                                    self.soul_handler.send_message(message)
+
                 except queue.Empty:
                     pass
+
+                if paused:
+                    continue
 
                 # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
                 if page_source := self.event_manager.get_page_source():
@@ -386,11 +449,11 @@ class AppController(Singleton):
                     print("\nStopping the monitoring...")
                     self.is_running = False
                     return True
-            except StaleElementReferenceException as e:
+            except StaleElementReferenceException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]stale element, traceback: {traceback.format_exc()}"
                 )
-            except WebDriverException as e:
+            except WebDriverException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]unknown error, traceback: {traceback.format_exc()}"
                 )
