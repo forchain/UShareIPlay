@@ -105,15 +105,20 @@ class AdminManager(Singleton):
         if not manager_invite:
             return {'error': 'Failed to find manager invite button', 'user': message_info.nickname}
 
+        # 关闭在线用户抽屉
+        from ..managers.recovery_manager import RecoveryManager
+        recovery_manager = RecoveryManager.instance()
         # Check current status
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
                 self.handler.press_back()
+                recovery_manager.close_drawer('online_drawer')
                 return {'error': '你已经是管理员了', 'user': message_info.nickname}
         else:
             if current_text == "管理邀请":
                 self.handler.press_back()
+                recovery_manager.close_drawer('online_drawer')
                 return {'error': '你还不是管理员', 'user': message_info.nickname}
 
         # Click manager invite button

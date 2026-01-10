@@ -5,6 +5,11 @@ soul:
   # default_party_id: "FM18633292"
   default_party_id: "FM15321640"
   default_notice: "U Share I Play\n分享音乐 享受快乐"
+  
+  # 系统用户列表，这些用户不受等级限制
+  system_users:
+    - "Timer"
+    - "Console"
 
   # 系统默认notice列表，如果房间notice包含这些内容说明被系统重置了
   system_default_notices:
