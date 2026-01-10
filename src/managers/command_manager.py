@@ -141,7 +141,7 @@ class CommandManager(Singleton):
             parameters = command_info['parameters']
             
             # 检查用户等级（系统用户不受限制）
-            system_users = self.handler.config.get('soul', {}).get('system_users', [])
+            system_users = self.handler.config.get('system_users', [])
             is_system_user = message_info.nickname in system_users
             
             if not is_system_user:
