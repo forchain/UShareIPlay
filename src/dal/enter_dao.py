@@ -1,13 +1,16 @@
 from typing import Optional, List, Tuple
 from src.models.enter import Enter
+from src.dal.user_dao import UserDAO
 
 
 class EnterDao:
     @staticmethod
     async def create(username: str, command: str) -> Enter:
         """Create a new enter command"""
+        # Get or create user first
+        user = await UserDAO.get_or_create(username=username)
         return await Enter.create(
-            username=username,
+            user=user,
             command=command
         )
 
@@ -17,12 +20,12 @@ class EnterDao:
         Returns:
             List[Enter]: List of enter commands ordered by id
         """
-        return await Enter.filter(username=username).order_by('id')
+        return await Enter.filter(user__username=username).order_by('id').prefetch_related('user')
 
     @staticmethod
     async def get_by_id(command_id: int) -> Optional[Enter]:
         """Get enter command by ID"""
-        return await Enter.get_or_none(id=command_id)
+        return await Enter.get_or_none(id=command_id).prefetch_related('user')
 
     @staticmethod
     async def delete_by_id(command_id: int) -> bool:
@@ -42,5 +45,5 @@ class EnterDao:
         Returns:
             int: Number of commands deleted
         """
-        deleted_count = await Enter.filter(username=username).delete()
+        deleted_count = await Enter.filter(user__username=username).delete()
         return deleted_count
