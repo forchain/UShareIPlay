@@ -23,6 +23,47 @@ class RecoveryManager(Singleton):
             self._party_manager = PartyManager.instance()
         return self._party_manager
 
+    def close_drawer(self, drawer_key: str, wait_element: str = "room_id") -> bool:
+        """
+        关闭抽屉式弹窗
+        
+        Args:
+            drawer_key: 抽屉元素的 key
+            wait_element: 等待出现的界面元素，默认是 "room_id"
+            
+        Returns:
+            bool: 如果成功关闭返回 True，否则 False
+        """
+        try:
+            # 使用 wait_for 获取可点击的元素
+            element = self.handler.wait_for_element_clickable_plus(drawer_key)
+            if not element:
+                self.logger.warning(
+                    f"Drawer element {drawer_key} found in page_source but not clickable"
+                )
+                return False
+
+            # 点击抽屉上方区域来关闭
+            click_success = self.handler.click_element_at(
+                element, x_ratio=0.3, y_ratio=0, y_offset=-200
+            )
+            if not click_success:
+                self.logger.warning(f"Failed to click drawer: {drawer_key}")
+                return False
+
+            # 等待指定元素出现，确认界面已恢复正常（弹窗已关闭）
+            target_element = self.handler.wait_for_element_plus(wait_element)
+            if target_element:
+                self.logger.info(f"Closed drawer: {drawer_key}, {wait_element} confirmed")
+            else:
+                self.handler.press_back()
+                self.logger.warning(f"Closed drawer: {drawer_key}, but {wait_element} not found")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error closing drawer {drawer_key}: {str(e)}")
+            return False
+
     def _set_default_notice(self):
         """设置默认notice（使用NoticeManager）"""
         try:

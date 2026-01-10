@@ -342,30 +342,39 @@ qq_music:
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
 commands:
   - prefix: "play"
+    level: 1
     response_template: "Playing {song} by {singer} in {album}"
     error_template: "Failed to play music, because {error}"
   - prefix: "skip"
+    level: 1
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
+    level: 0
     response_template: "Added {song} by {singer} in {album} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
+    level: 1
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
+    level: 1
     response_template: "{message}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
+    level: 2
     response_template: "Accompaniment mode {enabled}"
     error_template: "Failed to toggle accompaniment mode, because {error}"
   - prefix: "lyrics"
+    level: 1
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "ktv"
+    level: 1
     response_template: "KTV mode {enabled}"
     error_template: "Failed to toggle KTV mode, because {error}"
   - prefix: "help"
+    level: 0
     response_template: |
       帮助
       1. 立即播放 
@@ -404,68 +413,89 @@ commands:
         :radio guess/daily/collection/sleep
 
   - prefix: "invite"
+    level: 4
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
   - prefix: "recovery"
+    level: 1
     response_template: "{status}"
     error_template: "Recovery command failed: {error}"
   - prefix: "admin"
+    level: 9
     response_template: "{action} {user} as administrator"
-    error_template: "Failed to invite {user} as administrator, because {error}"
+    error_template: "{error}"
   - prefix: "info"
+    level: 0
     response_template: "Playing {current_playlist}\n{online_users}\n{party_duration}"
 
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
+    level: 1
     response_template: "Playing {singer}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
+    level: 2
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "radio"
+    level: 2
     response_template: "{playlist}"
     error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
+    level: 2
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
+    level: 1
     response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
   - prefix: "notice"
+    level: 1
     response_template: "Change notice to {notice}"
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
+    level: 2
     response_template: "Playing album {album}"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
+    level: 1
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
+    level: 3
     response_template: "{title}"
 
     error_template: "Failed to change title, because {error}"
   - prefix: "theme"
+    level: 3
     response_template: "{theme}"
     error_template: "Failed to change theme, because {error}"
   - prefix: "end"
+    level: 4
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
   - prefix: "hello"
+    level: 0
     response_template: "{success}"
     error_template: "Failed to say hello, because {error}"
   - prefix: "mic"
+    level: 2
     response_template: "Microphone set to {state}"
     error_template: "Failed to set microphone: {error}"
   - prefix: "pack"
+    level: 1
     response_template: "Successfully opened luck pack {item}"
     error_template: "Failed to open luck pack: {error}"
   - prefix: "timer"
+    level: 1
     response_template: "{timer}"
     error_template: "{error}"
   - prefix: "keyword"
+    level: 1
     response_template: "{message}"
     error_template: "关键字操作失败: {error}"
   - prefix: "enter"
+    level: 1
     response_template: "{message}"
     error_template: "进入命令操作失败: {error}"
 appium:

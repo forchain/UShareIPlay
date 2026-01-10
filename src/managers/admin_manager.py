@@ -135,5 +135,10 @@ class AdminManager(Singleton):
         confirm_button.click()
         self.logger.info(f"Clicked {action} confirmation button")
 
+        # 关闭在线用户抽屉
+        from ..managers.recovery_manager import RecoveryManager
+        recovery_manager = RecoveryManager.instance()
+        recovery_manager.close_drawer('online_drawer')
+
         return {'user': message_info.nickname,
                 'action': action}

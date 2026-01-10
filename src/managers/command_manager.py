@@ -139,7 +139,23 @@ class CommandManager(Singleton):
         """
         try:
             parameters = command_info['parameters']
-            # UI 互斥：命令执行期间禁止 EventManager 的“未知页面自动 back”打断弹窗/子页面流程
+            
+            # 检查用户等级
+            required_level = command_info.get('level', 1)
+            from ..dal.user_dao import UserDAO
+            user = await UserDAO.get_or_create(message_info.nickname)
+            
+            if user.level < required_level:
+                result = {
+                    'error': f'需要等级 {required_level} 才能使用此命令，您当前等级为 {user.level}'
+                }
+                res = command_info['error_template'].format(
+                    error=result['error'],
+                    user=message_info.nickname,
+                )
+                return res
+            
+            # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             # 延迟导入避免循环依赖
             from ..core.app_controller import AppController
             result = {'error': 'unknown'}
