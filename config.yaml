@@ -465,6 +465,9 @@ commands:
   - prefix: "keyword"
     response_template: "{message}"
     error_template: "关键字操作失败: {error}"
+  - prefix: "enter"
+    response_template: "{message}"
+    error_template: "进入命令操作失败: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
