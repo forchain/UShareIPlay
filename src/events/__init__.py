@@ -3,7 +3,6 @@
 
 每个事件是一个独立的 Python 文件，文件名为元素 key（支持逗号分隔多个 key）。
 例如：
-- message_content.py - 监控消息内容（使用 __multiple__ = True 获取所有元素）
 - close_button,confirm.py - 多个元素共用同一个事件处理
 - risk_elements.py - 使用 __elements__ 字段指定要监控的元素列表
 

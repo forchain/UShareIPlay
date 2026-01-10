@@ -28,7 +28,7 @@ class DrawerElementsEvent(BaseEvent):
         """
         处理抽屉式弹窗事件
 
-        找到控件并点击特定位置关闭，使用 click_element_at 点击抽屉上方区域
+        使用 RecoveryManager 的 close_drawer 方法关闭抽屉
 
         Args:
             key: 触发事件的元素 key
@@ -38,30 +38,9 @@ class DrawerElementsEvent(BaseEvent):
             bool: 如果点击成功返回 True，否则 False
         """
         try:
-            # 使用 wait_for 获取可点击的元素（因为 page_source 中已确认存在）
-            element = self.handler.wait_for_element_clickable_plus(key)
-            if not element:
-                self.logger.warning(
-                    f"Drawer element {key} found in page_source but not clickable"
-                )
-                return False
-
-            # 点击抽屉上方区域来关闭（参考 handle_drawer_elements 的实现）
-            click_success = self.handler.click_element_at(
-                element, x_ratio=0.3, y_ratio=0, y_offset=-200
-            )
-            if not click_success:
-                self.logger.warning(f"Failed to click drawer: {key}")
-                return False
-
-            # 等待 room_id 元素出现，确认界面已恢复正常（弹窗已关闭）
-            room_id_element = self.handler.wait_for_element_plus("room_id")
-            if room_id_element:
-                self.logger.info(f"Closed drawer: {key}, room_id confirmed")
-            else:
-                self.handler.press_back()
-                self.logger.warning(f"Closed drawer: {key}, but room_id not found")
-            return True
+            from ..managers.recovery_manager import RecoveryManager
+            recovery_manager = RecoveryManager.instance()
+            return recovery_manager.close_drawer(key)
 
         except Exception as e:
             self.logger.error(f"Error processing drawer element {key}: {str(e)}")
