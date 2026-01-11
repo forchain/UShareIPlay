@@ -54,7 +54,23 @@ class KeywordCommand(BaseCommand):
             if not params:
                 return {'error': '缺少参数'}
             
-            operation = params[0]
+            operation = params[0].lower()
+            
+            # 规范化操作：将单词子命令转换为数字
+            operation_map = {
+                # 删除操作
+                'delete': '0', 'del': '0', 'remove': '0', 'rm': '0',
+                # 添加操作
+                'add': '1', 'create': '1', 'new': '1',
+                # 修改公开性操作
+                'update': '2', 'modify': '2', 'toggle': '2', 'publicity': '2', 'public': '2',
+                # 立即执行操作
+                'execute': '3', 'exec': '3', 'run': '3', 'trigger': '3'
+            }
+            
+            # 如果是单词，转换为数字
+            if operation in operation_map:
+                operation = operation_map[operation]
             
             if operation == '0':
                 # 删除关键字
