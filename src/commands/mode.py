@@ -49,6 +49,8 @@ class ModeCommand(BaseCommand):
                     'error': '无法切换到音乐App，稍后重试'
                 }
 
+            self.handler.press_back()
+
             # 1. 尝试查找四个元素中的任意一个
             element_keys = ['playlist_entry', 'play_mode_list', 'play_mode_single', 'play_mode_random']
             found_element_key, found_element = self.handler.wait_for_any_element_plus(element_keys)
