@@ -48,7 +48,7 @@ class AdminManager(Singleton):
             }
 
         # Open online users list to find and click the user
-        user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
+        user_count_elem = self.handler.wait_for_element_plus('user_count', log=False)
         if not user_count_elem:
             return {
                 'error': 'Failed to open online users list',
