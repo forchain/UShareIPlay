@@ -42,6 +42,10 @@ class TimerCommand(BaseCommand):
                 return self._show_help()
             elif command == 'reset':
                 return await self._reset_timers()
+            elif command == 'start':
+                return await self._start_timer_manager()
+            elif command == 'stop':
+                return await self._stop_timer_manager()
             else:
                 return {'error': f'未知命令: {command}。使用 "timer help" 查看帮助'}
                 
@@ -163,6 +167,8 @@ class TimerCommand(BaseCommand):
 • timer list - 列出所有定时器
 • timer add <ID> <时间> <消息> [repeat] - 添加定时器
 • timer remove <ID> - 删除定时器
+• timer start - 启动定时器功能
+• timer stop - 停止定时器功能
 • timer reset - 重置所有定时器（清除现有数据）
 • timer help - 显示此帮助
 
@@ -171,6 +177,8 @@ class TimerCommand(BaseCommand):
   timer add morning 08:00 早上好！
   timer add reminder 14:30:00 下午茶时间 repeat
   timer remove morning
+  timer start
+  timer stop
   timer reset"""
         
         return {'timer': help_text}
@@ -186,6 +194,28 @@ class TimerCommand(BaseCommand):
         for timer_id in list(timers.keys()):
             ok = ok and await self.timer_manager.remove_timer(timer_id)
         return {'timer': '所有定时器已重置' if ok else '部分定时器重置失败'}
+
+    async def _start_timer_manager(self):
+        """Start timer manager
+        Returns:
+            dict: Result with success or error
+        """
+        if self.timer_manager.is_running():
+            return {'timer': '定时器功能已经在运行中'}
+        
+        await self.timer_manager.start()
+        return {'timer': '定时器功能已启动'}
+
+    async def _stop_timer_manager(self):
+        """Stop timer manager
+        Returns:
+            dict: Result with success or error
+        """
+        if not self.timer_manager.is_running():
+            return {'timer': '定时器功能已经停止'}
+        
+        await self.timer_manager.stop()
+        return {'timer': '定时器功能已停止'}
 
     def update(self):
         """Update method for background tasks"""
