@@ -54,7 +54,23 @@ class KeywordCommand(BaseCommand):
             if not params:
                 return {'error': '缺少参数'}
             
-            operation = params[0]
+            operation = params[0].lower()
+            
+            # 规范化操作：将单词子命令转换为数字
+            operation_map = {
+                # 删除操作
+                'delete': '0', 'del': '0', 'remove': '0', 'rm': '0',
+                # 添加操作
+                'add': '1', 'create': '1', 'new': '1',
+                # 修改公开性操作
+                'update': '2', 'modify': '2', 'toggle': '2', 'publicity': '2', 'public': '2',
+                # 立即执行操作
+                'execute': '3', 'exec': '3', 'run': '3', 'trigger': '3'
+            }
+            
+            # 如果是单词，转换为数字
+            if operation in operation_map:
+                operation = operation_map[operation]
             
             if operation == '0':
                 # 删除关键字
@@ -100,6 +116,30 @@ class KeywordCommand(BaseCommand):
                     keyword,
                     is_public
                 )
+                
+            elif operation == '3':
+                # 立即执行关键字
+                if len(params) < 2:
+                    return {'error': '缺少关键字参数'}
+                keyword = params[1]
+                
+                # 查找关键字
+                keyword_record = await self.keyword_manager.find_keyword(
+                    keyword, 
+                    message_info.nickname
+                )
+                
+                if not keyword_record:
+                    return {'error': f'关键字 "{keyword}" 不存在或无权限执行'}
+                
+                # 立即执行关键字
+                await self.keyword_manager.execute_keyword(
+                    keyword_record,
+                    message_info.nickname
+                )
+                
+                return {'message': f'已执行关键字 "{keyword}"'}
+                
             else:
                 return {'error': f'未知操作: {operation}'}
                 
