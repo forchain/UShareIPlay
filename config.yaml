@@ -492,7 +492,7 @@ commands:
     response_template: "Successfully opened luck pack {item}"
     error_template: "Failed to open luck pack: {error}"
   - prefix: "timer"
-    level: 1
+    level: 9
     response_template: "{timer}"
     error_template: "{error}"
   - prefix: "keyword"
@@ -503,6 +503,10 @@ commands:
     level: 1
     response_template: "{message}"
     error_template: "进入命令操作失败: {error}"
+  - prefix: "exit"
+    level: 1
+    response_template: "{message}"
+    error_template: "离开命令操作失败: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723

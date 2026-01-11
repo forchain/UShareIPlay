@@ -1,31 +1,31 @@
 from typing import Optional, List, Tuple
-from src.models.enter import Enter
+from src.models.enter_event import EnterEvent
 from src.dal.user_dao import UserDAO
 
 
 class EnterDao:
     @staticmethod
-    async def create(username: str, command: str) -> Enter:
+    async def create(username: str, command: str) -> EnterEvent:
         """Create a new enter command"""
         # Get or create user first
         user = await UserDAO.get_or_create(username=username)
-        return await Enter.create(
+        return await EnterEvent.create(
             user=user,
             command=command
         )
 
     @staticmethod
-    async def get_by_username(username: str) -> List[Enter]:
+    async def get_by_username(username: str) -> List[EnterEvent]:
         """Get all enter commands for a user
         Returns:
-            List[Enter]: List of enter commands ordered by id
+            List[EnterEvent]: List of enter commands ordered by id
         """
-        return await Enter.filter(user__username=username).order_by('id').prefetch_related('user')
+        return await EnterEvent.filter(user__username=username).order_by('id').prefetch_related('user')
 
     @staticmethod
-    async def get_by_id(command_id: int) -> Optional[Enter]:
+    async def get_by_id(command_id: int) -> Optional[EnterEvent]:
         """Get enter command by ID"""
-        return await Enter.get_or_none(id=command_id).prefetch_related('user')
+        return await EnterEvent.get_or_none(id=command_id).prefetch_related('user')
 
     @staticmethod
     async def delete_by_id(command_id: int) -> bool:
@@ -33,7 +33,7 @@ class EnterDao:
         Returns:
             bool: True if a command was deleted, False otherwise
         """
-        command = await Enter.get_or_none(id=command_id)
+        command = await EnterEvent.get_or_none(id=command_id)
         if command:
             await command.delete()
             return True
@@ -45,5 +45,5 @@ class EnterDao:
         Returns:
             int: Number of commands deleted
         """
-        deleted_count = await Enter.filter(user__username=username).delete()
+        deleted_count = await EnterEvent.filter(user__username=username).delete()
         return deleted_count

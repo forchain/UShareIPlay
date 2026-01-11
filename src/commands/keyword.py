@@ -100,6 +100,30 @@ class KeywordCommand(BaseCommand):
                     keyword,
                     is_public
                 )
+                
+            elif operation == '3':
+                # 立即执行关键字
+                if len(params) < 2:
+                    return {'error': '缺少关键字参数'}
+                keyword = params[1]
+                
+                # 查找关键字
+                keyword_record = await self.keyword_manager.find_keyword(
+                    keyword, 
+                    message_info.nickname
+                )
+                
+                if not keyword_record:
+                    return {'error': f'关键字 "{keyword}" 不存在或无权限执行'}
+                
+                # 立即执行关键字
+                await self.keyword_manager.execute_keyword(
+                    keyword_record,
+                    message_info.nickname
+                )
+                
+                return {'message': f'已执行关键字 "{keyword}"'}
+                
             else:
                 return {'error': f'未知操作: {operation}'}
                 
