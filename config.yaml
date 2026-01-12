@@ -281,6 +281,9 @@ qq_music:
     current_song: "android:id/title"
     current_singer: "android:id/text"
     playing_favourite: '//android.widget.Button[@content-desc="收藏"]'
+    filter_favourite: '//android.widget.ImageView[@content-desc="筛选"]'
+    favourite_languages: '//android.widget.TextView[@text="语种"]/../androidx.recyclerview.widget.RecyclerView'
+    favourite_language: '//android.widget.TextView'
     playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
     accompaniment_switch: '//android.view.ViewGroup[@content-desc="K歌"]/android.widget.ImageView'
     accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
@@ -350,6 +353,10 @@ commands:
     level: 1
     response_template: "Playing {song} by {singer} in {album}"
     error_template: "Failed to play music, because {error}"
+  - prefix: "fav"
+    level: 1
+    response_template: "Playing {song} by {singer} from favorites"
+    error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 1
     response_template: "Skipped {song} by {singer}"
@@ -390,6 +397,9 @@ commands:
         :skip
       4. 暂停/继续
         :pause 1/0
+      5. 收藏播放
+        :fav (播放所有收藏)
+        :fav 0 语言 (播放指定语言收藏，如 :fav 0 粤语)
       6. 音量 (0~15)
         :vol [n] (不指定参数显示当前音量)
       7. 歌词
