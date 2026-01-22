@@ -1,8 +1,8 @@
-import time
 import traceback
 from datetime import datetime
 
-from core.message_queue import MessageQueue
+from ..core.message_queue import MessageQueue
+from ..models import MessageInfo
 from ..core.singleton import Singleton
 
 
@@ -184,6 +184,11 @@ class PartyManager(Singleton):
 
         # 检测是否在首页（非派对页面）
         try:
+            planet_tab = self.handler.try_find_element_plus('planet_tab', log=False)
+            if not planet_tab:
+                return False
+            self.logger.info("发现首页，尝试进入派对")
+            planet_tab.click()
 
             party_hall_entry = self.handler.wait_for_element_clickable_plus('party_hall_entry')
             if not party_hall_entry:
@@ -283,8 +288,7 @@ class PartyManager(Singleton):
             # 派对创建成功后，设置默认notice
             self.logger.info("派对创建成功，准备设置默认notice")
 
-            from notice_manager import NoticeManager
-            notice_manager = NoticeManager.instance()
+            notice_manager = self.handler.controller.notice_manager
             result = notice_manager.set_default_notice()
 
             if 'success' in result:
@@ -292,18 +296,15 @@ class PartyManager(Singleton):
             else:
                 self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
 
-            from ..managers import seat_manager
+            seat_manager =self.handler.controller.seat_manager
             self.logger.info("Attempting to seat owner after party creation")
-            result = seat_manager.seat_manager.seating.find_owner_seat()
+            result = seat_manager.seating.find_owner_seat()
 
             if 'success' in result:
                 self.logger.info("Owner successfully seated")
-                return True
             else:
                 self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
-                return False
 
-            from ..models.message_info import MessageInfo
             message_info = MessageInfo(
                 content=":radio",
                 nickname="Party"
