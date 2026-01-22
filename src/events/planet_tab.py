@@ -25,10 +25,8 @@ class PlanetTabEvent(BaseEvent):
             bool: 如果成功处理返回 True，否则 False
         """
         try:
-            # 调用 RecoveryManager 的 handle_join_party 方法
-            from ..managers.recovery_manager import RecoveryManager
-            recovery_manager = RecoveryManager.instance()
-            result = recovery_manager.handle_join_party()
+            party_manager = self.controller.party_manager
+            result = await party_manager.join_party()
 
             if result:
                 self.logger.info("Successfully handled planet_tab event via handle_join_party")
@@ -40,4 +38,3 @@ class PlanetTabEvent(BaseEvent):
         except Exception as e:
             self.logger.error(f"Error processing planet_tab event: {str(e)}")
             return False
-

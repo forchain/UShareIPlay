@@ -173,7 +173,10 @@ soul:
     planet_tab: "cn.soulapp.android:id/main_tab_planet" #  星球
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
     create_party_entry: "cn.soulapp.android:id/iv_create_room" #  创建派对
-    create_party_button: "cn.soulapp.android:id/createRoomBtn"
+    new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
+    party_state_entry: 'cn.soulapp.android:id/partyStateView' # 已公开｜已隐藏
+    close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
+    create_party_button: "cn.soulapp.android:id/createRoomBtn" # 创建房间
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
