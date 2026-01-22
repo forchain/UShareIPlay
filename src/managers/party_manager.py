@@ -307,7 +307,7 @@ class PartyManager(Singleton):
 
             message_info = MessageInfo(
                 content=":radio",
-                nickname="Party"
+                nickname="Console"
             )
 
             # Add a radio message to the queue
