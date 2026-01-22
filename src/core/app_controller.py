@@ -17,6 +17,8 @@ from ..core.db_service import DBHelper
 from ..handlers.qq_music_handler import QQMusicHandler
 from ..handlers.soul_handler import SoulHandler
 from ..managers.event_manager import EventManager
+from ..managers.notice_manager import NoticeManager
+from ..managers.party_manager import PartyManager
 
 
 class AppController(Singleton):
@@ -277,6 +279,7 @@ class AppController(Singleton):
             from ..managers.command_manager import CommandManager
             from ..managers.info_manager import InfoManager
             from ..managers.seat_manager import init_seat_manager
+            from ..managers.notice_manager import NoticeManager
 
             # Initialize managers after handlers are ready
             print("创建 manager 实例...")
@@ -288,6 +291,8 @@ class AppController(Singleton):
             self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
             self.info_manager = InfoManager.instance()
+            self.party_manager = PartyManager.instance()
+            self.notice_manager = NoticeManager.instance()
 
             # Initialize command manager with config
             print("初始化命令解析器...")
