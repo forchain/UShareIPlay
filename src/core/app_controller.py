@@ -311,24 +311,6 @@ class AppController(Singleton):
             print(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
-    async def _async_non_ui_operations_loop(self):
-        """
-        异步后台任务，定期执行非 UI 操作
-        使用 asyncio.to_thread() 将同步操作放到线程池执行
-        """
-        while self.is_running:
-            try:
-                await asyncio.sleep(2)
-            except asyncio.CancelledError:
-                self.logger.info("Non-UI operations loop cancelled")
-                break
-            except Exception:
-                self.logger.error(
-                    f"Error in async non-UI operations loop: {traceback.format_exc()}"
-                )
-                # 出错后等待一段时间再继续
-                await asyncio.sleep(2)
-
     async def start_monitoring(self):
         error_count = 0
 
@@ -362,31 +344,6 @@ class AppController(Singleton):
         input_thread.daemon = True
         input_thread.start()
         print("控制台输入线程已启动")
-
-        # Start non-UI operations background task
-        print("启动非 UI 操作后台任务...")
-        self._non_ui_task = asyncio.create_task(self._async_non_ui_operations_loop())
-        print("非 UI 操作后台任务已启动")
-
-        # Check if party already exists and seat owner if needed
-        print("检查派对状态并尝试给群主找座位...")
-        try:
-            if self.recovery_manager.is_normal_state():
-                self.logger.info("检测到派对已存在，尝试给群主找座位")
-                from ..managers.seat_manager import seat_manager
-
-                result = seat_manager.seating.find_owner_seat()
-                if "success" in result:
-                    self.logger.info("服务器启动时成功给群主找到座位")
-                else:
-                    self.logger.warning(
-                        f"服务器启动时给群主找座位失败: {result.get('error', 'Unknown error')}"
-                    )
-            else:
-                self.logger.info("派对不存在或状态异常，跳过座位检查")
-        except Exception as e:
-            self.logger.error(f"服务器启动时检查座位出错: {str(e)}")
-        print("座位检查完成")
 
         print("开始主监控循环...")
 
