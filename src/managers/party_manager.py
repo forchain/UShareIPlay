@@ -13,7 +13,6 @@ class PartyManager(Singleton):
         # 延迟初始化，避免循环依赖
         self._handler = None
         self._logger = None
-        self._recovery_manager = None
 
         # 派对重启相关状态
         self.init_time = None  # 初始化时间
@@ -34,14 +33,6 @@ class PartyManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
-
-    @property
-    def recovery_manager(self):
-        """延迟获取 RecoveryManager 实例"""
-        if self._recovery_manager is None:
-            from recovery_manager import RecoveryManager
-            self._recovery_manager = RecoveryManager.instance()
-        return self._recovery_manager
 
     def initialize(self):
         """初始化派对管理器"""
@@ -296,7 +287,7 @@ class PartyManager(Singleton):
             else:
                 self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
 
-            seat_manager =self.handler.controller.seat_manager
+            seat_manager = self.handler.controller.seat_manager
             self.logger.info("Attempting to seat owner after party creation")
             result = seat_manager.seating.find_owner_seat()
 
