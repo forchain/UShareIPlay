@@ -331,6 +331,10 @@ class FavCommand(BaseCommand):
         search_box.click()
         self.handler.logger.info("Clicked favourite search box")
 
+        favourite_search = self.handler.wait_for_element_plus('favourite_search')
+        if not favourite_search:
+            return {'error': 'Cannot find favourite search'}
+
         # 3) 粘贴关键字
         self.handler.set_clipboard_text(keyword)
         self.handler.paste_text()

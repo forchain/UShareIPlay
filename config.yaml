@@ -289,6 +289,7 @@ qq_music:
     favourite_option: '//android.widget.TextView'
     favourite_genres: '//android.widget.TextView[@text="流派"]/../androidx.recyclerview.widget.RecyclerView'
     play_favourite_search: '//android.widget.LinearLayout/android.widget.TextView[@text="全部播放"]'
+    favourite_search: '//android.widget.EditText[@resource-id="com.tencent.qqmusic:id/searchItem" and @text="搜索我收藏的歌曲"]'
     playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
     accompaniment_switch: '//android.view.ViewGroup[@content-desc="K歌"]/android.widget.ImageView'
     accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
