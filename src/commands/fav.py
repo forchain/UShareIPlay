@@ -22,6 +22,7 @@ class FavCommand(BaseCommand):
         参数:
             无参数: 直接播放所有收藏
             两个参数(第一个为 0 或 lang, 第二个为语言名): 筛选语言后播放
+            两个参数(第一个为 1 或 genre, 第二个为流派名): 筛选流派后播放
         """
         self.soul_handler.ensure_mic_active()
 
@@ -34,16 +35,21 @@ class FavCommand(BaseCommand):
             info_manager.player_name = message_info.nickname
             return playing_info
         elif len(parameters) == 2:
-            # 两个参数，检查第一个参数是否为 0 或 lang
+            # 两个参数，检查第一个参数
             if parameters[0] in ['0', 'lang']:
                 language = parameters[1]
                 playing_info = self.play_favorites_by_language(language)
                 info_manager.player_name = message_info.nickname
                 return playing_info
+            elif parameters[0] in ['1', 'genre']:
+                genre = parameters[1]
+                playing_info = self.play_favorites_by_genre(genre)
+                info_manager.player_name = message_info.nickname
+                return playing_info
             else:
-                return {'error': f'第一个参数必须是 0 或 lang，当前为: {parameters[0]}'}
+                return {'error': f'第一个参数必须是 0/lang 或 1/genre，当前为: {parameters[0]}'}
         else:
-            return {'error': '参数错误，使用方式: :fav 或 :fav 0 语言名'}
+            return {'error': '参数错误，使用方式: :fav 或 :fav 0 语言名 或 :fav 1 流派名'}
 
     def play_favorites_all(self):
         """导航到收藏并播放所有"""
@@ -118,7 +124,7 @@ class FavCommand(BaseCommand):
 
         # Scroll container to find the language button
         key, element, found_languages = self.handler.scroll_container_until_element(
-            'favourite_language',  # element_key
+            'favourite_option',  # element_key
             'favourite_languages',  # container_key
             'left',  # direction: 向左滑动
             'text',  # attribute_name
@@ -172,3 +178,84 @@ class FavCommand(BaseCommand):
         topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': '', 'language': language}
+
+    def play_favorites_by_genre(self, genre):
+        """导航到收藏，筛选指定流派，然后播放所有
+        
+        参数:
+            genre: 要筛选的流派名称，如"流行"
+        """
+        if not self.handler.switch_to_app():
+            return {'error': 'Cannot switch to qq music'}
+        self.handler.logger.info(f"Switched to QQ Music app")
+
+        self.handler.navigate_to_home()
+        self.handler.logger.info("Navigated to home page")
+
+        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
+        my_nav.click()
+        self.handler.logger.info("Clicked personal info navigation button")
+
+        # Click on favorites button
+        fav_entry = self.handler.wait_for_element_clickable_plus('fav_entry')
+        fav_entry.click()
+        self.handler.logger.info("Clicked favorites button")
+
+        # Click on filter button
+        filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
+        if not filter_favourite:
+            return {'error': 'Cannot find filter button'}
+        filter_favourite.click()
+        self.handler.logger.info("Clicked filter button")
+
+        # Scroll container to find the genre button
+        key, element, found_genres = self.handler.scroll_container_until_element(
+            'favourite_option',  # element_key
+            'favourite_genres',  # container_key
+            'left',  # direction: 向左滑动
+            'text',  # attribute_name
+            genre,  # attribute_value: 用户指定的流派，如"流行"
+            max_swipes=10
+        )
+
+        if not element:
+            # 返回找到的所有流派供用户参考
+            genres_str = ', '.join(found_genres) if found_genres else '无'
+            return {'error': f'找不到流派: {genre}。可用流派: {genres_str}'}
+
+        # Click the genre button
+        element.click()
+        self.handler.logger.info(f"Clicked genre button: {genre}")
+
+        # Wait a moment for the filter to take effect
+        import time
+        time.sleep(0.5)
+
+        # Get song info from the first result
+        result_item = self.handler.try_find_element_plus('result_item')
+        song_text = None
+        singer_text = None
+        if result_item:
+            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            if len(elements) >= 3:
+                song_text = elements[1].text
+                singer_text = elements[2].text
+
+        # Click play all button
+        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
+        if not play_fav:
+            return {'error': 'Cannot find play all button'}
+        play_fav.click()
+        self.handler.logger.info("Clicked play all button")
+
+        self.handler.list_mode = 'favorites'
+        # 使用 title_manager 和 topic_manager 管理标题和话题
+        from ..managers.title_manager import TitleManager
+        from ..managers.topic_manager import TopicManager
+        title_manager = TitleManager.instance()
+        topic_manager = TopicManager.instance()
+        title = genre if genre else 'O Station'
+        title_manager.set_next_title(title)
+        topic_manager.change_topic(song_text)
+
+        return {'song': song_text, 'singer': singer_text, 'album': '', 'genre': genre}
