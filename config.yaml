@@ -288,6 +288,7 @@ qq_music:
     favourite_languages: '//android.widget.TextView[@text="语种"]/../androidx.recyclerview.widget.RecyclerView'
     favourite_option: '//android.widget.TextView'
     favourite_genres: '//android.widget.TextView[@text="流派"]/../androidx.recyclerview.widget.RecyclerView'
+    play_favourite_search: '//android.widget.LinearLayout/android.widget.TextView[@text="全部播放"]'
     playing_bar: '//android.widget.Button[@content-desc="收藏"]/../..'
     accompaniment_switch: '//android.view.ViewGroup[@content-desc="K歌"]/android.widget.ImageView'
     accompaniment_text_on: '//android.widget.TextView[@text="已开启伴唱模式"]'
