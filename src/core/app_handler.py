@@ -724,7 +724,7 @@ class AppHandler:
                 if dir_name == "left":
                     start_x = left + int(width * 0.9)
                     start_y = top + int(height * 0.5)
-                    end_x = left + int(width * 0.1)
+                    end_x = left + int(width * 0.2)
                     end_y = top + int(height * 0.5)
                     return start_x, start_y, end_x, end_y
                 # right
