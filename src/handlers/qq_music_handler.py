@@ -598,6 +598,7 @@ class QQMusicHandler(AppHandler, Singleton):
                 end_y = playlist_first.location['y']
                 if start_y - end_y > playlist_first.size['height']:
                     self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
+                    items = self.find_elements_plus('playlist_item_container')
                     self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         except StaleElementReferenceException as e:
