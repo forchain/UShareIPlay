@@ -482,8 +482,26 @@ class InfoManager(Singleton):
             if info is None:
                 return
 
-            # 检查歌曲信息是否变化
-            if info != self._last_playback_info:
+            # 只比较播放信息的关键字段（song, singer, album），避免因为额外字段（如 online_users）导致误判
+            current_playback_key = (
+                info.get('song'),
+                info.get('singer'),
+                info.get('album')
+            ) if info else None
+            
+            last_playback_key = None
+            if self._last_playback_info:
+                # 如果 _last_playback_info 包含额外字段，只提取基本播放信息进行比较
+                last_playback_key = (
+                    self._last_playback_info.get('song'),
+                    self._last_playback_info.get('singer'),
+                    self._last_playback_info.get('album')
+                )
+
+            # 检查歌曲信息是否变化（只比较关键字段）
+            if current_playback_key != last_playback_key:
+                self.logger.debug(f"Playback info changed: {info}, _last_playback_info:{self._last_playback_info}")
+                # 只保存基本播放信息，不包含额外字段
                 self._last_playback_info = info.copy() if info else None
                 self.send_playing_message()
 
