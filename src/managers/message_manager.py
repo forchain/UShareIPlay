@@ -115,9 +115,8 @@ class MessageManager(Singleton):
             last_chat,
         )
 
-        # send the playing message to scroll to the bottom of the chat history rapidly, no matter if found the key or not
-        from .info_manager import InfoManager
-        InfoManager.instance().send_playing_message()
+        # send empty message to scroll to bottom instantly
+        self.handler.send_message("")
 
         if not key:
             return None

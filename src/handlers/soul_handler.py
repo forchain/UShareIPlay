@@ -21,7 +21,7 @@ class SoulHandler(AppHandler, Singleton):
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
         print("SoulHandler.__init__ 完成")
-    
+
     @property
     def message_manager(self):
         """延迟获取 MessageManager 实例"""
@@ -53,19 +53,21 @@ class SoulHandler(AppHandler, Singleton):
             return {
                 'error': 'Failed to find input box',
             }
-        input_box.send_keys(message)
-        self.logger.info(f"Entered message: {message}")
 
-        # click send button
-        send_button = self.wait_for_element_clickable_plus('button_send')
-        if not send_button:
-            self.logger.error(f'cannot find send button')
-            return {
-                'error': 'Failed to find send button',
-            }
+        if len(message) > 0:
+            input_box.send_keys(message)
+            self.logger.info(f"Entered message: {message}")
 
-        send_button.click()
-        # self.logger.info("Clicked send button")
+            # click send button
+            send_button = self.wait_for_element_clickable_plus('button_send')
+            if not send_button:
+                self.logger.error(f'cannot find send button')
+                return {
+                    'error': 'Failed to find send button',
+                }
+
+            send_button.click()
+            # self.logger.info("Clicked send button")
 
         self.click_element_at(input_box, 0.5, -1)
         # self.logger.info("Hide input dialog")
