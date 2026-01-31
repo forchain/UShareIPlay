@@ -214,6 +214,7 @@ soul:
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
+    back_pack: '//android.widget.LinearLayout[@content-desc="背包"]'
     give_gift: "cn.soulapp.android:id/btnSend" # 赠送
     use_item: "cn.soulapp.android:id/mConfirm" # 使用
     gift_tool: "cn.soulapp.android:id/ivGift"
@@ -527,6 +528,10 @@ commands:
     level: 1
     response_template: "{message}"
     error_template: "发送消息失败: {error}"
+  - prefix: "gift"
+    level: 5
+    response_template: "{success}"
+    error_template: "送礼失败: {error}"
 appium:
   host: "192.168.50.103"
   port: 4723
