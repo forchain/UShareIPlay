@@ -47,58 +47,12 @@ class AdminManager(Singleton):
                 'user': message_info.nickname,
             }
 
-        # Open online users list to find and click the user
-        user_count_elem = self.handler.wait_for_element_plus('user_count')
-        if not user_count_elem:
-            return {
-                'error': 'Failed to open online users list',
-                'user': message_info.nickname,
-            }
-        
-        user_count_elem.click()
-        self.logger.info("Opened online users list")
-        
-        # Wait for online users container
-        online_container = self.handler.wait_for_element_plus('online_users')
-        if not online_container:
-            return {
-                'error': 'Failed to find online users container',
-                'user': message_info.nickname,
-            }
-        
-        # Find the user in online users list
-        key, user_elem, _ = self.handler.scroll_container_until_element(
-            'online_user', 
-            'online_users', 
-            'up', 
-            'text', 
-            message_info.nickname
-        )
-        
-        if not user_elem:
-            # Close online users list
-            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
-            if bottom_drawer:
-                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
-            return {
-                'error': 'User not found in online users list',
-                'user': message_info.nickname,
-            }
-        
-        # Click the user element to open profile
-        try:
-            user_elem.click()
-            self.logger.info(f"Clicked user element for {message_info.nickname}")
-        except Exception as e:
-            self.logger.error(f'Failed to click user element: {str(e)}')
-            # Close online users list
-            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
-            if bottom_drawer:
-                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
-            return {
-                'error': 'Failed to click user element',
-                'user': message_info.nickname,
-            }
+        # 在在线列表中打开该用户的资料页
+        from ..managers.user_manager import UserManager
+        user_manager = UserManager.instance()
+        open_result = user_manager.open_user_profile_from_online_list(message_info.nickname)
+        if 'error' in open_result:
+            return open_result
 
         # Find manager invite button
         manager_invite = self.handler.wait_for_element_clickable_plus('manager_invite')
