@@ -90,7 +90,7 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        send_gift_btn = self.handler.try_find_element_plus('send_gift', log=False)
+        send_gift_btn = self.handler.wait_for_element_clickable_plus('send_gift')
         if not send_gift_btn:
             self.logger.info("未找到送礼物按钮")
             return {'error': '未找到送礼物入口'}
@@ -98,30 +98,27 @@ class UserManager(Singleton):
         self.handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.wait_for_any_element_plus(
-            ['give_gift', 'use_item', 'back_pack'], timeout=5
-        )
+        found_key, found_element = self.handler.wait_for_any_element_plus(['give_gift', 'use_item'])
         if not found_element:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
 
-        if found_key == 'back_pack':
-            self.handler.click_element_at(found_element)
-            self.logger.info("已点击背包，等待送礼界面")
-            found_key, found_element = self.handler.wait_for_any_element_plus(
-                ['give_gift', 'use_item'], timeout=5
-            )
-            if not found_element:
-                self.logger.info("点击背包后未出现赠送/使用")
-                return {'error': '送礼界面未出现'}
-
+        recovery_manager = self.handler.controller.recovery_manager
         if found_key == 'use_item':
             self.handler.press_back()
+            recovery_manager.close_drawer('online_drawer')
             self.logger.info("当前选中的是其他道具，已关闭界面")
             return {'error': '当前选中的不是礼物，请先选择礼物'}
 
         if found_key == 'give_gift':
             self.handler.click_element_at(found_element)
+            soul_power = self.handler.try_find_element_plus('soul_power')
+            if not soul_power:
+                self.logger.warning('Failed to find gift')
+                self.handler.press_back()
+
+            # self.handler.press_back()
+            recovery_manager.close_drawer('online_drawer')
             self.logger.info("已点击赠送，送礼完成")
             return {'success': '送礼成功'}
 
