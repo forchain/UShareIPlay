@@ -111,16 +111,24 @@ class UserManager(Singleton):
             return {'error': '当前选中的不是礼物，请先选择礼物'}
 
         if found_key == 'give_gift':
-            self.handler.click_element_at(found_element)
-            soul_power = self.handler.try_find_element_plus('soul_power')
-            if not soul_power:
+            luck_item = self.handler.try_find_element_plus('luck_item')
+            if not luck_item:
                 self.logger.warning('Failed to find gift')
                 self.handler.press_back()
 
+            gift_name = luck_item.text
+            if (parts := gift_name.split('x')) and len(parts) > 1:
+                gift_name = parts[0]
+
+            soul_power = self.handler.try_find_element_plus('soul_power')
+            soul_points = soul_power.text if soul_power else '0'
+
+            self.handler.click_element_at(found_element)
+            self.logger.info(f"已点击赠送，送礼完成, gift_name: {gift_name} soul_points: {soul_points}")
+
             # self.handler.press_back()
             recovery_manager.close_drawer('online_drawer')
-            self.logger.info("已点击赠送，送礼完成")
-            return {'success': '送礼成功'}
+            return {'success': f'{gift_name} 送你啦'}
 
         return {'error': '未知界面状态'}
 
