@@ -98,7 +98,14 @@ class PlaylistCommand(BaseCommand):
             }
         self.handler.logger.info("Selected playlist tab")
 
-        result = self.handler.wait_for_element_clickable_plus('playlist_result')
+        key, element = self.handler.wait_for_any_element_plus(['playlist_result', 'not_found'])
+        if not key or key == 'not_found':
+            self.handler.logger.error(f"Failed to find playlist result with query {query}")
+            return {
+                'error': f'Failed to find playlist with query {query}',
+            }
+
+        result = element
         result.click()
         self.handler.logger.info("Selected playlist result")
 

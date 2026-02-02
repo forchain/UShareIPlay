@@ -277,6 +277,7 @@ qq_music:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
     clear_search: '//android.widget.ImageView[@content-desc="清空"]'
+    not_found: '//android.widget.TextView[contains(@text, "没有找到与")]'
     next_button: '//android.widget.ImageView[@content-desc="添加到播放队列"]'
     result_item: "com.tencent.qqmusic:id/item_layout"
     first_song: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"][1]//android.widget.TextView'
