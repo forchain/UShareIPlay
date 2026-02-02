@@ -186,3 +186,16 @@ class MessageManager(Singleton):
         if match:
             return True, match.group(1)
         return False, ""
+
+    def is_user_return_message(self, message: str) -> tuple[bool, str]:
+        """Check if message is a user return notification（用户重新打开 app 返回派对时的消息）
+        Args:
+            message: str, message to check
+        Returns:
+            tuple[bool, str]: (is_return_message, username)
+        """
+        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
+        match = re.match(pattern, message)
+        if match:
+            return True, match.group(1)
+        return False, ""

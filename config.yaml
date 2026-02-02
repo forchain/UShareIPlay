@@ -43,7 +43,7 @@ soul:
       repeat: true
     - id: "theme_morning"
       time: "09:00"
-      message: ":title 四十更惑 加油"
+      message: ":title 程序员的浪漫你不懂 加油"
       repeat: true
     - id: "playlist_9"
       time: "09:00"
@@ -104,9 +104,9 @@ soul:
       time: "19:00"
       message: ":playlist 官方 古典"
       repeat: true
-    - id: "playlist_20"
+    - id: "fav_20"
       time: "20:00"
-      message: ":playlist 官方 电子"
+      message: ":fav"
       repeat: true
     - id: "playlist_21"
       time: "21:00"
@@ -520,6 +520,10 @@ commands:
     level: 1
     response_template: "{message}"
     error_template: "进入命令操作失败: {error}"
+  - prefix: "return"
+    level: 1
+    response_template: "{message}"
+    error_template: "返回命令操作失败: {error}"
   - prefix: "exit"
     level: 1
     response_template: "{message}"

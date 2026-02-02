@@ -97,12 +97,11 @@ class MessageContentEvent(BaseEvent):
             # 处理所有消息元素
             for content in message_manager.latest_chats:
 
-                # 检查用户进入消息
-                is_enter, username = message_manager.is_user_enter_message(content)
-                if is_enter:
-                    self.logger.critical(f"User entered: {username}")
-                    # 通知所有命令
-                    await self._notify_user_enter(username)
+                # 检查用户返回消息（原“进来陪你聊天啦/坐着xx来啦”为返回场景，仅触发返回事件，避免与进入事件冗余）
+                is_return, username = message_manager.is_user_return_message(content)
+                if is_return:
+                    self.logger.critical(f"User returned: {username}")
+                    await self._notify_user_return(username)
 
                 # === 新增：检查 @我 + 关键字格式 ===
                 at_pattern = r"souler\[(.+)\]说：@我\s+(.+)"
@@ -162,6 +161,14 @@ class MessageContentEvent(BaseEvent):
             await command_manager.notify_user_enter(username)
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
+
+    async def _notify_user_return(self, username: str):
+        """通知所有命令用户返回"""
+        try:
+            command_manager = CommandManager.instance()
+            await command_manager.notify_user_return(username)
+        except Exception as e:
+            self.logger.error(f"Error notifying user return: {str(e)}")
 
     async def _process_update_logic(self):
         """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
