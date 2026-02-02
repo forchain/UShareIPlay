@@ -293,7 +293,7 @@ class CommandManager(Singleton):
     async def notify_user_enter(self, username: str):
         """
         Notify all commands when a user enters
-        
+
         Args:
             username: Username of the user who entered
         """
@@ -303,3 +303,17 @@ class CommandManager(Singleton):
                     await module.command.user_enter(username)
             except Exception:
                 self.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
+
+    async def notify_user_return(self, username: str):
+        """
+        Notify all commands when a user returns（用户重新打开 app 返回派对）
+
+        Args:
+            username: Username of the user who returned
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, 'user_return'):
+                    await module.command.user_return(username)
+            except Exception:
+                self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
