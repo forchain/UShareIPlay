@@ -108,9 +108,12 @@ class LyricsCommand(BaseCommand):
             return {'error': 'Failed to select lyrics tab'}
             
         # Get lyrics text
-        lyrics_text = self.music_handler.try_find_element_plus('lyrics_text')
-        if not lyrics_text:
+        key, element = self.music_handler.wait_for_any_element_plus(['lyrics_text', 'not_found'])
+        if not key or key == 'not_found':
+            self.music_handler.logger.error(f"Failed to find lyrics with query {query}")
             return {'error': f'No lyrics found for "{query}"'}
+
+        lyrics_text = element
         lyrics_text.click()
 
         # Process lyrics - handle HTML entities

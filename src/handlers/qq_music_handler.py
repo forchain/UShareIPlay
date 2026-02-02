@@ -150,7 +150,14 @@ class QQMusicHandler(AppHandler, Singleton):
         if need_select_tab:
             self.select_song_tab()
 
-        first_song = self.wait_for_element_plus('first_song')
+        key, element = self.wait_for_any_element_plus(['first_song', 'not_found'])
+        if not key or key == 'not_found':
+            self.logger.error(f"Failed to find music query: {music_query}")
+            return {
+                'error': f"not found with query {music_query}"
+            }
+
+        first_song = element
         if not first_song:
             self.logger.error(f"Failed to find first song")
             return None

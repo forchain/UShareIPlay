@@ -96,13 +96,14 @@ class SingerCommand(BaseCommand):
         play_singer = None
         singer_name = 'Unknown'
         if from_key == "home_nav":
-            first_song = self.handler.wait_for_element_plus("first_song")
-            if not first_song:
-                self.handler.logger.error("Failed to find first song")
+            key, element = self.handler.wait_for_any_element_plus(["first_song", "not_found"])
+            if not key or key == "not_found":
+                self.handler.logger.error(f'not found singer with query {query}')
                 return {
-                    "error": "Failed to find first song",
+                    'error': f'not found singer with query {query}',
                 }
-            if play_singer:= self.handler.try_find_element_plus("play_singer_1"):
+
+            if play_singer := self.handler.try_find_element_plus("play_singer_1"):
                 if singer_name := self.handler.try_get_attribute(play_singer, "content-desc"):
                     singer_name = singer_name.split(': ')[1]
                     singer_name = singer_name.split('的歌曲')[0]
@@ -115,11 +116,13 @@ class SingerCommand(BaseCommand):
             self.handler.logger.info("Selected singer play")
         else:
             self.select_singer_tab()
-            singer_result = self.handler.wait_for_element_clickable_plus("singer_result")
-            if not singer_result:
+            key, element = self.handler.wait_for_any_element_plus(["singer_result", "not_found"])
+            if not key or key == "not_found":
+                self.handler.logger.error(f'not found singer with query {query}')
                 return {
-                    "error": "Failed to find singer result",
+                    'error': f'not found singer with query {query}',
                 }
+            singer_result = element
 
             singer_result.click()
             self.handler.logger.info("Selected singer result")
