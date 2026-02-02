@@ -98,39 +98,30 @@ class UserManager(Singleton):
         self.handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.wait_for_any_element_plus(['give_gift', 'use_item'])
+        found_key, found_element = self.handler.wait_for_any_element_plus(['soul_power', 'give_gift', 'use_item'])
         if not found_element:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
 
-        recovery_manager = self.handler.controller.recovery_manager
-        if found_key == 'use_item':
+        luck_item = self.handler.try_find_element_plus('luck_item')
+        if not luck_item:
+            self.logger.warning('Failed to find gift')
             self.handler.press_back()
-            recovery_manager.close_drawer('online_drawer')
-            self.logger.info("当前选中的是其他道具，已关闭界面")
-            return {'error': '当前选中的不是礼物，请先选择礼物'}
 
-        if found_key == 'give_gift':
-            luck_item = self.handler.try_find_element_plus('luck_item')
-            if not luck_item:
-                self.logger.warning('Failed to find gift')
-                self.handler.press_back()
+        gift_name = luck_item.text
+        if (parts := gift_name.split('x')) and len(parts) > 1:
+            gift_name = parts[0]
 
-            gift_name = luck_item.text
-            if (parts := gift_name.split('x')) and len(parts) > 1:
-                gift_name = parts[0]
+        soul_power = self.handler.try_find_element_plus('soul_power')
+        soul_points = soul_power.text if soul_power else '0'
 
-            soul_power = self.handler.try_find_element_plus('soul_power')
-            soul_points = soul_power.text if soul_power else '0'
+        self.handler.click_element_at(found_element)
+        self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
 
-            self.handler.click_element_at(found_element)
-            self.logger.info(f"已点击赠送，送礼完成, gift_name: {gift_name} soul_points: {soul_points}")
-
-            # self.handler.press_back()
-            recovery_manager.close_drawer('online_drawer')
-            return {'success': f'{gift_name} 送你啦'}
-
-        return {'error': '未知界面状态'}
+        # self.handler.press_back()
+        recovery_manager = self.handler.controller.recovery_manager
+        recovery_manager.close_drawer('online_drawer')
+        return {'success': f'{gift_name} 送你啦'}
 
     def _close_online_drawer(self):
         """关闭在线用户抽屉"""
