@@ -1,13 +1,19 @@
 # 默认关键字（没有匹配时执行）
+# command 占位符：{user_name} 触发用户名，{params} 关键词后的参数字符串
 default_keyword:
   command: ":help"
-  
+
 # 预设关键字列表
+# 关键词空格后的内容会作为参数传入，例如 @我 播放 周杰伦 稻香 -> 关键词=播放，params=周杰伦 稻香
 keywords:
   - keyword: "粤语|粤语歌单"  # 支持同义词
     command: ":playlist 粤语经典 官方;即将播放{user_name}的粤语歌单"
     is_public: true  # 所有人可执行
-    
+
+  - keyword: "播放|点歌"  # 示例：@我 播放 周杰伦 稻香 -> command 中 {params}=周杰伦 稻香
+    command: ":play {params}"
+    is_public: true
+
   - keyword: "帮助|help"
     command: ":help"
     is_public: true

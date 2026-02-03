@@ -108,19 +108,24 @@ class MessageContentEvent(BaseEvent):
                 at_match = re.match(at_pattern, content)
                 if at_match:
                     username = at_match.group(1)
-                    keyword_text = at_match.group(2)
+                    keyword_text = at_match.group(2).strip()
+
+                    # 关键词空格后续的都是参数，例如 "播放 周杰伦 稻香" -> keyword="播放", params="周杰伦 稻香"
+                    parts = keyword_text.split(None, 1)
+                    keyword = parts[0] if parts else ""
+                    params = parts[1] if len(parts) > 1 else ""
 
                     # 查找并执行关键字
                     from ..managers.keyword_manager import KeywordManager
                     keyword_manager = KeywordManager.instance()
 
-                    keyword_record = await keyword_manager.find_keyword(keyword_text, username)
+                    keyword_record = await keyword_manager.find_keyword(keyword, username)
                     if keyword_record:
-                        # 找到匹配的关键字，执行
-                        await keyword_manager.execute_keyword(keyword_record, username)
+                        # 找到匹配的关键字，执行（command 中可用 {user_name}、{params} 占位符）
+                        await keyword_manager.execute_keyword(keyword_record, username, params=params)
                     else:
                         # 没有匹配，执行默认关键字
-                        await keyword_manager.execute_default_keyword(username)
+                        await keyword_manager.execute_default_keyword(username, params=params)
 
                     chat_logger.critical(content)
                     continue  # 跳过后续的命令检测
