@@ -123,9 +123,15 @@ class MessageManager(Singleton):
 
         command_set = set[str]()
         nickname_map = {}
+
+        missed_chats = set[str]()
         for chat in attribute_values:
             if last_chat == chat:
                 continue
+
+            if chat not in self.recent_chats and chat not in self.latest_chats and chat not in missed_chats:
+                self.chat_logger.warning(chat)
+                missed_chats.add(chat)
 
             # Parse message content using pattern
             pattern = r'souler\[(.+)\]说：(:.+)'
