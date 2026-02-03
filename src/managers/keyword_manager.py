@@ -272,16 +272,19 @@ class KeywordManager(Singleton):
             self.logger.error(f"Error deleting keyword: {traceback.format_exc()}")
             return {'error': '删除关键字失败'}
 
-    async def execute_keyword(self, keyword_record: Keyword, username: str):
+    async def execute_keyword(self, keyword_record: Keyword, username: str, params: str = ""):
         """执行关键字
         
         Args:
             keyword_record: 关键字记录
             username: 触发用户名
+            params: 关键词后的参数字符串（空格后的整段），command 中可用 {params} 引用
         """
         try:
-            # 替换占位符
-            command = keyword_record.command.replace('{user_name}', username)
+            # 替换占位符：{user_name} 用户名，{params} 关键词后的参数
+            command = (
+                keyword_record.command.replace('{user_name}', username).replace('{params}', params or "")
+            )
             
             # 将命令放入消息队列
             from ..core.message_queue import MessageQueue
@@ -299,19 +302,22 @@ class KeywordManager(Singleton):
         except Exception:
             self.logger.error(f"Error executing keyword: {traceback.format_exc()}")
 
-    async def execute_default_keyword(self, username: str):
+    async def execute_default_keyword(self, username: str, params: str = ""):
         """执行默认关键字
         
         Args:
             username: 触发用户名
+            params: 关键词后的参数字符串，command 中可用 {params} 引用
         """
         try:
             if not self._default_keyword_command:
                 self.logger.warning("No default keyword command configured")
                 return
             
-            # 替换占位符
-            command = self._default_keyword_command.replace('{user_name}', username)
+            # 替换占位符：{user_name} 用户名，{params} 参数
+            command = (
+                self._default_keyword_command.replace('{user_name}', username).replace('{params}', params or "")
+            )
             
             # 将命令放入消息队列
             from ..core.message_queue import MessageQueue
