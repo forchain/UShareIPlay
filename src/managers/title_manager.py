@@ -18,7 +18,7 @@ class TitleManager(Singleton):
 
         # 延迟初始化 UI，避免在初始化时调用 handler
         self._ui_initialized = False
-        
+
         # Notice 恢复状态
         self.pending_notice_restore = False
         self.restore_notice_content = None
@@ -53,7 +53,6 @@ class TitleManager(Singleton):
             from .notice_manager import NoticeManager
             self._notice_manager = NoticeManager.instance()
         return self._notice_manager
-
 
     def get_current_title(self):
         """Get current title
@@ -150,6 +149,20 @@ class TitleManager(Singleton):
             self.logger.error(f"Error parsing title from UI: {str(e)}")
             return None
 
+    def get_room_title_text_from_ui(self):
+        """从 UI 读取当前房名原文（不解析主题/标题）
+        Returns:
+            str: 房名文本，获取失败返回 None
+        """
+        try:
+            room_title_element = self.handler.try_find_element_plus('chat_room_title', log=False)
+            if not room_title_element:
+                return None
+            text = self.handler.get_element_text(room_title_element)
+            return (text or "").strip() or None
+        except Exception:
+            return None
+
     def _check_notice_reset(self):
         """检查房间notice是否被系统重置，如果是则标记需要恢复
         Returns:
@@ -173,7 +186,7 @@ class TitleManager(Singleton):
             from ..core.config_loader import ConfigLoader
             config = ConfigLoader.load_config()
             system_notices = config.get('soul', {}).get('system_default_notices', [])
-            
+
             if not system_notices:
                 self.logger.warning("No system default notices configured, skipping notice check")
                 return {'skipped': 'No system notices configured'}
@@ -199,8 +212,9 @@ class TitleManager(Singleton):
             default_notice = config.get('soul', {}).get('default_notice', 'U Share I Play\n分享音乐 享受快乐')
             self.pending_notice_restore = True
             self.restore_notice_content = default_notice
-            
-            self.logger.info(f"System reset detected (found: '{found_system_notice}'), will restore notice after title update")
+
+            self.logger.info(
+                f"System reset detected (found: '{found_system_notice}'), will restore notice after title update")
             return {'detected': True, 'found_notice': found_system_notice, 'will_restore_to': default_notice}
 
         except Exception as e:
@@ -217,15 +231,15 @@ class TitleManager(Singleton):
 
         try:
             self.logger.info(f"Restoring notice to: {self.restore_notice_content}")
-            
+
             # 使用notice_manager恢复notice（带冷却时间管理）
             restore_result = self.notice_manager.set_notice(self.restore_notice_content)
-            
+
             # 清除恢复标记
             self.pending_notice_restore = False
             restore_content = self.restore_notice_content
             self.restore_notice_content = None
-            
+
             if 'cooldown' in restore_result:
                 # 在冷却中，notice会在冷却时间过后自动设置
                 remaining_minutes = restore_result.get('remaining_minutes', 0)
@@ -335,7 +349,7 @@ class TitleManager(Singleton):
             # 在点击编辑入口之前，检查notice是否需要恢复
             self.logger.info("Checking room notice before editing title")
             notice_check_result = self._check_notice_reset()
-            
+
             if 'error' in notice_check_result:
                 self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
             elif 'detected' in notice_check_result:
@@ -385,7 +399,13 @@ class TitleManager(Singleton):
 
                 self.handler.press_back()
                 self.logger.info('Hide edit title dialog')
-                
+
+                # 仅在真正设置成功后检测：房名不含「｜」说明审核未通过、系统随机取名，则重设为 日推
+                room_title_text = self.get_room_title_text_from_ui()
+                if room_title_text and '｜' not in room_title_text:
+                    self.next_title = '日推'
+                    self.logger.info(f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 日推')
+
                 # 标题更新成功后，检查是否需要恢复notice
                 notice_restore_result = self._restore_notice_if_needed()
                 if 'success' in notice_restore_result:
@@ -397,7 +417,7 @@ class TitleManager(Singleton):
                     self.logger.warning(f"Notice restore failed: {notice_restore_result['error']}")
                 elif 'skipped' in notice_restore_result:
                     self.logger.debug(f"Notice restore skipped: {notice_restore_result['skipped']}")
-                
+
                 return {'success': True}
 
             elif key == 'title_edit_confirm':
@@ -421,27 +441,27 @@ class TitleManager(Singleton):
                     self.logger.warning(f"Notice restore failed: {notice_restore_result['error']}")
                 elif 'skipped' in notice_restore_result:
                     self.logger.debug(f"Notice restore skipped: {notice_restore_result['skipped']}")
-                
+
                 # 标题更新失败，清除notice恢复标记
                 self.pending_notice_restore = False
                 self.restore_notice_content = None
-                
+
                 return {'error': 'Update failed - still in cooldown period'}
             else:
                 self.logger.warning('Failed to update title, unknown error')
                 self.handler.press_back()
-                
+
                 # 标题更新失败，清除notice恢复标记
                 self.pending_notice_restore = False
                 self.restore_notice_content = None
-                
+
                 return {'error': 'Failed to update title, unknown error'}
 
         except Exception:
             self.logger.error(f"Error in title update: {traceback.format_exc()}")
-            
+
             # 异常情况下，清除notice恢复标记
             self.pending_notice_restore = False
             self.restore_notice_content = None
-            
+
             return {'error': f'Failed to update title: {title}'}
