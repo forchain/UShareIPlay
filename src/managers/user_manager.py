@@ -98,7 +98,7 @@ class UserManager(Singleton):
         self.handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.wait_for_any_element_plus(['soul_power', 'give_gift', 'use_item'])
+        found_key, found_element = self.handler.wait_for_any_element_plus(['give_gift', 'use_item'])
         if not found_element:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
@@ -117,6 +117,15 @@ class UserManager(Singleton):
 
         self.handler.click_element_at(found_element)
         self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
+
+        if found_key == 'use_item':
+            confirm_use = self.handler.wait_for_element_plus('confirm_use')
+            if not confirm_use:
+                self.logger.warning("未找到确认使用按钮")
+                return {'error': '未找到确认使用按钮'}
+
+            confirm_use.click()
+            self.logger.info("已点击确认使用")
 
         # self.handler.press_back()
         recovery_manager = self.handler.controller.recovery_manager

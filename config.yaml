@@ -217,6 +217,7 @@ soul:
     back_pack: '//android.widget.LinearLayout[@content-desc="背包"]'
     give_gift: "cn.soulapp.android:id/btnSend" # 赠送
     use_item: "cn.soulapp.android:id/mConfirm" # 使用
+    confirm_use: "cn.soulapp.android:id/tv_sure" # 确认
     gift_tool: "cn.soulapp.android:id/ivGift"
     follow_list: '//android.widget.LinearLayout[@content-desc="我关注的"]'
     follower_name: "cn.soulapp.android:id/tvName" # Outlier
