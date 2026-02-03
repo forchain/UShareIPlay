@@ -763,7 +763,7 @@ class AppHandler:
                             collected_value = None
                             for attr in attr_list:
                                 value = self.try_get_attribute(element, attr)
-                                if value is not None:
+                                if value is not None and value != 'null':
                                     collected_value = value
                                     break
                             if collected_value is not None:
@@ -786,17 +786,17 @@ class AppHandler:
                                 attr_list = attribute_name.split('|')
                                 for attr in attr_list:
                                     value = self.try_get_attribute(element, attr)
-                                    if value is not None:
+                                    if value is not None and value != 'null':
                                         attribute_values_list.append(value)
                                         break
                             else:
                                 # 如果没有指定属性名，优先使用 content-desc，如果没有则使用 text
                                 content_desc = self.try_get_attribute(element, "content-desc")
-                                if content_desc is not None:
+                                if content_desc is not None and content_desc != 'null':
                                     attribute_values_list.append(content_desc)
                                 else:
                                     text = self.try_get_attribute(element, "text")
-                                    if text is not None:
+                                    if text is not None and text != 'null':
                                         attribute_values_list.append(text)
                         return element_key, found
                 return None, None
