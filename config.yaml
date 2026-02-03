@@ -449,8 +449,7 @@ commands:
     error_template: "{error}"
   - prefix: "info"
     level: 0
-    response_template: "Playing {current_playlist}\n{online_users}\n{party_duration}"
-
+    response_template: "Playing {current_playlist}\n{online_users}\n{party_duration}\n{timer_status}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
