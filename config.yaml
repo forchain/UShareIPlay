@@ -538,7 +538,7 @@ commands:
     response_template: "{success}"
     error_template: "送礼失败: {error}"
 appium:
-  host: "192.168.50.103"
+  host: "192.168.8.103"
   port: 4723
 
 logging:
@@ -546,7 +546,7 @@ logging:
 
 device:
   #  name: "554b4e4745413498"
-  name: "192.168.50.151:5555"
+  name: "192.168.8.151:5555"
   platform_name: "Android"
   platform_version: "10"
   automation_name: "UiAutomator2"
