@@ -1,3 +1,4 @@
+import time
 import traceback
 from datetime import datetime
 
@@ -166,6 +167,113 @@ class PartyManager(Singleton):
         except Exception as e:
             self.logger.error(f"检查派对状态时出错: {traceback.format_exc()}")
             return False
+
+    async def invite_user(self, message_info: MessageInfo, party_id: str) -> dict:
+        """
+        邀请当前账号加入指定派对（切房）
+        Args:
+            message_info: 消息信息（用于等级校验和返回展示）
+            party_id: 派对 ID
+        Returns:
+            dict: 成功含 party_id、user；失败含 error、party_id
+        """
+        try:
+            from ..dal.user_dao import UserDAO
+            user = await UserDAO.get_or_create(message_info.nickname)
+            if user.level < 3:
+                return {
+                    'error': '必须群主关注的人才能邀请群主入群',
+                    'party_id': party_id
+                }
+
+            more_menu = self.handler.wait_for_element_clickable_plus('more_menu')
+            if not more_menu:
+                return {
+                    'error': 'Failed to find more menu button',
+                    'party_id': party_id
+                }
+            more_menu.click()
+            self.logger.info("Clicked more menu button")
+
+            self.handler.wait_for_element_plus('more_menu_container')
+
+            end_party = self.handler.try_find_element_plus('end_party', log=False)
+            if end_party:
+                end_party.click()
+                confirm_end = self.handler.wait_for_element_clickable_plus('confirm_end')
+                if confirm_end:
+                    confirm_end.click()
+                self.handler.party_id = party_id
+                return {'party_id': party_id, 'user': message_info.nickname}
+
+            party_hall = self.handler.wait_for_element_clickable_plus('party_hall')
+            if not party_hall:
+                return {
+                    'error': 'Failed to find party hall entry',
+                    'party_id': party_id
+                }
+            party_hall.click()
+            self.logger.info("Clicked party hall entry")
+
+            search_entry = self.handler.wait_for_element_clickable_plus('search_entry')
+            if not search_entry:
+                return {
+                    'error': 'Failed to find search entry',
+                    'party_id': party_id
+                }
+            search_entry.click()
+            self.logger.info("Clicked search entry")
+
+            search_box = self.handler.wait_for_element_clickable_plus('search_box')
+            if not search_box:
+                return {
+                    'error': 'Failed to find search box',
+                    'party_id': party_id
+                }
+            search_box.send_keys(party_id)
+            self.logger.info(f"Entered party ID: {party_id}")
+
+            search_button = self.handler.wait_for_element_clickable_plus('search_button')
+            if not search_button:
+                return {
+                    'error': 'Failed to find search button',
+                    'party_id': party_id
+                }
+            search_button.click()
+            self.logger.info("Clicked search button")
+
+            parties_search = self.handler.wait_for_element_plus('parties_search')
+            if not parties_search:
+                return {
+                    'error': 'Failed to find parties search',
+                    'party_id': party_id
+                }
+            self.logger.info("Found parties search result")
+
+            time.sleep(1)
+            party_element = self.handler.find_child_element_plus(parties_search, 'party_id')
+            if not party_element:
+                self.logger.info("Party not found, returning to previous party")
+                floating_entry = self.handler.wait_for_element_clickable_plus('floating_entry')
+                if floating_entry:
+                    floating_entry.click()
+                return {
+                    'error': f'Party {party_id} not found',
+                    'party_id': party_id
+                }
+
+            party_element.click()
+            self.logger.info(f"Entered party {party_id}")
+
+            self.handler.grab_mic_and_confirm()
+            return {'party_id': party_id, 'user': message_info.nickname}
+
+        except Exception as e:
+            self.logger.error(f"Error inviting to party: {traceback.format_exc()}")
+            return {
+                'error': str(e),
+                'party_id': party_id
+            }
 
     async def join_party(self) -> bool:
         """
