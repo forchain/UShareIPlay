@@ -34,6 +34,7 @@ class UserManager(Singleton):
         """
         user_count_elem = self.handler.wait_for_element_plus('user_count')
         if not user_count_elem:
+            self.logger.warning("未找到在线用户人数")
             return {
                 'error': 'Failed to open online users list',
                 'user': nickname,
@@ -44,6 +45,7 @@ class UserManager(Singleton):
 
         online_container = self.handler.wait_for_element_plus('online_users')
         if not online_container:
+            self.logger.warning("未找到在线用户列表")
             return {
                 'error': 'Failed to find online users container',
                 'user': nickname,
@@ -58,6 +60,7 @@ class UserManager(Singleton):
         )
 
         if not user_elem:
+            self.logger.warning(f"未找到用户 {nickname}")
             self._close_online_drawer()
             return {
                 'error': 'User not found in online users list',
@@ -107,6 +110,7 @@ class UserManager(Singleton):
         if not luck_item:
             self.logger.warning('Failed to find gift')
             self.handler.press_back()
+            return {'error': 'Failed to find gift'}
 
         gift_name = luck_item.text
         if (parts := gift_name.split('x')) and len(parts) > 1:
@@ -128,12 +132,10 @@ class UserManager(Singleton):
             self.logger.info("已点击确认使用")
 
         # self.handler.press_back()
-        recovery_manager = self.handler.controller.recovery_manager
-        recovery_manager.close_drawer('online_drawer')
+        self._close_online_drawer()
         return {'success': f'{gift_name} 送你啦'}
 
     def _close_online_drawer(self):
         """关闭在线用户抽屉"""
-        bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
-        if bottom_drawer:
-            self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+        recovery_manager = self.handler.controller.recovery_manager
+        recovery_manager.close_drawer('online_drawer')

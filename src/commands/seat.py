@@ -65,6 +65,14 @@ class SeatCommand(BaseCommand):
         except Exception as e:
             self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
 
+    async def user_return(self, username: str):
+        """Called when a user returns to the party"""
+        try:
+            # Check seats when user returns, passing the username
+            await seat_manager.check.check_seats_on_entry(username)
+        except Exception as e:
+            self.handler.log_error(f"Error checking seats on user return: {traceback.format_exc()}")
+
     def update(self):
         """Update method - focus count monitoring has been migrated to event system"""
         # 专注数监控已迁移到事件系统，不再需要手动调用
