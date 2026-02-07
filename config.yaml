@@ -436,7 +436,7 @@ commands:
       18. 电台
         :radio guess/daily/collection/sleep
 
-  - prefix: "invite"
+  - prefix: "room"
     level: 4
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
