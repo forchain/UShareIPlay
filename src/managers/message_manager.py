@@ -129,9 +129,33 @@ class MessageManager(Singleton):
             if last_chat == chat:
                 continue
 
+            is_missed = False
             if chat not in self.recent_chats and chat not in self.latest_chats and chat not in missed_chats:
                 self.chat_logger.warning(chat)
                 missed_chats.add(chat)
+                is_missed = True
+
+            # Parse @我 keyword messages for missed chats
+            at_pattern = r'souler\[(.+)\]说：@我\s+(.+)'
+            at_match = re.match(at_pattern, chat)
+            if at_match and is_missed:
+                username = at_match.group(1).strip()
+                keyword_text = at_match.group(2).strip()
+
+                parts = keyword_text.split(None, 1)
+                keyword = parts[0] if parts else ""
+                params = parts[1] if len(parts) > 1 else ""
+
+                from ..managers.keyword_manager import KeywordManager
+                keyword_manager = KeywordManager.instance()
+
+                keyword_record = await keyword_manager.find_keyword(keyword, username)
+                if keyword_record:
+                    await keyword_manager.execute_keyword(keyword_record, username, params=params)
+                else:
+                    await keyword_manager.execute_default_keyword(username, params=params)
+
+                continue
 
             # Parse message content using pattern
             pattern = r'souler\[(.+)\]说：(:.+)'
