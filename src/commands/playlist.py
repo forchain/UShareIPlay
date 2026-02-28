@@ -32,7 +32,7 @@ class PlaylistCommand(BaseCommand):
             player_name = info_manager.player_name
             # 排除系统用户 Joyer 和 Timer
             if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer",
-                                                                                            "Outlier"]:
+                                                                                            "Outlier", "Chainer"]:
                 # 检查之前的播放者是否还在线
                 if info_manager.is_user_online(player_name):
                     self.handler.logger.info(f"{message_info.nickname} 尝试播放歌单，但 {player_name} 正在播放")
@@ -146,10 +146,6 @@ class PlaylistCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("Selected play all button")
 
-        playing_info = self.handler.get_playlist_info()
-        if not 'error' in playing_info:
-            playlist = f'Playing {playlist}\n\n{playing_info["playlist"]}'
-
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ..managers.title_manager import TitleManager
         from ..managers.topic_manager import TopicManager
@@ -165,5 +161,5 @@ class PlaylistCommand(BaseCommand):
         info_manager.current_playlist_name = original_playlist_name
 
         return {
-            'playlist': playlist,
+            'playlist': original_playlist_name,
         }

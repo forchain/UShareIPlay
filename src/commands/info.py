@@ -60,7 +60,7 @@ class InfoCommand(BaseCommand):
         else:
             result['current_playlist'] = "暂无活跃歌单"
 
-        # 追加定时器状态
+        # 追加状态
         try:
             from ..managers.timer_manager import TimerManager
             timer_manager = TimerManager.instance()
@@ -68,11 +68,11 @@ class InfoCommand(BaseCommand):
             total = len(timers)
             enabled = sum(1 for t in timers.values() if t.get('enabled', False))
             if timer_manager.is_running():
-                result['timer_status'] = f"定时器: 运行中，共 {total} 个 ({enabled} 个已启用)"
+                result['timer_status'] = f": 运行中，共 {total} 个 ({enabled} 个已启用)"
             else:
-                result['timer_status'] = f"定时器: 已停止，共 {total} 个"
+                result['timer_status'] = f": 已停止，共 {total} 个"
         except Exception:
-            result['timer_status'] = "定时器: 状态未知"
+            result['timer_status'] = ": 状态未知"
         
         return result
 

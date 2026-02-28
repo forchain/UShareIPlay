@@ -41,7 +41,7 @@ class RadioCommand(BaseCommand):
         # 添加播放器保护逻辑
         player_name = self.info_manager.player_name
         # 排除系统用户 Joyer 和 Timer
-        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier"]:
+        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier", "Chainer"]:
             # 检查之前的播放者是否还在线
             if self.info_manager.is_user_online(player_name):
                 self.music_handler.logger.info(f"{message_info.nickname} 尝试播放电台，但 {player_name} 正在播放")
@@ -67,15 +67,6 @@ class RadioCommand(BaseCommand):
         self.music_handler.logger.error(message)
         self.soul_handler.send_message(message)
         return {"error": message}
-
-    def _ensure_playlist_text(self):
-        playlist_info = self.music_handler.get_playlist_info()
-        if "error" in playlist_info:
-            return None, self._report_error(playlist_info["error"])
-        playlist_text = playlist_info.get("playlist", "").strip()
-        if not playlist_text:
-            return None, self._report_error("Playlist content is empty")
-        return playlist_text, None
 
     def _navigate_home(self):
         if not self.music_handler.switch_to_app():
@@ -121,9 +112,6 @@ class RadioCommand(BaseCommand):
         guess_title_text = guess_title.text
         guess_topic_text = self._extract_primary_topic(guess_topic.text)
         guess_title.click()
-        playlist_text, error = self._ensure_playlist_text()
-        if error:
-            return error
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -135,7 +123,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = guess_title_text
-        return {"playlist": playlist_text}
+        return {"playlist": guess_title_text}
 
     def _handle_daily_30(self, message_info):
         error = self._navigate_home()
@@ -152,9 +140,6 @@ class RadioCommand(BaseCommand):
         if not play_all:
             return self._report_error("Failed to locate play all button")
         play_all.click()
-        playlist_text, error = self._ensure_playlist_text()
-        if error:
-            return error
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -166,7 +151,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = daily_title_text
-        return {"playlist": playlist_text}
+        return {"playlist": daily_title_text}
 
     def _handle_collection(self, message_info):
         error = self._navigate_home()
@@ -205,9 +190,6 @@ class RadioCommand(BaseCommand):
 
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
-        playlist_text, error = self._ensure_playlist_text()
-        if error:
-            return error
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -219,7 +201,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = collection_title_text
-        return {"playlist": playlist_text}
+        return {"playlist": collection_title_text}
 
     def _handle_sleep_healing(self, message_info):
         error = self._navigate_home()
@@ -306,10 +288,6 @@ class RadioCommand(BaseCommand):
         song_text = radar_song.text
         singer_text = radar_singer.text
 
-        playlist_text, error = self._ensure_playlist_text()
-        if error:
-            return error
-
         # 切换回 Soul
         error = self._switch_back_to_soul()
         if error:
@@ -327,7 +305,7 @@ class RadioCommand(BaseCommand):
         self.info_manager.current_playlist_name = "O Radio"
 
         return {
-            "playlist": playlist_text,
+            "playlist": 'O Radio',
             "song": song_text,
             "singer": singer_text,
             "album": ""

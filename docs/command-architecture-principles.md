@@ -107,7 +107,7 @@ Manager 通过内部引用获取所需的单例 Handler：
 
 ### TimerManager
 负责定时任务：
-- 定时器管理
+- 管理
 - 定时消息发送
 
 ### ThemeManager

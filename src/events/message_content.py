@@ -176,7 +176,7 @@ class MessageContentEvent(BaseEvent):
             self.logger.error(f"Error notifying user return: {str(e)}")
 
     async def _process_update_logic(self):
-        """处理更新逻辑（定时器、播放信息等）- 在没有命令消息时执行"""
+        """处理更新逻辑（、播放信息等）- 在没有命令消息时执行"""
         try:
             # Process queue messages (timer messages, etc.)
             await self._process_queue_messages()
@@ -192,7 +192,7 @@ class MessageContentEvent(BaseEvent):
             self.logger.error(f"Error processing update logic: {str(e)}")
 
     async def _process_queue_messages(self):
-        """处理异步队列中的消息（定时器消息等）
+        """处理异步队列中的消息（消息等）
         
         统一处理流程：
         1. 消息保留完整格式（包括 : 前缀和 ; 分隔符）
