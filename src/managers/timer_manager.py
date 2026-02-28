@@ -10,7 +10,7 @@ from ..core.singleton import Singleton
 
 class TimerManager(Singleton):
     """
-    定时器管理器 - 使用协程实现
+    管理器 - 使用协程实现
     管理定时任务的执行和重复
     """
 
@@ -43,16 +43,16 @@ class TimerManager(Singleton):
         return self._running
 
     async def start(self):
-        """启动异步定时器循环"""
+        """启动异步循环"""
         if self._running:
             self.logger.warning("Timer manager is already running")
             return
 
-        # 确保在启动前加载现有定时器
+        # 确保在启动前加载现有
         if not self._initialized:
             await self._load_timers()
 
-            # 处理命令管理器设置的初始定时器
+            # 处理命令管理器设置的初始
             if hasattr(self, '_initial_timers') and self._initial_timers:
                 force_update = getattr(self, '_force_update', False)
                 await self.load_initial_timers(self._initial_timers, force_update)
@@ -69,7 +69,7 @@ class TimerManager(Singleton):
         self.logger.info("Timer manager started")
 
     async def stop(self):
-        """停止异步定时器循环"""
+        """停止异步循环"""
         self._running = False
         if self._task:
             self._task.cancel()
@@ -80,7 +80,7 @@ class TimerManager(Singleton):
         self.logger.info("Timer manager stopped")
 
     async def _timer_loop(self):
-        """异步定时器主循环"""
+        """异步主循环"""
         # self.logger.info(f"Timer loop started with {len(self._timers)} timers")
         loop_count = 0
 
@@ -129,7 +129,7 @@ class TimerManager(Singleton):
                 await asyncio.sleep(5)  # Wait longer on error
 
     async def _trigger_timer(self, timer_id: str, timer_data: dict):
-        """触发定时器并添加消息到队列"""
+        """触发并添加消息到队列"""
         try:
             message = timer_data['message']
             self.logger.info(f"Timer {timer_id} triggered: {message}")

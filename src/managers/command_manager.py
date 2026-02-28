@@ -255,7 +255,7 @@ class CommandManager(Singleton):
                     cmd = command_info['prefix']
 
                     self.handler.send_message(
-                        f'Processing :{cmd} command @{message_info.nickname}')
+                        f'{cmd} ... @{message_info.nickname}')
 
                     command = self.get_command(cmd)
                     if command:

@@ -328,7 +328,7 @@ class InfoManager(Singleton):
             # 只有在没有跳过歌曲的情况下才发送播放消息
             if not song_skipped:
                 self.handler.send_message(
-                    f"Playing {info['song']} by {info['singer']} in {info['album']}")
+                    f"{info['song']} - {info['singer']} • {info['album']}")
         else:
             # 如果歌曲信息无效，记录错误但不中断监控
             if 'error' in info:

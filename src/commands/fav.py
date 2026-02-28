@@ -379,7 +379,7 @@ class FavCommand(BaseCommand):
         # 返回整个歌单文本，供上层在 Soul 中广播
         # 同时补充 song/singer 字段，以兼容默认的 response_template
         return {
-            'playlist': playlist_text,
+            'playlist': keyword,
             'first_song': first_song,
             'keyword': keyword,
             'song': first_song,

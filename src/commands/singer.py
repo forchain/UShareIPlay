@@ -29,7 +29,7 @@ class SingerCommand(BaseCommand):
         if (
                 player_name
                 and player_name != message_info.nickname
-                and player_name not in ["Joyer", "Timer", "Outlier"]
+                and player_name not in ["Joyer", "Timer", "Outlier", "Chainer"]
         ):
             # 检查之前的播放者是否还在线
             if info_manager.is_user_online(player_name):
@@ -153,7 +153,7 @@ class SingerCommand(BaseCommand):
             topic = singer_name
 
         # Format playlist with singer name
-        formatted_playlist = f"Playing {singer_name}\n\n{playlist_text}"
+        formatted_playlist = f"{singer_name}"
 
         self.handler.list_mode = "singer"
 
