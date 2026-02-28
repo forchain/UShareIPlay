@@ -1,9 +1,9 @@
 soul:
-  owner_username: "Joyer"
+  owner_username: "Chainer"
   package_name: "cn.soulapp.android"
   chat_activity: ".component.startup.main.MainActivity"
-  # default_party_id: "FM18633292"
-  default_party_id: "FM15321640"
+  default_party_id: "FM18633292"
+#  default_party_id: "FM15321640"
   default_notice: "U Share I Play\n分享音乐 享受快乐"
   
   # 系统用户列表，这些用户不受等级限制
@@ -360,11 +360,11 @@ qq_music:
 commands:
   - prefix: "play"
     level: 1
-    response_template: "Playing {song} by {singer} in {album}"
+    response_template: "{song} - {singer} • {album}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 1
-    response_template: "Playing {song} by {singer} from favorites"
+    response_template: "{song} - {singer}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 1
@@ -450,11 +450,11 @@ commands:
     error_template: "{error}"
   - prefix: "info"
     level: 0
-    response_template: "Playing {current_playlist}\n{online_users}\n{party_duration}\n{timer_status}"
+    response_template: "{current_playlist}\n{online_users}\n{party_duration}\n{timer_status}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
-    response_template: "Playing {singer}"
+    response_template: "{singer}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
@@ -478,7 +478,7 @@ commands:
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
     level: 2
-    response_template: "Playing album {album}"
+    response_template: "<{album}>"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
     level: 1
