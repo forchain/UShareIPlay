@@ -301,8 +301,8 @@ qq_music:
     accompaniment_button_off: '//android.widget.ImageView[@content-desc="伴唱已关闭"]'
     my_nav: '//android.view.ViewGroup[@content-desc="我的"]'
     radar_nav: '//android.view.ViewGroup[@content-desc="雷达"]'
-    radar_song: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.LinearLayout/android.widget.Button'
-    radar_singer: '//android.widget.ImageButton[@content-desc="删除"]/../android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout/android.widget.Button'
+    radar_song: '//android.widget.ImageButton[@resource-id="com.tencent.qqmusic:id/bottom_action_btn_comment_btn"]/../../../android.widget.LinearLayout/android.widget.Button'
+    radar_singer: '//android.widget.ImageButton[@resource-id="com.tencent.qqmusic:id/bottom_action_btn_comment_btn"]/../../../android.widget.FrameLayout/android.view.ViewGroup/android.widget.FrameLayout/android.widget.Button'
     fav_entry: '//android.widget.TextView[@text="收藏"]'
     lyrics_tab: '//android.widget.RelativeLayout[@content-desc="歌词 按钮"]'
     playlist_tab: '//android.widget.RelativeLayout[@content-desc="歌单 按钮"]'
@@ -538,8 +538,8 @@ commands:
     response_template: "{success}"
     error_template: "送礼失败: {error}"
 appium:
-  host: "192.168.8.103"
-  port: 4723
+  host: "appium.chainer.tech"
+  port: 4433
 
 logging:
   directory: "../logs"
