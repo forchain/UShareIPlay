@@ -33,9 +33,11 @@ class FavCommand(BaseCommand):
         if len(parameters) == 0:
             # 无参数，直接播放所有收藏
             playing_info = self.play_favorites_all()
-            if 'error' not in playing_info:
-                info_manager.player_name = message_info.nickname
-                info_manager.current_playlist_name = "O Station"
+            if 'error' in playing_info:
+                return playing_info
+
+            info_manager.player_name = message_info.nickname
+            info_manager.current_playlist_name = "O Station"
             return playing_info
 
         # 有参数：第一个参数为子命令，其余为参数内容（允许带空格）
@@ -47,31 +49,37 @@ class FavCommand(BaseCommand):
         if subcmd in ['0', 'lang']:
             language = arg
             playing_info = self.play_favorites_by_language(language)
-            if 'error' not in playing_info:
-                info_manager.player_name = message_info.nickname
-                # 与 play_favorites_by_language 内的 title 规则保持一致
-                playlist_name = language
-                if language == '粤语':
-                    playlist_name = '粤音'
-                elif language == '英语':
-                    playlist_name = '英乐'
-                info_manager.current_playlist_name = playlist_name
+            if 'error' in playing_info:
+                return playing_info
+
+            info_manager.player_name = message_info.nickname
+            # 与 play_favorites_by_language 内的 title 规则保持一致
+            playlist_name = language
+            if language == '粤语':
+                playlist_name = '粤音'
+            elif language == '英语':
+                playlist_name = '英乐'
+            info_manager.current_playlist_name = playlist_name
             return playing_info
 
         if subcmd in ['1', 'genre']:
             genre = arg
             playing_info = self.play_favorites_by_genre(genre)
-            if 'error' not in playing_info:
-                info_manager.player_name = message_info.nickname
-                info_manager.current_playlist_name = genre
+            if 'error' in playing_info:
+                return playing_info
+
+            info_manager.player_name = message_info.nickname
+            info_manager.current_playlist_name = genre
             return playing_info
 
         if subcmd in ['2', 'search']:
             keyword = arg
             playing_info = self.play_favorites_by_search(keyword)
-            if 'error' not in playing_info:
-                info_manager.player_name = message_info.nickname
-                info_manager.current_playlist_name = keyword
+            if 'error' in playing_info:
+                return playing_info
+
+            info_manager.player_name = message_info.nickname
+            info_manager.current_playlist_name = keyword
             return playing_info
 
         return {'error': f'第一个参数必须是 0/lang 或 1/genre 或 2/search，当前为: {parameters[0]}'}
@@ -80,7 +88,7 @@ class FavCommand(BaseCommand):
         """导航到收藏并播放所有"""
         if not self.handler.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
-        self.handler.logger.info(f"Switched to QQ Music app")
+        self.handler.logger.info("Switched to QQ Music app")
 
         self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
@@ -107,6 +115,10 @@ class FavCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
+        self.handler.navigate_to_home()
+        self.handler.logger.info("fav 播放全部收藏后已回到 QQ 音乐首页，准备设置标题和话题")
+
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ..managers.title_manager import TitleManager
@@ -126,7 +138,7 @@ class FavCommand(BaseCommand):
         """
         if not self.handler.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
-        self.handler.logger.info(f"Switched to QQ Music app")
+        self.handler.logger.info("Switched to QQ Music app")
 
         self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
@@ -187,6 +199,10 @@ class FavCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
+        self.handler.navigate_to_home()
+        self.handler.logger.info("fav 按语言筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
+
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ..managers.title_manager import TitleManager
@@ -212,7 +228,7 @@ class FavCommand(BaseCommand):
         """
         if not self.handler.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
-        self.handler.logger.info(f"Switched to QQ Music app")
+        self.handler.logger.info("Switched to QQ Music app")
 
         self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
@@ -272,6 +288,10 @@ class FavCommand(BaseCommand):
             return {'error': 'Cannot find play all button'}
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
+
+        # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
+        self.handler.navigate_to_home()
+        self.handler.logger.info("fav 按流派筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
 
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
@@ -347,7 +367,7 @@ class FavCommand(BaseCommand):
         play_search.click()
         self.handler.logger.info("Clicked play_favourite_search button")
 
-        # 播放后，像 playlist/singer 命令那样，从“正在播放”列表中获取完整歌单，并取第一项作为话题
+        # 播放后，从“正在播放”列表中获取完整歌单
         playlist_info = self.handler.get_playlist_info()
         if 'error' in playlist_info:
             return playlist_info
@@ -360,6 +380,10 @@ class FavCommand(BaseCommand):
         first_line = playlist_text.splitlines()[0].strip()
         parts = first_line.split('-')
         first_song = parts[0].strip() if len(parts) > 1 else first_line
+
+        # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
+        self.handler.navigate_to_home()
+        self.handler.logger.info("fav 收藏内搜索播放后已回到 QQ 音乐首页，准备设置标题和话题")
 
         self.handler.list_mode = 'favorites'
 

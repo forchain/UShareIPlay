@@ -1,9 +1,10 @@
 soul:
-  owner_username: "Chainer"
+#  owner_username: "Chainer"
+  owner_username: "Joyer"
   package_name: "cn.soulapp.android"
   chat_activity: ".component.startup.main.MainActivity"
-  default_party_id: "FM18633292"
-#  default_party_id: "FM15321640"
+#  default_party_id: "FM18633292"
+  default_party_id: "FM15321640"
   default_notice: "U Share I Play\n分享音乐 享受快乐"
   
   # 系统用户列表，这些用户不受等级限制
