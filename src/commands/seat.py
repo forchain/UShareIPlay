@@ -50,8 +50,12 @@ class SeatCommand(BaseCommand):
                     return seat_manager.seating.sit_at_specific_seat(seat_number)
                 except ValueError:
                     return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
+            elif command == '3':
+                # Accompany a specific user (sit next to them)
+                target_username = parameters[1] if len(parameters) > 1 else message_info.nickname
+                return seat_manager.seating.accompany_user(target_username)
             else:
-                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>]'}
+                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]]'}
 
         except Exception as e:
             self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")
