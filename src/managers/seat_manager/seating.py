@@ -151,16 +151,18 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
 
-    def accompany_user(self, target_username: str) -> dict:
+    def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         """Find a specific user on seats and sit next to them"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
         try:
             # Step 1: Check if the target user is online
-            info_manager = InfoManager.instance()
-            if not info_manager.is_user_online(target_username):
-                return {'error': f'User {target_username} is not online'}
+            # Skip online check if sender is the target (they are obviously online)
+            if sender_username != target_username:
+                info_manager = InfoManager.instance()
+                if not info_manager.is_user_online(target_username):
+                    return {'error': f'User {target_username} is not online'}
 
             # Step 2: Expand seats
             self.seat_ui.expand_seats()
