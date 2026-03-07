@@ -53,7 +53,7 @@ class SeatCommand(BaseCommand):
             elif command == '3':
                 # Accompany a specific user (sit next to them)
                 target_username = parameters[1] if len(parameters) > 1 else message_info.nickname
-                return seat_manager.seating.accompany_user(target_username)
+                return seat_manager.seating.accompany_user(target_username, sender_username=message_info.nickname)
             else:
                 return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]]'}
 
