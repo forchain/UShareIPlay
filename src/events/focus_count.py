@@ -45,15 +45,11 @@ class FocusCountEvent(BaseEvent):
             if self.previous_focus_count == current_focus_count:
                 return False
 
-            # 专注数变化，更新并调用 find_owner_seat
+            # 专注数变化，更新
             self.previous_focus_count = current_focus_count
 
-            # 通过 controller 获取 seat_manager 并调用 find_owner_seat
-            result = self.controller.seat_manager.seating.find_owner_seat()
-            if 'success' in result:
-                self.logger.info(f"Focus count changed to: {current_focus_count}, owner seat found")
-            else:
-                self.logger.debug(f"Focus count changed to: {current_focus_count}, find_owner_seat result: {result}")
+            # 自动找陪伴功能已关闭，只能通过执行命令(如: :seat)主动触发
+            self.logger.debug(f"Focus count changed to: {current_focus_count}, automatic accompaniment is disabled")
 
             return True
 
