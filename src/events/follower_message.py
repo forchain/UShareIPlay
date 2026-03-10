@@ -6,6 +6,7 @@
 
 import re
 import asyncio
+from typing import Tuple, Optional
 
 from ..core.base_event import BaseEvent
 
@@ -16,31 +17,39 @@ class FollowerMessageEvent(BaseEvent):
     # 类变量，维护上一次的 follower_message，避免重复处理
     last_follower_message = None
 
-    def _parse_nickname(self, message_text: str) -> str:
+    def _parse_message(self, message_text: str) -> Tuple[Optional[str], bool]:
         """
-        从 follower_message 文本中解析用户名
+        从 follower_message 文本中解析用户名和消息类型
         
-        支持两种格式：
-        1. "你关注的Outlier进入房间啦，打个招呼吧～" - 解析"你关注的"和"进入房间啦"之间的名字
-        2. "你的兄弟 Outlier进来啦～" - 解析"你的XX "（XX是两位字符，后面有空格）和"进来啦"之间的名字
+        支持多种格式：
+        1. "你关注的Outlier进入房间啦，打个招呼吧～" - 进入房间
+        2. "你的兄弟 Outlier进来啦～" - 进入房间
+        3. "荒草 为派对点赞了" - 点赞
         
         Args:
             message_text: follower_message 文本
             
         Returns:
-            str: 解析出的用户名，如果解析失败返回 None
+            tuple: (nickname, is_join)
+            nickname: 解析出的用户名，如果解析失败返回 None
+            is_join: 是否是进入房间消息
         """
         # 格式1: 你关注的XXX进入房间啦
         match = re.search(r'你关注的(.+?)进入房间啦', message_text)
         if match:
-            return match.group(1).strip()
+            return match.group(1).strip(), True
         
         # 格式2: 你的XX XXX进来啦（XX是两位字符，后面有空格）
         match = re.search(r'你的.{2} (.+?)进来啦', message_text)
         if match:
-            return match.group(1).strip()
+            return match.group(1).strip(), True
+
+        # 格式3: XXX 为派对点赞了
+        match = re.search(r'(.+?) 为派对点赞了', message_text)
+        if match:
+            return match.group(1).strip(), False
         
-        return None
+        return None, False
 
     async def handle(self, key: str, element_wrapper):
         """
@@ -73,8 +82,8 @@ class FollowerMessageEvent(BaseEvent):
             chat_logger = get_chat_logger(self.handler.config)
             chat_logger.critical(message_text)
 
-            # 解析用户名
-            nickname = self._parse_nickname(message_text)
+            # 解析消息
+            nickname, is_join = self._parse_message(message_text)
             if nickname:
                 # 创建用户记录（异步操作）
                 try:
@@ -86,6 +95,11 @@ class FollowerMessageEvent(BaseEvent):
                     self.logger.error(f"Error creating user record: {str(e)}")
             else:
                 self.logger.warning(f"Failed to parse nickname from message: {message_text}")
+                return False
+
+            # 如果不是进入房间消息，不处理打招呼
+            if not is_join:
+                return True # 已处理，拦截后续（因为文本已记录且用户已创建）
 
             # 等待并点击打招呼按钮
             greet_follower = self.handler.try_find_element_plus('greet_follower')
