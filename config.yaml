@@ -260,7 +260,7 @@ soul:
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
     close_notice_1: "cn.soulapp.android:id/iv_close_bottom" # 关注成功
     go_back_2: "cn.soulapp.android:id/leftImage" # 群聊返回
-    party_ended: '//android.view.View[@resource-id="app"]/android.view.View/android.view.View[1]/android.view.View[1]' # 派对已关闭 > X
+    party_ended: '//android.widget.TextView[@text="派对已关闭"]/../android.view.View/android.widget.TextView' # 派对已关闭 > X
     confirm_close_1: '//android.widget.ImageView[@resource-id="cn.soulapp.android:id/img_close"]' # 我知道了
     confirm_close_2: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/confirm"]' # 我知道了
     confirm_close_3: '//android.widget.TextView[@text="我知道了"]'
