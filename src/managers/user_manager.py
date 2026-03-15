@@ -125,6 +125,7 @@ class UserManager(Singleton):
         if found_key == 'use_item':
             confirm_use = self.handler.wait_for_element_plus('confirm_use')
             if not confirm_use:
+                self.handler.press_back()
                 self.logger.warning("未找到确认使用按钮")
                 return {'error': '未找到确认使用按钮'}
 
