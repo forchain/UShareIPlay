@@ -212,7 +212,7 @@ soul:
     left_label: "cn.soulapp.android:id/leftTvLabelH" #  群主, 管理, 1,3,5,7,9,11
     right_label: "cn.soulapp.android:id/rightTvLabelH" # 群主, 管理, 2,4,6,8,10,12
     luck_pack: "cn.soulapp.android:id/tvLbLabelPack" # 福袋 / 2个奖励
-    luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋
+    luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
     back_pack: '//android.widget.LinearLayout[@content-desc="背包"]'
