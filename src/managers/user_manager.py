@@ -1,6 +1,8 @@
 """用户管理器：在在线列表中查找用户并打开其信息页等"""
 from ..core.singleton import Singleton
 
+YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
+
 
 class UserManager(Singleton):
     """在在线用户列表中查找指定用户并打开其资料页"""
@@ -118,6 +120,13 @@ class UserManager(Singleton):
 
         soul_power = self.handler.try_find_element_plus('soul_power')
         soul_points = soul_power.text if soul_power else '0'
+
+        # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
+        if gift_name.strip() == YELLOW_DUCK_NAME:
+            self.handler.click_element_at(luck_item)
+            self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后将返回在线列表")
+            self._close_online_drawer()
+            return {'success': f'{gift_name} 送你啦'}
 
         self.handler.click_element_at(found_element)
         self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")

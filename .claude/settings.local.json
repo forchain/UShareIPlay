@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /Users/tonyoutlier/github.com/forchain/UShareIPlay/src/managers/*.py | sort -n | tail -10)"
+    ]
+  }
+}
