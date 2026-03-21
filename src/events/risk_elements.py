@@ -21,7 +21,8 @@ __elements__ = [
     'claim_reward_button',
     'party_ended',
     'confirm_close_3',
-    'close_widget'
+    'close_widget',
+    'party_back',
 ]
 
 from ..core.base_event import BaseEvent
