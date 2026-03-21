@@ -6,3 +6,5 @@ data
 .cursor
 *.swp
 config/keywords.yaml
+config.local.yaml
+.claude/worktrees/
