@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wc -l /Users/tonyoutlier/github.com/forchain/UShareIPlay/src/managers/*.py | sort -n | tail -10)"
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(openspec new:*)",
+      "Bash(openspec status:*)",
+      "Bash(openspec instructions:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python test_timer_restart.py)",
+      "Bash(git status:*)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
