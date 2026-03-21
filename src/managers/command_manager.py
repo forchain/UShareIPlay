@@ -195,42 +195,6 @@ class CommandManager(Singleton):
             return None
         return self.command_parser.parse_command(content)
 
-    def initialize_timer_manager(self, config):
-        """Initialize timer manager with initial timers from config"""
-        try:
-            # Check if timer command is loaded
-            timer_module = self.command_modules.get('timer')
-            if timer_module and hasattr(timer_module, 'command') and hasattr(timer_module.command, 'timer_manager'):
-                timer_manager = timer_module.command.timer_manager
-
-                # Load initial timers from config (force update to ensure config values are used)
-                initial_timers = config.get('soul', {}).get('initial_timers', [])
-                if initial_timers:
-                    # Convert config format to new format
-                    converted_timers = []
-                    for timer_config in initial_timers:
-                        converted_timer = {
-                            'id': timer_config.get('id'),
-                            'target_time': timer_config.get('time'),
-                            'message': timer_config.get('message'),
-                            'repeat': timer_config.get('repeat', False),
-                            'enabled': timer_config.get('enabled', True)
-                        }
-                        converted_timers.append(converted_timer)
-
-                    # Store initial timers for later loading when timer manager starts
-                    # Timer manager will load existing timers first, then these will be added if needed
-                    timer_manager._initial_timers = converted_timers
-                    timer_manager._force_update = True  # Always force update for initial timers
-                    self.logger.info(f"Prepared {len(initial_timers)} initial timers for loading")
-                else:
-                    self.logger.info("No initial timers configured")
-            else:
-                self.logger.warning("Timer command not loaded, skipping timer initialization")
-
-        except Exception:
-            self.logger.error(f"Error initializing timer manager: {traceback.format_exc()}")
-
     async def handle_message_commands(self, messages):
         """
         处理消息中的命令

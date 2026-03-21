@@ -1,0 +1,20 @@
+# config.local.yaml.example
+#
+# 本地环境配置示例。将此文件复制为 config.local.yaml 并按需修改。
+# config.local.yaml 不纳入版本控制，可安全存放本地差异配置。
+#
+# 规则：只需填写与 config.yaml 不同的字段，其余保持默认值。
+# 嵌套 dict 支持局部覆盖；列表字段会整体替换。
+
+# 设备连接地址（开发机与生产机通常不同）
+device:
+  name: "192.168.x.x:5555"   # 替换为你的设备地址或 ADB 序列号
+
+# Appium 服务器地址（本地调试时指向 localhost）
+appium:
+  host: "localhost"
+  port: 4723
+
+# Soul App 派对 ID（开发环境使用测试派对）
+soul:
+  default_party_id: "FM00000000"   # 替换为你的测试派对 ID
