@@ -434,8 +434,8 @@ commands:
     response_template: "{success}"
     error_template: "送礼失败: {error}"
 appium:
-  host: "appium.chainer.tech"
-  port: 4433
+  host: "192.168.8.103"
+  port: 4723
 
 logging:
   directory: "../logs"

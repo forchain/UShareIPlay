@@ -11,7 +11,9 @@
       "Bash(git status:*)",
       "Bash(git stash:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(openspec list:*)",
+      "Bash(git push:*)"
     ]
   }
 }
