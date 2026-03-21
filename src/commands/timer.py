@@ -42,6 +42,8 @@ class TimerCommand(BaseCommand):
                 return self._show_help()
             elif command == 'reset':
                 return await self._reset_timers()
+            elif command == 'reload':
+                return await self._reload_timers()
             elif command == 'start':
                 return await self._start_timer_manager()
             elif command == 'stop':
@@ -167,6 +169,7 @@ class TimerCommand(BaseCommand):
 • timer list - 列出所有
 • timer add <ID> <时间> <消息> [repeat] - 添加
 • timer remove <ID> - 删除
+• timer reload - 从数据库重新加载（直接改DB后使用）
 • timer start - 启动功能
 • timer stop - 停止功能
 • timer reset - 重置所有（清除现有数据）
@@ -182,6 +185,14 @@ class TimerCommand(BaseCommand):
   timer reset"""
         
         return {'timer': help_text}
+
+    async def _reload_timers(self):
+        """Reload all timers from database
+        Returns:
+            dict: Result with count of loaded timers
+        """
+        count = await self.timer_manager.reload()
+        return {'timer': f'已从数据库重新加载 {count} 个定时器'}
 
     async def _reset_timers(self):
         """Reset all timers

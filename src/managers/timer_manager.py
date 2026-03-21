@@ -11,15 +11,13 @@ from ..core.singleton import Singleton
 class TimerManager(Singleton):
     """
     管理器 - 使用协程实现
-    管理定时任务的执行和重复
+    管理定时任务的执行和重复，数据持久化到数据库
     """
 
     def __init__(self):
-        # 延迟初始化 handler，避免循环依赖
         self._handler = None
         self._logger = None
         self._timers = {}
-        self._timers_file = Path(__file__).parent.parent.parent / 'data' / 'timers.json'
         self._running = False
         self._task = None
         self._initialized = False
@@ -48,18 +46,12 @@ class TimerManager(Singleton):
             self.logger.warning("Timer manager is already running")
             return
 
-        # 确保在启动前加载现有
         if not self._initialized:
             await self._load_timers()
 
-            # 处理命令管理器设置的初始
-            if hasattr(self, '_initial_timers') and self._initial_timers:
-                force_update = getattr(self, '_force_update', False)
-                await self.load_initial_timers(self._initial_timers, force_update)
-                # 清理临时属性
-                delattr(self, '_initial_timers')
-                if hasattr(self, '_force_update'):
-                    delattr(self, '_force_update')
+            # 首次运行：DB 为空时从 timers.json 迁移
+            if not self._timers:
+                await self._migrate_from_json()
 
             self._initialized = True
             self.logger.info(f"Loaded {len(self._timers)} timers on startup")
@@ -79,9 +71,15 @@ class TimerManager(Singleton):
                 pass
         self.logger.info("Timer manager stopped")
 
+    async def reload(self) -> int:
+        """从数据库重新加载所有定时器，覆盖内存缓存"""
+        await self._load_timers()
+        count = len(self._timers)
+        self.logger.info(f"Reloaded {count} timers from database")
+        return count
+
     async def _timer_loop(self):
         """异步主循环"""
-        # self.logger.info(f"Timer loop started with {len(self._timers)} timers")
         loop_count = 0
 
         while self._running:
@@ -89,25 +87,19 @@ class TimerManager(Singleton):
                 current_time = datetime.now()
                 loop_count += 1
 
-                # 每60次循环（约1分钟）记录一次状态
                 if loop_count % 60 == 0:
                     enabled_timers = sum(1 for t in self._timers.values() if t.get('enabled', False))
-                    # self.logger.debug(f"Timer loop running: {enabled_timers}/{len(self._timers)} timers enabled")
 
-                # Check each timer
-                for timer_id, timer_data in list(self._timers.items()):
-                    # Validate timer data format
+                for timer_key, timer_data in list(self._timers.items()):
                     if not isinstance(timer_data, dict):
                         self.logger.error(
-                            f"Invalid timer data format for {timer_id}: {type(timer_data)} - {timer_data}")
-                        # Remove invalid timer data
-                        del self._timers[timer_id]
+                            f"Invalid timer data format for {timer_key}: {type(timer_data)} - {timer_data}")
+                        del self._timers[timer_key]
                         continue
 
                     if not timer_data.get('enabled', False):
                         continue
 
-                    # Check if it's time to trigger
                     next_trigger_str = timer_data.get('next_trigger')
                     if not next_trigger_str:
                         continue
@@ -115,215 +107,253 @@ class TimerManager(Singleton):
                     try:
                         next_trigger = datetime.fromisoformat(next_trigger_str)
                         if current_time >= next_trigger:
-                            self.logger.info(f"Triggering timer {timer_id} at {current_time}")
-                            await self._trigger_timer(timer_id, timer_data)
+                            self.logger.info(f"Triggering timer {timer_key} at {current_time}")
+                            await self._trigger_timer(timer_key, timer_data)
                     except ValueError as e:
-                        self.logger.error(f"Invalid next_trigger format for timer {timer_id}: {e}")
+                        self.logger.error(f"Invalid next_trigger format for timer {timer_key}: {e}")
                         continue
 
-                # Sleep for 1 second before next check
                 await asyncio.sleep(1)
 
             except Exception as e:
                 self.logger.error(f"Error in timer loop: {str(e)}")
-                await asyncio.sleep(5)  # Wait longer on error
+                await asyncio.sleep(5)
 
-    async def _trigger_timer(self, timer_id: str, timer_data: dict):
+    async def _trigger_timer(self, timer_key: str, timer_data: dict):
         """触发并添加消息到队列"""
+        from ..dal.timer_dao import TimerDAO
+
         try:
             message = timer_data['message']
-            self.logger.info(f"Timer {timer_id} triggered: {message}")
+            self.logger.info(f"Timer {timer_key} triggered: {message}")
 
-            # Create MessageInfo for queue
             from ..models.message_info import MessageInfo
             message_info = MessageInfo(
                 content=message,
                 nickname="Timer"
             )
 
-            # Add message to queue
             message_queue = MessageQueue.instance()
             await message_queue.put_message(message_info)
             self.logger.info(f"Timer message added to queue: {message}")
 
-            # Update next trigger time
             if timer_data.get('repeat', False):
-                # Daily repeat - only update next_trigger, keep target_time unchanged
                 next_trigger = datetime.fromisoformat(timer_data['next_trigger']) + timedelta(days=1)
                 timer_data['next_trigger'] = next_trigger.isoformat()
-                self.logger.info(
-                    f"Updating timer {timer_id}: keeping target_time={timer_data.get('target_time')}, new next_trigger={next_trigger}")
-                await self._save_timers()
-                self.logger.info(f"Timer {timer_id} scheduled for next day: {next_trigger}")
+                await TimerDAO.update_next_trigger(timer_key, next_trigger)
+                self.logger.info(f"Timer {timer_key} scheduled for next day: {next_trigger}")
             else:
-                # One-time timer, disable it
                 timer_data['enabled'] = False
-                await self._save_timers()
-                self.logger.info(f"Timer {timer_id} completed and disabled")
+                await TimerDAO.update_enabled(timer_key, False)
+                self.logger.info(f"Timer {timer_key} completed and disabled")
 
         except Exception as e:
-            self.logger.error(f"Error triggering timer {timer_id}: {str(e)}")
+            self.logger.error(f"Error triggering timer {timer_key}: {str(e)}")
 
-    async def load_initial_timers(self, initial_timers: List[dict], force_update: bool = False):
-        """Load initial timers from configuration"""
+    async def _sanitize_db(self):
+        """ORM 加载前用原生 SQL 修正不合法的 next_trigger 值（如带时区后缀）"""
+        from tortoise import connections
         try:
-            # Load existing timers if file exists
-            if self._timers_file.exists() and not force_update:
-                await self._load_timers()
-                self.logger.info(f"Loaded {len(self._timers)} existing timers")
-
-            # Add initial timers
-            for timer_config in initial_timers:
-                timer_id = timer_config.get('id')
-                if not timer_id:
-                    self.logger.warning("Timer missing ID, skipping")
+            conn = connections.get("default")
+            # 去掉时区后缀（如 +00:00）并补齐单位数小时（如 1:00:00 → 01:00:00）
+            rows = await conn.execute_query(
+                "SELECT id, key, next_trigger FROM timer_events WHERE next_trigger IS NOT NULL"
+            )
+            for row in rows[1]:
+                raw = row['next_trigger'] if isinstance(row, dict) else row[2]
+                key = row['key'] if isinstance(row, dict) else row[1]
+                row_id = row['id'] if isinstance(row, dict) else row[0]
+                if not isinstance(raw, str):
                     continue
-
-                if timer_id in self._timers and not force_update:
-                    self.logger.info(f"Timer {timer_id} already exists, skipping")
-                    continue
-
-                # Create timer data
-                timer_data = {
-                    'id': timer_id,
-                    'message': timer_config.get('message', ''),
-                    'target_time': timer_config.get('target_time', ''),
-                    'repeat': timer_config.get('repeat', False),
-                    'enabled': timer_config.get('enabled', True),
-                    'next_trigger': timer_config.get('next_trigger', '')
-                }
-
-                # Calculate next trigger time if not set
-                if not timer_data['next_trigger'] and timer_data['target_time']:
-                    try:
-                        target_time = datetime.strptime(timer_data['target_time'], '%H:%M').time()
-                        today = datetime.now().date()
-                        target_datetime = datetime.combine(today, target_time)
-
-                        # If time has passed today, schedule for tomorrow
-                        if target_datetime <= datetime.now():
-                            target_datetime += timedelta(days=1)
-
-                        timer_data['next_trigger'] = target_datetime.isoformat()
-                    except ValueError as e:
-                        self.logger.error(f"Invalid target_time format for timer {timer_id}: {e}")
-                        continue
-
-                self._timers[timer_id] = timer_data
-                self.logger.info(f"Added timer {timer_id}: {timer_data['message']} at {timer_data['target_time']}")
-
-            # Save timers
-            await self._save_timers()
-            self.logger.info(f"Loaded {len(self._timers)} timers total")
-
+                fixed = raw
+                # 去掉时区后缀
+                if '+' in fixed.split(' ')[-1]:
+                    fixed = fixed.rsplit('+', 1)[0]
+                # 补齐 "2026-03-20 1:00:00" → "2026-03-20 01:00:00"
+                parts = fixed.split(' ')
+                if len(parts) == 2 and len(parts[1].split(':')[0]) == 1:
+                    parts[1] = '0' + parts[1]
+                    fixed = ' '.join(parts)
+                if fixed != raw:
+                    await conn.execute_query(
+                        "UPDATE timer_events SET next_trigger = ? WHERE id = ?",
+                        [fixed, row_id],
+                    )
+                    self.logger.info(f"Sanitized timer {key}: '{raw}' → '{fixed}'")
         except Exception as e:
-            self.logger.error(f"Error loading initial timers: {str(e)}")
+            self.logger.error(f"Error sanitizing timer DB: {str(e)}")
 
     async def _load_timers(self):
-        """Load timers from file"""
+        """从数据库加载所有定时器到内存缓存，跳过积压的已过期触发"""
+        from ..dal.timer_dao import TimerDAO
+
+        await self._sanitize_db()
+
         try:
-            if self._timers_file.exists():
-                with open(self._timers_file, 'r', encoding='utf-8') as f:
-                    loaded_timers = json.load(f)
-
-                # Validate and clean timer data
-                self._timers = {}
-                for timer_id, timer_data in loaded_timers.items():
-                    if isinstance(timer_data, dict):
-                        self._timers[timer_id] = timer_data
-                    else:
-                        self.logger.warning(
-                            f"Skipping invalid timer data for {timer_id}: {type(timer_data)} - {timer_data}")
-
-                self.logger.info(f"Loaded {len(self._timers)} valid timers from file")
+            timers = await TimerDAO.list_all()
         except Exception as e:
-            self.logger.error(f"Error loading timers: {str(e)}")
+            self.logger.error(f"Error querying timers from database: {str(e)}")
             self._timers = {}
+            return
 
-    async def _save_timers(self):
-        """Save timers to file"""
+        self._timers = {}
+        for t in timers:
+            try:
+                nt = t.next_trigger
+                if nt and nt.tzinfo is not None:
+                    nt = nt.replace(tzinfo=None)
+                # 启动时跳过积压：若 next_trigger 已过期则推算下一个未来触发时间
+                if nt and nt <= datetime.now() and t.repeat and t.target_time:
+                    try:
+                        target_time_obj = datetime.strptime(t.target_time, '%H:%M').time()
+                        nt = datetime.combine(datetime.now().date(), target_time_obj)
+                        if nt <= datetime.now():
+                            nt += timedelta(days=1)
+                        await TimerDAO.update_next_trigger(t.key, nt)
+                    except ValueError:
+                        pass
+                self._timers[t.key] = {
+                    'id': t.id,
+                    'key': t.key,
+                    'message': t.message,
+                    'target_time': t.target_time,
+                    'repeat': t.repeat,
+                    'enabled': t.enabled,
+                    'next_trigger': nt.isoformat() if nt else '',
+                }
+            except Exception as e:
+                self.logger.error(f"Error loading timer {t.key}: {str(e)}, skipping")
+        self.logger.info(f"Loaded {len(self._timers)} timers from database")
+
+    async def _migrate_from_json(self):
+        """首次运行时从 timers.json 迁移数据到数据库"""
+        from ..dal.timer_dao import TimerDAO
+
+        timers_file = Path(__file__).parent.parent.parent / 'data' / 'timers.json'
+        if not timers_file.exists():
+            return
+
         try:
-            # Ensure directory exists
-            self._timers_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(timers_file, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
 
-            with open(self._timers_file, 'w', encoding='utf-8') as f:
-                json.dump(self._timers, f, ensure_ascii=False, indent=2)
+            count = 0
+            for timer_key, timer_data in loaded.items():
+                if not isinstance(timer_data, dict):
+                    continue
+                next_trigger = None
+                nt_str = timer_data.get('next_trigger', '')
+                if nt_str:
+                    try:
+                        next_trigger = datetime.fromisoformat(nt_str)
+                    except ValueError:
+                        pass
+
+                _, created = await TimerDAO.get_or_create(
+                    key=timer_key,
+                    defaults=dict(
+                        message=timer_data.get('message', ''),
+                        target_time=timer_data.get('target_time', ''),
+                        repeat=timer_data.get('repeat', False),
+                        enabled=timer_data.get('enabled', True),
+                        next_trigger=next_trigger,
+                    ),
+                )
+                if created:
+                    count += 1
+
+            self.logger.info(f"Migrated {count} timers from timers.json to database")
+            await self._load_timers()
+
         except Exception as e:
-            self.logger.error(f"Error saving timers: {str(e)}")
+            self.logger.error(f"Error migrating timers from JSON: {str(e)}")
 
     def get_timers(self) -> Dict[str, dict]:
         """Get all timers"""
         return self._timers.copy()
 
-    def get_timer(self, timer_id: str) -> dict:
+    def get_timer(self, timer_key: str) -> dict:
         """Get specific timer"""
-        return self._timers.get(timer_id, {})
+        return self._timers.get(timer_key, {})
 
-    async def add_timer(self, timer_id: str, message: str, target_time: str, repeat: bool = False) -> bool:
+    async def add_timer(self, timer_key: str, message: str, target_time: str, repeat: bool = False) -> bool:
         """Add a new timer"""
+        from ..dal.timer_dao import TimerDAO
+
         try:
-            # Calculate next trigger time
             target_time_obj = datetime.strptime(target_time, '%H:%M').time()
             today = datetime.now().date()
             target_datetime = datetime.combine(today, target_time_obj)
 
-            # If time has passed today, schedule for tomorrow
             if target_datetime <= datetime.now():
                 target_datetime += timedelta(days=1)
 
-            timer_data = {
-                'id': timer_id,
+            await TimerDAO.create(
+                key=timer_key,
+                message=message,
+                target_time=target_time,
+                repeat=repeat,
+                enabled=True,
+                next_trigger=target_datetime,
+            )
+
+            self._timers[timer_key] = {
+                'key': timer_key,
                 'message': message,
                 'target_time': target_time,
                 'repeat': repeat,
                 'enabled': True,
-                'next_trigger': target_datetime.isoformat()
+                'next_trigger': target_datetime.isoformat(),
             }
 
-            self._timers[timer_id] = timer_data
-            await self._save_timers()
-            self.logger.info(f"Added timer {timer_id}: {message} at {target_time}")
+            self.logger.info(f"Added timer {timer_key}: {message} at {target_time}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error adding timer {timer_id}: {str(e)}")
+            self.logger.error(f"Error adding timer {timer_key}: {str(e)}")
             return False
 
-    async def remove_timer(self, timer_id: str) -> bool:
+    async def remove_timer(self, timer_key: str) -> bool:
         """Remove a timer"""
+        from ..dal.timer_dao import TimerDAO
+
         try:
-            if timer_id in self._timers:
-                del self._timers[timer_id]
-                await self._save_timers()
-                self.logger.info(f"Removed timer {timer_id}")
+            deleted = await TimerDAO.delete_by_key(timer_key)
+            if deleted:
+                self._timers.pop(timer_key, None)
+                self.logger.info(f"Removed timer {timer_key}")
                 return True
             return False
         except Exception as e:
-            self.logger.error(f"Error removing timer {timer_id}: {str(e)}")
+            self.logger.error(f"Error removing timer {timer_key}: {str(e)}")
             return False
 
-    async def enable_timer(self, timer_id: str) -> bool:
+    async def enable_timer(self, timer_key: str) -> bool:
         """Enable a timer"""
+        from ..dal.timer_dao import TimerDAO
+
         try:
-            if timer_id in self._timers:
-                self._timers[timer_id]['enabled'] = True
-                await self._save_timers()
-                self.logger.info(f"Enabled timer {timer_id}")
+            updated = await TimerDAO.update_enabled(timer_key, True)
+            if updated and timer_key in self._timers:
+                self._timers[timer_key]['enabled'] = True
+                self.logger.info(f"Enabled timer {timer_key}")
                 return True
             return False
         except Exception as e:
-            self.logger.error(f"Error enabling timer {timer_id}: {str(e)}")
+            self.logger.error(f"Error enabling timer {timer_key}: {str(e)}")
             return False
 
-    async def disable_timer(self, timer_id: str) -> bool:
+    async def disable_timer(self, timer_key: str) -> bool:
         """Disable a timer"""
+        from ..dal.timer_dao import TimerDAO
+
         try:
-            if timer_id in self._timers:
-                self._timers[timer_id]['enabled'] = False
-                await self._save_timers()
-                self.logger.info(f"Disabled timer {timer_id}")
+            updated = await TimerDAO.update_enabled(timer_key, False)
+            if updated and timer_key in self._timers:
+                self._timers[timer_key]['enabled'] = False
+                self.logger.info(f"Disabled timer {timer_key}")
                 return True
             return False
         except Exception as e:
-            self.logger.error(f"Error disabling timer {timer_id}: {str(e)}")
+            self.logger.error(f"Error disabling timer {timer_key}: {str(e)}")
             return False

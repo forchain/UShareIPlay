@@ -331,10 +331,8 @@ class AppController(Singleton):
         await keyword_manager.load_keywords_from_config()
         print("关键字系统初始化完成")
 
-        # Initialize timer manager with initial timers from config
+        # Start async timer manager (loads from DB, migrates from JSON if needed)
         print("初始化定时器管理器...")
-        self.command_manager.initialize_timer_manager(self.config)
-        # Start async timer manager
         await self.timer_manager.start()
         print("定时器管理器初始化完成")
 
