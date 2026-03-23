@@ -23,6 +23,8 @@ __elements__ = [
     'confirm_close_3',
     'close_widget',
     'party_back',
+    'reload_more',
+    'close_more_menu'
 ]
 
 from ..core.base_event import BaseEvent
