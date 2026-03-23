@@ -61,7 +61,35 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
-5. **Perform the archive**
+5. **Check README and capability docs for drift**
+
+   Read `openspec/changes/<name>/proposal.md` — extract the **What Changes** and **Impact** sections to identify affected components and capabilities.
+
+   Always check `README.md`:
+   - Read the full README
+   - Identify sections relevant to the change (commands added/removed, config changes, architecture changes)
+   - If drift found: show the specific sections and proposed updates, ask user to confirm or skip
+
+   Then check `docs/*.md`:
+   - For each file in `docs/`, read its `covers:` frontmatter
+   - If any component/class name from the change's impact appears in a doc's `covers:` list, that doc is affected
+   - For each affected doc: read it, identify what changed, show proposed update, ask user to confirm or skip
+   - If no docs are affected: note this in summary
+
+   **Drift check is non-blocking**: if user skips all updates, archive proceeds normally with a warning note.
+
+   Show a combined pre-prompt summary before asking:
+   ```
+   ## Docs Review
+
+   **README:** [sections affected or "no drift detected"]
+   **docs/music.md:** [affected — covers QQMusicHandler]
+   **docs/timers.md:** [not affected]
+   ...
+   ```
+   Then prompt: "Update affected docs now, or skip and archive with warning?"
+
+6. **Perform the archive**
 
    Create the archive directory if it doesn't exist:
    ```bash
@@ -78,13 +106,14 @@ Archive a completed change in the experimental workflow.
    mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
-6. **Display summary**
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
    - Schema that was used
    - Archive location
    - Spec sync status (synced / sync skipped / no delta specs)
+   - Docs sync status (updated / skipped / no affected docs)
    - Note about any warnings (incomplete artifacts/tasks)
 
 **Output On Success**
@@ -96,6 +125,7 @@ Archive a completed change in the experimental workflow.
 **Schema:** <schema-name>
 **Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs
+**Docs:** ✓ README and docs/timers.md updated
 
 All artifacts complete. All tasks complete.
 ```
@@ -109,6 +139,7 @@ All artifacts complete. All tasks complete.
 **Schema:** <schema-name>
 **Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** No delta specs
+**Docs:** No affected docs detected
 
 All artifacts complete. All tasks complete.
 ```
@@ -122,11 +153,13 @@ All artifacts complete. All tasks complete.
 **Schema:** <schema-name>
 **Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** Sync skipped (user chose to skip)
+**Docs:** Sync skipped (user chose to skip)
 
 **Warnings:**
 - Archived with 2 incomplete artifacts
 - Archived with 3 incomplete tasks
 - Delta spec sync was skipped (user chose to skip)
+- Docs sync was skipped (user chose to skip)
 
 Review the archive if this was not intentional.
 ```
@@ -155,3 +188,6 @@ Target archive directory already exists.
 - Show clear summary of what happened
 - If sync is requested, use the Skill tool to invoke `openspec-sync-specs` (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- Always run the docs drift check (step 5) — even if no delta specs exist
+- Use `covers:` frontmatter to identify affected docs; skip docs with no matching components
+- Docs drift check is non-blocking — user can skip all updates and archive still completes

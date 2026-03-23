@@ -14,7 +14,20 @@
       "Bash(git commit:*)",
       "Bash(openspec list:*)",
       "Bash(git push:*)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(mkdir -p ~/.claude/channels/telegram)",
+      "Read(//Users/tonyoutlier/.claude/channels/**)",
+      "Bash(chmod 600 ~/.claude/channels/telegram/.env)",
+      "Bash(mkdir -p ~/.claude/channels/telegram/approved)",
+      "Bash(~/.claude/channels/telegram/approved/816801186)",
+      "mcp__plugin_telegram_telegram__reply",
+      "Bash(cp:*)",
+      "Bash(find /Users/tonyoutlier/github.com/forchain/UShareIPlay/.claude -name *sync*)",
+      "Read(//Users/tonyoutlier/.claude/**)",
+      "Bash(openspec --help)",
+      "Bash(openspec archive:*)",
+      "Bash(openspec spec:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }
