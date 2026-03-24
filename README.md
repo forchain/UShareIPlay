@@ -8,8 +8,7 @@ Android automation framework that controls the **Soul App** party room and **QQ 
 
 ```bash
 # 1. Install dependencies
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 
 # 2. Configure device (copy and edit)
 cp config.local.yaml.example config.local.yaml
@@ -40,7 +39,6 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 | `:vol` | 1 | `[0-15]` | Set volume (no param = show current) |
 | `:mode` | 2 | `0/1/-1` | List / single / random |
 | `:acc` | 2 | `[0/1]` | Accompaniment (伴唱) mode |
-| `:ktv` | 1 | `[0/1]` | KTV mode (OCR lyrics in chat) |
 | `:lyrics` | 1 | — | Post lyrics to chat |
 | `:singer` | 1 | `<name>` | Play all songs by artist |
 | `:album` | 2 | `<name>` | Play entire album |
@@ -67,7 +65,6 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 | Command | Level | Params | Description |
 |---|---|---|---|
 | `:admin` | 9 | `1/0 <user>` | Grant / revoke admin |
-| `:hello` | 1 | `<user> "<msg>" "<song>"` | Set greeting rule |
 | `:say` | 1 | `<message>` | Post message to chat |
 | `:keyword` | 1 | `add/del/list <trigger> [resp]` | Keyword auto-reply |
 | `:enter` | 1 | `<user> <message>` | Custom enter message |
@@ -106,18 +103,20 @@ Detailed reference for the AI agent and contributors:
 ## Project Structure
 
 ```
-main.py                  # Entry point
+main.py                  # Thin shim entry point (prefer: uv run ushareiplay)
+pyproject.toml           # Package config and dependencies
 config.yaml              # Master config (26k+ lines)
 config.local.yaml        # Per-machine overrides (gitignored)
 config.local.yaml.example
 src/
-  core/                  # AppController, AppHandler, CommandManager, DB, singletons
-  handlers/              # SoulHandler, QQMusicHandler
-  managers/              # 14+ business logic managers
-  commands/              # 30+ command implementations
-  models/                # Tortoise ORM models
-  dal/                   # Data access objects
-  events/                # Background event handlers
+  ushareiplay/           # Root package
+    core/                # AppController, AppHandler, CommandManager, DB, singletons
+    handlers/            # SoulHandler, QQMusicHandler
+    managers/            # 14+ business logic managers
+    commands/            # 30+ command implementations
+    models/              # Tortoise ORM models
+    dal/                 # Data access objects
+    events/              # Background event handlers
 data/soul_bot.db         # SQLite database
 openspec/                # Change management (proposals, specs, tasks)
 docs/                    # Capability reference docs
