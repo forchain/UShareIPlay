@@ -1,6 +1,6 @@
 ---
-covers: [QQMusicHandler, MusicManager, PlayCommand, FavCommand, SkipCommand, NextCommand, PauseCommand, VolCommand, ModeCommand, AccCommand, KtvCommand, LyricsCommand, SingerCommand, AlbumCommand, PlaylistCommand, RadioCommand, InfoCommand]
-last-synced: 2026-03-23
+covers: [QQMusicHandler, MusicManager, PlayCommand, FavCommand, SkipCommand, NextCommand, PauseCommand, VolCommand, ModeCommand, AccCommand, LyricsCommand, SingerCommand, AlbumCommand, PlaylistCommand, RadioCommand, InfoCommand]
+last-synced: 2026-03-24
 ---
 
 ## Overview
@@ -24,7 +24,7 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 
 **App switching** uses `AppController.driver` with `activate_app(package_name)`. The UI lock (`AppController.ui_lock`) prevents concurrent UI access.
 
-**KTV / lyrics**: `LyricsCommand` uses Tesseract OCR via `pytesseract` to read lyrics from the QQ Music screen.
+**Lyrics**: `LyricsCommand` fetches the current song's lyrics from QQ Music and posts them to Soul App chat in segments.
 
 **Accompaniment mode**: Toggles the QQ Music K-song (伴唱) mode via a settings menu; state is read from the button content-desc.
 
@@ -40,7 +40,6 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 | `vol` | 1 | `[0-15]` | Set volume; shows current if no param |
 | `mode` | 2 | `0/1/-1` | Playback mode: 0=list, 1=single, -1=random |
 | `acc` | 2 | `[0/1]` | Toggle accompaniment (伴唱) mode |
-| `ktv` | 1 | `[0/1]` | Toggle KTV mode (shows OCR lyrics in chat) |
 | `lyrics` | 1 | — | Post current song lyrics to chat |
 | `singer` | 1 | `<name>` | Play all songs by artist |
 | `album` | 2 | `<name>` | Play entire album |
@@ -54,5 +53,5 @@ No DB model — music state is read live from QQ Music UI. `MusicManager` caches
 
 ## Extension Points
 
-- **New music source**: Add method to `QQMusicHandler`, expose via `MusicManager`, create new command in `src/commands/`.
-- **New command**: Create `src/commands/<name>.py` inheriting `BaseCommand`, implement `execute()`. No registration needed — `CommandManager` auto-discovers via dynamic import.
+- **New music source**: Add method to `QQMusicHandler`, expose via `MusicManager`, create new command in `src/ushareiplay/commands/`.
+- **New command**: Create `src/ushareiplay/commands/<name>.py` inheriting `BaseCommand`, implement `execute()`. No registration needed — `CommandManager` auto-discovers via dynamic import.
