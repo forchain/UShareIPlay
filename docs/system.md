@@ -1,6 +1,6 @@
 ---
 covers: [AppController, AppHandler, CommandManager, EventManager, MessageManager, MessageQueue, DatabaseManager, Singleton, BaseCommand, RecoveryManager, InfoManager, main.py]
-last-synced: 2026-03-23
+last-synced: 2026-03-24
 ---
 
 ## Overview
@@ -27,7 +27,7 @@ last-synced: 2026-03-23
 
 ## How It Works
 
-**Startup sequence** (`main.py`):
+**Startup sequence** (entry point: `uv run ushareiplay` → `ushareiplay.__main__:run`):
 ```
 ConfigLoader.load_config()
   → DatabaseManager.init()         # Tortoise ORM, creates tables
@@ -46,7 +46,7 @@ ConfigLoader.load_config()
 
 **Singleton pattern**: All managers use `Singleton` base class. Call `ClassName.instance()`, never the constructor directly. Constructors use lazy initialisation to avoid circular imports.
 
-**Command discovery**: `CommandManager` scans `src/commands/*.py` at startup, imports each module, and registers any class that inherits `BaseCommand`. No manual registration needed.
+**Command discovery**: `CommandManager` scans `src/ushareiplay/commands/*.py` at startup, dynamically imports each module as `ushareiplay.commands.<name>`, and registers any module that exposes a `command` object. No manual registration needed.
 
 **Async model**: Single asyncio event loop. Long-running operations (timer loop, event polling) run as `asyncio.Task`. UI operations are serialised via `ui_lock`. Outbound messages go through `MessageQueue` (thread-safe) → consumed by `MessageManager` task.
 
@@ -61,7 +61,7 @@ Models registered at startup in `DatabaseManager`:
 
 ## Extension Points
 
-- **New manager**: Create `src/managers/<name>_manager.py` extending `Singleton`. Initialise lazily via `instance()`.
-- **New event handler**: Create `src/events/<name>.py` extending `BaseEvent`, register in `EventManager`.
-- **New DB model**: Add to `src/models/`, create DAO in `src/dal/`, register in `DatabaseManager.init()` model list.
+- **New manager**: Create `src/ushareiplay/managers/<name>_manager.py` extending `Singleton`. Initialise lazily via `instance()`.
+- **New event handler**: Create `src/ushareiplay/events/<name>.py` extending `BaseEvent`, register in `EventManager`.
+- **New DB model**: Add to `src/ushareiplay/models/`, create DAO in `src/ushareiplay/dal/`, register in `DatabaseManager.init()` model list.
 - **New command**: See `docs/music.md` Extension Points — same pattern applies everywhere.
