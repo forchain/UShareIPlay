@@ -286,10 +286,6 @@ commands:
     level: 1
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
-  - prefix: "ktv"
-    level: 1
-    response_template: "KTV mode {enabled}"
-    error_template: "Failed to toggle KTV mode, because {error}"
   - prefix: "help"
     level: 0
     response_template: |
@@ -393,10 +389,6 @@ commands:
     level: 4
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
-  - prefix: "hello"
-    level: 0
-    response_template: "{success}"
-    error_template: "Failed to say hello, because {error}"
   - prefix: "mic"
     level: 2
     response_template: "Microphone set to {state}"
