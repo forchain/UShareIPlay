@@ -27,7 +27,13 @@
       "Bash(openspec --help)",
       "Bash(openspec archive:*)",
       "Bash(openspec spec:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(xargs git:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(f\\) for f in d[''''contextFiles''''].values\\(\\)]\")",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(uv remove:*)"
     ]
   }
 }
