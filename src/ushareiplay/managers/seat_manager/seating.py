@@ -174,72 +174,86 @@ class SeatingManager(SeatManagerBase):
                 self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
-            # Step 3: Iterate through all desks, click each occupied seat to read user name
+            # Step 3: Iterate through all desks.
+            # Optimization: only check desks with exactly one occupant, because
+            # if both seats are occupied, we can't sit next to the target anyway.
             for desk_index in range(len(seat_desks)):
                 self._ensure_row_visible(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
 
-                # Check each side (left and right)
-                for side, other_side in [('left', 'right'), ('right', 'left')]:
-                    seat = desk_info[side]
-                    other_seat = desk_info[other_side]
+                left = desk_info['left']
+                right = desk_info['right']
+                occupied_sides = []
+                if left.get('occupied'):
+                    occupied_sides.append('left')
+                if right.get('occupied'):
+                    occupied_sides.append('right')
 
-                    # Skip empty seats and owner seats
-                    if not seat['occupied'] or seat['is_owner']:
-                        continue
+                # Only proceed when exactly one seat is occupied on this desk
+                if len(occupied_sides) != 1:
+                    continue
 
-                    # Click the state element to open user profile popup
-                    state_key = f'{side}_state'
-                    state_element = self.handler.find_child_element_plus(desk, state_key)
-                    if not state_element:
-                        continue
+                side = occupied_sides[0]
+                other_side = 'right' if side == 'left' else 'left'
+                seat = desk_info[side]
+                other_seat = desk_info[other_side]
 
-                    state_element.click()
-                    self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
+                # Skip owner seat
+                if seat.get('is_owner'):
+                    continue
 
-                    # Read the user name from the popup
-                    found_key, name_element = self.handler.wait_for_any_element_plus(
-                        ['souler_name', 'user_name']
-                    )
-                    if not name_element:
-                        self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
-                        self.handler.press_back()
-                        continue
+                # Click the state element to open user profile popup
+                state_key = f'{side}_state'
+                state_element = self.handler.find_child_element_plus(desk, state_key)
+                if not state_element:
+                    continue
 
-                    actual_username = name_element.text
-                    self.handler.logger.info(
-                        f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
-                    )
+                state_element.click()
+                self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
 
-                    if actual_username != target_username:
-                        # Not the target user, close popup and continue
-                        self.handler.press_back()
-                        time.sleep(0.3)
-                        continue
+                # Read the user name from the popup
+                found_key, name_element = self.handler.wait_for_any_element_plus(
+                    ['souler_name', 'user_name']
+                )
+                if not name_element:
+                    self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
+                    self.handler.press_back()
+                    continue
 
-                    # Found the target user! Close the popup first
+                actual_username = name_element.text
+                self.handler.logger.info(
+                    f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
+                )
+
+                if actual_username != target_username:
+                    # Not the target user, close popup and continue
                     self.handler.press_back()
                     time.sleep(0.3)
+                    continue
 
-                    # Check if the adjacent seat is available
-                    if other_seat['occupied']:
-                        return {'error': f'User {target_username} has no empty adjacent seat'}
+                # Found the target user! Close the popup first
+                self.handler.press_back()
+                time.sleep(0.3)
 
-                    # Sit next to the target user
-                    self.handler.logger.info(
-                        f"Sitting next to {target_username} at desk {desk_index + 1}, {other_seat['side']} side"
-                    )
+                # Check if the adjacent seat is available
+                if other_seat['occupied']:
+                    return {'error': f'User {target_username} has no empty adjacent seat'}
 
-                    # Re-collect desk info to get fresh element references after popup interaction
-                    desk_info = self._collect_desk_info(desk)
-                    fresh_other_seat = desk_info[other_side]
+                # Sit next to the target user
+                self.handler.logger.info(
+                    f"Sitting next to {target_username} at desk {desk_index + 1}, {other_seat['side']} side"
+                )
 
-                    return self._take_seat(
-                        desk_index,
-                        fresh_other_seat,
-                        neighbor_label=target_username
-                    )
+                # Re-collect desk info to get fresh element references after popup interaction
+                desk_info = self._collect_desk_info(desk)
+                fresh_other_seat = desk_info[other_side]
+
+                return self._take_seat(
+                    desk_index,
+                    fresh_other_seat,
+                    neighbor_label=target_username
+                )
 
             return {'error': f'User {target_username} not found on any seat'}
 
