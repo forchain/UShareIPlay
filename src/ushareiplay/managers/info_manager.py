@@ -247,7 +247,7 @@ class InfoManager(Singleton):
             else:
                 duration_str = f"{minutes}分钟"
 
-            return f"派对开始时间: {start_time_str}, 持续时间: {duration_str}"
+            return f"{start_time_str}, {duration_str}"
 
         except Exception:
             self.logger.error(f"Error getting party duration info: {traceback.format_exc()}")
