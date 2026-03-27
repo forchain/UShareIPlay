@@ -41,6 +41,21 @@ class ModeCommand(BaseCommand):
     async def _change_play_mode_direct(self, target_mode):
         """直接实现切换模式功能"""
         try:
+            mode_names = {0: '顺序播放', 1: '单曲循环', -1: '随机播放'}
+
+            def key_to_mode(key: str) -> int:
+                if key == 'play_mode_list':
+                    return 0
+                if key == 'play_mode_single':
+                    return 1
+                if key == 'play_mode_random':
+                    return -1
+                raise ValueError(f"Unknown play mode key: {key}")
+
+            def log_step(step: str, **kwargs):
+                kv = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+                self.handler.logger.info(f"[MODE_TEST][{step}] {kv}".strip())
+
             # 0. 先切换到音乐App
             switched = self.handler.switch_to_app()
             if not switched:
@@ -51,8 +66,15 @@ class ModeCommand(BaseCommand):
 
             self.handler.press_back()
 
-            # 1. 尝试查找四个元素中的任意一个
-            element_keys = ['playlist_entry', 'play_mode_list', 'play_mode_single', 'play_mode_random']
+            # 1. 尝试查找当前界面状态
+            # - playing_bar: 在非播放页但底部有播放导航条，需要先点它进入播放页
+            # - play_mode_*: 已在播放页，可直接切换（不再依赖 playlist_entry 展开控制区）
+            element_keys = [
+                'playing_bar',
+                'play_mode_list',
+                'play_mode_single',
+                'play_mode_random',
+            ]
             found_element_key, found_element = self.handler.wait_for_any_element_plus(element_keys)
 
             if not found_element_key or not found_element:
@@ -61,50 +83,52 @@ class ModeCommand(BaseCommand):
                     'error': '现在没有播放音乐，无法切换模式'
                 }
 
-            # 2. 如果找到playlist_entry，说明列表没有显示，先点击
-            if found_element_key == 'playlist_entry':
-                self.handler.logger.info("找到播放列表入口，先点击显示播放列表")
-                found_element.click()
+            log_step("Step0", found_key=found_element_key)
 
-                # 重新查找播放模式元素
+            # 2. 如果在非播放页：先点底部 Playing Bar 进入播放页
+            if found_element_key == 'playing_bar':
+                self.handler.logger.info("找到 playing_bar，点击进入播放页")
+                if not self.handler.click_element_at(found_element):
+                    return {
+                        'error': 'FAIL: 点击 playing_bar 进入播放页失败'
+                    }
+
+                # 进入播放页后，再等待播放模式按钮出现
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
                 found_element_key, found_element = self.handler.wait_for_any_element_plus(mode_element_keys)
+                log_step("Step1", after_playing_bar_found_key=found_element_key)
 
                 if not found_element_key or not found_element:
-                    self.handler.logger.info("点击播放列表后仍未找到播放模式元素")
                     return {
-                        'error': '无法找到播放模式控制元素'
+                        'error': 'FAIL: 点击 playing_bar 后仍未找到播放模式控制元素'
                     }
 
             # 3. 检查是否找到播放模式元素
-            mode_names = {0: '顺序播放', 1: '单曲循环', -1: '随机播放'}
             current_mode_element = found_element
-            if found_element_key == 'play_mode_list':
-                current_mode = 0  # 顺序播放
-            elif found_element_key == 'play_mode_single':
-                current_mode = 1  # 单曲循环
-            elif found_element_key == 'play_mode_random':
-                current_mode = -1  # 随机播放
-            else:
-                self.handler.logger.info("未找到有效的播放模式元素")
-                return {
-                    'error': '无法找到播放模式控制元素'
-                }
+            current_mode = key_to_mode(found_element_key)
 
-            self.handler.logger.info(f"当前播放模式: {mode_names[current_mode]}, 目标模式: {mode_names[target_mode]}")
+            log_step("Step2", current_mode=mode_names[current_mode], target_mode=mode_names[target_mode])
 
             # 如果已经是目标模式，直接返回
             if current_mode == target_mode:
+                log_step("Result", status="PASS", mode=mode_names[target_mode], reason="already_target")
                 return {
                     'success': True,
                     'mode': mode_names[target_mode],
                     'message': f'已经是{mode_names[target_mode]}模式'
                 }
 
-            # 4. 尝试切换到目标模式（最多切换两次）
+            # 5. 尝试切换到目标模式（最多切换两次）
             for attempt in range(2):
-                self.handler.logger.info(f"第{attempt + 1}次尝试切换模式")
-                current_mode_element.click()
+                log_step(
+                    "Step3",
+                    attempt=attempt + 1,
+                    before_click_mode=mode_names[current_mode],
+                    target_mode=mode_names[target_mode],
+                )
+                if not self.handler.click_element_at(current_mode_element):
+                    self.handler.logger.warning("click_element_at 返回 False，继续下一次重试")
+                    continue
 
                 # 重新检查当前模式
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
@@ -116,18 +140,13 @@ class ModeCommand(BaseCommand):
 
                 # 确定当前模式
                 current_mode_element = found_element
-                if found_element_key == 'play_mode_list':
-                    current_mode = 0
-                elif found_element_key == 'play_mode_single':
-                    current_mode = 1
-                elif found_element_key == 'play_mode_random':
-                    current_mode = -1
+                current_mode = key_to_mode(found_element_key)
 
-                self.handler.logger.info(f"切换后当前模式: {mode_names[current_mode]}")
+                log_step("Step3", after_click_current_mode=mode_names[current_mode])
 
                 # 检查是否达到目标模式
                 if current_mode == target_mode:
-                    mode_names = {0: '顺序播放', 1: '单曲循环', -1: '随机播放'}
+                    log_step("Result", status="PASS", mode=mode_names[target_mode], attempt=attempt + 1)
                     return {
                         'success': True,
                         'mode': mode_names[target_mode],
@@ -136,8 +155,15 @@ class ModeCommand(BaseCommand):
 
             # 如果两次尝试后仍未达到目标模式，报错
             self.handler.logger.warning("经过两次切换仍未达到目标模式")
+            log_step(
+                "Result",
+                status="FAIL",
+                target_mode=mode_names[target_mode],
+                actual_mode=mode_names[current_mode],
+                reason="not_reached_after_attempts",
+            )
             return {
-                'error': '无法切换到目标模式，请检查播放状态'
+                'error': f'FAIL: 无法切换到目标模式，请检查播放状态（target={mode_names[target_mode]}, actual={mode_names[current_mode]}）'
             }
 
         except Exception as e:
