@@ -141,10 +141,22 @@ class RadioCommand(BaseCommand):
         if not play_all:
             return self._report_error("Failed to locate play all button")
         play_all.click()
+
+        # Prefer the first song title in the playing queue as the room topic.
+        # Fallback to the UI-provided daily_topic_text if queue parsing fails.
+        topic_text = daily_topic_text
+        playlist_info = self.music_handler.get_playlist_info()
+        if isinstance(playlist_info, dict) and "error" not in playlist_info:
+            playlist_text = (playlist_info.get("playlist") or "").strip()
+            if playlist_text:
+                first_line = playlist_text.splitlines()[0].strip()
+                if first_line:
+                    topic_text = first_line.split(" - ")[0].strip() or topic_text
+
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(daily_title_text, daily_topic_text)
+        error = self._set_room_context(daily_title_text, topic_text)
         if error:
             return error
         # 更新播放器名称
