@@ -1,6 +1,7 @@
 import importlib
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
@@ -217,9 +218,10 @@ class CommandManager(Singleton):
                 if command_info:
                     # Handle different commands using match-case
                     cmd = command_info['prefix']
+                    time_prefix = datetime.now().strftime('%H:%M:%S')
 
                     self.handler.send_message(
-                        f'{cmd} ... @{message_info.nickname}')
+                        f'[{time_prefix}] {cmd} ... @{message_info.nickname}')
 
                     command = self.get_command(cmd)
                     if command:
@@ -229,7 +231,9 @@ class CommandManager(Singleton):
                         success_count += 1
                     else:
                         self.logger.error(f"Unknown command: {cmd}")
-                        self.handler.send_message(f"Unknown command: {cmd} @{message_info.nickname}")
+                        self.handler.send_message(
+                            f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}'
+                        )
 
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
