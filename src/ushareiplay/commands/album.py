@@ -88,12 +88,12 @@ class AlbumCommand(BaseCommand):
                 'error': 'Failed to query album',
             }
         if not self.select_album_tab():
-            self.handler.logger.error(f"Failed to select lyrics tab with query {query}")
+            self.handler.logger.error(f"Failed to select album tab with query {query}")
             return {
-                'error': 'Failed to select lyrics tab',
+                'error': 'Failed to select album tab',
             }
 
-        key, element = self.handler.wait_for_any_element_plus(['album_result, not_found'])
+        key, element = self.handler.wait_for_any_element_plus(['album_result', 'not_found'])
         if not key or key == 'not_found':
             self.handler.logger.error(f"Not found album result with query {query}")
             return {
