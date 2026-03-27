@@ -627,7 +627,10 @@ class QQMusicHandler(AppHandler, Singleton):
                     self.logger.info("Failed to find singer in playlist")
                     continue
                 singer = elements[1]
-                info = f'{song.text}{singer.text}' if singer else song.text
+                if singer and singer.text:
+                    info = f'{song.text} - {singer.text}'
+                else:
+                    info = song.text
                 playlist_info.append(info)
             except StaleElementReferenceException as e:
                 self.logger.warning(f"Error getting song/singer text, {len(items)} ")
