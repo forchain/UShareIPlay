@@ -253,6 +253,12 @@ qq_music:
     healing_nav: '//android.widget.TextView[@text="疗愈"]'
     healing_tab: '//android.widget.LinearLayout/android.view.ViewGroup/android.widget.ImageView'
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
+
+# 歌词发送到 Soul 前的排版（可按实际气泡宽度调整，无需改代码）
+lyrics:
+  # 单行超过该长度时拆成多行；优先在空格处换行，英文按词、中文按短语间空格
+  line_max_width: 16
+
 commands:
   - prefix: "play"
     level: 1
