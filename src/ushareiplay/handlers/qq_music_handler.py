@@ -1,3 +1,4 @@
+import re
 import time
 import traceback
 
@@ -628,7 +629,10 @@ class QQMusicHandler(AppHandler, Singleton):
                     continue
                 singer = elements[1]
                 if singer and singer.text:
-                    info = f'{song.text} - {singer.text}'
+                    # 首行可能自带末尾「 - 」；第二行常为「 - 歌手」，去重后再拼成「歌名 - 歌手」
+                    song_title = re.sub(r"\s*-\s*$", "", (song.text or "").strip())
+                    singer_clean = re.sub(r"^\s*-\s*", "", (singer.text or "").strip())
+                    info = f"{song_title} - {singer_clean}" if singer_clean else song_title
                 else:
                     info = song.text
                 playlist_info.append(info)
