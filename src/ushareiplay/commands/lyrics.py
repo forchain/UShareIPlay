@@ -9,6 +9,38 @@ from html import unescape
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0
 
+
+def wrap_line_at_spaces(line: str, max_width: int) -> str:
+    """Insert newlines so each segment fits max_width, preferring breaks at whitespace.
+
+    English words stay intact when possible (break after last space before the limit).
+    When no space exists in the window (long word or unspaced CJK), breaks at max_width.
+    """
+    line = line.strip()
+    if not line or max_width <= 0:
+        return line
+    if len(line) <= max_width:
+        return line
+    out = []
+    remaining = line
+    while len(remaining) > max_width:
+        chunk = remaining[:max_width]
+        break_at = -1
+        for i in range(len(chunk) - 1, 0, -1):
+            if chunk[i].isspace():
+                break_at = i
+                break
+        if break_at > 0:
+            out.append(remaining[:break_at].rstrip())
+            remaining = remaining[break_at:].lstrip()
+        else:
+            out.append(remaining[:max_width])
+            remaining = remaining[max_width:].lstrip()
+    if remaining:
+        out.append(remaining)
+    return "\n".join(out)
+
+
 def create_command(controller):
     lyrics_command = LyricsCommand(controller)
     controller.lyrics_command = lyrics_command
@@ -119,15 +151,26 @@ class LyricsCommand(BaseCommand):
         lyrics_content = lyrics_text.text
         lyrics_content = unescape(lyrics_content)  # Unescape HTML entities
         
-        # Process lyrics
-        lyrics_groups = self.process_lyrics(lyrics_content, force_groups=group_num)
+        lyrics_cfg = (self.controller.config or {}).get("lyrics") or {}
+        line_max_width = int(lyrics_cfg.get("line_max_width", 18))
+
+        lyrics_groups = self.process_lyrics(
+            lyrics_content,
+            max_width=line_max_width,
+            force_groups=group_num,
+        )
         return {'groups': lyrics_groups}
 
-    def process_lyrics(self, lyrics_text, max_width=20, force_groups=0):
+    def process_lyrics(
+        self,
+        lyrics_text,
+        max_width=18,
+        force_groups=0,
+    ):
         """Process lyrics text into groups with width control
         Args:
             lyrics_text: str, lyrics text to process
-            max_width: int, maximum width of each line
+            max_width: int, max characters per visual line (wrap at spaces when possible)
             force_groups: int, force specific number of groups
         Returns:
             list: List of lyrics groups
@@ -151,28 +194,20 @@ class LyricsCommand(BaseCommand):
         if not lyrics_lines:
             return []
 
-        # First pass: combine adjacent lines within max_width
-        combined_lines = []
-        current_line = lyrics_lines[0]
+        # Per source line: only split when longer than display width (prefer breaks at spaces)
+        wrapped_lines = []
+        for line in lyrics_lines:
+            wrapped = wrap_line_at_spaces(line, max_width)
+            wrapped_lines.extend(
+                [seg for seg in wrapped.split("\n") if seg.strip()]
+            )
 
-        for next_line in lyrics_lines[1:]:
-            # Try combining with next line (including a space between)
-            combined = current_line + " " + next_line
-            if len(combined) <= max_width:
-                current_line = combined
-            else:
-                combined_lines.append(current_line)
-                current_line = next_line
-
-        # Add the last line
-        combined_lines.append(current_line)
-
-        # Second pass: group lines with balanced length
+        # Group lines with balanced length
         groups = []
         current_group = []
         current_length = 0
 
-        for line in combined_lines:
+        for line in wrapped_lines:
             line_length = len(line) + 1  # +1 for newline
             new_length = current_length + line_length
 
