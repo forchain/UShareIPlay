@@ -7,6 +7,7 @@
 
 import importlib
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -35,6 +36,7 @@ class EventManager(Singleton):
         self.event_modules: Dict[str, object] = {}  # 缓存已加载的事件模块
         self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
         self._initialized = False
+        self._consecutive_unknown_pages = 0
 
     @property
     def handler(self):
@@ -310,6 +312,10 @@ class EventManager(Singleton):
         except Exception:
             self.logger.error(f"Error in process_events: {traceback.format_exc()}")
 
+        # 只要本轮触发了事件，就认为不在“连续未知页面”状态
+        if triggered_count > 0:
+            self._consecutive_unknown_pages = 0
+
         # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
         if triggered_count == 0:
             try:
@@ -325,6 +331,12 @@ class EventManager(Singleton):
                             self.handler.switch_to_app()
                             self.handler.press_back()
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
+                            self._consecutive_unknown_pages += 1
+                            if self._consecutive_unknown_pages > 10:
+                                self.logger.warning(
+                                    f"连续未知页面已达 {self._consecutive_unknown_pages} 次，等待 10 秒后继续"
+                                )
+                                time.sleep(10)
 
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")
