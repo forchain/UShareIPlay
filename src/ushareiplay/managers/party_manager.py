@@ -327,18 +327,29 @@ class PartyManager(Singleton):
 
                 room_card = self.handler.wait_for_element_plus('room_card')
                 if not room_card:
-                    self.logger.warning("未找到派对房间")
-                    return False
-                party_online = self.handler.try_find_element_plus('party_online')
-                if party_online:
-                    party_online.click()
-                    self.logger.info("Clicked party online")
-                    return True
-                else:
-                    self.logger.warning("派对关闭了")
+                    self.logger.warning("未找到派对房间，视为派对关闭，准备重建派对")
                     search_back = self.handler.wait_for_element_plus('search_back')
-                    search_back.click()
-                    self.logger.info("Clicked search back")
+                    if search_back:
+                        search_back.click()
+                        self.logger.info("Clicked search back")
+                    else:
+                        self.logger.warning("未找到搜索返回按钮，尝试系统返回")
+                        self.handler.press_back()
+                else:
+                    party_online = self.handler.try_find_element_plus('party_online')
+                    if party_online:
+                        party_online.click()
+                        self.logger.info("Clicked party online")
+                        return True
+                    else:
+                        self.logger.warning("派对关闭了")
+                        search_back = self.handler.wait_for_element_plus('search_back')
+                        if search_back:
+                            search_back.click()
+                            self.logger.info("Clicked search back")
+                        else:
+                            self.logger.warning("未找到搜索返回按钮，尝试系统返回")
+                            self.handler.press_back()
 
             key, element = self.handler.wait_for_any_element_plus(
                 ['create_party_entry', 'create_room_entry'])
