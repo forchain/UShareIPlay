@@ -19,6 +19,7 @@ __elements__ = [
     # conflicts with '关闭组件' in party  hall
     # 'close_button',
     'claim_reward_button',
+    'tv_open_luck_bag',
     'party_ended',
     'confirm_close_3',
     'close_widget',
