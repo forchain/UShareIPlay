@@ -100,6 +100,16 @@ class MessageManager(Singleton):
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
+        # 回溯补漏前，确保座位面板收起（避免聊天区域过小导致回溯变慢）
+        try:
+            seat_manager = self._get_seat_manager()
+            if seat_manager and getattr(seat_manager, "ui", None):
+                is_expanded = seat_manager.ui.check_seats_state()
+                if is_expanded:
+                    seat_manager.ui.collapse_seats()
+        except Exception:
+            self.handler.logger.error(f"收起座位失败（不影响补漏继续执行）: {traceback.format_exc()}")
+
         last_chat = self.recent_chats[-1] if len(self.recent_chats) > 0 else None
         if not last_chat:
             return None

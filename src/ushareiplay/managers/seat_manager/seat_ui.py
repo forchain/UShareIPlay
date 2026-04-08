@@ -88,6 +88,45 @@ class SeatUIManager(SeatManagerBase):
             self.handler.logger.error(f"展开座位时出错: {str(e)}")
             return False
 
+    def collapse_seats(self):
+        """Collapse seats if expanded"""
+        if self.handler is None:
+            logging.getLogger('seat_ui').error("collapse_seats: handler 为 None")
+            return False
+
+        # 首先检查实际状态
+        try:
+            self.check_seats_state()
+        except Exception as e:
+            self.handler.logger.error(f"检查座位状态时出错: {str(e)}")
+
+        if not self.is_expanded:
+            return True
+
+        try:
+            expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+
+            if expand_seats:
+                actual_text = expand_seats.text
+
+                # 收起按钮通常会包含“收起”
+                if '收起' in actual_text:
+                    expand_seats.click()
+                    self.handler.logger.info('Collapsed seats')
+                    self.is_expanded = False
+                    time.sleep(0.5)  # Give time for animation
+                    return True
+
+                self.handler.logger.warning(f"座位按钮文本不匹配预期，无法收起: '{actual_text}'")
+                return False
+
+            self.handler.logger.warning("未找到座位按钮，无法收起座位")
+            return False
+
+        except Exception as e:
+            self.handler.logger.error(f"收起座位时出错: {str(e)}")
+            return False
+
     def _get_seat_number(self, container):
         """Get seat number from container"""
         try:
