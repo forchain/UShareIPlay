@@ -375,7 +375,13 @@ class AppController(Singleton):
                     continue
 
                 # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
-                if page_source := self.event_manager.get_page_source():
+                page_source = self.event_manager.get_page_source()
+                if not page_source:
+                    # 切回/启动瞬间 page_source 偶尔为空，做一次轻量重试以减少误判窗口
+                    await asyncio.sleep(0.2)
+                    page_source = self.event_manager.get_page_source()
+
+                if page_source:
                     await self.event_manager.process_events(page_source)
 
                 # clear error once back to normal

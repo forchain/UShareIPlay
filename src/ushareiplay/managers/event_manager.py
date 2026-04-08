@@ -10,7 +10,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from lxml import etree
 
@@ -37,6 +37,16 @@ class EventManager(Singleton):
         self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
         self._initialized = False
         self._consecutive_unknown_pages = 0
+
+        # 当切回 Soul/应用前台瞬间，page_source 可能为空或属于 Launcher。
+        # 这里用一组稳定的“锚点元素 id”辅助判断页面是否已就绪（来自 config.yaml 常用 tab/容器）。
+        self._soul_anchor_ids: Sequence[str] = (
+            "cn.soulapp.android:id/main_tab_planet",  # planet_tab / home_nav
+            "cn.soulapp.android:id/main_tab_square",  # square_tab
+            "cn.soulapp.android:id/action_bar_root",  # bottom_drawer
+            "cn.soulapp.android:id/tvChatRoomTitle",  # chat_room_title
+            "cn.soulapp.android:id/tslLayout",  # bottom_drawer_1
+        )
 
     @property
     def handler(self):
@@ -261,51 +271,7 @@ class EventManager(Singleton):
         triggered_count = 0
 
         try:
-            # 解析 page_source
-            root = etree.fromstring(page_source.encode('utf-8'))
-
-            # 遍历所有注册的元素 key
-            for element_key, module_name in self.element_to_event.items():
-                try:
-                    # 获取事件模块
-                    module = self.event_modules.get(module_name)
-
-                    # 在 page_source 中查找元素（传递 module 以检查 __multiple__ 属性）
-                    xml_element = self._find_element_in_page_source(root, element_key, module)
-
-                    if xml_element is not None:
-                        # 元素存在，触发事件
-                        if module and hasattr(module, 'event'):
-                            # 检查是否是多个元素（列表）
-                            if isinstance(xml_element, list):
-                                # 多个元素，为每个元素创建 wrapper，然后将 wrapper 列表传给 handle
-                                wrapper_list = []
-                                for elem in xml_element:
-                                    wrapper = ElementWrapper(elem, self.handler, element_key)
-                                    wrapper_list.append(wrapper)
-
-                                # 直接将 wrapper 列表传给 handle（handle 方法会判断是否是列表）
-                                result = await module.event.handle(element_key, wrapper_list)
-                                triggered_count += 1
-
-                                # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
-                                if result is True:
-                                    self.logger.debug(f"Event {element_key} returned True, stopping event processing")
-                                    break
-                            else:
-                                # 单个元素，创建包装器并调用处理函数
-                                wrapper = ElementWrapper(xml_element, self.handler, element_key)
-                                result = await module.event.handle(element_key, wrapper)
-                                triggered_count += 1
-                                # self.logger.debug(f"Event triggered for {element_key}")
-
-                                # 如果处理函数返回 True，中断后续事件处理，进入下一轮循环
-                                if result is True:
-                                    self.logger.debug(f"Event {element_key} returned True, stopping event processing")
-                                    break
-
-                except Exception as e:
-                    self.logger.error(f"Error processing event for {element_key}: {str(e)}")
+            triggered_count = await self._process_events_once(page_source)
 
         except etree.XMLSyntaxError as e:
             self.logger.error(f"Failed to parse page_source: {str(e)}")
@@ -329,19 +295,113 @@ class EventManager(Singleton):
                                 "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
                         else:
                             self.handler.switch_to_app()
-                            self.handler.press_back()
-                            self.logger.warning("No events triggered, pressed back to exit unknown page")
-                            self._consecutive_unknown_pages += 1
-                            if self._consecutive_unknown_pages > 10:
-                                self.logger.warning(
-                                    f"连续未知页面已达 {self._consecutive_unknown_pages} 次，等待 10 秒后继续"
-                                )
-                                time.sleep(10)
+                            ready_source = self._wait_page_source_ready(max_wait_s=2.5, interval_s=0.2)
+                            if not ready_source:
+                                # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
+                                self.logger.debug(
+                                    "PageSource not ready after switch_to_app; skip auto press_back this round.")
+                            else:
+                                second_triggered = await self._process_events_once(ready_source)
+                                if second_triggered == 0:
+                                    self.handler.press_back()
+                                    self.logger.warning("No events triggered, pressed back to exit unknown page")
+                                    self._consecutive_unknown_pages += 1
+                                    if self._consecutive_unknown_pages > 10:
+                                        self.logger.warning(
+                                            f"连续未知页面已达 {self._consecutive_unknown_pages} 次，等待 10 秒后继续"
+                                        )
+                                        time.sleep(10)
+                                else:
+                                    self._consecutive_unknown_pages = 0
 
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")
 
         return triggered_count
+
+    async def _process_events_once(self, page_source: str) -> int:
+        if not page_source:
+            return 0
+
+        triggered_count = 0
+        root = etree.fromstring(page_source.encode("utf-8"))
+
+        for element_key, module_name in self.element_to_event.items():
+            try:
+                module = self.event_modules.get(module_name)
+                xml_element = self._find_element_in_page_source(root, element_key, module)
+
+                if xml_element is None:
+                    continue
+
+                if module and hasattr(module, "event"):
+                    if isinstance(xml_element, list):
+                        wrapper_list = [ElementWrapper(elem, self.handler, element_key) for elem in xml_element]
+                        result = await module.event.handle(element_key, wrapper_list)
+                        triggered_count += 1
+                        if result is True:
+                            self.logger.debug(
+                                f"Event {element_key} returned True, stopping event processing"
+                            )
+                            break
+                    else:
+                        wrapper = ElementWrapper(xml_element, self.handler, element_key)
+                        result = await module.event.handle(element_key, wrapper)
+                        triggered_count += 1
+                        if result is True:
+                            self.logger.debug(
+                                f"Event {element_key} returned True, stopping event processing"
+                            )
+                            break
+            except Exception as e:
+                self.logger.error(f"Error processing event for {element_key}: {str(e)}")
+
+        return triggered_count
+
+    def _is_soul_page_source_ready(self, page_source: str) -> bool:
+        if not page_source:
+            return False
+
+        if "cn.soulapp.android" not in page_source:
+            # 可能是 Launcher / 其他 app
+            return False
+
+        for anchor_id in self._soul_anchor_ids:
+            if anchor_id in page_source:
+                return True
+
+        # 兜底：如果包含包名但没有锚点（偶发），仍视为未就绪，避免误判导致 back。
+        return False
+
+    @with_driver_recovery
+    def _wait_page_source_ready(self, max_wait_s: float = 2.5, interval_s: float = 0.2) -> Optional[str]:
+        deadline = time.time() + max_wait_s
+        last_error = None
+
+        while time.time() < deadline:
+            try:
+                src = self.handler.driver.page_source
+                if not src:
+                    time.sleep(interval_s)
+                    continue
+
+                if not self._is_soul_page_source_ready(src):
+                    time.sleep(interval_s)
+                    continue
+
+                # 确保 XML 可解析，避免半截源码
+                etree.fromstring(src.encode("utf-8"))
+                return src
+            except etree.XMLSyntaxError as e:
+                last_error = e
+                time.sleep(interval_s)
+            except Exception as e:
+                last_error = e
+                time.sleep(interval_s)
+
+        if last_error:
+            self.logger.debug(f"PageSource ready wait timeout, last_error={last_error}")
+        return None
 
     @with_driver_recovery
     def get_page_source(self) -> Optional[str]:
