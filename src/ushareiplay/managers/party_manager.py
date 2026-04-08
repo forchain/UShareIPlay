@@ -178,14 +178,6 @@ class PartyManager(Singleton):
             dict: 成功含 party_id、user；失败含 error、party_id
         """
         try:
-            from ushareiplay.dal.user_dao import UserDAO
-            user = await UserDAO.get_or_create(message_info.nickname)
-            if user.level < 3:
-                return {
-                    'error': '必须群主关注的人才能邀请群主入群',
-                    'party_id': party_id
-                }
-
             more_menu = self.handler.wait_for_element_clickable_plus('more_menu')
             if not more_menu:
                 return {

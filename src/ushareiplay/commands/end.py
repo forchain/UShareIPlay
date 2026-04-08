@@ -22,13 +22,6 @@ class EndCommand(BaseCommand):
     async def process(self, message_info, parameters):
         """Process end command to close party"""
         try:
-            # Check if user level >= 3
-            from ushareiplay.dal.user_dao import UserDAO
-            user = await UserDAO.get_or_create(message_info.nickname)
-            if user.level < 3:
-                self.handler.logger.warning(f"User {message_info.nickname} level {user.level} < 3, cannot end party")
-                return {'error': '必须群主关注的人才能关闭房间'}
-                
             # 委托给PartyManager处理
             return self.party_manager.end_party()
         except Exception as e:
