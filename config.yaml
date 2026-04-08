@@ -214,6 +214,7 @@ qq_music:
     play_singer_1: '//android.widget.ImageView[starts-with(@content-desc, "播放歌手: ")]'
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
+    play_all_compact: '//android.view.ViewGroup[@content-desc="评论"]/../android.widget.RelativeLayout/android.widget.ImageView'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     list_title: '//android.view.ViewGroup/android.widget.TextView[@text="单曲" or @text="视频" or @text="专辑" or @text="歌单"]'
