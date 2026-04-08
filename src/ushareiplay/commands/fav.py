@@ -90,17 +90,9 @@ class FavCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
-        self.handler.navigate_to_home()
-        self.handler.logger.info("Navigated to home page")
-
-        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
-        my_nav.click()
-        self.handler.logger.info("Clicked personal info navigation button")
-
-        # Click on favorites button
-        fav_entry = self.handler.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.handler.logger.info("Clicked favorites button")
+        err = self.handler.open_favorites_entry()
+        if err:
+            return err
 
         result_item = self.handler.try_find_element_plus('result_item')
         song_text = None
@@ -140,17 +132,9 @@ class FavCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
-        self.handler.navigate_to_home()
-        self.handler.logger.info("Navigated to home page")
-
-        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
-        my_nav.click()
-        self.handler.logger.info("Clicked personal info navigation button")
-
-        # Click on favorites button
-        fav_entry = self.handler.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.handler.logger.info("Clicked favorites button")
+        err = self.handler.open_favorites_entry()
+        if err:
+            return err
 
         # Click on filter button
         filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
@@ -230,17 +214,9 @@ class FavCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
-        self.handler.navigate_to_home()
-        self.handler.logger.info("Navigated to home page")
-
-        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
-        my_nav.click()
-        self.handler.logger.info("Clicked personal info navigation button")
-
-        # Click on favorites button
-        fav_entry = self.handler.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.handler.logger.info("Clicked favorites button")
+        err = self.handler.open_favorites_entry()
+        if err:
+            return err
 
         # Click on filter button
         filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
@@ -320,16 +296,9 @@ class FavCommand(BaseCommand):
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
-        self.handler.navigate_to_home()
-        self.handler.logger.info("Navigated to home page")
-
-        my_nav = self.handler.wait_for_element_clickable_plus('my_nav')
-        my_nav.click()
-        self.handler.logger.info("Clicked personal info navigation button")
-
-        fav_entry = self.handler.wait_for_element_clickable_plus('fav_entry')
-        fav_entry.click()
-        self.handler.logger.info("Clicked favorites button")
+        err = self.handler.open_favorites_entry()
+        if err:
+            return err
 
         # 1) 在“全部播放”按钮上下滑动其高度，目的是显示搜索框
         play_all_btn = self.handler.wait_for_element_clickable_plus('play_all')
