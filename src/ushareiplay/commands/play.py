@@ -55,6 +55,9 @@ class PlayCommand(BaseCommand):
         song_element.click()
         self.handler.logger.info("Select first song")
 
+        # 播放页会自动弹出：未收藏则自动收藏
+        self.handler.ensure_favorited_in_playing_page(timeout=10)
+
         return playing_info
 
     def play_favorites(self):

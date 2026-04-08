@@ -23,6 +23,43 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
 
+    def ensure_favorited_in_playing_page(self, timeout: int = 10) -> bool:
+        """
+        在播放页自动弹出后，若当前未收藏则执行收藏。
+
+        Returns:
+            bool: True 表示已收藏或收藏成功；False 表示未能确认/未能完成收藏（不应阻断主流程）
+        """
+        try:
+            btn = self.wait_for_element_plus('playing_favourite', timeout=timeout)
+            if not btn:
+                self.logger.warning(
+                    f"ensure_favorited_in_playing_page: 收藏按钮未出现(>{timeout}s)"
+                )
+                return False
+
+            desc = self.try_get_attribute(btn, 'content-desc') or ''
+            if '取消收藏' in desc:
+                self.logger.info("ensure_favorited_in_playing_page: 已收藏，跳过")
+                return True
+
+            clickable = self.wait_for_element_clickable_plus(
+                'playing_favourite', timeout=timeout
+            )
+            if clickable:
+                clickable.click()
+            else:
+                btn.click()
+            self.logger.info(
+                f"ensure_favorited_in_playing_page: 已执行收藏(当前desc={desc})"
+            )
+            return True
+        except Exception:
+            self.logger.warning(
+                f"ensure_favorited_in_playing_page: 执行异常: {traceback.format_exc()}"
+            )
+            return False
+
     def hide_player(self):
         self.press_back()
         self.logger.info("Hide player panel")
