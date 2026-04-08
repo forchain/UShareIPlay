@@ -23,6 +23,75 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
 
+    def open_favorites_entry(self, timeout: int = 10):
+        """
+        进入“我的 -> 收藏”页。
+
+        已知问题：在“我的”页可能因滚动导致“收藏”入口不在可视区域；
+        经验兜底：再次点击一次底部“我的”Tab可触发页面回到默认/顶部，再重试查找。
+
+        Returns:
+            None: 成功进入收藏页
+            dict: 失败时返回 {'error': str}
+        """
+        try:
+            ok = self.navigate_to_home()
+            if not ok:
+                return {'error': 'Cannot navigate to QQ Music home page'}
+
+            my_nav = self.wait_for_element_clickable_plus('my_nav', timeout=timeout)
+            if not my_nav:
+                return {'error': 'Cannot find my_nav'}
+
+            my_nav.click()
+            self.logger.info("open_favorites_entry: Clicked my_nav")
+
+            fav_entry = self.wait_for_element_clickable_plus('fav_entry', timeout=timeout)
+            if fav_entry:
+                fav_entry.click()
+                self.logger.info("open_favorites_entry: Clicked fav_entry")
+                return None
+
+            # 兜底：再次点击“我的”复位页面后重试
+            self.logger.warning(
+                "open_favorites_entry: fav_entry not found, retrying by clicking my_nav again to reset page"
+            )
+            my_nav_retry = self.wait_for_element_clickable_plus('my_nav', timeout=timeout)
+            if my_nav_retry:
+                my_nav_retry.click()
+                time.sleep(0.3)
+
+            fav_entry = self.wait_for_element_clickable_plus('fav_entry', timeout=timeout)
+            if fav_entry:
+                fav_entry.click()
+                self.logger.info("open_favorites_entry: Clicked fav_entry after my_nav reset")
+                return None
+
+            # 第二层兜底：回到首页再进“我的”
+            self.logger.warning(
+                "open_favorites_entry: fav_entry still not found, retrying with home->my_nav reset"
+            )
+            ok = self.navigate_to_home()
+            if not ok:
+                return {'error': 'Cannot navigate to QQ Music home page (retry)'}
+
+            my_nav = self.wait_for_element_clickable_plus('my_nav', timeout=timeout)
+            if not my_nav:
+                return {'error': 'Cannot find my_nav (retry)'}
+            my_nav.click()
+            time.sleep(0.2)
+
+            fav_entry = self.wait_for_element_clickable_plus('fav_entry', timeout=timeout)
+            if not fav_entry:
+                return {'error': 'Cannot find fav_entry after my_nav reset'}
+            fav_entry.click()
+            self.logger.info("open_favorites_entry: Clicked fav_entry after home->my_nav reset")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"open_favorites_entry error: {traceback.format_exc()}")
+            return {'error': f'open_favorites_entry exception: {str(e)}'}
+
     def ensure_favorited_in_playing_page(self, timeout: int = 10) -> bool:
         """
         在播放页自动弹出后，若当前未收藏则执行收藏。
