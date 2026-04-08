@@ -22,12 +22,6 @@ class PackCommand(BaseCommand):
     async def process(self, message_info, parameters):
         """Process pack command to open luck pack"""
         try:
-            # Check if user level >= 3
-            from ushareiplay.dal.user_dao import UserDAO
-            user = await UserDAO.get_or_create(message_info.nickname)
-            if user.level < 3:
-                return {'error': 'Only close friends can open luck packs'}
-
             self.auto_mode = False  # Manual mode
             return self.open_luck_pack()  # Manual mode doesn't need user count
         except Exception as e:
