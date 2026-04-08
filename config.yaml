@@ -183,7 +183,7 @@ qq_music:
     skip_button: "android:id/action2"
     current_song: "android:id/title"
     current_singer: "android:id/text"
-    playing_favourite: '//android.widget.Button[@content-desc="收藏"]'
+    playing_favourite: '//android.widget.Button[contains(@content-desc, "收藏")]'
     filter_favourite: '//android.widget.ImageView[@content-desc="筛选"]'
     favourite_languages: '//android.widget.TextView[@text="语种"]/../androidx.recyclerview.widget.RecyclerView'
     favourite_option: '//android.widget.TextView'
