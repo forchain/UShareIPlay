@@ -403,8 +403,14 @@ class TitleManager(Singleton):
                 # 仅在真正设置成功后检测：房名不含「｜」说明审核未通过、系统随机取名，则重设为 日推
                 room_title_text = self.get_room_title_text_from_ui()
                 if room_title_text and '｜' not in room_title_text:
-                    self.next_title = '日推'
-                    self.logger.info(f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 日推')
+                    # 若已排队为「日推」但尚在冷却期，则无需重复排队/刷日志
+                    if self.next_title == '日推' and self.theme_manager and not self.theme_manager.can_update_now():
+                        pass
+                    else:
+                        self.next_title = '日推'
+                        self.logger.info(
+                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 日推'
+                        )
 
                 # 标题更新成功后，检查是否需要恢复notice
                 notice_restore_result = self._restore_notice_if_needed()
