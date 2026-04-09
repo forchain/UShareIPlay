@@ -25,6 +25,7 @@ __elements__ = [
     'close_widget',
     'party_back',
     'reload_more',
+    'go_back',
     'close_more_menu'
 ]
 
