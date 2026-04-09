@@ -4,7 +4,6 @@
 - 若已排队为「日推」且仍在冷却期，则忽略
 """
 
-__event__ = "RoomTitleRealtimeCheckEvent"
 __elements__ = ["chat_room_title"]
 
 import time
@@ -12,7 +11,7 @@ import time
 from ushareiplay.core.base_event import BaseEvent
 
 
-class RoomTitleRealtimeCheckEvent(BaseEvent):
+class ChatRoomTitleEvent(BaseEvent):
     _min_interval_s = 30.0
 
     def __init__(self, handler):
@@ -42,7 +41,6 @@ class RoomTitleRealtimeCheckEvent(BaseEvent):
             if "｜" in room_title_text:
                 return False
 
-            # 如果已经排队为「日推」且仍在冷却期，则忽略
             if (
                 title_manager.next_title == "日推"
                 and title_manager.theme_manager
@@ -53,6 +51,6 @@ class RoomTitleRealtimeCheckEvent(BaseEvent):
             title_manager.set_next_title("日推")
             return False
         except Exception as e:
-            self.logger.debug(f"RoomTitleRealtimeCheckEvent skipped: {e}")
+            self.logger.debug(f"ChatRoomTitleEvent skipped: {e}")
             return False
 
