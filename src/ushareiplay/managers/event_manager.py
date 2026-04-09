@@ -10,7 +10,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
@@ -38,15 +38,8 @@ class EventManager(Singleton):
         self._initialized = False
         self._consecutive_unknown_pages = 0
 
-        # 当切回 Soul/应用前台瞬间，page_source 可能为空或属于 Launcher。
-        # 这里用一组稳定的“锚点元素 id”辅助判断页面是否已就绪（来自 config.yaml 常用 tab/容器）。
-        self._soul_anchor_ids: Sequence[str] = (
-            "cn.soulapp.android:id/main_tab_planet",  # planet_tab / home_nav
-            "cn.soulapp.android:id/main_tab_square",  # square_tab
-            "cn.soulapp.android:id/action_bar_root",  # bottom_drawer
-            "cn.soulapp.android:id/tvChatRoomTitle",  # chat_room_title
-            "cn.soulapp.android:id/tslLayout",  # bottom_drawer_1
-        )
+    # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
+    _PRIORITY_EVENT_KEYS: Tuple[str, ...] = ("party_name_violation_later",)
 
     @property
     def handler(self):
@@ -211,6 +204,37 @@ class EventManager(Singleton):
         except Exception:
             self.logger.error(f"Error loading events: {traceback.format_exc()}")
 
+    def _soul_package_name(self) -> str:
+        return (self.config.get("package_name") or "").strip() or "cn.soulapp.android"
+
+    def _launcher_packages(self) -> List[str]:
+        defaults = [
+            "com.sec.android.app.launcher",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+        ]
+        extra = self.config.get("launcher_packages") or []
+        if not isinstance(extra, list):
+            return defaults
+        merged: List[str] = []
+        seen = set()
+        for p in extra + defaults:
+            if not p or p in seen:
+                continue
+            seen.add(p)
+            merged.append(p)
+        return merged
+
+    def _packages_from_parsed_root(self, root: etree._Element) -> Set[str]:
+        return {el.get("package") for el in root.iter() if el.get("package")}
+
+    def _packages_from_page_source(self, page_source: str) -> Optional[Set[str]]:
+        try:
+            root = etree.fromstring(page_source.encode("utf-8"))
+        except etree.XMLSyntaxError:
+            return None
+        return self._packages_from_parsed_root(root)
+
     def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[
         etree._Element]:
         """
@@ -326,7 +350,16 @@ class EventManager(Singleton):
         triggered_count = 0
         root = etree.fromstring(page_source.encode("utf-8"))
 
-        for element_key, module_name in self.element_to_event.items():
+        keys_ordered: List[str] = []
+        for k in self._PRIORITY_EVENT_KEYS:
+            if k in self.element_to_event:
+                keys_ordered.append(k)
+        for k in self.element_to_event.keys():
+            if k not in keys_ordered:
+                keys_ordered.append(k)
+
+        for element_key in keys_ordered:
+            module_name = self.element_to_event[element_key]
             try:
                 module = self.event_modules.get(module_name)
                 xml_element = self._find_element_in_page_source(root, element_key, module)
@@ -358,40 +391,40 @@ class EventManager(Singleton):
 
         return triggered_count
 
-    def _is_soul_page_source_ready(self, page_source: str) -> bool:
-        if not page_source:
-            return False
-
-        if "cn.soulapp.android" not in page_source:
-            # 可能是 Launcher / 其他 app
-            return False
-
-        for anchor_id in self._soul_anchor_ids:
-            if anchor_id in page_source:
-                return True
-
-        # 兜底：如果包含包名但没有锚点（偶发），仍视为未就绪，避免误判导致 back。
-        return False
-
     @with_driver_recovery
     def _wait_page_source_ready(self, max_wait_s: float = 2.5, interval_s: float = 0.2) -> Optional[str]:
+        """
+        等待 page_source 可解析且 hierarchy 中已出现 Soul 包名（不依赖底部导航等锚点）。
+        若当前为桌面或其它应用，会间歇调用 switch_to_app 直至超时。
+        """
         deadline = time.time() + max_wait_s
         last_error = None
+        soul_pkg = self._soul_package_name()
 
         while time.time() < deadline:
             try:
                 src = self.handler.driver.page_source
                 if not src:
+                    self.handler.switch_to_app()
                     time.sleep(interval_s)
                     continue
 
-                if not self._is_soul_page_source_ready(src):
+                pkgs = self._packages_from_page_source(src)
+                if pkgs is None:
+                    last_error = "XMLSyntaxError"
                     time.sleep(interval_s)
                     continue
 
-                # 确保 XML 可解析，避免半截源码
-                etree.fromstring(src.encode("utf-8"))
-                return src
+                if soul_pkg in pkgs:
+                    return src
+
+                launchers = set(self._launcher_packages())
+                if pkgs & launchers:
+                    self.logger.debug(
+                        "PageSource foreground is not Soul (launcher detected); switching to Soul app"
+                    )
+                self.handler.switch_to_app()
+                time.sleep(interval_s)
             except etree.XMLSyntaxError as e:
                 last_error = e
                 time.sleep(interval_s)

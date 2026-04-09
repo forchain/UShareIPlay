@@ -18,3 +18,6 @@ appium:
 # Soul App 派对 ID（开发环境使用测试派对）
 soul:
   default_party_id: "FM00000000"   # 替换为你的测试派对 ID
+  # 可选：本机桌面/启动器包名（用于事件循环判定是否回到 Soul）
+  # launcher_packages:
+  #   - "com.miui.home"

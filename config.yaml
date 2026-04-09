@@ -2,6 +2,9 @@ soul:
 #  owner_username: "Chainer"
   owner_username: "Joyer"
   package_name: "cn.soulapp.android"
+  # 用于判定「当前不在 Soul 前台」时尝试切回（可与 config.local.yaml 追加厂商桌面包名）
+  launcher_packages:
+    - "com.sec.android.app.launcher"
   chat_activity: ".component.startup.main.MainActivity"
 #  default_party_id: "FM18633292"
   default_party_id: "FM15321640"
@@ -63,6 +66,7 @@ soul:
     party_search_entry: "cn.soulapp.android:id/roomCard"
     content_container: "android:id/content"
     reminder_ok: "cn.soulapp.android:id/tvOk"
+    party_name_violation_later: "cn.soulapp.android:id/tvLater" # 派对名违规等弹窗「稍后再说」
     party_back: "cn.soulapp.android:id/tv_look"
     expand_seats: "cn.soulapp.android:id/tvHandleUserList" # 收起座位/展开座位
     collapse_seats: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvHandleUserList" and @text="收起座位"]'
