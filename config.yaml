@@ -159,6 +159,7 @@ soul:
     create_room_entry: "cn.soulapp.android:id/btnCreateRoom" # 推荐>创建派对
     profile_back: '//android.widget.ImageView[@content-desc="返回"]' # 个人主页>返回
     close_notice_1: "cn.soulapp.android:id/iv_close_bottom" # 关注成功
+    close_gift: "cn.soulapp.android:id/iv_close" # 我送给 TA > X
     go_back_2: "cn.soulapp.android:id/leftImage" # 群聊返回
     party_ended: '//android.widget.TextView[@text="派对已关闭"]/../android.view.View/android.widget.TextView' # 派对已关闭 > X
     confirm_close_1: '//android.widget.ImageView[@resource-id="cn.soulapp.android:id/img_close"]' # 我知道了
