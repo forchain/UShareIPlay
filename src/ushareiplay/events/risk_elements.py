@@ -26,7 +26,7 @@ __elements__ = [
     'party_back',
     'reload_more',
     'go_back',
-    'close_notice_1',
+    'close_gift',
     'close_more_menu'
 ]
 
