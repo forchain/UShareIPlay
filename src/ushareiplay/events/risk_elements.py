@@ -27,6 +27,7 @@ __elements__ = [
     'reload_more',
     'go_back',
     'close_gift',
+    'confirm_close',
     'close_more_menu'
 ]
 
