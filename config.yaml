@@ -354,6 +354,10 @@ commands:
     level: 9
     response_template: "{action} {user} as administrator"
     error_template: "{error}"
+  - prefix: "alias"
+    level: 9
+    response_template: "{message}"
+    error_template: "别名绑定失败: {error}"
   - prefix: "info"
     level: 0
     response_template: "{current_playlist}\n{online_users}\n{party_duration}"

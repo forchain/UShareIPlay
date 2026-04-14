@@ -78,11 +78,14 @@ class InfoManager(Singleton):
             users: 在线用户名列表
         """
         try:
+            prev_users_set = self._online_users
             new_users_set = set(users)
 
             # Detect users who left (were in old set but not in new set)
-            if self._online_users:  # Only check if we have previous data
-                users_who_left = self._online_users - new_users_set
+            users_who_left = set()
+            users_who_entered = set()
+            if prev_users_set:  # Only check if we have previous data
+                users_who_left = prev_users_set - new_users_set
 
                 if users_who_left:
                     for username in users_who_left:
@@ -91,7 +94,7 @@ class InfoManager(Singleton):
                         self._notify_user_leave(username)
 
                 # Detect users who entered (are in new set but not in old set)
-                users_who_entered = new_users_set - self._online_users
+                users_who_entered = new_users_set - prev_users_set
 
                 if users_who_entered:
                     for username in users_who_entered:

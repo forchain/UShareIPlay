@@ -1,6 +1,7 @@
 from typing import Optional, List
 from datetime import datetime, timedelta
 from ushareiplay.models import SeatReservation, User
+from ushareiplay.dal.user_dao import UserDAO
 import logging
 
 class SeatReservationDAO:
@@ -18,7 +19,8 @@ class SeatReservationDAO:
     @staticmethod
     async def get_reservation_by_user_name(user_name: str) -> Optional[SeatReservation]:
         """Get the latest reservation for a user"""
-        return await SeatReservation.filter(user__username=user_name).prefetch_related('user').order_by('-created_at').first()
+        effective_user = await UserDAO.get_or_create(user_name)
+        return await SeatReservation.filter(user__id=effective_user.id).prefetch_related('user').order_by('-created_at').first()
 
     @staticmethod
     async def get_reservation_by_user_id(user_id: int) -> Optional[SeatReservation]:
