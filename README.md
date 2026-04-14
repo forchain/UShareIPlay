@@ -65,6 +65,7 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 | Command | Level | Params | Description |
 |---|---|---|---|
 | `:admin` | 9 | `1/0 <user>` | Grant / revoke admin |
+| `:alias` | 9 | `"<alias>" "<canonical>"` | Bind an alias username to a canonical user (keeps ID-bound configs working across renames) |
 | `:say` | 1 | `<message>` | Post message to chat |
 | `:keyword` | 1 | `add/del/list <trigger> [resp]` | Keyword auto-reply |
 | `:enter` | 1 | `<user> <message>` | Custom enter message |

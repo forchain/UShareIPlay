@@ -20,7 +20,8 @@ class EnterDao:
         Returns:
             List[EnterEvent]: List of enter commands ordered by id
         """
-        return await EnterEvent.filter(user__username=username).order_by('id').prefetch_related('user')
+        effective_user = await UserDAO.get_or_create(username=username)
+        return await EnterEvent.filter(user__id=effective_user.id).order_by('id').prefetch_related('user')
 
     @staticmethod
     async def get_by_id(command_id: int) -> Optional[EnterEvent]:
@@ -45,5 +46,6 @@ class EnterDao:
         Returns:
             int: Number of commands deleted
         """
-        deleted_count = await EnterEvent.filter(user__username=username).delete()
+        effective_user = await UserDAO.get_or_create(username=username)
+        deleted_count = await EnterEvent.filter(user__id=effective_user.id).delete()
         return deleted_count

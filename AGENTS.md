@@ -43,3 +43,23 @@ No linter configuration (flake8/pylint/ruff) is committed. Use `python -m py_com
 - `config.yaml` is 26k+ lines. Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
 - All managers use the Singleton pattern via `Singleton` metaclass — always call `.instance()`, never construct directly.
 - The project has no `pyproject.toml` or `setup.py` — it's not an installable package. Imports use `src.` prefix from the workspace root.
+
+### GitHub / PR account switching
+
+When creating or editing pull requests with `gh`, the correct GitHub account depends on the repository remote URL.
+
+- **Rule**: Read `remote.origin.url` and extract the username before `@github.com` (e.g. `https://forchain@github.com/forchain/UShareIPlay` → `forchain`). Temporarily switch `gh` to that account for PR operations, then switch back.
+
+Example:
+
+```bash
+git config --get remote.origin.url
+gh auth status -h github.com
+gh auth switch -h github.com -u <remote-username>
+
+# PR operations (create/edit/view)
+gh pr create ...
+
+# Switch back (pick whatever was active before)
+gh auth switch -h github.com -u <previous-active-username>
+```

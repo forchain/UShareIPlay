@@ -1,6 +1,7 @@
 from typing import Optional, List
 from ushareiplay.models.keyword import Keyword
 from ushareiplay.models.user import User
+from ushareiplay.dal.user_dao import UserDAO
 
 
 class KeywordDAO:
@@ -37,7 +38,9 @@ class KeywordDAO:
             return None
         
         # Check if user can execute
-        if kw.is_public or (kw.creator and kw.creator.username == username):
+        effective_user = await UserDAO.get_or_create(username)
+        allowed = kw.is_public or (kw.creator and kw.creator_id == effective_user.id)
+        if allowed:
             return kw
         
         return None

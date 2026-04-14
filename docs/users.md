@@ -7,6 +7,16 @@ last-synced: 2026-03-23
 
 User management handles identity, permission levels, automated greetings, keyword-triggered responses, and enter/exit/return event tracking. `UserManager` is the central authority for user levels. `MessageManager` dispatches outbound messages and processes inbound events.
 
+## Canonical identity (username aliases)
+
+Soul UI only exposes a mutable display name (`username`). When a user renames themselves, the system may otherwise create a new `User` row, breaking any configuration bound to the original `users.id` (enter/exit/return events, private keywords, seat reservations, and permission level checks).
+
+To keep ID-bound behavior stable across renames, the DB supports mapping an alias user to a canonical (original) user via `users.canonical_user_id`, and the system resolves alias usernames to their canonical user during normal processing.
+
+**Admin command**:
+
+- `:alias "<alias>" "<canonical>"` (level 9): bind an alias username to a canonical username.
+
 ## Components
 
 | Component | Responsibility |
@@ -56,7 +66,7 @@ Level  Role
 
 | Model | Table | Key Fields |
 |---|---|---|
-| `User` | `users` | `username`, `level`, `created_at` |
+| `User` | `users` | `username`, `level`, `canonical_user_id`, `created_at` |
 | `Keyword` | `keywords` | `trigger`, `response` |
 | `EnterEvent` | `enter_events` | `username`, `timestamp` |
 | `ExitEvent` | `exit_events` | `username`, `timestamp` |

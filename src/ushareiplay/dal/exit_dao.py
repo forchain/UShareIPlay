@@ -20,7 +20,8 @@ class ExitDao:
         Returns:
             List[ExitEvent]: List of exit commands ordered by id
         """
-        return await ExitEvent.filter(user__username=username).order_by('id').prefetch_related('user')
+        effective_user = await UserDAO.get_or_create(username=username)
+        return await ExitEvent.filter(user__id=effective_user.id).order_by('id').prefetch_related('user')
 
     @staticmethod
     async def get_by_id(command_id: int) -> Optional[ExitEvent]:
@@ -45,5 +46,6 @@ class ExitDao:
         Returns:
             int: Number of commands deleted
         """
-        deleted_count = await ExitEvent.filter(user__username=username).delete()
+        effective_user = await UserDAO.get_or_create(username=username)
+        deleted_count = await ExitEvent.filter(user__id=effective_user.id).delete()
         return deleted_count
