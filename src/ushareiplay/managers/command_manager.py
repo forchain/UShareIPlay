@@ -211,8 +211,10 @@ class CommandManager(Singleton):
 
         # Iterate through message info objects
         for message_info in messages:
-            # remove leading :
-            content = message_info.content[1:]
+            # remove leading ':' or '：'
+            if not message_info.content:
+                continue
+            content = message_info.content[1:] if message_info.content[0] in (':', '：') else message_info.content
             if self.is_valid_command(content):
                 command_info = self.parse_command(content)
                 if command_info:

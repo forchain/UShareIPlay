@@ -56,9 +56,9 @@ class ExitCommand(BaseCommand):
                 
                 command = params[1]
                 
-                # Validate command format (should start with :)
-                if not command.startswith(':'):
-                    return {'error': '命令必须以冒号(:)开头，例如 ":play 歌曲名"'}
+                # Validate command format (should start with ':' or '：')
+                if not command.startswith((':', '：')):
+                    return {'error': '命令必须以冒号(:/：)开头，例如 ":play 歌曲名"'}
                 
                 # Add to database using DAO
                 await ExitDao.create(username, command)

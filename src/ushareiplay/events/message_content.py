@@ -229,7 +229,7 @@ class MessageContentEvent(BaseEvent):
                     # 替换占位符
                     part = part.replace('{user_name}', message_info.nickname)
 
-                    if part.startswith(':'):
+                    if part.startswith((':', '：')):
                         cmd_msg = MessageInfo(
                             content=part,
                             nickname=message_info.nickname
