@@ -2,6 +2,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
 
+import re
 import time
 
 
@@ -61,19 +62,27 @@ class FavCommand(BaseCommand):
         confirm = self.handler.wait_for_element_clickable(AppiumBy.XPATH, confirm_xpath, timeout=8)
         if not confirm:
             return {'error': 'Cannot find confirm button: 确定（xxx首）'}
+        confirm_text = (confirm.text or "").strip()
         confirm.click()
         self.handler.logger.info("Clicked confirm button")
 
         # 等待回到收藏列表（UI 动画/数据刷新）
         time.sleep(0.35)
-        return None
+        count = None
+        if confirm_text:
+            m = re.search(r"确定（(\d+)首）", confirm_text)
+            if m:
+                try:
+                    count = int(m.group(1))
+                except Exception:
+                    count = None
+        return {'count': count}
 
     async def process(self, message_info, parameters):
         """处理 fav 命令
         参数:
             无参数: 直接播放所有收藏
-            两个参数及以上(第一个为 0 或 lang, 其余为语言名): 筛选语言后播放
-            两个参数及以上(第一个为 1 或 genre, 其余为流派名): 筛选流派后播放
+            两个参数及以上(第一个为 0 或 type, 其余为分类关键字): 筛选后播放
             两个参数及以上(第一个为 2 或 search, 其余为关键字): 收藏内搜索并播放搜索结果列表
         """
         self.soul_handler.ensure_mic_active()
@@ -95,32 +104,22 @@ class FavCommand(BaseCommand):
         subcmd = str(parameters[0]).lower()
         arg = ' '.join(parameters[1:]).strip()
         if not arg:
-            return {'error': '参数错误，使用方式: :fav 或 :fav 0 语言名 或 :fav 1 流派名 或 :fav 2 关键字'}
+            return {'error': '参数错误，使用方式: :fav 或 :fav type 关键字 或 :fav 2 关键字'}
 
-        if subcmd in ['0', 'lang']:
-            language = arg
-            playing_info = self.play_favorites_by_language(language)
+        if subcmd in ['0', 'type']:
+            keyword = arg
+            playing_info = self.play_favorites_by_type(keyword)
             if 'error' in playing_info:
                 return playing_info
 
             info_manager.player_name = message_info.nickname
-            # 与 play_favorites_by_language 内的 title 规则保持一致
-            playlist_name = language
-            if language == '粤语':
+            # 与 play_favorites_by_type 内的 title 规则保持一致
+            playlist_name = keyword
+            if keyword == '粤语':
                 playlist_name = '粤音'
-            elif language == '英语':
+            elif keyword == '英语':
                 playlist_name = '英乐'
             info_manager.current_playlist_name = playlist_name
-            return playing_info
-
-        if subcmd in ['1', 'genre']:
-            genre = arg
-            playing_info = self.play_favorites_by_genre(genre)
-            if 'error' in playing_info:
-                return playing_info
-
-            info_manager.player_name = message_info.nickname
-            info_manager.current_playlist_name = genre
             return playing_info
 
         if subcmd in ['2', 'search']:
@@ -133,7 +132,7 @@ class FavCommand(BaseCommand):
             info_manager.current_playlist_name = keyword
             return playing_info
 
-        return {'error': f'第一个参数必须是 0/lang 或 1/genre 或 2/search，当前为: {parameters[0]}'}
+        return {'error': f'第一个参数必须是 0/type 或 2/search，当前为: {parameters[0]}'}
 
     def play_favorites_all(self):
         """导航到收藏并播放所有"""
@@ -173,11 +172,11 @@ class FavCommand(BaseCommand):
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
 
-    def play_favorites_by_language(self, language):
-        """导航到收藏，筛选指定语言，然后播放所有
-        
+    def play_favorites_by_type(self, keyword: str):
+        """导航到收藏，按关键字筛选，然后播放所有
+
         参数:
-            language: 要筛选的语言名称，如"粤语"
+            keyword: 筛选关键字，如“国语”“流行”“张国荣”
         """
         if not self.handler.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
@@ -187,9 +186,10 @@ class FavCommand(BaseCommand):
         if err:
             return err
 
-        err = self._apply_favourite_filter_keyword(language)
-        if err:
-            return err
+        filter_result = self._apply_favourite_filter_keyword(keyword)
+        if isinstance(filter_result, dict) and 'error' in filter_result:
+            return filter_result
+        count = filter_result.get('count') if isinstance(filter_result, dict) else None
 
         # Get song info from the first result
         result_item = self.handler.try_find_element_plus('result_item')
@@ -218,67 +218,19 @@ class FavCommand(BaseCommand):
         from ushareiplay.managers.topic_manager import TopicManager
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
-        title = language if language else 'O Station'
-        if language == '粤语':
+        title = keyword if keyword else 'O Station'
+        if keyword == '粤语':
             title = '粤音'
-        elif language == '英语':
+        elif keyword == '英语':
             title = '英乐'
 
         title_manager.set_next_title(title)
         topic_manager.change_topic(song_text)
 
-        return {'song': song_text, 'singer': singer_text, 'album': '', 'language': language}
-
-    def play_favorites_by_genre(self, genre):
-        """导航到收藏，筛选指定流派，然后播放所有
-        
-        参数:
-            genre: 要筛选的流派名称，如"流行"
-        """
-        if not self.handler.switch_to_app():
-            return {'error': 'Cannot switch to qq music'}
-        self.handler.logger.info("Switched to QQ Music app")
-
-        err = self.handler.open_favorites_entry()
-        if err:
-            return err
-
-        err = self._apply_favourite_filter_keyword(genre)
-        if err:
-            return err
-
-        # Get song info from the first result
-        result_item = self.handler.try_find_element_plus('result_item')
-        song_text = None
-        singer_text = None
-        if result_item:
-            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
-            if len(elements) >= 3:
-                song_text = elements[1].text
-                singer_text = elements[2].text
-
-        # Click play all button
-        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
-        if not play_fav:
-            return {'error': 'Cannot find play all button'}
-        play_fav.click()
-        self.handler.logger.info("Clicked play all button")
-
-        # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
-        self.handler.navigate_to_home()
-        self.handler.logger.info("fav 按流派筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
-
-        self.handler.list_mode = 'favorites'
-        # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        title = genre if genre else 'O Station'
-        title_manager.set_next_title(title)
-        topic_manager.change_topic(song_text)
-
-        return {'song': song_text, 'singer': singer_text, 'album': '', 'genre': genre}
+        result = {'song': song_text, 'singer': singer_text, 'album': '', 'type': keyword}
+        if count is not None:
+            result['count'] = count
+        return result
 
     def play_favorites_by_search(self, keyword: str):
         """导航到收藏，显示收藏内搜索框，搜索关键字后播放搜索结果列表
