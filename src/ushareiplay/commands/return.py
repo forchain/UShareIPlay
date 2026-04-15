@@ -56,8 +56,8 @@ class ReturnCommand(BaseCommand):
                     return {'error': '缺少命令内容。使用: :return add "命令内容"'}
 
                 cmd_text = params[1]
-                if not cmd_text.startswith(':'):
-                    return {'error': '命令必须以冒号(:)开头，例如 ":play 歌曲名"'}
+                if not cmd_text.startswith((':', '：')):
+                    return {'error': '命令必须以冒号(:/：)开头，例如 ":play 歌曲名"'}
 
                 await ReturnDao.create(username, cmd_text)
                 return {'message': f'已添加返回命令: {cmd_text}'}

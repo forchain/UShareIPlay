@@ -7,7 +7,8 @@ class CommandParser:
         """Check if message starts with any valid prefix"""
         if not message:
             return False
-        return any(message.startswith(cmd['prefix']) for cmd in self.commands)
+        msg = message.lower()
+        return any(msg.startswith(str(cmd.get('prefix', '')).lower()) for cmd in self.commands)
 
     def parse_command(self, message):
         """Parse command and get the music query"""
@@ -19,13 +20,13 @@ class CommandParser:
         if not parts:
             return None
 
-        command = parts[0]
+        command = parts[0].lower()
         parameters = parts[1:]  # All elements after the command
 
         # Find matching command config
         matching_cmd = None
         for cmd in self.commands:
-            if command == cmd['prefix']:
+            if command == str(cmd.get('prefix', '')).lower():
                 matching_cmd = cmd
                 break
 
