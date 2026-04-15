@@ -2,6 +2,8 @@ from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
 
+import time
+
 
 def create_command(controller):
     fav_command = FavCommand(controller)
@@ -16,6 +18,55 @@ class FavCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
         self.handler = controller.music_handler
+
+    def _xpath_textview_text_equals(self, text_value: str) -> str:
+        """
+        Build an XPath for android.widget.TextView[@text=...], safe for quotes.
+        """
+        if '"' not in text_value:
+            return f'//android.widget.TextView[@text="{text_value}"]'
+        if "'" not in text_value:
+            return f"//android.widget.TextView[@text='{text_value}']"
+        # Fallback: concat with double quotes split (rare in our use)
+        parts = text_value.split('"')
+        concat_parts = []
+        for idx, part in enumerate(parts):
+            if part:
+                concat_parts.append(f'"{part}"')
+            if idx != len(parts) - 1:
+                concat_parts.append("'\"'")
+        return f"//android.widget.TextView[@text=concat({', '.join(concat_parts)})]"
+
+    def _apply_favourite_filter_keyword(self, keyword: str):
+        """
+        新版“筛选歌曲”页：同页展示歌手/语种/流派。
+        流程：点筛选 -> 点选关键字(TextView[@text]) -> 点“确定（xxx首）”
+        """
+        filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
+        if not filter_favourite:
+            return {'error': 'Cannot find filter button'}
+        filter_favourite.click()
+        self.handler.logger.info("Clicked filter button")
+
+        option_xpath = self._xpath_textview_text_equals(keyword)
+        option = self.handler.wait_for_element_clickable(AppiumBy.XPATH, option_xpath, timeout=8)
+        if not option:
+            return {'error': f'找不到筛选项: {keyword}'}
+        option.click()
+        self.handler.logger.info(f"Clicked filter option: {keyword}")
+
+        # 等待“确定（xxx首）”按钮出现/更新
+        time.sleep(0.25)
+        confirm_xpath = '//android.widget.TextView[starts-with(@text,"确定（") and contains(@text,"首）")]'
+        confirm = self.handler.wait_for_element_clickable(AppiumBy.XPATH, confirm_xpath, timeout=8)
+        if not confirm:
+            return {'error': 'Cannot find confirm button: 确定（xxx首）'}
+        confirm.click()
+        self.handler.logger.info("Clicked confirm button")
+
+        # 等待回到收藏列表（UI 动画/数据刷新）
+        time.sleep(0.35)
+        return None
 
     async def process(self, message_info, parameters):
         """处理 fav 命令
@@ -136,35 +187,9 @@ class FavCommand(BaseCommand):
         if err:
             return err
 
-        # Click on filter button
-        filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
-        if not filter_favourite:
-            return {'error': 'Cannot find filter button'}
-        filter_favourite.click()
-        self.handler.logger.info("Clicked filter button")
-
-        # Scroll container to find the language button
-        key, element, found_languages = self.handler.scroll_container_until_element(
-            'favourite_option',  # element_key
-            'favourite_languages',  # container_key
-            'left',  # direction: 向左滑动
-            'text',  # attribute_name
-            language,  # attribute_value: 用户指定的语言，如"粤语"
-            max_swipes=10
-        )
-
-        if not element:
-            # 返回找到的所有语言供用户参考
-            languages_str = ', '.join(found_languages) if found_languages else '无'
-            return {'error': f'找不到语言: {language}。可用语言: {languages_str}'}
-
-        # Click the language button
-        element.click()
-        self.handler.logger.info(f"Clicked language button: {language}")
-
-        # Wait a moment for the filter to take effect
-        import time
-        time.sleep(0.5)
+        err = self._apply_favourite_filter_keyword(language)
+        if err:
+            return err
 
         # Get song info from the first result
         result_item = self.handler.try_find_element_plus('result_item')
@@ -218,35 +243,9 @@ class FavCommand(BaseCommand):
         if err:
             return err
 
-        # Click on filter button
-        filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
-        if not filter_favourite:
-            return {'error': 'Cannot find filter button'}
-        filter_favourite.click()
-        self.handler.logger.info("Clicked filter button")
-
-        # Scroll container to find the genre button
-        key, element, found_genres = self.handler.scroll_container_until_element(
-            'favourite_option',  # element_key
-            'favourite_genres',  # container_key
-            'left',  # direction: 向左滑动
-            'text',  # attribute_name
-            genre,  # attribute_value: 用户指定的流派，如"流行"
-            max_swipes=10
-        )
-
-        if not element:
-            # 返回找到的所有流派供用户参考
-            genres_str = ', '.join(found_genres) if found_genres else '无'
-            return {'error': f'找不到流派: {genre}。可用流派: {genres_str}'}
-
-        # Click the genre button
-        element.click()
-        self.handler.logger.info(f"Clicked genre button: {genre}")
-
-        # Wait a moment for the filter to take effect
-        import time
-        time.sleep(0.5)
+        err = self._apply_favourite_filter_keyword(genre)
+        if err:
+            return err
 
         # Get song info from the first result
         result_item = self.handler.try_find_element_plus('result_item')
