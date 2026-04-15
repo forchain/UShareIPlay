@@ -191,9 +191,6 @@ qq_music:
     current_singer: "android:id/text"
     playing_favourite: '//android.widget.Button[contains(@content-desc, "收藏")]'
     filter_favourite: '//android.widget.ImageView[@content-desc="筛选"]'
-    favourite_languages: '//android.widget.TextView[@text="语种"]/../androidx.recyclerview.widget.RecyclerView'
-    favourite_option: '//android.widget.TextView'
-    favourite_genres: '//android.widget.TextView[@text="流派"]/../androidx.recyclerview.widget.RecyclerView'
     play_favourite_search: '//android.widget.LinearLayout/android.widget.TextView[@text="全部播放"]'
     favourite_search: '//android.widget.EditText[@resource-id="com.tencent.qqmusic:id/searchItem" and @text="搜索我收藏的歌曲"]'
     playing_bar: '//android.widget.ImageView[@content-desc="歌曲队列"]/..'
