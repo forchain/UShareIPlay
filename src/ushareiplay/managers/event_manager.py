@@ -39,7 +39,10 @@ class EventManager(Singleton):
         self._consecutive_unknown_pages = 0
 
     # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
-    _PRIORITY_EVENT_KEYS: Tuple[str, ...] = ("party_name_violation_later",)
+    _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
+        "accidental_touch_locker",
+        "party_name_violation_later",
+    )
 
     @property
     def handler(self):

@@ -68,6 +68,8 @@ soul:
     content_container: "android:id/content"
     reminder_ok: "cn.soulapp.android:id/tvOk"
     party_name_violation_later: "cn.soulapp.android:id/tvLater" # 派对名违规等弹窗「稍后再说」
+    # Samsung OneUI 等：系统「防误触 / Accidental touch protection」全屏遮罩，需拖动锁图标解除
+    accidental_touch_locker: "com.android.systemui:id/locker_img_view"
     party_back: "cn.soulapp.android:id/tv_look"
     expand_seats: "cn.soulapp.android:id/tvHandleUserList" # 收起座位/展开座位
     collapse_seats: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvHandleUserList" and @text="收起座位"]'
