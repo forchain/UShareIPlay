@@ -78,4 +78,30 @@ class UserDAO:
         if user and user.level < target_level:
             user.level = target_level
             await user.save()
-        return user 
+        return user
+
+    @staticmethod
+    async def get_all_avatar_usernames(username: str) -> set:
+        """
+        获取某个用户（可以是别名或主账号）所有分身的 username 集合，
+        包含主账号自身。
+
+        用于分身退出事件聚合：只有当集合中的所有账号都离线时，
+        才真正触发退出事件。
+
+        Args:
+            username: 任意分身或主账号的昵称
+        Returns:
+            主账号 + 所有别名的 username set
+        """
+        raw_user = await UserDAO.get_or_create_raw(username)
+        canonical = await UserDAO.resolve_canonical(raw_user)
+
+        # 查出所有指向该主账号的别名
+        aliases = await User.filter(canonical_user_id=canonical.id).values_list(
+            "username", flat=True
+        )
+
+        result = set(aliases)
+        result.add(canonical.username)  # 主账号本身也加进来
+        return result
