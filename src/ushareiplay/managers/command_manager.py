@@ -247,17 +247,47 @@ class CommandManager(Singleton):
 
     async def notify_user_leave(self, username: str):
         """
-        Notify all commands when a user leaves
-        
+        Notify all commands when a user leaves.
+        For avatar users (with canonical mapping), only triggers when ALL aliases
+        of the same canonical user are offline.
+
         Args:
             username: Username of the user who left
         """
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_leave'):
-                    await module.command.user_leave(username)
-            except Exception:
-                self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            from ushareiplay.managers.info_manager import InfoManager
+
+            all_avatars = await UserDAO.get_all_avatar_usernames(username)
+            online_users = InfoManager.instance().get_online_users()
+            still_online = all_avatars & online_users
+
+            if still_online:
+                self.logger.info(
+                    f"User leave skipped for '{username}': "
+                    f"avatars still online: {still_online}"
+                )
+                return
+
+            # 以主账号 canonical username 触发退出事件
+            raw_user = await UserDAO.get_or_create_raw(username)
+            canonical_user = await UserDAO.resolve_canonical(raw_user)
+            canonical_username = canonical_user.username
+
+            self.logger.info(
+                f"All avatars offline for '{username}' → triggering user_leave "
+                f"as canonical '{canonical_username}'"
+            )
+
+            for module in self.get_command_modules().values():
+                try:
+                    if hasattr(module.command, 'user_leave'):
+                        await module.command.user_leave(canonical_username)
+                except Exception:
+                    self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
+
+        except Exception:
+            self.logger.error(f"Error in notify_user_leave: {traceback.format_exc()}")
 
     async def notify_user_enter(self, username: str):
         """
