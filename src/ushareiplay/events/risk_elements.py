@@ -28,7 +28,8 @@ __elements__ = [
     'go_back',
     'close_gift',
     'confirm_close',
-    'close_more_menu'
+    'close_more_menu',
+    'left_top_close',
 ]
 
 from ushareiplay.core.base_event import BaseEvent
