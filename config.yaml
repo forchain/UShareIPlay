@@ -172,6 +172,7 @@ soul:
     confirm_close_5: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/btn_sure"]'
     confirm_close_6: "cn.soulapp.android:id/tv_cancel"
     confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
+    left_top_close: "cn.soulapp.android:id/leftTopCloseImage"
     bottom_drawer_1: "cn.soulapp.android:id/tslLayout" # 底部抽屉
     bag_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvTab" and @text="背包"]' # 背包
     home_nav: "cn.soulapp.android:id/main_tab_planet" #  星球
