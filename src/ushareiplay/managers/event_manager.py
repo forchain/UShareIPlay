@@ -42,6 +42,8 @@ class EventManager(Singleton):
     _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
         "accidental_touch_locker",
         "party_name_violation_later",
+        # 发帖退出底部菜单与 left_top_close 同时存在时须先点「不保存」，否则会反复点关闭
+        "post_draft_dont_save",
     )
 
     @property

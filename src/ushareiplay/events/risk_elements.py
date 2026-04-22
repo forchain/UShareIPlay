@@ -8,6 +8,8 @@
 - collapse_seats: 收起座位
 
 当检测到这些元素时，自动点击处理，避免界面不稳定。
+
+- post_draft_dont_save: 发帖退出菜单「不保存」（ESC 无效时避免反复点关闭死循环）
 """
 
 __event__ = "RiskElementsEvent"
@@ -30,6 +32,7 @@ __elements__ = [
     'confirm_close',
     'close_more_menu',
     'left_top_close',
+    'post_draft_dont_save',
 ]
 
 from ushareiplay.core.base_event import BaseEvent
