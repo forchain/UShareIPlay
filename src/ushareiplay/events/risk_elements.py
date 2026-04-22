@@ -25,6 +25,7 @@ __elements__ = [
     'party_ended',
     'confirm_close_3',
     'close_widget',
+    'close_btn',
     'party_back',
     'reload_more',
     'go_back',
