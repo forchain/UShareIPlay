@@ -173,6 +173,8 @@ soul:
     confirm_close_6: "cn.soulapp.android:id/tv_cancel"
     confirm_close_7: '//android.widget.TextView[@text="暂不需要"]'
     left_top_close: "cn.soulapp.android:id/leftTopCloseImage"
+    # 发帖/动态页点左上角关闭后底部菜单（ESC 无法关闭）；需点此项避免与 left_top_close 循环
+    post_draft_dont_save: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/title" and @text="不保存"]'
     bottom_drawer_1: "cn.soulapp.android:id/tslLayout" # 底部抽屉
     bag_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvTab" and @text="背包"]' # 背包
     home_nav: "cn.soulapp.android:id/main_tab_planet" #  星球
