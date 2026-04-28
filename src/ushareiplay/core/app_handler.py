@@ -683,8 +683,10 @@ class AppHandler:
         # 收集所有找到的元素的 attribute 值列表
         attribute_values_list = []
         try:
-            # 获取容器
+            # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
             container = self.wait_for_element_clickable_plus(container_key)
+            if not container:
+                container = self.wait_for_element_plus(container_key)
             if not container:
                 self.logger.warning(
                     f"scroll_container_until_element: 容器未找到: {container_key}"
