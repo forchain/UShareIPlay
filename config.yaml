@@ -262,6 +262,9 @@ qq_music:
     search_shortcuts: '//android.widget.TextView[@text="歌手"]/../..'
     healing_shortcut: '//android.widget.TextView[@text="助眠解压"]'
     healing_nav: '//android.widget.TextView[@text="疗愈"]'
+    # QQ 音乐首页顶部分栏横滑容器与子项（睡眠频道 :radio sleep 用 scroll_container_until_element）
+    home_tab_strip: '//android.widget.RelativeLayout[@resource-id="com.tencent.qqmusic:id/tab_item"]/..'
+    home_tab_label: '//android.widget.RelativeLayout[@resource-id="com.tencent.qqmusic:id/tab_item"]/android.widget.TextView'
     healing_tab: '//android.widget.LinearLayout/android.view.ViewGroup/android.widget.ImageView'
     play_healing: '//android.widget.TextView[@text="疗愈"]/../android.widget.ImageView'
 
