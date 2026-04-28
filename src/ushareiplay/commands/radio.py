@@ -1,6 +1,7 @@
 from typing import Optional
 
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.title_manager import TitleManager
@@ -113,6 +114,10 @@ class RadioCommand(BaseCommand):
         guess_title_text = guess_title.text
         guess_topic_text = self._extract_primary_topic(guess_topic.text)
         guess_title.click()
+        playlist_info = self.music_handler.get_playlist_info()
+        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return self._report_error(error)
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -124,7 +129,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = guess_title_text
-        return {"playlist": guess_title_text}
+        return {"playlist": playlist_text}
 
     def _handle_daily_30(self, message_info):
         error = self._navigate_home()
@@ -146,12 +151,9 @@ class RadioCommand(BaseCommand):
         # Fallback to the UI-provided daily_topic_text if queue parsing fails.
         topic_text = daily_topic_text
         playlist_info = self.music_handler.get_playlist_info()
-        if isinstance(playlist_info, dict) and "error" not in playlist_info:
-            playlist_text = (playlist_info.get("playlist") or "").strip()
-            if playlist_text:
-                first_line = playlist_text.splitlines()[0].strip()
-                if first_line:
-                    topic_text = first_line.split(" - ")[0].strip() or topic_text
+        playlist_text, first_line, error = get_playlist_text_and_first_song(playlist_info)
+        if not error and first_line:
+            topic_text = first_line.split(" - ")[0].strip() or topic_text
 
         error = self._switch_back_to_soul()
         if error:
@@ -164,7 +166,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = daily_title_text
-        return {"playlist": daily_title_text}
+        return {"playlist": playlist_text or daily_title_text}
 
     def _handle_collection(self, message_info):
         error = self._navigate_home()
@@ -203,6 +205,10 @@ class RadioCommand(BaseCommand):
 
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
+        playlist_info = self.music_handler.get_playlist_info()
+        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return self._report_error(error)
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -214,7 +220,7 @@ class RadioCommand(BaseCommand):
         # 设置歌单类型和名称
         self.music_handler.list_mode = 'radio'
         self.info_manager.current_playlist_name = collection_title_text
-        return {"playlist": collection_title_text}
+        return {"playlist": playlist_text}
 
     def _handle_sleep_healing(self, message_info):
         error = self._navigate_home()
@@ -240,12 +246,9 @@ class RadioCommand(BaseCommand):
             return self._report_error("Failed to find healing play button")
         play_healing.click()
         playlist_info = self.music_handler.get_playlist_info()
-        if "error" in playlist_info:
-            return self._report_error(playlist_info["error"])
-        playlist_text = playlist_info.get("playlist", "").strip()
-        if not playlist_text:
-            return self._report_error("Playlist content is empty")
-        first_song = playlist_text.splitlines()[0] if playlist_text else ""
+        playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return self._report_error(error)
         if not self.music_handler.navigate_to_home():
             return self._report_error("Failed to navigate to home")
         error = self._switch_back_to_soul()
@@ -284,6 +287,10 @@ class RadioCommand(BaseCommand):
 
         song_text = radar_song.text
         singer_text = radar_singer.text
+        playlist_info = self.music_handler.get_playlist_info()
+        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return self._report_error(error)
 
         # 切换回 Soul
         error = self._switch_back_to_soul()
@@ -302,7 +309,7 @@ class RadioCommand(BaseCommand):
         self.info_manager.current_playlist_name = "O Radio"
 
         return {
-            "playlist": 'O Radio',
+            "playlist": playlist_text,
             "song": song_text,
             "singer": singer_text,
             "album": ""
