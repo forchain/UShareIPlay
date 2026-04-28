@@ -1,6 +1,7 @@
 import traceback
 
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
 
 def create_command(controller):
@@ -138,22 +139,13 @@ class SingerCommand(BaseCommand):
 
         # Get playlist info from UI instead of ADB
         playing_info = self.handler.get_playlist_info()
-        if "error" in playing_info:
-            self.handler.logger.error(
-                f"Failed to get playlist info: {playing_info['error']}"
-            )
-            return playing_info
+        playlist_text, first_song, error = get_playlist_text_and_first_song(playing_info)
+        if error:
+            self.handler.logger.error(f"Failed to get playlist info: {error}")
+            return {"error": error}
 
-        # Extract first song from playlist as topic
-        playlist_text = playing_info.get("playlist", "")
-        if playlist_text:
-            first_song = playlist_text.split("-")[0].strip()
-            topic = first_song if first_song else singer_name
-        else:
-            topic = singer_name
-
-        # Format playlist with singer name
-        formatted_playlist = f"{singer_name}"
+        first_song_title = first_song.split(" - ")[0].strip() if first_song else ""
+        topic = first_song_title or singer_name
 
         self.handler.list_mode = "singer"
 
@@ -171,6 +163,4 @@ class SingerCommand(BaseCommand):
         info_manager = InfoManager.instance()
         info_manager.current_playlist_name = singer_name
 
-        return {
-            "singer": formatted_playlist,
-        }
+        return {"playlist": playlist_text}

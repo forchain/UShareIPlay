@@ -1,6 +1,7 @@
 from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
 import re
 import time
@@ -157,6 +158,11 @@ class FavCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        playlist_info = self.handler.get_playlist_info()
+        playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return {'error': error}
+
         # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
         self.handler.navigate_to_home()
         self.handler.logger.info("fav 播放全部收藏后已回到 QQ 音乐首页，准备设置标题和话题")
@@ -168,9 +174,9 @@ class FavCommand(BaseCommand):
         title_manager = TitleManager.instance()
         topic_manager = TopicManager.instance()
         title_manager.set_next_title("O Station")
-        topic_manager.change_topic(song_text)
+        topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
-        return {'song': song_text, 'singer': singer_text, 'album': ''}
+        return {'playlist': playlist_text}
 
     def play_favorites_by_type(self, keyword: str):
         """导航到收藏，按关键字筛选，然后播放所有
@@ -208,6 +214,11 @@ class FavCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
+        playlist_info = self.handler.get_playlist_info()
+        playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return {'error': error}
+
         # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
         self.handler.navigate_to_home()
         self.handler.logger.info("fav 按语言筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
@@ -225,9 +236,9 @@ class FavCommand(BaseCommand):
             title = '英乐'
 
         title_manager.set_next_title(title)
-        topic_manager.change_topic(song_text)
+        topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
-        result = {'song': song_text, 'singer': singer_text, 'album': '', 'type': keyword}
+        result = {'playlist': playlist_text, 'type': keyword}
         if count is not None:
             result['count'] = count
         return result
@@ -289,17 +300,11 @@ class FavCommand(BaseCommand):
 
         # 播放后，从“正在播放”列表中获取完整歌单
         playlist_info = self.handler.get_playlist_info()
-        if 'error' in playlist_info:
-            return playlist_info
+        playlist_text, first_line, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return {'error': error}
 
-        playlist_text = playlist_info.get('playlist', '').strip()
-        if not playlist_text:
-            return {'error': 'Playlist content is empty'}
-
-        # 第一行作为“第一首歌”的描述（形如 歌曲名+歌手）
-        first_line = playlist_text.splitlines()[0].strip()
-        parts = first_line.split('-')
-        first_song = parts[0].strip() if len(parts) > 1 else first_line
+        first_song = (first_line or "").split(' - ')[0].strip() if first_line else keyword
 
         # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
         self.handler.navigate_to_home()
@@ -323,10 +328,7 @@ class FavCommand(BaseCommand):
         # 返回整个歌单文本，供上层在 Soul 中广播
         # 同时补充 song/singer 字段，以兼容默认的 response_template
         return {
-            'playlist': keyword,
+            'playlist': playlist_text,
             'first_song': first_song,
             'keyword': keyword,
-            'song': first_song,
-            'singer': '',
-            'album': '',
         }

@@ -1,6 +1,7 @@
 import traceback
 
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
 
 def create_command(controller):
@@ -120,6 +121,12 @@ class AlbumCommand(BaseCommand):
 
         play_button.click()
         self.handler.logger.info("play button clicked")
+
+        playlist_info = self.handler.get_playlist_info()
+        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return {'error': error}
+
         self.handler.press_back()
 
         self.handler.list_mode = 'album'
@@ -140,5 +147,5 @@ class AlbumCommand(BaseCommand):
         info_manager.current_playlist_name = f"{title} - {topic}"
 
         return {
-            'album': topic
+            'playlist': playlist_text
         }
