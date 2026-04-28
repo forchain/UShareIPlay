@@ -3,6 +3,7 @@ import traceback
 from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.playlist_parser import PlaylistParser
 
 
@@ -146,6 +147,11 @@ class PlaylistCommand(BaseCommand):
         play_button.click()
         self.handler.logger.info("Selected play all button")
 
+        playlist_info = self.handler.get_playlist_info()
+        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        if error:
+            return {'error': error}
+
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ushareiplay.managers.title_manager import TitleManager
         from ushareiplay.managers.topic_manager import TopicManager
@@ -161,5 +167,5 @@ class PlaylistCommand(BaseCommand):
         info_manager.current_playlist_name = original_playlist_name
 
         return {
-            'playlist': original_playlist_name,
+            'playlist': playlist_text,
         }
