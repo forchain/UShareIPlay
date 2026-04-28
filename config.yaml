@@ -280,7 +280,7 @@ commands:
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 1
-    response_template: "{song} - {singer}"
+    response_template: "{playlist}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 1
@@ -370,7 +370,7 @@ commands:
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
-    response_template: "{singer}"
+    response_template: "{playlist}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
@@ -394,7 +394,7 @@ commands:
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
     level: 2
-    response_template: "<{album}>"
+    response_template: "{playlist}"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
     level: 1
