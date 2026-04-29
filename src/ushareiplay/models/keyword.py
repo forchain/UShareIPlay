@@ -12,6 +12,7 @@ class Keyword(Model):
     mode = fields.CharField(max_length=32, default=MODE_SEQUENCE)  # sequence=顺序执行，random=随机执行一条
     creator = fields.ForeignKeyField('models.User', related_name='keywords', null=True)
     is_public = fields.BooleanField(default=True)  # True=所有人可执行，False=仅创建者
+    allowed_user_ids = fields.TextField(default="[]")  # JSON array of canonical user ids allowed to execute private keywords
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 
