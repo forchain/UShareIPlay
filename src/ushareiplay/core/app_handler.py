@@ -984,21 +984,7 @@ class AppHandler:
 
             # 根据找到的元素类型执行相应操作
             if found_key == target_key:
-                # 二次确认 1：即使已命中目标，也先检查是否仍有返回键可退栈
-                back_key, back_element = self.try_find_any_element_plus(back_keys)
-                if back_element:
-                    if self.click_element_at(back_element):
-                        self.logger.info(
-                            f"命中目标 {target_key} 后发现返回键 {back_key}，先点击返回后重试确认"
-                        )
-                    else:
-                        self.logger.warning(
-                            f"命中目标 {target_key} 后点击返回键失败: {back_key}，改用系统返回键"
-                        )
-                        self.press_back()
-                    continue
-
-                # 二次确认 2：再检查是否出现干扰元素；出现则按系统返回键关闭
+                # 命中目标后仅做干扰元素复核（无等待），避免误判后直接返回
                 interference_key, interference_element = self.try_find_any_element_plus(interference_keys)
                 if interference_element:
                     self.logger.info(
