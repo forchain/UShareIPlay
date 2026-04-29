@@ -1,5 +1,6 @@
 import traceback
 import yaml
+import random
 from pathlib import Path
 from typing import Optional
 from ushareiplay.core.singleton import Singleton
@@ -19,6 +20,26 @@ class KeywordManager(Singleton):
         self._logger = None
         self._config = None
         self._default_keyword_command = None
+        self._mode_aliases = {
+            'sequence': Keyword.MODE_SEQUENCE,
+            'sequential': Keyword.MODE_SEQUENCE,
+            'ordered': Keyword.MODE_SEQUENCE,
+            'random': Keyword.MODE_RANDOM,
+        }
+
+    def _normalize_mode(self, mode: Optional[str]) -> str:
+        raw = (mode or Keyword.MODE_SEQUENCE).strip().lower()
+        return self._mode_aliases.get(raw, Keyword.MODE_SEQUENCE)
+
+    def _pick_command_by_mode(self, command_text: str, mode: Optional[str]) -> str:
+        normalized_mode = self._normalize_mode(mode)
+        if normalized_mode != Keyword.MODE_RANDOM:
+            return command_text
+
+        command_candidates = [part.strip() for part in command_text.split(';') if part.strip()]
+        if not command_candidates:
+            return command_text
+        return random.choice(command_candidates)
 
     @property
     def handler(self):
@@ -77,6 +98,7 @@ class KeywordManager(Singleton):
                 keyword_text = kw_config.get('keyword', '')
                 command = kw_config.get('command', '')
                 is_public = kw_config.get('is_public', True)
+                mode = self._normalize_mode(kw_config.get('mode'))
                 
                 if not keyword_text or not command:
                     continue
@@ -89,7 +111,8 @@ class KeywordManager(Singleton):
                         keyword=kw,
                         command=command,
                         creator_id=None,  # 配置关键字 creator_id 为 None
-                        is_public=is_public
+                        is_public=is_public,
+                        mode=mode
                     )
                     loaded_count += 1
             
@@ -119,8 +142,8 @@ class KeywordManager(Singleton):
             self.logger.error(f"Error finding keyword: {traceback.format_exc()}")
             return None
 
-    async def add_keyword(self, username: str, keywords: str, command: str, 
-                         is_public: bool) -> dict:
+    async def add_keyword(self, username: str, keywords: str, command: str,
+                         is_public: bool, mode: Optional[str] = None) -> dict:
         """添加关键字
         
         Args:
@@ -146,6 +169,7 @@ class KeywordManager(Singleton):
             keyword_list = [k.strip() for k in keywords.split('|') if k.strip()]
             if not keyword_list:
                 return {'error': '关键字不能为空'}
+            normalized_mode = self._normalize_mode(mode)
             
             added_keywords = []
             覆盖_keywords = []
@@ -177,7 +201,8 @@ class KeywordManager(Singleton):
                     keyword=kw,
                     command=command,
                     creator_id=user.id,
-                    is_public=is_public
+                    is_public=is_public,
+                    mode=normalized_mode
                 )
                 added_keywords.append(kw)
             
@@ -185,7 +210,8 @@ class KeywordManager(Singleton):
             messages = []
             if added_keywords:
                 visibility = "公开" if is_public else "私有"
-                messages.append(f"成功添加{visibility}关键字: {', '.join(added_keywords)}")
+                mode_text = "随机模式" if normalized_mode == Keyword.MODE_RANDOM else "顺序模式"
+                messages.append(f"成功添加{visibility}关键字({mode_text}): {', '.join(added_keywords)}")
             if 覆盖_keywords:
                 messages.append(f"覆盖了关键字: {', '.join(覆盖_keywords)}")
             if failed_keywords:
@@ -281,9 +307,8 @@ class KeywordManager(Singleton):
         """
         try:
             # 替换占位符：{user_name} 用户名，{params} 关键词后的参数
-            command = (
-                keyword_record.command.replace('{user_name}', username).replace('{params}', params or "")
-            )
+            selected_command = self._pick_command_by_mode(keyword_record.command, keyword_record.mode)
+            command = selected_command.replace('{user_name}', username).replace('{params}', params or "")
             
             # 将命令放入消息队列
             from ushareiplay.core.message_queue import MessageQueue

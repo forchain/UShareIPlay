@@ -89,12 +89,14 @@ class KeywordCommand(BaseCommand):
                 keywords = params[1]
                 command = params[2]
                 is_public = True if len(params) < 4 else (params[3] == '1')
+                mode = params[4].lower() if len(params) >= 5 else "sequence"
                 
                 return await self.keyword_manager.add_keyword(
                     message_info.nickname, 
                     keywords, 
                     command, 
-                    is_public
+                    is_public,
+                    mode
                 )
                 
             elif operation == '2':
