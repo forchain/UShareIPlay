@@ -26,6 +26,7 @@ class DatabaseManager:
         )
         await Tortoise.generate_schemas()
         await self._ensure_user_canonical_column()
+        await self._ensure_keyword_mode_column()
 
     async def _ensure_user_canonical_column(self) -> None:
         """
@@ -42,6 +43,23 @@ class DatabaseManager:
             """
             ALTER TABLE users ADD COLUMN canonical_user_id INTEGER NULL REFERENCES users(id);
             CREATE INDEX IF NOT EXISTS idx_users_canonical_user_id ON users(canonical_user_id);
+            """
+        )
+
+    async def _ensure_keyword_mode_column(self) -> None:
+        """
+        为既有数据库补充 keywords.mode 列。
+        默认 sequence（按命令列表顺序执行）。
+        """
+        conn = connections.get("default")
+        rows = await conn.execute_query_dict("PRAGMA table_info(keywords)")
+        columns = {r.get("name") for r in rows}
+        if "mode" in columns:
+            return
+
+        await conn.execute_script(
+            """
+            ALTER TABLE keywords ADD COLUMN mode VARCHAR(32) NOT NULL DEFAULT 'sequence';
             """
         )
 
