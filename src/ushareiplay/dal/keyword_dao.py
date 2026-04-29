@@ -7,13 +7,15 @@ from ushareiplay.dal.user_dao import UserDAO
 class KeywordDAO:
     @staticmethod
     async def create(keyword: str, command: str, 
-                     creator_id: Optional[int] = None, is_public: bool = True) -> Keyword:
+                     creator_id: Optional[int] = None, is_public: bool = True,
+                     mode: str = Keyword.MODE_SEQUENCE) -> Keyword:
         """Create a new keyword"""
         return await Keyword.create(
             keyword=keyword,
             command=command,
             creator_id=creator_id,
-            is_public=is_public
+            is_public=is_public,
+            mode=mode
         )
 
     @staticmethod
