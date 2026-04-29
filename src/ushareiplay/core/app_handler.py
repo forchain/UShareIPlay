@@ -921,6 +921,22 @@ class AppHandler:
             )
             return None, None
 
+    def try_find_any_element_plus(
+            self, element_keys: list
+    ) -> Tuple[Optional[str], Optional[WebElement]]:
+        """
+        无等待遍历查找任意一个元素。
+
+        与 wait_for_any_element_plus 的区别：
+        - 不等待，不会因为元素不存在产生超时
+        - 按给定 key 顺序返回第一个命中的元素
+        """
+        for key in element_keys:
+            element = self.try_find_element_plus(key, log=False)
+            if element:
+                return key, element
+        return None, None
+
     def navigate_to_element(
             self,
             target_key: str,
@@ -968,7 +984,32 @@ class AppHandler:
 
             # 根据找到的元素类型执行相应操作
             if found_key == target_key:
-                self.logger.info(f"找到目标元素: {target_key}")
+                # 二次确认 1：即使已命中目标，也先检查是否仍有返回键可退栈
+                back_key, back_element = self.try_find_any_element_plus(back_keys)
+                if back_element:
+                    if self.click_element_at(back_element):
+                        self.logger.info(
+                            f"命中目标 {target_key} 后发现返回键 {back_key}，先点击返回后重试确认"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"命中目标 {target_key} 后点击返回键失败: {back_key}，改用系统返回键"
+                        )
+                        self.press_back()
+                    continue
+
+                # 二次确认 2：再检查是否出现干扰元素；出现则按系统返回键关闭
+                interference_key, interference_element = self.try_find_any_element_plus(interference_keys)
+                if interference_element:
+                    self.logger.info(
+                        f"命中目标 {target_key} 后发现干扰元素 {interference_key}，先按返回键关闭后重试确认"
+                    )
+                    if not self.press_back():
+                        self.logger.error("按系统返回键失败")
+                        return None, None
+                    continue
+
+                self.logger.info(f"找到目标元素: {target_key}（已通过二次确认）")
                 return found_key, found_element
 
             elif found_key in back_keys:
