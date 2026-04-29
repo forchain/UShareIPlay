@@ -139,12 +139,21 @@ class QQMusicHandler(AppHandler, Singleton):
         # Keep clicking back until no more back buttons found
         n = 0
         self.press_back()
+        back_keys = ['go_back', 'minimize_screen']
         while n < 9:
-            key, element = self.wait_for_any_element_plus(['go_back', 'minimize_screen', 'home_nav'])
-            if key == 'go_back' or key == 'minimize_screen':
+            key, element = self.wait_for_any_element_plus(back_keys + ['home_nav'])
+            if key in back_keys:
                 element.click()
             elif key == 'home_nav':
-                # self.press_back()
+                # 二次确认：命中 home_nav 后，先无等待检查是否仍有可点击返回键
+                back_key, back_element = self.try_find_any_element_plus(back_keys)
+                if back_element:
+                    self.logger.info(
+                        f"命中 home_nav 后仍检测到返回键 {back_key}，先点击返回再确认首页"
+                    )
+                    back_element.click()
+                    n += 1
+                    continue
                 self.logger.info("Back to home page")
                 return True
             else:

@@ -921,6 +921,22 @@ class AppHandler:
             )
             return None, None
 
+    def try_find_any_element_plus(
+            self, element_keys: list
+    ) -> Tuple[Optional[str], Optional[WebElement]]:
+        """
+        无等待遍历查找任意一个元素。
+
+        与 wait_for_any_element_plus 的区别：
+        - 不等待，不会因为元素不存在产生超时
+        - 按给定 key 顺序返回第一个命中的元素
+        """
+        for key in element_keys:
+            element = self.try_find_element_plus(key, log=False)
+            if element:
+                return key, element
+        return None, None
+
     def navigate_to_element(
             self,
             target_key: str,
@@ -968,7 +984,18 @@ class AppHandler:
 
             # 根据找到的元素类型执行相应操作
             if found_key == target_key:
-                self.logger.info(f"找到目标元素: {target_key}")
+                # 命中目标后仅做干扰元素复核（无等待），避免误判后直接返回
+                interference_key, interference_element = self.try_find_any_element_plus(interference_keys)
+                if interference_element:
+                    self.logger.info(
+                        f"命中目标 {target_key} 后发现干扰元素 {interference_key}，先按返回键关闭后重试确认"
+                    )
+                    if not self.press_back():
+                        self.logger.error("按系统返回键失败")
+                        return None, None
+                    continue
+
+                self.logger.info(f"找到目标元素: {target_key}（已通过二次确认）")
                 return found_key, found_element
 
             elif found_key in back_keys:
