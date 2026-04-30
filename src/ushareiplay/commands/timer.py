@@ -62,29 +62,91 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: Result with success or error
         """
-        if len(parameters) < 3:
-            return {'error': '参数不足。格式: timer add <ID> <时间> <消息> [repeat]'}
-        
-        timer_id = parameters[0]
-        target_time = parameters[1]
-        message = ' '.join(parameters[2:])
+        if len(parameters) < 2:
+            return {'error': '参数不足。格式: timer add <ID?> <时间> <消息> [repeat]'}
+
+        def _is_time_token(token: str) -> bool:
+            t = (token or "").strip()
+            if not t:
+                return False
+            if t.isdigit():
+                return True
+            parts = t.split(':')
+            if len(parts) not in (2, 3):
+                return False
+            if not all(p.isdigit() for p in parts):
+                return False
+            if len(parts[0]) not in (1, 2):
+                return False
+            if any(len(p) != 2 for p in parts[1:]):
+                return False
+            return True
+
+        # 兼容两种形态：
+        # - timer add <ID> <时间> <消息> [repeat]
+        # - timer add <时间> <消息> [repeat]  (省略 ID)
+        if _is_time_token(parameters[0]):
+            timer_id = None
+            target_time = parameters[0]
+            message = ' '.join(parameters[1:])
+        else:
+            if len(parameters) < 3:
+                return {'error': '参数不足。格式: timer add <ID?> <时间> <消息> [repeat]'}
+            timer_id = parameters[0]
+            target_time = parameters[1]
+            message = ' '.join(parameters[2:])
         
         # Check if repeat is specified
         repeat = False
         if message.endswith(' repeat'):
             repeat = True
             message = message[:-7].strip()  # Remove ' repeat' from message
-        
-        # Validate timer_id
+
+        # Validate message
+        if not message:
+            return {'error': '消息不能为空。格式: timer add <ID?> <时间> <消息> [repeat]'}
+
+        import secrets
+        from tortoise.exceptions import IntegrityError
+
         timers = self.timer_manager.get_timers()
-        if timer_id in timers:
-            return {'error': f'ID "{timer_id}" 已存在'}
-        
-        # 注意参数顺序：TimerManager.add_timer(timer_id, message, target_time, repeat)
-        result = await self.timer_manager.add_timer(timer_id, message, target_time, repeat)
-        
-        if not result:
-            return {'error': '添加失败'}
+
+        async def _try_add(timer_key: str) -> bool:
+            if timer_key in timers:
+                raise ValueError(f'ID "{timer_key}" 已存在')
+            return await self.timer_manager.add_timer(timer_key, message, target_time, repeat)
+
+        # ID 省略时：生成随机 key，并在唯一冲突时重试
+        if timer_id is None:
+            last_err = None
+            for _ in range(6):
+                candidate = secrets.token_hex(4)  # 8 chars, readable
+                try:
+                    await _try_add(candidate)
+                    timer_id = candidate
+                    break
+                except IntegrityError as e:
+                    last_err = e
+                    continue
+                except ValueError as e:
+                    # 只在 ID 冲突时重试；其他参数错误直接返回
+                    if str(e).startswith('ID "'):
+                        last_err = e
+                        continue
+                    return {'error': str(e)}
+                except Exception as e:
+                    return {'error': f'添加失败: {str(e)}'}
+            if timer_id is None:
+                return {'error': f'添加失败：生成ID冲突次数过多 ({last_err})' if last_err else '添加失败：生成ID冲突次数过多'}
+        else:
+            try:
+                await _try_add(timer_id)
+            except IntegrityError:
+                return {'error': f'ID "{timer_id}" 已存在'}
+            except ValueError as e:
+                return {'error': str(e)}
+            except Exception as e:
+                return {'error': f'添加失败: {str(e)}'}
         
         repeat_text = " (每日重复)" if repeat else ""
         # 从管理器获取刚添加的详情
@@ -167,7 +229,7 @@ class TimerCommand(BaseCommand):
         help_text = """命令帮助:
 
 • timer list - 列出所有
-• timer add <ID> <时间> <消息> [repeat] - 添加
+• timer add <ID?> <时间> <消息> [repeat] - 添加（ID可省略，系统自动生成）
 • timer remove <ID> - 删除
 • timer reload - 从数据库重新加载（直接改DB后使用）
 • timer start - 启动功能
@@ -175,10 +237,11 @@ class TimerCommand(BaseCommand):
 • timer reset - 重置所有（清除现有数据）
 • timer help - 显示此帮助
 
-时间格式: HH:MM 或 HH:MM:SS
+时间格式: HH:MM 或 HH:MM:SS；若为纯数字 N，则表示延迟 N 秒执行
 示例:
   timer add morning 08:00 早上好！
   timer add reminder 14:30:00 下午茶时间 repeat
+  timer add 10 临时提醒
   timer remove morning
   timer start
   timer stop
