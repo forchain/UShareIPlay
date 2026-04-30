@@ -23,9 +23,9 @@
 - **WHEN** 一个 repeat=True 的定时器被触发
 - **THEN** 系统 SHALL 将 next_trigger 更新为次日同一时间，并将更新写入数据库
 
-#### Scenario: 一次性定时器触发后在数据库中禁用
+#### Scenario: 一次性定时器触发后从数据库删除
 - **WHEN** 一个 repeat=False 的定时器被触发
-- **THEN** 系统 SHALL 将该定时器的 enabled 字段在数据库中置为 False
+- **THEN** 系统 SHALL 从数据库删除该定时器记录，并从内存缓存移除
 
 ### Requirement: 启动时从数据库加载定时器
 系统 SHALL 在 TimerManager 启动时从数据库加载所有定时器到内存缓存，不再读取 `config.yaml` 的 `initial_timers` 段。
