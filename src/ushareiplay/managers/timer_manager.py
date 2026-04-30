@@ -275,42 +275,61 @@ class TimerManager(Singleton):
         """Get specific timer"""
         return self._timers.get(timer_key, {})
 
+    def _compute_next_trigger(self, target_time: str, repeat: bool) -> datetime:
+        """
+        支持两类时间输入：
+        - 纯数字：延迟 N 秒执行一次（repeat 必须为 False）
+        - HH:MM / HH:MM:SS：按当天/次日的固定时间触发（repeat 可为 True）
+        """
+        raw = (target_time or "").strip()
+        if raw.isdigit():
+            seconds = int(raw)
+            if seconds <= 0:
+                raise ValueError("延迟秒数必须为正整数")
+            # 防止误输入造成超长延迟；需要更长可改为显式时间点
+            if seconds > 86400 * 30:
+                raise ValueError("延迟秒数过大（最大支持 30 天内的延迟）")
+            if repeat:
+                raise ValueError("延迟模式不支持 repeat")
+            return datetime.now() + timedelta(seconds=seconds)
+
+        fmt = "%H:%M:%S" if raw.count(":") == 2 else "%H:%M"
+        try:
+            target_time_obj = datetime.strptime(raw, fmt).time()
+        except ValueError:
+            raise ValueError("时间格式错误：支持 HH:MM / HH:MM:SS，或纯数字 N 表示延迟 N 秒") from None
+        today = datetime.now().date()
+        target_datetime = datetime.combine(today, target_time_obj)
+        if target_datetime <= datetime.now():
+            target_datetime += timedelta(days=1)
+        return target_datetime
+
     async def add_timer(self, timer_key: str, message: str, target_time: str, repeat: bool = False) -> bool:
         """Add a new timer"""
         from ushareiplay.dal.timer_dao import TimerDAO
 
-        try:
-            target_time_obj = datetime.strptime(target_time, '%H:%M').time()
-            today = datetime.now().date()
-            target_datetime = datetime.combine(today, target_time_obj)
+        next_trigger = self._compute_next_trigger(target_time=target_time, repeat=repeat)
 
-            if target_datetime <= datetime.now():
-                target_datetime += timedelta(days=1)
+        await TimerDAO.create(
+            key=timer_key,
+            message=message,
+            target_time=(target_time or "").strip(),
+            repeat=repeat,
+            enabled=True,
+            next_trigger=next_trigger,
+        )
 
-            await TimerDAO.create(
-                key=timer_key,
-                message=message,
-                target_time=target_time,
-                repeat=repeat,
-                enabled=True,
-                next_trigger=target_datetime,
-            )
+        self._timers[timer_key] = {
+            'key': timer_key,
+            'message': message,
+            'target_time': (target_time or "").strip(),
+            'repeat': repeat,
+            'enabled': True,
+            'next_trigger': next_trigger.isoformat(),
+        }
 
-            self._timers[timer_key] = {
-                'key': timer_key,
-                'message': message,
-                'target_time': target_time,
-                'repeat': repeat,
-                'enabled': True,
-                'next_trigger': target_datetime.isoformat(),
-            }
-
-            self.logger.info(f"Added timer {timer_key}: {message} at {target_time}")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error adding timer {timer_key}: {str(e)}")
-            return False
+        self.logger.info(f"Added timer {timer_key}: {message} at {target_time}")
+        return True
 
     async def remove_timer(self, timer_key: str) -> bool:
         """Remove a timer"""
