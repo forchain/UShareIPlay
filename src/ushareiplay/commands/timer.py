@@ -88,19 +88,41 @@ class TimerCommand(BaseCommand):
         if _is_time_token(parameters[0]):
             timer_id = None
             target_time = parameters[0]
-            message = ' '.join(parameters[1:])
+            message_parts = parameters[1:]
         else:
             if len(parameters) < 3:
                 return {'error': '参数不足。格式: timer add <ID?> <时间> <消息> [repeat]'}
             timer_id = parameters[0]
             target_time = parameters[1]
-            message = ' '.join(parameters[2:])
+            message_parts = parameters[2:]
         
-        # Check if repeat is specified
+        # Check if repeat is specified (as the last token)
         repeat = False
-        if message.endswith(' repeat'):
+        if message_parts and str(message_parts[-1]).lower() == 'repeat':
             repeat = True
-            message = message[:-7].strip()  # Remove ' repeat' from message
+            message_parts = message_parts[:-1]
+
+        def _strip_grouping_quotes(s: str) -> str:
+            """
+            用户可能用引号把包含空格的片段包起来做“分组”，这里去掉外层引号，
+            但不尝试处理复杂转义/嵌套引用。
+            """
+            import re
+
+            text = (s or "").strip()
+            if not text:
+                return text
+
+            # 1) 若整体被同一种引号包裹，去掉一层
+            if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+                text = text[1:-1]
+
+            # 2) 去掉文本中成对的分组引号片段: "xxx" / 'xxx'
+            text = re.sub(r'"([^"]*)"', r"\1", text)
+            text = re.sub(r"'([^']*)'", r"\1", text)
+            return text.strip()
+
+        message = _strip_grouping_quotes(' '.join(message_parts))
 
         # Validate message
         if not message:

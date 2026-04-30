@@ -85,3 +85,27 @@ async def test_timer_command_add_without_id_generates_key(monkeypatch):
 
     await manager.close()
 
+
+@pytest.mark.asyncio
+async def test_timer_command_strips_grouping_quotes_in_message(monkeypatch):
+    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.commands.timer import TimerCommand
+    from ushareiplay.managers.timer_manager import TimerManager
+    from ushareiplay.dal.timer_dao import TimerDAO
+
+    manager = DatabaseManager(db_url="sqlite://:memory:")
+    await manager.init()
+
+    tm = TimerManager.instance()
+    tm._logger = _DummyLogger()
+
+    cmd = TimerCommand(_DummyController())
+    result = await cmd._add_timer(["t1", "1", "\":play test\"", "@Console"])
+    assert "timer" in result
+
+    row = await TimerDAO.get_by_key("t1")
+    assert row is not None
+    assert row.message == ":play test @Console"
+
+    await manager.close()
+
