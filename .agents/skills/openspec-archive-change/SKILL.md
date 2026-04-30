@@ -65,7 +65,28 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
-5. **Perform the archive**
+5. **Assess doc sync state (API / commands / deployment)**
+
+   If this change affects interface-level behavior, documentation MUST be updated before archiving (or explicitly marked as not needed).
+
+   **Interface impact includes:**
+   - **API**: endpoints, request/response schema, auth, error codes
+   - **命令格式**: command syntax, parameters, examples, help text, aliases
+   - **部署流程**: setup steps, env vars, migrations, runbooks
+
+   **How to check:**
+   - Review the change specs + implementation diff for interface-impact keywords (e.g., `command`, `:`, `API`, `endpoint`, `deploy`, `migration`, `README`, `docs/`)
+   - Identify doc targets (common): `README.md`, `docs/**/*.md`, `config.yaml` docs, run scripts
+
+   **If docs need updates:**
+   - Update the docs files in-repo
+   - Re-run any relevant doc checks (if they exist)
+   - Summarize what was updated in the archive summary
+
+   **If docs are not needed:**
+   - State clearly: "Docs: not needed" with 1-sentence rationale in the archive summary
+
+6. **Perform the archive**
 
    Create the archive directory if it doesn't exist:
    ```bash
@@ -82,13 +103,14 @@ Archive a completed change in the experimental workflow.
    mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
-6. **Display summary**
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
    - Schema that was used
    - Archive location
    - Whether specs were synced (if applicable)
+  - Whether docs were updated (or explicitly not needed)
    - Note about any warnings (incomplete artifacts/tasks)
 
 **Output On Success**
