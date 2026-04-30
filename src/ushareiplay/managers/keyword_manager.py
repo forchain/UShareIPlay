@@ -247,8 +247,9 @@ class KeywordManager(Singleton):
             # 检查权限（creator_id is None 表示配置关键字）
             if kw.creator_id is None:
                 return {'error': '不能修改配置关键字'}
-            
-            if not kw.creator or kw.creator.username != username:
+
+            effective_user = await UserDAO.get_or_create(username)
+            if kw.creator_id != effective_user.id:
                 return {'error': '只能修改自己创建的关键字'}
             
             # 切换或设置公开性
@@ -285,8 +286,9 @@ class KeywordManager(Singleton):
             # 检查权限（creator_id is None 表示配置关键字）
             if kw.creator_id is None:
                 return {'error': '不能删除配置关键字'}
-            
-            if not kw.creator or kw.creator.username != username:
+
+            effective_user = await UserDAO.get_or_create(username)
+            if kw.creator_id != effective_user.id:
                 return {'error': '只能删除自己创建的关键字'}
             
             # 删除关键字
@@ -296,6 +298,66 @@ class KeywordManager(Singleton):
         except Exception:
             self.logger.error(f"Error deleting keyword: {traceback.format_exc()}")
             return {'error': '删除关键字失败'}
+
+    async def grant_keyword_access(self, username: str, keyword: str, target_usernames: str) -> dict:
+        """为私有关键字授权可执行用户（白名单）"""
+        try:
+            kw = await KeywordDAO.get_by_keyword(keyword)
+            if not kw:
+                return {'error': f'关键字 "{keyword}" 不存在'}
+
+            if kw.creator_id is None:
+                return {'error': '不能修改配置关键字'}
+
+            if kw.is_public:
+                return {'error': '公开关键字无需授权'}
+
+            effective_user = await UserDAO.get_or_create(username)
+            if kw.creator_id != effective_user.id:
+                return {'error': '只能授权自己创建的关键字'}
+
+            raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
+            if not raw_targets:
+                return {'error': '缺少授权用户'}
+
+            target_users = [await UserDAO.get_or_create(t) for t in raw_targets]
+            target_ids = [u.id for u in target_users]
+            await KeywordDAO.grant_users(keyword, target_ids)
+
+            return {'message': f'已授权关键字 "{keyword}" 给: {", ".join(raw_targets)}'}
+        except Exception:
+            self.logger.error(f"Error granting keyword access: {traceback.format_exc()}")
+            return {'error': '授权失败'}
+
+    async def revoke_keyword_access(self, username: str, keyword: str, target_usernames: str) -> dict:
+        """取消私有关键字授权（白名单）"""
+        try:
+            kw = await KeywordDAO.get_by_keyword(keyword)
+            if not kw:
+                return {'error': f'关键字 "{keyword}" 不存在'}
+
+            if kw.creator_id is None:
+                return {'error': '不能修改配置关键字'}
+
+            if kw.is_public:
+                return {'error': '公开关键字无需取消授权'}
+
+            effective_user = await UserDAO.get_or_create(username)
+            if kw.creator_id != effective_user.id:
+                return {'error': '只能取消授权自己创建的关键字'}
+
+            raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
+            if not raw_targets:
+                return {'error': '缺少取消授权用户'}
+
+            target_users = [await UserDAO.get_or_create(t) for t in raw_targets]
+            target_ids = [u.id for u in target_users]
+            await KeywordDAO.revoke_users(keyword, target_ids)
+
+            return {'message': f'已取消授权关键字 "{keyword}" 对: {", ".join(raw_targets)}'}
+        except Exception:
+            self.logger.error(f"Error revoking keyword access: {traceback.format_exc()}")
+            return {'error': '取消授权失败'}
 
     async def execute_keyword(self, keyword_record: Keyword, username: str, params: str = ""):
         """执行关键字

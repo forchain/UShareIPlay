@@ -65,7 +65,10 @@ class KeywordCommand(BaseCommand):
                 # 修改公开性操作
                 'update': '2', 'modify': '2', 'toggle': '2', 'publicity': '2', 'public': '2',
                 # 立即执行操作
-                'execute': '3', 'exec': '3', 'run': '3', 'trigger': '3'
+                'execute': '3', 'exec': '3', 'run': '3', 'trigger': '3',
+                # 授权/取消授权
+                'grant': '4', 'allow': '4', 'auth': '4',
+                'revoke': '5', 'ungrant': '5', 'unauth': '5', 'deny': '5',
             }
             
             # 如果是单词，转换为数字
@@ -141,6 +144,30 @@ class KeywordCommand(BaseCommand):
                 )
                 
                 return {'message': f'已执行关键字 "{keyword}"'}
+
+            elif operation == '4':
+                # 授权执行（私有关键字白名单）
+                if len(params) < 3:
+                    return {'error': '缺少参数：关键字或授权用户'}
+                keyword = params[1]
+                target_usernames = "|".join([p.strip() for p in params[2:] if p.strip()])
+                return await self.keyword_manager.grant_keyword_access(
+                    message_info.nickname,
+                    keyword,
+                    target_usernames
+                )
+
+            elif operation == '5':
+                # 取消授权执行（私有关键字白名单）
+                if len(params) < 3:
+                    return {'error': '缺少参数：关键字或取消授权用户'}
+                keyword = params[1]
+                target_usernames = "|".join([p.strip() for p in params[2:] if p.strip()])
+                return await self.keyword_manager.revoke_keyword_access(
+                    message_info.nickname,
+                    keyword,
+                    target_usernames
+                )
                 
             else:
                 return {'error': f'未知操作: {operation}'}

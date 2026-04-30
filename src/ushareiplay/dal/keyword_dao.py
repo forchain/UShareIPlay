@@ -1,10 +1,54 @@
 from typing import Optional, List
+import json
 from ushareiplay.models.keyword import Keyword
 from ushareiplay.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 
 
 class KeywordDAO:
+    @staticmethod
+    def _parse_allowed_user_ids(raw: Optional[str]) -> List[int]:
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return []
+        if not isinstance(data, list):
+            return []
+        result: List[int] = []
+        for item in data:
+            try:
+                value = int(item)
+            except Exception:
+                continue
+            if value > 0:
+                result.append(value)
+        # de-dup, stable
+        seen = set()
+        deduped: List[int] = []
+        for v in result:
+            if v in seen:
+                continue
+            seen.add(v)
+            deduped.append(v)
+        return deduped
+
+    @staticmethod
+    def _dump_allowed_user_ids(user_ids: List[int]) -> str:
+        cleaned: List[int] = []
+        seen = set()
+        for uid in user_ids:
+            try:
+                v = int(uid)
+            except Exception:
+                continue
+            if v <= 0 or v in seen:
+                continue
+            seen.add(v)
+            cleaned.append(v)
+        return json.dumps(cleaned, ensure_ascii=False)
+
     @staticmethod
     async def create(keyword: str, command: str, 
                      creator_id: Optional[int] = None, is_public: bool = True,
@@ -39,13 +83,43 @@ class KeywordDAO:
         if not kw:
             return None
         
-        # Check if user can execute
+        # Check if user can execute (use canonical user id)
         effective_user = await UserDAO.get_or_create(username)
-        allowed = kw.is_public or (kw.creator and kw.creator_id == effective_user.id)
+        allowed_user_ids = KeywordDAO._parse_allowed_user_ids(getattr(kw, "allowed_user_ids", None))
+        allowed = (
+            kw.is_public
+            or (kw.creator_id is not None and kw.creator_id == effective_user.id)
+            or (effective_user.id in allowed_user_ids)
+        )
         if allowed:
             return kw
         
         return None
+
+    @staticmethod
+    async def grant_users(keyword: str, user_ids: List[int]) -> Optional[Keyword]:
+        """Grant execute access to specific canonical user ids"""
+        kw = await Keyword.get_or_none(keyword=keyword).prefetch_related("creator")
+        if not kw:
+            return None
+        current = KeywordDAO._parse_allowed_user_ids(getattr(kw, "allowed_user_ids", None))
+        merged = current + list(user_ids or [])
+        kw.allowed_user_ids = KeywordDAO._dump_allowed_user_ids(merged)
+        await kw.save(update_fields=["allowed_user_ids"])
+        return kw
+
+    @staticmethod
+    async def revoke_users(keyword: str, user_ids: List[int]) -> Optional[Keyword]:
+        """Revoke execute access from specific canonical user ids"""
+        kw = await Keyword.get_or_none(keyword=keyword).prefetch_related("creator")
+        if not kw:
+            return None
+        current = KeywordDAO._parse_allowed_user_ids(getattr(kw, "allowed_user_ids", None))
+        revoke_set = {int(uid) for uid in (user_ids or []) if str(uid).isdigit()}
+        remaining = [uid for uid in current if uid not in revoke_set]
+        kw.allowed_user_ids = KeywordDAO._dump_allowed_user_ids(remaining)
+        await kw.save(update_fields=["allowed_user_ids"])
+        return kw
 
     @staticmethod
     async def delete_by_keyword(keyword: str) -> bool:

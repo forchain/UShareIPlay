@@ -27,6 +27,7 @@ class DatabaseManager:
         await Tortoise.generate_schemas()
         await self._ensure_user_canonical_column()
         await self._ensure_keyword_mode_column()
+        await self._ensure_keyword_allowed_users_column()
 
     async def _ensure_user_canonical_column(self) -> None:
         """
@@ -63,6 +64,24 @@ class DatabaseManager:
             """
         )
 
+    async def _ensure_keyword_allowed_users_column(self) -> None:
+        """
+        为既有数据库补充 keywords.allowed_user_ids 列。
+        用 JSON 数组文本存储允许执行私有关键字的 canonical user id 列表。
+        默认 []（仅创建者可执行）。
+        """
+        conn = connections.get("default")
+        rows = await conn.execute_query_dict("PRAGMA table_info(keywords)")
+        columns = {r.get("name") for r in rows}
+        if "allowed_user_ids" in columns:
+            return
+
+        await conn.execute_script(
+            """
+            ALTER TABLE keywords ADD COLUMN allowed_user_ids TEXT NOT NULL DEFAULT '[]';
+            """
+        )
+
     async def close(self):
         """Close database connection"""
-        await Tortoise.close_connections() 
+        await Tortoise.close_connections()
