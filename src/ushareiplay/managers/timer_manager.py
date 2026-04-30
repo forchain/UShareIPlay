@@ -143,9 +143,9 @@ class TimerManager(Singleton):
                 await TimerDAO.update_next_trigger(timer_key, next_trigger)
                 self.logger.info(f"Timer {timer_key} scheduled for next day: {next_trigger}")
             else:
-                timer_data['enabled'] = False
-                await TimerDAO.update_enabled(timer_key, False)
-                self.logger.info(f"Timer {timer_key} completed and disabled")
+                await TimerDAO.delete_by_key(timer_key)
+                self._timers.pop(timer_key, None)
+                self.logger.info(f"Timer {timer_key} completed and deleted")
 
         except Exception as e:
             self.logger.error(f"Error triggering timer {timer_key}: {str(e)}")

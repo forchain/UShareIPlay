@@ -56,6 +56,6 @@ Table: `timer_events`
 
 ## Extension Points
 
-- **One-shot timers**: Set `repeat=False` — timer fires once then stays in DB with `enabled=False`.
+- **One-shot timers**: Set `repeat=False` — timer fires once then is deleted from DB.
 - **New timer commands**: Extend `TimerCommand.execute()` with new sub-commands.
 - **Migration from JSON**: `TimerManager._migrate_from_json()` handles legacy `timers.json` automatically on first start.

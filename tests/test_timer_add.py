@@ -109,3 +109,42 @@ async def test_timer_command_strips_grouping_quotes_in_message(monkeypatch):
 
     await manager.close()
 
+
+@pytest.mark.asyncio
+async def test_one_shot_timer_deleted_after_trigger():
+    from datetime import datetime, timedelta
+
+    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.dal.timer_dao import TimerDAO
+    from ushareiplay.managers.timer_manager import TimerManager
+
+    manager = DatabaseManager(db_url="sqlite://:memory:")
+    await manager.init()
+
+    tm = TimerManager.instance()
+    tm._logger = _DummyLogger()
+
+    await TimerDAO.create(
+        key="oneshot",
+        message="hello",
+        target_time="10",
+        repeat=False,
+        enabled=True,
+        next_trigger=datetime.now() - timedelta(seconds=1),
+    )
+    tm._timers["oneshot"] = {
+        "key": "oneshot",
+        "message": "hello",
+        "target_time": "10",
+        "repeat": False,
+        "enabled": True,
+        "next_trigger": (datetime.now() - timedelta(seconds=1)).isoformat(),
+    }
+
+    await tm._trigger_timer("oneshot", tm._timers["oneshot"])
+
+    assert await TimerDAO.get_by_key("oneshot") is None
+    assert "oneshot" not in tm._timers
+
+    await manager.close()
+
