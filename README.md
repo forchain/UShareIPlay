@@ -77,7 +77,7 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 
 | Command | Level | Params | Description |
 |---|---|---|---|
-| `:timer add` | 9 | `<key> <HH:MM> <command>` | Add scheduled command |
+| `:timer add` | 9 | `<key?> <time> <command...> [repeat]` | Add scheduled command (key optional; numeric time = delay seconds) |
 | `:timer remove` | 9 | `<key>` | Delete timer |
 | `:timer list` | 9 | — | List all timers |
 | `:timer enable/disable` | 9 | `<key>` | Toggle timer |
