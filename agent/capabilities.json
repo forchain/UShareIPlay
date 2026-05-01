@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "hard_rules": [
+    "禁止外部工具创建或连接第二个 Appium session 进行 UI 变更操作",
+    "输入必须走 console/queue（例如在控制台输入 :command 或后台管理命令）",
+    "UI 只读证据（page_source/screenshot）必须由主程序现有 session 导出并落盘，外部仅读取文件"
+  ],
+  "capabilities": [
+    {
+      "id": "read.artifacts.status_json",
+      "can": true,
+      "requires": ["artifacts/<run_id>/status.json exists"],
+      "outputs": ["parsed_state"]
+    },
+    {
+      "id": "read.artifacts.events_jsonl",
+      "can": true,
+      "requires": ["artifacts/<run_id>/events.jsonl exists"],
+      "outputs": ["event_stream"]
+    },
+    {
+      "id": "inject.console.queue_command",
+      "can": true,
+      "requires": ["service_running"],
+      "outputs": ["queue.enqueue event"]
+    },
+    {
+      "id": "appium.ui.mutate",
+      "can": false,
+      "reason": "会与主程序已存在的 Appium session 冲突"
+    }
+  ]
+}
+

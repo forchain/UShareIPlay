@@ -1,0 +1,44 @@
+## 1. 基础输出目录与配置一致性
+
+- [x] 1.1 新增统一的 artifacts 根目录约定（按 run_id 分桶），并提供路径解析工具函数
+- [x] 1.2 修正 logger 配置读取：统一走 `ConfigLoader`（支持 `config.local.yaml` 覆盖）
+- [x] 1.3 收敛默认日志目录到 workspace 内（保留可配置覆盖），避免 `../logs` 越界带来的权限问题
+
+## 2. 结构化事件流（events.jsonl）
+
+- [x] 2.1 新增事件写入器（JSONL）：核心字段 `schema_version/ts/level/event/run_id/ctx`，支持可选 `trace_id`
+- [x] 2.2 在关键路径埋点：`app.start/app.stop`、`driver.init.*`、`driver.reinit.*`
+- [x] 2.3 在队列链路埋点：`queue.enqueue`、`queue.drain.start`、`queue.drain.end`
+- [x] 2.4 在命令链路埋点：`command.received`、`command.dispatch`、`command.result`（success/error）
+- [x] 2.5 在状态链路埋点：`foreground.app`、`state.snapshot`、`state.ready`
+
+## 3. 状态快照（status.json）与就绪判定
+
+- [x] 3.1 定义 `status.json` schema 与版本号（schema_version），并实现写入（覆盖式更新）
+- [x] 3.2 实现 anchors 探测（至少：`message_content`、`input_box_entry`、`input_box` 等）并写入快照
+- [x] 3.3 实现 `foreground_app` 判定（基于 page_source packages）并写入快照
+- [x] 3.4 实现 `CommandReady` 判定（与队列消费前提一致：message_content 可见为核心）
+- [x] 3.5 将 `ui_lock`（locked/unlocked）与 `queue_size` 写入 `pipeline` 段
+
+## 4. 只读证据产物导出（page source / screenshot）
+
+- [x] 4.1 实现 run-scoped 证据产物落盘：`page_source.xml`、`screenshot.png`
+- [x] 4.2 设计触发方式：失败自动触发（guard fail/assert fail），并记录事件 `artifact.*`
+- [x] 4.3 增加一个内部后台命令（console/queue 路由）触发只读 dump（不引入外部 Appium session）
+
+## 5. Agent Skill 资产（agent/ 目录）
+
+- [x] 5.1 新增 `agent/capabilities.json`（硬规则：禁止外部 Appium session、输入走 console/queue、只读证据由主程序导出）
+- [x] 5.2 新增 `agent/preconditions.md`（CommandReady/状态锚点/Guard 口径）
+- [x] 5.3 新增 `agent/event_taxonomy.md`（最小断言集：enqueue→drain→dispatch→result）
+- [x] 5.4 新增 `agent/playbooks/command_e2e.md`（Guard/Advance/Inject/Assert/OnFail）
+- [x] 5.5 新增 `agent/playbooks/timer_e2e.md`（含 DB 加速策略与断言）
+- [x] 5.6 新增 `agent/known_issues.md` 与 `agent/questions.md`（自我进化闭环）
+- [x] 5.7 新增 `agent/fixtures/`：样例 `status.json` 与 `events.jsonl`（用于解析器自测）
+
+## 6. E2E 冒烟测试（自动化）
+
+- [x] 6.1 新增一个可运行的 E2E 冒烟脚本：启动服务 → 等待 ready 或进入无设备降级模式 → 注入命令 → 断言事件链路完整
+- [x] 6.2 无设备降级策略：在无法连接 Appium/无设备时，仍验证 console/queue→command→events/status 的链路（不测试真实 UI）
+- [x] 6.3 将 E2E 冒烟加入到 `tests/` 或独立脚本（与仓库现有“脚本式测试”风格一致）
+

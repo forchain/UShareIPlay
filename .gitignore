@@ -5,6 +5,8 @@ logs
 data
 .cursor
 *.swp
+artifacts/
+.agent/
 config/keywords.yaml
 config.local.yaml
 .claude/worktrees/

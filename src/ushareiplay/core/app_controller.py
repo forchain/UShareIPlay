@@ -14,6 +14,7 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.db_service import DBHelper
+from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
@@ -25,8 +26,14 @@ class AppController(Singleton):
     def __init__(self, config):
         self.config = config
 
+        self.run_id = new_run_id()
+        self.obs = Observability(run_id=self.run_id)
+        self.obs.emit("app.start", ctx={"component": "AppController"})
+
         # 先创建主driver（会自动启动Soul app）
+        self.obs.emit("driver.init.start")
         self.driver = self._init_driver()
+        self.obs.emit("driver.init.ok")
 
         # 使用主driver启动其他应用
         self._start_apps()
@@ -113,6 +120,7 @@ class AppController(Singleton):
             print("应用启动完成")
 
         except Exception as e:
+            self.obs.emit("app.error", level="ERROR", ctx={"where": "_start_apps", "error": str(e)})
             print(f"通过Appium启动应用时发生错误: {str(e)}")
             raise
 
@@ -162,6 +170,7 @@ class AppController(Singleton):
         try:
             if self.logger:
                 self.logger.warning("==== 开始重建driver ====")
+            self.obs.emit("driver.reinit.start")
 
             # 1. 关闭旧driver
             try:
@@ -177,6 +186,7 @@ class AppController(Singleton):
             self.driver = self._init_driver()
             if self.logger:
                 self.logger.info("新driver创建成功")
+            self.obs.emit("driver.reinit.ok")
 
             # Optimize driver settings
             self.driver.update_settings({
@@ -214,6 +224,7 @@ class AppController(Singleton):
         except Exception:
             if self.logger:
                 self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
+            self.obs.emit("driver.reinit.error", level="ERROR", ctx={"error": traceback.format_exc()})
             return False
         finally:
             self._is_reinitializing = False
@@ -350,6 +361,16 @@ class AppController(Singleton):
                                 else:
                                     await self.timer_manager.start()
                                 self.soul_handler.logger.critical(f'is_running:{self.timer_manager.is_running()}')
+                            elif message == '!dump':
+                                # read-only dump of artifacts using existing session
+                                try:
+                                    await self._dump_readonly_artifacts(reason="console")
+                                except Exception:
+                                    self.obs.emit(
+                                        "artifact.dump.error",
+                                        level="ERROR",
+                                        ctx={"error": traceback.format_exc(), "reason": "console"},
+                                    )
                             else:
                                 pattern = r'([:：].+)'
                                 command = re.match(pattern, message)
@@ -364,6 +385,10 @@ class AppController(Singleton):
                                     # Add message to queue
                                     message_queue = MessageQueue.instance()
                                     await message_queue.put_message(message_info)
+                                    self.obs.emit(
+                                        "queue.enqueue",
+                                        ctx={"source": "console", "content": message_info.content, "nickname": message_info.nickname},
+                                    )
                                     self.logger.info(f"Console message added to queue: {message}")
                                 else:
                                     self.soul_handler.send_message(message)
@@ -382,6 +407,7 @@ class AppController(Singleton):
                     page_source = self.event_manager.get_page_source()
 
                 if page_source:
+                    await self._update_status_from_page_source(page_source)
                     await self.event_manager.process_events(page_source)
 
                 # clear error once back to normal
@@ -415,6 +441,79 @@ class AppController(Singleton):
                     self.is_running = False
                     return False
         return None
+
+    async def _dump_readonly_artifacts(self, reason: str = "") -> None:
+        paths = self.obs.paths()
+        # page source
+        try:
+            src = self.driver.page_source
+            paths.page_source_xml.write_text(src or "", encoding="utf-8")
+            self.obs.emit("artifact.page_source", ctx={"path": str(paths.page_source_xml), "reason": reason})
+        except Exception:
+            self.obs.emit("artifact.page_source.error", level="ERROR", ctx={"reason": reason, "error": traceback.format_exc()})
+        # screenshot
+        try:
+            ok = self.driver.get_screenshot_as_file(str(paths.screenshot_png))
+            self.obs.emit("artifact.screenshot", ctx={"path": str(paths.screenshot_png), "ok": bool(ok), "reason": reason})
+        except Exception:
+            self.obs.emit("artifact.screenshot.error", level="ERROR", ctx={"reason": reason, "error": traceback.format_exc()})
+
+    async def _update_status_from_page_source(self, page_source: str) -> None:
+        # Minimal, low-cost snapshot. More detailed classification can be expanded later.
+        try:
+            from ushareiplay.managers.event_manager import EventManager
+
+            event_manager = EventManager.instance()
+            pkgs = event_manager._packages_from_page_source(page_source)  # best-effort internal helper
+            soul_pkg = event_manager._soul_package_name()
+            qq_pkg = (self.config.get("qq_music", {}) or {}).get("package_name", "com.tencent.qqmusic")
+            launchers = set(event_manager._launcher_packages())
+
+            foreground_app = "Unknown"
+            if pkgs:
+                if soul_pkg in pkgs:
+                    foreground_app = "Soul"
+                elif qq_pkg in pkgs:
+                    foreground_app = "QQMusic"
+                elif pkgs & launchers:
+                    foreground_app = "Launcher"
+
+            anchors = []
+            soul_elements = (self.config.get("soul", {}) or {}).get("elements", {}) or {}
+            for k in ("message_content", "input_box_entry", "input_box"):
+                v = soul_elements.get(k)
+                if v and isinstance(v, str) and v in page_source:
+                    anchors.append(k)
+
+            ui_lock_state = "locked" if (self.ui_lock and self.ui_lock.locked()) else "unlocked"
+            queue_size = MessageQueue.instance().get_queue_size()
+
+            soul_ui_state = "Unknown"
+            if foreground_app == "Soul":
+                if "message_content" in anchors:
+                    soul_ui_state = "InChatReady"
+                else:
+                    soul_ui_state = "InUnknownPage"
+
+            status = {
+                "foreground_app": foreground_app,
+                "soul_ui_state": soul_ui_state,
+                "qqmusic_ui_state": "Unknown",
+                "anchors": anchors,
+                "pipeline": {"ui_lock": ui_lock_state, "queue_size": queue_size},
+                "business": {
+                    "party_id_current": getattr(self.soul_handler, "party_id", None) if self.soul_handler else None,
+                    "party_id_target": (self.config.get("soul", {}) or {}).get("default_party_id"),
+                    "timers_running": bool(getattr(self, "timer_manager", None) and self.timer_manager.is_running()),
+                    "playback_info_summary": None,
+                },
+            }
+            self.obs.write_status(status)
+            self.obs.emit("state.snapshot", ctx={"foreground_app": foreground_app, "anchors": anchors})
+            if foreground_app == "Soul" and soul_ui_state == "InChatReady":
+                self.obs.emit("state.ready", ctx={"name": "CommandReady", "anchors": anchors, "foreground_app": foreground_app})
+        except Exception:
+            self.obs.emit("state.snapshot.error", level="ERROR", ctx={"error": traceback.format_exc()})
 
     async def stop(self):
         """Stop the application"""

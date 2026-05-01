@@ -23,27 +23,21 @@ chat_logger = None
 def get_chat_logger(config=None):
     """Get or create chat logger with configurable directory"""
     global chat_logger
-    import yaml
     if chat_logger is None:
-        # 直接加载全局 config.yaml
-        try:
-            with open('config.yaml', 'r', encoding='utf-8') as f:
-                global_config = yaml.safe_load(f)
-            log_dir = global_config.get('logging', {}).get('directory', 'logs')
-        except Exception as e:
-            print(f"[日志调试] 加载 config.yaml 失败: {e}")
-            log_dir = 'logs'
-        print(f"[日志调试] chat.log 日志目录: {log_dir}, 绝对路径: {os.path.abspath(log_dir)}")
-        # Create logs directory if it doesn't exist (supports relative paths)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        from ushareiplay.core.config_loader import ConfigLoader
+        from ushareiplay.core.paths import ensure_dir, safe_workspace_path
+
+        cfg = ConfigLoader.load_config()
+        configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
+        log_dir_path = safe_workspace_path(configured, default_rel="logs")
+        ensure_dir(log_dir_path)
         # Create chat logger
         chat_logger = logging.getLogger('chat')
         chat_logger.setLevel(logging.INFO)
         # Clear any existing handlers
         if chat_logger.hasHandlers():
             chat_logger.handlers.clear()
-        log_file = f'{log_dir}/chat.log'
+        log_file = str(log_dir_path / "chat.log")
         handler = logging.FileHandler(log_file, encoding='utf-8')
         # Use ColoredFormatter without colors for file logging
         formatter = ColoredFormatter(
