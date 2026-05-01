@@ -131,7 +131,7 @@ class MessageContentEvent(BaseEvent):
                     continue  # 跳过后续的命令检测
 
                 # 检查是否满足命令格式
-                pattern = r"souler\[.+\]说：(:.+)"
+                pattern = r"souler\[.+\]说：\s*[:：]\s*\S.+"
                 match = re.match(pattern, content)
                 if match:
                     # 标记有命令消息
