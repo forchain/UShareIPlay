@@ -140,6 +140,20 @@ class CommandManager(Singleton):
         """
         try:
             parameters = command_info['parameters']
+
+            try:
+                from ushareiplay.core.app_controller import AppController
+                if controller := AppController.instance():
+                    controller.obs.emit(
+                        "command.received",
+                        ctx={
+                            "prefix": command_info.get("prefix"),
+                            "raw": message_info.content,
+                            "nickname": message_info.nickname,
+                        },
+                    )
+            except Exception:
+                pass
             
             # 检查用户等级（系统用户不受限制）
             system_users = self.handler.config.get('system_users', [])
@@ -166,6 +180,17 @@ class CommandManager(Singleton):
             result = {'error': 'unknown'}
             if controller := AppController.instance():
                 async with controller.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
+                    try:
+                        controller.obs.emit(
+                            "command.dispatch",
+                            ctx={
+                                "prefix": command_info.get("prefix"),
+                                "parameters": parameters,
+                                "nickname": message_info.nickname,
+                            },
+                        )
+                    except Exception:
+                        pass
                     result = await command.process(message_info, parameters)
 
             if 'error' in result:
@@ -177,6 +202,21 @@ class CommandManager(Singleton):
                 res = f'{result["message"]} @{message_info.nickname}'
             else:
                 res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
+
+            try:
+                if controller := AppController.instance():
+                    controller.obs.emit(
+                        "command.result",
+                        ctx={
+                            "prefix": command_info.get("prefix"),
+                            "success": "error" not in result,
+                            "error": result.get("error") if isinstance(result, dict) else None,
+                            "response": res,
+                            "response_len": len(res or ""),
+                        },
+                    )
+            except Exception:
+                pass
             return res
         except Exception:
             self.logger.error(f"Error processing command {command_info}: {traceback.format_exc()}")
