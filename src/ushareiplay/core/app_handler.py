@@ -38,33 +38,17 @@ class AppHandler:
         Returns:
             logging.Logger: Configured logger instance
         """
-        print(f"_setup_logger 开始: {self.__class__.__name__}")
-        import yaml
+        from ushareiplay.core.config_loader import ConfigLoader
+        from ushareiplay.core.paths import ensure_dir, safe_workspace_path
 
-        # 直接加载全局 config.yaml
-        try:
-            print("加载 config.yaml...")
-            with open("config.yaml", "r", encoding="utf-8") as f:
-                global_config = yaml.safe_load(f)
-            log_dir = global_config.get("logging", {}).get("directory", "logs")
-            print(f"从 config.yaml 获取日志目录: {log_dir}")
-        except Exception as e:
-            print(f"[日志调试] 加载 config.yaml 失败: {e}")
-            log_dir = "logs"
-        print(
-            f"[日志调试] handler 日志目录: {log_dir}, 绝对路径: {os.path.abspath(log_dir)}"
-        )
-
-        # Create logs directory if it doesn't exist (supports relative paths)
-        print("检查并创建日志目录...")
-        if not os.path.exists(log_dir):
-            print(f"创建日志目录: {log_dir}")
-            os.makedirs(log_dir)
-        print("日志目录检查完成")
+        cfg = ConfigLoader.load_config()
+        configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
+        log_dir_path = safe_workspace_path(configured, default_rel="logs")
+        ensure_dir(log_dir_path)
 
         # Get current date for log file name
         current_date = datetime.now().strftime("%Y-%m-%d")
-        log_file = f"{log_dir}/{self.__class__.__name__}_{current_date}.log"
+        log_file = str(log_dir_path / f"{self.__class__.__name__}_{current_date}.log")
 
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
