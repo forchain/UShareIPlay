@@ -212,6 +212,14 @@ class MessageContentEvent(BaseEvent):
             if not queue_messages:
                 return
 
+            # observability: queue drain lifecycle
+            try:
+                from ushareiplay.core.app_controller import AppController
+                if controller := AppController.instance():
+                    controller.obs.emit("queue.drain.start", ctx={"count": len(queue_messages)})
+            except Exception:
+                pass
+
             self.logger.info(f"Processing {len(queue_messages)} queue messages")
 
             # 处理每条队列消息
@@ -243,6 +251,16 @@ class MessageContentEvent(BaseEvent):
             if command_messages:
                 command_manager = CommandManager.instance()
                 await command_manager.handle_message_commands(command_messages)
+
+            try:
+                from ushareiplay.core.app_controller import AppController
+                if controller := AppController.instance():
+                    controller.obs.emit(
+                        "queue.drain.end",
+                        ctx={"count": len(queue_messages), "command_count": len(command_messages)},
+                    )
+            except Exception:
+                pass
 
         except Exception:
             self.logger.error(f"Error processing queue messages: {traceback.format_exc()}")

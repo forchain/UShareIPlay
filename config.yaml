@@ -308,54 +308,12 @@ commands:
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "help"
     level: 0
-    response_template: |
-      帮助
-      1. 立即播放 
-        :play 歌名 歌手 
-      2. 下一首播放
-        :next 歌名 歌手
-      3. 切歌
-        :skip
-      4. 暂停/继续
-        :pause 1/0
-      5. 收藏播放
-        :fav (播放所有收藏)
-        :fav 0 语言 (播放指定语言收藏，如 :fav 0 粤语)
-      6. 音量 (0~15)
-        :vol [n] (不指定参数显示当前音量)
-      7. 歌词
-        :lyrics
-      8. 播放信息
-        :info
-      9. 播放歌单
-        :playlist 歌单
-      10. 播放歌手
-        :singer 歌手
-      11. 播放专辑
-        :album 专辑
-      12. 开/关麦
-        :mic 0/1 
-      13. 播放模式, 0列表, 1单曲, -1随机
-        :mode 0/1/-1
-      14. 主题
-        :theme 主题
-      15. 标题
-        :title 标题
-      16. 话题
-        :topic 话题
-      17. 定时
-        :timer add id 时间 命令
-      18. 电台
-        :radio guess/daily/collection/sleep
+    response_template: "{help}"
 
   - prefix: "room"
     level: 4
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
-  - prefix: "recovery"
-    level: 1
-    response_template: "{status}"
-    error_template: "Recovery command failed: {error}"
   - prefix: "admin"
     level: 9
     response_template: "{action} {user} as administrator"
