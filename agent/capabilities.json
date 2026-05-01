@@ -4,7 +4,8 @@
     "禁止外部工具创建或连接第二个 Appium session 进行 UI 变更操作",
     "输入必须走 console/queue（例如在控制台输入 :command 或后台管理命令）",
     "复用已运行进程时，后台注入必须写入 .agent/commands/*.cmd 并由主程序汇入同一条 console/queue 路径",
-    "UI 只读证据（page_source/screenshot）必须由主程序现有 session 导出并落盘，外部仅读取文件"
+    "UI 只读证据（page_source/screenshot）必须由主程序现有 session 导出并落盘，外部仅读取文件",
+    "Git 提交信息（commit message）必须使用英文（包括 merge、fix、feat、docs、chore 等所有提交）"
   ],
   "capabilities": [
     {
