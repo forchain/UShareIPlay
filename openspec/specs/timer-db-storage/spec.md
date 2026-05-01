@@ -7,6 +7,14 @@
 - **WHEN** 用户执行 `timer add <id> <时间> <消息>` 命令
 - **THEN** 系统 SHALL 将新定时器写入数据库，并更新内存缓存
 
+#### Scenario: 添加定时器（省略 ID）时自动生成并写入数据库
+- **WHEN** 用户执行 `timer add <时间> <消息>` 命令（未提供 `<id>`）
+- **THEN** 系统 SHALL 生成一个随机定时器 ID 并写入数据库与内存缓存，且返回消息/列表中 SHALL 展示该最终 `id`
+
+#### Scenario: 时间为纯数字时按延迟秒数写入数据库
+- **WHEN** 用户执行 `timer add <id?> <时间> <消息>` 且 `<时间>` 为纯数字 \(N\)
+- **THEN** 系统 SHALL 将该时间解释为延迟 \(N\) 秒执行一次，并将解析后的触发时间（例如 next_trigger）写入数据库与内存缓存
+
 #### Scenario: 删除定时器时从数据库移除
 - **WHEN** 用户执行 `timer remove <id>` 命令
 - **THEN** 系统 SHALL 从数据库删除对应记录，并从内存缓存移除
@@ -15,9 +23,9 @@
 - **WHEN** 一个 repeat=True 的定时器被触发
 - **THEN** 系统 SHALL 将 next_trigger 更新为次日同一时间，并将更新写入数据库
 
-#### Scenario: 一次性定时器触发后在数据库中禁用
+#### Scenario: 一次性定时器触发后从数据库删除
 - **WHEN** 一个 repeat=False 的定时器被触发
-- **THEN** 系统 SHALL 将该定时器的 enabled 字段在数据库中置为 False
+- **THEN** 系统 SHALL 从数据库删除该定时器记录，并从内存缓存移除
 
 ### Requirement: 启动时从数据库加载定时器
 系统 SHALL 在 TimerManager 启动时从数据库加载所有定时器到内存缓存，不再读取 `config.yaml` 的 `initial_timers` 段。
