@@ -244,6 +244,69 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return cmd_process_status(args)
 
 
+def _list_repo_ushareiplay_pids() -> list[int]:
+    """
+    Best-effort: find all ushareiplay processes started from this repo root.
+    This catches orphaned instances started outside the managed PID file.
+    """
+    needles = [
+        str(REPO_ROOT / ".venv" / "bin" / "ushareiplay"),
+        f"uv run ushareiplay",
+    ]
+    pids: set[int] = set()
+    for needle in needles:
+        try:
+            # pgrep -f matches full command line
+            r = _run(["pgrep", "-f", needle], timeout=5)
+            if r.returncode != 0:
+                continue
+            for line in (r.stdout or "").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    pids.add(int(line))
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return sorted(pids)
+
+
+def cmd_stop_all(args: argparse.Namespace) -> int:
+    """
+    Stop any ushareiplay instances likely belonging to this repo, not only the managed pid.
+    """
+    # First try the managed stop path (kills process group).
+    _stop(args.timeout)
+
+    # Then cleanup any orphaned instances started outside the PID file.
+    pids = _list_repo_ushareiplay_pids()
+    if not pids:
+        return cmd_process_status(args)
+
+    # kill as process groups when possible
+    for pid in pids:
+        if not _pid_alive(pid):
+            continue
+        pgid = _safe_getpgid(pid) or pid
+        _kill_group(pgid, signal.SIGINT)
+
+    deadline = _now() + args.timeout
+    while _now() < deadline:
+        alive = [pid for pid in pids if _pid_alive(pid)]
+        if not alive:
+            return cmd_process_status(args)
+        time.sleep(0.2)
+
+    for pid in pids:
+        if not _pid_alive(pid):
+            continue
+        pgid = _safe_getpgid(pid) or pid
+        _kill_group(pgid, signal.SIGKILL)
+
+    return cmd_process_status(args)
+
 def cmd_start(args: argparse.Namespace) -> int:
     AGENT_DIR.mkdir(parents=True, exist_ok=True)
     pid = _managed_pid()
@@ -428,6 +491,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("stop")
     p.add_argument("--timeout", type=float, default=8.0)
     p.set_defaults(func=cmd_stop)
+
+    p = sub.add_parser("stop-all")
+    p.add_argument("--timeout", type=float, default=8.0)
+    p.set_defaults(func=cmd_stop_all)
 
     p = sub.add_parser("inject")
     p.add_argument("--text", required=True)
