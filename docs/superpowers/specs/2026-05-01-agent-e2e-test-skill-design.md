@@ -79,13 +79,20 @@ The skill should instruct Agent to:
    - evidence to collect
    - success criteria
    - failure and blocker handling
-4. Start or reuse the real service:
+4. Run a tool/resource self-check for the required actions before executing the plan:
+   - shared basics: repo root, `.venv`, `run.sh`, config presence
+   - action-specific tools: ADB, DB, logs, artifacts, input spool, screenshots/page source
+   - extra authorization or external resources required by the scenario
+5. Prepare safe resources such as `.agent/commands`, logs/artifacts directories, and report locations.
+6. Stop with a blocker before test execution if required tools/resources are unavailable.
+7. Start or reuse the real service:
    - `dev`: restart managed process through `./run.sh`
    - `test`: reuse healthy process; otherwise start through `./run.sh`
-5. Execute the plan using toolbelt actions.
-6. Read runtime evidence and reason about pass/fail.
-7. If the failure is fixable in the repo, fix code and rerun focused checks plus E2E.
-8. If blocked by device/Appium/account/page state/missing evidence, report the blocker with collected evidence.
+8. Execute the plan using toolbelt actions.
+9. Read runtime evidence and reason about pass/fail.
+10. If the failure is fixable in the repo, fix code and rerun focused checks plus E2E.
+11. If blocked by device/Appium/account/page state/missing evidence, report the blocker with collected evidence.
+12. Review whether the toolbelt or system testability should evolve based on this test.
 
 ## Manual Test Examples
 
@@ -141,6 +148,23 @@ The skill must report a blocker instead of claiming E2E success when:
 - artifacts are missing or stale
 - page source/screenshot cannot be produced when needed
 - the expected behavior is ambiguous
+- the tool/resource self-check fails for a capability required by the plan
+
+## Self-Evolution And Testability-Driven Architecture
+
+The skill must improve the E2E toolbelt and the system's testability over time instead of treating the initial scripts as complete.
+
+Self-evolution has five paths:
+
+- **Fill tool gaps**: when a test needs an observation/action that current tools cannot perform, record the gap and add or propose a durable tool.
+- **Script repeatable flows**: when the Agent repeatedly performs the same sequence by monitoring logs/status/ADB/DB, promote that sequence into a script while keeping Agent responsible for test intent and pass/fail reasoning.
+- **Temporary targeted helpers**: when one specific test is inefficient through generic orchestration, create a temporary helper under `.agent/e2e-tools/`; promote it into the skill only after repeated use or clear general value.
+- **Expose testability gaps**: when a test can only be judged through fragile log scraping, screenshots, timing guesses, or manual correlation, record the missing structured event/state/report that would make the behavior testable.
+- **Propose architecture upgrades**: when repeated tool calls and Agent monitoring still cannot prove behavior reliably, propose concrete improvements to the application architecture, logging, observability, intermediate reports, state anchors, health/readiness signals, or correlation IDs.
+
+The toolbelt should include a way to record evolution opportunities with kind, title, detail, and timestamp so future work can decide whether to add durable tools.
+
+This makes E2E testing a test-driven architecture feedback loop: failed or inconclusive E2E attempts can drive better system design, not just more scripts.
 
 ## Verification
 
@@ -150,6 +174,8 @@ To verify this work:
 - Confirm the skill describes Agent-led planning and toolbelt usage.
 - Confirm the skill forbids treating smoke/unit/static checks as E2E success.
 - Confirm command injection is documented as a tool action, not the skill interface.
+- Confirm the skill requires a tool/resource self-check after planning and before execution.
+- Confirm the skill requires reviewing toolbelt and system testability evolution after difficult, repetitive, or inconclusive tests.
 - Run syntax/readability checks for any new scripts or changed Python files.
 - On a machine with Appium and device access, run a real manual E2E session and verify ADB/device activity.
 
