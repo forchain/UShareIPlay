@@ -270,7 +270,9 @@ class AppController(Singleton):
             self.agent_command_dir.mkdir(parents=True, exist_ok=True)
             for path in sorted(self.agent_command_dir.glob("*.cmd")):
                 try:
-                    message = path.read_text(encoding="utf-8").strip()
+                    # Preserve leading whitespace for compatibility tests and novice input.
+                    # Only trim line endings added by the injector/writer.
+                    message = path.read_text(encoding="utf-8").rstrip("\r\n")
                     path.unlink(missing_ok=True)
                 except Exception:
                     if self.obs:
@@ -280,7 +282,7 @@ class AppController(Singleton):
                             ctx={"path": str(path), "error": traceback.format_exc()},
                         )
                     continue
-                if message:
+                if message and message.strip():
                     self.input_queue.put((message, "agent_spool"))
                     if self.obs:
                         self.obs.emit("agent.inject.received", ctx={"source": "agent_spool", "content": message})
@@ -409,13 +411,14 @@ class AppController(Singleton):
                                         ctx={"error": traceback.format_exc(), "reason": input_source},
                                     )
                             else:
-                                pattern = r'([:：].+)'
-                                command = re.match(pattern, message)
-                                if command:
+                                # Allow leading whitespace and spaces after colon.
+                                # Keep the queued content in its original (colon-triggered) form.
+                                trimmed = message.lstrip()
+                                if trimmed and trimmed[0] in (':', '：') and trimmed[1:].strip():
                                     # Create MessageInfo for queue
                                     from ushareiplay.models.message_info import MessageInfo
                                     message_info = MessageInfo(
-                                        content=command.group(1).strip(),
+                                        content=trimmed,
                                         nickname="Console" if input_source == "console" else "Agent"
                                     )
 
