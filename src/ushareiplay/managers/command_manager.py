@@ -236,6 +236,28 @@ class CommandManager(Singleton):
             return None
         return self.command_parser.parse_command(content)
 
+    def _normalize_command_candidate(self, raw: str) -> str:
+        """
+        Normalize command-candidate text for robust parsing.
+
+        Accepts:
+        - leading whitespace (e.g. "  : help")
+        - fullwidth colon (：)
+        - whitespace after colon (e.g. ": help")
+
+        Returns:
+            str: cleaned command content WITHOUT the trigger colon, and with
+                 leading whitespace removed. Returns "" if no command content.
+        """
+        if not raw:
+            return ""
+        s = raw.lstrip()
+        if not s:
+            return ""
+        if s[0] in (":", "："):
+            s = s[1:]
+        return s.lstrip()
+
     async def handle_message_commands(self, messages):
         """
         处理消息中的命令
@@ -251,10 +273,14 @@ class CommandManager(Singleton):
 
         # Iterate through message info objects
         for message_info in messages:
-            # remove leading ':' or '：'
             if not message_info.content:
                 continue
-            content = message_info.content[1:] if message_info.content[0] in (':', '：') else message_info.content
+
+            # Normalize command input (tolerate leading spaces and spaces after colon)
+            content = self._normalize_command_candidate(message_info.content)
+            if not content:
+                continue
+
             if self.is_valid_command(content):
                 command_info = self.parse_command(content)
                 if command_info:

@@ -162,7 +162,7 @@ class MessageManager(Singleton):
                 continue
 
             # Parse message content using pattern
-            pattern = r'souler\[(.+)\]说：(:.+)'
+            pattern = r'souler\[(.+)\]说：\s*[:：]\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
@@ -171,6 +171,11 @@ class MessageManager(Singleton):
             # Extract actual message content
             nickname = match.group(1).strip()
             command = match.group(2).strip()
+            # Re-add trigger colon so downstream queue path remains consistent.
+            # CommandManager will normalize whitespace/colon later.
+            command = f":{command}" if command else ""
+            if not command.strip(":：").strip():
+                continue
             command_set.add(command)
             nickname_map[command] = nickname
 
@@ -189,7 +194,7 @@ class MessageManager(Singleton):
 
         messages = []
         for chat in self.latest_chats:
-            pattern = r'souler\[(.+)\]说：(:.+)'
+            pattern = r'souler\[(.+)\]说：\s*[:：]\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
@@ -198,6 +203,10 @@ class MessageManager(Singleton):
             # Extract actual message content
             nickname = match.group(1).strip()
             message_content = match.group(2).strip()
+            # Re-add trigger colon to keep MessageInfo.content consistent with queue/console conventions.
+            message_content = f":{message_content}" if message_content else ""
+            if not message_content.strip(":：").strip():
+                continue
             message = MessageInfo(message_content, nickname)
             messages.append(message)
 

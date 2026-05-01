@@ -84,6 +84,10 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 
 ### Help
 
+Command trigger notes:
+- Both half-width `:` and full-width `：` are accepted.
+- Whitespace around the colon is tolerated (e.g. `: help`, `： help`, `   : help`).
+
 | Command | Level | Description |
 |---|---|---|
 | `:help` | 0 | Post help text to chat |
