@@ -62,12 +62,51 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _read_managed_pidfile() -> Tuple[Optional[int], Optional[int]]:
+    """
+    Backward compatible:
+    - legacy: PID_FILE contains a plain integer pid
+    - new: PID_FILE contains JSON like {"pid": 123, "pgid": 123}
+    """
+    if not PID_FILE.exists():
+        return None, None
+    raw = PID_FILE.read_text(encoding="utf-8").strip()
+    if not raw:
+        return None, None
+    if raw[:1] == "{":
+        try:
+            obj = json.loads(raw)
+            pid = int(obj.get("pid")) if obj.get("pid") is not None else None
+            pgid = int(obj.get("pgid")) if obj.get("pgid") is not None else None
+            return pid, pgid
+        except Exception:
+            return None, None
+    try:
+        pid = int(raw)
+    except Exception:
+        return None, None
+    return pid, None
+
+
+def _safe_getpgid(pid: int) -> Optional[int]:
+    try:
+        return os.getpgid(pid)
+    except Exception:
+        return None
+
+
+def _kill_group(pgid: int, sig: signal.Signals) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except Exception:
+        pass
+
+
 def stop_existing(*, timeout_s: float = 8.0) -> None:
     if not PID_FILE.exists():
         return
-    try:
-        pid = int(PID_FILE.read_text(encoding="utf-8").strip())
-    except Exception:
+    pid, pgid = _read_managed_pidfile()
+    if pid is None:
         PID_FILE.unlink(missing_ok=True)
         return
 
@@ -75,10 +114,9 @@ def stop_existing(*, timeout_s: float = 8.0) -> None:
         PID_FILE.unlink(missing_ok=True)
         return
 
-    try:
-        os.kill(pid, signal.SIGINT)
-    except Exception:
-        pass
+    # Prefer killing the whole process group: run.sh / uv / python children must exit too.
+    resolved_pgid = pgid or _safe_getpgid(pid) or pid
+    _kill_group(resolved_pgid, signal.SIGINT)
 
     deadline = _now() + timeout_s
     while _now() < deadline:
@@ -88,20 +126,12 @@ def stop_existing(*, timeout_s: float = 8.0) -> None:
         time.sleep(0.2)
 
     # hard kill
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception:
-        pass
+    _kill_group(resolved_pgid, signal.SIGKILL)
     PID_FILE.unlink(missing_ok=True)
 
 
 def read_managed_pid() -> Optional[int]:
-    if not PID_FILE.exists():
-        return None
-    try:
-        pid = int(PID_FILE.read_text(encoding="utf-8").strip())
-    except Exception:
-        return None
+    pid, _pgid = _read_managed_pidfile()
     return pid
 
 
@@ -127,8 +157,14 @@ def start_service() -> subprocess.Popen[bytes]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         cwd=str(REPO_ROOT),
+        start_new_session=True,
     )
-    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
+    # New format: store pgid so stop can kill the entire subtree reliably.
+    try:
+        pgid = os.getpgid(proc.pid)
+    except Exception:
+        pgid = proc.pid
+    PID_FILE.write_text(json.dumps({"pid": proc.pid, "pgid": pgid}, ensure_ascii=False), encoding="utf-8")
     return proc
 
 

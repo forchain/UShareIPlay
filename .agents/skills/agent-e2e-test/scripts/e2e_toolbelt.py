@@ -43,9 +43,44 @@ def _pid_alive(pid: int) -> bool:
 
 def _managed_pid() -> int | None:
     try:
-        return int(PID_FILE.read_text(encoding="utf-8").strip())
+        raw = PID_FILE.read_text(encoding="utf-8").strip()
+        if not raw:
+            return None
+        if raw[:1] == "{":
+            obj = json.loads(raw)
+            pid = obj.get("pid")
+            return int(pid) if pid is not None else None
+        return int(raw)
     except Exception:
         return None
+
+
+def _managed_pgid() -> int | None:
+    try:
+        raw = PID_FILE.read_text(encoding="utf-8").strip()
+        if not raw:
+            return None
+        if raw[:1] == "{":
+            obj = json.loads(raw)
+            pgid = obj.get("pgid")
+            return int(pgid) if pgid is not None else None
+    except Exception:
+        return None
+    return None
+
+
+def _safe_getpgid(pid: int) -> int | None:
+    try:
+        return os.getpgid(pid)
+    except Exception:
+        return None
+
+
+def _kill_group(pgid: int, sig: signal.Signals) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except Exception:
+        pass
 
 
 def _latest_run_dir() -> Path | None:
@@ -192,20 +227,15 @@ def _stop(timeout_s: float) -> None:
     if not _pid_alive(pid):
         PID_FILE.unlink(missing_ok=True)
         return
-    try:
-        os.kill(pid, signal.SIGINT)
-    except Exception:
-        pass
+    resolved_pgid = _managed_pgid() or _safe_getpgid(pid) or pid
+    _kill_group(resolved_pgid, signal.SIGINT)
     deadline = _now() + timeout_s
     while _now() < deadline:
         if not _pid_alive(pid):
             PID_FILE.unlink(missing_ok=True)
             return
         time.sleep(0.2)
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception:
-        pass
+    _kill_group(resolved_pgid, signal.SIGKILL)
     PID_FILE.unlink(missing_ok=True)
 
 
@@ -231,8 +261,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         stdin=subprocess.PIPE,
         stdout=log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
-    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
+    try:
+        pgid = os.getpgid(proc.pid)
+    except Exception:
+        pgid = proc.pid
+    PID_FILE.write_text(json.dumps({"pid": proc.pid, "pgid": pgid}, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({"action": "started", "pid": proc.pid, "log": str(log_path)}, ensure_ascii=False))
     return 0
 
