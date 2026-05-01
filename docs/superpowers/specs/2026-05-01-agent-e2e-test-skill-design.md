@@ -2,116 +2,159 @@
 
 ## Problem
 
-The current observability runner can validate its own smoke path, but smoke mode does not start `run.sh`, does not connect to Appium, and does not exercise the Android device. Reporting smoke success as end-to-end success is misleading.
+The current repository has useful observability artifacts and a runner script, but it still lacks a real callable skill for manual end-to-end testing.
 
-The repository also lacks a callable skill for manual E2E testing. Existing `agent/` files are playbooks and knowledge assets, not an invokable skill entrypoint.
+The earlier design was wrong because it framed `scripts/agent_e2e.py --command ...` as the center of the E2E workflow. That only fits command-style tests. It does not fit tests such as entering a room, validating startup state, observing pre-room behavior, checking recovery, or verifying UI/DB/log side effects without a command.
+
+The correct boundary is:
+
+- **Skill / Agent**: understands the user's test intent, creates a test plan, chooses tools, reads evidence, decides pass/fail, fixes code when appropriate, and reruns.
+- **Scripts / tools**: perform deterministic low-level actions such as starting the app, checking ADB state, reading logs, querying DB, capturing screenshots, dumping page source, and optionally injecting text or commands.
 
 ## Goal
 
-Create an `agent-e2e-test` skill that agents can use when the user asks to manually test a real feature or command, such as checking whether `:help` output is stale.
+Create an `agent-e2e-test` skill that turns a natural-language test request into a real E2E test session.
 
-The skill must enforce real runtime behavior:
+The skill must be able to support many kinds of requests, including but not limited to:
 
-- start or reuse the actual service through `./run.sh`
-- inject commands through the approved console/queue path
-- validate using runtime evidence from artifacts, logs, DB, and read-only UI dumps
-- report blockers when Appium/device/runtime evidence is unavailable
-- never treat `--mode smoke` as user-facing E2E validation
+- testing a command such as Help
+- testing app startup and room-entry behavior
+- testing behavior before entering a room
+- testing UI feedback
+- testing DB side effects
+- testing logs/recovery behavior
+- testing Android foreground activity or page state
 
-## Approach
+The skill must never treat unit tests, static checks, or runner smoke mode as user-facing E2E success.
 
-Add a new skill at:
-
-```text
-.agents/skills/agent-e2e-test/SKILL.md
-```
-
-The skill will wrap the existing repo-native runner, `scripts/agent_e2e.py`, but will constrain how it is used.
-
-Manual E2E tests must use full mode. Smoke mode is allowed only for runner self-checks and must be explicitly described as not exercising the Android device.
-
-## Runtime Flow
+## Architecture
 
 ```text
-User asks to test a real feature
+User natural-language request
         |
         v
 agent-e2e-test skill
         |
         v
-Decide scenario:
-  dev  -> restart managed process with ./run.sh
-  test -> reuse healthy process, otherwise ./run.sh
+Agent creates request-specific test plan
         |
         v
-Wait for real artifacts:
-  status.json + events.jsonl + CommandReady
+Agent selects tool actions:
+  process / adb / logs / db / artifacts / screenshot / page_source / input
         |
         v
-Inject command:
-  stdin if runner owns process
-  .agent/commands/*.cmd if reusing process
+Agent observes runtime evidence
         |
         v
-Assert evidence:
-  events, logs, DB, page_source, screenshot
-        |
-        v
-Pass, fix-and-retest, or blocker
+Agent reasons over evidence:
+  pass | fix and retest | blocker
 ```
 
-## Skill Rules
+## Toolbelt Principle
 
-The skill must:
+Tool scripts must be business-neutral. They expose capabilities, not test cases.
 
-- run from the repository root
-- activate `.venv` before commands
-- prefer `--scenario test --trigger manual` for user-requested tests
-- use `--scenario dev --trigger auto` after risky implementation work
-- execute real `./run.sh` indirectly through `scripts/agent_e2e.py --mode full`
-- refuse to call a smoke run “E2E”
-- use `.agent/commands/*.cmd` for reused-process injection
-- request `!dump` when UI evidence is needed
-- include the generated report path in the response
+Allowed tool categories:
 
-The skill must stop and report a blocker if:
+- **Process tools**: check managed PID, start `./run.sh`, stop/restart service, wait for artifacts.
+- **ADB tools**: list devices, inspect current package/activity, collect logcat, optionally perform user-level input actions when explicitly required by the test plan.
+- **Artifact tools**: read `status.json`, `events.jsonl`, screenshots, page source, and generated reports.
+- **DB tools**: run read-only SQLite queries; optionally perform controlled test acceleration only when the plan calls for it.
+- **Log tools**: tail logs, filter by time window, regex/search for errors or expected messages.
+- **UI evidence tools**: capture or request screenshot/page source from the running process and analyze files.
+- **Input tools**: inject text/commands through approved background/console/queue paths. This is one tool action, not the skill interface.
 
+`scripts/agent_e2e.py` may remain as one runner tool, but it must be documented as a low-level helper. Its `--command` argument means “inject this text into the backend input path,” not “all E2E tests are command tests.”
+
+## Skill Workflow
+
+The skill should instruct Agent to:
+
+1. Restate the user's test intent in concrete terms.
+2. Classify the test surface: process, Android/ADB, UI, command/input, DB, logs, timers, recovery, or mixed.
+3. Create a test plan with:
+   - preconditions
+   - startup/reuse policy
+   - actions to perform
+   - evidence to collect
+   - success criteria
+   - failure and blocker handling
+4. Start or reuse the real service:
+   - `dev`: restart managed process through `./run.sh`
+   - `test`: reuse healthy process; otherwise start through `./run.sh`
+5. Execute the plan using toolbelt actions.
+6. Read runtime evidence and reason about pass/fail.
+7. If the failure is fixable in the repo, fix code and rerun focused checks plus E2E.
+8. If blocked by device/Appium/account/page state/missing evidence, report the blocker with collected evidence.
+
+## Manual Test Examples
+
+### Help Command Freshness
+
+The Agent may choose background input as one action:
+
+```text
+Plan:
+- Start/reuse service
+- Inject ":help" through approved input tool
+- Read events/logs/status and any runtime output evidence
+- Compare observed runtime output against current command capability
+- Fix help generation if runtime output is stale
+```
+
+The test is not “run `--command :help` and trust the script.” The script only performs the input and evidence collection; the Agent judges whether output is stale.
+
+### Pre-Room Behavior
+
+No command is required.
+
+```text
+Plan:
+- Start service through run.sh
+- Use ADB/artifacts to observe current package/activity
+- Capture status/page source/screenshot before entering a room
+- Inspect logs/events for expected startup and navigation behavior
+- Decide whether pre-room UI/state matches the requested behavior
+```
+
+### DB Side Effect
+
+Command input may or may not be involved.
+
+```text
+Plan:
+- Snapshot relevant DB rows
+- Perform requested runtime action
+- Snapshot DB rows again
+- Correlate DB changes with events/logs
+- Decide whether side effect matches expected behavior
+```
+
+## Blocker Policy
+
+The skill must report a blocker instead of claiming E2E success when:
+
+- `./run.sh` was not executed and no healthy real process was reused
 - Appium is unavailable
-- no Android device or required apps respond
-- `status.json` / `events.jsonl` are not produced by the real service
-- `CommandReady` is not reached within timeout
-- command injection cannot be confirmed by `queue.enqueue`
-- requested UI evidence cannot be dumped
+- Android device is not connected or not responding
+- required app package/activity cannot be observed
+- artifacts are missing or stale
+- page source/screenshot cannot be produced when needed
+- the expected behavior is ambiguous
 
-## Help Command Example
+## Verification
 
-For “test whether Help command output is stale,” the skill should run a real manual E2E command similar to:
+To verify this work:
 
-```bash
-source .venv/bin/activate
-python scripts/agent_e2e.py \
-  --mode full \
-  --scenario test \
-  --trigger manual \
-  --trigger-reason "test Help command freshness" \
-  --command ':help' \
-  --dump-after-command \
-  --expect-log-regex 'help|Help|帮助'
-```
-
-Static config inspection may be used as supporting evidence only after the runtime command has been executed.
-
-## Testing
-
-The skill itself is documentation and workflow, so verification should include:
-
-- syntax/readability check of `SKILL.md`
-- runner smoke self-check clearly labeled as non-E2E
-- full manual E2E on a machine with Appium and Android device available
-- evidence that `./run.sh` was invoked or a healthy managed process was reused
+- Confirm `.agents/skills/agent-e2e-test/SKILL.md` exists.
+- Confirm the skill describes Agent-led planning and toolbelt usage.
+- Confirm the skill forbids treating smoke/unit/static checks as E2E success.
+- Confirm command injection is documented as a tool action, not the skill interface.
+- Run syntax/readability checks for any new scripts or changed Python files.
+- On a machine with Appium and device access, run a real manual E2E session and verify ADB/device activity.
 
 ## Out of Scope
 
-- Creating a second Appium session from the agent
-- Mutating UI directly through ADB/Appium outside the running app process
-- Treating unit tests, static config checks, or runner smoke mode as E2E success
+- Encoding every possible E2E scenario as command-line flags.
+- Creating a second Appium session from the Agent.
+- Treating runner success as the final oracle when Agent has not inspected evidence.
