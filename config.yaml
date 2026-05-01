@@ -314,10 +314,6 @@ commands:
     level: 4
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
-  - prefix: "recovery"
-    level: 1
-    response_template: "{status}"
-    error_template: "Recovery command failed: {error}"
   - prefix: "admin"
     level: 9
     response_template: "{action} {user} as administrator"

@@ -27,21 +27,33 @@ def main():
 
     result = asyncio.run(cmd.process(message_info=None, parameters=[]))
     assert isinstance(result, dict) and "help" in result
-    rendered = cfg["commands"]
     help_text = result["help"]
 
-    prefixes_cfg = {c["prefix"] for c in (cfg.get("commands") or []) if isinstance(c, dict) and c.get("prefix")}
+    # Soul 消息上限是 500 字符，CommandManager 会追加执行人信息；正文保留约 10 字符余量。
+    assert len(help_text) <= 490, f"help 输出过长: {len(help_text)} chars"
+
+    essential_prefixes = {
+        "help",
+        "play",
+        "next",
+        "skip",
+        "pause",
+        "vol",
+        "lyrics",
+        "fav",
+        "info",
+        "singer",
+        "topic",
+    }
     prefixes_help = {p[1:] for p in _extract_prefixes_from_help(help_text)}
 
-    missing = sorted(prefixes_cfg - prefixes_help)
-    extra = sorted(prefixes_help - prefixes_cfg)
+    missing = sorted(essential_prefixes - prefixes_help)
 
-    assert not missing, f"help 缺少命令: {missing}"
-    assert not extra, f"help 出现未知命令: {extra}"
+    assert not missing, f"help 缺少核心命令: {missing}"
+    assert "recovery" not in prefixes_help, "help 不应展示不可执行的 recovery 命令"
 
-    print("OK: help 输出与 config.yaml commands 同步")
+    print("OK: help 输出精简且包含核心命令")
 
 
 if __name__ == "__main__":
     main()
-

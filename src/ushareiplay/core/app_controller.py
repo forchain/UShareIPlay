@@ -6,6 +6,7 @@ import threading
 import time
 import traceback
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from appium import webdriver
 from appium.options.common import AppiumOptions
@@ -38,6 +39,7 @@ class AppController(Singleton):
         # 使用主driver启动其他应用
         self._start_apps()
         self.input_queue = queue.Queue()
+        self.agent_command_dir = Path(".agent") / "commands"
         self.is_running = True
         self.in_console_mode = False
 
@@ -244,7 +246,7 @@ class AppController(Singleton):
             try:
                 user_input = input("Console> " if self.in_console_mode else "")
                 # Process all input, including empty strings (just pressing Enter)
-                self.input_queue.put(user_input)
+                self.input_queue.put((user_input, "console"))
                 self.logger.critical(f"{user_input}")
             except EOFError:
                 continue
@@ -255,6 +257,36 @@ class AppController(Singleton):
                 else:
                     self.is_running = False
                 break
+
+    def _drain_agent_command_spool(self) -> None:
+        """
+        Read commands injected by external Agent runners.
+
+        This is intentionally file-based so a runner can inject into a reused
+        process without owning the process stdin or opening a second Appium
+        session. Commands still flow through the same console queue path.
+        """
+        try:
+            self.agent_command_dir.mkdir(parents=True, exist_ok=True)
+            for path in sorted(self.agent_command_dir.glob("*.cmd")):
+                try:
+                    message = path.read_text(encoding="utf-8").strip()
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    if self.obs:
+                        self.obs.emit(
+                            "agent.inject.error",
+                            level="ERROR",
+                            ctx={"path": str(path), "error": traceback.format_exc()},
+                        )
+                    continue
+                if message:
+                    self.input_queue.put((message, "agent_spool"))
+                    if self.obs:
+                        self.obs.emit("agent.inject.received", ctx={"source": "agent_spool", "content": message})
+        except Exception:
+            if self.obs:
+                self.obs.emit("agent.inject.error", level="ERROR", ctx={"error": traceback.format_exc()})
 
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
@@ -346,10 +378,15 @@ class AppController(Singleton):
         paused = False
         while self.is_running:
             try:
+                self._drain_agent_command_spool()
                 # Check for console input (高优先级，在事件管理器前处理)
                 try:
                     while not self.input_queue.empty():
-                        message = self.input_queue.get_nowait()
+                        item = self.input_queue.get_nowait()
+                        if isinstance(item, tuple):
+                            message, input_source = item
+                        else:
+                            message, input_source = item, "console"
                         # Only send non-empty messages
                         if message.strip():
                             if message == '!stop':
@@ -364,12 +401,12 @@ class AppController(Singleton):
                             elif message == '!dump':
                                 # read-only dump of artifacts using existing session
                                 try:
-                                    await self._dump_readonly_artifacts(reason="console")
+                                    await self._dump_readonly_artifacts(reason=input_source)
                                 except Exception:
                                     self.obs.emit(
                                         "artifact.dump.error",
                                         level="ERROR",
-                                        ctx={"error": traceback.format_exc(), "reason": "console"},
+                                        ctx={"error": traceback.format_exc(), "reason": input_source},
                                     )
                             else:
                                 pattern = r'([:：].+)'
@@ -379,7 +416,7 @@ class AppController(Singleton):
                                     from ushareiplay.models.message_info import MessageInfo
                                     message_info = MessageInfo(
                                         content=command.group(1).strip(),
-                                        nickname="Console"
+                                        nickname="Console" if input_source == "console" else "Agent"
                                     )
 
                                     # Add message to queue
@@ -387,9 +424,9 @@ class AppController(Singleton):
                                     await message_queue.put_message(message_info)
                                     self.obs.emit(
                                         "queue.enqueue",
-                                        ctx={"source": "console", "content": message_info.content, "nickname": message_info.nickname},
+                                        ctx={"source": input_source, "content": message_info.content, "nickname": message_info.nickname},
                                     )
-                                    self.logger.info(f"Console message added to queue: {message}")
+                                    self.logger.info(f"{input_source} message added to queue: {message}")
                                 else:
                                     self.soul_handler.send_message(message)
 

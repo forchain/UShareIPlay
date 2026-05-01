@@ -50,8 +50,8 @@ The snapshot MUST include:
 - **WHEN** `pipeline.ui_lock == locked`
 - **THEN** the agent SHALL treat the system as not safe for injecting new test commands
 
-### Requirement: The snapshot SHOULD include business context
-The snapshot SHOULD include:
+### Requirement: The snapshot SHALL support optional business context
+The snapshot SHALL support optional business context fields:
 - `business.party_id_current` and `business.party_id_target` (strings, MAY be empty)
 - `business.timers_running` (boolean)
 - `business.playback_info_summary` (object or null)
@@ -59,4 +59,3 @@ The snapshot SHOULD include:
 #### Scenario: Agent can validate timer/music-related tests
 - **WHEN** timer or music subsystems are involved
 - **THEN** the snapshot SHOULD provide enough summary context to support assertions without UI mutation
-

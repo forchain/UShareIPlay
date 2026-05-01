@@ -42,3 +42,24 @@
 - [x] 6.2 无设备降级策略：在无法连接 Appium/无设备时，仍验证 console/queue→command→events/status 的链路（不测试真实 UI）
 - [x] 6.3 将 E2E 冒烟加入到 `tests/` 或独立脚本（与仓库现有“脚本式测试”风格一致）
 
+## 7. E2E Runner 生命周期与后台注入（补充）
+
+- [x] 7.1 在 `agent/` playbooks 中补充 Scenario/Lifecycle：`dev` 默认重启，`test` 优先复用健康进程
+- [x] 7.2 为 runner 增加健康检查：managed PID、fresh `status.json`、fresh `events.jsonl`、CommandReady/可等待状态
+- [x] 7.3 增加复用进程可用的后台命令注入通道（不依赖 runner 持有 stdin），并汇入现有 console/queue 路径
+- [x] 7.4 修正 `scripts/agent_e2e.py`：`--scenario test` 复用已有进程时仍能注入命令；无法注入时给出明确 blocker，而不是走到后置失败
+- [x] 7.5 扩展报告：记录 scenario、生命周期动作、注入通道、ready anchors、事件/日志/DB/UI 断言摘要
+- [x] 7.6 增加日志断言参数（例如 expected log regex / recent log excerpt）并写入报告
+- [x] 7.7 增加只读 UI 断言参数（page_source 文本/XML 查询、截图存在性，可选 OCR/image compare）并写入报告
+- [x] 7.8 为 `dev` 重启、`test` 复用、`test` 未启动则启动、复用进程注入失败四条路径增加脚本式测试
+
+## 8. 自动/手动触发与迭代闭环（补充）
+
+- [x] 8.1 在 `agent/` playbooks 中补充 Trigger Policy：`auto` 与 `manual`
+- [x] 8.2 为自动触发定义风险判断清单：命令、队列、定时器、DB、日志/事件、UI 反馈、Appium/ready、跨组件工作流
+- [x] 8.3 为手动触发定义硬规则：必须启动或复用程序并通过后台/console/queue 注入真实命令，静态检查只能作为辅助证据
+- [x] 8.4 为 runner 增加 `--trigger auto|manual` 参数，并在报告中记录
+- [x] 8.5 扩展报告模板：记录自动触发原因或用户手动触发需求
+- [x] 8.6 定义失败后的修复-重测循环：E2E 失败且可修复时修改代码，重新跑相关单元/脚本测试，再重新跑 E2E
+- [x] 8.7 定义停止条件：设备/Appium/账号/selector/注入通道/期望行为缺失时输出 blocker、证据和下一步
+- [x] 8.8 增加 Help 命令手动 E2E playbook 示例：运行程序 → 注入 `:help` → 验证运行时输出是否与当前命令能力一致 → 必要时修复并重测

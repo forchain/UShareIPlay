@@ -36,11 +36,30 @@ The repository SHALL include an `agent/` directory containing versioned assets t
 - `command_e2e`
 - `timer_e2e`
 
-Each playbook MUST define Guard/Advance/Inject/Assert/OnFail.
+Each playbook MUST define Scenario/Lifecycle/Guard/Advance/Inject/Assert/OnFail, including when to restart the app and when to reuse an existing healthy process.
 
 #### Scenario: Agent follows a playbook
 - **WHEN** a timer E2E test is requested
 - **THEN** the agent SHALL follow the `timer_e2e` playbook and produce a minimal report/artifacts on failure
+
+### Requirement: Playbooks MUST define scenario-specific lifecycle behavior
+The E2E playbooks MUST define the default lifecycle behavior for:
+- development validation after code changes: restart managed process before testing
+- behavior-only testing of an already running app: reuse the app if healthy; start it only if missing or unhealthy
+
+#### Scenario: Agent chooses reuse in test scenario
+- **WHEN** the user asks only to test an existing feature or command
+- **THEN** the playbook SHALL direct the agent to inspect current process health before deciding whether to start the app
+
+### Requirement: Playbooks MUST define automatic and manual trigger behavior
+The E2E playbooks MUST explain:
+- when the Agent may automatically run E2E after unit/script tests pass
+- how the Agent should respond to an explicit user request to test a feature or command
+- how failures feed back into implementation and retesting
+
+#### Scenario: Agent follows manual trigger playbook
+- **WHEN** the user asks the Agent to test a specific command
+- **THEN** the relevant playbook SHALL require runtime command injection and evidence-based validation
 
 ### Requirement: Self-evolution MUST be recorded as repo changes
 When the agent discovers a repeated failure mode or missing prerequisite, it MUST record it in:
@@ -51,4 +70,3 @@ When the agent discovers a repeated failure mode or missing prerequisite, it MUS
 #### Scenario: Agent improves future collaboration
 - **WHEN** a test cannot be executed due to missing selectors or missing dump hooks
 - **THEN** the agent SHALL record the missing inputs and the recommended next step in `agent/` assets
-
