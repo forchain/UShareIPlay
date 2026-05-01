@@ -307,8 +307,15 @@ class QQMusicHandler(AppHandler, Singleton):
             return playing_info
 
         if self.list_mode == 'singer':
-            if playing_info['song'].endswith('(Live)') or (
-                    playing_info['singer'] and playing_info['singer'] == playing_info['album']):
+            singer_text = (playing_info.get('singer') or "").strip()
+            artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
+            if (
+                playing_info.get('song', '').endswith('(Live)')
+                or (singer_text and singer_text == (playing_info.get('album') or '').strip())
+                or artist_count >= 4
+            ):
+                # One-time allowlist for singer-mode low-quality filters (Live / suspicious / multi-artist).
+                # This preserves "play" as a temporary override without changing list_mode.
                 self.no_skip += 1
         self.logger.info(f"Found playing info: {playing_info}")
         return playing_info
@@ -409,6 +416,19 @@ class QQMusicHandler(AppHandler, Singleton):
 
             # 针对歌手模式的特殊处理
             if self.list_mode == 'singer':
+                # 多人合唱（>=4）在 singer 模式下自动跳过（play 插播通过 no_skip 允许一次）
+                singer_text = (singer or "").strip()
+                artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
+                if artist_count >= 4:
+                    if self.no_skip > 0:
+                        self.no_skip -= 1
+                        self.logger.info(
+                            f"Allowing multi-artist song (remaining skips: {self.no_skip}): {song} - {singer_text}"
+                        )
+                        return False
+                    self.logger.info(f"Skipping multi-artist song (>=4): {song} - {singer_text}")
+                    return True
+
                 # 检查是否是 Live 版本
                 if song.endswith('(Live)'):
                     if self.no_skip > 0:
