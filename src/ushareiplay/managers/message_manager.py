@@ -25,11 +25,11 @@ def get_chat_logger(config=None):
     global chat_logger
     if chat_logger is None:
         from ushareiplay.core.config_loader import ConfigLoader
-        from ushareiplay.core.paths import ensure_dir, safe_workspace_path
+        from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
         cfg = ConfigLoader.load_config()
         configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
-        log_dir_path = safe_workspace_path(configured, default_rel="logs")
+        log_dir_path = resolve_log_directory(configured, default_rel="logs")
         ensure_dir(log_dir_path)
         # Create chat logger
         chat_logger = logging.getLogger('chat')

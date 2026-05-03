@@ -32,6 +32,23 @@ def _is_within(child: Path, parent: Path) -> bool:
         return False
 
 
+def resolve_log_directory(configured: str, default_rel: str = "logs") -> Path:
+    """
+    Resolve logging.directory from config relative to repo root.
+
+    Unlike safe_workspace_path(), paths outside the repo (e.g. '../logs') are kept.
+    This restores historical behavior; logs are often intentionally placed beside
+    the repo to keep ripgrep/code search separate from large log files.
+    """
+    root = repo_root()
+    raw = (configured or "").strip()
+    if not raw:
+        return (root / default_rel).resolve()
+
+    p = Path(raw)
+    return (p if p.is_absolute() else (root / p)).resolve()
+
+
 def safe_workspace_path(configured: str, default_rel: str) -> Path:
     """
     Normalize a configured directory path to a workspace-safe location.
