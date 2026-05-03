@@ -28,7 +28,7 @@ soul:
     enabled: true
     wait_for_command_ready: true
     commands:
-      - ":radio"
+      - ":skip"
 
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
