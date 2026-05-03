@@ -407,15 +407,11 @@ class PartyManager(Singleton):
             else:
                 self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
 
-            message_info = MessageInfo(
-                content=":radio",
-                nickname="Console"
-            )
-
-            # Add a radio message to the queue
-            message_queue = MessageQueue.instance()
-            await message_queue.put_message(message_info)
-            self.logger.info("Radio command executed after party creation")
+            automation = getattr(self.handler.controller, "post_party_create_automation", None)
+            if automation:
+                await automation.on_party_created_new()
+            else:
+                self.logger.warning("post_party_create_automation not initialized; skip auto commands")
 
             return True
 

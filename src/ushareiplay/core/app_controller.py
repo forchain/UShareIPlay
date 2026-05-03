@@ -13,6 +13,7 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.db_service import DBHelper
 from ushareiplay.core.observability import Observability, new_run_id
@@ -59,6 +60,7 @@ class AppController(Singleton):
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
+        self.post_party_create_automation = None
 
         # Non-UI operations task
         self._non_ui_task = None
@@ -325,6 +327,7 @@ class AppController(Singleton):
             self.info_manager = InfoManager.instance()
             self.party_manager = PartyManager.instance()
             self.notice_manager = NoticeManager.instance()
+            self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             # Initialize command manager with config
             print("初始化命令解析器...")
@@ -419,7 +422,7 @@ class AppController(Singleton):
                                     from ushareiplay.models.message_info import MessageInfo
                                     message_info = MessageInfo(
                                         content=trimmed,
-                                        nickname="Console" if input_source == "console" else "Agent"
+                                        nickname="Console"
                                     )
 
                                     # Add message to queue
@@ -520,9 +523,23 @@ class AppController(Singleton):
 
             anchors = []
             soul_elements = (self.config.get("soul", {}) or {}).get("elements", {}) or {}
+            def _selector_present_in_source(selector: str) -> bool:
+                if not selector or not isinstance(selector, str):
+                    return False
+                # Fast-path: direct substring match (works for resource-id strings)
+                if selector in page_source:
+                    return True
+                # Heuristic: if selector is XPath with a resource-id predicate, match by resource-id
+                # Example: ...[@resource-id="cn.soulapp.android:id/tvContent"]...
+                if selector.startswith("//") and "@resource-id" in selector:
+                    m = re.search(r'@resource-id\s*=\s*"([^"]+)"', selector)
+                    if m and m.group(1) and m.group(1) in page_source:
+                        return True
+                return False
+
             for k in ("message_content", "input_box_entry", "input_box"):
-                v = soul_elements.get(k)
-                if v and isinstance(v, str) and v in page_source:
+                sel = soul_elements.get(k)
+                if sel and _selector_present_in_source(sel):
                     anchors.append(k)
 
             ui_lock_state = "locked" if (self.ui_lock and self.ui_lock.locked()) else "unlocked"
@@ -552,6 +569,9 @@ class AppController(Singleton):
             self.obs.emit("state.snapshot", ctx={"foreground_app": foreground_app, "anchors": anchors})
             if foreground_app == "Soul" and soul_ui_state == "InChatReady":
                 self.obs.emit("state.ready", ctx={"name": "CommandReady", "anchors": anchors, "foreground_app": foreground_app})
+                automation = getattr(self, "post_party_create_automation", None)
+                if automation:
+                    await automation.on_command_ready()
         except Exception:
             self.obs.emit("state.snapshot.error", level="ERROR", ctx={"error": traceback.format_exc()})
 
