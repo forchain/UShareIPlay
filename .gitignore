@@ -3,13 +3,10 @@
 __pycache__/
 logs
 data
-.cursor
 *.swp
 artifacts/
-.agent/
 config/keywords.yaml
 config.local.yaml
 .claude/worktrees/
 .claude/settings.local.json
-.claude
 .opencode/package-lock.json
