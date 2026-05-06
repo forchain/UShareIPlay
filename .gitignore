@@ -9,5 +9,7 @@ config/keywords.yaml
 config.local.yaml
 .agent/
 .claude/worktrees/
+.claude/projects/
 .claude/settings.local.json
 .opencode/package-lock.json
+*.log
