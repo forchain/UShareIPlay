@@ -12,6 +12,7 @@ MODULES = [
     "ushareiplay.core.db_manager",
     "ushareiplay.core.db_service",
     "ushareiplay.core.message_queue",
+    "ushareiplay.core.post_party_create_automation",
     "ushareiplay.core.command_parser",
     "ushareiplay.core.log_formatter",
     "ushareiplay.core.element_wrapper",
