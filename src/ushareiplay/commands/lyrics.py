@@ -61,44 +61,21 @@ class LyricsCommand(BaseCommand):
                 self.handler.logger.error("Failed to switch to music app")
                 return False
                 
-            # Try to find lyrics tab first
-            lyrics_tab = self.music_handler.try_find_element_plus('lyrics_tab')
+            # Try to find lyrics tab first (fast path)
+            lyrics_tab = self.music_handler.try_find_element_plus("lyrics_tab")
             if not lyrics_tab:
-                # If not found, scroll music_tabs to end
-                music_tabs = self.music_handler.try_find_element_plus('music_tabs')
-                if not music_tabs:
-                    return False
-                
-                # Get size and location for scrolling
-                size = music_tabs.size
-                location = music_tabs.location
-                
-                # Scroll to right
-                self.music_handler.driver.swipe(
-                    location['x'] + size['width'] - 200,  # Start from right
-                    location['y'] + size['height'] // 2,
-                    location['x'] + 10,  # End at left
-                    location['y'] + size['height'] // 2,
-                    1000
+                # 标签靠后时，单次滑动距离不够：改用通用容器滚动（参考 radio sleep）
+                _, lyrics_tab, _ = self.music_handler.scroll_container_until_element(
+                    "lyrics_tab",
+                    "music_tabs",
+                    "left",
+                    max_swipes=20,
                 )
-                
-                # Try to find lyrics tab again
-                lyrics_tab = self.music_handler.try_find_element_plus('lyrics_tab')
                 if not lyrics_tab:
                     return False
-                
-                lyrics_tab.click()
-                
-                # Scroll back to left
-                self.music_handler.driver.swipe(
-                    location['x'] + 200,  # Start from left
-                    location['y'] + size['height'] // 2,
-                    location['x'] + size['width'] - 10,  # End at right
-                    location['y'] + size['height'] // 2,
-                    1000
-                )
-            else:
-                lyrics_tab.click()
+
+            lyrics_tab.click()
+            time.sleep(0.2)
             
             return True
             
