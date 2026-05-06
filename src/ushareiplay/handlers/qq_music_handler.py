@@ -22,6 +22,28 @@ class QQMusicHandler(AppHandler, Singleton):
         self.last_lyrics_lines = []
         self.no_skip = 0
         self.list_mode = 'unknown'
+        self.play_mode_key = 'unknown'
+
+    @staticmethod
+    def play_mode_key_to_name(key: str) -> str:
+        return {
+            'list': '顺序播放',
+            'single': '单曲循环',
+            'random': '随机播放',
+            'unknown': '未知',
+        }.get(key, '未知')
+
+    def _update_play_mode_key(self, new_key: str, reason: str):
+        if not new_key:
+            return
+        if new_key not in ('unknown', 'list', 'single', 'random'):
+            self.logger.warning(f"Invalid play_mode_key={new_key}, ignored (reason={reason})")
+            return
+        if self.play_mode_key != new_key:
+            self.logger.info(
+                f"play_mode_key updated: {self.play_mode_key} -> {new_key} (reason={reason})"
+            )
+        self.play_mode_key = new_key
 
     def open_favorites_entry(self, timeout: int = 10):
         """
@@ -728,6 +750,29 @@ class QQMusicHandler(AppHandler, Singleton):
         if not playlist_current:
             self.logger.error("Failed to find playlist playing")
             return {'error': 'Failed to find playlist playing'}
+
+        detected = None
+        detected_key, _ = self.try_find_any_element_plus(
+            [
+                'play_mode_list_in_playlist',
+                'play_mode_single_in_playlist',
+                'play_mode_random_in_playlist',
+            ]
+        )
+        if detected_key == 'play_mode_list_in_playlist':
+            detected = 'list'
+        elif detected_key == 'play_mode_single_in_playlist':
+            detected = 'single'
+        elif detected_key == 'play_mode_random_in_playlist':
+            detected = 'random'
+
+        if detected:
+            if self.play_mode_key != detected:
+                self.logger.warning(
+                    f"play_mode_key drift detected in playlist UI: "
+                    f"recorded={self.play_mode_key}, detected={detected}"
+                )
+            self._update_play_mode_key(detected, reason='playlist_ui_self_heal')
 
         playlist_info = []
 
