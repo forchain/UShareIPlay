@@ -25,6 +25,14 @@ class ModeCommand(BaseCommand):
             if mode not in [0, 1, -1]:
                 raise ValueError
 
+            target_key = {0: 'list', 1: 'single', -1: 'random'}[mode]
+            if getattr(self.handler, 'play_mode_key', 'unknown') != 'unknown' and self.handler.play_mode_key == target_key:
+                return {
+                    'success': True,
+                    'mode': self.handler.play_mode_key_to_name(target_key),
+                    'message': f'已经是{self.handler.play_mode_key_to_name(target_key)}模式'
+                }
+
             # 直接实现切换模式逻辑
             result = await self._change_play_mode_direct(mode)
             return result
@@ -106,12 +114,14 @@ class ModeCommand(BaseCommand):
             # 3. 检查是否找到播放模式元素
             current_mode_element = found_element
             current_mode = key_to_mode(found_element_key)
+            self.handler._update_play_mode_key({0: 'list', 1: 'single', -1: 'random'}[current_mode], reason='mode_ui_detect')
 
             log_step("Step2", current_mode=mode_names[current_mode], target_mode=mode_names[target_mode])
 
             # 如果已经是目标模式，直接返回
             if current_mode == target_mode:
                 log_step("Result", status="PASS", mode=mode_names[target_mode], reason="already_target")
+                self.handler._update_play_mode_key({0: 'list', 1: 'single', -1: 'random'}[target_mode], reason='mode_already_target')
                 return {
                     'success': True,
                     'mode': mode_names[target_mode],
@@ -141,12 +151,14 @@ class ModeCommand(BaseCommand):
                 # 确定当前模式
                 current_mode_element = found_element
                 current_mode = key_to_mode(found_element_key)
+                self.handler._update_play_mode_key({0: 'list', 1: 'single', -1: 'random'}[current_mode], reason='mode_ui_detect_after_click')
 
                 log_step("Step3", after_click_current_mode=mode_names[current_mode])
 
                 # 检查是否达到目标模式
                 if current_mode == target_mode:
                     log_step("Result", status="PASS", mode=mode_names[target_mode], attempt=attempt + 1)
+                    self.handler._update_play_mode_key({0: 'list', 1: 'single', -1: 'random'}[target_mode], reason='mode_switch_success')
                     return {
                         'success': True,
                         'mode': mode_names[target_mode],

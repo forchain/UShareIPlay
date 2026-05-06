@@ -23,6 +23,13 @@ soul:
   # 派对智能重启配置
   party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
 
+  # 新建派对成功后的自动化（仅投递命令到 MessageQueue）
+  post_party_create:
+    enabled: true
+    wait_for_command_ready: true
+    commands:
+      - ":skip"
+
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
     message_container: "//androidx.recyclerview.widget.RecyclerView[@resource-id='cn.soulapp.android:id/rvMessage']/android.view.ViewGroup"
@@ -237,6 +244,10 @@ qq_music:
     play_mode_list: '//android.widget.ImageView[@content-desc="列表循环"]'
     play_mode_single: '//android.widget.ImageView[@content-desc="单曲循环"]'
     play_mode_random: '//android.widget.ImageView[@content-desc="随机播放"]'
+    # 播放列表页（歌曲队列/正在播放列表弹层）上的播放模式按钮（用于模式校验自愈）
+    play_mode_list_in_playlist: '//android.widget.ImageButton[@content-desc="顺序播放"]'
+    play_mode_single_in_playlist: '//android.widget.ImageButton[@content-desc="单曲循环"]'
+    play_mode_random_in_playlist: '//android.widget.ImageButton[@content-desc="随机播放"]'
     music_tabs: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]/..'
 
     minimize_screen: '//android.widget.ImageView[@content-desc="返回"]'
@@ -324,7 +335,7 @@ commands:
     error_template: "别名绑定失败: {error}"
   - prefix: "info"
     level: 0
-    response_template: "{current_playlist}\n{online_users}\n{party_duration}"
+    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
