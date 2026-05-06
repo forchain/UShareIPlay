@@ -7,6 +7,7 @@ data
 artifacts/
 config/keywords.yaml
 config.local.yaml
+.agent/
 .claude/worktrees/
 .claude/settings.local.json
 .opencode/package-lock.json
