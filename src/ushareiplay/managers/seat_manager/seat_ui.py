@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import time
 
 from ushareiplay.managers.seat_manager.base import SeatManagerBase
 
@@ -43,10 +43,10 @@ class SeatUIManager(SeatManagerBase):
 
         return self.is_expanded
 
-    def expand_seats(self):
+    async def expand_seats(self):
         """Expand seats if collapsed"""
         if self.handler is None:
-            self.handler.logger.error("expand_seats: handler 为 None")
+            logging.getLogger('seat_ui').error("expand_seats: handler 为 None")
             return False
 
         # 首先检查实际状态
@@ -75,7 +75,7 @@ class SeatUIManager(SeatManagerBase):
                     expand_seats.click()
                     self.handler.logger.info(f'Expanded seats')
                     self.is_expanded = True
-                    time.sleep(0.5)  # Give time for animation
+                    await asyncio.sleep(0.5)  # Give time for animation
                     return True
                 else:
                     self.handler.logger.warning(f"座位按钮文本不匹配预期，无法展开: '{actual_text}'")
@@ -88,7 +88,7 @@ class SeatUIManager(SeatManagerBase):
             self.handler.logger.error(f"展开座位时出错: {str(e)}")
             return False
 
-    def collapse_seats(self):
+    async def collapse_seats(self):
         """Collapse seats if expanded"""
         if self.handler is None:
             logging.getLogger('seat_ui').error("collapse_seats: handler 为 None")
@@ -114,7 +114,7 @@ class SeatUIManager(SeatManagerBase):
                     expand_seats.click()
                     self.handler.logger.info('Collapsed seats')
                     self.is_expanded = False
-                    time.sleep(0.5)  # Give time for animation
+                    await asyncio.sleep(0.5)  # Give time for animation
                     return True
 
                 self.handler.logger.warning(f"座位按钮文本不匹配预期，无法收起: '{actual_text}'")

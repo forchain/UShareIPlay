@@ -104,7 +104,7 @@ class MessageManager(Singleton):
             if seat_manager and getattr(seat_manager, "ui", None):
                 is_expanded = seat_manager.ui.check_seats_state()
                 if is_expanded:
-                    seat_manager.ui.collapse_seats()
+                    await seat_manager.ui.collapse_seats()
         except Exception:
             self.handler.logger.error(f"收起座位失败（不影响补漏继续执行）: {traceback.format_exc()}")
 
