@@ -38,10 +38,16 @@ class AppHandler:
         Returns:
             logging.Logger: Configured logger instance
         """
-        from ushareiplay.core.config_loader import ConfigLoader
         from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
-        cfg = ConfigLoader.load_config()
+        cfg = None
+        if getattr(self, "controller", None) is not None:
+            cfg = getattr(self.controller, "config", None)
+        if not ((cfg or {}).get("logging", {}) or {}).get("directory", None):
+            from ushareiplay.core.config_loader import ConfigLoader
+            loaded = ConfigLoader.load_config()
+            if loaded:
+                cfg = loaded
         configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
         log_dir_path = resolve_log_directory(configured, default_rel="logs")
         ensure_dir(log_dir_path)

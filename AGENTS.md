@@ -16,15 +16,17 @@ source .venv/bin/activate
 
 ### Running tests
 
-Tests are standalone scripts (no pytest runner configured). The most reliable test is:
+Use pytest via `uv run`:
 
 ```bash
-python test_timer_restart.py   # DB + timer logic, uses in-memory SQLite — always passes
+uv run pytest -q
 ```
 
-The other two tests have known issues unrelated to code quality:
-- `test_singleton.py` — fails due to `ThemeManager.instance()` signature mismatch with the mock (test was written against an older API)
-- `test_chat_logger.py` — fails due to `PermissionError` when log directory is `../logs` (relative path escapes workspace)
+To run focused subsets while iterating:
+
+```bash
+uv run pytest -q tests/test_db_manager.py tests/test_timer_add.py
+```
 
 ### Running `main.py`
 
@@ -32,17 +34,17 @@ The other two tests have known issues unrelated to code quality:
 1. A running Appium server with a connected Android device
 2. Soul App and QQ Music installed on the device
 
-To validate code changes without a device, use the test scripts or write focused unit tests with in-memory SQLite (see `test_timer_restart.py` for a good pattern).
+To validate code changes without a device, use pytest suites and focused unit tests with in-memory SQLite.
 
 ### Linting
 
-No linter configuration (flake8/pylint/ruff) is committed. Use `python -m py_compile <file>` to syntax-check individual files, or import-test modules in a Python shell.
+No linter configuration (flake8/pylint/ruff) is committed. Use `python -m py_compile <file>` to syntax-check individual files.
 
 ### Key gotchas
 
 - `config.yaml` is 26k+ lines. Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
 - All managers use the Singleton pattern via `Singleton` metaclass — always call `.instance()`, never construct directly.
-- The project has no `pyproject.toml` or `setup.py` — it's not an installable package. Imports use `src.` prefix from the workspace root.
+- The project is configured via `pyproject.toml` and can be run with `uv run ushareiplay`.
 
 ### GitHub / PR account switching
 

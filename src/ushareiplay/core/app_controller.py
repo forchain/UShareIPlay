@@ -1,7 +1,6 @@
 import asyncio
 import os
 import queue
-import re
 import threading
 import time
 import traceback
@@ -14,8 +13,12 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
+from ushareiplay.core.runtime_services import (
+    AgentCommandSpool,
+    RuntimeQueueDrainer,
+    StatusReporter,
+)
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.core.db_service import DBHelper
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
@@ -52,9 +55,6 @@ class AppController(Singleton):
         # Command manager will be initialized after handlers are ready
         self.command_manager = None
 
-        # Initialize database helper
-        self.db_helper = DBHelper()
-
         # Initialize managers (will be done after handlers are initialized)
         self.seat_manager = None
         self.recovery_manager = None
@@ -72,6 +72,17 @@ class AppController(Singleton):
 
         # Driver重建防护标志
         self._is_reinitializing = False
+        self._runtime_queue_drainer = None
+        self._agent_command_spool = AgentCommandSpool(
+            input_queue=self.input_queue,
+            command_dir=self.agent_command_dir,
+            obs=self.obs,
+        )
+        self._status_reporter = StatusReporter(
+            config=self.config,
+            ui_lock=self.ui_lock,
+            obs=self.obs,
+        )
 
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
@@ -261,36 +272,7 @@ class AppController(Singleton):
                 break
 
     def _drain_agent_command_spool(self) -> None:
-        """
-        Read commands injected by external Agent runners.
-
-        This is intentionally file-based so a runner can inject into a reused
-        process without owning the process stdin or opening a second Appium
-        session. Commands still flow through the same console queue path.
-        """
-        try:
-            self.agent_command_dir.mkdir(parents=True, exist_ok=True)
-            for path in sorted(self.agent_command_dir.glob("*.cmd")):
-                try:
-                    # Preserve leading whitespace for compatibility tests and novice input.
-                    # Only trim line endings added by the injector/writer.
-                    message = path.read_text(encoding="utf-8").rstrip("\r\n")
-                    path.unlink(missing_ok=True)
-                except Exception:
-                    if self.obs:
-                        self.obs.emit(
-                            "agent.inject.error",
-                            level="ERROR",
-                            ctx={"path": str(path), "error": traceback.format_exc()},
-                        )
-                    continue
-                if message and message.strip():
-                    self.input_queue.put((message, "agent_spool"))
-                    if self.obs:
-                        self.obs.emit("agent.inject.received", ctx={"source": "agent_spool", "content": message})
-        except Exception:
-            if self.obs:
-                self.obs.emit("agent.inject.error", level="ERROR", ctx={"error": traceback.format_exc()})
+        self._agent_command_spool.drain()
 
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
@@ -328,6 +310,14 @@ class AppController(Singleton):
             self.party_manager = PartyManager.instance()
             self.notice_manager = NoticeManager.instance()
             self.post_party_create_automation = PostPartyCreateAutomation(self)
+            self._runtime_queue_drainer = RuntimeQueueDrainer(
+                handler=self.soul_handler,
+                command_manager=self.command_manager,
+                obs=self.obs,
+                logger=self.logger,
+            )
+            self._status_reporter.soul_handler = self.soul_handler
+            self._status_reporter.timer_manager = self.timer_manager
 
             # Initialize command manager with config
             print("初始化命令解析器...")
@@ -384,6 +374,8 @@ class AppController(Singleton):
         while self.is_running:
             try:
                 self._drain_agent_command_spool()
+                if self._runtime_queue_drainer:
+                    await self._runtime_queue_drainer.drain()
                 # Check for console input (高优先级，在事件管理器前处理)
                 try:
                     while not self.input_queue.empty():
@@ -502,78 +494,11 @@ class AppController(Singleton):
             self.obs.emit("artifact.screenshot.error", level="ERROR", ctx={"reason": reason, "error": traceback.format_exc()})
 
     async def _update_status_from_page_source(self, page_source: str) -> None:
-        # Minimal, low-cost snapshot. More detailed classification can be expanded later.
-        try:
-            from ushareiplay.managers.event_manager import EventManager
-
-            event_manager = EventManager.instance()
-            pkgs = event_manager._packages_from_page_source(page_source)  # best-effort internal helper
-            soul_pkg = event_manager._soul_package_name()
-            qq_pkg = (self.config.get("qq_music", {}) or {}).get("package_name", "com.tencent.qqmusic")
-            launchers = set(event_manager._launcher_packages())
-
-            foreground_app = "Unknown"
-            if pkgs:
-                if soul_pkg in pkgs:
-                    foreground_app = "Soul"
-                elif qq_pkg in pkgs:
-                    foreground_app = "QQMusic"
-                elif pkgs & launchers:
-                    foreground_app = "Launcher"
-
-            anchors = []
-            soul_elements = (self.config.get("soul", {}) or {}).get("elements", {}) or {}
-            def _selector_present_in_source(selector: str) -> bool:
-                if not selector or not isinstance(selector, str):
-                    return False
-                # Fast-path: direct substring match (works for resource-id strings)
-                if selector in page_source:
-                    return True
-                # Heuristic: if selector is XPath with a resource-id predicate, match by resource-id
-                # Example: ...[@resource-id="cn.soulapp.android:id/tvContent"]...
-                if selector.startswith("//") and "@resource-id" in selector:
-                    m = re.search(r'@resource-id\s*=\s*"([^"]+)"', selector)
-                    if m and m.group(1) and m.group(1) in page_source:
-                        return True
-                return False
-
-            for k in ("message_content", "input_box_entry", "input_box"):
-                sel = soul_elements.get(k)
-                if sel and _selector_present_in_source(sel):
-                    anchors.append(k)
-
-            ui_lock_state = "locked" if (self.ui_lock and self.ui_lock.locked()) else "unlocked"
-            queue_size = MessageQueue.instance().get_queue_size()
-
-            soul_ui_state = "Unknown"
-            if foreground_app == "Soul":
-                if "message_content" in anchors:
-                    soul_ui_state = "InChatReady"
-                else:
-                    soul_ui_state = "InUnknownPage"
-
-            status = {
-                "foreground_app": foreground_app,
-                "soul_ui_state": soul_ui_state,
-                "qqmusic_ui_state": "Unknown",
-                "anchors": anchors,
-                "pipeline": {"ui_lock": ui_lock_state, "queue_size": queue_size},
-                "business": {
-                    "party_id_current": getattr(self.soul_handler, "party_id", None) if self.soul_handler else None,
-                    "party_id_target": (self.config.get("soul", {}) or {}).get("default_party_id"),
-                    "timers_running": bool(getattr(self, "timer_manager", None) and self.timer_manager.is_running()),
-                    "playback_info_summary": None,
-                },
-            }
-            self.obs.write_status(status)
-            self.obs.emit("state.snapshot", ctx={"foreground_app": foreground_app, "anchors": anchors})
-            if foreground_app == "Soul" and soul_ui_state == "InChatReady":
-                self.obs.emit("state.ready", ctx={"name": "CommandReady", "anchors": anchors, "foreground_app": foreground_app})
-                automation = getattr(self, "post_party_create_automation", None)
-                if automation:
-                    await automation.on_command_ready()
-        except Exception:
-            self.obs.emit("state.snapshot.error", level="ERROR", ctx={"error": traceback.format_exc()})
+        await self._status_reporter.update(
+            page_source=page_source,
+            event_manager=self.event_manager,
+            automation=getattr(self, "post_party_create_automation", None),
+        )
 
     async def stop(self):
         """Stop the application"""
