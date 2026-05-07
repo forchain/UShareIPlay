@@ -17,6 +17,11 @@ MODULES = [
     "ushareiplay.core.log_formatter",
     "ushareiplay.core.element_wrapper",
     "ushareiplay.core.driver_decorator",
+    "ushareiplay.core.ui",
+    "ushareiplay.core.ui.element_finder",
+    "ushareiplay.core.ui.gesture_handler",
+    "ushareiplay.core.ui.key_actions",
+    "ushareiplay.core.ui.navigation",
     # models
     "ushareiplay.models",
     "ushareiplay.models.user",
