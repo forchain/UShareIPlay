@@ -3,13 +3,6 @@ from ushareiplay.core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
 
-def create_command(controller):
-    pause_command = PauseCommand(controller)
-    controller.pause_command = pause_command
-    return pause_command
-
-command = None
-
 class PauseCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

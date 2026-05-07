@@ -1,16 +1,6 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    notice_command = NoticeCommand(controller)
-    controller.notice_command = notice_command
-    return notice_command
-
-
-command = None
-
-
 class NoticeCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
@@ -72,4 +62,3 @@ class NoticeCommand(BaseCommand):
 
         except Exception:
             self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")
-

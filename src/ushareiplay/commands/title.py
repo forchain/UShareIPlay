@@ -6,15 +6,6 @@ from ushareiplay.managers.title_manager import TitleManager
 from ushareiplay.managers.theme_manager import ThemeManager
 
 
-def create_command(controller):
-    title_command = TitleCommand(controller)
-    controller.title_command = title_command
-    return title_command
-
-
-command = None
-
-
 class TitleCommand(BaseCommand):
 
     def __init__(self, controller):

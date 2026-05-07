@@ -1,13 +1,6 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
 
-def create_command(controller):
-    end_command = EndCommand(controller)
-    controller.end_command = end_command
-    return end_command
-
-command = None
-
 class EndCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
@@ -35,4 +28,3 @@ class EndCommand(BaseCommand):
             self.party_manager.update()
         except Exception as e:
             self.handler.log_error(f"Error in party management update: {traceback.format_exc()}")
-

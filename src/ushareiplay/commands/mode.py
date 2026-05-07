@@ -1,15 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    mode_command = ModeCommand(controller)
-    controller.mode_command = mode_command
-    return mode_command
-
-
-command = None
-
-
 class ModeCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

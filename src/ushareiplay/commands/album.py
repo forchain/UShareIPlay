@@ -2,17 +2,6 @@ import traceback
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
-
-
-def create_command(controller):
-    album_command = AlbumCommand(controller)
-    controller.album_command = album_command
-    return album_command
-
-
-command = None
-
-
 class AlbumCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

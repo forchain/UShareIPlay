@@ -3,16 +3,6 @@ import shlex
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.dal.exit_dao import ExitDao
 
-
-def create_command(controller):
-    exit_command = ExitCommand(controller)
-    controller.exit_command = exit_command
-    return exit_command
-
-
-command = None
-
-
 class ExitCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

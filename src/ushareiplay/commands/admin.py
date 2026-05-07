@@ -3,16 +3,6 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.admin_manager import AdminManager
 
-
-def create_command(controller):
-    admin_command = AdminCommand(controller)
-    controller.admin_command = admin_command
-    return admin_command
-
-
-command = None
-
-
 class AdminCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

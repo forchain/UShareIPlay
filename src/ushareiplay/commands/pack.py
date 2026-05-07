@@ -2,16 +2,6 @@ import traceback
 
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    pack_command = PackCommand(controller)
-    controller.pack_command = pack_command
-    return pack_command
-
-
-command = None
-
-
 class PackCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
