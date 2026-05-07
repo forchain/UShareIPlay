@@ -17,6 +17,7 @@ from lxml import etree
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.element_wrapper import ElementWrapper
+import asyncio
 
 
 class EventManager(Singleton):
@@ -324,7 +325,7 @@ class EventManager(Singleton):
                                 "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
                         else:
                             self.handler.switch_to_app()
-                            ready_source = self._wait_page_source_ready(max_wait_s=2.5, interval_s=0.2)
+                            ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
                             if not ready_source:
                                 # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
                                 self.logger.debug(
@@ -336,10 +337,12 @@ class EventManager(Singleton):
                                     self.logger.warning("No events triggered, pressed back to exit unknown page")
                                     self._consecutive_unknown_pages += 1
                                     if self._consecutive_unknown_pages > 10:
+                                        backoff_s = min(10.0, 0.5 * (self._consecutive_unknown_pages - 10))
                                         self.logger.warning(
-                                            f"连续未知页面已达 {self._consecutive_unknown_pages} 次，等待 10 秒后继续"
+                                            f"连续未知页面已达 {self._consecutive_unknown_pages} 次，"
+                                            f"非阻塞退避 {backoff_s:.1f}s 后继续"
                                         )
-                                        time.sleep(10)
+                                        await asyncio.sleep(backoff_s)
                                 else:
                                     self._consecutive_unknown_pages = 0
 
@@ -396,8 +399,7 @@ class EventManager(Singleton):
 
         return triggered_count
 
-    @with_driver_recovery
-    def _wait_page_source_ready(self, max_wait_s: float = 2.5, interval_s: float = 0.2) -> Optional[str]:
+    async def _wait_page_source_ready_async(self, max_wait_s: float = 2.5, interval_s: float = 0.2) -> Optional[str]:
         """
         等待 page_source 可解析且 hierarchy 中已出现 Soul 包名（不依赖底部导航等锚点）。
         若当前为桌面或其它应用，会间歇调用 switch_to_app 直至超时。
@@ -411,13 +413,13 @@ class EventManager(Singleton):
                 src = self.handler.driver.page_source
                 if not src:
                     self.handler.switch_to_app()
-                    time.sleep(interval_s)
+                    await asyncio.sleep(interval_s)
                     continue
 
                 pkgs = self._packages_from_page_source(src)
                 if pkgs is None:
                     last_error = "XMLSyntaxError"
-                    time.sleep(interval_s)
+                    await asyncio.sleep(interval_s)
                     continue
 
                 if soul_pkg in pkgs:
@@ -429,13 +431,13 @@ class EventManager(Singleton):
                         "PageSource foreground is not Soul (launcher detected); switching to Soul app"
                     )
                 self.handler.switch_to_app()
-                time.sleep(interval_s)
+                await asyncio.sleep(interval_s)
             except etree.XMLSyntaxError as e:
                 last_error = e
-                time.sleep(interval_s)
+                await asyncio.sleep(interval_s)
             except Exception as e:
                 last_error = e
-                time.sleep(interval_s)
+                await asyncio.sleep(interval_s)
 
         if last_error:
             self.logger.debug(f"PageSource ready wait timeout, last_error={last_error}")

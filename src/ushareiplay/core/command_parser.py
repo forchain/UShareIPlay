@@ -34,5 +34,5 @@ class CommandParser:
         if not matching_cmd:
             return None
 
-        matching_cmd['parameters'] = parameters
-        return matching_cmd
+        # Do not mutate shared command configuration; return a per-message copy.
+        return {**matching_cmd, "parameters": parameters}

@@ -62,7 +62,7 @@ class MusicManager(Singleton):
                 self.logger.error(f"Error playing song: {traceback.format_exc()}")
                 return {'error': error_msg}
     
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def pause_resume(self, should_pause: bool) -> dict:
         """
         暂停或恢复播放 - 系统级控制
@@ -85,7 +85,7 @@ class MusicManager(Singleton):
         
         return {'action': action}
     
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def skip_song(self) -> dict:
         """
         跳过当前歌曲 - 系统级控制
@@ -111,7 +111,7 @@ class MusicManager(Singleton):
             'singer': current_info.get('singer', 'Unknown')
         }
     
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def get_current_song_info(self) -> dict:
         """
         获取当前播放歌曲信息 - 系统级获取
