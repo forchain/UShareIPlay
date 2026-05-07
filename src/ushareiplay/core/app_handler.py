@@ -21,6 +21,10 @@ class AppHandler:
         self.navigator = Navigator(self)
         self.logger.debug(f"AppHandler.__init__ 完成: {self.__class__.__name__}")
 
+    @property
+    def driver_recovery_context(self):
+        return getattr(self.controller, "driver_recovery_context", None)
+
     def _setup_logger(self):
         """Setup logger for the handler
         Returns:

@@ -6,6 +6,16 @@ from selenium.common.exceptions import (
 )
 
 
+def _get_driver_recovery_context(owner):
+    context = getattr(owner, "driver_recovery_context", None)
+    if context is not None:
+        return context
+    nested_owner = getattr(owner, "owner", None)
+    if nested_owner is not None:
+        return getattr(nested_owner, "driver_recovery_context", None)
+    return None
+
+
 def with_driver_recovery(func=None, *, retry: bool = True, op: str = "read"):
     """
     装饰器：统一处理driver失效异常
@@ -33,22 +43,19 @@ def with_driver_recovery(func=None, *, retry: bool = True, op: str = "read"):
             try:
                 return f(self, *args, **kwargs)
             except (InvalidSessionIdException, WebDriverException) as e:
-                # 延迟导入避免循环依赖
-                from ushareiplay.core.app_controller import AppController
-
-                controller = AppController.instance()
-                if not controller:
+                context = _get_driver_recovery_context(self)
+                if context is None:
                     return None
 
                 ok = False
                 try:
-                    ok = bool(controller.reinitialize_driver())
+                    ok = bool(context.reinitialize_driver())
                 except Exception:
                     ok = False
 
                 try:
-                    if ok and getattr(controller, "obs", None):
-                        controller.obs.emit(
+                    if ok:
+                        context.emit(
                             "recovery.reinitialized",
                             ctx={"method": f.__name__, "op": op, "retry": retry},
                         )
@@ -57,33 +64,30 @@ def with_driver_recovery(func=None, *, retry: bool = True, op: str = "read"):
 
                 if not ok:
                     try:
-                        if getattr(controller, "obs", None):
-                            controller.obs.emit(
-                                "recovery.failed",
-                                level="ERROR",
-                                ctx={"method": f.__name__, "op": op, "error": str(e)},
-                            )
+                        context.emit(
+                            "recovery.failed",
+                            level="ERROR",
+                            ctx={"method": f.__name__, "op": op, "error": str(e)},
+                        )
                     except Exception:
                         pass
                     return None
 
                 if not retry:
                     try:
-                        if getattr(controller, "obs", None):
-                            controller.obs.emit(
-                                "recovery.no_retry",
-                                ctx={"method": f.__name__, "op": op},
-                            )
+                        context.emit(
+                            "recovery.no_retry",
+                            ctx={"method": f.__name__, "op": op},
+                        )
                     except Exception:
                         pass
                     return None
 
                 try:
-                    if getattr(controller, "obs", None):
-                        controller.obs.emit(
-                            "recovery.retry",
-                            ctx={"method": f.__name__, "op": op},
-                        )
+                    context.emit(
+                        "recovery.retry",
+                        ctx={"method": f.__name__, "op": op},
+                    )
                 except Exception:
                     pass
 
@@ -91,12 +95,11 @@ def with_driver_recovery(func=None, *, retry: bool = True, op: str = "read"):
                     return f(self, *args, **kwargs)
                 except Exception:
                     try:
-                        if getattr(controller, "obs", None):
-                            controller.obs.emit(
-                                "recovery.retry_failed",
-                                level="ERROR",
-                                ctx={"method": f.__name__, "op": op, "error": traceback.format_exc()},
-                            )
+                        context.emit(
+                            "recovery.retry_failed",
+                            level="ERROR",
+                            ctx={"method": f.__name__, "op": op, "error": traceback.format_exc()},
+                        )
                     except Exception:
                         pass
                     return None
