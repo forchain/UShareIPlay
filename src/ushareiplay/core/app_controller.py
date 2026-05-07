@@ -18,6 +18,11 @@ from ushareiplay.core.runtime_services import (
     RuntimeQueueDrainer,
     StatusReporter,
 )
+from ushareiplay.core.runtime_context import (
+    CommandRuntimeContext,
+    DriverRecoveryContext,
+    EventRuntimeContext,
+)
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -70,6 +75,12 @@ class AppController(Singleton):
         # 用于防止后台事件循环（如未知页面自动 back）与命令/UI任务并发操作同一界面。
         # 注意：锁只在 async 逻辑中使用；同步 handler 方法不直接 await。
         self.ui_lock: asyncio.Lock = asyncio.Lock()
+        self.driver_recovery_context = DriverRecoveryContext(
+            reinitialize_driver=self.reinitialize_driver,
+            obs=self.obs,
+        )
+        self.command_runtime_context = CommandRuntimeContext(controller=self)
+        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock)
 
         # Driver重建防护标志
         self._is_reinitializing = False
@@ -320,6 +331,7 @@ class AppController(Singleton):
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
+            self.command_manager.configure_runtime(self.command_runtime_context)
             self.info_manager = InfoManager.instance()
             self.party_manager = PartyManager.instance()
             self.notice_manager = NoticeManager.instance()
