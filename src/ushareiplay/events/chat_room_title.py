@@ -22,11 +22,11 @@ class ChatRoomTitleEvent(BaseEvent):
         now = time.time()
         if now - self._last_check_ts < self._min_interval_s:
             return False
-        self._last_check_ts = now
 
         try:
             if self.is_ui_busy():
                 return False
+            self._last_check_ts = now
 
             from ushareiplay.managers.title_manager import TitleManager
 

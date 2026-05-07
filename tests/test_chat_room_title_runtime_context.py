@@ -44,3 +44,32 @@ def test_chat_room_title_skips_title_manager_when_runtime_ui_busy(monkeypatch):
 
     assert handled is False
     assert runtime.calls == 1
+
+
+def test_chat_room_title_busy_skip_does_not_consume_throttle(monkeypatch):
+    runtime = FakeRuntime(busy=True)
+    title_manager_calls = 0
+
+    class FakeTitleManager:
+        next_title = None
+
+        def get_room_title_text_from_ui(self):
+            return None
+
+    def title_manager_instance():
+        nonlocal title_manager_calls
+        title_manager_calls += 1
+        return FakeTitleManager()
+
+    monkeypatch.setattr(TitleManager, "instance", title_manager_instance)
+
+    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+
+    first_handled = asyncio.run(event.handle("chat_room_title", None))
+    runtime.busy = False
+    second_handled = asyncio.run(event.handle("chat_room_title", None))
+
+    assert first_handled is False
+    assert second_handled is False
+    assert runtime.calls == 2
+    assert title_manager_calls == 1
