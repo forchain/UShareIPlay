@@ -1,7 +1,7 @@
+import asyncio
 from ushareiplay.managers.seat_manager.base import SeatManagerBase
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.info_manager import InfoManager
-import time
 import traceback
 
 
@@ -18,7 +18,7 @@ class SeatingManager(SeatManagerBase):
         if not hasattr(self, 'current_side'):
             self.current_side = None
 
-    def sit_at_specific_seat(self, seat_number: int) -> dict:
+    async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12)"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
@@ -30,8 +30,8 @@ class SeatingManager(SeatManagerBase):
             side = 'left' if seat_number % 2 == 1 else 'right'
 
             # Expand seats if needed
-            self.seat_ui.expand_seats()
-            time.sleep(0.5)  # Wait for expansion animation
+            await self.seat_ui.expand_seats()
+            await asyncio.sleep(0.5)  # Wait for expansion animation
 
             # Find all seat desks
             seat_desks = self.handler.find_elements_plus('seat_desk')
@@ -64,15 +64,15 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error sitting at specific seat: {traceback.format_exc()}")
             return {'error': f'Failed to sit at seat {seat_number}: {str(e)}'}
 
-    def find_owner_seat(self, force_relocate: bool = False) -> dict:
+    async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
         try:
             # Expand seats if needed
-            self.seat_ui.expand_seats()
-            time.sleep(0.5)  # Wait for expansion animation
+            await self.seat_ui.expand_seats()
+            await asyncio.sleep(0.5)  # Wait for expansion animation
 
             # Find all seat desks
             seat_desks = self.handler.find_elements_plus('seat_desk')
@@ -151,7 +151,7 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
 
-    def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
+    async def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         """Find a specific user on seats and sit next to them"""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
@@ -165,8 +165,8 @@ class SeatingManager(SeatManagerBase):
                     return {'error': f'User {target_username} is not online'}
 
             # Step 2: Expand seats
-            self.seat_ui.expand_seats()
-            time.sleep(0.5)
+            await self.seat_ui.expand_seats()
+            await asyncio.sleep(0.5)
 
             # Find all seat desks
             seat_desks = self.handler.find_elements_plus('seat_desk')
@@ -229,12 +229,12 @@ class SeatingManager(SeatManagerBase):
                 if actual_username != target_username:
                     # Not the target user, close popup and continue
                     self.handler.press_back()
-                    time.sleep(0.3)
+                    await asyncio.sleep(0.3)
                     continue
 
                 # Found the target user! Close the popup first
                 self.handler.press_back()
-                time.sleep(0.3)
+                await asyncio.sleep(0.3)
 
                 # Check if the adjacent seat is available
                 if other_seat['occupied']:

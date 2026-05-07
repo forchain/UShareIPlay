@@ -1,4 +1,4 @@
-import time
+import asyncio
 import traceback
 from typing import Dict
 from datetime import datetime
@@ -211,7 +211,7 @@ class NoticeManager(Singleton):
             self.logger.error(f"Error in notice update: {str(e)}")
             return {'error': f'Error in notice update: {str(e)}'}
 
-    def set_default_notice(self) -> Dict:
+    async def set_default_notice(self) -> Dict:
         """
         设置默认notice（从配置中读取）
         Returns:
@@ -226,7 +226,7 @@ class NoticeManager(Singleton):
             self.logger.info(f"准备设置默认notice: {default_notice}")
 
             # 等待界面稳定
-            time.sleep(3)
+            await asyncio.sleep(3)
 
             # 调用通用设置方法
             result = self.set_notice(default_notice)

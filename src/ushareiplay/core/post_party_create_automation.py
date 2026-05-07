@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+import logging
 from typing import List, Optional
 
 from ushareiplay.core.message_queue import MessageQueue
@@ -46,14 +47,14 @@ class PostPartyCreateAutomation:
         if logger:
             logger.info(msg)
         else:
-            print(msg)
+            logging.getLogger(__name__).info(msg)
 
     def _log_warning(self, msg: str) -> None:
         logger = getattr(self.controller, "logger", None)
         if logger:
             logger.warning(msg)
         else:
-            print(msg)
+            logging.getLogger(__name__).warning(msg)
 
     async def on_party_created_new(self) -> None:
         self._party_created_new = True
@@ -113,4 +114,3 @@ class PostPartyCreateAutomation:
                 )
         except Exception:
             self._log_warning(f"[post_party_create] failed: {traceback.format_exc()}")
-

@@ -117,13 +117,12 @@ class KeywordManager(Singleton):
                     loaded_count += 1
             
             self.logger.info(f"Loaded {loaded_count} keywords from config")
-            print(f"关键字系统初始化完成：加载了 {loaded_count} 个关键字")
+            self.logger.info(f"关键字系统初始化完成：加载了 {loaded_count} 个关键字")
             
         except Exception as e:
             error_msg = f"Error loading keywords from config: {traceback.format_exc()}"
             self.logger.error(error_msg)
-            print(f"关键字加载失败: {str(e)}")
-            traceback.print_exc()
+            self.logger.error(f"关键字加载失败: {str(e)}")
 
     async def find_keyword(self, keyword: str, username: str) -> Optional[Keyword]:
         """查找匹配的关键字

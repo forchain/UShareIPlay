@@ -1,3 +1,5 @@
+import logging
+
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
@@ -5,16 +7,16 @@ from ushareiplay.core.singleton import Singleton
 
 class SoulHandler(AppHandler, Singleton):
     def __init__(self, driver, config, controller):
-        print("SoulHandler.__init__ 开始")
+        logging.getLogger('SoulHandler').debug("SoulHandler.__init__ 开始")
         super().__init__(driver, config, controller)
-        print("SoulHandler AppHandler 初始化完成")
+        self.logger.debug("SoulHandler AppHandler 初始化完成")
         # 延迟初始化 message_manager，避免循环依赖
         self._message_manager = None
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
-        print("SoulHandler.__init__ 完成")
+        self.logger.debug("SoulHandler.__init__ 完成")
 
     @property
     def message_manager(self):
@@ -78,7 +80,7 @@ class SoulHandler(AppHandler, Singleton):
             confirm_button.click()
 
         except Exception as e:
-            print(f"Error grabbing mic: {str(e)}")
+            self.logger.error(f"Error grabbing mic: {str(e)}")
 
     def ensure_mic_active(self):
         """Ensure the microphone is active"""

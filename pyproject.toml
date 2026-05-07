@@ -23,6 +23,7 @@ ushareiplay = "ushareiplay.__main__:run"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
 
 [build-system]
 requires = ["hatchling"]

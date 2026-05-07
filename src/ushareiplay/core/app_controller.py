@@ -247,10 +247,10 @@ class AppController(Singleton):
     def _toggle_console_mode(self):
         """Toggle console mode on Ctrl+P"""
         if not self.in_console_mode:
-            print("\nEntering console mode. Press Ctrl+P again to exit...")
+            self.logger.info("Entering console mode. Press Ctrl+P again to exit...")
             self.in_console_mode = True
         else:
-            print("\nExiting console mode...")
+            self.logger.info("Exiting console mode...")
             self.in_console_mode = False
 
     def _console_input(self):
@@ -266,7 +266,7 @@ class AppController(Singleton):
             except KeyboardInterrupt:
                 if self.in_console_mode:
                     self.in_console_mode = False
-                    print("\nExiting console mode...")
+                    self.logger.info("Exiting console mode...")
                 else:
                     self.is_running = False
                 break
@@ -295,10 +295,9 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import init_seat_manager
-            from ushareiplay.managers.notice_manager import NoticeManager
 
             # Initialize managers after handlers are ready
-            print("创建 manager 实例...")
+            self.logger.info("创建 manager 实例...")
             self.seat_manager = init_seat_manager(self.soul_handler)
             self.topic_manager = TopicManager.instance()
             self.mic_manager = MicManager.instance()
@@ -320,55 +319,57 @@ class AppController(Singleton):
             self._status_reporter.timer_manager = self.timer_manager
 
             # Initialize command manager with config
-            print("初始化命令解析器...")
+            self.logger.info("初始化命令解析器...")
             self.command_manager.initialize_parser(self.config["commands"])
 
             # Initialize event manager
-            print("初始化事件管理器...")
+            self.logger.info("初始化事件管理器...")
             self.event_manager = EventManager.instance()
             self.event_manager.initialize()
-            print("事件管理器初始化完成")
+            self.logger.info("事件管理器初始化完成")
 
             self.logger.info("Handlers and managers initialized successfully")
-            print("所有 handlers 和 managers 初始化完成")
+            self.logger.info("所有 handlers 和 managers 初始化完成")
 
         except Exception:
-            print(f"Error initializing handlers: {traceback.format_exc()}")
+            if self.logger:
+                self.logger.error(f"Error initializing handlers: {traceback.format_exc()}")
             raise
 
     async def start_monitoring(self):
         error_count = 0
 
         # Initialize handlers first
-        print("开始启动监控...")
+        if self.logger:
+            self.logger.info("开始启动监控...")
         self._init_handlers()
 
         # Load all command modules using CommandManager
-        print("加载命令模块...")
+        self.logger.info("加载命令模块...")
         self.command_manager.load_all_commands()
         self.logger.info("All command modules loaded")
-        print("命令模块加载完成")
+        self.logger.info("命令模块加载完成")
 
         # Initialize keyword system and load keywords from config
-        print("初始化关键字系统...")
+        self.logger.info("初始化关键字系统...")
         from ushareiplay.managers.keyword_manager import KeywordManager
         keyword_manager = KeywordManager.instance()
         await keyword_manager.load_keywords_from_config()
-        print("关键字系统初始化完成")
+        self.logger.info("关键字系统初始化完成")
 
         # Start async timer manager (loads from DB, migrates from JSON if needed)
-        print("初始化定时器管理器...")
+        self.logger.info("初始化定时器管理器...")
         await self.timer_manager.start()
-        print("定时器管理器初始化完成")
+        self.logger.info("定时器管理器初始化完成")
 
         # Start console input thread
-        print("启动控制台输入线程...")
+        self.logger.info("启动控制台输入线程...")
         input_thread = threading.Thread(target=self._console_input)
         input_thread.daemon = True
         input_thread.start()
-        print("控制台输入线程已启动")
+        self.logger.info("控制台输入线程已启动")
 
-        print("开始主监控循环...")
+        self.logger.info("开始主监控循环...")
 
         paused = False
         while self.is_running:
@@ -457,10 +458,10 @@ class AppController(Singleton):
                 await asyncio.sleep(1)
             except KeyboardInterrupt:
                 if not self.in_console_mode:
-                    print("\nEntering console mode. Press Ctrl+C to exit...")
+                    self.logger.info("Entering console mode. Press Ctrl+C to exit...")
                     self.in_console_mode = True
                 else:
-                    print("\nStopping the monitoring...")
+                    self.logger.info("Stopping the monitoring...")
                     self.is_running = False
                     return True
             except StaleElementReferenceException:

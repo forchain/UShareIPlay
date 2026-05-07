@@ -23,15 +23,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 class AppHandler:
     def __init__(self, driver, config, controller):
-        print(f"AppHandler.__init__ 开始: {self.__class__.__name__}")
+        logging.getLogger(self.__class__.__name__).debug(f"AppHandler.__init__ 开始: {self.__class__.__name__}")
         self.driver = driver
         self.config = config
-        print(f"AppHandler 设置 logger: {self.__class__.__name__}")
+        logging.getLogger(self.__class__.__name__).debug(f"AppHandler 设置 logger: {self.__class__.__name__}")
         self.logger = self._setup_logger()
-        print(f"AppHandler logger 设置完成: {self.__class__.__name__}")
+        self.logger.debug(f"AppHandler logger 设置完成: {self.__class__.__name__}")
         self.error_count = 0
         self.controller = controller
-        print(f"AppHandler.__init__ 完成: {self.__class__.__name__}")
+        self.logger.debug(f"AppHandler.__init__ 完成: {self.__class__.__name__}")
 
     def _setup_logger(self):
         """Setup logger for the handler
@@ -448,8 +448,6 @@ class AppHandler:
         try:
             return parent.find_element(locator_type, locator_value)
         except Exception:
-            # print(f"Child element not found: {locator_value}")
-            # print(f"Error: {str(e)}")
             return None
 
     def find_child_elements(self, parent, locator_type, locator_value):
@@ -464,8 +462,6 @@ class AppHandler:
         try:
             return parent.find_elements(locator_type, locator_value)
         except Exception:
-            # print(f"Child elements not found: {locator_value}")
-            # print(f"Error: {str(e)}")
             return []
 
     def get_element_text(self, element):
@@ -500,6 +496,9 @@ class AppHandler:
         locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
         return locator_type, value
 
+    def _reversed_if_needed(self, lst: list, direction: str) -> list:
+        return list(reversed(lst)) if direction in ("down", "right") else lst
+
     @with_driver_recovery(op="read")
     def find_elements_plus(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
@@ -507,7 +506,7 @@ class AppHandler:
             locator_type, value = self._get_locator(element_key)
             return self.driver.find_elements(locator_type, value)
         except Exception as e:
-            print(
+            self.logger.warning(
                 f"Failed to find elements '{element_key}' with value '{value}': {str(e)}"
             )
             return []
@@ -797,11 +796,7 @@ class AppHandler:
                 # 尝试在容器内查找目标
                 key, element = find_target_element()
                 if element:
-                    # 根据滚动方向决定是否需要反转列表
-                    # "down" 和 "right" 方向：手指向下/右滑动时，内容从新到旧显示，需要反转
-                    if direction in ("down", "right"):
-                        attribute_values_list.reverse()
-                    return key, element, attribute_values_list
+                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
@@ -810,18 +805,12 @@ class AppHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 滑动失败，终止:{element_key}"
                     )
-                    # 根据滚动方向决定是否需要反转列表
-                    if direction in ("down", "right"):
-                        attribute_values_list.reverse()
-                    return None, None, attribute_values_list
+                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 key, element = find_target_element()
                 if element:
-                    # 根据滚动方向决定是否需要反转列表
-                    if direction in ("down", "right"):
-                        attribute_values_list.reverse()
-                    return key, element, attribute_values_list
+                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()
@@ -835,26 +824,17 @@ class AppHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
                     )
-                    # 根据滚动方向决定是否需要反转列表
-                    if direction in ("down", "right"):
-                        attribute_values_list.reverse()
-                    return None, None, attribute_values_list
+                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
 
             self.logger.warning(
                 f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
             )
-            # 根据滚动方向决定是否需要反转列表
-            if direction in ("down", "right"):
-                attribute_values_list.reverse()
-            return None, None, attribute_values_list
+            return None, None, self._reversed_if_needed(attribute_values_list, direction)
         except Exception:
             self.logger.error(
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
-            # 根据滚动方向决定是否需要反转列表
-            if direction in ("down", "right"):
-                attribute_values_list.reverse()
-            return None, None, attribute_values_list
+            return None, None, self._reversed_if_needed(attribute_values_list, direction)
 
     @with_driver_recovery(op="read")
     def wait_for_any_element_plus(

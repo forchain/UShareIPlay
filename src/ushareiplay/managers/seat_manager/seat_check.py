@@ -1,4 +1,4 @@
-import time
+import asyncio
 import traceback
 from datetime import datetime, timedelta
 from ushareiplay.dal import SeatReservationDAO, UserDAO
@@ -71,8 +71,8 @@ class SeatCheckManager(SeatManagerBase):
     async def check_user_specific_seat(self, username: str, seat_number: int):
         # ensure seats are expanded first
         self.handler.logger.info("expanding seats for check")
-        self.seat_ui.expand_seats()
-        time.sleep(0.5)  # wait for expansion animation
+        await self.seat_ui.expand_seats()
+        await asyncio.sleep(0.5)  # wait for expansion animation
         self.handler.logger.info("seats expanded successfully")
 
         # get all seat desks
@@ -112,7 +112,7 @@ class SeatCheckManager(SeatManagerBase):
                     reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
                     1000
                 )
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
 
         await self._handle_occupied_seat(username, seat_desks, seat_number)
 
@@ -147,7 +147,7 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.send_message(f"Welcome {username}!")
 
         # wait for input dialog disappear
-        time.sleep(1)
+        await asyncio.sleep(1)
         # Click the specific seat element
         seat_element.click()
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
