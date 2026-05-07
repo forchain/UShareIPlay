@@ -17,9 +17,6 @@ class QQMusicHandler(AppHandler, Singleton):
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
 
-        self.ktv_mode = False  # KTV mode state
-        self.last_lyrics = ""  # Store last recognized lyrics
-        self.last_lyrics_lines = []
         self.no_skip = 0
         self.list_mode = 'unknown'
         self.play_mode_key = 'unknown'
@@ -233,7 +230,7 @@ class QQMusicHandler(AppHandler, Singleton):
                 'singer': singer_element.text
             }
         except Exception as e:
-            print(f"Error getting current playing info: {str(e)}")
+            self.logger.error(f"Error getting current playing info: {str(e)}")
             return None
 
     def query_music(self, music_query: str):
@@ -397,7 +394,7 @@ class QQMusicHandler(AppHandler, Singleton):
             return playing_info
 
         except Exception as e:
-            print(f"Error playing next music: {str(e)}")
+            self.logger.error(f"Error playing next music: {str(e)}")
             return {
                 'song': music_query,
                 'singer': 'unknown'
@@ -511,221 +508,6 @@ class QQMusicHandler(AppHandler, Singleton):
                 'album': 'Unknown',
                 'state': 'Unknown'
             }
-
-    def toggle_ktv_mode(self, enable):
-        """Toggle KTV mode
-        Args:
-            enable: bool, True to enable, False to disable
-        """
-        self.ktv_mode = enable
-        print(f"KTV mode {'enabled' if enable else 'disabled'}")
-
-        # Check if we need to switch to lyrics page when enabling KTV mode
-        if enable:
-            if not self.switch_to_app():
-                return False
-            # Try to find lyrics tool
-            lyrics_tool = self.try_find_element(
-                AppiumBy.ID,
-                self.config['elements']['lyrics_tool']
-            )
-
-            if not lyrics_tool:
-                # If not found, switch to lyrics page
-                print("Not in lyrics page, switching to lyrics page...")
-                result = self.switch_to_lyrics_page()
-                if result and 'error' in result:
-                    print(f"Error switching to lyrics page: {result['error']}")
-                    return {'enabled': 'off'}  # Indicate that KTV mode could not be enabled
-
-        return {'enabled': 'on' if enable else 'off'}
-
-    def check_ktv_lyrics(self):
-        if not self.switch_to_app():
-            self.logger.error("Failed to switch to app")
-            return {
-                'error': "Failed to switch to app"
-            }
-
-        """Check current lyrics in KTV mode"""
-        if not self.ktv_mode:
-            return None  # 如果KTV模式未开启，则不执行
-
-        close_poster = self.try_find_element_plus('close_poster', log=False)
-        if close_poster:
-            self.logger.info("Closing poster...")
-            close_poster.click()
-
-        lyrics_tool = self.wait_for_element_clickable_plus('lyrics_tool')
-        if not lyrics_tool:
-            self.ktv_mode = False
-            self.logger.error("Failed to find lyrics tool")
-            return {'error': 'Cannot find lyrics tool'}
-
-        lyrics_tool.click()
-        self.logger.info("Clicked lyrics tool")
-
-        # 尝试查找并点击歌词海报
-        lyrics_poster = self.wait_for_element_clickable_plus('lyrics_poster')
-        if not lyrics_poster:
-            # self.ktv_mode = False
-            info = self.skip_song()
-            self.logger.warning(f"Failed to find lyrics poster for {info['song']} by {info['singer']}")
-            return {'error': f'Skip {info['song']} by {info['singer']} due to no lyrics poster option'}
-
-        try:
-            lyrics_poster.click()
-        except StaleElementReferenceException as e:
-            self.ktv_mode = False
-            return {'error': 'Cannot click lyrics poster option'}
-        self.logger.info("Clicked lyrics poster")
-
-        # 找到所有的lyrics_box
-        close_poster = self.wait_for_element_clickable_plus('close_poster')
-        if not close_poster:
-            self.ktv_mode = False
-            self.logger.warning("No close poster")
-            return {'error': 'No close poster'}
-
-        current_lyrics = self.wait_for_element_clickable_plus('current_lyrics')
-        finished = False
-        if current_lyrics:
-            try:
-                y_coordinate = current_lyrics.location['y']
-            except StaleElementReferenceException as e:
-                self.logger.error(f"Error finding y coordinate")
-                self.ktv_mode = False
-                return {'error': 'Cannot get current lyrics coordinate'}
-
-            if y_coordinate < 1000:
-                finished = True
-                self.logger.info("Found first line, song might be finished")
-        if not finished:
-            screen_size = self.driver.get_window_size()
-            screen_height = screen_size['height']
-            # Scroll up half screen
-            self.driver.swipe(
-                screen_size['width'] // 2,
-                screen_height * 0.60,
-                screen_size['width'] // 2,
-                screen_height * 0.35,
-                400
-            )
-
-        lyrics_boxes = self.driver.find_elements(
-            AppiumBy.ID,
-            self.config['elements']['lyrics_box']
-        )
-
-        if len(lyrics_boxes) <= 1:
-            self.ktv_mode = False
-            return {'error': 'Cannot find lyrics box'}
-
-        # last element is a mistake
-        lyrics_boxes.pop()
-
-        found = False
-        text = ""
-        n = 0
-        if not finished:
-            for lyrics_box in lyrics_boxes:
-                # 检查是否包含current_lyrics
-
-                if found:
-                    current_line = self.find_child_element(
-                        lyrics_box,
-                        AppiumBy.ID,
-                        self.config['elements']['lyrics_line']
-                    )
-                    if current_line:
-                        text += current_line.text + '\n'
-                        n += 1
-                else:
-                    current_lyrics = self.find_child_element(
-                        lyrics_box,
-                        AppiumBy.ID,
-                        self.config['elements']['current_lyrics']
-                    )
-                    if current_lyrics:
-                        found = True
-
-        if not found or finished:
-            for lyrics_box in lyrics_boxes:
-                current_line = self.find_child_element(
-                    lyrics_box,
-                    AppiumBy.ID,
-                    self.config['elements']['lyrics_line']
-                )
-                if current_line:
-                    text += current_line.text + '\n'
-
-        if text:
-            if text == self.last_lyrics:
-                return {
-                    'lyrics': 'Playing interlude..'
-                }
-            else:
-                self.last_lyrics = text
-                close_poster.click()
-                # return all_lines
-                return {
-                    'lyrics': text
-                }
-
-        self.logger.error(f"lyrics is unavailable")
-        self.ktv_mode = False
-        return {
-            'error': 'lyrics is unavailable'
-        }
-
-    def switch_to_playing_page(self):
-        # Press back to exit most interfaces
-        self.press_back()
-        search_entry = self.try_find_element(
-            AppiumBy.ID,
-            self.config['elements']['search_entry']
-        )
-        if not search_entry:
-            self.press_back()
-        print("Pressed back to clean up interface")
-
-        time.sleep(0.5)  # Wait for animation
-
-        # Find more menu in play panel
-        more_menu = self.wait_for_element(
-            AppiumBy.ID,
-            self.config['elements']['more_in_play_panel']
-        )
-        if not more_menu:
-            self.logger.error(f"playing interface is covered by unexpected dialog")
-            return {'error': 'Cannot find playing interface, please try again'}
-
-    def switch_to_lyrics_page(self):
-        """
-        Switch to lyrics page
-        Returns:
-            dict: None if successful, error dict if failed
-        """
-        error = self.switch_to_playing_page()
-        if error:
-            return error
-
-        # Get screen dimensions for swipe
-        screen_size = self.driver.get_window_size()
-        start_x = int(screen_size['width'] * 0.8)  # Start from 80% of width
-        end_x = int(screen_size['width'] * 0.1)  # End at 20% of width
-        y = int(screen_size['height'] * 0.5)  # Middle of screen
-
-        # Swipe to lyrics page
-        self.driver.swipe(start_x, y, end_x, y, 500)  # 500ms = 0.5s
-        print("Swiped to lyrics page")
-
-        lyrics_tool = self.wait_for_element_clickable(
-            AppiumBy.ID,
-            self.config['elements']['lyrics_tool'])
-        if not lyrics_tool:
-            return {'error': 'Cannot find lyrics tool, please try again'}
-        return None
 
     def get_playlist_info(self):
         """Get current playlist information

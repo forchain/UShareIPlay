@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Define the structured runtime event stream used for agent observability, readiness detection, queue lifecycle tracking, and command lifecycle tracking.
+
+## Requirements
 
 ### Requirement: The system SHALL emit structured events as JSON Lines
 The system SHALL write a structured event stream in JSON Lines format (`events.jsonl`) during runtime. Each line MUST be a single JSON object.
@@ -43,9 +46,15 @@ The system SHALL emit queue-related events:
 - `queue.drain.start`
 - `queue.drain.end`
 
+Queue drain lifecycle events MUST be emitted by the authoritative runtime queue drain path, regardless of whether the queued message originated from timer execution, agent command spool injection, keyword expansion, post-party automation, console injection, or chat-related recovery.
+
 #### Scenario: Queue drain is observable
 - **WHEN** the queue is drained for processing
 - **THEN** it SHALL emit `queue.drain.start` and `queue.drain.end` including message counts in `ctx`
+
+#### Scenario: Runtime-loop queue drain is observable without chat event dependency
+- **WHEN** the runtime loop drains one or more queued messages without a `message_content` event being processed in the same iteration
+- **THEN** it SHALL emit `queue.drain.start` and `queue.drain.end` from that runtime drain path
 
 ### Requirement: The system SHALL emit command lifecycle events
 The system SHALL emit command-related events:
@@ -56,4 +65,3 @@ The system SHALL emit command-related events:
 #### Scenario: Command result is observable
 - **WHEN** a command finishes execution
 - **THEN** it SHALL emit `command.result` with `ctx.success=true` OR `ctx.error` populated
-

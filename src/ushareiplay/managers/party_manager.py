@@ -391,7 +391,7 @@ class PartyManager(Singleton):
             self.logger.info("派对创建成功，准备设置默认notice")
 
             notice_manager = self.handler.controller.notice_manager
-            result = notice_manager.set_default_notice()
+            result = await notice_manager.set_default_notice()
 
             if 'success' in result:
                 self.logger.info("默认notice设置成功")
@@ -400,7 +400,7 @@ class PartyManager(Singleton):
 
             seat_manager = self.handler.controller.seat_manager
             self.logger.info("Attempting to seat owner after party creation")
-            result = seat_manager.seating.find_owner_seat()
+            result = await seat_manager.seating.find_owner_seat()
 
             if 'success' in result:
                 self.logger.info("Owner successfully seated")
