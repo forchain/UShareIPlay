@@ -205,6 +205,31 @@ class CommandManager(Singleton):
                         format_kwargs['party_id'] = parameters[0]
                     res = command_info['error_template'].format(**format_kwargs)
                     return res
+
+                # Sleep mode: non-system users may be blocked in sleep window
+                try:
+                    from ushareiplay.managers.sleep_manager import SleepManager
+
+                    prefix = command_info.get("prefix") or ""
+                    # Prefer root config (controller.config) so `sleep` can live at top-level.
+                    controller = self._get_command_controller()
+                    cfg = getattr(controller, "config", None) if controller is not None else None
+                    if not isinstance(cfg, dict):
+                        cfg = self.handler.config
+                    sg = SleepManager.instance(cfg)
+                    if sg.is_blocked_command(prefix):
+                        result = {
+                            "error": (
+                                "休息中（11pm-6am）"
+                            )
+                        }
+                        format_kwargs = {"user": message_info.nickname, **result}
+                        if parameters:
+                            format_kwargs["party_id"] = parameters[0]
+                        return command_info["error_template"].format(**format_kwargs)
+                except Exception:
+                    # Guard should never break command execution.
+                    pass
             
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             result = {'error': 'unknown'}
