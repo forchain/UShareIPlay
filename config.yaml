@@ -419,6 +419,24 @@ commands:
     level: 5
     response_template: "{success}"
     error_template: "送礼失败: {error}"
+
+  - prefix: "sleep"
+    level: 4
+    response_template: "{message}"
+    error_template: "{error}"
+
+sleep:
+  enabled: true
+  start: "23:00"
+  end: "06:00"
+  blocked_commands:
+    - play
+    - next
+    - fav
+    - singer
+    - album
+    - playlist
+    - radio
 appium:
   host: "192.168.8.103"
   port: 4723
