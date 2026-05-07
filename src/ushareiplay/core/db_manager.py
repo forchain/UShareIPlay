@@ -11,7 +11,7 @@ class DatabaseManager:
             db_dir = Path('data')
             db_dir.mkdir(exist_ok=True)
             
-            # Use the same database location as DBHelper
+            # Use the runtime SQLite database location
             db_path = db_dir / 'soul_bot.db'
             self.db_url = f"sqlite://{db_path}"
         else:

@@ -14,6 +14,7 @@ soul:
   system_users:
     - "Timer"
     - "Console"
+    - "Agent"
 
   # 系统默认notice列表，如果房间notice包含这些内容说明被系统重置了
   system_default_notices:

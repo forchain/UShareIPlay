@@ -27,11 +27,14 @@ pip install -r requirements.txt
 ## Testing
 
 ```bash
-python test_singleton.py
-python test_chat_logger.py
+uv run pytest -q
 ```
 
-No test framework (pytest/unittest runner) is configured — tests are run directly as scripts.
+Use focused runs for local iteration, for example:
+
+```bash
+uv run pytest -q tests/test_timer_add.py tests/test_db_manager.py
+```
 
 ## Architecture
 

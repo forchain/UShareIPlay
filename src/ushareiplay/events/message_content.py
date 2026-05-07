@@ -178,9 +178,6 @@ class MessageContentEvent(BaseEvent):
     async def _process_update_logic(self):
         """处理更新逻辑（、播放信息等）- 在没有命令消息时执行"""
         try:
-            # Process queue messages (timer messages, etc.)
-            await self._process_queue_messages()
-
             # Update all commands
             command_manager = CommandManager.instance()
             command_manager.update_commands()
@@ -190,77 +187,3 @@ class MessageContentEvent(BaseEvent):
             info_manager.update_playback_info_cache()
         except Exception as e:
             self.logger.error(f"Error processing update logic: {str(e)}")
-
-    async def _process_queue_messages(self):
-        """处理异步队列中的消息（消息等）
-        
-        统一处理流程：
-        1. 消息保留完整格式（包括 : 前缀和 ; 分隔符）
-        2. 检测到 : 前缀后，去掉冒号
-        3. 调用 handle_message_commands 处理（不含冒号）
-        4. 非命令消息直接发送
-        """
-        try:
-            from ushareiplay.core.message_queue import MessageQueue
-            from ushareiplay.models.message_info import MessageInfo
-            import traceback
-
-            message_queue = MessageQueue.instance()
-
-            # 获取队列中的所有消息
-            queue_messages = await message_queue.get_all_messages()
-            if not queue_messages:
-                return
-
-            # observability: queue drain lifecycle
-            try:
-                from ushareiplay.core.app_controller import AppController
-                if controller := AppController.instance():
-                    controller.obs.emit("queue.drain.start", ctx={"count": len(queue_messages)})
-            except Exception:
-                pass
-
-            self.logger.info(f"Processing {len(queue_messages)} queue messages")
-
-            # 处理每条队列消息
-            command_messages = []
-
-            for msg_id, message_info in queue_messages.items():
-                # 分割多命令/消息（用分号分隔）
-                parts = message_info.content.split(';')
-
-                for idx, part in enumerate(parts):
-                    part = part.strip()
-                    if not part:
-                        continue
-
-                    # 替换占位符
-                    part = part.replace('{user_name}', message_info.nickname)
-
-                    if part.startswith((':', '：')):
-                        cmd_msg = MessageInfo(
-                            content=part,
-                            nickname=message_info.nickname
-                        )
-                        command_messages.append(cmd_msg)
-                    else:
-                        # 普通消息：直接发送
-                        self.handler.send_message(part)
-
-            # 批量处理命令消息
-            if command_messages:
-                command_manager = CommandManager.instance()
-                await command_manager.handle_message_commands(command_messages)
-
-            try:
-                from ushareiplay.core.app_controller import AppController
-                if controller := AppController.instance():
-                    controller.obs.emit(
-                        "queue.drain.end",
-                        ctx={"count": len(queue_messages), "command_count": len(command_messages)},
-                    )
-            except Exception:
-                pass
-
-        except Exception:
-            self.logger.error(f"Error processing queue messages: {traceback.format_exc()}")
