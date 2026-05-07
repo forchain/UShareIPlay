@@ -105,7 +105,7 @@ class AppHandler:
         """Log warning level message"""
         self.logger.warning(message)
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element(self, locator_type, locator_value, timeout=10):
         """Wait for element to be present and return it"""
         try:
@@ -121,7 +121,7 @@ class AppHandler:
             self.logger.warning(f"Error: {str(e)}")
             return None
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
         """Enhanced wait_for_element using just element key"""
         try:
@@ -164,7 +164,7 @@ class AppHandler:
             self.logger.warning(f"Error checking if element is clickable: {str(e)}")
             return False
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element_clickable_plus(
             self, element_key: str, timeout: int = 10
     ) -> WebElement:
@@ -185,7 +185,7 @@ class AppHandler:
             self.logger.warning(f"Stale element reference for {element_key}:{value}")
             return None
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
         """
         Wait for element to be clickable and return it
@@ -208,26 +208,26 @@ class AppHandler:
             )
             return None
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def switch_to_app(self):
         """Switch to specified app"""
         self.driver.activate_app(self.config["package_name"])
         time.sleep(0.1)
         return True
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def close_app(self):
         """关闭应用"""
         self.driver.terminate_app(self.config["package_name"])
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def switch_to_activity(self, activity):
         """Switch to the specified activity"""
         package_name = self.config["package_name"]
         command = f"am start -n {package_name}/{activity}"
         self.driver.execute_script("mobile: shell", {"command": command})
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_enter(self, element):
         """
         Press Enter key on the given element
@@ -237,7 +237,7 @@ class AppHandler:
         self.driver.press_keycode(66)
         self.logger.debug("Pressed Return Key")
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_back(self):
         """Press Android back button"""
         self.driver.press_keycode(4)  # Android back key code
@@ -245,25 +245,25 @@ class AppHandler:
         self.logger.debug("Pressed back button")
         return True
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_dpad_down(self):
         """Press Android DPAD down button"""
         self.driver.press_keycode(20)  # KEYCODE_DPAD_DOWN
         self.logger.debug("Pressed DPAD down button")
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_volume_up(self):
         """Press Android volume up button"""
         self.driver.press_keycode(24)  # KEYCODE_VOLUME_UP
         self.logger.debug("Pressed volume up button")
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_volume_down(self):
         """Press Android volume down button"""
         self.driver.press_keycode(25)  # KEYCODE_VOLUME_DOWN
         self.logger.debug("Pressed volume down button")
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def press_right_key(self, times=1):
         """Simulate pressing the right key multiple times
         Args:
@@ -275,7 +275,7 @@ class AppHandler:
             )
             time.sleep(0.1)  # Small delay between key presses
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def try_find_element_plus(
             self, element_key: str, log=False, clickable=False
     ) -> WebElement:
@@ -338,7 +338,7 @@ class AppHandler:
                 )
             return None
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
         """Try to find element and return it"""
         try:
@@ -353,7 +353,7 @@ class AppHandler:
                 )
             return None
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element_polling(
             self, locator_type, locator_value, timeout=10, poll_frequency=0.5
     ):
@@ -383,7 +383,7 @@ class AppHandler:
         )
         return None
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_element_clickable_polling(
             self, locator_type, locator_value, timeout=10, poll_frequency=0.5
     ):
@@ -415,7 +415,7 @@ class AppHandler:
         )
         return None
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def set_clipboard_text(self, text):
         """Set clipboard text using Appium's native method
         Args:
@@ -424,7 +424,7 @@ class AppHandler:
         self.driver.set_clipboard_text(text)
         self.logger.debug(f"Copied '{text}' to clipboard")
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def paste_text(self):
         """Execute paste operation using Android keycode"""
         self.driver.press_keycode(279)  # KEYCODE_PASTE = 279
@@ -494,7 +494,7 @@ class AppHandler:
         locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
         return locator_type, value
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def find_elements_plus(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
         try:
@@ -506,7 +506,7 @@ class AppHandler:
             )
             return []
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def click_element_at(
             self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0
     ):
@@ -590,7 +590,7 @@ class AppHandler:
             )
             return []
 
-    @with_driver_recovery
+    @with_driver_recovery(retry=False, op="write")
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
@@ -640,7 +640,7 @@ class AppHandler:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
             return False
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
             attribute_value: str = None, max_swipes: int = 10
@@ -850,7 +850,7 @@ class AppHandler:
                 attribute_values_list.reverse()
             return None, None, attribute_values_list
 
-    @with_driver_recovery
+    @with_driver_recovery(op="read")
     def wait_for_any_element_plus(
             self, element_keys: list, timeout: int = 10
     ) -> Tuple[Optional[str], Optional[WebElement]]:

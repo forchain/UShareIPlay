@@ -50,6 +50,13 @@ When creating or editing pull requests with `gh`, the correct GitHub account dep
 
 - **Rule**: Read `remote.origin.url` and extract the username before `@github.com` (e.g. `https://forchain@github.com/forchain/UShareIPlay` → `forchain`). Temporarily switch `gh` to that account for PR operations, then switch back.
 
+### PR branch naming rule (rename random branches)
+
+If the current branch name is randomly generated and unrelated to the change (e.g. worktree default names like `lava-flint`), then **before creating a PR**:
+
+1. **Rename the current branch** to a meaningful kebab-case name that matches the change intent (e.g. `fix/async-command-parser-recovery`).
+2. **Then** create the PR from the renamed branch.
+
 Example:
 
 ```bash
