@@ -18,6 +18,10 @@ class MusicManager(Singleton):
         self.music_handler = QQMusicHandler.instance()
         self.logger = self.music_handler.logger
         self.driver = self.music_handler.driver
+
+    @property
+    def driver_recovery_context(self):
+        return getattr(self.music_handler, "driver_recovery_context", None)
     
     def play_song(self, song_query: str) -> dict:
         """

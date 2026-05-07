@@ -17,11 +17,21 @@ class CommandManager(Singleton):
         # 延迟初始化 handler 和 logger，避免循环依赖
         self._handler = None
         self._logger = None
+        self._runtime = None
 
         # 命令相关属性
         self.commands_path = Path(__file__).parent.parent / 'commands'
         self.command_modules = {}  # Cache for loaded command modules
         self.command_parser = None  # Will be initialized when needed
+
+    def configure_runtime(self, runtime):
+        self._runtime = runtime
+
+    @property
+    def runtime(self):
+        if self._runtime is None:
+            raise RuntimeError("CommandManager runtime has not been configured")
+        return self._runtime
 
     @property
     def handler(self):
@@ -53,7 +63,7 @@ class CommandManager(Singleton):
             if command in self.command_modules:
                 return self.command_modules[command]
 
-            module_path = (Path(__file__).parent.parent / 'commands' / f"{command}.py").resolve()
+            module_path = (self.commands_path / f"{command}.py").resolve()
             if not module_path.exists():
                 self.logger.error(f'module path not exists, {module_path}')
                 return None
@@ -77,11 +87,7 @@ class CommandManager(Singleton):
                 self.logger.error('Command module does not have create_command')
                 return None
 
-            # 获取 AppController 单例实例
-            from ushareiplay.core.app_controller import AppController
-            controller = AppController.instance()
-
-            module.command = module.create_command(controller)
+            module.command = module.create_command(self.runtime.controller)
             self.command_modules[command] = module
             return module
 
@@ -142,16 +148,14 @@ class CommandManager(Singleton):
             parameters = command_info['parameters']
 
             try:
-                from ushareiplay.core.app_controller import AppController
-                if controller := AppController.instance():
-                    controller.obs.emit(
-                        "command.received",
-                        ctx={
-                            "prefix": command_info.get("prefix"),
-                            "raw": message_info.content,
-                            "nickname": message_info.nickname,
-                        },
-                    )
+                self.runtime.emit(
+                    "command.received",
+                    ctx={
+                        "prefix": command_info.get("prefix"),
+                        "raw": message_info.content,
+                        "nickname": message_info.nickname,
+                    },
+                )
             except Exception:
                 pass
             
@@ -175,23 +179,20 @@ class CommandManager(Singleton):
                     return res
             
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
-            # 延迟导入避免循环依赖
-            from ushareiplay.core.app_controller import AppController
             result = {'error': 'unknown'}
-            if controller := AppController.instance():
-                async with controller.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
-                    try:
-                        controller.obs.emit(
-                            "command.dispatch",
-                            ctx={
-                                "prefix": command_info.get("prefix"),
-                                "parameters": parameters,
-                                "nickname": message_info.nickname,
-                            },
-                        )
-                    except Exception:
-                        pass
-                    result = await command.process(message_info, parameters)
+            async with self.runtime.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
+                try:
+                    self.runtime.emit(
+                        "command.dispatch",
+                        ctx={
+                            "prefix": command_info.get("prefix"),
+                            "parameters": parameters,
+                            "nickname": message_info.nickname,
+                        },
+                    )
+                except Exception:
+                    pass
+                result = await command.process(message_info, parameters)
 
             if 'error' in result:
                 # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染
@@ -204,17 +205,16 @@ class CommandManager(Singleton):
                 res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
 
             try:
-                if controller := AppController.instance():
-                    controller.obs.emit(
-                        "command.result",
-                        ctx={
-                            "prefix": command_info.get("prefix"),
-                            "success": "error" not in result,
-                            "error": result.get("error") if isinstance(result, dict) else None,
-                            "response": res,
-                            "response_len": len(res or ""),
-                        },
-                    )
+                self.runtime.emit(
+                    "command.result",
+                    ctx={
+                        "prefix": command_info.get("prefix"),
+                        "success": "error" not in result,
+                        "error": result.get("error") if isinstance(result, dict) else None,
+                        "response": res,
+                        "response_len": len(res or ""),
+                    },
+                )
             except Exception:
                 pass
             return res

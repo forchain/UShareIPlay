@@ -13,6 +13,7 @@ MODULES = [
     "ushareiplay.core.message_queue",
     "ushareiplay.core.post_party_create_automation",
     "ushareiplay.core.runtime_services",
+    "ushareiplay.core.runtime_context",
     "ushareiplay.core.command_parser",
     "ushareiplay.core.log_formatter",
     "ushareiplay.core.element_wrapper",
