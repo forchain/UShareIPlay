@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+from selenium.common.exceptions import WebDriverException
+
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.managers.event_manager import EventManager
 
@@ -53,6 +55,34 @@ class FakeRuntime:
     def is_ui_busy(self):
         self.calls += 1
         return self.busy
+
+
+class RecoverableDriver:
+    def __init__(self):
+        self.calls = 0
+        self.recovered = False
+
+    @property
+    def page_source(self):
+        self.calls += 1
+        if not self.recovered:
+            raise WebDriverException("driver lost")
+        return SOUL_PAGE
+
+
+class FakeRecoveryContext:
+    def __init__(self, driver):
+        self.driver = driver
+        self.reinitialize_calls = 0
+        self.events = []
+
+    def reinitialize_driver(self):
+        self.reinitialize_calls += 1
+        self.driver.recovered = True
+        return True
+
+    def emit(self, event, **kwargs):
+        self.events.append((event, kwargs))
 
 
 def make_event_manager(runtime):
@@ -114,3 +144,21 @@ def test_base_event_without_runtime_reports_ui_available():
     event = BaseEvent(handler)
 
     assert event.is_ui_busy() is False
+
+
+def test_event_manager_get_page_source_recovers_through_handler_context():
+    runtime = FakeRuntime(busy=False)
+    manager = make_event_manager(runtime)
+    driver = RecoverableDriver()
+    context = FakeRecoveryContext(driver)
+    manager.handler.driver = driver
+    manager.handler.driver_recovery_context = context
+
+    assert manager.driver_recovery_context is context
+    assert manager.get_page_source() == SOUL_PAGE
+    assert driver.calls == 2
+    assert context.reinitialize_calls == 1
+    assert [event for event, _ in context.events] == [
+        "recovery.reinitialized",
+        "recovery.retry",
+    ]

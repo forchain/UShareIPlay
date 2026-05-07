@@ -70,6 +70,10 @@ class EventManager(Singleton):
             self._config = self.handler.config
         return self._config
 
+    @property
+    def driver_recovery_context(self):
+        return getattr(self.handler, "driver_recovery_context", None)
+
     def configure_runtime(self, runtime):
         self._runtime = runtime
 
