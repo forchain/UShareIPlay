@@ -218,11 +218,9 @@ class CommandManager(Singleton):
                         cfg = self.handler.config
                     sg = SleepManager.instance(cfg)
                     if sg.is_blocked_command(prefix):
-                        window_text = sg.get_window_display()
                         result = {
                             "error": (
-                                f"睡眠守护已开启（{window_text}），当前时段禁止使用 :{prefix}。"
-                                f"如需关闭请输入 :sleep off"
+                                "休息中（11pm-6am）"
                             )
                         }
                         format_kwargs = {"user": message_info.nickname, **result}

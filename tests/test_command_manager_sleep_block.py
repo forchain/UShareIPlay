@@ -99,9 +99,7 @@ async def test_normal_user_all_day_window_blocked_play_is_intercepted(_patch_use
     res = await cm.process_command(cmd, msg, command_info)
 
     assert cmd.called is False
-    assert "睡眠守护已开启" in (res or "")
-    assert "00:00-00:00" in res
-    assert ":sleep off" in res
+    assert "休息中（11pm-6am）" in (res or "")
 
 
 @pytest.mark.asyncio
