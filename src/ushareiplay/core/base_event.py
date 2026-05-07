@@ -18,7 +18,7 @@ from abc import ABC
 class BaseEvent(ABC):
     """事件处理器基类"""
 
-    def __init__(self, handler):
+    def __init__(self, handler, runtime=None):
         """
         初始化事件处理器
         
@@ -28,6 +28,12 @@ class BaseEvent(ABC):
         self.handler = handler
         self.logger = handler.logger
         self.controller = handler.controller
+        self.runtime = runtime
+
+    def is_ui_busy(self) -> bool:
+        if self.runtime is None:
+            return False
+        return self.runtime.is_ui_busy()
 
     async def handle(self, key: str, element_wrapper):
         """

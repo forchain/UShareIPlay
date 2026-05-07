@@ -14,22 +14,19 @@ from ushareiplay.core.base_event import BaseEvent
 class ChatRoomTitleEvent(BaseEvent):
     _min_interval_s = 30.0
 
-    def __init__(self, handler):
-        super().__init__(handler)
+    def __init__(self, handler, runtime=None):
+        super().__init__(handler, runtime=runtime)
         self._last_check_ts = 0.0
 
     async def handle(self, key: str, element_wrapper):
         now = time.time()
         if now - self._last_check_ts < self._min_interval_s:
             return False
-        self._last_check_ts = now
 
         try:
-            from ushareiplay.core.app_controller import AppController
-
-            controller = AppController.instance()
-            if controller and controller.ui_lock and controller.ui_lock.locked():
+            if self.is_ui_busy():
                 return False
+            self._last_check_ts = now
 
             from ushareiplay.managers.title_manager import TitleManager
 
@@ -53,4 +50,3 @@ class ChatRoomTitleEvent(BaseEvent):
         except Exception as e:
             self.logger.debug(f"ChatRoomTitleEvent skipped: {e}")
             return False
-
