@@ -38,6 +38,7 @@ class AppController(Singleton):
         # 先创建主driver（会自动启动Soul app）
         self.obs.emit("driver.init.start")
         self.driver = self._init_driver()
+        self._driver_subscribers = []
         self.obs.emit("driver.init.ok")
 
         # 使用主driver启动其他应用
@@ -170,6 +171,31 @@ class AppController(Singleton):
         })
         return driver
 
+    def register_driver_subscriber(self, component) -> None:
+        """Register a component whose .driver reference must track controller.driver."""
+        if component is None:
+            return
+        if not hasattr(self, "_driver_subscribers"):
+            self._driver_subscribers = []
+        if component in self._driver_subscribers:
+            return
+        self._driver_subscribers.append(component)
+        if hasattr(component, "driver"):
+            component.driver = self.driver
+
+    def _notify_driver_subscribers(self, driver) -> None:
+        if not hasattr(self, "_driver_subscribers"):
+            self._driver_subscribers = []
+        for component in list(self._driver_subscribers):
+            if not hasattr(component, "driver"):
+                continue
+            component.driver = driver
+            if self.logger:
+                self.logger.debug(
+                    "更新 %s.driver",
+                    component.__class__.__name__,
+                )
+
     def reinitialize_driver(self) -> bool:
         """
         统一的driver重建入口
@@ -211,24 +237,10 @@ class AppController(Singleton):
             })
             self.logger.info("Optimized driver settings")
 
-            # 4. 更新所有组件的driver引用
-            if self.soul_handler:
-                self.soul_handler.driver = self.driver
-                if self.logger:
-                    self.logger.debug("更新 soul_handler.driver")
+            # 4. 更新所有订阅组件的driver引用
+            self._notify_driver_subscribers(self.driver)
 
-            if self.music_handler:
-                self.music_handler.driver = self.driver
-                if self.logger:
-                    self.logger.debug("更新 music_handler.driver")
-
-            # 5. 更新music_manager（关键修复！）
-            if hasattr(self, "music_manager") and self.music_manager:
-                self.music_manager.driver = self.driver
-                if self.logger:
-                    self.logger.debug("更新 music_manager.driver")
-
-            # 6. 切换回应用
+            # 5. 切换回应用
             if self.soul_handler:
                 self.soul_handler.switch_to_app()
 
@@ -281,9 +293,11 @@ class AppController(Singleton):
             self.soul_handler = SoulHandler.instance(
                 self.driver, self.config["soul"], self
             )
+            self.register_driver_subscriber(self.soul_handler)
             self.music_handler = QQMusicHandler.instance(
                 self.driver, self.config["qq_music"], self
             )
+            self.register_driver_subscriber(self.music_handler)
             self.logger = self.soul_handler.logger
 
             # Initialize managers using singleton pattern (no parameters needed)
@@ -302,6 +316,7 @@ class AppController(Singleton):
             self.topic_manager = TopicManager.instance()
             self.mic_manager = MicManager.instance()
             self.music_manager = MusicManager.instance()
+            self.register_driver_subscriber(self.music_manager)
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
