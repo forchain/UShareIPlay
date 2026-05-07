@@ -1,16 +1,6 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    say_command = SayCommand(controller)
-    controller.say_command = say_command
-    return say_command
-
-
-command = None
-
-
 class SayCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

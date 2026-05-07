@@ -2,15 +2,6 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.seat_manager import seat_manager
 
-
-def create_command(controller):
-    seat_command = SeatCommand(controller)
-    return seat_command
-
-
-command = None
-
-
 class SeatCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

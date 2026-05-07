@@ -7,15 +7,6 @@ import re
 import time
 
 
-def create_command(controller):
-    fav_command = FavCommand(controller)
-    controller.fav_command = fav_command
-    return fav_command
-
-
-command = None
-
-
 class FavCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

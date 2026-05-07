@@ -1,14 +1,6 @@
 from __future__ import annotations
 
 from ushareiplay.core.base_command import BaseCommand
-
-def create_command(controller):
-    help_command = HelpCommand(controller)
-    controller.help_command = help_command
-    return help_command
-
-command = None
-
 class HelpCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

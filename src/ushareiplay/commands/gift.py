@@ -4,16 +4,6 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.user_manager import UserManager
 
-
-def create_command(controller):
-    gift_command = GiftCommand(controller)
-    controller.gift_command = gift_command
-    return gift_command
-
-
-command = None
-
-
 class GiftCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

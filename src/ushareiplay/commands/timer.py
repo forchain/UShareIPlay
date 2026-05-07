@@ -5,15 +5,6 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.timer_manager import TimerManager
 
 
-def create_command(controller):
-    timer_command = TimerCommand(controller)
-    controller.timer_command = timer_command
-    return timer_command
-
-
-command = None
-
-
 class TimerCommand(BaseCommand):
 
     def __init__(self, controller):

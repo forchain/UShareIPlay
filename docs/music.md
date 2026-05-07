@@ -54,4 +54,4 @@ No DB model — music state is read live from QQ Music UI. `MusicManager` caches
 ## Extension Points
 
 - **New music source**: Add method to `QQMusicHandler`, expose via `MusicManager`, create new command in `src/ushareiplay/commands/`.
-- **New command**: Create `src/ushareiplay/commands/<name>.py` inheriting `BaseCommand`, implement `execute()`. No registration needed — `CommandManager` auto-discovers via dynamic import.
+- **New command**: Create `src/ushareiplay/commands/<name>.py` with exactly one `BaseCommand` subclass, implement `process()`, and do not add `create_command()` or `command = None`. No registration needed — `CommandManager` auto-discovers via dynamic import.

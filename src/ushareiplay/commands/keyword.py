@@ -2,16 +2,6 @@ import traceback
 import shlex
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    keyword_command = KeywordCommand(controller)
-    controller.keyword_command = keyword_command
-    return keyword_command
-
-
-command = None
-
-
 class KeywordCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

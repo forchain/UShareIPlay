@@ -3,15 +3,6 @@ from appium.webdriver.common.appiumby import AppiumBy
 from ushareiplay.core.base_command import BaseCommand
 
 
-def create_command(controller):
-    play_command = PlayCommand(controller)
-    controller.play_command = play_command
-    return play_command
-
-
-command = None
-
-
 class PlayCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

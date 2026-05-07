@@ -41,13 +41,6 @@ def wrap_line_at_spaces(line: str, max_width: int) -> str:
     return "\n".join(out)
 
 
-def create_command(controller):
-    lyrics_command = LyricsCommand(controller)
-    controller.lyrics_command = lyrics_command
-    return lyrics_command
-
-command = None
-
 class LyricsCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

@@ -3,16 +3,6 @@ import shlex
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.dal.enter_dao import EnterDao
 
-
-def create_command(controller):
-    enter_command = EnterCommand(controller)
-    controller.enter_command = enter_command
-    return enter_command
-
-
-command = None
-
-
 class EnterCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
