@@ -18,6 +18,7 @@ class CommandManager(Singleton):
         self._handler = None
         self._logger = None
         self._runtime = None
+        self.controller = None
 
         # 命令相关属性
         self.commands_path = Path(__file__).parent.parent / 'commands'
@@ -47,6 +48,28 @@ class CommandManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
+
+    def _get_command_controller(self):
+        if self.controller is not None:
+            return self.controller
+        if self._runtime is not None and hasattr(self._runtime, "controller"):
+            return self._runtime.controller
+        return None
+
+    def _find_command_class(self, module):
+        from ushareiplay.core.base_command import BaseCommand
+
+        candidates = [
+            value
+            for value in module.__dict__.values()
+            if isinstance(value, type)
+            and issubclass(value, BaseCommand)
+            and value is not BaseCommand
+            and value.__module__ == module.__name__
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
 
     def initialize_parser(self, commands_config):
         """
@@ -78,18 +101,23 @@ class CommandManager(Singleton):
                 self.logger.error('Command module failed to load')
                 return None
 
-            if not hasattr(module, 'command'):
-                self.logger.error('Command module does not have command')
+            if hasattr(module, 'command') and module.command is not None:
+                self.command_modules[command] = module
+                return module
+
+            controller = self._get_command_controller()
+            if controller is None:
+                self.logger.error('Command manager does not have a controller reference')
                 return None
 
-            # Create command instance
-            if not hasattr(module, 'create_command'):
-                self.logger.error('Command module does not have create_command')
-                return None
+            command_cls = self._find_command_class(module)
+            if command_cls is not None:
+                module.command = command_cls(controller)
+                self.command_modules[command] = module
+                return module
 
-            module.command = module.create_command(self.runtime.controller)
-            self.command_modules[command] = module
-            return module
+            self.logger.error('Command module does not define a concrete BaseCommand subclass')
+            return None
 
         except Exception:
             self.logger.error(f"Error loading command module {command}: {traceback.format_exc()}")

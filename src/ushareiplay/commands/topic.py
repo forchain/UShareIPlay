@@ -3,15 +3,6 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.topic_manager import TopicManager
 
 
-def create_command(controller):
-    topic_command = TopicCommand(controller)
-    controller.topic_command = topic_command
-    return topic_command
-
-
-command = None
-
-
 class TopicCommand(BaseCommand):
     """
     话题命令 - 负责参数解析和调用 TopicManager

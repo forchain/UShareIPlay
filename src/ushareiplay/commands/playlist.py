@@ -6,16 +6,6 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.playlist_parser import PlaylistParser
 
-
-def create_command(controller):
-    playlist_command = PlaylistCommand(controller)
-    controller.playlist_command = playlist_command
-    return playlist_command
-
-
-command = None
-
-
 class PlaylistCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

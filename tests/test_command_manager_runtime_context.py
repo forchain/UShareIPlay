@@ -46,7 +46,12 @@ class FakeCommand:
 
 
 def make_manager(tmp_path):
-    controller = SimpleNamespace(obs=FakeObserver())
+    controller = SimpleNamespace(
+        obs=FakeObserver(),
+        soul_handler=object(),
+        music_handler=object(),
+        marker="ok",
+    )
     runtime = FakeRuntime(controller)
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
@@ -62,10 +67,15 @@ def test_load_command_module_uses_injected_runtime_controller(tmp_path):
     command_file.write_text(
         "\n".join(
             [
-                "command = None",
-                "def create_command(controller):",
-                "    controller.loaded_by_command_manager = True",
-                "    return object()",
+                "from ushareiplay.core.base_command import BaseCommand",
+                "",
+                "class DemoCommand(BaseCommand):",
+                "    def __init__(self, controller):",
+                "        super().__init__(controller)",
+                "        self.controller.loaded_by_command_manager = True",
+                "",
+                "    async def process(self, message_info, parameters):",
+                "        return {'song': self.controller.marker}",
             ]
         ),
         encoding="utf-8",
@@ -76,7 +86,10 @@ def test_load_command_module_uses_injected_runtime_controller(tmp_path):
 
     assert module is not None
     assert module.command is not None
+    assert module.command.controller is runtime.controller
     assert controller.loaded_by_command_manager is True
+    result = asyncio.run(module.command.process(None, []))
+    assert result == {"song": "ok"}
 
 
 def test_process_command_uses_runtime_for_observability_and_ui_session():

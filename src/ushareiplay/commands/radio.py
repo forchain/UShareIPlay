@@ -7,15 +7,6 @@ from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.title_manager import TitleManager
 from ushareiplay.managers.topic_manager import TopicManager
 
-command = None
-
-
-def create_command(controller):
-    radio_command = RadioCommand(controller)
-    controller.radio_command = radio_command
-    return radio_command
-
-
 class RadioCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

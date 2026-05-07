@@ -331,6 +331,7 @@ class AppController(Singleton):
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerManager.instance()
             self.command_manager = CommandManager.instance()
+            self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
             self.info_manager = InfoManager.instance()
             self.party_manager = PartyManager.instance()

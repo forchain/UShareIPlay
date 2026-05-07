@@ -4,16 +4,6 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.dal.user_dao import UserDAO
 
-
-def create_command(controller):
-    alias_command = AliasCommand(controller)
-    controller.alias_command = alias_command
-    return alias_command
-
-
-command = None
-
-
 class AliasCommand(BaseCommand):
     async def process(self, message_info, parameters):
         """
@@ -55,4 +45,3 @@ class AliasCommand(BaseCommand):
         except Exception:
             self.soul_handler.logger.error(f"Error in alias command: {traceback.format_exc()}")
             return {'error': '处理失败'}
-

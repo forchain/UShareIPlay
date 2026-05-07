@@ -1,15 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
 
-
-def create_command(controller):
-    accompaniment_command = AccompanimentCommand(controller)
-    controller.accompaniment_command = accompaniment_command
-    return accompaniment_command
-
-
-command = None
-
-
 class AccompanimentCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

@@ -10,15 +10,6 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.dal.return_dao import ReturnDao
 
 
-def create_command(controller):
-    return_cmd = ReturnCommand(controller)
-    controller.return_command = return_cmd
-    return return_cmd
-
-
-command = None
-
-
 class ReturnCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)

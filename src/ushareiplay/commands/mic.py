@@ -1,12 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
 
-def create_command(controller):
-    mic_command = MicCommand(controller)
-    controller.mic_command = mic_command  # Store instance in controller
-    return mic_command
-
-command = None
-
 class MicCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
