@@ -38,6 +38,7 @@ class EventManager(Singleton):
         self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
         self._initialized = False
         self._consecutive_unknown_pages = 0
+        self._runtime = None
 
     # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
     _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
@@ -68,6 +69,15 @@ class EventManager(Singleton):
         if self._config is None:
             self._config = self.handler.config
         return self._config
+
+    def configure_runtime(self, runtime):
+        self._runtime = runtime
+
+    @property
+    def runtime(self):
+        if self._runtime is None:
+            raise RuntimeError("EventManager runtime has not been configured")
+        return self._runtime
 
     def initialize(self):
         """初始化事件管理器，加载所有事件模块"""
@@ -165,7 +175,7 @@ class EventManager(Singleton):
 
             # 创建事件实例
             event_class = getattr(module, class_name)
-            module.event = event_class(self.handler)
+            module.event = event_class(self.handler, runtime=self.runtime)
 
             # 缓存模块
             self.event_modules[module_name] = module
@@ -316,35 +326,31 @@ class EventManager(Singleton):
         if triggered_count == 0:
             try:
                 # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
-                # 延迟导入避免循环依赖
-                from ushareiplay.core.app_controller import AppController
-                if controller := AppController.instance():
-                    if ui_lock := controller.ui_lock:
-                        if ui_lock.locked():
-                            self.logger.debug(
-                                "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
+                if self.runtime.is_ui_busy():
+                    self.logger.debug(
+                        "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
+                else:
+                    self.handler.switch_to_app()
+                    ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
+                    if not ready_source:
+                        # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
+                        self.logger.debug(
+                            "PageSource not ready after switch_to_app; skip auto press_back this round.")
+                    else:
+                        second_triggered = await self._process_events_once(ready_source)
+                        if second_triggered == 0:
+                            self.handler.press_back()
+                            self.logger.warning("No events triggered, pressed back to exit unknown page")
+                            self._consecutive_unknown_pages += 1
+                            if self._consecutive_unknown_pages > 10:
+                                backoff_s = min(10.0, 0.5 * (self._consecutive_unknown_pages - 10))
+                                self.logger.warning(
+                                    f"连续未知页面已达 {self._consecutive_unknown_pages} 次，"
+                                    f"非阻塞退避 {backoff_s:.1f}s 后继续"
+                                )
+                                await asyncio.sleep(backoff_s)
                         else:
-                            self.handler.switch_to_app()
-                            ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
-                            if not ready_source:
-                                # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
-                                self.logger.debug(
-                                    "PageSource not ready after switch_to_app; skip auto press_back this round.")
-                            else:
-                                second_triggered = await self._process_events_once(ready_source)
-                                if second_triggered == 0:
-                                    self.handler.press_back()
-                                    self.logger.warning("No events triggered, pressed back to exit unknown page")
-                                    self._consecutive_unknown_pages += 1
-                                    if self._consecutive_unknown_pages > 10:
-                                        backoff_s = min(10.0, 0.5 * (self._consecutive_unknown_pages - 10))
-                                        self.logger.warning(
-                                            f"连续未知页面已达 {self._consecutive_unknown_pages} 次，"
-                                            f"非阻塞退避 {backoff_s:.1f}s 后继续"
-                                        )
-                                        await asyncio.sleep(backoff_s)
-                                else:
-                                    self._consecutive_unknown_pages = 0
+                            self._consecutive_unknown_pages = 0
 
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")

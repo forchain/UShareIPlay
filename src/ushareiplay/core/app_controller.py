@@ -352,6 +352,7 @@ class AppController(Singleton):
             # Initialize event manager
             self.logger.info("初始化事件管理器...")
             self.event_manager = EventManager.instance()
+            self.event_manager.configure_runtime(self.event_runtime_context)
             self.event_manager.initialize()
             self.logger.info("事件管理器初始化完成")
 
