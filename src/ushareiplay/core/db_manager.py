@@ -28,6 +28,25 @@ class DatabaseManager:
         await self._ensure_user_canonical_column()
         await self._ensure_keyword_mode_column()
         await self._ensure_keyword_allowed_users_column()
+        await self._ensure_focus_events_created_at()
+
+    async def _ensure_focus_events_created_at(self) -> None:
+        """
+        既有 focus_events 表若 created_at 为 NULL（早期 null=True 模型），回填为当前时间；
+        新插入由 Tortoise auto_now_add 写入。
+        """
+        conn = connections.get("default")
+        try:
+            tables = await conn.execute_query_dict(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='focus_events'"
+            )
+            if not tables:
+                return
+        except Exception:
+            return
+        await conn.execute_script(
+            "UPDATE focus_events SET created_at = datetime('now') WHERE created_at IS NULL;"
+        )
 
     async def _ensure_user_canonical_column(self) -> None:
         """

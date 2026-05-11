@@ -39,3 +39,17 @@ async def test_db_models_registered():
     )
 
     await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_focus_event_created_at_auto_set():
+    """FocusEvent 创建时应自动写入 created_at（非 NULL）。"""
+    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.dal.focus_event_dao import FocusEventDao
+
+    manager = DatabaseManager(db_url="sqlite://:memory:")
+    await manager.init()
+    ev = await FocusEventDao.create("alice", ":play x")
+    await ev.refresh_from_db()
+    assert ev.created_at is not None
+    await manager.close()
