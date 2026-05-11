@@ -435,3 +435,18 @@ class CommandManager(Singleton):
                     await module.command.user_return(username)
             except Exception:
                 self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
+
+    async def notify_focus_count_change(self, before: int | None, after: int):
+        """
+        Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) changes.
+
+        Args:
+            before: Previous parsed count, or None on first observation
+            after: New parsed count
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, "focus_count_change"):
+                    await module.command.focus_count_change(before, after)
+            except Exception:
+                self.logger.error(f"Error in command focus_count_change: {traceback.format_exc()}")

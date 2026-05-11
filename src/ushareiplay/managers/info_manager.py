@@ -19,6 +19,7 @@ class InfoManager(Singleton):
         self._party_manager = None
         self._online_users: Set[str] = set()
         self._user_count: Optional[int] = None  # 在线人数（上次记录的值）
+        self._focus_count: Optional[int] = None  # 专注人数（tvStudyRoomDesc 解析值）
         self._room_id: Optional[str] = None  # 房间ID
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: str = None  # 当前歌单名称（完整原始名称）
@@ -182,6 +183,17 @@ class InfoManager(Singleton):
             self.logger.info(f"User count updated: {self._user_count} -> {value}")
         self._user_count = value
 
+    @property
+    def focus_count(self) -> Optional[int]:
+        """专注人数（与 config elements 的 key 同名；此处为缓存整型）。"""
+        return self._focus_count
+
+    @focus_count.setter
+    def focus_count(self, value: int):
+        if self._focus_count != value:
+            self.logger.info(f"Focus count updated: {self._focus_count} -> {value}")
+        self._focus_count = value
+
     async def set_user_count(self, value: int):
         """异步设置在线人数：人数变化时同步刷新在线用户列表 + 用户等级（不使用 create_task）。"""
         if self._user_count == value:
@@ -217,6 +229,7 @@ class InfoManager(Singleton):
         """清空在线用户列表"""
         self._online_users.clear()
         self._user_count = None
+        self._focus_count = None
         self._room_id = None
         self.logger.info("Cleared online users list")
 
