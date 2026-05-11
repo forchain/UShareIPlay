@@ -411,6 +411,10 @@ commands:
     level: 1
     response_template: "{message}"
     error_template: "离开命令操作失败: {error}"
+  - prefix: "focus"
+    level: 1
+    response_template: "{message}"
+    error_template: "专注人数命令操作失败: {error}"
   - prefix: "say"
     level: 1
     response_template: "{message}"

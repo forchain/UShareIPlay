@@ -32,10 +32,24 @@ async def test_db_models_registered():
     # 获取已注册的模型（Tortoise.apps 支持 __getitem__ 但不是 dict）
     registered_names = set(Tortoise.apps["models"].keys())
     expected_models = {"User", "SeatReservation", "Keyword",
-                       "EnterEvent", "ExitEvent", "ReturnEvent", "Timer"}
+                       "EnterEvent", "ExitEvent", "ReturnEvent", "FocusEvent", "Timer"}
 
     assert expected_models.issubset(registered_names), (
         f"以下模型未注册: {expected_models - registered_names}"
     )
 
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_focus_event_created_at_auto_set():
+    """FocusEvent 创建时应自动写入 created_at（非 NULL）。"""
+    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.dal.focus_event_dao import FocusEventDao
+
+    manager = DatabaseManager(db_url="sqlite://:memory:")
+    await manager.init()
+    ev = await FocusEventDao.create("alice", ":play x")
+    await ev.refresh_from_db()
+    assert ev.created_at is not None
     await manager.close()
