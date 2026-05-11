@@ -1,7 +1,8 @@
 """
-专注数事件 - 监控专注人数变化
+专注人数事件 - 监控 tvStudyRoomDesc（配置 key: focus_count）文案变化。
 
-当检测到专注数变化时，自动为群主找座位。
+人数变化时更新 InfoManager.focus_count，并通知 CommandManager 以执行
+数据库 focus_events 中的联动命令（:focus add 者各自一条记录，按配置用户入队）。
 """
 
 import re
@@ -10,48 +11,43 @@ from ushareiplay.core.base_event import BaseEvent
 
 
 class FocusCountEvent(BaseEvent):
-    """专注数事件处理器"""
+    """专注人数事件处理器"""
 
-    # 类变量，维护上一次的专注数
     previous_focus_count = None
 
     async def handle(self, key: str, element_wrapper):
         """
-        处理专注数事件
-        
-        检查专注数是否变化，如果变化则调用 find_owner_seat()
-        
-        Args:
-            key: 触发事件的元素 key，这里是 'focus_count'
-            element_wrapper: ElementWrapper 实例，包装了专注数元素
-            
+        解析专注人数；变化时更新 InfoManager、notify_focus_count_change。
+
         Returns:
-            bool: 默认返回 False，不中断后续处理
+            False：不中断同轮其它事件处理。
         """
         try:
-            # 获取元素文本
             current_focus_count_text = element_wrapper.text
             if not current_focus_count_text:
                 return False
 
-            # 使用正则表达式提取专注数
-            match = re.search(r'(\d+)人专注中', current_focus_count_text)
+            match = re.search(r"(\d+)人专注中", current_focus_count_text)
             if not match:
                 return False
 
             current_focus_count = int(match.group(1))
 
-            # 如果专注数没有变化，直接返回
             if self.previous_focus_count == current_focus_count:
                 return False
 
-            # 专注数变化，更新
+            before = self.previous_focus_count
             self.previous_focus_count = current_focus_count
 
-            # 自动找陪伴功能已关闭，只能通过执行命令(如: :seat)主动触发
-            self.logger.debug(f"Focus count changed to: {current_focus_count}, automatic accompaniment is disabled")
+            from ushareiplay.managers.info_manager import InfoManager
+            from ushareiplay.managers.command_manager import CommandManager
 
-            return True
+            info_manager = InfoManager.instance()
+            info_manager.focus_count = current_focus_count
+
+            await CommandManager.instance().notify_focus_count_change(before, current_focus_count)
+
+            return False
 
         except Exception as e:
             self.logger.error(f"Error processing focus count event: {str(e)}")

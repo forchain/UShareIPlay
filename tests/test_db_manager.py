@@ -32,7 +32,7 @@ async def test_db_models_registered():
     # 获取已注册的模型（Tortoise.apps 支持 __getitem__ 但不是 dict）
     registered_names = set(Tortoise.apps["models"].keys())
     expected_models = {"User", "SeatReservation", "Keyword",
-                       "EnterEvent", "ExitEvent", "ReturnEvent", "Timer"}
+                       "EnterEvent", "ExitEvent", "ReturnEvent", "FocusEvent", "Timer"}
 
     assert expected_models.issubset(registered_names), (
         f"以下模型未注册: {expected_models - registered_names}"
