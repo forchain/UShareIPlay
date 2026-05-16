@@ -1,0 +1,321 @@
+# Instincts generated from https://github.com/forchain/UShareIPlay
+# Generated: 2026-05-16T04:17:14.275Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: UShareIPlay-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix, feat
+
+## Evidence
+
+- 2 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix(info): respect song broadcast toggle in soul-scoped config, feat(info): add broadcast toggle and prevent startup broadcast
+
+---
+id: UShareIPlay-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Commit Length
+
+## Action
+
+Write moderate-length commit messages (~62 characters)
+
+## Evidence
+
+- Average commit message length: 62 chars
+- Based on 2 commits
+
+---
+id: UShareIPlay-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: UShareIPlay-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: UShareIPlay-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: UShareIPlay-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/forchain/UShareIPlay
+---
+
+# UShareIPlay Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: ushareiplay-instinct-file-naming
+trigger: "When creating a new source file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct File Naming
+
+## Action
+
+Name the file using snake_case
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Files in 'ushareiplay' use snake_case
+
+---
+id: ushareiplay-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: ushareiplay-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: ushareiplay-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: ushareiplay-instinct-import-style
+trigger: "When importing modules within the package"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: ushareiplay-instinct-export-style
+trigger: "When exporting functions or classes from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: ushareiplay-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Test Location
+
+## Action
+
+Place test files in the 'tests' folder, separate from source code
+
+## Evidence
+
+- testLocation: separate
+- tests folder in folderStructure.commonFolders
+
+---
+id: ushareiplay-instinct-commit-prefix
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Commit Prefix
+
+## Action
+
+Start the message with a conventional commit prefix such as 'fix' or 'feat'
+
+## Evidence
+
+- commits.prefixes: ['fix', 'feat']
+- Examples: 'fix(info): ...', 'feat(info): ...'
+
+---
+id: ushareiplay-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Commit Format
+
+## Action
+
+Follow the format: <type>(<scope>): <description>
+
+## Evidence
+
+- commits.type: conventional
+- Examples: 'fix(info): ...', 'feat(info): ...'
+
+---
+id: ushareiplay-instinct-commit-length
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: forchain/UShareIPlay
+---
+
+# Ushareiplay Instinct Commit Length
+
+## Action
+
+Keep the message concise, around 62 characters on average
+
+## Evidence
+
+- commits.averageLength: 62
+
