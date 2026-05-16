@@ -528,9 +528,14 @@ class InfoManager(Singleton):
 
             # 检查歌曲信息是否变化（只比较关键字段）
             if current_playback_key != last_playback_key:
+                # 记录是否是第一次初始化
+                is_first_init = last_playback_key is None
                 # 只保存基本播放信息，不包含额外字段
                 self._last_playback_info = info.copy() if info else None
-                self.send_playing_message()
+                
+                # 第一次初始化时不广播，避免启动时刷屏
+                if not is_first_init:
+                    self.send_playing_message()
 
         except Exception:
             self.logger.error(f"Error in info manager update: {traceback.format_exc()}")
