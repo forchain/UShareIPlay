@@ -1,14 +1,15 @@
 soul:
-#  owner_username: "Chainer"
-  owner_username: "Joyer"
+  owner_username: "Chainer"
+#  owner_username: "Joyer"
   package_name: "cn.soulapp.android"
   # 用于判定「当前不在 Soul 前台」时尝试切回（可与 config.local.yaml 追加厂商桌面包名）
   launcher_packages:
     - "com.sec.android.app.launcher"
   chat_activity: ".component.startup.main.MainActivity"
-#  default_party_id: "FM18633292"
-  default_party_id: "FM15321640"
+  default_party_id: "FM18633292"
+#  default_party_id: "FM15321640"
   default_notice: "U Share I Play\n分享音乐 享受快乐"
+  broadcast_playing_info: false
   
   # 系统用户列表，这些用户不受等级限制
   system_users:
@@ -336,7 +337,7 @@ commands:
     error_template: "别名绑定失败: {error}"
   - prefix: "info"
     level: 0
-    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}"
+    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n{song} - {singer} • {album}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
