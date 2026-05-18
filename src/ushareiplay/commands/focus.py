@@ -33,8 +33,8 @@ class FocusCommand(BaseCommand):
                     return {"error": '缺少命令内容。使用: :focus add "命令内容"'}
 
                 command = params[1]
-                if not command.startswith((":", "：")):
-                    return {"error": '命令必须以冒号(:/：)开头，例如 ":play 歌曲名"'}
+                if not command.startswith((":", "：", "/", "／")):
+                    return {"error": '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
 
                 await FocusEventDao.create(username, command)
                 return {"message": f"已添加专注人数联动命令: {command}"}

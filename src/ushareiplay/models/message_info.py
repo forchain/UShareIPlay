@@ -6,4 +6,4 @@ class MessageInfo:
     """Data class for message information"""
     content: str
     nickname: str
-
+    silent: bool = False

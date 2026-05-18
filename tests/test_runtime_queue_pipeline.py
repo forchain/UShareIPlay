@@ -59,6 +59,58 @@ def test_runtime_queue_drainer_routes_commands_and_plain_messages():
     assert [e[0] for e in obs.events] == ["queue.drain.start", "queue.drain.end"]
 
 
+def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_messages():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+    _run(
+        queue.put_message(
+            MessageInfo(content="hello {user_name};:timer list", nickname="Alice", silent=True)
+        )
+    )
+
+    handler = _FakeHandler()
+    command_manager = _FakeCommandManager()
+    drainer = RuntimeQueueDrainer(
+        handler=handler, command_manager=command_manager, logger=handler.logger
+    )
+
+    drained, command_count = _run(drainer.drain())
+
+    assert drained == 1
+    assert command_count == 1
+    assert handler.sent == []
+    assert [m.content for m in command_manager.received] == [":timer list"]
+    assert [m.silent for m in command_manager.received] == [True]
+
+
+def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+    _run(queue.put_message(MessageInfo(content="hello;/timer list", nickname="Alice")))
+
+    handler = _FakeHandler()
+    command_manager = _FakeCommandManager()
+    drainer = RuntimeQueueDrainer(
+        handler=handler, command_manager=command_manager, logger=handler.logger
+    )
+
+    drained, command_count = _run(drainer.drain())
+
+    assert drained == 1
+    assert command_count == 1
+    assert handler.sent == ["hello"]
+    assert [m.content for m in command_manager.received] == ["/timer list"]
+    assert [m.silent for m in command_manager.received] == [True]
+
+
 def test_message_content_update_logic_does_not_drain_runtime_queue():
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.events.message_content import MessageContentEvent
