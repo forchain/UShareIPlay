@@ -272,147 +272,16 @@ class PartyManager(Singleton):
         处理其他可能的异常情况
         返回True表示执行了操作，False表示没有找到需要处理的情况
         """
-
-        # 检测是否在首页（非派对页面）
         try:
-            planet_tab = self.handler.try_find_element_plus('planet_tab', log=False)
-            if not planet_tab:
-                return False
-            self.logger.info("发现首页，尝试进入派对")
-            planet_tab.click()
-
-            party_hall_entry = self.handler.wait_for_element_clickable_plus('party_hall_entry')
-            if not party_hall_entry:
-                self.logger.warning("未找到派对大厅入口")
-                return False
-            party_hall_entry.click()
-            self.logger.info("Clicked party hall entry")
-
-            key, element = self.handler.wait_for_any_element_plus(
-                ['party_back', 'search_entry'])
-            if not element:
-                self.logger.warning("未找到派对入口")
+            if not self._enter_party_hall_from_home():
                 return False
 
-            if key == 'party_back':
-                element.click()
-                self.logger.info("Clicked back to party")
+            if self._search_and_try_enter_existing_party():
                 return True
 
-            if key == 'search_entry':
-                search_entry = element
-                search_entry.click()
-                self.logger.info("Clicked search entry")
-                search_box = self.handler.wait_for_element_plus('search_box')
-                if not search_box:
-                    self.logger.warning("未找到搜索框")
-                    return False
-                party_id = self.handler.party_id or self.handler.config['default_party_id']
-                search_box.send_keys(party_id)
-                self.logger.info(f"Entered party ID: {party_id}")
-                search_button = self.handler.wait_for_element_plus('search_button')
-                if not search_button:
-                    self.logger.warning("未找到搜索按钮")
-                    return False
-                search_button.click()
-                self.logger.info("Clicked search button")
-
-                room_card = self.handler.wait_for_element_plus('room_card')
-                if not room_card:
-                    self.logger.warning("未找到派对房间，视为派对关闭，准备重建派对")
-                    search_back = self.handler.wait_for_element_plus('search_back')
-                    if search_back:
-                        search_back.click()
-                        self.logger.info("Clicked search back")
-                    else:
-                        self.logger.warning("未找到搜索返回按钮，尝试系统返回")
-                        self.handler.press_back()
-                else:
-                    party_online = self.handler.try_find_element_plus('party_online')
-                    if party_online:
-                        party_online.click()
-                        self.logger.info("Clicked party online")
-                        return True
-                    else:
-                        self.logger.warning("派对关闭了")
-                        search_back = self.handler.wait_for_element_plus('search_back')
-                        if search_back:
-                            search_back.click()
-                            self.logger.info("Clicked search back")
-                        else:
-                            self.logger.warning("未找到搜索返回按钮，尝试系统返回")
-                            self.handler.press_back()
-
-            key, element = self.handler.wait_for_any_element_plus(
-                ['create_party_entry', 'create_room_entry'])
-            if not element:
-                self.logger.warning("未找到派对入口")
+            if not self._create_party_flow():
                 return False
-            element.click()
-            self.logger.info("Clicked create party entry")
-
-            key, element = self.handler.wait_for_any_element_plus(
-                ['confirm_party', 'new_party_entry', 'party_state_entry'])
-            if not element:
-                self.logger.warning("未找到派对创建或恢复按钮")
-
-            party_state_entry = None
-            if key == 'new_party_entry' or key == 'confirm_party':
-                element.click()
-                self.logger.info(f"Clicked new party entry: {key}")
-                party_state_entry = self.handler.wait_for_element_plus('party_state_entry')
-            elif key == 'party_state_entry':
-                party_state_entry = element
-
-            if not party_state_entry:
-                self.logger.warning("未找到创建派对屏幕")
-                return False
-
-            party_state_entry.click()
-            self.logger.info("Clicked party state entry")
-
-            close_party_notification = self.handler.wait_for_element_plus('close_party_notification')
-            if not close_party_notification:
-                self.logger.warning("未找到关闭派对推荐")
-                return False
-            close_party_notification.click()
-            self.logger.info("Clicked close party notification")
-
-            create_party_button = self.handler.wait_for_element_plus('create_party_button')
-            if not create_party_button:
-                self.logger.warning("<UNK>")
-            create_party_button.click()
-            self.logger.info("Clicked create party button")
-
-            # 派对创建成功后，重置派对时间
-            self.reset_party_time()
-
-            # 派对创建成功后，设置默认notice
-            self.logger.info("派对创建成功，准备设置默认notice")
-
-            notice_manager = self.handler.controller.notice_manager
-            result = await notice_manager.set_default_notice()
-
-            if 'success' in result:
-                self.logger.info("默认notice设置成功")
-            else:
-                self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
-
-            seat_manager = self.handler.controller.seat_manager
-            self.logger.info("Attempting to seat owner after party creation")
-            result = await seat_manager.seating.find_owner_seat()
-
-            if 'success' in result:
-                self.logger.info("Owner successfully seated")
-            else:
-                self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
-
-            automation = getattr(self.handler.controller, "post_party_create_automation", None)
-            if automation:
-                await automation.on_party_created_new()
-            else:
-                self.logger.warning("post_party_create_automation not initialized; skip auto commands")
-
+            await self._after_party_created()
             return True
 
 
@@ -420,3 +289,157 @@ class PartyManager(Singleton):
             self.logger.debug(f"检测首页时出错: {str(e)}")
 
         return False
+
+    def _enter_party_hall_from_home(self) -> bool:
+        planet_tab = self.handler.try_find_element_plus('planet_tab', log=False)
+        if not planet_tab:
+            return False
+        self.logger.info("发现首页，尝试进入派对")
+        planet_tab.click()
+
+        party_hall_entry = self.handler.wait_for_element_clickable_plus('party_hall_entry')
+        if not party_hall_entry:
+            self.logger.warning("未找到派对大厅入口")
+            return False
+        party_hall_entry.click()
+        self.logger.info("Clicked party hall entry")
+        return True
+
+    def _search_and_try_enter_existing_party(self) -> bool:
+        key, element = self.handler.wait_for_any_element_plus(['party_back', 'search_entry'])
+        if not element:
+            self.logger.warning("未找到派对入口")
+            return False
+
+        if key == 'party_back':
+            element.click()
+            self.logger.info("Clicked back to party")
+            return True
+
+        search_entry = element
+        search_entry.click()
+        self.logger.info("Clicked search entry")
+        search_box = self.handler.wait_for_element_plus('search_box')
+        if not search_box:
+            self.logger.warning("未找到搜索框")
+            return False
+
+        party_id = self.handler.party_id or self.handler.config['default_party_id']
+        search_box.send_keys(party_id)
+        self.logger.info(f"Entered party ID: {party_id}")
+        search_button = self.handler.wait_for_element_plus('search_button')
+        if not search_button:
+            self.logger.warning("未找到搜索按钮")
+            return False
+        search_button.click()
+        self.logger.info("Clicked search button")
+
+        room_card = self.handler.wait_for_element_plus('room_card')
+        if not room_card:
+            self.logger.warning("未找到派对房间，视为派对关闭，准备重建派对")
+            self._go_back_from_search()
+            return False
+
+        party_online = self.handler.try_find_element_plus('party_online')
+        if party_online:
+            party_online.click()
+            self.logger.info("Clicked party online")
+            return True
+
+        self.logger.warning("派对关闭了")
+        self._go_back_from_search()
+        return False
+
+    def _go_back_from_search(self) -> None:
+        search_back = self.handler.wait_for_element_plus('search_back')
+        if search_back:
+            search_back.click()
+            self.logger.info("Clicked search back")
+            return
+        self.logger.warning("未找到搜索返回按钮，尝试系统返回")
+        self.handler.press_back()
+
+    def _create_party_flow(self) -> bool:
+        key, element = self.handler.wait_for_any_element_plus(['create_party_entry', 'create_room_entry'])
+        if not element:
+            self.logger.warning("未找到派对入口")
+            return False
+        element.click()
+        self.logger.info("Clicked create party entry")
+
+        mode = self._party_create_mode()
+        if mode == 'restore_party':
+            wait_keys = ['restore_party', 'confirm_party', 'party_state_entry']
+        else:
+            wait_keys = ['new_party_entry', 'confirm_party', 'party_state_entry']
+        key, element = self.handler.wait_for_any_element_plus(wait_keys)
+        if not element:
+            self.logger.warning("未找到派对创建或恢复按钮")
+            return False
+
+        if key == 'restore_party':
+            element.click()
+            self.logger.info("Clicked restore party entry")
+            return True
+
+        party_state_entry = None
+        if key == 'new_party_entry' or key == 'confirm_party':
+            element.click()
+            self.logger.info(f"Clicked new party entry: {key}")
+            party_state_entry = self.handler.wait_for_element_plus('party_state_entry')
+        elif key == 'party_state_entry':
+            party_state_entry = element
+
+        if not party_state_entry:
+            self.logger.warning("未找到创建派对屏幕")
+            return False
+
+        party_state_entry.click()
+        self.logger.info("Clicked party state entry")
+
+        close_party_notification = self.handler.wait_for_element_plus('close_party_notification')
+        if not close_party_notification:
+            self.logger.warning("未找到关闭派对推荐")
+            return False
+        close_party_notification.click()
+        self.logger.info("Clicked close party notification")
+
+        create_party_button = self.handler.wait_for_element_plus('create_party_button')
+        if not create_party_button:
+            self.logger.warning("<UNK>")
+            return False
+        create_party_button.click()
+        self.logger.info("Clicked create party button")
+        return True
+
+    def _party_create_mode(self) -> str:
+        mode = self.handler.config.get('party_create_mode', 'new_party_entry')
+        if mode in ('new_party_entry', 'restore_party'):
+            return mode
+        self.logger.warning(f"未知 party_create_mode={mode}，回退 new_party_entry")
+        return 'new_party_entry'
+
+    async def _after_party_created(self) -> None:
+        self.reset_party_time()
+        self.logger.info("派对创建成功，准备设置默认notice")
+
+        notice_manager = self.handler.controller.notice_manager
+        result = await notice_manager.set_default_notice()
+        if 'success' in result:
+            self.logger.info("默认notice设置成功")
+        else:
+            self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
+
+        seat_manager = self.handler.controller.seat_manager
+        self.logger.info("Attempting to seat owner after party creation")
+        result = await seat_manager.seating.find_owner_seat()
+        if 'success' in result:
+            self.logger.info("Owner successfully seated")
+        else:
+            self.logger.warning(f"Failed to seat owner: {result.get('error', 'Unknown error')}")
+
+        automation = getattr(self.handler.controller, "post_party_create_automation", None)
+        if automation:
+            await automation.on_party_created_new()
+        else:
+            self.logger.warning("post_party_create_automation not initialized; skip auto commands")
