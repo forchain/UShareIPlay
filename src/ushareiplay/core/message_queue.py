@@ -1,8 +1,10 @@
 import asyncio
 import threading
 from collections import deque
+from dataclasses import replace
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.core.singleton import Singleton
 
 
@@ -21,6 +23,8 @@ class MessageQueue(Singleton):
         Args:
             message_info: MessageInfo 对象
         """
+        if is_command_silent():
+            message_info = replace(message_info, silent=True)
         await self._queue.put(message_info)
     
     async def get_all_messages(self) -> Dict[str, Any]:

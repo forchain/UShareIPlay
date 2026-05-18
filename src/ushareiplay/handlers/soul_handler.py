@@ -1,5 +1,6 @@
 import logging
 
+from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
@@ -27,6 +28,10 @@ class SoulHandler(AppHandler, Singleton):
 
     def send_message(self, message):
         """Send message"""
+        if is_command_silent():
+            self.logger.info(f"Silent command suppressed screen message: {message}")
+            return None
+
         self.switch_to_app()
 
         # Click on the input box entry first

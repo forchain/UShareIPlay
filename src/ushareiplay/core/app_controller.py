@@ -439,7 +439,7 @@ class AppController(Singleton):
                                 # Allow leading whitespace and spaces after colon.
                                 # Keep the queued content in its original (colon-triggered) form.
                                 trimmed = message.lstrip()
-                                if trimmed and trimmed[0] in (':', '：') and trimmed[1:].strip():
+                                if trimmed and trimmed[0] in (':', '：', '/', '／') and trimmed[1:].strip():
                                     # Create MessageInfo for queue
                                     from ushareiplay.models.message_info import MessageInfo
                                     message_info = MessageInfo(

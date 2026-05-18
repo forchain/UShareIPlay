@@ -3,8 +3,13 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
+
+
+COMMAND_PREFIXES = (":", "：", "/", "／")
+SILENT_COMMAND_PREFIXES = ("/", "／")
 
 
 class CommandManager(Singleton):
@@ -163,6 +168,15 @@ class CommandManager(Singleton):
         module = self.load_command_module(command_name)
         return module.command if module else None
 
+    def _send_screen_message(self, message: str, silent: bool = False):
+        if silent:
+            try:
+                self.logger.info(f"Silent command suppressed screen message: {message}")
+            except Exception:
+                pass
+            return None
+        return self.handler.send_message(message)
+
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
@@ -174,6 +188,9 @@ class CommandManager(Singleton):
         """
         try:
             parameters = command_info['parameters']
+            silent = bool(command_info.get("silent")) or bool(
+                getattr(message_info, "silent", False)
+            )
 
             try:
                 self.runtime.emit(
@@ -233,19 +250,21 @@ class CommandManager(Singleton):
             
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             result = {'error': 'unknown'}
-            async with self.runtime.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
-                try:
-                    self.runtime.emit(
-                        "command.dispatch",
-                        ctx={
-                            "prefix": command_info.get("prefix"),
-                            "parameters": parameters,
-                            "nickname": message_info.nickname,
-                        },
-                    )
-                except Exception:
-                    pass
-                result = await command.process(message_info, parameters)
+            with command_silence(silent):
+                async with self.runtime.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
+                    try:
+                        self.runtime.emit(
+                            "command.dispatch",
+                            ctx={
+                                "prefix": command_info.get("prefix"),
+                                "parameters": parameters,
+                                "nickname": message_info.nickname,
+                                "silent": silent,
+                            },
+                        )
+                    except Exception:
+                        pass
+                    result = await command.process(message_info, parameters)
 
             if 'error' in result:
                 # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染
@@ -266,6 +285,7 @@ class CommandManager(Singleton):
                         "error": result.get("error") if isinstance(result, dict) else None,
                         "response": res,
                         "response_len": len(res or ""),
+                        "silent": silent,
                     },
                 )
             except Exception:
@@ -296,7 +316,8 @@ class CommandManager(Singleton):
         Accepts:
         - leading whitespace (e.g. "  : help")
         - fullwidth colon (：)
-        - whitespace after colon (e.g. ": help")
+        - silent slash prefixes (/ and ／)
+        - whitespace after trigger (e.g. ": help")
 
         Returns:
             str: cleaned command content WITHOUT the trigger colon, and with
@@ -307,9 +328,13 @@ class CommandManager(Singleton):
         s = raw.lstrip()
         if not s:
             return ""
-        if s[0] in (":", "："):
+        if s[0] in COMMAND_PREFIXES:
             s = s[1:]
         return s.lstrip()
+
+    def _is_silent_command_candidate(self, raw: str) -> bool:
+        s = (raw or "").lstrip()
+        return bool(s) and s[0] in SILENT_COMMAND_PREFIXES
 
     async def handle_message_commands(self, messages):
         """
@@ -330,6 +355,9 @@ class CommandManager(Singleton):
                 continue
 
             # Normalize command input (tolerate leading spaces and spaces after colon)
+            silent = bool(getattr(message_info, "silent", False)) or self._is_silent_command_candidate(
+                message_info.content
+            )
             content = self._normalize_command_candidate(message_info.content)
             if not content:
                 continue
@@ -337,23 +365,26 @@ class CommandManager(Singleton):
             if self.is_valid_command(content):
                 command_info = self.parse_command(content)
                 if command_info:
+                    command_info["silent"] = silent
                     # Handle different commands using match-case
                     cmd = command_info['prefix']
                     time_prefix = datetime.now().strftime('%H:%M:%S')
-
-                    self.handler.send_message(
-                        f'[{time_prefix}] {cmd} ... @{message_info.nickname}')
+                    self._send_screen_message(
+                        f'[{time_prefix}] {cmd} ... @{message_info.nickname}',
+                        silent=silent,
+                    )
 
                     command = self.get_command(cmd)
                     if command:
                         response = await self.process_command(command, message_info, command_info)
                         if response:
-                            self.handler.send_message(response)
+                            self._send_screen_message(response, silent=silent)
                         success_count += 1
                     else:
                         self.logger.error(f"Unknown command: {cmd}")
-                        self.handler.send_message(
-                            f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}'
+                        self._send_screen_message(
+                            f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}',
+                            silent=silent,
                         )
 
         self.logger.info(f"{success_count}/{len(messages)} commands processed")

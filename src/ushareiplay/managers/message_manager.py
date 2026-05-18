@@ -16,6 +16,8 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.models.message_info import MessageInfo
 
+COMMAND_PREFIX_CHARS = ":：/／"
+
 # Global chat logger - will be initialized when needed
 chat_logger = None
 
@@ -166,7 +168,7 @@ class MessageManager(Singleton):
                 continue
 
             # Parse message content using pattern
-            pattern = r'souler\[(.+)\]说：\s*[:：]\s*(.+)'
+            pattern = r'souler\[(.+)\]说：\s*([:：/／])\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
@@ -174,11 +176,12 @@ class MessageManager(Singleton):
 
             # Extract actual message content
             nickname = match.group(1).strip()
-            command = match.group(2).strip()
-            # Re-add trigger colon so downstream queue path remains consistent.
+            trigger = match.group(2)
+            command = match.group(3).strip()
+            # Re-add the original trigger so slash commands remain silent downstream.
             # CommandManager will normalize whitespace/colon later.
-            command = f":{command}" if command else ""
-            if not command.strip(":：").strip():
+            command = f"{trigger}{command}" if command else ""
+            if not command.strip(COMMAND_PREFIX_CHARS).strip():
                 continue
             command_set.add(command)
             nickname_map[command] = nickname
@@ -198,7 +201,7 @@ class MessageManager(Singleton):
 
         messages = []
         for chat in self.latest_chats:
-            pattern = r'souler\[(.+)\]说：\s*[:：]\s*(.+)'
+            pattern = r'souler\[(.+)\]说：\s*([:：/／])\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
@@ -206,10 +209,11 @@ class MessageManager(Singleton):
 
             # Extract actual message content
             nickname = match.group(1).strip()
-            message_content = match.group(2).strip()
-            # Re-add trigger colon to keep MessageInfo.content consistent with queue/console conventions.
-            message_content = f":{message_content}" if message_content else ""
-            if not message_content.strip(":：").strip():
+            trigger = match.group(2)
+            message_content = match.group(3).strip()
+            # Re-add trigger to keep MessageInfo.content consistent with queue/console conventions.
+            message_content = f"{trigger}{message_content}" if message_content else ""
+            if not message_content.strip(COMMAND_PREFIX_CHARS).strip():
                 continue
             message = MessageInfo(message_content, nickname)
             messages.append(message)

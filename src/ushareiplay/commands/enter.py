@@ -46,9 +46,8 @@ class EnterCommand(BaseCommand):
                 
                 command = params[1]
                 
-                # Validate command format (should start with ':' or '：')
-                if not command.startswith((':', '：')):
-                    return {'error': '命令必须以冒号(:/：)开头，例如 ":play 歌曲名"'}
+                if not command.startswith((':', '：', '/', '／')):
+                    return {'error': '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
                 
                 # Add to database using DAO
                 await EnterDao.create(username, command)
