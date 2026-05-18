@@ -6,6 +6,10 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models.message_info import MessageInfo
 
 
+COMMAND_PREFIXES = (":", "：", "/", "／")
+SILENT_COMMAND_PREFIXES = ("/", "／")
+
+
 class RuntimeQueueDrainer:
     """Drain MessageQueue from runtime loop (single authoritative path)."""
 
@@ -31,12 +35,21 @@ class RuntimeQueueDrainer:
                 if not part:
                     continue
                 part = part.replace("{user_name}", message_info.nickname)
-                if part.startswith((":", "：")):
+                part_silent = bool(getattr(message_info, "silent", False))
+                if part.startswith(SILENT_COMMAND_PREFIXES):
+                    part_silent = True
+                if part.startswith(COMMAND_PREFIXES):
                     command_messages.append(
-                        MessageInfo(content=part, nickname=message_info.nickname)
+                        MessageInfo(
+                            content=part,
+                            nickname=message_info.nickname,
+                            silent=part_silent,
+                        )
                     )
-                else:
+                elif not part_silent:
                     self.handler.send_message(part)
+                elif self.logger:
+                    self.logger.info(f"Silent command suppressed queued message: {part}")
 
         if command_messages:
             await self.command_manager.handle_message_commands(command_messages)
