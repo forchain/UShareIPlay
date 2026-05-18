@@ -110,19 +110,26 @@ class PartyManager(Singleton):
                 return {'error': 'Failed to switch to Soul app'}
             self.logger.info("Switched to Soul app")
 
-            # Click more menu
-            more_menu = self.handler.wait_for_element_clickable_plus('more_menu')
-            if not more_menu:
-                return {'error': 'Failed to find more menu'}
-            more_menu.click()
-            self.logger.info("Clicked more menu")
+            # Try direct exit_room_btn first
+            exit_room_btn = self.handler.try_find_element_plus('exit_room_btn', log=False)
+            if exit_room_btn:
+                exit_room_btn.click()
+                self.logger.info("Clicked exit room button directly")
+            else:
+                self.logger.info("Direct exit room button not found, trying more menu...")
+                # Click more menu
+                more_menu = self.handler.wait_for_element_clickable_plus('more_menu')
+                if not more_menu:
+                    return {'error': 'Failed to find more menu'}
+                more_menu.click()
+                self.logger.info("Clicked more menu")
 
-            # Click end party option
-            end_party = self.handler.wait_for_element_clickable_plus('end_party')
-            if not end_party:
-                return {'error': 'Failed to find end party option'}
-            end_party.click()
-            self.logger.info("Clicked end party option")
+                # Click end party option
+                end_party = self.handler.wait_for_element_clickable_plus('end_party')
+                if not end_party:
+                    return {'error': 'Failed to find end party option'}
+                end_party.click()
+                self.logger.info("Clicked end party option")
 
             # Click confirm end
             confirm_end = self.handler.wait_for_element_clickable_plus('confirm_end')
@@ -178,6 +185,17 @@ class PartyManager(Singleton):
             dict: 成功含 party_id、user；失败含 error、party_id
         """
         try:
+            # Check if we can directly close the room (we are the host)
+            exit_room_btn = self.handler.try_find_element_plus('exit_room_btn', log=False)
+            if exit_room_btn:
+                exit_room_btn.click()
+                self.logger.info("Clicked exit room button directly")
+                confirm_end = self.handler.wait_for_element_clickable_plus('confirm_end')
+                if confirm_end:
+                    confirm_end.click()
+                self.handler.party_id = party_id
+                return {'party_id': party_id, 'user': message_info.nickname}
+
             more_menu = self.handler.wait_for_element_clickable_plus('more_menu')
             if not more_menu:
                 return {
