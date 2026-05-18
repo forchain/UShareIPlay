@@ -56,6 +56,7 @@ soul:
     confirm_invite: "cn.soulapp.android:id/tv_confirm_invite"
     confirm_dismiss: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认解除']"
     more_menu: "cn.soulapp.android:id/ivChatMore"
+    exit_room_btn: "cn.soulapp.android:id/exitRoomBtn"
     party_hall: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='派对大厅']"
     end_party: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_item' and @text='关闭派对']"
     confirm_end: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_btn" and @text="解散派对"]'
@@ -89,9 +90,9 @@ soul:
     party_hall_entry: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/main_title" and @text="群聊派对"]'
     create_party_entry: "cn.soulapp.android:id/iv_create_room" #  创建派对
     new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
-    party_state_entry: '//android.view.ViewGroup[@content-desc="已公开"or @content-desc="已隐藏"]' # 已公开｜已隐藏
+    party_state_entry: '//android.widget.TextView[@text="已公开" or @text="已隐藏"]' # 已公开｜已隐藏
     close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
-    create_party_button: '//android.view.ViewGroup[@content-desc="创建房间"]' # 创建房间
+    create_party_button: 'cn.soulapp.android:id/createRoomBtn' # 已公开｜已隐藏
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
