@@ -91,11 +91,11 @@ class NoticeManager(Singleton):
             self.logger.info(f"准备设置notice: {notice}")
 
             # 点击小助手
-            assistant = self.handler.wait_for_element_clickable_plus('little_assistant')
-            if not assistant:
-                return {'error': 'Failed to find little assistant'}
-            assistant.click()
-            self.logger.info("点击了小助手按钮")
+            chat_room_title = self.handler.wait_for_element_clickable_plus('chat_room_title')
+            if not chat_room_title:
+                return {'error': 'Failed to find room title'}
+            chat_room_title.click()
+            self.logger.info("点击了标题")
 
             # 点击编辑notice入口
             edit_entry = self.handler.wait_for_element_clickable_plus('edit_notice_entry')
