@@ -139,6 +139,12 @@ class NoticeManager(Singleton):
                 self.logger.info("隐藏notice设置对话框")
                 close_notice.click()
 
+            # 关闭party info设置对话框
+            close_button_1 = self.handler.wait_for_element_plus('close_button_1')
+            if close_button_1:
+                self.logger.info("隐藏party info 对话框")
+                close_button_1.click()
+
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}
 

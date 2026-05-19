@@ -29,7 +29,7 @@ __elements__ = [
     'party_back',
     'reload_more',
     'go_back',
-    'close_gift',
+    'close_button_1',
     'confirm_close',
     'close_more_menu',
     'left_top_close',
