@@ -31,27 +31,18 @@ class UserCountEvent(BaseEvent):
             if not user_count_text:
                 return False
 
-            # 解析人数文本，例如 "6人" -> 6
-            user_count = None
-            if '人' in user_count_text:
-                count_str = user_count_text.replace('人', '').strip()
-                try:
-                    user_count = int(count_str)
-                except ValueError:
-                    self.logger.warning(f"无法解析人数文本: {user_count_text}")
-                    return False
-            else:
-                # 尝试提取所有数字
-                match = re.search(r'(\d+)', user_count_text)
-                if match:
-                    try:
-                        user_count = int(match.group(1))
-                    except ValueError:
-                        self.logger.warning(f"无法解析人数文本: {user_count_text}")
-                        return False
-                else:
-                    self.logger.warning(f"人数文本格式异常: {user_count_text}")
-                    return False
+            # 使用正则提取第一个数字序列，例如 "6人", "6人在线", "在线 10 人" -> 6, 6, 10
+            match = re.search(r'(\d+)', user_count_text)
+            if not match:
+                self.logger.warning(f"无法解析人数文本: {user_count_text}")
+                return False
+
+            try:
+                user_count = int(match.group(1))
+            except ValueError:
+                # 理论上正则匹配到 \d+ 应该不会转换失败，但为了严谨增加异常处理
+                self.logger.warning(f"无法将提取的文本转换为整数: {match.group(1)}")
+                return False
 
             # 更新 InfoManager 中的在线人数
             from ushareiplay.managers.info_manager import InfoManager
