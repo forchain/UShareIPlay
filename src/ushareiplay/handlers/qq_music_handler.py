@@ -574,7 +574,7 @@ class QQMusicHandler(AppHandler, Singleton):
                     self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
         except StaleElementReferenceException as e:
-            self.logger.warning(f"Playing indicator invisible in playlist playing, {traceback.format_exc()}")
+            self.logger.warning("Playing indicator invisible in playlist playing")
 
         # Get all songs and singers
 
@@ -605,8 +605,7 @@ class QQMusicHandler(AppHandler, Singleton):
                 continue
 
         if not playlist_info:
-            self.logger.error("No songs found in playlist")
-            return {'error': 'No songs found in playlist'}
+            self.logger.warning("No songs found in playlist")
 
         self.logger.info(f"Found {len(playlist_info)} songs in playlist")
         return {'playlist': '\n'.join(playlist_info)}
