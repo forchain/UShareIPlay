@@ -90,6 +90,7 @@ class SoulHandler(AppHandler, Singleton):
     def ensure_mic_active(self):
         """Ensure the microphone is active"""
         try:
+            self.switch_to_app()
             # Check if the grab mic button is present
             grab_mic_button = self.try_find_element_plus('grab_mic', log=False)
 
