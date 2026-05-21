@@ -125,6 +125,15 @@ def test_extract_private_reply_and_normalize_dollar_prefix():
     assert normalized == "play abc"
 
 
+def test_extract_private_reply_and_normalize_fullwidth_dollar_prefix():
+    manager, _runtime, _controller = make_manager(Path("."))
+
+    private_reply, normalized = manager._extract_private_reply_and_normalize("＄info")
+
+    assert private_reply is True
+    assert normalized == "info"
+
+
 def test_extract_private_reply_and_normalize_colon_prefix_unchanged():
     manager, _runtime, _controller = make_manager(Path("."))
 
