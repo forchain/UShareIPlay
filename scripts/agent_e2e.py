@@ -168,11 +168,12 @@ def start_service() -> subprocess.Popen[bytes]:
     return proc
 
 
-def write_spool_command(line: str) -> Path:
+def write_spool_command(line: str, *, nickname: str = "Console") -> Path:
     COMMAND_SPOOL_DIR.mkdir(parents=True, exist_ok=True)
     target = COMMAND_SPOOL_DIR / f"{int(_now() * 1000)}-{uuid.uuid4().hex[:8]}.cmd"
     tmp = target.with_suffix(".tmp")
-    tmp.write_text(line.rstrip("\n") + "\n", encoding="utf-8")
+    payload = {"content": line.rstrip("\n"), "nickname": nickname}
+    tmp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
     tmp.replace(target)
     return target
 
@@ -321,11 +322,35 @@ def inject(proc: subprocess.Popen[bytes], line: str) -> None:
     proc.stdin.flush()
 
 
-def inject_via_channel(proc: Optional[subprocess.Popen[bytes]], line: str) -> Tuple[str, Optional[Path]]:
-    if proc is not None:
+def inject_via_channel(
+    proc: Optional[subprocess.Popen[bytes]],
+    line: str,
+    *,
+    nickname: str = "Console",
+) -> Tuple[str, Optional[Path]]:
+    if proc is not None and nickname == "Console":
         inject(proc, line)
         return "stdin", None
-    return "agent_spool", write_spool_command(line)
+    try:
+        return "agent_spool", write_spool_command(line, nickname=nickname)
+    except TypeError:
+        return "agent_spool", write_spool_command(line)
+
+
+def resolve_injection_nickname(command: str, nickname: str) -> str:
+    """
+    Dollar-prefixed command tests should simulate a real online user.
+
+    The injected command source is typically the group owner, but the owner
+    cannot private-message themselves. For `$` / `＄` command flows we default
+    the sender to `Outlier` unless the caller explicitly overrides it.
+    """
+    if nickname != "Console":
+        return nickname
+    trimmed = (command or "").lstrip()
+    if trimmed.startswith(("$", "＄")):
+        return "Outlier"
+    return nickname
 
 
 def choose_lifecycle(
@@ -590,6 +615,7 @@ def run_db_queries(db_path: Path, queries: List[str]) -> List[Tuple[str, List[Tu
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Agent-friendly E2E runner for UShareIPlay (closed loop).")
     parser.add_argument("--command", default="", help="Injected console command, e.g. ':help'. If empty, will prompt in TTY.")
+    parser.add_argument("--nickname", default="Console", help="Nickname attached to injected command messages")
     parser.add_argument("--startup-timeout", type=float, default=120.0, help="Seconds to wait artifacts appear")
     parser.add_argument("--ready-timeout", type=float, default=180.0, help="Seconds to wait CommandReady")
     parser.add_argument("--assert-timeout", type=float, default=90.0, help="Seconds to wait command result events")
@@ -694,7 +720,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.mode == "full" and run is not None:
             last_status = wait_command_ready(run.status_json, timeout_s=args.ready_timeout)
             event_offset = run.events_jsonl.stat().st_size if run.events_jsonl.exists() else 0
-            injection_channel, _spool_path = inject_via_channel(proc, args.command)
+            injection_nickname = resolve_injection_nickname(args.command, args.nickname)
+            injection_channel, _spool_path = inject_via_channel(
+                proc,
+                args.command,
+                nickname=injection_nickname,
+            )
             assertion = assert_command_flow(
                 run.events_jsonl,
                 injected=args.command,
@@ -703,10 +734,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             needs_dump = args.dump_after_command or bool(args.expect_page_source_text) or args.require_screenshot
             if needs_dump:
-                inject_via_channel(proc, "!dump")
+                inject_via_channel(proc, "!dump", nickname="Console")
                 time.sleep(1.0)
             if (not assertion.get("ok")) and args.dump_on_fail:
-                inject_via_channel(proc, "!dump")
+                inject_via_channel(proc, "!dump", nickname="Console")
                 # give it a little time to flush to disk
                 time.sleep(1.0)
 

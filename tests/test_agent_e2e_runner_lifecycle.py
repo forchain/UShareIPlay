@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -106,3 +107,39 @@ def test_reused_process_injection_failure_is_explicit(monkeypatch):
         assert "spool unavailable" in str(exc)
     else:
         raise AssertionError("expected injection failure")
+
+
+def test_inject_via_channel_carries_nickname_into_spool(tmp_path, monkeypatch):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "COMMAND_SPOOL_DIR", tmp_path / ".agent" / "commands")
+    runner._ensure_agent_dir()
+
+    channel, path = runner.inject_via_channel(None, ":help", nickname="Outlier")
+
+    assert channel == "agent_spool"
+    assert path is not None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload == {"content": ":help", "nickname": "Outlier"}
+
+
+def test_inject_via_channel_forces_spool_for_non_console_nickname(tmp_path, monkeypatch):
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "COMMAND_SPOOL_DIR", tmp_path / ".agent" / "commands")
+    runner._ensure_agent_dir()
+
+    class _Proc:
+        stdin = object()
+
+    channel, path = runner.inject_via_channel(_Proc(), ":help", nickname="Outlier")
+
+    assert channel == "agent_spool"
+    assert path is not None
+
+
+def test_resolve_injection_nickname_uses_outlier_for_dollar_commands():
+    runner = _load_runner()
+
+    assert runner.resolve_injection_nickname("$info", "Console") == "Outlier"
+    assert runner.resolve_injection_nickname("＄info", "Console") == "Outlier"
+    assert runner.resolve_injection_nickname(":info", "Console") == "Console"
+    assert runner.resolve_injection_nickname("$info", "Alice") == "Alice"
