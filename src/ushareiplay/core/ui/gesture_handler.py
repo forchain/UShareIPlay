@@ -54,11 +54,11 @@ class GestureHandler:
             # Calculate click position
             click_x = location["x"] + int(x_offset) + int(size["width"] * x_ratio)
             click_y = location["y"] + int(y_offset) + int(size["height"] * y_ratio)
-            if click_y < 110:
+            if click_y < 60:
                 self.logger.warning(
                     f"Click position is too top, click_x: {click_x}, click_y: {click_y}"
                 )
-                click_y = 110
+                click_y = 60
 
             # Perform tap action at calculated position
             actions = ActionChains(self.driver)

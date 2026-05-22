@@ -1,4 +1,5 @@
 """用户管理器：在在线列表中查找用户并打开其信息页等"""
+
 from ushareiplay.core.singleton import Singleton
 
 YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
@@ -142,6 +143,98 @@ class UserManager(Singleton):
 
         # self.handler.press_back()
         return {'success': f'{gift_name} 送你啦'}
+
+    def send_private_message_to_user(self, nickname: str, message: str) -> bool:
+        """
+        向指定用户发送私聊消息。
+
+        流程：
+        1. 在线列表打开用户信息页
+        2. 点击头像进入主页
+        3. 点击私聊按钮进入私聊页
+        4. 输入并发送消息
+        5. 返回聊天室（优先 lottie_in_party，兜底 floating_entry）
+
+        任意一步失败返回 False，不抛异常。
+        """
+        try:
+            self.handler.switch_to_app()
+            open_result = self.open_user_profile_from_online_list(nickname)
+            if 'error' in open_result:
+                self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")
+                return False
+
+            avatar = self.handler.wait_for_element_clickable_plus(
+                'sender_avatar',
+                timeout=5,
+            )
+            if not avatar:
+                self.logger.warning(f"未找到头像入口: {nickname}")
+                return False
+            if not self.handler.click_element_at(avatar, y_ratio=0.7):
+                self.logger.warning(f"点击头像入口失败: {nickname}")
+                return False
+
+            private_chat_btn = self.handler.wait_for_element_clickable_plus(
+                'private_chat_button',
+                timeout=5,
+            )
+            if not private_chat_btn:
+                self.logger.warning(f"未找到私聊按钮: {nickname}")
+                return False
+            private_chat_btn.click()
+
+            input_box = self.handler.wait_for_element_clickable_plus(
+                'private_message_input',
+                timeout=5,
+            )
+            if not input_box:
+                self.logger.warning(f"未找到私聊输入框: {nickname}")
+                return False
+            input_box.send_keys(message)
+
+            send_button = self.handler.wait_for_element_clickable_plus(
+                'private_message_send',
+                timeout=5,
+            )
+            if not send_button:
+                self.logger.warning(f"未找到私聊发送按钮: {nickname}")
+                return False
+            send_button.click()
+
+            return self._return_to_room_after_private_chat(nickname)
+        except Exception as e:
+            self.logger.error(f"私聊发送失败: {nickname}, error={e}")
+            return False
+
+    def _return_to_room_after_private_chat(self, nickname: str) -> bool:
+        """私聊发送后返回聊天室。"""
+        try:
+            _key, entry = self.handler.wait_for_any_element_plus(
+                ['private_room_entry', 'floating_entry', 'item_left_back'],
+                timeout=3,
+            )
+            if entry:
+                entry.click()
+                if _key == 'item_left_back':
+                    titlebar_back = self.handler.wait_for_element_clickable_plus(
+                        'titlebar_back_ivbtn',
+                        timeout=3,
+                    )
+                    if titlebar_back:
+                        titlebar_back.click()
+                        return True
+
+                    self.logger.warning(f"点击左侧返回后未找到用户主页返回按钮: {nickname}")
+                    return False
+
+                return True
+
+            self.logger.warning(f"未找到返回聊天室入口: {nickname}")
+            return False
+        except Exception as e:
+            self.logger.error(f"返回聊天室失败: {nickname}, error={e}")
+            return False
 
     def _close_online_drawer(self):
         """关闭在线用户抽屉"""
