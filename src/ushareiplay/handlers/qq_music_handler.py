@@ -329,9 +329,9 @@ class QQMusicHandler(AppHandler, Singleton):
             singer_text = (playing_info.get('singer') or "").strip()
             artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
             if (
-                playing_info.get('song', '').endswith('(Live)')
-                or (singer_text and singer_text == (playing_info.get('album') or '').strip())
-                or artist_count >= 4
+                    playing_info.get('song', '').endswith('(Live)')
+                    or (singer_text and singer_text == (playing_info.get('album') or '').strip())
+                    or artist_count >= 4
             ):
                 # One-time allowlist for singer-mode low-quality filters (Live / suspicious / multi-artist).
                 # This preserves "play" as a temporary override without changing list_mode.
@@ -552,33 +552,30 @@ class QQMusicHandler(AppHandler, Singleton):
             self._update_play_mode_key(detected, reason='playlist_ui_self_heal')
 
         playlist_current = self.wait_for_element_clickable_plus('playlist_current')
-        if not playlist_current:
-            self.logger.error("Failed to find playlist playing")
-            return {'error': 'Failed to find playlist playing'}
-
-
-        playlist_info = []
-
         items = []
-        try:
-            playing_loc = playlist_current.location
-            playing_size = playlist_current.size
-            items = self.find_elements_plus('playlist_item_container')
-            if len(items) > 0:
-                playlist_first = items[0]
-                start_x = playing_loc['x'] + playing_size['width'] // 2
-                start_y = playing_loc['y'] + playing_size['height'] // 2
-                end_y = playlist_first.location['y']
-                if start_y - end_y > playlist_first.size['height']:
-                    self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
-                    items = self.find_elements_plus('playlist_item_container')
-                    self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
+        if playlist_current:
+            try:
+                playing_loc = playlist_current.location
+                playing_size = playlist_current.size
+                items = self.find_elements_plus('playlist_item_container')
+                if len(items) > 0:
+                    playlist_first = items[0]
+                    start_x = playing_loc['x'] + playing_size['width'] // 2
+                    start_y = playing_loc['y'] + playing_size['height'] // 2
+                    end_y = playlist_first.location['y']
+                    if start_y - end_y > playlist_first.size['height']:
+                        self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
+                        items = self.find_elements_plus('playlist_item_container')
+                        self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
-        except StaleElementReferenceException as e:
-            self.logger.warning("Playing indicator invisible in playlist playing")
+            except StaleElementReferenceException as e:
+                self.logger.warning("Playing indicator invisible in playlist playing")
+        else:
+            items = self.find_elements_plus('playlist_item_container')
 
         # Get all songs and singers
 
+        playlist_info = []
         for item in items:
             try:
                 elements = self.find_child_elements(item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
