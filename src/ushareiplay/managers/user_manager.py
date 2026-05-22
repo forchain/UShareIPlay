@@ -1,5 +1,4 @@
 """用户管理器：在在线列表中查找用户并打开其信息页等"""
-from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.singleton import Singleton
 
@@ -159,24 +158,25 @@ class UserManager(Singleton):
         任意一步失败返回 False，不抛异常。
         """
         try:
+            self.handler.switch_to_app()
             open_result = self.open_user_profile_from_online_list(nickname)
             if 'error' in open_result:
                 self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")
                 return False
 
-            avatar = self.handler.wait_for_element_clickable(
-                AppiumBy.ID,
-                'cn.soulapp.android:id/ivAvatar',
+            avatar = self.handler.wait_for_element_clickable_plus(
+                'sender_avatar',
                 timeout=5,
             )
             if not avatar:
                 self.logger.warning(f"未找到头像入口: {nickname}")
                 return False
-            avatar.click()
+            if not self.handler.click_element_at(avatar, y_ratio=0.7):
+                self.logger.warning(f"点击头像入口失败: {nickname}")
+                return False
 
-            private_chat_btn = self.handler.wait_for_element_clickable(
-                AppiumBy.ID,
-                'cn.soulapp.android:id/tv_chat_secret',
+            private_chat_btn = self.handler.wait_for_element_clickable_plus(
+                'private_chat_button',
                 timeout=5,
             )
             if not private_chat_btn:
@@ -184,9 +184,8 @@ class UserManager(Singleton):
                 return False
             private_chat_btn.click()
 
-            input_box = self.handler.wait_for_element_clickable(
-                AppiumBy.ID,
-                'cn.soulapp.android:id/et_sendmessage',
+            input_box = self.handler.wait_for_element_clickable_plus(
+                'private_message_input',
                 timeout=5,
             )
             if not input_box:
@@ -194,9 +193,8 @@ class UserManager(Singleton):
                 return False
             input_box.send_keys(message)
 
-            send_button = self.handler.wait_for_element_clickable(
-                AppiumBy.ID,
-                'cn.soulapp.android:id/btn_send',
+            send_button = self.handler.wait_for_element_clickable_plus(
+                'private_message_send',
                 timeout=5,
             )
             if not send_button:
@@ -212,18 +210,24 @@ class UserManager(Singleton):
     def _return_to_room_after_private_chat(self, nickname: str) -> bool:
         """私聊发送后返回聊天室。"""
         try:
-            room_entry = self.handler.wait_for_element_clickable(
-                AppiumBy.ID,
-                'cn.soulapp.android:id/lottie_in_party',
+            _key, entry = self.handler.wait_for_any_element_plus(
+                ['private_room_entry', 'floating_entry', 'item_left_back'],
                 timeout=3,
             )
-            if room_entry:
-                room_entry.click()
-                return True
+            if entry:
+                entry.click()
+                if _key == 'item_left_back':
+                    titlebar_back = self.handler.wait_for_element_clickable_plus(
+                        'titlebar_back_ivbtn',
+                        timeout=3,
+                    )
+                    if titlebar_back:
+                        titlebar_back.click()
+                        return True
 
-            floating_entry = self.handler.wait_for_element_clickable_plus('floating_entry', timeout=3)
-            if floating_entry:
-                floating_entry.click()
+                    self.logger.warning(f"点击左侧返回后未找到用户主页返回按钮: {nickname}")
+                    return False
+
                 return True
 
             self.logger.warning(f"未找到返回聊天室入口: {nickname}")

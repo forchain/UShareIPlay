@@ -7,7 +7,7 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models.message_info import MessageInfo
 
 
-COMMAND_PREFIXES = (":", "：", "/", "／")
+COMMAND_PREFIXES = (":", "：", "/", "／", "$", "＄")
 SILENT_COMMAND_PREFIXES = ("/", "／")
 
 
