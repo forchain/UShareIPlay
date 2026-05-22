@@ -528,11 +528,6 @@ class QQMusicHandler(AppHandler, Singleton):
             return {'error': 'Failed to find play list entry'}
         playlist_entry.click()
 
-        playlist_current = self.wait_for_element_clickable_plus('playlist_current')
-        if not playlist_current:
-            self.logger.error("Failed to find playlist playing")
-            return {'error': 'Failed to find playlist playing'}
-
         detected = None
         detected_key, _ = self.try_find_any_element_plus(
             [
@@ -555,6 +550,12 @@ class QQMusicHandler(AppHandler, Singleton):
                     f"recorded={self.play_mode_key}, detected={detected}"
                 )
             self._update_play_mode_key(detected, reason='playlist_ui_self_heal')
+
+        playlist_current = self.wait_for_element_clickable_plus('playlist_current')
+        if not playlist_current:
+            self.logger.error("Failed to find playlist playing")
+            return {'error': 'Failed to find playlist playing'}
+
 
         playlist_info = []
 
