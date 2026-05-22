@@ -13,3 +13,4 @@ config.local.yaml
 .claude/settings.local.json
 .opencode/package-lock.json
 *.log
+.antigravitycli

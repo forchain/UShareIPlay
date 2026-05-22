@@ -125,7 +125,6 @@ class UserManager(Singleton):
         if gift_name.strip() == YELLOW_DUCK_NAME:
             self.handler.click_element_at(luck_item)
             self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后将返回在线列表")
-            self._close_online_drawer()
             return {'success': f'{gift_name} 送你啦'}
 
         self.handler.click_element_at(found_element)
@@ -142,7 +141,6 @@ class UserManager(Singleton):
             self.logger.info("已点击确认使用")
 
         # self.handler.press_back()
-        self._close_online_drawer()
         return {'success': f'{gift_name} 送你啦'}
 
     def _close_online_drawer(self):
