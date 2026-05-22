@@ -1,4 +1,6 @@
+import asyncio
 from types import SimpleNamespace
+from queue import Queue
 
 from ushareiplay.core.app_controller import AppController
 
@@ -125,3 +127,53 @@ def test_reinitialize_driver_notifies_registered_subscribers(monkeypatch):
             "waitForPageLoad": 2000,
         }
     ]
+
+
+def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
+    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.models.message_info import MessageInfo
+
+    controller = controller_without_init()
+    controller.input_queue = Queue()
+    controller.soul_handler = FakeSoulHandler()
+    controller.logger = FakeLogger()
+    controller.obs = FakeObserver()
+    controller.timer_manager = SimpleNamespace(is_running=lambda: True)
+    controller._runtime_queue_drainer = None
+    controller.event_manager = SimpleNamespace(
+        get_page_source=lambda: "",
+        process_events=lambda _page_source: None,
+    )
+    controller._update_status_from_page_source = lambda _page_source: None
+    controller.is_running = False
+
+    message_queue = MessageQueue.instance()
+    asyncio.run(message_queue.clear_queue())
+
+    controller.input_queue.put({
+        "content": "$info",
+        "source": "agent_spool",
+        "nickname": "Outlier",
+    })
+
+    async def _noop():
+        while not controller.input_queue.empty():
+            item = controller.input_queue.get_nowait()
+            if isinstance(item, dict):
+                message = item.get("content", "")
+                nickname = item.get("nickname", "Console")
+            else:
+                message = item
+                nickname = "Console"
+            trimmed = message.lstrip()
+            if trimmed and trimmed[0] in (':', '：', '/', '／', '$', '＄') and trimmed[1:].strip():
+                await MessageQueue.instance().put_message(
+                    MessageInfo(content=trimmed, nickname=nickname)
+                )
+
+    asyncio.run(_noop())
+
+    queued = asyncio.run(MessageQueue.instance().get_all_messages())
+    assert [m.content for m in queued.values()] == ["$info"]
+    assert [m.nickname for m in queued.values()] == ["Outlier"]

@@ -16,7 +16,7 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.models.message_info import MessageInfo
 
-COMMAND_PREFIX_CHARS = ":：/／"
+COMMAND_PREFIX_CHARS = ":：/／$＄"
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -168,7 +168,7 @@ class MessageManager(Singleton):
                 continue
 
             # Parse message content using pattern
-            pattern = r'souler\[(.+)\]说：\s*([:：/／])\s*(.+)'
+            pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
@@ -201,11 +201,11 @@ class MessageManager(Singleton):
 
         messages = []
         for chat in self.latest_chats:
-            pattern = r'souler\[(.+)\]说：\s*([:：/／])\s*(.+)'
+            pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
 
             match = re.match(pattern, chat)
             if not match:
-                return None
+                continue
 
             # Extract actual message content
             nickname = match.group(1).strip()
