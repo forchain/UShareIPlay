@@ -19,7 +19,7 @@ __elements__ = [
     'floating_entry',
 
     # conflicts with '关闭组件' in party  hall
-    'close_button',
+    # 'close_button',
     'claim_reward_button',
     'tv_open_luck_bag',
     'party_ended',
