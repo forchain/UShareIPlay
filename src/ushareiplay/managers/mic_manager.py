@@ -30,7 +30,7 @@ class MicManager(Singleton):
             self.logger.info(f"Attempting to {action} microphone")
             
             # 查找麦克风切换按钮
-            mic_button = self.soul_handler.try_find_element_plus('toggle_mic')
+            mic_button = self.soul_handler.try_find_element('toggle_mic')
             if not mic_button:
                 return {'error': 'Microphone button not found'}
             
@@ -58,7 +58,7 @@ class MicManager(Singleton):
                 return {'error': 'Failed to switch to Soul app'}
             
             # 查找麦克风按钮
-            mic_button = self.soul_handler.try_find_element_plus('toggle_mic')
+            mic_button = self.soul_handler.try_find_element('toggle_mic')
             if not mic_button:
                 return {'error': 'Microphone button not found'}
             

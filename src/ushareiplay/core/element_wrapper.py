@@ -79,7 +79,7 @@ class ElementWrapper:
             return None
 
         # 通过 handler 获取真实的 WebElement
-        self._web_element = self._handler.try_find_element_plus(self._element_key, log=False)
+        self._web_element = self._handler.try_find_element(self._element_key, log=False)
         return self._web_element
 
     def click(self) -> bool:

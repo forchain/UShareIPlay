@@ -20,7 +20,7 @@ class SeatUIManager(SeatManagerBase):
         # self.handler.logger.info(f"检查座位状态，当前 is_expanded={self.is_expanded}")
 
         # 获取元素
-        expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+        expand_seats = self.handler.try_find_element('expand_seats', log=False)
         if not expand_seats:
             # self.handler.logger.warning("未找到座位按钮，无法确定当前状态")
             return self.is_expanded
@@ -62,7 +62,7 @@ class SeatUIManager(SeatManagerBase):
         # 添加详细日志，查看找到的元素
         # self.handler.logger.info("尝试展开座位...")
         try:
-            expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+            expand_seats = self.handler.try_find_element('expand_seats', log=False)
 
             # 记录按钮的实际文本内容
             if expand_seats:
@@ -104,7 +104,7 @@ class SeatUIManager(SeatManagerBase):
             return True
 
         try:
-            expand_seats = self.handler.try_find_element_plus('expand_seats', log=False)
+            expand_seats = self.handler.try_find_element('expand_seats', log=False)
 
             if expand_seats:
                 actual_text = expand_seats.text

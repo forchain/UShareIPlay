@@ -29,10 +29,10 @@ class _Handler:
         self.logger = _Logger()
         self._any_results = any_results or []
 
-    def wait_for_any_element_plus(self, _keys):
+    def wait_for_any_element(self, _keys):
         return self._any_results.pop(0)
 
-    def wait_for_element_plus(self, key):
+    def wait_for_element(self, key):
         if key == 'party_state_entry':
             return _Element()
         if key == 'close_party_notification':

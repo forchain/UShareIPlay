@@ -76,7 +76,7 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.logger.info("seats expanded successfully")
 
         # get all seat desks
-        seat_desks = self.handler.find_elements_plus('seat_desk')
+        seat_desks = self.handler.find_elements('seat_desk')
         if not seat_desks:
             self.handler.log_error("cannot find seat desks")
             self.handler.send_message(f"System error: Unable to access seats for {username}")
@@ -127,11 +127,11 @@ class SeatCheckManager(SeatManagerBase):
 
         # Find the specific seat element
         if is_left_seat:
-            seat_element = self.handler.find_child_element_plus(desk, 'left_seat')
-            seat_label = self.handler.find_child_element_plus(seat_element, 'left_label')
+            seat_element = self.handler.find_child_element(desk, 'left_seat')
+            seat_label = self.handler.find_child_element(seat_element, 'left_label')
         else:
-            seat_element = self.handler.find_child_element_plus(desk, 'right_seat')
-            seat_label = self.handler.find_child_element_plus(seat_element, 'right_label')
+            seat_element = self.handler.find_child_element(desk, 'right_seat')
+            seat_label = self.handler.find_child_element(seat_element, 'right_label')
 
         if not seat_element:
             self.handler.logger.error(f"Cannot find seat element for seat {seat_number}")
@@ -153,13 +153,13 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
         # Wait for seat off button
-        seat_off = self.handler.wait_for_element_clickable_plus('seat_off')
+        seat_off = self.handler.wait_for_element_clickable('seat_off')
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             self.handler.send_message(f"Unable to manage seat {seat_number} for {username}")
             return
 
-        found_key, souler_name = self.handler.wait_for_any_element_plus(['souler_name', 'user_name'])
+        found_key, souler_name = self.handler.wait_for_any_element(['souler_name', 'user_name'])
         if not souler_name:
             self.handler.logger.error(f"No souler name found for seat {seat_number}")
             self.handler.send_message(f"Failed to verify occupant on seat {seat_number}")

@@ -91,26 +91,26 @@ class NoticeManager(Singleton):
             self.logger.info(f"准备设置notice: {notice}")
 
             # 点击小助手
-            chat_room_title = self.handler.wait_for_element_clickable_plus('chat_room_title')
+            chat_room_title = self.handler.wait_for_element_clickable('chat_room_title')
             if not chat_room_title:
                 return {'error': 'Failed to find room title'}
             chat_room_title.click()
             self.logger.info("点击了标题")
 
             # 点击编辑notice入口
-            edit_entry = self.handler.wait_for_element_clickable_plus('edit_notice_entry')
+            edit_entry = self.handler.wait_for_element_clickable('edit_notice_entry')
             if not edit_entry:
                 return {'error': 'Failed to find edit notice entry'}
             edit_entry.click()
             self.logger.info("点击了编辑notice入口")
 
             # 检查是否有关闭按钮
-            close_notice = self.handler.wait_for_element_plus('close_notice')
+            close_notice = self.handler.wait_for_element('close_notice')
             if not close_notice:
                 return {'error': 'Close notice not found'}
 
             # 点击自定义按钮
-            key, customize = self.handler.wait_for_any_element_plus(['customize_notice_button', 'modify_notice_button'])
+            key, customize = self.handler.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
             if not customize:
                 close_notice.click()
                 self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
@@ -119,7 +119,7 @@ class NoticeManager(Singleton):
             self.logger.info(f"点击了自定义按钮 {key}")
 
             # 输入新的notice
-            notice_input = self.handler.wait_for_element_clickable_plus('edit_notice_input')
+            notice_input = self.handler.wait_for_element_clickable('edit_notice_input')
             if not notice_input:
                 return {'error': 'Failed to find notice input'}
             notice_input.clear()
@@ -127,20 +127,20 @@ class NoticeManager(Singleton):
             self.logger.info(f"输入了notice内容: {notice}")
 
             # 点击确认
-            confirm = self.handler.wait_for_element_clickable_plus('edit_notice_confirm')
+            confirm = self.handler.wait_for_element_clickable('edit_notice_confirm')
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
             self.logger.info("点击了确认按钮")
 
             # 关闭notice设置对话框
-            close_notice = self.handler.wait_for_element_plus('close_notice')
+            close_notice = self.handler.wait_for_element('close_notice')
             if close_notice:
                 self.logger.info("隐藏notice设置对话框")
                 close_notice.click()
 
             # 关闭party info设置对话框
-            close_button_1 = self.handler.wait_for_element_plus('close_button_1')
+            close_button_1 = self.handler.wait_for_element('close_button_1')
             if close_button_1:
                 self.logger.info("隐藏party info 对话框")
                 close_button_1.click()

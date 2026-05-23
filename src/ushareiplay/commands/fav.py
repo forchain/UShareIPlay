@@ -1,4 +1,6 @@
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
@@ -35,14 +37,16 @@ class FavCommand(BaseCommand):
         新版“筛选歌曲”页：同页展示歌手/语种/流派。
         流程：点筛选 -> 点选关键字(TextView[@text]) -> 点“确定（xxx首）”
         """
-        filter_favourite = self.handler.wait_for_element_clickable_plus('filter_favourite')
+        filter_favourite = self.handler.wait_for_element_clickable('filter_favourite')
         if not filter_favourite:
             return {'error': 'Cannot find filter button'}
         filter_favourite.click()
         self.handler.logger.info("Clicked filter button")
 
         option_xpath = self._xpath_textview_text_equals(keyword)
-        option = self.handler.wait_for_element_clickable(AppiumBy.XPATH, option_xpath, timeout=8)
+        option = WebDriverWait(self.handler.driver, 8).until(
+            EC.element_to_be_clickable((AppiumBy.XPATH, option_xpath))
+        )
         if not option:
             return {'error': f'找不到筛选项: {keyword}'}
         option.click()
@@ -51,7 +55,9 @@ class FavCommand(BaseCommand):
         # 等待“确定（xxx首）”按钮出现/更新
         time.sleep(0.25)
         confirm_xpath = '//android.widget.TextView[starts-with(@text,"确定（") and contains(@text,"首）")]'
-        confirm = self.handler.wait_for_element_clickable(AppiumBy.XPATH, confirm_xpath, timeout=8)
+        confirm = WebDriverWait(self.handler.driver, 8).until(
+            EC.element_to_be_clickable((AppiumBy.XPATH, confirm_xpath))
+        )
         if not confirm:
             return {'error': 'Cannot find confirm button: 确定（xxx首）'}
         confirm_text = (confirm.text or "").strip()
@@ -136,16 +142,16 @@ class FavCommand(BaseCommand):
         if err:
             return err
 
-        result_item = self.handler.try_find_element_plus('result_item')
+        result_item = self.handler.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
-            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            elements = result_item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
             if len(elements) >= 3:
                 song_text = elements[1].text
                 singer_text = elements[2].text
 
-        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
+        play_fav = self.handler.wait_for_element_clickable('play_all')
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
@@ -189,17 +195,17 @@ class FavCommand(BaseCommand):
         count = filter_result.get('count') if isinstance(filter_result, dict) else None
 
         # Get song info from the first result
-        result_item = self.handler.try_find_element_plus('result_item')
+        result_item = self.handler.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
-            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            elements = result_item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
             if len(elements) >= 3:
                 song_text = elements[1].text
                 singer_text = elements[2].text
 
         # Click play all button
-        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
+        play_fav = self.handler.wait_for_element_clickable('play_all')
         if not play_fav:
             return {'error': 'Cannot find play all button'}
         play_fav.click()
@@ -254,7 +260,7 @@ class FavCommand(BaseCommand):
             return err
 
         # 1) 在“全部播放”按钮上下滑动其高度，目的是显示搜索框
-        play_all_btn = self.handler.wait_for_element_clickable_plus('play_all')
+        play_all_btn = self.handler.wait_for_element_clickable('play_all')
         if not play_all_btn:
             return {'error': 'Cannot find play all button'}
 
@@ -267,13 +273,13 @@ class FavCommand(BaseCommand):
         self.handler._perform_swipe(cx, cy, cx, cy + dy, duration_ms=260)
 
         # 2) 找到 search_box 并点击激活搜索框
-        search_box = self.handler.wait_for_element_clickable_plus('search_box')
+        search_box = self.handler.wait_for_element_clickable('search_box')
         if not search_box:
             return {'error': 'Cannot find search box in favourites'}
         search_box.click()
         self.handler.logger.info("Clicked favourite search box")
 
-        favourite_search = self.handler.wait_for_element_plus('favourite_search')
+        favourite_search = self.handler.wait_for_element('favourite_search')
         if not favourite_search:
             return {'error': 'Cannot find favourite search'}
 
@@ -283,7 +289,7 @@ class FavCommand(BaseCommand):
         self.handler.logger.info(f"Pasted keyword: {keyword}")
 
         # 4) 点击 play_favourite_search 播放搜索的歌曲列表
-        play_search = self.handler.wait_for_element_clickable_plus('play_favourite_search')
+        play_search = self.handler.wait_for_element_clickable('play_favourite_search')
         if not play_search:
             return {'error': 'Cannot find play_favourite_search button'}
         play_search.click()

@@ -34,7 +34,7 @@ class SeatingManager(SeatManagerBase):
             await asyncio.sleep(0.5)  # Wait for expansion animation
 
             # Find all seat desks
-            seat_desks = self.handler.find_elements_plus('seat_desk')
+            seat_desks = self.handler.find_elements('seat_desk')
             if not seat_desks:
                 self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
@@ -75,7 +75,7 @@ class SeatingManager(SeatManagerBase):
             await asyncio.sleep(0.5)  # Wait for expansion animation
 
             # Find all seat desks
-            seat_desks = self.handler.find_elements_plus('seat_desk')
+            seat_desks = self.handler.find_elements('seat_desk')
             if not seat_desks:
                 self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
@@ -169,7 +169,7 @@ class SeatingManager(SeatManagerBase):
             await asyncio.sleep(0.5)
 
             # Find all seat desks
-            seat_desks = self.handler.find_elements_plus('seat_desk')
+            seat_desks = self.handler.find_elements('seat_desk')
             if not seat_desks:
                 self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
@@ -205,7 +205,7 @@ class SeatingManager(SeatManagerBase):
 
                 # Click the state element to open user profile popup
                 state_key = f'{side}_state'
-                state_element = self.handler.find_child_element_plus(desk, state_key)
+                state_element = self.handler.find_child_element(desk, state_key)
                 if not state_element:
                     continue
 
@@ -213,7 +213,7 @@ class SeatingManager(SeatManagerBase):
                 self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
 
                 # Read the user name from the popup
-                found_key, name_element = self.handler.wait_for_any_element_plus(
+                found_key, name_element = self.handler.wait_for_any_element(
                     ['souler_name', 'user_name']
                 )
                 if not name_element:
@@ -288,12 +288,12 @@ class SeatingManager(SeatManagerBase):
         return None
 
     def _collect_desk_info(self, desk):
-        left_seat = self.handler.find_child_element_plus(desk, 'left_seat')
-        right_seat = self.handler.find_child_element_plus(desk, 'right_seat')
-        left_state = self.handler.find_child_element_plus(desk, 'left_state')
-        right_state = self.handler.find_child_element_plus(desk, 'right_state')
-        left_label_element = self.handler.find_child_element_plus(desk, 'left_label')
-        right_label_element = self.handler.find_child_element_plus(desk, 'right_label')
+        left_seat = self.handler.find_child_element(desk, 'left_seat')
+        right_seat = self.handler.find_child_element(desk, 'right_seat')
+        left_state = self.handler.find_child_element(desk, 'left_state')
+        right_state = self.handler.find_child_element(desk, 'right_state')
+        left_label_element = self.handler.find_child_element(desk, 'left_label')
+        right_label_element = self.handler.find_child_element(desk, 'right_label')
 
         left_label = left_label_element.text if left_label_element else ''
         right_label = right_label_element.text if right_label_element else ''
@@ -405,14 +405,14 @@ class SeatingManager(SeatManagerBase):
 
         try:
             # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_seat')
+            confirm_button = self.handler.wait_for_element_clickable('confirm_seat')
             if not confirm_button:
                 self.handler.logger.error("Failed to find confirm button")
                 return {'error': 'Failed to find confirm button'}
 
             confirm_button.click()
             self.handler.logger.info("Confirmed seat selection")
-            bottom_drawer = self.handler.wait_for_element_clickable_plus('bottom_drawer')
+            bottom_drawer = self.handler.wait_for_element_clickable('bottom_drawer')
             if bottom_drawer:
                 self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
                 self.handler.logger.info("Hide bottom drawer")

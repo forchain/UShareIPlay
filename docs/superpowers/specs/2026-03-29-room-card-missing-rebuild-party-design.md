@@ -13,7 +13,7 @@
 
 ## 非目标
 
-- 不调整底层 `wait_for_element_plus()` 的等待策略与超时策略
+- 不调整底层 `wait_for_element()` 的等待策略与超时策略
 - 不新增新的 UI 选择器或改动 `config.yaml` 元素定义
 - 不做与“派对重建”无关的重构
 
@@ -23,7 +23,7 @@
 
 - 位于 `join_party()` 的 `search_entry` 分支内：
   - 已输入派对 ID 并点击搜索按钮
-  - `wait_for_element_plus('room_card')` 返回 `None`
+  - `wait_for_element('room_card')` 返回 `None`
 
 ### 行为
 

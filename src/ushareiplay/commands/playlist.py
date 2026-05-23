@@ -39,7 +39,7 @@ class PlaylistCommand(BaseCommand):
         """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""
         try:
             # Try to find playlist tab first
-            key, element = self.handler.wait_for_any_element_plus(['playlist_tab', 'music_tabs'])
+            key, element = self.handler.wait_for_any_element(['playlist_tab', 'music_tabs'])
 
             if key == 'playlist_tab':
                 playlist_tab = element
@@ -59,7 +59,7 @@ class PlaylistCommand(BaseCommand):
                 )
 
                 # Try to find playlist tab again
-                playlist_tab = self.handler.try_find_element_plus('playlist_tab')
+                playlist_tab = self.handler.try_find_element('playlist_tab')
                 if not playlist_tab:
                     self.handler.logger.error("Failed to find playlist tab after scrolling")
                     return False
@@ -89,7 +89,7 @@ class PlaylistCommand(BaseCommand):
             }
         self.handler.logger.info("Selected playlist tab")
 
-        key, element = self.handler.wait_for_any_element_plus(['playlist_result', 'not_found'])
+        key, element = self.handler.wait_for_any_element(['playlist_result', 'not_found'])
         if not key or key == 'not_found':
             self.handler.logger.error(f"Failed to find playlist result with query {query}")
             return {
@@ -106,16 +106,15 @@ class PlaylistCommand(BaseCommand):
 
         subject, topic = parser.parse_playlist_name(playlist)
 
-        result_item = self.handler.try_find_element_plus('result_item')
+        result_item = self.handler.try_find_element('result_item')
         song_name = None
         singer_name = None
         if result_item:
-            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.LinearLayout')
+            elements = result_item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.LinearLayout')
             if elements:
-                song_name = self.handler.find_child_element(elements[0], AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                song_name = elements[0].find_element(AppiumBy.CLASS_NAME, 'android.widget.TextView')
                 if len(elements) > 1:
-                    singer_name = self.handler.find_child_element(elements[1], AppiumBy.CLASS_NAME,
-                                                                  'android.widget.TextView')
+                    singer_name = elements[1].find_element(AppiumBy.CLASS_NAME, 'android.widget.TextView')
 
         if not subject:
             self.handler.logger.warning('Failed to parse playlist name')
@@ -127,7 +126,7 @@ class PlaylistCommand(BaseCommand):
             if song_name:
                 topic = song_name.text
 
-        key, play_button = self.handler.wait_for_any_element_plus(['play_all', 'play_all_playlist', 'play_all_compact'])
+        key, play_button = self.handler.wait_for_any_element(['play_all', 'play_all_playlist', 'play_all_compact'])
         if not play_button:
             self.handler.logger.error("Failed to find play all button (album or playlist)")
             return {
