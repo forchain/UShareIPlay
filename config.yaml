@@ -98,7 +98,7 @@ soul:
     new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
     party_state_entry: '//android.widget.TextView[@text="已公开" or @text="已隐藏"]' # 已公开｜已隐藏
     close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
-    create_party_button: 'cn.soulapp.android:id/createRoomBtn' # 已公开｜已隐藏
+    create_party_button: '//android.widget.TextView[@text="创建房间"]'
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
     create_party_screen: "cn.soulapp.android:id/rl_room_name"
