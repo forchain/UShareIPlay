@@ -57,7 +57,7 @@ class RiskElementsEvent(BaseEvent):
         """
         try:
             # 使用 wait_for 获取可点击的元素（因为 page_source 中已确认存在）
-            element = self.handler.wait_for_element_clickable_plus(key)
+            element = self.handler.wait_for_element_clickable(key)
             if not element:
                 self.logger.warning(f"Risk element {key} found in page_source but not clickable")
                 return False

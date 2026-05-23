@@ -159,9 +159,9 @@ class GestureHandler:
         attribute_values_list = []
         try:
             # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
-            container = self.wait_for_element_clickable_plus(container_key)
+            container = self.wait_for_element_clickable(container_key)
             if not container:
-                container = self.wait_for_element_plus(container_key)
+                container = self.wait_for_element(container_key)
             if not container:
                 self.logger.warning(
                     f"scroll_container_until_element: 容器未找到: {container_key}"
@@ -229,10 +229,10 @@ class GestureHandler:
             # 查找目标元素的辅助函数
             def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
                 """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
-                found = self.find_child_element_plus(container, element_key)
+                found = self.find_child_element(container, element_key)
                 if found:
                     if attribute_name and attribute_value:
-                        elements = self.find_child_elements_plus(container, element_key)
+                        elements = self.find_child_elements(container, element_key)
                         for element in elements:
                             # 收集所有找到的元素的 attribute 值（不管是否匹配）
                             attr_list = attribute_name.split('|')
@@ -256,7 +256,7 @@ class GestureHandler:
                                 return element_key, element
                     else:
                         # 如果没有指定属性匹配，也收集所有找到的元素
-                        elements = self.find_child_elements_plus(container, element_key)
+                        elements = self.find_child_elements(container, element_key)
                         for element in elements:
                             if attribute_name:
                                 attr_list = attribute_name.split('|')

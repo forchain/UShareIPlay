@@ -46,7 +46,7 @@ class PackCommand(BaseCommand):
         """
         try:
             # Find luck pack button
-            luck_pack = self.handler.try_find_element_plus('luck_pack', log=False)
+            luck_pack = self.handler.try_find_element('luck_pack', log=False)
             if not luck_pack:
                 return {'error': 'No luck pack available'}
 
@@ -61,7 +61,7 @@ class PackCommand(BaseCommand):
             self.handler.logger.info("Clicked luck pack button")
 
             # Find and click luck item
-            luck_item = self.handler.wait_for_element_clickable_plus('luck_item')
+            luck_item = self.handler.wait_for_element_clickable('luck_item')
             if not luck_item:
                 self.handler.logger.error("Failed to find luck item")
                 return {'error': 'Failed to find luck item'}
@@ -80,7 +80,7 @@ class PackCommand(BaseCommand):
             self.handler.logger.info("Selected luck item")
 
             # Find and click use pack button
-            use_pack = self.handler.wait_for_element_clickable_plus('use_pack')
+            use_pack = self.handler.wait_for_element_clickable('use_pack')
             if not use_pack:
                 self.handler.logger.error("Failed to find use pack button")
                 return {'error': 'Failed to find use pack button'}

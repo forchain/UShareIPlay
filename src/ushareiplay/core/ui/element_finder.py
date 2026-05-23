@@ -32,23 +32,7 @@ class ElementFinder:
         return self.owner.logger
 
     @with_driver_recovery(op="read")
-    def wait_for_element(self, locator_type, locator_value, timeout=10):
-        """Wait for element to be present and return it"""
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((locator_type, locator_value))
-            )
-            self.log_debug(f"Found element: {locator_value}")
-            return element
-        except Exception as e:
-            self.logger.warning(
-                f"Element not found within {timeout} seconds: {locator_value}"
-            )
-            self.logger.warning(f"Error: {str(e)}")
-            return None
-
-    @with_driver_recovery(op="read")
-    def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+    def wait_for_element(self, element_key: str, timeout: int = 10) -> WebElement:
         """Enhanced wait_for_element using just element key"""
         try:
             locator_type, value = self._get_locator(element_key)
@@ -91,7 +75,7 @@ class ElementFinder:
             return False
 
     @with_driver_recovery(op="read")
-    def wait_for_element_clickable_plus(
+    def wait_for_element_clickable(
             self, element_key: str, timeout: int = 10
     ) -> WebElement:
         """Enhanced wait_for_element using just element key"""
@@ -112,30 +96,7 @@ class ElementFinder:
             return None
 
     @with_driver_recovery(op="read")
-    def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
-        """
-        Wait for element to be clickable and return it
-        Args:
-            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
-            locator_value: The locator value
-            timeout: Maximum time to wait in seconds
-        Returns:
-            WebElement if found and clickable, None if not
-        """
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.element_to_be_clickable((locator_type, locator_value))
-            )
-            self.logger.debug(f"Found clickable element: {locator_value}")
-            return element
-        except TimeoutException:
-            self.logger.warning(
-                f"Clickable element not found within {timeout} seconds: {locator_value}"
-            )
-            return None
-
-    @with_driver_recovery(op="read")
-    def try_find_element_plus(
+    def try_find_element(
             self, element_key: str, log=False, clickable=False
     ) -> WebElement:
         """Enhanced try_find_element using just element key"""
@@ -183,7 +144,7 @@ class ElementFinder:
                         self.logger.info(
                             f"Waiting for element '{element_key}' to be clickable"
                         )
-                    element = self.wait_for_element_clickable_plus(element_key)
+                    element = self.wait_for_element_clickable(element_key)
                     if element and log:
                         self.logger.info(
                             f"Element '{element_key}' is now clickable"
@@ -193,22 +154,7 @@ class ElementFinder:
         except Exception as e:
             if log:
                 self.logger.warning(
-                    f"Error in try_find_element_plus for '{element_key}': {str(e)}"
-                )
-            return None
-
-    @with_driver_recovery(op="read")
-    def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
-        """Try to find element and return it"""
-        try:
-            element = self.driver.find_element(locator_type, locator_value)
-            if element and clickable:
-                element = self.wait_for_element_clickable(locator_type, locator_value)
-            return element
-        except Exception as e:
-            if log:
-                self.logger.warning(
-                    f"Element not found: {locator_value}, error: {str(e)}"
+                    f"Error in try_find_element for '{element_key}': {str(e)}"
                 )
             return None
 
@@ -274,34 +220,6 @@ class ElementFinder:
         )
         return None
 
-    def find_child_element(self, parent, locator_type, locator_value):
-        """Find child element of parent element
-        Args:
-            parent: WebElement, parent element
-            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
-            locator_value: The locator value
-        Returns:
-            WebElement if found, None if not found
-        """
-        try:
-            return parent.find_element(locator_type, locator_value)
-        except Exception:
-            return None
-
-    def find_child_elements(self, parent, locator_type, locator_value):
-        """Find child elements of parent element
-        Args:
-            parent: WebElement, parent element
-            locator_type: AppiumBy.ID or AppiumBy.XPATH etc.
-            locator_value: The locator value
-        Returns:
-            List of WebElements if found, empty list if not found
-        """
-        try:
-            return parent.find_elements(locator_type, locator_value)
-        except Exception:
-            return []
-
     def get_element_text(self, element):
         """Get element text safely
         Args:
@@ -335,7 +253,7 @@ class ElementFinder:
         return locator_type, value
 
     @with_driver_recovery(op="read")
-    def find_elements_plus(self, element_key: str) -> list:
+    def find_elements(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
         try:
             locator_type, value = self._get_locator(element_key)
@@ -346,7 +264,7 @@ class ElementFinder:
             )
             return []
 
-    def find_child_element_plus(self, parent, element_key):
+    def find_child_element(self, parent, element_key):
         """Find child element using element key from config
         Args:
             parent: Parent element to search within
@@ -355,16 +273,15 @@ class ElementFinder:
             WebElement or None if not found
         """
         try:
-            element_id = self.config["elements"][element_key]
-            if element_id.startswith("//"):
-                return self.find_child_element(parent, AppiumBy.XPATH, element_id)
-            else:
-                return self.find_child_element(parent, AppiumBy.ID, element_id)
+            if not parent:
+                return None
+            locator_type, value = self._get_locator(element_key)
+            return parent.find_element(locator_type, value)
         except Exception:
             self.logger.debug(f"Failed to find child element {element_key}")
             return None
 
-    def find_child_elements_plus(self, parent, element_key: str) -> list:
+    def find_child_elements(self, parent, element_key: str) -> list:
         """Find child elements using element key from config within a parent container.
         Args:
             parent: Parent WebElement to search within
@@ -384,7 +301,7 @@ class ElementFinder:
             return []
 
     @with_driver_recovery(op="read")
-    def wait_for_any_element_plus(
+    def wait_for_any_element(
             self, element_keys: list, timeout: int = 10
     ) -> Tuple[Optional[str], Optional[WebElement]]:
         """
@@ -409,7 +326,7 @@ class ElementFinder:
             key_map[(locator_type, value)] = key
 
         if not locators:
-            self.logger.warning("wait_for_any_element_plus: 没有有效的元素key")
+            self.logger.warning("wait_for_any_element: 没有有效的元素key")
             return None, None
 
         try:
@@ -427,26 +344,26 @@ class ElementFinder:
                         return key, element
                 except Exception:
                     continue
-            self.logger.warning("wait_for_any_element_plus: 找不到对应的key")
+            self.logger.warning("wait_for_any_element: 找不到对应的key")
             return None, None
         except Exception as e:
             self.logger.error(
-                f"wait_for_any_element_plus: {element_keys} 超时未找到任何元素: {str(e)}"
+                f"wait_for_any_element: {element_keys} 超时未找到任何元素: {str(e)}"
             )
             return None, None
 
-    def try_find_any_element_plus(
+    def try_find_any_element(
             self, element_keys: list
     ) -> Tuple[Optional[str], Optional[WebElement]]:
         """
         无等待遍历查找任意一个元素。
 
-        与 wait_for_any_element_plus 的区别：
+        与 wait_for_any_element 的区别：
         - 不等待，不会因为元素不存在产生超时
         - 按给定 key 顺序返回第一个命中的元素
         """
         for key in element_keys:
-            element = self.try_find_element_plus(key, log=False)
+            element = self.try_find_element(key, log=False)
             if element:
                 return key, element
         return None, None

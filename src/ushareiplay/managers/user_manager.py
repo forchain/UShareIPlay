@@ -35,7 +35,7 @@ class UserManager(Singleton):
         Returns:
             dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
         """
-        user_count_elem = self.handler.wait_for_element_plus('user_count')
+        user_count_elem = self.handler.wait_for_element('user_count')
         if not user_count_elem:
             self.logger.warning("未找到在线用户人数")
             return {
@@ -46,7 +46,7 @@ class UserManager(Singleton):
         user_count_elem.click()
         self.logger.info("Opened online users list")
 
-        online_container = self.handler.wait_for_element_plus('online_users')
+        online_container = self.handler.wait_for_element('online_users')
         if not online_container:
             self.logger.warning("未找到在线用户列表")
             return {
@@ -96,7 +96,7 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        send_gift_btn = self.handler.wait_for_element_clickable_plus('send_gift')
+        send_gift_btn = self.handler.wait_for_element_clickable('send_gift')
         if not send_gift_btn:
             self.logger.info("未找到送礼物按钮")
             return {'error': '未找到送礼物入口'}
@@ -104,12 +104,12 @@ class UserManager(Singleton):
         self.handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.wait_for_any_element_plus(['give_gift', 'use_item'])
+        found_key, found_element = self.handler.wait_for_any_element(['give_gift', 'use_item'])
         if not found_element:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
 
-        luck_item = self.handler.try_find_element_plus('luck_item')
+        luck_item = self.handler.try_find_element('luck_item')
         if not luck_item:
             self.logger.warning('Failed to find gift')
             self.handler.press_back()
@@ -119,7 +119,7 @@ class UserManager(Singleton):
         if (parts := gift_name.split('x')) and len(parts) > 1:
             gift_name = parts[0]
 
-        soul_power = self.handler.try_find_element_plus('soul_power')
+        soul_power = self.handler.try_find_element('soul_power')
         soul_points = soul_power.text if soul_power else '0'
 
         # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
@@ -132,7 +132,7 @@ class UserManager(Singleton):
         self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
 
         if found_key == 'use_item':
-            confirm_use = self.handler.wait_for_element_plus('confirm_use')
+            confirm_use = self.handler.wait_for_element('confirm_use')
             if not confirm_use:
                 self.handler.press_back()
                 self.logger.warning("未找到确认使用按钮")

@@ -103,26 +103,17 @@ class AppHandler:
         """Log warning level message"""
         self.logger.warning(message)
 
-    def wait_for_element(self, locator_type, locator_value, timeout=10):
-        return self.element_finder.wait_for_element(locator_type, locator_value, timeout=timeout)
-
-    def wait_for_element_plus(self, element_key: str, timeout: int = 10):
-        return self.element_finder.wait_for_element_plus(element_key, timeout=timeout)
+    def wait_for_element(self, element_key: str, timeout: int = 10):
+        return self.element_finder.wait_for_element(element_key, timeout=timeout)
 
     def is_element_clickable(self, element):
         return self.element_finder.is_element_clickable(element)
 
-    def wait_for_element_clickable_plus(self, element_key: str, timeout: int = 10):
-        return self.element_finder.wait_for_element_clickable_plus(element_key, timeout=timeout)
+    def wait_for_element_clickable(self, element_key: str, timeout: int = 10):
+        return self.element_finder.wait_for_element_clickable(element_key, timeout=timeout)
 
-    def wait_for_element_clickable(self, locator_type, locator_value, timeout=10):
-        return self.element_finder.wait_for_element_clickable(locator_type, locator_value, timeout=timeout)
-
-    def try_find_element_plus(self, element_key: str, log=False, clickable=False):
-        return self.element_finder.try_find_element_plus(element_key, log=log, clickable=clickable)
-
-    def try_find_element(self, locator_type, locator_value, log=True, clickable=False):
-        return self.element_finder.try_find_element(locator_type, locator_value, log=log, clickable=clickable)
+    def try_find_element(self, element_key: str, log=False, clickable=False):
+        return self.element_finder.try_find_element(element_key, log=log, clickable=clickable)
 
     def wait_for_element_polling(
             self, locator_type, locator_value, timeout=10, poll_frequency=0.5
@@ -144,12 +135,6 @@ class AppHandler:
             poll_frequency=poll_frequency,
         )
 
-    def find_child_element(self, parent, locator_type, locator_value):
-        return self.element_finder.find_child_element(parent, locator_type, locator_value)
-
-    def find_child_elements(self, parent, locator_type, locator_value):
-        return self.element_finder.find_child_elements(parent, locator_type, locator_value)
-
     def get_element_text(self, element):
         return self.element_finder.get_element_text(element)
 
@@ -159,20 +144,20 @@ class AppHandler:
     def _get_locator(self, element_key: str):
         return self.element_finder._get_locator(element_key)
 
-    def find_elements_plus(self, element_key: str):
-        return self.element_finder.find_elements_plus(element_key)
+    def find_elements(self, element_key: str):
+        return self.element_finder.find_elements(element_key)
 
-    def find_child_element_plus(self, parent, element_key):
-        return self.element_finder.find_child_element_plus(parent, element_key)
+    def find_child_element(self, parent, element_key):
+        return self.element_finder.find_child_element(parent, element_key)
 
-    def find_child_elements_plus(self, parent, element_key: str):
-        return self.element_finder.find_child_elements_plus(parent, element_key)
+    def find_child_elements(self, parent, element_key: str):
+        return self.element_finder.find_child_elements(parent, element_key)
 
-    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10):
-        return self.element_finder.wait_for_any_element_plus(element_keys, timeout=timeout)
+    def wait_for_any_element(self, element_keys: list, timeout: int = 10):
+        return self.element_finder.wait_for_any_element(element_keys, timeout=timeout)
 
-    def try_find_any_element_plus(self, element_keys: list):
-        return self.element_finder.try_find_any_element_plus(element_keys)
+    def try_find_any_element(self, element_keys: list):
+        return self.element_finder.try_find_any_element(element_keys)
 
     def switch_to_app(self):
         return self.key_actions.switch_to_app()

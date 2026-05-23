@@ -30,10 +30,10 @@ class AlbumCommand(BaseCommand):
         """Select the 'Album' tab in search results"""
         try:
             # Try to find album tab first
-            album_tab = self.handler.try_find_element_plus('album_tab')
+            album_tab = self.handler.try_find_element('album_tab')
             if not album_tab:
                 # If not found, scroll music_tabs to find it
-                music_tabs = self.handler.try_find_element_plus('music_tabs')
+                music_tabs = self.handler.try_find_element('music_tabs')
                 if not music_tabs:
                     self.handler.logger.error("Failed to find music tabs")
                     return False
@@ -52,7 +52,7 @@ class AlbumCommand(BaseCommand):
                 )
 
                 # Try to find album tab again
-                album_tab = self.handler.try_find_element_plus('album_tab')
+                album_tab = self.handler.try_find_element('album_tab')
                 if not album_tab:
                     self.handler.logger.error("Failed to find album tab after scrolling")
                     return False
@@ -83,13 +83,13 @@ class AlbumCommand(BaseCommand):
                 'error': 'Failed to select album tab',
             }
 
-        key, element = self.handler.wait_for_any_element_plus(['album_result', 'not_found'])
+        key, element = self.handler.wait_for_any_element(['album_result', 'not_found'])
         if not key or key == 'not_found':
             self.handler.logger.error(f"Not found album result with query {query}")
             return {
                 'error': f'Failed to find album result with query {query}',
             }
-        album_result = self.handler.find_elements_plus('album_result')
+        album_result = self.handler.find_elements('album_result')
         if len(album_result) < 2:
             self.handler.logger.error(f"Failed to find album result with query {query}")
             return {
@@ -103,7 +103,7 @@ class AlbumCommand(BaseCommand):
         album_name.click()
         self.handler.logger.info("album name clicked")
 
-        key, play_button = self.handler.wait_for_any_element_plus(['play_all'])
+        key, play_button = self.handler.wait_for_any_element(['play_all'])
         if not play_button:
             self.handler.logger.error(f"Failed to find play button for query {query}")
             return {'error': 'Failed to find play button'}

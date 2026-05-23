@@ -102,7 +102,7 @@ class FollowerMessageEvent(BaseEvent):
                 return True # 已处理，拦截后续（因为文本已记录且用户已创建）
 
             # 等待并点击打招呼按钮
-            greet_follower = self.handler.try_find_element_plus('greet_follower')
+            greet_follower = self.handler.try_find_element('greet_follower')
             if not greet_follower:
                 self.logger.warning("Failed to find greet button")
                 return False
@@ -111,7 +111,7 @@ class FollowerMessageEvent(BaseEvent):
             self.logger.info("Clicked greet button")
 
             # 等待并点击发送按钮
-            send_button = self.handler.wait_for_element_clickable_plus('button_send', timeout=3)
+            send_button = self.handler.wait_for_element_clickable('button_send', timeout=3)
             if not send_button:
                 self.logger.warning("Failed to find send button, pressing back")
                 self.handler.press_back()

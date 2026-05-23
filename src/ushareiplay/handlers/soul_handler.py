@@ -35,11 +35,11 @@ class SoulHandler(AppHandler, Singleton):
         self.switch_to_app()
 
         # Click on the input box entry first
-        input_box_entry = self.wait_for_element_clickable_plus('input_box_entry')
+        input_box_entry = self.wait_for_element_clickable('input_box_entry')
         if not input_box_entry:
             self.logger.error(f'cannot find input box entry, might be in loading')
             return {'error': 'cannot find input box entry, might be in loading'}
-        go_back = self.try_find_element_plus('go_back_1', log=False)
+        go_back = self.try_find_element('go_back_1', log=False)
         if go_back:
             go_back.click()
             self.logger.error("Clicked go back button, might be in chat screen")
@@ -48,7 +48,7 @@ class SoulHandler(AppHandler, Singleton):
         # self.logger.info("Clicked input box entry")
 
         # Now find and interact with the actual input box
-        input_box = self.wait_for_element_clickable_plus('input_box')
+        input_box = self.wait_for_element_clickable('input_box')
         if not input_box:
             self.logger.error(f'cannot find input box, might be in chat screen')
             return {
@@ -60,7 +60,7 @@ class SoulHandler(AppHandler, Singleton):
             self.logger.info(f"Entered message: {message}")
 
             # click send button
-            send_button = self.wait_for_element_clickable_plus('button_send')
+            send_button = self.wait_for_element_clickable('button_send')
             if not send_button:
                 self.logger.error(f'cannot find send button')
                 return {
@@ -77,11 +77,11 @@ class SoulHandler(AppHandler, Singleton):
         """Wait for the grab mic button and confirm the action"""
         try:
             # Wait for the grab mic button to be clickable
-            grab_mic_button = self.wait_for_element_clickable_plus('grab_mic')
+            grab_mic_button = self.wait_for_element_clickable('grab_mic')
             grab_mic_button.click()
 
             # Wait for the confirmation dialog to appear
-            confirm_button = self.wait_for_element_clickable_plus('confirm_mic')
+            confirm_button = self.wait_for_element_clickable('confirm_mic')
             confirm_button.click()
 
         except Exception as e:
@@ -92,7 +92,7 @@ class SoulHandler(AppHandler, Singleton):
         try:
             self.switch_to_app()
             # Check if the grab mic button is present
-            grab_mic_button = self.try_find_element_plus('grab_mic', log=False)
+            grab_mic_button = self.try_find_element('grab_mic', log=False)
 
             if grab_mic_button:
                 self.logger.info("Grab mic button found, grabbing mic...")
@@ -100,7 +100,7 @@ class SoulHandler(AppHandler, Singleton):
             else:
                 self.logger.info("Already on mic, checking toggle mic status...")
                 # Check the toggle mic button
-                toggle_mic_button = self.wait_for_element_clickable_plus('toggle_mic')
+                toggle_mic_button = self.wait_for_element_clickable('toggle_mic')
 
                 if not toggle_mic_button:
                     self.logger.error("Toggle mic button not found")

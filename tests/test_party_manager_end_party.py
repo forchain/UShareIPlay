@@ -40,10 +40,10 @@ class _MockHandler:
         self.switched = True
         return True
 
-    def try_find_element_plus(self, key, log=True):
+    def try_find_element(self, key, log=True):
         return self.elements.get(key)
 
-    def wait_for_element_clickable_plus(self, key):
+    def wait_for_element_clickable(self, key):
         return self.elements.get(key)
 
 
