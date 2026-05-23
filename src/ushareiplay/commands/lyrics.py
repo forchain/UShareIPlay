@@ -55,7 +55,7 @@ class LyricsCommand(BaseCommand):
                 return False
                 
             # Try to find lyrics tab first (fast path)
-            lyrics_tab = self.music_handler.try_find_element_plus("lyrics_tab")
+            lyrics_tab = self.music_handler.try_find_element("lyrics_tab")
             if not lyrics_tab:
                 # 标签靠后时，单次滑动距离不够：改用通用容器滚动（参考 radio sleep）
                 _, lyrics_tab, _ = self.music_handler.scroll_container_until_element(
@@ -109,7 +109,7 @@ class LyricsCommand(BaseCommand):
             return {'error': 'Failed to select lyrics tab'}
             
         # Get lyrics text
-        key, element = self.music_handler.wait_for_any_element_plus(['lyrics_text', 'not_found'])
+        key, element = self.music_handler.wait_for_any_element(['lyrics_text', 'not_found'])
         if not key or key == 'not_found':
             self.music_handler.logger.error(f"Failed to find lyrics with query {query}")
             return {'error': f'No lyrics found for "{query}"'}

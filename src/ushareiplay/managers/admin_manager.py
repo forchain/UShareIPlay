@@ -39,7 +39,7 @@ class AdminManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        manager_invite = self.handler.wait_for_element_clickable_plus('manager_invite')
+        manager_invite = self.handler.wait_for_element_clickable('manager_invite')
         if not manager_invite:
             return {'error': 'Failed to find manager invite button', 'user': target_nickname}
 
@@ -61,10 +61,10 @@ class AdminManager(Singleton):
         self.logger.info("Clicked manager invite button")
 
         if enable:
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_invite')
+            confirm_button = self.handler.wait_for_element_clickable('confirm_invite')
             action = "Invited"
         else:
-            confirm_button = self.handler.wait_for_element_clickable_plus('confirm_dismiss')
+            confirm_button = self.handler.wait_for_element_clickable('confirm_dismiss')
             action = "Dismissed"
 
         if not confirm_button:

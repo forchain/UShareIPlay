@@ -60,8 +60,8 @@ class Navigator:
             # 构建检测元素列表，按优先级排序：干扰元素 -> 目标元素 -> 返回按钮 -> home元素
             check_keys = interference_keys + [target_key] + back_keys + [home_key]
 
-            # 使用 wait_for_any_element_plus 检测当前状态
-            found_key, found_element = self.wait_for_any_element_plus(check_keys)
+            # 使用 wait_for_any_element 检测当前状态
+            found_key, found_element = self.wait_for_any_element(check_keys)
 
             if not found_element:
                 self.logger.warning(f"第 {attempt + 1} 次尝试：未检测到任何元素")
@@ -72,7 +72,7 @@ class Navigator:
             # 根据找到的元素类型执行相应操作
             if found_key == target_key:
                 # 命中目标后仅做干扰元素复核（无等待），避免误判后直接返回
-                interference_key, interference_element = self.try_find_any_element_plus(interference_keys)
+                interference_key, interference_element = self.try_find_any_element(interference_keys)
                 if interference_element:
                     self.logger.info(
                         f"命中目标 {target_key} 后发现干扰元素 {interference_key}，先按返回键关闭后重试确认"

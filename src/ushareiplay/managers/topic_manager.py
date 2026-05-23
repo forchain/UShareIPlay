@@ -111,26 +111,26 @@ class TopicManager(Singleton):
         """
         try:
             # Click room topic
-            room_topic = self.soul_handler.wait_for_element_clickable_plus('room_topic')
+            room_topic = self.soul_handler.wait_for_element_clickable('room_topic')
             if not room_topic:
                 return {'error': 'Failed to find room topic'}
             room_topic.click()
 
             # Click edit entry
-            edit_entry = self.soul_handler.wait_for_element_clickable_plus('edit_topic_entry')
+            edit_entry = self.soul_handler.wait_for_element_clickable('edit_topic_entry')
             if not edit_entry:
                 return {'error': 'Failed to find edit topic entry'}
             edit_entry.click()
 
             # Input new topic
-            topic_input = self.soul_handler.wait_for_element_clickable_plus('edit_topic_input')
+            topic_input = self.soul_handler.wait_for_element_clickable('edit_topic_input')
             if not topic_input:
                 return {'error': 'Failed to find topic input'}
             topic_input.clear()
             topic_input.send_keys(topic)
 
             # Click confirm
-            confirm = self.soul_handler.wait_for_element_clickable_plus('edit_topic_confirm')
+            confirm = self.soul_handler.wait_for_element_clickable('edit_topic_confirm')
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
@@ -140,7 +140,7 @@ class TopicManager(Singleton):
             time.sleep(1)
 
             # Check if update was successful
-            key, element = self.soul_handler.wait_for_any_element_plus(['input_box_entry', 'edit_topic_confirm'])
+            key, element = self.soul_handler.wait_for_any_element(['input_box_entry', 'edit_topic_confirm'])
             if key == 'edit_topic_confirm':
                 self.soul_handler.press_back()
                 self.soul_handler.press_back()

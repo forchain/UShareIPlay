@@ -73,7 +73,7 @@ class ModeCommand(BaseCommand):
                 'play_mode_single',
                 'play_mode_random',
             ]
-            found_element_key, found_element = self.handler.wait_for_any_element_plus(element_keys)
+            found_element_key, found_element = self.handler.wait_for_any_element(element_keys)
 
             if not found_element_key or not found_element:
                 self.handler.logger.info("未找到播放模式相关元素，说明现在没有播放音乐")
@@ -93,7 +93,7 @@ class ModeCommand(BaseCommand):
 
                 # 进入播放页后，再等待播放模式按钮出现
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
-                found_element_key, found_element = self.handler.wait_for_any_element_plus(mode_element_keys)
+                found_element_key, found_element = self.handler.wait_for_any_element(mode_element_keys)
                 log_step("Step1", after_playing_bar_found_key=found_element_key)
 
                 if not found_element_key or not found_element:
@@ -132,7 +132,7 @@ class ModeCommand(BaseCommand):
 
                 # 重新检查当前模式
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
-                found_element_key, found_element = self.handler.wait_for_any_element_plus(mode_element_keys)
+                found_element_key, found_element = self.handler.wait_for_any_element(mode_element_keys)
 
                 if not found_element_key or not found_element:
                     self.handler.logger.warning("切换后未找到播放模式元素")

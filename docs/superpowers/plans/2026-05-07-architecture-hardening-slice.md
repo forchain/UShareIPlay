@@ -123,14 +123,14 @@ Then move the full current bodies of these methods from `AppHandler` into `Eleme
         ...
 
     @with_driver_recovery(op="read")
-    def wait_for_element_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+    def wait_for_element(self, element_key: str, timeout: int = 10) -> WebElement:
         ...
 
     def is_element_clickable(self, element):
         ...
 
     @with_driver_recovery(op="read")
-    def wait_for_element_clickable_plus(self, element_key: str, timeout: int = 10) -> WebElement:
+    def wait_for_element_clickable(self, element_key: str, timeout: int = 10) -> WebElement:
         ...
 
     @with_driver_recovery(op="read")
@@ -138,7 +138,7 @@ Then move the full current bodies of these methods from `AppHandler` into `Eleme
         ...
 
     @with_driver_recovery(op="read")
-    def try_find_element_plus(self, element_key: str, log=False, clickable=False) -> WebElement:
+    def try_find_element(self, element_key: str, log=False, clickable=False) -> WebElement:
         ...
 
     @with_driver_recovery(op="read")
@@ -169,20 +169,20 @@ Then move the full current bodies of these methods from `AppHandler` into `Eleme
         ...
 
     @with_driver_recovery(op="read")
-    def find_elements_plus(self, element_key: str) -> list:
+    def find_elements(self, element_key: str) -> list:
         ...
 
-    def find_child_element_plus(self, parent, element_key):
+    def find_child_element(self, parent, element_key):
         ...
 
-    def find_child_elements_plus(self, parent, element_key: str) -> list:
+    def find_child_elements(self, parent, element_key: str) -> list:
         ...
 
     @with_driver_recovery(op="read")
-    def wait_for_any_element_plus(self, element_keys: list, timeout: int = 10) -> Tuple[Optional[str], Optional[WebElement]]:
+    def wait_for_any_element(self, element_keys: list, timeout: int = 10) -> Tuple[Optional[str], Optional[WebElement]]:
         ...
 
-    def try_find_any_element_plus(self, element_keys: list) -> Tuple[Optional[str], Optional[WebElement]]:
+    def try_find_any_element(self, element_keys: list) -> Tuple[Optional[str], Optional[WebElement]]:
         ...
 ```
 
@@ -322,10 +322,10 @@ Then move the full current bodies of these methods from `AppHandler` into `Gestu
 Inside `scroll_container_until_element`, replace helper calls with owner calls so the facade remains the dependency point:
 
 ```python
-container = self.owner.wait_for_element_clickable_plus(container_key)
-container = self.owner.wait_for_element_plus(container_key)
-found = self.owner.find_child_element_plus(container, element_key)
-elements = self.owner.find_child_elements_plus(container, element_key)
+container = self.owner.wait_for_element_clickable(container_key)
+container = self.owner.wait_for_element(container_key)
+found = self.owner.find_child_element(container, element_key)
+elements = self.owner.find_child_elements(container, element_key)
 value = self.owner.try_get_attribute(element, attr)
 ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=100)
 ```
@@ -359,7 +359,7 @@ class Navigator:
         ...
 ```
 
-Move the full current body of `AppHandler.navigate_to_element` into `Navigator.navigate_to_element`, replacing `self.press_back()`, `self.wait_for_any_element_plus(...)`, `self.try_find_any_element_plus(...)`, and `self.click_element_at(...)` with `self.owner.press_back()`, `self.owner.wait_for_any_element_plus(...)`, `self.owner.try_find_any_element_plus(...)`, and `self.owner.click_element_at(...)`.
+Move the full current body of `AppHandler.navigate_to_element` into `Navigator.navigate_to_element`, replacing `self.press_back()`, `self.wait_for_any_element(...)`, `self.try_find_any_element(...)`, and `self.click_element_at(...)` with `self.owner.press_back()`, `self.owner.wait_for_any_element(...)`, `self.owner.try_find_any_element(...)`, and `self.owner.click_element_at(...)`.
 
 - [ ] **Step 8: Run import test to verify helper modules import**
 
@@ -409,14 +409,14 @@ For every method moved in Task 1, replace the old body in `AppHandler` with a on
     def wait_for_element(self, *args, **kwargs):
         return self.element_finder.wait_for_element(*args, **kwargs)
 
-    def wait_for_element_plus(self, *args, **kwargs):
-        return self.element_finder.wait_for_element_plus(*args, **kwargs)
+    def wait_for_element(self, *args, **kwargs):
+        return self.element_finder.wait_for_element(*args, **kwargs)
 
     def is_element_clickable(self, *args, **kwargs):
         return self.element_finder.is_element_clickable(*args, **kwargs)
 
-    def wait_for_element_clickable_plus(self, *args, **kwargs):
-        return self.element_finder.wait_for_element_clickable_plus(*args, **kwargs)
+    def wait_for_element_clickable(self, *args, **kwargs):
+        return self.element_finder.wait_for_element_clickable(*args, **kwargs)
 
     def wait_for_element_clickable(self, *args, **kwargs):
         return self.element_finder.wait_for_element_clickable(*args, **kwargs)
@@ -448,8 +448,8 @@ For every method moved in Task 1, replace the old body in `AppHandler` with a on
     def press_right_key(self, *args, **kwargs):
         return self.key_actions.press_right_key(*args, **kwargs)
 
-    def try_find_element_plus(self, *args, **kwargs):
-        return self.element_finder.try_find_element_plus(*args, **kwargs)
+    def try_find_element(self, *args, **kwargs):
+        return self.element_finder.try_find_element(*args, **kwargs)
 
     def try_find_element(self, *args, **kwargs):
         return self.element_finder.try_find_element(*args, **kwargs)
@@ -481,17 +481,17 @@ For every method moved in Task 1, replace the old body in `AppHandler` with a on
     def _get_locator(self, *args, **kwargs):
         return self.element_finder._get_locator(*args, **kwargs)
 
-    def find_elements_plus(self, *args, **kwargs):
-        return self.element_finder.find_elements_plus(*args, **kwargs)
+    def find_elements(self, *args, **kwargs):
+        return self.element_finder.find_elements(*args, **kwargs)
 
     def click_element_at(self, *args, **kwargs):
         return self.gestures.click_element_at(*args, **kwargs)
 
-    def find_child_element_plus(self, *args, **kwargs):
-        return self.element_finder.find_child_element_plus(*args, **kwargs)
+    def find_child_element(self, *args, **kwargs):
+        return self.element_finder.find_child_element(*args, **kwargs)
 
-    def find_child_elements_plus(self, *args, **kwargs):
-        return self.element_finder.find_child_elements_plus(*args, **kwargs)
+    def find_child_elements(self, *args, **kwargs):
+        return self.element_finder.find_child_elements(*args, **kwargs)
 
     def _perform_swipe(self, *args, **kwargs):
         return self.gestures._perform_swipe(*args, **kwargs)
@@ -499,11 +499,11 @@ For every method moved in Task 1, replace the old body in `AppHandler` with a on
     def scroll_container_until_element(self, *args, **kwargs):
         return self.gestures.scroll_container_until_element(*args, **kwargs)
 
-    def wait_for_any_element_plus(self, *args, **kwargs):
-        return self.element_finder.wait_for_any_element_plus(*args, **kwargs)
+    def wait_for_any_element(self, *args, **kwargs):
+        return self.element_finder.wait_for_any_element(*args, **kwargs)
 
-    def try_find_any_element_plus(self, *args, **kwargs):
-        return self.element_finder.try_find_any_element_plus(*args, **kwargs)
+    def try_find_any_element(self, *args, **kwargs):
+        return self.element_finder.try_find_any_element(*args, **kwargs)
 
     def navigate_to_element(self, *args, **kwargs):
         return self.navigator.navigate_to_element(*args, **kwargs)

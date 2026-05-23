@@ -98,8 +98,8 @@ class RadioCommand(BaseCommand):
         error = self._navigate_home()
         if error:
             return error
-        guess_title = self.music_handler.wait_for_element_clickable_plus("guess_title")
-        guess_topic = self.music_handler.wait_for_element_plus("guess_topic")
+        guess_title = self.music_handler.wait_for_element_clickable("guess_title")
+        guess_topic = self.music_handler.wait_for_element("guess_topic")
         if not guess_title or not guess_topic:
             return self._report_error("Failed to locate guess like radio elements")
         guess_title_text = guess_title.text
@@ -126,14 +126,14 @@ class RadioCommand(BaseCommand):
         error = self._navigate_home()
         if error:
             return error
-        daily_title = self.music_handler.wait_for_element_clickable_plus("daily_title")
-        daily_topic = self.music_handler.wait_for_element_plus("daily_topic")
+        daily_title = self.music_handler.wait_for_element_clickable("daily_title")
+        daily_topic = self.music_handler.wait_for_element("daily_topic")
         if not daily_title or not daily_topic:
             return self._report_error("Failed to locate daily radio elements")
         daily_title_text = daily_title.text
         daily_topic_text = self._extract_primary_topic(daily_topic.text)
         daily_title.click()
-        play_all = self.music_handler.wait_for_element_clickable_plus("play_all")
+        play_all = self.music_handler.wait_for_element_clickable("play_all")
         if not play_all:
             return self._report_error("Failed to locate play all button")
         play_all.click()
@@ -163,12 +163,12 @@ class RadioCommand(BaseCommand):
         error = self._navigate_home()
         if error:
             return error
-        key, element = self.music_handler.wait_for_any_element_plus(["pause_collection", "play_collection"])
+        key, element = self.music_handler.wait_for_any_element(["pause_collection", "play_collection"])
         if key == "pause_collection":
             self.music_handler.logger.info("正在播放精选，刷新")
-            home_nav = self.music_handler.wait_for_element_clickable_plus("home_nav")
+            home_nav = self.music_handler.wait_for_element_clickable("home_nav")
             home_nav.click()
-            play_button = self.music_handler.wait_for_element_clickable_plus("play_collection")
+            play_button = self.music_handler.wait_for_element_clickable("play_collection")
         elif key == "play_collection":
             play_button = element
         else:
@@ -176,8 +176,8 @@ class RadioCommand(BaseCommand):
         if not play_button:
             return self._report_error("Failed to find collection play button")
 
-        collection_title = self.music_handler.wait_for_element_clickable_plus("collection_title")
-        collection_topic = self.music_handler.wait_for_element_plus("collection_topic")
+        collection_title = self.music_handler.wait_for_element_clickable("collection_title")
+        collection_topic = self.music_handler.wait_for_element("collection_topic")
         if not collection_title or not collection_topic:
             return self._report_error("Failed to locate collection radio elements")
         collection_title_text = self.soul_handler.try_get_attribute(collection_title, 'content-desc') or "Unknown"
@@ -232,7 +232,7 @@ class RadioCommand(BaseCommand):
         healing_tab.click()
         self.music_handler.logger.info("Clicked 疗愈 tab after scrolling home tab strip")
 
-        play_healing = self.music_handler.wait_for_element_clickable_plus("play_healing")
+        play_healing = self.music_handler.wait_for_element_clickable("play_healing")
         if not play_healing:
             return self._report_error("Failed to find healing play button")
         play_healing.click()
@@ -262,7 +262,7 @@ class RadioCommand(BaseCommand):
             return error
 
         # 点击 radar 导航
-        radar_nav = self.music_handler.try_find_element_plus('radar_nav', log=False)
+        radar_nav = self.music_handler.try_find_element('radar_nav', log=False)
         if not radar_nav:
             return self._report_error("Cannot find radar_nav")
 
@@ -270,8 +270,8 @@ class RadioCommand(BaseCommand):
         self.music_handler.logger.info("Clicked radar navigation button")
 
         # 获取 radar 歌曲和歌手信息
-        radar_song = self.music_handler.wait_for_element_clickable_plus('radar_song')
-        radar_singer = self.music_handler.wait_for_element_clickable_plus('radar_singer')
+        radar_song = self.music_handler.wait_for_element_clickable('radar_song')
+        radar_singer = self.music_handler.wait_for_element_clickable('radar_singer')
 
         if not radar_song or not radar_singer:
             return self._report_error("Failed to locate radar song or singer elements")

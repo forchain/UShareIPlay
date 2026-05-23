@@ -42,7 +42,7 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.wait_for_element_clickable_plus('result_item')
+        song_element = self.handler.wait_for_element_clickable('result_item')
         song_element.click()
         self.handler.logger.info("Select first song")
 
@@ -61,16 +61,16 @@ class PlayCommand(BaseCommand):
         if err:
             return err
 
-        result_item = self.handler.try_find_element_plus('result_item')
+        result_item = self.handler.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
-            elements = self.handler.find_child_elements(result_item, AppiumBy.CLASS_NAME, 'android.widget.TextView')
+            elements = result_item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
             if len(elements) >= 3:
                 song_text = elements[1].text
                 singer_text = elements[2].text
 
-        play_fav = self.handler.wait_for_element_clickable_plus('play_all')
+        play_fav = self.handler.wait_for_element_clickable('play_all')
         if not play_fav:
             return {'error': 'Cannot find play all button'}
         play_fav.click()
@@ -95,7 +95,7 @@ class PlayCommand(BaseCommand):
 
         self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
-        radar_nav = self.handler.try_find_element_plus('radar_nav', log=False)
+        radar_nav = self.handler.try_find_element('radar_nav', log=False)
         if not radar_nav:
             return {'error': 'Cannot find radar_nav'}
 
@@ -105,9 +105,9 @@ class PlayCommand(BaseCommand):
         self.handler.list_mode = 'radar'
 
         # Click on play all button
-        song = self.handler.wait_for_element_clickable_plus('radar_song')
+        song = self.handler.wait_for_element_clickable('radar_song')
         song_text = song.text if song else "Unknown"
-        singer = self.handler.wait_for_element_clickable_plus('radar_singer')
+        singer = self.handler.wait_for_element_clickable('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
         # 使用 title_manager 和 topic_manager 管理标题和话题

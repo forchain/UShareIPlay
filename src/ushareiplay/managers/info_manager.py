@@ -375,13 +375,13 @@ class InfoManager(Singleton):
             target_count = self.user_count
 
             # 打开在线用户列表
-            user_count_elem = self.handler.try_find_element_plus('user_count', log=False)
+            user_count_elem = self.handler.try_find_element('user_count', log=False)
             if not user_count_elem:
                 return
             user_count_elem.click()
             self.logger.info("Clicked user count element")
 
-            online_container = self.handler.wait_for_element_plus('online_users')
+            online_container = self.handler.wait_for_element('online_users')
             if not online_container:
                 self.logger.error("Online users container not found")
                 return
@@ -413,11 +413,11 @@ class InfoManager(Singleton):
             from ushareiplay.dal.user_dao import UserDAO
 
             for swipe_idx in range(max_swipes + 1):
-                visible_containers = self.handler.find_child_elements_plus(online_container, 'user_container')
+                visible_containers = self.handler.find_child_elements(online_container, 'user_container')
                 if visible_containers:
                     for container in visible_containers:
                         try:
-                            user_elem = self.handler.find_child_element_plus(container, 'online_user')
+                            user_elem = self.handler.find_child_element(container, 'online_user')
                             if not user_elem:
                                 continue
                             username = user_elem.text
@@ -429,7 +429,7 @@ class InfoManager(Singleton):
                                 continue
                             all_online_user_names.add(username)
 
-                            follow_state_elem = self.handler.find_child_element_plus(container, 'follow_state')
+                            follow_state_elem = self.handler.find_child_element(container, 'follow_state')
                             follow_state = follow_state_elem.text if follow_state_elem else None
 
                             if follow_state:
@@ -446,7 +446,7 @@ class InfoManager(Singleton):
 
                 # 停止条件 1：到底提示出现
                 try:
-                    no_more = self.handler.try_find_element_plus('no_more_data', log=False)
+                    no_more = self.handler.try_find_element('no_more_data', log=False)
                     if no_more and no_more.is_displayed():
                         self.logger.info("Detected no_more_data, stop scrolling online users.")
                         break
@@ -492,7 +492,7 @@ class InfoManager(Singleton):
 
             self.update_online_users(list(all_online_user_names))
 
-            bottom_drawer = self.handler.wait_for_element_plus('bottom_drawer')
+            bottom_drawer = self.handler.wait_for_element('bottom_drawer')
             if bottom_drawer:
                 self.logger.info('Hide online users dialog')
                 self.handler.click_element_at(bottom_drawer, 0.5, -0.1)

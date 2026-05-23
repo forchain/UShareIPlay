@@ -23,7 +23,7 @@ class RecoveryManager(Singleton):
         """
         try:
             # 使用 wait_for 获取可点击的元素
-            element = self.handler.wait_for_element_clickable_plus(drawer_key)
+            element = self.handler.wait_for_element_clickable(drawer_key)
             if not element:
                 self.logger.warning(
                     f"Drawer element {drawer_key} found in page_source but not clickable"
@@ -39,7 +39,7 @@ class RecoveryManager(Singleton):
                 return False
 
             # 等待指定元素出现，确认界面已恢复正常（弹窗已关闭）
-            target_element = self.handler.wait_for_element_plus(wait_element)
+            target_element = self.handler.wait_for_element(wait_element)
             if target_element:
                 self.logger.info(f"Closed drawer: {drawer_key}, {wait_element} confirmed")
             else:

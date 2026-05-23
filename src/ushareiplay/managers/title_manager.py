@@ -97,7 +97,7 @@ class TitleManager(Singleton):
 
         try:
             # Find room title element
-            room_title_element = self.handler.try_find_element_plus('chat_room_title', log=False)
+            room_title_element = self.handler.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 self.logger.info("Room title element not found")
                 return None
@@ -155,7 +155,7 @@ class TitleManager(Singleton):
             str: 房名文本，获取失败返回 None
         """
         try:
-            room_title_element = self.handler.try_find_element_plus('chat_room_title', log=False)
+            room_title_element = self.handler.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None
             text = self.handler.get_element_text(room_title_element)
@@ -170,7 +170,7 @@ class TitleManager(Singleton):
         """
         try:
             # 获取当前房间notice
-            notice_element = self.handler.wait_for_element_plus('chat_room_notice')
+            notice_element = self.handler.wait_for_element('chat_room_notice')
             if not notice_element:
                 self.logger.info("Chat room notice element not found, skipping notice check")
                 return {'skipped': 'Notice element not found'}
@@ -341,7 +341,7 @@ class TitleManager(Singleton):
                 self.logger.info(f"Using fallback theme (no theme_manager): {current_theme}")
 
             # Click room title
-            room_title = self.handler.wait_for_element_clickable_plus('chat_room_title')
+            room_title = self.handler.wait_for_element_clickable('chat_room_title')
             if not room_title:
                 return {'error': 'Failed to find room title'}
             room_title.click()
@@ -360,21 +360,21 @@ class TitleManager(Singleton):
                 self.logger.info(f"Notice check skipped: {notice_check_result['skipped']}")
 
             # Click edit entry
-            edit_entry = self.handler.wait_for_element_clickable_plus('title_edit_entry')
+            edit_entry = self.handler.wait_for_element_clickable('title_edit_entry')
             if not edit_entry:
                 return {'error': 'Failed to find edit title entry'}
             if not self.handler.click_element_at(edit_entry, y_ratio=0.25):
                 return {'error': 'Failed to click edit entry'}
 
             # Input new title
-            title_input = self.handler.wait_for_element_clickable_plus('title_edit_input')
+            title_input = self.handler.wait_for_element_clickable('title_edit_input')
             if not title_input:
                 return {'error': 'Failed to find title input'}
             title_input.clear()
             title_input.send_keys(f"{current_theme}｜" + title)
 
             # Click confirm
-            confirm = self.handler.wait_for_element_clickable_plus('title_edit_confirm')
+            confirm = self.handler.wait_for_element_clickable('title_edit_confirm')
             if not confirm:
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
@@ -383,7 +383,7 @@ class TitleManager(Singleton):
             time.sleep(1)
 
             # Check if update was successful by looking for edit entry or confirm button
-            key, element = self.handler.wait_for_any_element_plus(['title_edit_entry', 'title_edit_confirm'])
+            key, element = self.handler.wait_for_any_element(['title_edit_entry', 'title_edit_confirm'])
 
             if key == 'title_edit_entry':
                 # Update successful - we're back to edit entry page
@@ -428,7 +428,7 @@ class TitleManager(Singleton):
 
             elif key == 'title_edit_confirm':
                 # Update failed - still on confirm page
-                go_back = self.handler.wait_for_element_plus('go_back')
+                go_back = self.handler.wait_for_element('go_back')
                 if go_back:
                     go_back.click()
                     self.logger.warning('Update title failed, going back to chat room info screen')

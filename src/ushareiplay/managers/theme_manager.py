@@ -118,7 +118,7 @@ class ThemeManager(Singleton):
 
         try:
             # Find room title element
-            room_title_element = self.handler.try_find_element_plus('chat_room_title', log=False)
+            room_title_element = self.handler.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 self.logger.info("Room title element not found for initialization")
                 return {'error': 'Room title element not found'}
