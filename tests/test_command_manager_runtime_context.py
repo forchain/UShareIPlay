@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.models.message_info import MessageInfo
 
 
 class FakeLogger:
@@ -113,3 +114,155 @@ def test_process_command_uses_runtime_for_observability_and_ui_session():
         "command.dispatch",
         "command.result",
     ]
+
+
+def test_extract_private_reply_and_normalize_dollar_prefix():
+    manager, _runtime, _controller = make_manager(Path("."))
+
+    private_reply, normalized = manager._extract_private_reply_and_normalize("$play abc")
+
+    assert private_reply is True
+    assert normalized == "play abc"
+
+
+def test_extract_private_reply_and_normalize_fullwidth_dollar_prefix():
+    manager, _runtime, _controller = make_manager(Path("."))
+
+    private_reply, normalized = manager._extract_private_reply_and_normalize("＄info")
+
+    assert private_reply is True
+    assert normalized == "info"
+
+
+def test_extract_private_reply_and_normalize_colon_prefix_unchanged():
+    manager, _runtime, _controller = make_manager(Path("."))
+
+    private_reply, normalized = manager._extract_private_reply_and_normalize(":help")
+
+    assert private_reply is False
+    assert normalized == "help"
+
+
+def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
+    manager, _runtime, _controller = make_manager(Path("."))
+    manager.initialize_parser(
+        [
+            {
+                "prefix": "play",
+                "level": 1,
+                "response_template": "{song}",
+                "error_template": "{error}",
+            }
+        ]
+    )
+
+    captured = {}
+
+    async def _fake_process(command, message_info, command_info):
+        captured["content"] = message_info.content
+        captured["private_reply"] = message_info.private_reply
+        return None
+
+    monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
+    monkeypatch.setattr(manager, "process_command", _fake_process)
+    monkeypatch.setattr(manager, "_send_screen_message", lambda *args, **kwargs: None)
+
+    processed = asyncio.run(
+        manager.handle_message_commands(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        )
+    )
+
+    assert processed == 1
+    assert captured["content"] == "$play abc"
+    assert captured["private_reply"] is True
+
+
+def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeypatch):
+    manager, _runtime, _controller = make_manager(Path("."))
+    manager.initialize_parser(
+        [
+            {
+                "prefix": "play",
+                "level": 1,
+                "response_template": "{song}",
+                "error_template": "{error}",
+            }
+        ]
+    )
+
+    sent_public = []
+    sent_private = []
+
+    async def _fake_process(_command, _message_info, _command_info):
+        return "ok result @Console"
+
+    monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
+    monkeypatch.setattr(manager, "process_command", _fake_process)
+
+    def _fake_send_screen(message, silent=False):
+        sent_public.append((message, silent))
+
+    def _fake_send_private(message_info, response, silent=False):
+        sent_private.append((message_info.nickname, response, silent))
+        return True
+
+    monkeypatch.setattr(manager, "_send_screen_message", _fake_send_screen)
+    monkeypatch.setattr(manager, "_send_command_output", _fake_send_private)
+
+    processed = asyncio.run(
+        manager.handle_message_commands(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        )
+    )
+
+    assert processed == 1
+    assert len(sent_public) == 1
+    assert sent_public[0][0].endswith("play ... @Console")
+    assert sent_public[0][1] is False
+    assert sent_private == [("Console", "ok result @Console", False)]
+
+
+def test_handle_message_commands_private_reply_error_routes_private(monkeypatch):
+    manager, _runtime, _controller = make_manager(Path("."))
+    manager.initialize_parser(
+        [
+            {
+                "prefix": "play",
+                "level": 1,
+                "response_template": "{song}",
+                "error_template": "{error}",
+            }
+        ]
+    )
+
+    sent_public = []
+    sent_private = []
+
+    async def _fake_process(_command, _message_info, _command_info):
+        return "error boom @Console"
+
+    monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
+    monkeypatch.setattr(manager, "process_command", _fake_process)
+
+    def _fake_send_screen(message, silent=False):
+        sent_public.append((message, silent))
+
+    def _fake_send_private(message_info, response, silent=False):
+        sent_private.append((message_info.nickname, response, silent))
+        return True
+
+    monkeypatch.setattr(manager, "_send_screen_message", _fake_send_screen)
+    monkeypatch.setattr(manager, "_send_command_output", _fake_send_private)
+
+    processed = asyncio.run(
+        manager.handle_message_commands(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        )
+    )
+
+    assert processed == 1
+    assert len(sent_public) == 1
+    assert sent_public[0][0].endswith("play ... @Console")
+    assert sent_public[0][1] is False
+    assert sent_private == [("Console", "error boom @Console", False)]

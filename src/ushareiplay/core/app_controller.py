@@ -410,10 +410,16 @@ class AppController(Singleton):
                 try:
                     while not self.input_queue.empty():
                         item = self.input_queue.get_nowait()
-                        if isinstance(item, tuple):
+                        if isinstance(item, dict):
+                            message = item.get("content", "")
+                            input_source = item.get("source", "console")
+                            nickname = item.get("nickname", "Console")
+                        elif isinstance(item, tuple):
                             message, input_source = item
+                            nickname = "Console"
                         else:
                             message, input_source = item, "console"
+                            nickname = "Console"
                         # Only send non-empty messages
                         if message.strip():
                             if message == '!stop':
@@ -439,12 +445,12 @@ class AppController(Singleton):
                                 # Allow leading whitespace and spaces after colon.
                                 # Keep the queued content in its original (colon-triggered) form.
                                 trimmed = message.lstrip()
-                                if trimmed and trimmed[0] in (':', '：', '/', '／') and trimmed[1:].strip():
+                                if trimmed and trimmed[0] in (':', '：', '/', '／', '$', '＄') and trimmed[1:].strip():
                                     # Create MessageInfo for queue
                                     from ushareiplay.models.message_info import MessageInfo
                                     message_info = MessageInfo(
                                         content=trimmed,
-                                        nickname="Console"
+                                        nickname=nickname
                                     )
 
                                     # Add message to queue

@@ -10,6 +10,7 @@ from ushareiplay.core.command_parser import CommandParser
 
 COMMAND_PREFIXES = (":", "：", "/", "／")
 SILENT_COMMAND_PREFIXES = ("/", "／")
+PRIVATE_REPLY_PREFIXES = ("$", "＄")
 
 
 class CommandManager(Singleton):
@@ -177,6 +178,30 @@ class CommandManager(Singleton):
             return None
         return self.handler.send_message(message)
 
+    def _send_command_output(self, message_info, response: str, silent: bool = False):
+        """Route command execution output to private chat or screen."""
+        if not response:
+            return None
+        if getattr(message_info, "private_reply", False):
+            try:
+                from ushareiplay.managers.user_manager import UserManager
+
+                sent = UserManager.instance().send_private_message_to_user(
+                    message_info.nickname,
+                    response,
+                )
+                if not sent:
+                    self.logger.warning(
+                        f"Private reply dropped for {message_info.nickname}: send failed"
+                    )
+                return sent
+            except Exception:
+                self.logger.error(
+                    f"Private reply failed for {message_info.nickname}: {traceback.format_exc()}"
+                )
+                return False
+        return self._send_screen_message(response, silent=silent)
+
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
@@ -332,8 +357,25 @@ class CommandManager(Singleton):
             s = s[1:]
         return s.lstrip()
 
+    def _extract_private_reply_and_normalize(self, raw: str) -> tuple[bool, str]:
+        """
+        Extract private-reply marker and normalize command candidate.
+
+        Returns:
+            tuple[bool, str]: (private_reply, normalized_command_content)
+        """
+        s = (raw or "").lstrip()
+        if not s:
+            return False, ""
+        private_reply = s.startswith(PRIVATE_REPLY_PREFIXES)
+        if private_reply:
+            s = s[1:]
+        return private_reply, self._normalize_command_candidate(s)
+
     def _is_silent_command_candidate(self, raw: str) -> bool:
         s = (raw or "").lstrip()
+        if s.startswith(PRIVATE_REPLY_PREFIXES):
+            s = s[1:].lstrip()
         return bool(s) and s[0] in SILENT_COMMAND_PREFIXES
 
     async def handle_message_commands(self, messages):
@@ -355,10 +397,15 @@ class CommandManager(Singleton):
                 continue
 
             # Normalize command input (tolerate leading spaces and spaces after colon)
+            extracted_private_reply, content = self._extract_private_reply_and_normalize(
+                message_info.content
+            )
+            message_info.private_reply = bool(
+                getattr(message_info, "private_reply", False)
+            ) or extracted_private_reply
             silent = bool(getattr(message_info, "silent", False)) or self._is_silent_command_candidate(
                 message_info.content
             )
-            content = self._normalize_command_candidate(message_info.content)
             if not content:
                 continue
 
@@ -378,7 +425,7 @@ class CommandManager(Singleton):
                     if command:
                         response = await self.process_command(command, message_info, command_info)
                         if response:
-                            self._send_screen_message(response, silent=silent)
+                            self._send_command_output(message_info, response, silent=silent)
                         success_count += 1
                     else:
                         self.logger.error(f"Unknown command: {cmd}")

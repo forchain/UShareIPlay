@@ -1,12 +1,13 @@
 import re
 import traceback
 from pathlib import Path
+import json
 
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models.message_info import MessageInfo
 
 
-COMMAND_PREFIXES = (":", "：", "/", "／")
+COMMAND_PREFIXES = (":", "：", "/", "／", "$", "＄")
 SILENT_COMMAND_PREFIXES = ("/", "／")
 
 
@@ -74,7 +75,7 @@ class AgentCommandSpool:
             self.command_dir.mkdir(parents=True, exist_ok=True)
             for path in sorted(self.command_dir.glob("*.cmd")):
                 try:
-                    message = path.read_text(encoding="utf-8").rstrip("\r\n")
+                    raw = path.read_text(encoding="utf-8").rstrip("\r\n")
                     path.unlink(missing_ok=True)
                 except Exception:
                     if self.obs:
@@ -84,13 +85,34 @@ class AgentCommandSpool:
                             ctx={"path": str(path), "error": traceback.format_exc()},
                         )
                     continue
-                if message and message.strip():
-                    self.input_queue.put((message, "agent_spool"))
-                    if self.obs:
-                        self.obs.emit(
-                            "agent.inject.received",
-                            ctx={"source": "agent_spool", "content": message},
-                        )
+                if not raw or not raw.strip():
+                    continue
+
+                payload = None
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    parsed = None
+
+                if isinstance(parsed, dict) and parsed.get("content"):
+                    payload = {
+                        "content": str(parsed.get("content")),
+                        "source": "agent_spool",
+                        "nickname": str(parsed.get("nickname") or "Console"),
+                    }
+                else:
+                    payload = {"content": raw, "source": "agent_spool", "nickname": "Console"}
+
+                self.input_queue.put(payload)
+                if self.obs:
+                    self.obs.emit(
+                        "agent.inject.received",
+                        ctx={
+                            "source": "agent_spool",
+                            "content": payload["content"],
+                            "nickname": payload["nickname"],
+                        },
+                    )
         except Exception:
             if self.obs:
                 self.obs.emit(
