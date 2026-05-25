@@ -164,7 +164,7 @@ class UserManager(Singleton):
                 self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")
                 return False
 
-            avatar = self.handler.wait_for_element_clickable_plus(
+            avatar = self.handler.wait_for_element_clickable(
                 'sender_avatar',
                 timeout=5,
             )
@@ -175,7 +175,7 @@ class UserManager(Singleton):
                 self.logger.warning(f"点击头像入口失败: {nickname}")
                 return False
 
-            private_chat_btn = self.handler.wait_for_element_clickable_plus(
+            private_chat_btn = self.handler.wait_for_element_clickable(
                 'private_chat_button',
                 timeout=5,
             )
@@ -184,7 +184,7 @@ class UserManager(Singleton):
                 return False
             private_chat_btn.click()
 
-            input_box = self.handler.wait_for_element_clickable_plus(
+            input_box = self.handler.wait_for_element_clickable(
                 'private_message_input',
                 timeout=5,
             )
@@ -193,7 +193,7 @@ class UserManager(Singleton):
                 return False
             input_box.send_keys(message)
 
-            send_button = self.handler.wait_for_element_clickable_plus(
+            send_button = self.handler.wait_for_element_clickable(
                 'private_message_send',
                 timeout=5,
             )
@@ -210,14 +210,14 @@ class UserManager(Singleton):
     def _return_to_room_after_private_chat(self, nickname: str) -> bool:
         """私聊发送后返回聊天室。"""
         try:
-            _key, entry = self.handler.wait_for_any_element_plus(
+            _key, entry = self.handler.wait_for_any_element(
                 ['private_room_entry', 'floating_entry', 'item_left_back'],
                 timeout=3,
             )
             if entry:
                 entry.click()
                 if _key == 'item_left_back':
-                    titlebar_back = self.handler.wait_for_element_clickable_plus(
+                    titlebar_back = self.handler.wait_for_element_clickable(
                         'titlebar_back_ivbtn',
                         timeout=3,
                     )
