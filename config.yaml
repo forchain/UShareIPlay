@@ -124,7 +124,7 @@ soul:
     title_edit_confirm: "cn.soulapp.android:id/tv_confirm"
     go_back: "cn.soulapp.android:id/iv_back"
     go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
-    user_count: "cn.soulapp.android:id/tvOnlineCount" # 6人在线
+    user_count: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvUserCount" or @resource-id="cn.soulapp.android:id/tvOnlineCount"]' # 6人/1人在线
     seat_desk: "cn.soulapp.android:id/userRoot" #  > left_seat, right_seat
     left_seat: "cn.soulapp.android:id/leftUserView" # > left_state
     left_state: "cn.soulapp.android:id/leftClState" # > left_label
@@ -170,7 +170,7 @@ soul:
     h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
     group_back: "cn.soulapp.android:id/fans_back" # 关闭我的派对群页面
     online_drawer: "cn.soulapp.android:id/touch_close" # 在线用户抽屉
-    share_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉
+    slide_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉/派对
     input_drawer: "cn.soulapp.android:id/clSecondContainer" # 输入框抽屉
     room_id: "cn.soulapp.android:id/tvRoomId"
     room_card: "cn.soulapp.android:id/roomCard"
