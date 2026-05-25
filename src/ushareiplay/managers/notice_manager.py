@@ -3,6 +3,7 @@ import traceback
 from typing import Dict
 from datetime import datetime
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.recovery_manager import RecoveryManager
 
 
 class NoticeManager(Singleton):
@@ -140,10 +141,8 @@ class NoticeManager(Singleton):
                 close_notice.click()
 
             # 关闭party info设置对话框
-            close_button_1 = self.handler.wait_for_element('close_button_1')
-            if close_button_1:
-                self.logger.info("隐藏party info 对话框")
-                close_button_1.click()
+            RecoveryManager.instance().close_drawer('slide_drawer')
+            self.logger.info("隐藏party info 对话框")
 
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}
