@@ -345,7 +345,7 @@ class InfoManager(Singleton):
             else:
                 broadcast_enabled = cfg.get('soul', {}).get('broadcast_playing_info', True)
             if not broadcast_enabled:
-                self.logger.info("Song broadcast is disabled in config, skipping message")
+                self.logger.info(f'Skipped "{info.get("song", "Unknown")}"')
                 return
 
             # 检查是否需要跳过低质量歌曲

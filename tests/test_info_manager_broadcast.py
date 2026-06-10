@@ -35,7 +35,7 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         mock_handler.config = {'broadcast_playing_info': False}
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
-        mock_logger.info.assert_called_with("Song broadcast is disabled in config, skipping message")
+        mock_logger.info.assert_called_with('Skipped "SongA"')
         mock_logger.info.reset_mock()
         
         # Case 3: Broadcast enabled but song skipped (quality check) - should NOT send message
