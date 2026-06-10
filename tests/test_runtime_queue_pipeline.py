@@ -93,6 +93,37 @@ def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_m
     assert [m.silent for m in command_manager.received] == [True]
 
 
+def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+    _run(
+        queue.put_message(
+            MessageInfo(
+                content=":mode random;:playlist Sugar",
+                nickname="Alice",
+                sleep_exempt=True,
+            )
+        )
+    )
+
+    handler = _FakeHandler()
+    command_manager = _FakeCommandManager()
+    drainer = RuntimeQueueDrainer(
+        handler=handler, command_manager=command_manager, logger=handler.logger
+    )
+
+    drained, command_count = _run(drainer.drain())
+
+    assert drained == 1
+    assert command_count == 2
+    assert [m.content for m in command_manager.received] == [":mode random", ":playlist Sugar"]
+    assert [m.sleep_exempt for m in command_manager.received] == [True, True]
+
+
 def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.core.runtime_services import RuntimeQueueDrainer

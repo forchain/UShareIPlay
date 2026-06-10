@@ -45,6 +45,7 @@ class RuntimeQueueDrainer:
                             content=part,
                             nickname=message_info.nickname,
                             silent=part_silent,
+                            sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
                         )
                     )
                 elif not part_silent:
