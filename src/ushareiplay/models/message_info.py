@@ -8,3 +8,4 @@ class MessageInfo:
     nickname: str
     silent: bool = False
     private_reply: bool = False
+    sleep_exempt: bool = False
