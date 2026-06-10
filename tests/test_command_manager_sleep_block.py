@@ -28,9 +28,10 @@ class HandlerStub:
 
 
 class MessageInfoStub:
-    def __init__(self, nickname: str, content: str = ":play"):
+    def __init__(self, nickname: str, content: str = ":play", sleep_exempt: bool = False):
         self.nickname = nickname
         self.content = content
+        self.sleep_exempt = sleep_exempt
 
 
 class DummyCommand:
@@ -132,6 +133,35 @@ async def test_timer_user_is_allowed_even_when_blocked(_patch_user_dao):
 
 
 @pytest.mark.asyncio
+async def test_sleep_exempt_keyword_command_is_allowed_even_when_blocked(_patch_user_dao):
+    cm = _make_command_manager(
+        {
+            "system_users": ["Timer"],
+            "sleep": {
+                "enabled": True,
+                "start": "00:00",
+                "end": "00:00",  # all day
+                "blocked_commands": ["play"],
+            },
+        }
+    )
+    cmd = DummyCommand()
+    msg = MessageInfoStub("alice", ":play demo", sleep_exempt=True)
+    command_info = {
+        "prefix": "play",
+        "parameters": ["demo"],
+        "level": 1,
+        "error_template": "{error}",
+        "response_template": "{message}",
+    }
+
+    res = await cm.process_command(cmd, msg, command_info)
+
+    assert cmd.called is True
+    assert "OK @alice" == res
+
+
+@pytest.mark.asyncio
 async def test_normal_user_prefix_not_blocked_is_allowed(_patch_user_dao):
     cm = _make_command_manager(
         {
@@ -226,4 +256,3 @@ async def test_outside_window_does_not_intercept(_patch_user_dao, monkeypatch):
 
     assert cmd.called is True
     assert "OK @alice" == res
-
