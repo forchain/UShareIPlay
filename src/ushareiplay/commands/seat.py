@@ -45,8 +45,22 @@ class SeatCommand(BaseCommand):
                 # Accompany a specific user (sit next to them)
                 target_username = parameters[1] if len(parameters) > 1 else message_info.nickname
                 return await seat_manager.seating.accompany_user(target_username, sender_username=message_info.nickname)
+            elif command == '4':
+                if len(parameters) == 1:
+                    # Remove owner from their current seat
+                    return await seat_manager.seating.seat_off_owner()
+                if len(parameters) == 2:
+                    # Remove whoever is sitting at the specified seat
+                    try:
+                        seat_number = int(parameters[1])
+                        if seat_number < 1 or seat_number > 12:
+                            return {'error': 'Invalid seat number. Must be between 1 and 12'}
+                        return await seat_manager.seating.seat_off_specific_seat(seat_number)
+                    except ValueError:
+                        return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
+                return {'error': 'Invalid command. Use: :seat 4 [seat_number]'}
             else:
-                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]]'}
+                return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]|4 [seat_number]]'}
 
         except Exception as e:
             self.handler.log_error(f"Error processing seat command: {traceback.format_exc()}")

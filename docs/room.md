@@ -38,7 +38,7 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 | `title` | 3 | `<text>` | Set room title |
 | `topic` | 1 | `<text>` | Set study-room topic |
 | `notice` | 1 | `<message>` | Set room announcement |
-| `seat` | 1 | `1 <n> / 2 <n>` | Reserve (1) or immediately take (2) seat number n |
+| `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove owner/specific seat occupant (4) |
 | `mic` | 2 | `0/1` | Turn microphone off (0) or on (1) |
 | `pack` | 1 | — | Open luck pack from backpack |
 | `end` | 4 | — | Close the party (requires owner's friend present) |

@@ -261,6 +261,71 @@ class SeatingManager(SeatManagerBase):
             self.handler.log_error(f"Error accompanying user: {traceback.format_exc()}")
             return {'error': f'Failed to accompany user {target_username}: {str(e)}'}
 
+    async def seat_off_owner(self) -> dict:
+        """Remove the owner from their current seat."""
+        if self.handler is None:
+            return {'error': 'Handler not initialized'}
+
+        try:
+            await self.seat_ui.expand_seats()
+            await asyncio.sleep(0.5)
+
+            seat_desks = self.handler.find_elements('seat_desk')
+            if not seat_desks:
+                self.handler.logger.error("Failed to find seat desks")
+                return {'error': 'Failed to find seat desks'}
+
+            for desk_index in range(len(seat_desks)):
+                self._ensure_row_visible(desk_index, seat_desks)
+                desk = seat_desks[desk_index]
+                desk_info = self._collect_desk_info(desk)
+
+                for seat in (desk_info['left'], desk_info['right']):
+                    if seat.get('is_owner') and seat.get('occupied'):
+                        seat_number = desk_index * 2 + (1 if seat['side'] == 'left' else 2)
+                        return self._seat_off(seat_number, seat)
+
+            self.handler.logger.warning("Owner is not on any seat")
+            return {'error': 'Owner is not on any seat'}
+
+        except Exception as e:
+            self.handler.log_error(f"Error removing owner from seat: {traceback.format_exc()}")
+            return {'error': f'Failed to remove owner from seat: {str(e)}'}
+
+    async def seat_off_specific_seat(self, seat_number: int) -> dict:
+        """Remove the occupant from a specific seat position (1-12)."""
+        if self.handler is None:
+            return {'error': 'Handler not initialized'}
+
+        try:
+            desk_index = (seat_number - 1) // 2
+            side = 'left' if seat_number % 2 == 1 else 'right'
+
+            await self.seat_ui.expand_seats()
+            await asyncio.sleep(0.5)
+
+            seat_desks = self.handler.find_elements('seat_desk')
+            if not seat_desks:
+                self.handler.logger.error("Failed to find seat desks")
+                return {'error': 'Failed to find seat desks'}
+
+            if desk_index >= len(seat_desks):
+                return {'error': f'Desk {desk_index + 1} does not exist'}
+
+            self._ensure_row_visible(desk_index, seat_desks)
+            desk = seat_desks[desk_index]
+            desk_info = self._collect_desk_info(desk)
+            target_seat = desk_info[side]
+
+            if not target_seat.get('occupied'):
+                return {'error': f'Seat {seat_number} is empty'}
+
+            return self._seat_off(seat_number, target_seat)
+
+        except Exception as e:
+            self.handler.log_error(f"Error removing seat occupant: {traceback.format_exc()}")
+            return {'error': f'Failed to remove occupant from seat {seat_number}: {str(e)}'}
+
     def _get_owner_position(self, seat_desks):
         for index, desk in enumerate(seat_desks):
             desk_info = self._collect_desk_info(desk)
@@ -397,6 +462,33 @@ class SeatingManager(SeatManagerBase):
         except Exception:
             self.handler.log_error(f"Error while clicking seat: {traceback.format_exc()}")
             return {'error': 'Failed to click seat'}
+
+    def _seat_off(self, seat_number, seat_info):
+        if self.handler is None or not seat_info or not seat_info.get('element'):
+            return {'error': 'Seat element not available'}
+
+        try:
+            seat_info['element'].click()
+            self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
+
+            seat_off = self.handler.wait_for_element_clickable('seat_off')
+            if not seat_off:
+                self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
+                return {'error': f'Unable to manage seat {seat_number}'}
+
+            found_key, souler_name = self.handler.wait_for_any_element(['souler_name', 'user_name'])
+            if not souler_name:
+                self.handler.logger.error(f"No souler name found for seat {seat_number}")
+                return {'error': f'Failed to verify occupant on seat {seat_number}'}
+
+            souler_name_text = souler_name.text
+            seat_off.click()
+            self.handler.logger.info(f"Successfully removed {souler_name_text} from seat {seat_number}")
+            return {'success': f'Successfully removed {souler_name_text} from seat {seat_number}'}
+
+        except Exception:
+            self.handler.log_error(f"Error while removing seat occupant: {traceback.format_exc()}")
+            return {'error': 'Failed to remove seat occupant'}
 
     def _confirm_seat(self) -> dict:
         """Confirm seat selection"""
