@@ -66,6 +66,11 @@ class MessageContentEvent(BaseEvent):
             message_manager.latest_chats.clear()
             recent_len = len(message_manager.recent_chats)
             content_len = len(content_list)
+            
+            if content_len == 0:
+                await self._process_update_logic()
+                return False
+
             missed = False
             if recent_len == 0:
                 for content in content_list:

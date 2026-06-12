@@ -63,6 +63,7 @@ class SoulHandler(AppHandler, Singleton):
             send_button = self.wait_for_element_clickable('button_send')
             if not send_button:
                 self.logger.error(f'cannot find send button')
+                self.press_back()
                 return {
                     'error': 'Failed to find send button',
                 }
@@ -70,8 +71,7 @@ class SoulHandler(AppHandler, Singleton):
             send_button.click()
             # self.logger.info("Clicked send button")
 
-        self.click_element_at(input_box, 0.5, -1)
-        # self.logger.info("Hide input dialog")
+        self.press_back()
 
     def grab_mic_and_confirm(self):
         """Wait for the grab mic button and confirm the action"""

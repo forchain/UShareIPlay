@@ -500,3 +500,63 @@ def test_message_content_event_dispatches_dollar_command(monkeypatch):
         assert fake_manager.processed_new is True
     finally:
         MessageManager.instance = original_message_manager_instance
+
+
+def test_message_content_event_handles_empty_content_list(monkeypatch):
+    from ushareiplay.events import message_content as message_content_module
+    from ushareiplay.events.message_content import MessageContentEvent
+    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.managers.info_manager import InfoManager
+
+    class _FakeMessageManager:
+        def __init__(self):
+            self.recent_chats = deque(maxlen=3)
+            self.latest_chats = deque(maxlen=3)
+            self.processed_new = False
+            self.processed_missed = False
+
+        def is_user_return_message(self, _content):
+            return False, ""
+
+        async def process_new_messages(self):
+            self.processed_new = True
+
+        async def process_missed_messages(self):
+            self.processed_missed = True
+
+    class _FakeChatLogger:
+        def info(self, _message):
+            return None
+
+    update_logic_called = False
+    class _FakeCmdMgr:
+        def update_commands(self):
+            nonlocal update_logic_called
+            update_logic_called = True
+            return None
+
+    class _FakeInfoMgr:
+        def update_playback_info_cache(self):
+            return None
+
+    fake_manager = _FakeMessageManager()
+    monkeypatch.setattr(MessageManager, "instance", classmethod(lambda cls: fake_manager))
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: _FakeCmdMgr()))
+    monkeypatch.setattr(InfoManager, "instance", classmethod(lambda cls: _FakeInfoMgr()))
+    monkeypatch.setattr(
+        message_content_module,
+        "get_chat_logger",
+        lambda _config=None: _FakeChatLogger(),
+        raising=False,
+    )
+
+    event = MessageContentEvent(_FakeHandler())
+
+    handled = _run(event.handle("message_content", [_FakeWrapper(None)]))
+
+    assert handled is False
+    assert fake_manager.processed_new is False
+    assert fake_manager.processed_missed is False
+    assert update_logic_called is True
+
