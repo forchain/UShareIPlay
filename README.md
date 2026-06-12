@@ -54,7 +54,7 @@ Commands are sent in Soul App room chat as `:prefix [params]`. Access level requ
 | `:title` | 3 | `<text>` | Set room title |
 | `:topic` | 1 | `<text>` | Set study-room topic |
 | `:notice` | 1 | `<message>` | Set announcement |
-| `:seat` | 1 | `1 <n> / 2 <n>` | Reserve (1) or take (2) seat n |
+| `:seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), take (2), or remove owner/specific seat occupant (4) |
 | `:mic` | 2 | `0/1` | Microphone off / on |
 | `:pack` | 1 | — | Open luck pack |
 | `:end` | 4 | — | Close party |
