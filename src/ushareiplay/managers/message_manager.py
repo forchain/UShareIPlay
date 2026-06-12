@@ -135,8 +135,20 @@ class MessageManager(Singleton):
         nickname_map = {}
 
         missed_chats = set[str]()
+        last_chat_in_list = last_chat in attribute_values
+        found_last_chat = not last_chat_in_list
+        if not last_chat_in_list:
+            self.handler.logger.warning(
+                f"last_chat '{last_chat}' not found in scrollback attribute values. Processing all scrolled elements."
+            )
+
         for chat in attribute_values:
-            if last_chat == chat:
+            if not found_last_chat:
+                if chat == last_chat:
+                    found_last_chat = True
+                continue
+
+            if chat == last_chat:
                 continue
 
             is_missed = False

@@ -369,6 +369,57 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
     assert "$play later" in command_set
     assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
 
+def test_process_missed_messages_ignores_before_last_chat():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.message_manager import MessageManager
+
+    class _FakeSoulHandler:
+        def __init__(self):
+            self.logger = logging.getLogger("test_message_manager_missed")
+            self.config = {"logging": {"directory": "logs"}}
+
+        def switch_to_app(self):
+            return True
+
+        def scroll_container_until_element(self, *_args, **_kwargs):
+            return (
+                "message_content",
+                object(),
+                [
+                    "souler[Alice]说：/topic old_topic",    # sent before last_chat
+                    "souler[Anchor]说：:noop",              # last_chat
+                    "souler[Bob]说：$play later",           # sent after last_chat
+                    "souler[Bob]说：:timer list",           # sent after last_chat
+                ],
+            )
+
+        def send_message(self, _message):
+            return None
+
+    manager = object.__new__(MessageManager)
+    manager._handler = _FakeSoulHandler()
+    manager._chat_logger = logging.getLogger("test_chat_logger_missed")
+    manager._recovery_manager = None
+    manager.recent_chats = deque(maxlen=3)
+    manager.latest_chats = deque(maxlen=3)
+    manager.recent_chats.clear()
+    manager.latest_chats.clear()
+    manager.recent_chats.append("souler[Anchor]说：:noop")
+
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+
+    command_set = _run(manager.process_missed_messages())
+
+    queued_messages = list(_run(queue.get_all_messages()).values())
+
+    assert command_set is not None
+    assert "$play later" in command_set
+    assert ":timer list" in command_set
+    assert "/topic old_topic" not in command_set
+    assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
+    assert not any(m.content == "/topic old_topic" for m in queued_messages)
+
 
 def test_message_content_update_logic_does_not_drain_runtime_queue():
     from ushareiplay.core.message_queue import MessageQueue
@@ -449,3 +500,63 @@ def test_message_content_event_dispatches_dollar_command(monkeypatch):
         assert fake_manager.processed_new is True
     finally:
         MessageManager.instance = original_message_manager_instance
+
+
+def test_message_content_event_handles_empty_content_list(monkeypatch):
+    from ushareiplay.events import message_content as message_content_module
+    from ushareiplay.events.message_content import MessageContentEvent
+    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.managers.info_manager import InfoManager
+
+    class _FakeMessageManager:
+        def __init__(self):
+            self.recent_chats = deque(maxlen=3)
+            self.latest_chats = deque(maxlen=3)
+            self.processed_new = False
+            self.processed_missed = False
+
+        def is_user_return_message(self, _content):
+            return False, ""
+
+        async def process_new_messages(self):
+            self.processed_new = True
+
+        async def process_missed_messages(self):
+            self.processed_missed = True
+
+    class _FakeChatLogger:
+        def info(self, _message):
+            return None
+
+    update_logic_called = False
+    class _FakeCmdMgr:
+        def update_commands(self):
+            nonlocal update_logic_called
+            update_logic_called = True
+            return None
+
+    class _FakeInfoMgr:
+        def update_playback_info_cache(self):
+            return None
+
+    fake_manager = _FakeMessageManager()
+    monkeypatch.setattr(MessageManager, "instance", classmethod(lambda cls: fake_manager))
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: _FakeCmdMgr()))
+    monkeypatch.setattr(InfoManager, "instance", classmethod(lambda cls: _FakeInfoMgr()))
+    monkeypatch.setattr(
+        message_content_module,
+        "get_chat_logger",
+        lambda _config=None: _FakeChatLogger(),
+        raising=False,
+    )
+
+    event = MessageContentEvent(_FakeHandler())
+
+    handled = _run(event.handle("message_content", [_FakeWrapper(None)]))
+
+    assert handled is False
+    assert fake_manager.processed_new is False
+    assert fake_manager.processed_missed is False
+    assert update_logic_called is True
+
