@@ -369,6 +369,57 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
     assert "$play later" in command_set
     assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
 
+def test_process_missed_messages_ignores_before_last_chat():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.message_manager import MessageManager
+
+    class _FakeSoulHandler:
+        def __init__(self):
+            self.logger = logging.getLogger("test_message_manager_missed")
+            self.config = {"logging": {"directory": "logs"}}
+
+        def switch_to_app(self):
+            return True
+
+        def scroll_container_until_element(self, *_args, **_kwargs):
+            return (
+                "message_content",
+                object(),
+                [
+                    "souler[Alice]说：/topic old_topic",    # sent before last_chat
+                    "souler[Anchor]说：:noop",              # last_chat
+                    "souler[Bob]说：$play later",           # sent after last_chat
+                    "souler[Bob]说：:timer list",           # sent after last_chat
+                ],
+            )
+
+        def send_message(self, _message):
+            return None
+
+    manager = object.__new__(MessageManager)
+    manager._handler = _FakeSoulHandler()
+    manager._chat_logger = logging.getLogger("test_chat_logger_missed")
+    manager._recovery_manager = None
+    manager.recent_chats = deque(maxlen=3)
+    manager.latest_chats = deque(maxlen=3)
+    manager.recent_chats.clear()
+    manager.latest_chats.clear()
+    manager.recent_chats.append("souler[Anchor]说：:noop")
+
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+
+    command_set = _run(manager.process_missed_messages())
+
+    queued_messages = list(_run(queue.get_all_messages()).values())
+
+    assert command_set is not None
+    assert "$play later" in command_set
+    assert ":timer list" in command_set
+    assert "/topic old_topic" not in command_set
+    assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
+    assert not any(m.content == "/topic old_topic" for m in queued_messages)
+
 
 def test_message_content_update_logic_does_not_drain_runtime_queue():
     from ushareiplay.core.message_queue import MessageQueue
