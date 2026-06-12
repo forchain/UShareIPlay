@@ -223,65 +223,74 @@ class GestureHandler:
             stable_rounds = 0
             max_stable_rounds = 2  # 连续多次无变化则认为到达边界
 
-            # 收集所有找到的元素的 attribute 值列表
-            attribute_values_list = []
+            # 收集每个屏幕视角下找到的元素属性值列表
+            views_list = []
 
             # 查找目标元素的辅助函数
             def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
                 """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
                 found = self.find_child_element(container, element_key)
-                if found:
-                    if attribute_name and attribute_value:
-                        elements = self.find_child_elements(container, element_key)
-                        for element in elements:
-                            # 收集所有找到的元素的 attribute 值（不管是否匹配）
-                            attr_list = attribute_name.split('|')
-                            collected_value = None
-                            for attr in attr_list:
-                                value = self.try_get_attribute(element, attr)
-                                if value is not None and value != 'null':
-                                    collected_value = value
-                                    break
-                            if collected_value is not None:
-                                attribute_values_list.append(collected_value)
+                if not found:
+                    return None, None
 
-                            # 检查是否匹配目标值
-                            any_match = False
-                            for attr in attr_list:
-                                value = self.try_get_attribute(element, attr)
-                                if value == attribute_value:
-                                    any_match = True
-                                    break
-                            if any_match:
-                                return element_key, element
+                # 收集当前屏幕可见的所有目标元素的属性值
+                current_view_values = []
+                elements = self.find_child_elements(container, element_key)
+                for element in elements:
+                    if attribute_name:
+                        attr_list = attribute_name.split('|')
+                        for attr in attr_list:
+                            value = self.try_get_attribute(element, attr)
+                            if value is not None and value != 'null':
+                                current_view_values.append(value)
+                                break
                     else:
-                        # 如果没有指定属性匹配，也收集所有找到的元素
-                        elements = self.find_child_elements(container, element_key)
-                        for element in elements:
-                            if attribute_name:
-                                attr_list = attribute_name.split('|')
-                                for attr in attr_list:
-                                    value = self.try_get_attribute(element, attr)
-                                    if value is not None and value != 'null':
-                                        attribute_values_list.append(value)
-                                        break
-                            else:
-                                # 如果没有指定属性名，优先使用 content-desc，如果没有则使用 text
-                                content_desc = self.try_get_attribute(element, "content-desc")
-                                if content_desc is not None and content_desc != 'null':
-                                    attribute_values_list.append(content_desc)
-                                else:
-                                    text = self.try_get_attribute(element, "text")
-                                    if text is not None and text != 'null':
-                                        attribute_values_list.append(text)
-                        return element_key, found
-                return None, None
+                        content_desc = self.try_get_attribute(element, "content-desc")
+                        if content_desc is not None and content_desc != 'null':
+                            current_view_values.append(content_desc)
+                        else:
+                            text = self.try_get_attribute(element, "text")
+                            if text is not None and text != 'null':
+                                current_view_values.append(text)
+
+                if current_view_values:
+                    views_list.append(current_view_values)
+
+                # 检查是否有匹配的目标元素
+                if attribute_name and attribute_value:
+                    attr_list = attribute_name.split('|')
+                    for element in elements:
+                        any_match = False
+                        for attr in attr_list:
+                            value = self.try_get_attribute(element, attr)
+                            if value == attribute_value:
+                                any_match = True
+                                break
+                        if any_match:
+                            return element_key, element
+                    return None, None
+                else:
+                    return element_key, found
+
+            def get_chronological_values() -> list[str]:
+                chronological_list = []
+                seen = set()
+                # direction == "down" means we scroll up in history (newest views first, oldest views last).
+                # So we iterate in reverse order of views_list to process oldest views first.
+                # Within each view, we iterate in original order (top to bottom is oldest to newest).
+                ordered_views = reversed(views_list) if direction in ("down", "right") else views_list
+                for view in ordered_views:
+                    for val in view:
+                        if val not in seen:
+                            seen.add(val)
+                            chronological_list.append(val)
+                return chronological_list
 
             for _ in range(max_swipes):
                 # 尝试在容器内查找目标
                 key, element = find_target_element()
                 if element:
-                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
+                    return key, element, get_chronological_values()
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
@@ -290,12 +299,12 @@ class GestureHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 滑动失败，终止:{element_key}"
                     )
-                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
+                    return None, None, get_chronological_values()
 
                 # 滑动后再试一次（元素可能已进入可视区）
                 key, element = find_target_element()
                 if element:
-                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
+                    return key, element, get_chronological_values()
 
                 # 判断是否到底/到边（页面无变化）
                 cur_hash = snapshot()
@@ -309,14 +318,14 @@ class GestureHandler:
                     self.logger.warning(
                         f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
                     )
-                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
+                    return None, None, get_chronological_values()
 
             self.logger.warning(
                 f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
             )
-            return None, None, self._reversed_if_needed(attribute_values_list, direction)
+            return None, None, get_chronological_values()
         except Exception:
             self.logger.error(
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
-            return None, None, self._reversed_if_needed(attribute_values_list, direction)
+            return None, None, []
