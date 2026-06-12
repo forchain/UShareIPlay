@@ -336,17 +336,6 @@ class InfoManager(Singleton):
         # 只有在歌曲信息发生变化时才处理
         # 检查歌曲信息是否有效
         if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
-            # 检查是否开启了广播
-            # 运行时 self.handler.config 是 soul 子配置（不是全量 config），
-            # 兼容两种结构，避免读不到时错误回退为 True。
-            cfg = self.handler.config if isinstance(self.handler.config, dict) else {}
-            if 'broadcast_playing_info' in cfg:
-                broadcast_enabled = cfg.get('broadcast_playing_info', True)
-            else:
-                broadcast_enabled = cfg.get('soul', {}).get('broadcast_playing_info', True)
-            if not broadcast_enabled:
-                self.logger.info(f'Skipped "{info.get("song", "Unknown")}"')
-                return
 
             # 检查是否需要跳过低质量歌曲
             from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -355,6 +344,20 @@ class InfoManager(Singleton):
 
             # 只有在没有跳过歌曲的情况下才发送播放消息
             if not song_skipped:
+                # 检查是否开启了广播
+                # 运行时 self.handler.config 是 soul 子配置（不是全量 config），
+                # 兼容两种结构，避免读不到时错误回退为 True。
+                cfg = self.handler.config if isinstance(self.handler.config, dict) else {}
+                if 'broadcast_playing_info' in cfg:
+                    broadcast_enabled = cfg.get('broadcast_playing_info', True)
+                else:
+                    broadcast_enabled = cfg.get('soul', {}).get('broadcast_playing_info', True)
+                if not broadcast_enabled:
+                    self.logger.info(
+                        f'Hidden "{info.get("song", "Unknown")} - {info.get("singer", "Unknown")} • {info.get("album", "Unknown")}"'
+                    )
+                    return
+
                 self.handler.send_message(
                     f"{info['song']} - {info['singer']} • {info['album']}")
         else:
