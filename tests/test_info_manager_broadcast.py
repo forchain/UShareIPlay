@@ -30,12 +30,16 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         info_manager.send_playing_message()
         mock_handler.send_message.assert_called_once_with("SongA - SingerA • AlbumA")
         mock_handler.send_message.reset_mock()
+        mock_music_handler.handle_song_quality_check.assert_called_once_with(info)
+        mock_music_handler.handle_song_quality_check.reset_mock()
         
         # Case 2: Broadcast disabled (False) - should NOT send message
         mock_handler.config = {'broadcast_playing_info': False}
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
-        mock_logger.info.assert_called_with('Skipped "SongA"')
+        mock_music_handler.handle_song_quality_check.assert_called_once_with(info)
+        mock_music_handler.handle_song_quality_check.reset_mock()
+        mock_logger.info.assert_called_with('Hidden "SongA - SingerA • AlbumA"')
         mock_logger.info.reset_mock()
         
         # Case 3: Broadcast enabled but song skipped (quality check) - should NOT send message
@@ -43,6 +47,15 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         mock_music_handler.handle_song_quality_check.return_value = True
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
+
+        # Case 4: Broadcast disabled (False) and song skipped (quality check) - should NOT send message and should NOT log broadcast disabled message
+        mock_handler.config = {'broadcast_playing_info': False}
+        mock_music_handler.handle_song_quality_check.return_value = True
+        mock_music_handler.handle_song_quality_check.reset_mock()
+        info_manager.send_playing_message()
+        mock_handler.send_message.assert_not_called()
+        mock_music_handler.handle_song_quality_check.assert_called_once_with(info)
+        mock_logger.info.assert_not_called()
 
 def test_send_playing_message_default_behavior(info_manager):
     # Mock handler
