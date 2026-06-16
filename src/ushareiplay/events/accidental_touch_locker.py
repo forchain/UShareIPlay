@@ -22,7 +22,7 @@ class AccidentalTouchLockerEvent(BaseEvent):
         for attempt in range(1, max_attempts + 1):
             try:
                 element = self.handler.wait_for_element(
-                    AppiumBy.ID, LOCKER_RESOURCE_ID, timeout=3
+                    "accidental_touch_locker", timeout=3
                 )
                 if not element:
                     self.logger.warning(
