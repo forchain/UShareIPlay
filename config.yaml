@@ -75,7 +75,7 @@ soul:
     grab_mic: "cn.soulapp.android:id/ivUpSeat"
     confirm_mic: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认']"
     confirm_close: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确定']"
-    toggle_mic: "cn.soulapp.android:id/micBtn" # 开麦按钮/闭麦按钮
+    toggle_mic: "cn.soulapp.android:id/ivMicButton" # 开麦按钮/闭麦按钮
     square_tab: "cn.soulapp.android:id/main_tab_square"
     party_tab: "//android.widget.LinearLayout[@content-desc='派对']"
     no_party_from_home: "cn.soulapp.android:id/tvEmptyContent"
