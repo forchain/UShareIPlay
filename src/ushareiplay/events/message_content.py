@@ -122,10 +122,19 @@ class MessageContentEvent(BaseEvent):
                     keyword_record = await keyword_manager.find_keyword(keyword, username)
                     if keyword_record:
                         # 找到匹配的关键字，执行（command 中可用 {user_name}、{params} 占位符）
-                        await keyword_manager.execute_keyword(keyword_record, username, params=params)
+                        await keyword_manager.execute_keyword(
+                            keyword_record,
+                            username,
+                            params=params,
+                            sleep_exempt=True,
+                        )
                     else:
                         # 没有匹配，执行默认关键字
-                        await keyword_manager.execute_default_keyword(username, params=params)
+                        await keyword_manager.execute_default_keyword(
+                            username,
+                            params=params,
+                            sleep_exempt=True,
+                        )
 
                     chat_logger.critical(content)
                     continue  # 跳过后续的命令检测
