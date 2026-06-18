@@ -161,9 +161,18 @@ class MessageManager(Singleton):
 
                 keyword_record = await keyword_manager.find_keyword(keyword, username)
                 if keyword_record:
-                    await keyword_manager.execute_keyword(keyword_record, username, params=params)
+                    await keyword_manager.execute_keyword(
+                        keyword_record,
+                        username,
+                        params=params,
+                        sleep_exempt=True,
+                    )
                 else:
-                    await keyword_manager.execute_default_keyword(username, params=params)
+                    await keyword_manager.execute_default_keyword(
+                        username,
+                        params=params,
+                        sleep_exempt=True,
+                    )
 
                 continue
 

@@ -358,13 +358,20 @@ class KeywordManager(Singleton):
             self.logger.error(f"Error revoking keyword access: {traceback.format_exc()}")
             return {'error': '取消授权失败'}
 
-    async def execute_keyword(self, keyword_record: Keyword, username: str, params: str = ""):
+    async def execute_keyword(
+        self,
+        keyword_record: Keyword,
+        username: str,
+        params: str = "",
+        sleep_exempt: bool = False,
+    ):
         """执行关键字
         
         Args:
             keyword_record: 关键字记录
             username: 触发用户名
             params: 关键词后的参数字符串（空格后的整段），command 中可用 {params} 引用
+            sleep_exempt: 是否允许绕过睡眠保护，仅手动 @ 触发链路应设为 True
         """
         try:
             # 替换占位符：{user_name} 用户名，{params} 关键词后的参数
@@ -379,7 +386,7 @@ class KeywordManager(Singleton):
             message_info = MessageInfo(
                 content=command,  # 保留完整格式（包括冒号和分号）
                 nickname=username,
-                sleep_exempt=True,
+                sleep_exempt=sleep_exempt,
             )
             
             await message_queue.put_message(message_info)
@@ -388,12 +395,18 @@ class KeywordManager(Singleton):
         except Exception:
             self.logger.error(f"Error executing keyword: {traceback.format_exc()}")
 
-    async def execute_default_keyword(self, username: str, params: str = ""):
+    async def execute_default_keyword(
+        self,
+        username: str,
+        params: str = "",
+        sleep_exempt: bool = False,
+    ):
         """执行默认关键字
         
         Args:
             username: 触发用户名
             params: 关键词后的参数字符串，command 中可用 {params} 引用
+            sleep_exempt: 是否允许绕过睡眠保护，仅手动 @ 触发链路应设为 True
         """
         try:
             if not self._default_keyword_command:
@@ -413,7 +426,7 @@ class KeywordManager(Singleton):
             message_info = MessageInfo(
                 content=command,
                 nickname=username,
-                sleep_exempt=True,
+                sleep_exempt=sleep_exempt,
             )
             
             await message_queue.put_message(message_info)
