@@ -1,5 +1,6 @@
 import datetime as dt
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -133,7 +134,7 @@ async def test_timer_user_is_allowed_even_when_blocked(_patch_user_dao):
 
 
 @pytest.mark.asyncio
-async def test_sleep_exempt_keyword_command_is_allowed_even_when_blocked(_patch_user_dao):
+async def test_explicit_sleep_exempt_command_is_allowed_even_when_blocked(_patch_user_dao):
     cm = _make_command_manager(
         {
             "system_users": ["Timer"],
@@ -159,6 +160,33 @@ async def test_sleep_exempt_keyword_command_is_allowed_even_when_blocked(_patch_
 
     assert cmd.called is True
     assert "OK @alice" == res
+
+
+@pytest.mark.asyncio
+async def test_keyword_expanded_command_is_not_sleep_exempt_by_default():
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+
+    queue = MessageQueue.instance()
+    await queue.clear_queue()
+
+    km = KeywordManager.instance()
+    km._handler = HandlerStub({})
+    await km.execute_keyword(
+        SimpleNamespace(
+            keyword="520",
+            command=":play demo",
+            mode="sequence",
+        ),
+        "alice",
+    )
+
+    queued = await queue.get_all_messages()
+    assert len(queued) == 1
+    message = next(iter(queued.values()))
+    assert message.content == ":play demo"
+    assert message.nickname == "alice"
+    assert message.sleep_exempt is False
 
 
 @pytest.mark.asyncio
