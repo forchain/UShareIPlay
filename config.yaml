@@ -368,6 +368,7 @@ commands:
     level: 1
     response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
+
   - prefix: "notice"
     level: 1
     response_template: "Change notice to {notice}"
@@ -438,6 +439,11 @@ commands:
     level: 4
     response_template: "{message}"
     error_template: "{error}"
+
+old_song_filter:
+  enabled: true
+  cutoff_date: "2000-01-01"
+  radio_max_refreshes: 5
 
 sleep:
   enabled: true

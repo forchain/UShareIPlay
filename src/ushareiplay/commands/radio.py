@@ -1,7 +1,10 @@
 from typing import Optional
 
+from selenium.common import StaleElementReferenceException
+
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.title_manager import TitleManager
@@ -14,6 +17,7 @@ class RadioCommand(BaseCommand):
         self.soul_handler: SoulHandler = controller.soul_handler
         self.title_manager = TitleManager.instance()
         self.topic_manager = TopicManager.instance()
+        self.song_release_lookup = QQMusicSongReleaseLookup()
 
         # 延迟初始化 InfoManager
         self._info_manager = None
@@ -93,6 +97,70 @@ class RadioCommand(BaseCommand):
             cleaned_topic = raw_topic.strip()
             return cleaned_topic or None
         return parts[0]
+
+    def _old_song_filter_config(self) -> dict:
+        return (self.controller.config or {}).get("old_song_filter", {})
+
+    def _song_release_date(self, song_text: Optional[str]):
+        if not song_text:
+            return None
+        try:
+            return parse_release_date(self.song_release_lookup.get_release_date(song_text))
+        except Exception as exc:
+            self.music_handler.logger.warning(
+                f"Failed to query song release date for {song_text}: {exc}"
+            )
+            return None
+
+    def _is_old_song(self, song_text: Optional[str]) -> bool:
+        config = self._old_song_filter_config()
+        if not config.get("enabled", True):
+            return False
+
+        cutoff = parse_release_date(config.get("cutoff_date") or "2000-01-01")
+        if not cutoff or not song_text:
+            return False
+
+        release_date = self._song_release_date(song_text)
+        if not release_date:
+            self.music_handler.logger.info(
+                f"Release date unknown for {song_text}, accepting recommendation"
+            )
+            return False
+
+        is_old = release_date < cutoff
+        if is_old:
+            self.music_handler.logger.info(
+                f"First radio song is old ({release_date} < {cutoff}): {song_text}"
+            )
+        return is_old
+
+    def _refresh_collection_radio(self):
+        home_nav = self.music_handler.wait_for_element_clickable("home_nav")
+        if not home_nav:
+            return self._report_error("Failed to find home navigation while refreshing radio")
+        home_nav.click()
+
+        play_button = self.music_handler.wait_for_element_clickable("play_collection")
+        if not play_button:
+            return self._report_error("Failed to find collection play button after refresh")
+        collection_topic = self.music_handler.wait_for_element("collection_topic")
+        if not collection_topic:
+            return self._report_error("Failed to locate collection radio topic after refresh")
+        return play_button, collection_topic
+
+    def _read_collection_topic_text(self, collection_topic, max_attempts: int = 3) -> Optional[str]:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self._extract_primary_topic(collection_topic.text)
+            except StaleElementReferenceException:
+                self.music_handler.logger.warning(
+                    f"Radio collection topic element stale, refinding topic ({attempt}/{max_attempts})"
+                )
+                collection_topic = self.music_handler.wait_for_element("collection_topic")
+                if not collection_topic:
+                    return None
+        return None
 
     def _handle_guess_like(self, message_info):
         error = self._navigate_home()
@@ -194,12 +262,41 @@ class RadioCommand(BaseCommand):
         if splitter in collection_title_text:
             collection_title_text = collection_title_text.split(splitter)[0]
 
-        collection_topic_text = self._extract_primary_topic(collection_topic.text)
+        filter_config = self._old_song_filter_config()
+        max_refreshes = int(filter_config.get("radio_max_refreshes", 5))
+        refresh_count = 0
+        while True:
+            collection_topic_text = self._read_collection_topic_text(collection_topic)
+            if not collection_topic_text:
+                return self._report_error("Failed to read collection radio topic")
+            release_date = self._song_release_date(collection_topic_text)
+            self.music_handler.logger.info(
+                f"Radio recommendation candidate: {collection_topic_text}, release_date={release_date or 'unknown'}"
+            )
+            cutoff = parse_release_date(filter_config.get("cutoff_date") or "2000-01-01")
+            is_old = bool(release_date and cutoff and release_date < cutoff)
+            if not is_old:
+                break
+            if refresh_count >= max_refreshes:
+                self.music_handler.logger.warning(
+                    f"Radio recommendation still old after {refresh_count} refreshes, accepting: {collection_topic_text}"
+                )
+                break
+            refresh_count += 1
+            self.music_handler.logger.info(
+                f"Radio recommendation is old ({release_date} < {cutoff}): {collection_topic_text}; refreshing recommendation ({refresh_count}/{max_refreshes})"
+            )
+            refresh_result = self._refresh_collection_radio()
+            if isinstance(refresh_result, dict) and "error" in refresh_result:
+                return refresh_result
+            play_button, collection_topic = refresh_result
+
         play_button.click()
         playlist_info = self.music_handler.get_playlist_info()
-        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
+        playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
             return self._report_error(error)
+
         error = self._switch_back_to_soul()
         if error:
             return error
