@@ -8,6 +8,7 @@ from selenium.common import StaleElementReferenceException
 
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
@@ -20,6 +21,7 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
         self.play_mode_key = 'unknown'
+        self.song_release_lookup = QQMusicSongReleaseLookup()
 
     @staticmethod
     def play_mode_key_to_name(key: str) -> str:
@@ -428,6 +430,9 @@ class QQMusicHandler(AppHandler, Singleton):
             singer = song_info.get('singer', '')
             album = song_info.get('album', '')
 
+            if self.list_mode == 'radio' and self._is_old_radio_song(song, singer, album):
+                return True
+
             # 检查是否包含 DJ 或 Remix
             if 'DJ' in song or 'Remix' in song:
                 self.logger.info(f"Skipping DJ/Remix song: {song}")
@@ -463,6 +468,38 @@ class QQMusicHandler(AppHandler, Singleton):
         except Exception as e:
             self.logger.error(f"Error checking if should skip song: {traceback.format_exc()}")
             return False
+
+    def _old_song_filter_config(self) -> dict:
+        return (
+            (self.config or {})
+            .get("radio", {})
+            .get("old_song_filter", {})
+        )
+
+    def _is_old_radio_song(self, song: str, singer: str = "", album: str = "") -> bool:
+        config = self._old_song_filter_config()
+        if not config.get("enabled", True):
+            return False
+
+        cutoff = parse_release_date(config.get("cutoff_date") or "2010-01-01")
+        if not cutoff or not song:
+            return False
+
+        query = " ".join(part for part in [song, singer, album] if part).strip()
+        try:
+            release_date = parse_release_date(self.song_release_lookup.get_release_date(query))
+        except Exception as exc:
+            self.logger.warning(f"Failed to query song release date for {query}: {exc}")
+            return False
+
+        if not release_date:
+            self.logger.info(f"Release date unknown for {query}, accepting song")
+            return False
+
+        if release_date < cutoff:
+            self.logger.info(f"Skipping old radio song ({release_date} < {cutoff}): {query}")
+            return True
+        return False
 
     def handle_song_quality_check(self, song_info):
         """

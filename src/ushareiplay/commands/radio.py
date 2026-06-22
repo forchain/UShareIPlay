@@ -2,6 +2,7 @@ from typing import Optional
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.title_manager import TitleManager
@@ -14,6 +15,7 @@ class RadioCommand(BaseCommand):
         self.soul_handler: SoulHandler = controller.soul_handler
         self.title_manager = TitleManager.instance()
         self.topic_manager = TopicManager.instance()
+        self.song_release_lookup = QQMusicSongReleaseLookup()
 
         # 延迟初始化 InfoManager
         self._info_manager = None
@@ -93,6 +95,55 @@ class RadioCommand(BaseCommand):
             cleaned_topic = raw_topic.strip()
             return cleaned_topic or None
         return parts[0]
+
+    def _old_song_filter_config(self) -> dict:
+        return (
+            (self.controller.config or {})
+            .get("radio", {})
+            .get("old_song_filter", {})
+        )
+
+    def _is_old_song(self, song_text: Optional[str]) -> bool:
+        config = self._old_song_filter_config()
+        if not config.get("enabled", True):
+            return False
+
+        cutoff = parse_release_date(config.get("cutoff_date") or "2010-01-01")
+        if not cutoff or not song_text:
+            return False
+
+        try:
+            release_date = parse_release_date(self.song_release_lookup.get_release_date(song_text))
+        except Exception as exc:
+            self.music_handler.logger.warning(
+                f"Failed to query song release date for {song_text}: {exc}"
+            )
+            return False
+
+        if not release_date:
+            self.music_handler.logger.info(
+                f"Release date unknown for {song_text}, accepting recommendation"
+            )
+            return False
+
+        is_old = release_date < cutoff
+        if is_old:
+            self.music_handler.logger.info(
+                f"First radio song is old ({release_date} < {cutoff}): {song_text}"
+            )
+        return is_old
+
+    def _refresh_collection_radio(self):
+        home_nav = self.music_handler.wait_for_element_clickable("home_nav")
+        if not home_nav:
+            return self._report_error("Failed to find home navigation while refreshing radio")
+        home_nav.click()
+
+        play_button = self.music_handler.wait_for_element_clickable("play_collection")
+        if not play_button:
+            return self._report_error("Failed to find collection play button after refresh")
+        play_button.click()
+        return None
 
     def _handle_guess_like(self, message_info):
         error = self._navigate_home()
@@ -196,10 +247,21 @@ class RadioCommand(BaseCommand):
 
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
-        playlist_info = self.music_handler.get_playlist_info()
-        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
-        if error:
-            return self._report_error(error)
+        filter_config = self._old_song_filter_config()
+        max_refreshes = int(filter_config.get("max_refreshes", 5))
+        refresh_count = 0
+        while True:
+            playlist_info = self.music_handler.get_playlist_info()
+            playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
+            if error:
+                return self._report_error(error)
+            if not self._is_old_song(first_song) or refresh_count >= max_refreshes:
+                break
+            refresh_count += 1
+            error = self._refresh_collection_radio()
+            if error:
+                return error
+
         error = self._switch_back_to_soul()
         if error:
             return error
