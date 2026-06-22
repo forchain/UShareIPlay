@@ -32,12 +32,12 @@ class _Element:
 
 
 class _MusicHandler:
-    def __init__(self, playlists):
+    def __init__(self, playlists, topics=None):
         self.logger = _Logger()
         self.list_mode = "unknown"
         self.playlists = list(playlists)
         self.collection_title = _Element(content_desc="「每日推荐」音频按钮")
-        self.collection_topic = _Element("默认话题")
+        self.topics = list(topics or ["默认话题"])
         self.play_buttons = []
         self.home_clicks = 0
 
@@ -74,7 +74,7 @@ class _MusicHandler:
 
     def wait_for_element(self, key):
         if key == "collection_topic":
-            return self.collection_topic
+            return _Element(self.topics.pop(0))
         raise AssertionError(f"unexpected element key: {key}")
 
     def get_playlist_info(self):
@@ -146,13 +146,11 @@ def _make_command(monkeypatch, music_handler):
 
 def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
     music_handler = _MusicHandler(
-        [
-            "老歌 - 歌手A\n第二首 - 歌手B",
-            "新歌 - 歌手C\n第二首 - 歌手D",
-        ]
+        ["新歌 - 歌手C\n第二首 - 歌手D"],
+        topics=["老歌", "新歌"],
     )
     command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
-    release_dates = {"老歌 - 歌手A": "2009-12-31", "新歌 - 歌手C": "2018-01-01"}
+    release_dates = {"老歌": "2009-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
         "get_release_date",
@@ -163,10 +161,12 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
 
     assert result == {"playlist": "新歌 - 歌手C\n第二首 - 歌手D"}
     assert len(music_handler.play_buttons) == 2
-    assert [button.clicks for button in music_handler.play_buttons] == [1, 1]
+    assert [button.clicks for button in music_handler.play_buttons] == [0, 1]
     assert music_handler.home_clicks == 1
     assert title_manager.titles == ["每日推荐"]
-    assert topic_manager.topics == ["默认话题"]
+    assert topic_manager.topics == ["新歌"]
+    assert any("Radio recommendation candidate" in message for _, message in music_handler.logger.messages)
+    assert any("refreshing recommendation" in message for _, message in music_handler.logger.messages)
 
 
 def test_default_radio_accepts_song_when_release_date_unknown(monkeypatch):
