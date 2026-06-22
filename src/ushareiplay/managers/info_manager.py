@@ -328,6 +328,13 @@ class InfoManager(Singleton):
         """
         return self._playback_info_cache
 
+    def _format_playback_message(self, info: dict) -> str:
+        message = f"{info['song']} - {info['singer']} • {info['album']}"
+        release_date = info.get("release_date")
+        if release_date:
+            message = f"{message} {release_date}"
+        return message
+
     def send_playing_message(self):
         info = self.get_playback_info_cache()
         if info is None:
@@ -344,6 +351,7 @@ class InfoManager(Singleton):
 
             # 只有在没有跳过歌曲的情况下才发送播放消息
             if not song_skipped:
+                playback_message = self._format_playback_message(info)
                 # 检查是否开启了广播
                 # 运行时 self.handler.config 是 soul 子配置（不是全量 config），
                 # 兼容两种结构，避免读不到时错误回退为 True。
@@ -353,13 +361,10 @@ class InfoManager(Singleton):
                 else:
                     broadcast_enabled = cfg.get('soul', {}).get('broadcast_playing_info', True)
                 if not broadcast_enabled:
-                    self.logger.info(
-                        f'Hidden "{info.get("song", "Unknown")} - {info.get("singer", "Unknown")} • {info.get("album", "Unknown")}"'
-                    )
+                    self.logger.info(f'Hidden "{playback_message}"')
                     return
 
-                self.handler.send_message(
-                    f"{info['song']} - {info['singer']} • {info['album']}")
+                self.handler.send_message(playback_message)
         else:
             # 如果歌曲信息无效，记录错误但不中断监控
             if 'error' in info:
