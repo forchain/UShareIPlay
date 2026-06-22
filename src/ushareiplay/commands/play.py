@@ -48,6 +48,7 @@ class PlayCommand(BaseCommand):
 
         # 播放页会自动弹出：未收藏则自动收藏
         self.handler.ensure_favorited_in_playing_page(timeout=10)
+        self.handler.handle_song_quality_check(playing_info)
 
         return playing_info
 

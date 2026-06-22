@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from ushareiplay.commands import radio as radio_module
+from ushareiplay.commands.play import PlayCommand
 from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup
@@ -215,3 +216,46 @@ def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
     )
 
     assert should_skip is False
+
+
+class _PlayMusicHandler:
+    def __init__(self):
+        self.logger = _Logger()
+        self.result_item = _Element("result")
+        self.quality_checked = []
+        self.playing_info = {
+            "song": "似是故人来",
+            "singer": "梅艳芳",
+            "album": "戏剧人生",
+        }
+
+    def _prepare_music_playback(self, music_query):
+        assert music_query == "似是故人来 梅艳芳"
+        return self.playing_info
+
+    def wait_for_element_clickable(self, key):
+        assert key == "result_item"
+        return self.result_item
+
+    def ensure_favorited_in_playing_page(self, timeout=10):
+        assert timeout == 10
+        return True
+
+    def handle_song_quality_check(self, song_info):
+        self.quality_checked.append(song_info)
+        return True
+
+
+def test_play_command_checks_song_quality_immediately_after_playback_starts():
+    music_handler = _PlayMusicHandler()
+    controller = SimpleNamespace(
+        music_handler=music_handler,
+        soul_handler=SimpleNamespace(),
+    )
+    command = PlayCommand(controller)
+
+    result = command.play_song("似是故人来 梅艳芳")
+
+    assert result == music_handler.playing_info
+    assert music_handler.result_item.clicks == 1
+    assert music_handler.quality_checked == [music_handler.playing_info]
