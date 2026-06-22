@@ -477,7 +477,7 @@ class QQMusicHandler(AppHandler, Singleton):
         if not config.get("enabled", True):
             return False
 
-        cutoff = parse_release_date(config.get("cutoff_date") or "2010-01-01")
+        cutoff = parse_release_date(config.get("cutoff_date") or "2000-01-01")
         if not cutoff or not song:
             return False
 

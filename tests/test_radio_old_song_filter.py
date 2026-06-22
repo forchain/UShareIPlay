@@ -155,7 +155,7 @@ def _make_command(monkeypatch, music_handler):
         config={
             "old_song_filter": {
                 "enabled": True,
-                "cutoff_date": "2010-01-01",
+                "cutoff_date": "2000-01-01",
                 "radio_max_refreshes": 3,
             }
         },
@@ -171,7 +171,7 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
         topics=["老歌", "新歌"],
     )
     command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
-    release_dates = {"老歌": "2009-12-31", "新歌": "2018-01-01"}
+    release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
         "get_release_date",
@@ -209,7 +209,7 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
     )
     music_handler.stale_topics.add("新歌")
     command, _title_manager, topic_manager = _make_command(monkeypatch, music_handler)
-    release_dates = {"老歌": "2009-12-31", "新歌": "2018-01-01"}
+    release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
         "get_release_date",
@@ -232,7 +232,7 @@ def _make_handler_for_quality_check():
     handler.config = {
         "old_song_filter": {
             "enabled": True,
-            "cutoff_date": "2010-01-01",
+            "cutoff_date": "2000-01-01",
         }
     }
     return handler
@@ -240,7 +240,7 @@ def _make_handler_for_quality_check():
 
 def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
     handler = _make_handler_for_quality_check()
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2009-01-01")
+    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1999-01-01")
 
     should_skip = handler.should_skip_low_quality_song(
         {"song": "老歌", "singer": "歌手A", "album": "专辑A"}

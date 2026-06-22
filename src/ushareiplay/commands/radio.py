@@ -117,7 +117,7 @@ class RadioCommand(BaseCommand):
         if not config.get("enabled", True):
             return False
 
-        cutoff = parse_release_date(config.get("cutoff_date") or "2010-01-01")
+        cutoff = parse_release_date(config.get("cutoff_date") or "2000-01-01")
         if not cutoff or not song_text:
             return False
 
@@ -273,7 +273,7 @@ class RadioCommand(BaseCommand):
             self.music_handler.logger.info(
                 f"Radio recommendation candidate: {collection_topic_text}, release_date={release_date or 'unknown'}"
             )
-            cutoff = parse_release_date(filter_config.get("cutoff_date") or "2010-01-01")
+            cutoff = parse_release_date(filter_config.get("cutoff_date") or "2000-01-01")
             is_old = bool(release_date and cutoff and release_date < cutoff)
             if not is_old:
                 break
