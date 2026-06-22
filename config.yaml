@@ -440,11 +440,10 @@ commands:
     response_template: "{message}"
     error_template: "{error}"
 
-radio:
-  old_song_filter:
-    enabled: true
-    cutoff_date: "2010-01-01"
-    max_refreshes: 5
+old_song_filter:
+  enabled: true
+  cutoff_date: "2010-01-01"
+  radio_max_refreshes: 5
 
 sleep:
   enabled: true

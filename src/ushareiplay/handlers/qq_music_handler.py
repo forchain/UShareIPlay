@@ -430,7 +430,7 @@ class QQMusicHandler(AppHandler, Singleton):
             singer = song_info.get('singer', '')
             album = song_info.get('album', '')
 
-            if self.list_mode == 'radio' and self._is_old_radio_song(song, singer, album):
+            if self._is_old_song(song, singer, album):
                 return True
 
             # 检查是否包含 DJ 或 Remix
@@ -470,13 +470,9 @@ class QQMusicHandler(AppHandler, Singleton):
             return False
 
     def _old_song_filter_config(self) -> dict:
-        return (
-            (self.config or {})
-            .get("radio", {})
-            .get("old_song_filter", {})
-        )
+        return (self.config or {}).get("old_song_filter", {})
 
-    def _is_old_radio_song(self, song: str, singer: str = "", album: str = "") -> bool:
+    def _is_old_song(self, song: str, singer: str = "", album: str = "") -> bool:
         config = self._old_song_filter_config()
         if not config.get("enabled", True):
             return False
@@ -497,7 +493,7 @@ class QQMusicHandler(AppHandler, Singleton):
             return False
 
         if release_date < cutoff:
-            self.logger.info(f"Skipping old radio song ({release_date} < {cutoff}): {query}")
+            self.logger.info(f"Skipping old song ({release_date} < {cutoff}): {query}")
             return True
         return False
 

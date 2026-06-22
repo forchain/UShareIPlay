@@ -97,11 +97,7 @@ class RadioCommand(BaseCommand):
         return parts[0]
 
     def _old_song_filter_config(self) -> dict:
-        return (
-            (self.controller.config or {})
-            .get("radio", {})
-            .get("old_song_filter", {})
-        )
+        return (self.controller.config or {}).get("old_song_filter", {})
 
     def _is_old_song(self, song_text: Optional[str]) -> bool:
         config = self._old_song_filter_config()
@@ -248,7 +244,7 @@ class RadioCommand(BaseCommand):
         collection_topic_text = self._extract_primary_topic(collection_topic.text)
         play_button.click()
         filter_config = self._old_song_filter_config()
-        max_refreshes = int(filter_config.get("max_refreshes", 5))
+        max_refreshes = int(filter_config.get("radio_max_refreshes", 5))
         refresh_count = 0
         while True:
             playlist_info = self.music_handler.get_playlist_info()

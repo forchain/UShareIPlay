@@ -131,12 +131,10 @@ def _make_command(monkeypatch, music_handler):
         music_handler=music_handler,
         soul_handler=_SoulHandler(),
         config={
-            "radio": {
-                "old_song_filter": {
-                    "enabled": True,
-                    "cutoff_date": "2010-01-01",
-                    "max_refreshes": 3,
-                }
+            "old_song_filter": {
+                "enabled": True,
+                "cutoff_date": "2010-01-01",
+                "radio_max_refreshes": 3,
             }
         },
     )
@@ -185,21 +183,19 @@ def test_default_radio_accepts_song_when_release_date_unknown(monkeypatch):
 def _make_handler_for_quality_check():
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
-    handler.list_mode = "radio"
+    handler.list_mode = "playlist"
     handler.no_skip = 0
     handler.song_release_lookup = QQMusicSongReleaseLookup()
     handler.config = {
-        "radio": {
-            "old_song_filter": {
-                "enabled": True,
-                "cutoff_date": "2010-01-01",
-            }
+        "old_song_filter": {
+            "enabled": True,
+            "cutoff_date": "2010-01-01",
         }
     }
     return handler
 
 
-def test_radio_quality_check_skips_old_song(monkeypatch):
+def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
     handler = _make_handler_for_quality_check()
     monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2009-01-01")
 
@@ -210,7 +206,7 @@ def test_radio_quality_check_skips_old_song(monkeypatch):
     assert should_skip is True
 
 
-def test_radio_quality_check_accepts_new_song(monkeypatch):
+def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
     handler = _make_handler_for_quality_check()
     monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2018-01-01")
 
