@@ -430,7 +430,7 @@ class QQMusicHandler(AppHandler, Singleton):
             singer = song_info.get('singer', '')
             album = song_info.get('album', '')
 
-            if self._is_old_song(song, singer, album):
+            if self._is_old_song(song, singer, album, song_info):
                 return True
 
             # 检查是否包含 DJ 或 Remix
@@ -472,7 +472,7 @@ class QQMusicHandler(AppHandler, Singleton):
     def _old_song_filter_config(self) -> dict:
         return (self.config or {}).get("old_song_filter", {})
 
-    def _is_old_song(self, song: str, singer: str = "", album: str = "") -> bool:
+    def _is_old_song(self, song: str, singer: str = "", album: str = "", song_info: dict = None) -> bool:
         config = self._old_song_filter_config()
         if not config.get("enabled", True):
             return False
@@ -491,6 +491,9 @@ class QQMusicHandler(AppHandler, Singleton):
         if not release_date:
             self.logger.info(f"Release date unknown for {query}, accepting song")
             return False
+
+        if song_info is not None:
+            song_info["release_date"] = release_date.isoformat()
 
         if release_date < cutoff:
             self.logger.info(f"Skipping old song ({release_date} < {cutoff}): {query}")

@@ -252,12 +252,12 @@ def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
 def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
     handler = _make_handler_for_quality_check()
     monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2018-01-01")
+    song_info = {"song": "新歌", "singer": "歌手A", "album": "专辑A"}
 
-    should_skip = handler.should_skip_low_quality_song(
-        {"song": "新歌", "singer": "歌手A", "album": "专辑A"}
-    )
+    should_skip = handler.should_skip_low_quality_song(song_info)
 
     assert should_skip is False
+    assert song_info["release_date"] == "2018-01-01"
 
 
 class _PlayMusicHandler:
