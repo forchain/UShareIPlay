@@ -93,3 +93,20 @@ def test_send_playing_message_backward_compatible_nested_config(info_manager):
         mock_handler.config = {'soul': {'broadcast_playing_info': False}}
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
+
+
+def test_update_logs_first_detected_playback_without_broadcasting(info_manager):
+    mock_handler = MagicMock()
+    mock_logger = MagicMock()
+    info_manager._handler = mock_handler
+    info_manager._logger = mock_logger
+    info_manager._playback_info_cache = {
+        'song': 'SongA',
+        'singer': 'SingerA',
+        'album': 'AlbumA',
+    }
+
+    info_manager.update()
+
+    mock_logger.info.assert_called_with('Now playing: SongA - SingerA • AlbumA')
+    mock_handler.send_message.assert_not_called()

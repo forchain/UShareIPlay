@@ -535,6 +535,9 @@ class InfoManager(Singleton):
                 is_first_init = last_playback_key is None
                 # 只保存基本播放信息，不包含额外字段
                 self._last_playback_info = info.copy() if info else None
+                self.logger.info(
+                    f'Now playing: {info.get("song", "Unknown")} - {info.get("singer", "Unknown")} • {info.get("album", "Unknown")}'
+                )
                 
                 # 第一次初始化时不广播，避免启动时刷屏
                 if not is_first_init:
