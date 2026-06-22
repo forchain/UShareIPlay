@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from selenium.common import StaleElementReferenceException
+
 from ushareiplay.commands import radio as radio_module
 from ushareiplay.commands.play import PlayCommand
 from ushareiplay.commands.radio import RadioCommand
@@ -31,6 +33,19 @@ class _Element:
         self.clicks += 1
 
 
+class _StaleOnceElement:
+    def __init__(self, text):
+        self._text = text
+        self._reads = 0
+
+    @property
+    def text(self):
+        self._reads += 1
+        if self._reads == 1:
+            raise StaleElementReferenceException("stale topic")
+        return self._text
+
+
 class _MusicHandler:
     def __init__(self, playlists, topics=None):
         self.logger = _Logger()
@@ -38,6 +53,7 @@ class _MusicHandler:
         self.playlists = list(playlists)
         self.collection_title = _Element(content_desc="「每日推荐」音频按钮")
         self.topics = list(topics or ["默认话题"])
+        self.stale_topics = set()
         self.play_buttons = []
         self.home_clicks = 0
 
@@ -74,7 +90,12 @@ class _MusicHandler:
 
     def wait_for_element(self, key):
         if key == "collection_topic":
-            return _Element(self.topics.pop(0))
+            topic = self.topics.pop(0)
+            if topic in self.stale_topics:
+                self.stale_topics.remove(topic)
+                self.topics.insert(0, topic)
+                return _StaleOnceElement(topic)
+            return _Element(topic)
         raise AssertionError(f"unexpected element key: {key}")
 
     def get_playlist_info(self):
@@ -179,6 +200,27 @@ def test_default_radio_accepts_song_when_release_date_unknown(monkeypatch):
     assert result == {"playlist": "未知歌 - 歌手A"}
     assert len(music_handler.play_buttons) == 1
     assert music_handler.home_clicks == 0
+
+
+def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
+    music_handler = _MusicHandler(
+        ["新歌 - 歌手C"],
+        topics=["老歌", "新歌"],
+    )
+    music_handler.stale_topics.add("新歌")
+    command, _title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    release_dates = {"老歌": "2009-12-31", "新歌": "2018-01-01"}
+    monkeypatch.setattr(
+        command.song_release_lookup,
+        "get_release_date",
+        lambda song: release_dates[song],
+    )
+
+    result = command._handle_collection(SimpleNamespace(nickname="Alice"))
+
+    assert result == {"playlist": "新歌 - 歌手C"}
+    assert topic_manager.topics == ["新歌"]
+    assert any("stale" in message for _, message in music_handler.logger.messages)
 
 
 def _make_handler_for_quality_check():

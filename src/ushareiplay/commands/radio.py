@@ -1,5 +1,7 @@
 from typing import Optional
 
+from selenium.common import StaleElementReferenceException
+
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
@@ -147,6 +149,19 @@ class RadioCommand(BaseCommand):
             return self._report_error("Failed to locate collection radio topic after refresh")
         return play_button, collection_topic
 
+    def _read_collection_topic_text(self, collection_topic, max_attempts: int = 3) -> Optional[str]:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self._extract_primary_topic(collection_topic.text)
+            except StaleElementReferenceException:
+                self.music_handler.logger.warning(
+                    f"Radio collection topic element stale, refinding topic ({attempt}/{max_attempts})"
+                )
+                collection_topic = self.music_handler.wait_for_element("collection_topic")
+                if not collection_topic:
+                    return None
+        return None
+
     def _handle_guess_like(self, message_info):
         error = self._navigate_home()
         if error:
@@ -251,7 +266,9 @@ class RadioCommand(BaseCommand):
         max_refreshes = int(filter_config.get("radio_max_refreshes", 5))
         refresh_count = 0
         while True:
-            collection_topic_text = self._extract_primary_topic(collection_topic.text)
+            collection_topic_text = self._read_collection_topic_text(collection_topic)
+            if not collection_topic_text:
+                return self._report_error("Failed to read collection radio topic")
             release_date = self._song_release_date(collection_topic_text)
             self.music_handler.logger.info(
                 f"Radio recommendation candidate: {collection_topic_text}, release_date={release_date or 'unknown'}"
