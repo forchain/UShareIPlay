@@ -249,6 +249,39 @@ def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
     assert should_skip is True
 
 
+def test_quality_check_accepts_old_song_for_whitelisted_artist(monkeypatch):
+    handler = _make_handler_for_quality_check()
+    handler.config["old_song_filter"]["artist_whitelist"] = ["歌手A"]
+    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1999-01-01")
+    song_info = {"song": "老歌", "singer": "歌手A/歌手B", "album": "专辑A"}
+
+    should_skip = handler.should_skip_low_quality_song(song_info)
+
+    assert should_skip is False
+    assert song_info["release_date"] == "1999-01-01"
+
+
+def test_quality_check_reads_artist_whitelist_from_controller_config(monkeypatch):
+    handler = _make_handler_for_quality_check()
+    handler.config = {}
+    handler.controller = SimpleNamespace(
+        config={
+            "old_song_filter": {
+                "enabled": True,
+                "cutoff_date": "2000-01-01",
+                "artist_whitelist": ["王菲", "911"],
+            }
+        }
+    )
+    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1993-09-07")
+    song_info = {"song": "如风", "singer": "王菲", "album": "十万个为什么？(日本版）"}
+
+    should_skip = handler.should_skip_low_quality_song(song_info)
+
+    assert should_skip is False
+    assert song_info["release_date"] == "1993-09-07"
+
+
 def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
     handler = _make_handler_for_quality_check()
     monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2018-01-01")
@@ -258,6 +291,16 @@ def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
 
     assert should_skip is False
     assert song_info["release_date"] == "2018-01-01"
+
+
+def test_ensure_release_date_populates_song_info_without_skip_decision(monkeypatch):
+    handler = _make_handler_for_quality_check()
+    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1993-09-07")
+    song_info = {"song": "如风", "singer": "王菲", "album": "十万个为什么？(日本版）"}
+
+    handler.ensure_release_date(song_info)
+
+    assert song_info["release_date"] == "1993-09-07"
 
 
 class _PlayMusicHandler:

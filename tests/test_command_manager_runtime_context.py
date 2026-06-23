@@ -116,6 +116,23 @@ def test_process_command_uses_runtime_for_observability_and_ui_session():
     ]
 
 
+def test_process_command_defaults_missing_release_date_for_templates():
+    manager, _runtime, _controller = make_manager(Path("."))
+    message_info = SimpleNamespace(content=":demo abc", nickname="Console")
+    command_info = {
+        "parameters": ["abc"],
+        "prefix": ":demo",
+        "response_template": "ok {song} {release_date}",
+        "error_template": "error {error}",
+    }
+
+    result = asyncio.run(
+        manager.process_command(FakeCommand(), message_info, command_info)
+    )
+
+    assert result == "ok abc  @Console"
+
+
 def test_extract_private_reply_and_normalize_dollar_prefix():
     manager, _runtime, _controller = make_manager(Path("."))
 
