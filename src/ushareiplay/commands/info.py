@@ -10,7 +10,7 @@ class InfoCommand(BaseCommand):
         from ushareiplay.managers.info_manager import InfoManager
 
         info_manager = InfoManager.instance()
-        result = info_manager.get_playback_info_cache()
+        result = info_manager.ensure_cached_release_date()
 
         # 如果缓存未初始化，使用默认值
         if result is None:
@@ -18,8 +18,11 @@ class InfoCommand(BaseCommand):
                 "song": "Unknown",
                 "singer": "Unknown",
                 "album": "Unknown",
+                "release_date": "",
                 "state": None,
             }
+        else:
+            result["release_date"] = result.get("release_date") or ""
 
         # 追加播放器信息和在线用户列表
         result["player"] = info_manager.player_name
