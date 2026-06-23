@@ -470,7 +470,42 @@ class QQMusicHandler(AppHandler, Singleton):
             return False
 
     def _old_song_filter_config(self) -> dict:
+        controller_config = getattr(getattr(self, "controller", None), "config", None)
+        if isinstance(controller_config, dict) and "old_song_filter" in controller_config:
+            return controller_config.get("old_song_filter", {})
         return (self.config or {}).get("old_song_filter", {})
+
+    def _is_old_song_whitelisted_artist(self, singer: str, config: dict) -> bool:
+        whitelist = {
+            str(artist).strip()
+            for artist in config.get("artist_whitelist", [])
+            if str(artist).strip()
+        }
+        if not whitelist or not singer:
+            return False
+
+        artists = {artist.strip() for artist in singer.split("/") if artist.strip()}
+        return bool(artists & whitelist)
+
+    def ensure_release_date(self, song_info: dict) -> None:
+        if not isinstance(song_info, dict) or song_info.get("release_date"):
+            return
+
+        song = song_info.get("song", "")
+        singer = song_info.get("singer", "")
+        album = song_info.get("album", "")
+        if not song:
+            return
+
+        query = " ".join(part for part in [song, singer, album] if part).strip()
+        try:
+            release_date = parse_release_date(self.song_release_lookup.get_release_date(query))
+        except Exception as exc:
+            self.logger.warning(f"Failed to query song release date for {query}: {exc}")
+            return
+
+        if release_date:
+            song_info["release_date"] = release_date.isoformat()
 
     def _is_old_song(self, song: str, singer: str = "", album: str = "", song_info: dict = None) -> bool:
         config = self._old_song_filter_config()
@@ -481,19 +516,19 @@ class QQMusicHandler(AppHandler, Singleton):
         if not cutoff or not song:
             return False
 
-        query = " ".join(part for part in [song, singer, album] if part).strip()
-        try:
-            release_date = parse_release_date(self.song_release_lookup.get_release_date(query))
-        except Exception as exc:
-            self.logger.warning(f"Failed to query song release date for {query}: {exc}")
-            return False
+        if song_info is None:
+            song_info = {"song": song, "singer": singer, "album": album}
 
+        self.ensure_release_date(song_info)
+        release_date = parse_release_date(song_info.get("release_date"))
+        query = " ".join(part for part in [song, singer, album] if part).strip()
         if not release_date:
             self.logger.info(f"Release date unknown for {query}, accepting song")
             return False
 
-        if song_info is not None:
-            song_info["release_date"] = release_date.isoformat()
+        if self._is_old_song_whitelisted_artist(singer, config):
+            self.logger.info(f"Accepting old song for whitelisted artist: {query}")
+            return False
 
         if release_date < cutoff:
             self.logger.info(f"Skipping old song ({release_date} < {cutoff}): {query}")

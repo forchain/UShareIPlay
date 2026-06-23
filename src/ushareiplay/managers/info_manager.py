@@ -328,6 +328,21 @@ class InfoManager(Singleton):
         """
         return self._playback_info_cache
 
+    def ensure_cached_release_date(self) -> Optional[dict]:
+        info = self.get_playback_info_cache()
+        if info is None or "error" in info:
+            return info
+        if info.get("release_date"):
+            return info
+
+        try:
+            from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+            music_handler = QQMusicHandler.instance()
+            music_handler.ensure_release_date(info)
+        except Exception:
+            self.logger.warning(f"Failed to ensure cached release date: {traceback.format_exc()}")
+        return info
+
     def _format_playback_message(self, info: dict) -> str:
         message = f"{info['song']} - {info['singer']} • {info['album']}"
         release_date = info.get("release_date")

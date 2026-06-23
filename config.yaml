@@ -298,7 +298,7 @@ lyrics:
 commands:
   - prefix: "play"
     level: 1
-    response_template: "{song} - {singer} • {album}"
+    response_template: "{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 1
@@ -310,7 +310,7 @@ commands:
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
     level: 0
-    response_template: "Added {song} by {singer} in {album} to playlist"
+    response_template: "Added {song} by {singer} in {album} • {release_date} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     level: 1
@@ -346,7 +346,7 @@ commands:
     error_template: "别名绑定失败: {error}"
   - prefix: "info"
     level: 0
-    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n{song} - {singer} • {album}"
+    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
@@ -444,6 +444,7 @@ old_song_filter:
   enabled: true
   cutoff_date: "2000-01-01"
   radio_max_refreshes: 5
+  artist_whitelist: ["王菲", "911"]
 
 sleep:
   enabled: true
