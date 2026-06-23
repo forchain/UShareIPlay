@@ -99,3 +99,23 @@ def test_send_playing_message_backward_compatible_nested_config(info_manager):
         mock_handler.config = {'soul': {'broadcast_playing_info': False}}
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
+
+
+def test_ensure_cached_release_date_updates_playback_cache(info_manager):
+    info_manager._playback_info_cache = {
+        "song": "如风",
+        "singer": "王菲",
+        "album": "十万个为什么？(日本版）",
+    }
+
+    with patch("ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance") as mock_qq_instance:
+        mock_music_handler = MagicMock()
+        mock_qq_instance.return_value = mock_music_handler
+        mock_music_handler.ensure_release_date.side_effect = (
+            lambda song_info: song_info.update({"release_date": "1993-09-07"})
+        )
+
+        result = info_manager.ensure_cached_release_date()
+
+    assert result["release_date"] == "1993-09-07"
+    assert info_manager.get_playback_info_cache()["release_date"] == "1993-09-07"

@@ -300,6 +300,7 @@ class CommandManager(Singleton):
                 # keyword 命令返回的是 message 字段
                 res = f'{result["message"]} @{message_info.nickname}'
             else:
+                result.setdefault("release_date", "")
                 res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
 
             try:
