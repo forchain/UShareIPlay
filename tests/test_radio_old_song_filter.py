@@ -184,8 +184,8 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
     assert len(music_handler.play_buttons) == 2
     assert [button.clicks for button in music_handler.play_buttons] == [0, 1]
     assert music_handler.home_clicks == 1
-    assert title_manager.titles == ["每日推荐"]
-    assert topic_manager.topics == ["新歌"]
+    assert title_manager.titles == ["新歌"]
+    assert topic_manager.topics == ["每日推荐"]
     assert any("Radio recommendation candidate" in message for _, message in music_handler.logger.messages)
     assert any("refreshing recommendation" in message for _, message in music_handler.logger.messages)
 
@@ -208,7 +208,7 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
         topics=["老歌", "新歌"],
     )
     music_handler.stale_topics.add("新歌")
-    command, _title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
     release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
@@ -219,7 +219,8 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
     result = command._handle_collection(SimpleNamespace(nickname="Alice"))
 
     assert result == {"playlist": "新歌 - 歌手C"}
-    assert topic_manager.topics == ["新歌"]
+    assert title_manager.titles == ["新歌"]
+    assert topic_manager.topics == ["每日推荐"]
     assert any("stale" in message for _, message in music_handler.logger.messages)
 
 
