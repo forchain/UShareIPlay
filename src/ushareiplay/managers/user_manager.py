@@ -125,7 +125,8 @@ class UserManager(Singleton):
         # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
         if gift_name.strip() == YELLOW_DUCK_NAME:
             self.handler.click_element_at(luck_item)
-            self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后将返回在线列表")
+            self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
+            self._close_online_drawer()
             return {'success': f'{gift_name} 送你啦'}
 
         self.handler.click_element_at(found_element)
@@ -141,7 +142,7 @@ class UserManager(Singleton):
             confirm_use.click()
             self.logger.info("已点击确认使用")
 
-        # self.handler.press_back()
+        self._close_online_drawer()
         return {'success': f'{gift_name} 送你啦'}
 
     def send_private_message_to_user(self, nickname: str, message: str) -> bool:
