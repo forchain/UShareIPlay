@@ -296,11 +296,13 @@ class RadioCommand(BaseCommand):
         playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
             return self._report_error(error)
+        first_song_title = first_song.split(" - ")[0].strip() if first_song else ""
+        room_title_text = first_song_title or collection_title_text
 
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(collection_title_text, collection_topic_text)
+        error = self._set_room_context(room_title_text, collection_title_text)
         if error:
             return error
         # 更新播放器名称
