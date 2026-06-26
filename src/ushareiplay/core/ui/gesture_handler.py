@@ -3,10 +3,6 @@ from __future__ import annotations
 import traceback
 from typing import Optional, Tuple
 
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.actions import interaction
-from selenium.webdriver.common.actions.action_builder import ActionBuilder
-from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.remote.webelement import WebElement
 
 from ushareiplay.core.driver_decorator import with_driver_recovery
@@ -85,7 +81,7 @@ class GestureHandler:
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
-        """在指定坐标执行一次滑动（简化为单段 W3C 手势，避免复杂链路导致 InvalidElementState）。
+        """在指定坐标执行一次滑动。
 
         Args:
             start_x: 起点 X
@@ -97,35 +93,7 @@ class GestureHandler:
             bool: 是否执行成功
         """
         try:
-            # 一些设备/系统版本对复杂多步 W3C actions 支持不稳定，这里改为：
-            # 1. 移动到起点
-            # 2. 按下
-            # 3. 在给定时长内移动到终点
-            # 4. 抬起
-            # self.logger.debug(
-            #     f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
-            # )
-
-            actions = ActionChains(self.driver)
-            actions.w3c_actions = ActionBuilder(
-                self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
-            )
-
-            pointer = actions.w3c_actions.pointer_action
-
-            # 起点
-            pointer.move_to_location(start_x, start_y)
-            pointer.pointer_down()
-
-            # 在 duration_ms 时间内完成从起点到终点的移动
-            # Appium / W3C 要求 duration 以秒为单位，通过 pause 来体现
-            pointer.move_to_location(end_x, end_y)
-            pointer.pause(max(0.01, duration_ms / 1000.0))
-
-            # 结束
-            pointer.pointer_up()
-
-            actions.perform()
+            self.driver.swipe(start_x, start_y, end_x, end_y, duration_ms)
             return True
         except Exception:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
