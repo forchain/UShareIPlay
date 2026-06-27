@@ -15,15 +15,19 @@ class FakeLogger:
 
 
 class FakeElement:
-    def __init__(self, text="", stale_clicks=0):
+    def __init__(self, text="", stale_clicks=0, stale_enabled_checks=0):
         self.text = text
         self.stale_clicks = stale_clicks
+        self.stale_enabled_checks = stale_enabled_checks
         self.clicks = 0
 
     def is_displayed(self):
         return True
 
     def is_enabled(self):
+        if self.stale_enabled_checks:
+            self.stale_enabled_checks -= 1
+            raise StaleElementReferenceException("stale enabled check")
         return True
 
     def click(self):
@@ -81,3 +85,17 @@ def test_apply_favourite_filter_refinds_stale_option_before_clicking():
     assert command.handler.driver.option_stale.clicks == 1
     assert command.handler.driver.option_fresh.clicks == 1
     assert command.handler.driver.confirm.clicks == 1
+
+
+def test_click_xpath_refinds_option_when_clickable_check_goes_stale():
+    command = FavCommand(FakeController())
+    command.handler.driver.option_stale = FakeElement(stale_enabled_checks=1)
+
+    clicked = command._click_xpath_with_stale_retry(
+        '//android.widget.TextView[@text="英语"]',
+        "Favourite filter option '英语'",
+    )
+
+    assert clicked is command.handler.driver.option_fresh
+    assert command.handler.driver.option_stale.clicks == 0
+    assert command.handler.driver.option_fresh.clicks == 1

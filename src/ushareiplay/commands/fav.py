@@ -1,5 +1,5 @@
 from appium.webdriver.common.appiumby import AppiumBy
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -34,19 +34,25 @@ class FavCommand(BaseCommand):
         return f"//android.widget.TextView[@text=concat({', '.join(concat_parts)})]"
 
     def _click_xpath_with_stale_retry(self, xpath: str, description: str, timeout: int = 8, max_attempts: int = 3):
-        for attempt in range(1, max_attempts + 1):
-            element = WebDriverWait(self.handler.driver, timeout).until(
-                EC.element_to_be_clickable((AppiumBy.XPATH, xpath))
-            )
+        end_time = time.time() + timeout
+        stale_attempts = 0
+        while time.time() < end_time:
             try:
+                element = self.handler.driver.find_element(AppiumBy.XPATH, xpath)
+                if not (element.is_displayed() and element.is_enabled()):
+                    time.sleep(0.2)
+                    continue
                 element.click()
                 return element
             except StaleElementReferenceException:
-                if attempt == max_attempts:
+                stale_attempts += 1
+                if stale_attempts >= max_attempts:
                     raise
                 self.handler.logger.warning(
-                    f"{description} element stale before click, refinding ({attempt}/{max_attempts})"
+                    f"{description} element stale before click, refinding ({stale_attempts}/{max_attempts})"
                 )
+                time.sleep(0.2)
+            except NoSuchElementException:
                 time.sleep(0.2)
         return None
 
