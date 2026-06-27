@@ -140,7 +140,7 @@ class GestureHandler:
     def _perform_swipe(
             self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
     ) -> bool:
-        """在指定坐标执行一次滑动（简化为单段 W3C 手势，避免复杂链路导致 InvalidElementState）。
+        """在指定坐标执行一次滑动。
 
         Args:
             start_x: 起点 X
@@ -152,35 +152,7 @@ class GestureHandler:
             bool: 是否执行成功
         """
         try:
-            # 一些设备/系统版本对复杂多步 W3C actions 支持不稳定，这里改为：
-            # 1. 移动到起点
-            # 2. 按下
-            # 3. 在给定时长内移动到终点
-            # 4. 抬起
-            # self.logger.debug(
-            #     f"_perform_swipe: ({start_x}, {start_y}) -> ({end_x}, {end_y}), duration={duration_ms}ms"
-            # )
-
-            actions = ActionChains(self.driver)
-            actions.w3c_actions = ActionBuilder(
-                self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
-            )
-
-            pointer = actions.w3c_actions.pointer_action
-
-            # 起点
-            pointer.move_to_location(start_x, start_y)
-            pointer.pointer_down()
-
-            # 在 duration_ms 时间内完成从起点到终点的移动
-            # Appium / W3C 要求 duration 以秒为单位，通过 pause 来体现
-            pointer.move_to_location(end_x, end_y)
-            pointer.pause(max(0.01, duration_ms / 1000.0))
-
-            # 结束
-            pointer.pointer_up()
-
-            actions.perform()
+            self.driver.swipe(start_x, start_y, end_x, end_y, duration_ms)
             return True
         except Exception:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
@@ -284,7 +256,9 @@ class GestureHandler:
             # 查找目标元素的辅助函数
             def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
                 """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
-                found = self.find_child_element(container, element_key)
+                found = self.find_child_element(
+                    container, element_key, log_failure=False
+                )
                 if found:
                     if attribute_name and attribute_value:
                         elements = self.find_child_elements(container, element_key)
@@ -340,7 +314,7 @@ class GestureHandler:
 
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
-                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=100)
+                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=300)
                 if not ok:
                     self.logger.warning(
                         f"scroll_container_until_element: 滑动失败，终止:{element_key}"

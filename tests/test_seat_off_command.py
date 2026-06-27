@@ -67,7 +67,7 @@ class DummyHandler:
             return self.desks
         return []
 
-    def find_child_element(self, desk, key):
+    def find_child_element(self, desk, key, log_failure=True):
         return desk.get(key)
 
     def wait_for_element_clickable(self, key):
