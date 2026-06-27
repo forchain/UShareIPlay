@@ -87,6 +87,8 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
 
         row_index = (seat_number - 1) // 4  # 0-based row index
+        desk_index = (seat_number - 1) // 2
+        visible_desk_index = desk_index
 
         # Handle row visibility based on index
         if row_index == 0 or row_index == 2:  # First or Third row
@@ -113,17 +115,30 @@ class SeatCheckManager(SeatManagerBase):
                     1000
                 )
             await asyncio.sleep(0.5)
+            seat_desks = self.handler.find_elements('seat_desk')
+            self.handler.logger.info(f"found {len(seat_desks)} seat desks after scrolling")
+            if row_index == 2:
+                visible_desk_index = desk_index - 2
 
-        await self._handle_occupied_seat(username, seat_desks, seat_number)
+        await self._handle_occupied_seat(username, seat_desks, seat_number, visible_desk_index)
 
-    async def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int):
+    async def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int, desk_index: int = None):
         """Handle an occupied seat by removing the occupant"""
         if self.handler is None:
             return
 
         # Determine if this is a left or right seat in the row
         is_left_seat = bool(seat_number % 2)
-        desk = seat_desks[int((seat_number - 1) / 2)]
+        if desk_index is None:
+            desk_index = (seat_number - 1) // 2
+
+        if desk_index < 0 or desk_index >= len(seat_desks):
+            self.handler.logger.error(
+                f"Cannot find desk {desk_index + 1} for seat {seat_number}; visible desks: {len(seat_desks)}")
+            self.handler.send_message(f"Failed to locate seat {seat_number} for {username}")
+            return
+
+        desk = seat_desks[desk_index]
 
         # Find the specific seat element
         if is_left_seat:
