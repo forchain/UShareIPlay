@@ -1,4 +1,5 @@
 from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -32,6 +33,23 @@ class FavCommand(BaseCommand):
                 concat_parts.append("'\"'")
         return f"//android.widget.TextView[@text=concat({', '.join(concat_parts)})]"
 
+    def _click_xpath_with_stale_retry(self, xpath: str, description: str, timeout: int = 8, max_attempts: int = 3):
+        for attempt in range(1, max_attempts + 1):
+            element = WebDriverWait(self.handler.driver, timeout).until(
+                EC.element_to_be_clickable((AppiumBy.XPATH, xpath))
+            )
+            try:
+                element.click()
+                return element
+            except StaleElementReferenceException:
+                if attempt == max_attempts:
+                    raise
+                self.handler.logger.warning(
+                    f"{description} element stale before click, refinding ({attempt}/{max_attempts})"
+                )
+                time.sleep(0.2)
+        return None
+
     def _apply_favourite_filter_keyword(self, keyword: str):
         """
         新版“筛选歌曲”页：同页展示歌手/语种/流派。
@@ -44,12 +62,9 @@ class FavCommand(BaseCommand):
         self.handler.logger.info("Clicked filter button")
 
         option_xpath = self._xpath_textview_text_equals(keyword)
-        option = WebDriverWait(self.handler.driver, 8).until(
-            EC.element_to_be_clickable((AppiumBy.XPATH, option_xpath))
-        )
+        option = self._click_xpath_with_stale_retry(option_xpath, f"Favourite filter option '{keyword}'")
         if not option:
             return {'error': f'找不到筛选项: {keyword}'}
-        option.click()
         self.handler.logger.info(f"Clicked filter option: {keyword}")
 
         # 等待“确定（xxx首）”按钮出现/更新
