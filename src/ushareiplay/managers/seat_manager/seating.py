@@ -205,7 +205,9 @@ class SeatingManager(SeatManagerBase):
 
                 # Click the state element to open user profile popup
                 state_key = f'{side}_state'
-                state_element = self.handler.find_child_element(desk, state_key)
+                state_element = self.handler.find_child_element(
+                    desk, state_key, log_failure=False
+                )
                 if not state_element:
                     continue
 
@@ -353,12 +355,12 @@ class SeatingManager(SeatManagerBase):
         return None
 
     def _collect_desk_info(self, desk):
-        left_seat = self.handler.find_child_element(desk, 'left_seat')
-        right_seat = self.handler.find_child_element(desk, 'right_seat')
-        left_state = self.handler.find_child_element(desk, 'left_state')
-        right_state = self.handler.find_child_element(desk, 'right_state')
-        left_label_element = self.handler.find_child_element(desk, 'left_label')
-        right_label_element = self.handler.find_child_element(desk, 'right_label')
+        left_seat = self.handler.find_child_element(desk, 'left_seat', log_failure=False)
+        right_seat = self.handler.find_child_element(desk, 'right_seat', log_failure=False)
+        left_state = self.handler.find_child_element(desk, 'left_state', log_failure=False)
+        right_state = self.handler.find_child_element(desk, 'right_state', log_failure=False)
+        left_label_element = self.handler.find_child_element(desk, 'left_label', log_failure=False)
+        right_label_element = self.handler.find_child_element(desk, 'right_label', log_failure=False)
 
         left_label = left_label_element.text if left_label_element else ''
         right_label = right_label_element.text if right_label_element else ''
