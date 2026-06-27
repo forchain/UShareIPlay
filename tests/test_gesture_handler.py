@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,6 +11,7 @@ class _Owner:
     def __init__(self, driver):
         self.driver = driver
         self.logger = MagicMock()
+        self.config = {}
 
 
 def _make_handler(driver):
@@ -77,3 +79,49 @@ def test_clamp_click_coords_without_window_size_uses_legacy_floor():
     handler = _make_handler(driver)
 
     assert handler._clamp_click_coords(120, -20) == (120, 60)
+
+
+class FakeLogger:
+    def debug(self, *args, **kwargs):
+        pass
+
+    def warning(self, *args, **kwargs):
+        pass
+
+    def error(self, *args, **kwargs):
+        pass
+
+
+class FakeDriver:
+    def __init__(self):
+        self.swipes = []
+
+    def swipe(self, start_x, start_y, end_x, end_y, duration_ms):
+        self.swipes.append((start_x, start_y, end_x, end_y, duration_ms))
+        return None
+
+
+def test_perform_swipe_uses_driver_swipe():
+    driver = FakeDriver()
+    handler = GestureHandler(SimpleNamespace(driver=driver, logger=FakeLogger(), config={}))
+
+    assert handler._perform_swipe(10, 20, 30, 40, duration_ms=250) is True
+    assert driver.swipes == [(10, 20, 30, 40, 250)]
+
+
+def test_scroll_container_uses_deliberate_swipe_duration():
+    driver = MagicMock()
+    driver.page_source = "<page />"
+    handler = _make_handler(driver)
+    handler.wait_for_element_clickable = MagicMock(
+        return_value=SimpleNamespace(
+            location={"x": 0, "y": 0},
+            size={"width": 100, "height": 100},
+        )
+    )
+    handler.find_child_element = MagicMock(return_value=None)
+    handler._perform_swipe = MagicMock(return_value=False)
+
+    handler.scroll_container_until_element("message_content", "message_list")
+
+    handler._perform_swipe.assert_called_once_with(50, 90, 50, 10, duration_ms=300)

@@ -264,11 +264,12 @@ class ElementFinder:
             )
             return []
 
-    def find_child_element(self, parent, element_key):
+    def find_child_element(self, parent, element_key, log_failure: bool = True):
         """Find child element using element key from config
         Args:
             parent: Parent element to search within
             element_key: Key in config elements section
+            log_failure: Whether to log when the child element is not found
         Returns:
             WebElement or None if not found
         """
@@ -278,7 +279,8 @@ class ElementFinder:
             locator_type, value = self._get_locator(element_key)
             return parent.find_element(locator_type, value)
         except Exception:
-            self.logger.debug(f"Failed to find child element {element_key}")
+            if log_failure:
+                self.logger.debug(f"Failed to find child element {element_key}")
             return None
 
     def find_child_elements(self, parent, element_key: str) -> list:
