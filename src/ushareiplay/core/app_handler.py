@@ -147,8 +147,10 @@ class AppHandler:
     def find_elements(self, element_key: str):
         return self.element_finder.find_elements(element_key)
 
-    def find_child_element(self, parent, element_key):
-        return self.element_finder.find_child_element(parent, element_key)
+    def find_child_element(self, parent, element_key, log_failure: bool = True):
+        return self.element_finder.find_child_element(
+            parent, element_key, log_failure=log_failure
+        )
 
     def find_child_elements(self, parent, element_key: str):
         return self.element_finder.find_child_elements(parent, element_key)
