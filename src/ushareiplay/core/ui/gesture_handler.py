@@ -31,6 +31,67 @@ class GestureHandler:
     def logger(self):
         return self.owner.logger
 
+    def _clamp_click_coords(self, click_x: int, click_y: int) -> Tuple[int, int]:
+        """Clamp tap coordinates to the visible screen bounds."""
+        try:
+            window = self.driver.get_window_size()
+            screen_w = int(window.get("width", 0))
+            screen_h = int(window.get("height", 0))
+        except Exception:
+            screen_w = screen_h = 0
+
+        if screen_w > 0:
+            click_x = max(0, min(click_x, screen_w - 1))
+        else:
+            click_x = max(0, click_x)
+
+        if screen_h > 0:
+            click_y = max(0, min(click_y, screen_h - 1))
+        elif click_y < 60:
+            click_y = 60
+        else:
+            click_y = max(0, click_y)
+
+        return click_x, click_y
+
+    def _perform_click_at(self, click_x: int, click_y: int, element=None) -> bool:
+        """Tap at absolute screen coordinates with UiAutomator2-friendly fallbacks."""
+        click_x, click_y = self._clamp_click_coords(click_x, click_y)
+
+        try:
+            self.driver.execute_script(
+                "mobile: clickGesture", {"x": click_x, "y": click_y}
+            )
+            return True
+        except Exception:
+            self.logger.debug(
+                "mobile: clickGesture failed, falling back to W3C touch actions"
+            )
+
+        try:
+            actions = ActionChains(self.driver)
+            actions.w3c_actions = ActionBuilder(
+                self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
+            )
+            pointer = actions.w3c_actions.pointer_action
+            pointer.move_to_location(click_x, click_y)
+            pointer.pointer_down()
+            pointer.pause(0.1)
+            pointer.pointer_up()
+            actions.perform()
+            return True
+        except Exception:
+            self.logger.debug("W3C touch click failed, falling back to element.click()")
+
+        if element is not None:
+            try:
+                element.click()
+                return True
+            except Exception:
+                pass
+
+        return False
+
     @with_driver_recovery(retry=False, op="write")
     def click_element_at(
             self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0
@@ -47,29 +108,23 @@ class GestureHandler:
             if not element:
                 return False
 
-            # Get element size and location
             size = element.size
             location = element.location
 
-            # Calculate click position
             click_x = location["x"] + int(x_offset) + int(size["width"] * x_ratio)
             click_y = location["y"] + int(y_offset) + int(size["height"] * y_ratio)
-            if click_y < 60:
+            raw_x, raw_y = click_x, click_y
+            click_x, click_y = self._clamp_click_coords(click_x, click_y)
+            if (click_x, click_y) != (raw_x, raw_y):
                 self.logger.warning(
-                    f"Click position is too top, click_x: {click_x}, click_y: {click_y}"
+                    f"Click position clamped from ({raw_x}, {raw_y}) to ({click_x}, {click_y})"
                 )
-                click_y = 60
 
-            # Perform tap action at calculated position
-            actions = ActionChains(self.driver)
-            actions.w3c_actions = ActionBuilder(
-                self.driver, mouse=PointerInput(interaction.POINTER_TOUCH, "touch")
-            )
-            actions.w3c_actions.pointer_action.move_to_location(click_x, click_y)
-            actions.w3c_actions.pointer_action.pointer_down()
-            actions.w3c_actions.pointer_action.pause(0.1)
-            actions.w3c_actions.pointer_action.pointer_up()
-            actions.perform()
+            if not self._perform_click_at(click_x, click_y, element=element):
+                self.logger.error(
+                    f"All click strategies failed at position ({click_x}, {click_y})"
+                )
+                return False
 
             self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
             return True
