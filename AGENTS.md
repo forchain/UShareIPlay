@@ -72,3 +72,17 @@ gh pr create ...
 # Switch back (pick whatever was active before)
 gh auth switch -h github.com -u <previous-active-username>
 ```
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `forchain/UShareIPlay`; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles use default label names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` at repo root and `docs/adr/` for ADRs. See `docs/agents/domain.md`.
