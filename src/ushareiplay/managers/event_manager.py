@@ -6,6 +6,7 @@
 """
 
 import importlib
+import re
 import sys
 import time
 import traceback
@@ -227,6 +228,30 @@ class EventManager(Singleton):
     def _soul_package_name(self) -> str:
         return (self.config.get("package_name") or "").strip() or "cn.soulapp.android"
 
+    def _root_config(self) -> dict:
+        controller = getattr(self.handler, "controller", None)
+        root_config = getattr(controller, "config", None)
+        if isinstance(root_config, dict):
+            return root_config
+        return self.config if isinstance(self.config, dict) else {}
+
+    def _qq_music_package_name(self) -> str:
+        root_config = self._root_config()
+        return (
+            ((root_config.get("qq_music") or {}).get("package_name"))
+            or "com.tencent.qqmusic"
+        )
+
+    def _screen_elements(self) -> dict:
+        config = self.config if isinstance(self.config, dict) else {}
+        if isinstance(config.get("elements"), dict):
+            return config["elements"]
+
+        root_config = self._root_config()
+        soul_config = root_config.get("soul") or {}
+        elements = soul_config.get("elements")
+        return elements if isinstance(elements, dict) else {}
+
     def _launcher_packages(self) -> List[str]:
         defaults = [
             "com.sec.android.app.launcher",
@@ -254,6 +279,60 @@ class EventManager(Singleton):
         except etree.XMLSyntaxError:
             return None
         return self._packages_from_parsed_root(root)
+
+    def _selector_present(self, root: etree._Element, page_source: str, selector: str) -> bool:
+        if not selector or not isinstance(selector, str):
+            return False
+        if selector in page_source:
+            return True
+        if selector.startswith("//"):
+            try:
+                return bool(root.xpath(selector))
+            except Exception:
+                match = re.search(r'@resource-id\s*=\s*"([^"]+)"', selector)
+                if match and match.group(1):
+                    return match.group(1) in page_source
+            return False
+        return bool(root.xpath(f"//*[@resource-id='{selector}']"))
+
+    def describe_screen(self, page_source: str) -> dict:
+        screen = {
+            "foreground_app": "Unknown",
+            "soul_ui_state": "Unknown",
+            "qqmusic_ui_state": "Unknown",
+            "anchors": [],
+        }
+        if not page_source:
+            return screen
+
+        try:
+            root = etree.fromstring(page_source.encode("utf-8"))
+        except etree.XMLSyntaxError:
+            return screen
+
+        packages = self._packages_from_parsed_root(root)
+        soul_pkg = self._soul_package_name()
+        qq_pkg = self._qq_music_package_name()
+        launchers = set(self._launcher_packages())
+
+        if soul_pkg in packages:
+            screen["foreground_app"] = "Soul"
+        elif qq_pkg in packages:
+            screen["foreground_app"] = "QQMusic"
+        elif packages & launchers:
+            screen["foreground_app"] = "Launcher"
+
+        anchors = []
+        for key in ("message_content", "input_box_entry", "input_box"):
+            selector = self._screen_elements().get(key)
+            if selector and self._selector_present(root, page_source, selector):
+                anchors.append(key)
+        screen["anchors"] = anchors
+
+        if screen["foreground_app"] == "Soul":
+            screen["soul_ui_state"] = "InChatReady" if "message_content" in anchors else "InUnknownPage"
+
+        return screen
 
     def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[
         etree._Element]:
@@ -296,7 +375,7 @@ class EventManager(Singleton):
             self.logger.debug(f"Error finding element {element_key}: {str(e)}")
             return None
 
-    async def process_events(self, page_source: str) -> int:
+    async def react_to_page(self, page_source: str) -> dict:
         """
         处理事件：解析 page_source，检测元素并触发对应事件
         
@@ -310,9 +389,25 @@ class EventManager(Singleton):
             self.initialize()
 
         if not page_source:
-            return 0
+            return {
+                "triggered_count": 0,
+                "recovery": {
+                    "attempted": False,
+                    "suppressed": "no_page_source",
+                    "pressed_back": False,
+                    "ready_rechecked": False,
+                    "backoff_seconds": 0,
+                },
+            }
 
         triggered_count = 0
+        recovery = {
+            "attempted": False,
+            "suppressed": None,
+            "pressed_back": False,
+            "ready_rechecked": False,
+            "backoff_seconds": 0,
+        }
 
         try:
             triggered_count = await self._process_events_once(page_source)
@@ -331,35 +426,77 @@ class EventManager(Singleton):
             try:
                 # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
                 if self.runtime.is_ui_busy():
+                    recovery["suppressed"] = "ui_busy"
                     self.logger.debug(
                         "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
                 else:
+                    recovery["attempted"] = True
                     self.handler.switch_to_app()
                     ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
                     if not ready_source:
+                        recovery["suppressed"] = "page_source_not_ready"
                         # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
                         self.logger.debug(
                             "PageSource not ready after switch_to_app; skip auto press_back this round.")
                     else:
+                        recovery["ready_rechecked"] = True
                         second_triggered = await self._process_events_once(ready_source)
                         if second_triggered == 0:
                             self.handler.press_back()
+                            recovery["pressed_back"] = True
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
                             self._consecutive_unknown_pages += 1
                             if self._consecutive_unknown_pages > 10:
                                 backoff_s = min(10.0, 0.5 * (self._consecutive_unknown_pages - 10))
+                                recovery["backoff_seconds"] = backoff_s
                                 self.logger.warning(
                                     f"连续未知页面已达 {self._consecutive_unknown_pages} 次，"
                                     f"非阻塞退避 {backoff_s:.1f}s 后继续"
                                 )
                                 await asyncio.sleep(backoff_s)
                         else:
+                            triggered_count = second_triggered
                             self._consecutive_unknown_pages = 0
 
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")
 
-        return triggered_count
+        return {
+            "triggered_count": triggered_count,
+            "recovery": recovery,
+        }
+
+    async def process_current_screen(self) -> dict:
+        page_source = self.get_page_source()
+        if not page_source:
+            await asyncio.sleep(0.2)
+            page_source = self.get_page_source()
+
+        if not page_source:
+            return {
+                "page_source": None,
+                "screen": self.describe_screen(""),
+                "triggered_count": 0,
+                "recovery": {
+                    "attempted": False,
+                    "suppressed": "no_page_source",
+                    "pressed_back": False,
+                    "ready_rechecked": False,
+                    "backoff_seconds": 0,
+                },
+            }
+
+        screen = self.describe_screen(page_source)
+        reaction = await self.react_to_page(page_source)
+        return {
+            "page_source": page_source,
+            "screen": screen,
+            "triggered_count": reaction["triggered_count"],
+            "recovery": reaction["recovery"],
+        }
+
+    async def process_events(self, page_source: str) -> int:
+        return (await self.react_to_page(page_source))["triggered_count"]
 
     async def _process_events_once(self, page_source: str) -> int:
         if not page_source:
