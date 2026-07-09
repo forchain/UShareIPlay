@@ -139,7 +139,8 @@ class PlaylistCommand(BaseCommand):
         playlist_info = self.handler.get_playlist_info()
         playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return {'error': error}
+            self.handler.logger.warning(f"Failed to read playlist after playback started: {error}")
+            playlist_text = original_playlist_name
 
         # 使用 title_manager 和 topic_manager 管理标题和话题
         from ushareiplay.managers.title_manager import TitleManager
