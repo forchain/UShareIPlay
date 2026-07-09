@@ -132,8 +132,9 @@ class SingerCommand(BaseCommand):
         playing_info = self.handler.get_playlist_info()
         playlist_text, first_song, error = get_playlist_text_and_first_song(playing_info)
         if error:
-            self.handler.logger.error(f"Failed to get playlist info: {error}")
-            return {"error": error}
+            self.handler.logger.warning(f"Failed to read singer playlist after playback started: {error}")
+            playlist_text = singer_name
+            first_song = None
 
         first_song_title = first_song.split(" - ")[0].strip() if first_song else ""
         topic = first_song_title or singer_name
