@@ -26,6 +26,7 @@ def get_chat_logger(config=None):
     """Get or create chat logger with configurable directory"""
     global chat_logger
     if chat_logger is None:
+        from ushareiplay.core.log_rotation import archive_active_log_on_startup
         from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
         cfg = config
@@ -43,7 +44,7 @@ def get_chat_logger(config=None):
         # Clear any existing handlers
         if chat_logger.hasHandlers():
             chat_logger.handlers.clear()
-        log_file = str(log_dir_path / "chat.log")
+        log_file = archive_active_log_on_startup(log_dir_path, "chat.log")
         handler = logging.FileHandler(log_file, encoding='utf-8')
         # Use ColoredFormatter without colors for file logging
         formatter = ColoredFormatter(
