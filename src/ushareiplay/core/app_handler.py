@@ -1,8 +1,10 @@
 import logging
-from datetime import datetime
 
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator
+
+_shared_handler_file_handler = None
+_shared_handler_file_path = None
 
 
 class AppHandler:
@@ -30,6 +32,9 @@ class AppHandler:
         Returns:
             logging.Logger: Configured logger instance
         """
+        global _shared_handler_file_handler, _shared_handler_file_path
+
+        from ushareiplay.core.log_rotation import archive_active_log_on_startup
         from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
         cfg = None
@@ -43,10 +48,7 @@ class AppHandler:
         configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
         log_dir_path = resolve_log_directory(configured, default_rel="logs")
         ensure_dir(log_dir_path)
-
-        # Get current date for log file name
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        log_file = str(log_dir_path / f"{self.__class__.__name__}_{current_date}.log")
+        log_file_path = log_dir_path / "UShareIPlay.log"
 
         # Create logger
         logger = logging.getLogger(self.__class__.__name__)
@@ -56,10 +58,6 @@ class AppHandler:
             logger.handlers.clear()
 
         logger.setLevel(logging.DEBUG)
-
-        # Create file handler
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setLevel(logging.DEBUG)
 
         # Create console handler
         console_handler = logging.StreamHandler()
@@ -78,11 +76,23 @@ class AppHandler:
             datefmt="%m-%d %H:%M:%S",
             use_colors=True
         )
-        file_handler.setFormatter(file_formatter)
+
+        if (
+            _shared_handler_file_handler is None
+            or _shared_handler_file_path != log_file_path
+        ):
+            if _shared_handler_file_handler is not None:
+                _shared_handler_file_handler.close()
+            log_file_path = archive_active_log_on_startup(log_dir_path, "UShareIPlay.log")
+            _shared_handler_file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+            _shared_handler_file_handler.setLevel(logging.DEBUG)
+            _shared_handler_file_path = log_file_path
+
+        _shared_handler_file_handler.setFormatter(file_formatter)
         console_handler.setFormatter(console_formatter)
 
         # Add handlers to logger
-        logger.addHandler(file_handler)
+        logger.addHandler(_shared_handler_file_handler)
         logger.addHandler(console_handler)
 
         return logger
