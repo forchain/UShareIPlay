@@ -44,6 +44,41 @@ class QQMusicHandler(AppHandler, Singleton):
             )
         self.play_mode_key = new_key
 
+    @staticmethod
+    def _normalize_song_title(title: str) -> str:
+        return re.sub(r"\s*-\s*$", "", (title or "").strip())
+
+    def _read_playlist_items(self, items):
+        playlist_info = []
+        song_titles = []
+        for item in items:
+            try:
+                elements = item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                if not elements:
+                    continue
+
+                song = elements[0]
+                if not song:
+                    self.logger.info("Failed to find song in playlist")
+                    continue
+                if len(elements) < 2:
+                    self.logger.info("Failed to find singer in playlist")
+                    continue
+                singer = elements[1]
+                song_title = self._normalize_song_title(song.text)
+                song_titles.append(song_title)
+                if singer and singer.text:
+                    # 首行可能自带末尾「 - 」；第二行常为「 - 歌手」，去重后再拼成「歌名 - 歌手」
+                    singer_clean = re.sub(r"^\s*-\s*", "", (singer.text or "").strip())
+                    info = f"{song_title} - {singer_clean}" if singer_clean else song_title
+                else:
+                    info = song.text
+                playlist_info.append(info)
+            except StaleElementReferenceException:
+                self.logger.warning(f"Error getting song/singer text, {len(items)} ")
+                continue
+        return playlist_info, song_titles
+
     def open_favorites_entry(self, timeout: int = 10):
         """
         进入“我的 -> 收藏”页。
@@ -594,6 +629,9 @@ class QQMusicHandler(AppHandler, Singleton):
         if not playlist_entry:
             self.press_back()
 
+        current_playing = self.get_current_playing() or {}
+        current_song_title = self._normalize_song_title(current_playing.get('song'))
+
         playlist_entry = self.wait_for_element_clickable('playlist_entry')
         if not playlist_entry:
             return {'error': 'Failed to find play list entry'}
@@ -622,56 +660,28 @@ class QQMusicHandler(AppHandler, Singleton):
                 )
             self._update_play_mode_key(detected, reason='playlist_ui_self_heal')
 
-        playlist_current = self.wait_for_element_clickable('playlist_current')
-        items = []
-        if playlist_current:
-            try:
-                playing_loc = playlist_current.location
-                playing_size = playlist_current.size
-                items = self.find_elements('playlist_item_container')
-                if len(items) > 0:
-                    playlist_first = items[0]
-                    start_x = playing_loc['x'] + playing_size['width'] // 2
-                    start_y = playing_loc['y'] + playing_size['height'] // 2
-                    end_y = playlist_first.location['y']
-                    if start_y - end_y > playlist_first.size['height']:
-                        self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
-                        items = self.find_elements('playlist_item_container')
-                        self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
+        items = self.find_elements('playlist_item_container')
+        playlist_info, song_titles = self._read_playlist_items(items)
 
-            except StaleElementReferenceException as e:
-                self.logger.warning("Playing indicator invisible in playlist playing")
-        else:
-            items = self.find_elements('playlist_item_container')
+        if current_song_title and current_song_title in song_titles:
+            playlist_current = self.try_find_element('playlist_current')
+            if playlist_current:
+                try:
+                    playing_loc = playlist_current.location
+                    playing_size = playlist_current.size
+                    if len(items) > 0:
+                        playlist_first = items[0]
+                        start_x = playing_loc['x'] + playing_size['width'] // 2
+                        start_y = playing_loc['y'] + playing_size['height'] // 2
+                        end_y = playlist_first.location['y']
+                        if start_y - end_y > playlist_first.size['height']:
+                            self.driver.swipe(start_x, start_y, start_x, end_y, 1000)
+                            items = self.find_elements('playlist_item_container')
+                            playlist_info, _ = self._read_playlist_items(items)
+                            self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
 
-        # Get all songs and singers
-
-        playlist_info = []
-        for item in items:
-            try:
-                elements = item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
-                if not elements:
-                    continue
-
-                song = elements[0]
-                if not song:
-                    self.logger.info("Failed to find song in playlist")
-                    continue
-                if len(elements) < 2:
-                    self.logger.info("Failed to find singer in playlist")
-                    continue
-                singer = elements[1]
-                if singer and singer.text:
-                    # 首行可能自带末尾「 - 」；第二行常为「 - 歌手」，去重后再拼成「歌名 - 歌手」
-                    song_title = re.sub(r"\s*-\s*$", "", (song.text or "").strip())
-                    singer_clean = re.sub(r"^\s*-\s*", "", (singer.text or "").strip())
-                    info = f"{song_title} - {singer_clean}" if singer_clean else song_title
-                else:
-                    info = song.text
-                playlist_info.append(info)
-            except StaleElementReferenceException as e:
-                self.logger.warning(f"Error getting song/singer text, {len(items)} ")
-                continue
+                except StaleElementReferenceException:
+                    self.logger.warning("Playing indicator invisible in playlist playing")
 
         if not playlist_info:
             self.logger.warning("No songs found in playlist")
