@@ -176,7 +176,8 @@ class RadioCommand(BaseCommand):
         playlist_info = self.music_handler.get_playlist_info()
         playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return self._report_error(error)
+            self.music_handler.logger.warning(f"Failed to read guess-like playlist after playback started: {error}")
+            playlist_text = guess_title_text
         error = self._switch_back_to_soul()
         if error:
             return error
@@ -213,6 +214,8 @@ class RadioCommand(BaseCommand):
         playlist_text, first_line, error = get_playlist_text_and_first_song(playlist_info)
         if not error and first_line:
             topic_text = first_line.split(" - ")[0].strip() or topic_text
+        elif error:
+            self.music_handler.logger.warning(f"Failed to read daily radio playlist after playback started: {error}")
 
         error = self._switch_back_to_soul()
         if error:
@@ -295,7 +298,9 @@ class RadioCommand(BaseCommand):
         playlist_info = self.music_handler.get_playlist_info()
         playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return self._report_error(error)
+            self.music_handler.logger.warning(f"Failed to read collection playlist after playback started: {error}")
+            playlist_text = collection_title_text
+            first_song = None
         first_song_title = first_song.split(" - ")[0].strip() if first_song else ""
         room_title_text = first_song_title or collection_title_text
 
@@ -338,7 +343,9 @@ class RadioCommand(BaseCommand):
         playlist_info = self.music_handler.get_playlist_info()
         playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return self._report_error(error)
+            self.music_handler.logger.warning(f"Failed to read healing playlist after playback started: {error}")
+            playlist_text = healing_room_name
+            first_song = None
         if not self.music_handler.navigate_to_home():
             return self._report_error("Failed to navigate to home")
         error = self._switch_back_to_soul()
@@ -380,7 +387,8 @@ class RadioCommand(BaseCommand):
         playlist_info = self.music_handler.get_playlist_info()
         playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return self._report_error(error)
+            self.music_handler.logger.warning(f"Failed to read radar playlist after playback started: {error}")
+            playlist_text = "O Radio"
 
         # 切换回 Soul
         error = self._switch_back_to_soul()

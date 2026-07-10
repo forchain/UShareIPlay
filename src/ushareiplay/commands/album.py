@@ -114,7 +114,8 @@ class AlbumCommand(BaseCommand):
         playlist_info = self.handler.get_playlist_info()
         playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return {'error': error}
+            self.handler.logger.warning(f"Failed to read album playlist after playback started: {error}")
+            playlist_text = f"{title} - {topic}"
 
         self.handler.press_back()
 
