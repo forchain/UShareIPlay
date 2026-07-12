@@ -2,6 +2,9 @@ from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 
 
 class _Logger:
+    def __init__(self):
+        self.errors = []
+
     def info(self, message):
         pass
 
@@ -9,7 +12,7 @@ class _Logger:
         pass
 
     def error(self, message):
-        pass
+        self.errors.append(message)
 
 
 class _Element:
@@ -38,7 +41,18 @@ def _playlist_item(song, singer):
     return _Element([_Element(song), _Element(singer)])
 
 
-def _make_handler(monkeypatch, visible_items, current_song, updated_items=None):
+def test_get_current_playing_treats_missing_playback_nodes_as_optional():
+    handler = QQMusicHandler.__new__(QQMusicHandler)
+    handler.logger = _Logger()
+    handler.try_find_element = lambda key: None
+
+    result = handler.get_current_playing()
+
+    assert result is None
+    assert handler.logger.errors == []
+
+
+def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, marker_exists=True):
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
     handler.play_mode_key = "unknown"
@@ -58,6 +72,8 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None):
             return handler.playlist_entry
         if key == "playlist_current":
             handler.playlist_current_queries += 1
+            if not marker_exists:
+                return None
             return _Element(location={"x": 10, "y": 300}, size={"width": 80, "height": 40})
         raise AssertionError(f"unexpected key: {key}")
 
@@ -73,7 +89,7 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None):
     return handler
 
 
-def test_get_playlist_info_returns_visible_playlist_without_current_marker_when_title_absent(monkeypatch):
+def test_get_playlist_info_returns_initial_list_when_current_marker_is_absent(monkeypatch):
     handler = _make_handler(
         monkeypatch,
         visible_items=[
@@ -81,14 +97,37 @@ def test_get_playlist_info_returns_visible_playlist_without_current_marker_when_
             _playlist_item("第二首", " - 歌手B"),
         ],
         current_song="不在首屏",
+        marker_exists=False,
     )
 
     result = handler.get_playlist_info()
 
     assert result == {"playlist": "第一首 - 歌手A\n第二首 - 歌手B"}
-    assert handler.playlist_current_queries == 0
+    assert handler.playlist_current_queries == 1
     assert handler.driver.swipes == []
     assert handler.find_elements_calls == 1
+
+
+def test_get_playlist_info_scrolls_when_marker_exists_but_current_title_is_not_visible(monkeypatch):
+    handler = _make_handler(
+        monkeypatch,
+        visible_items=[
+            _playlist_item("第一首", " - 歌手A"),
+            _playlist_item("第二首", " - 歌手B"),
+        ],
+        current_song="不在首屏",
+        updated_items=[
+            _playlist_item("当前歌", " - 歌手C"),
+            _playlist_item("第一首", " - 歌手A"),
+        ],
+    )
+
+    result = handler.get_playlist_info()
+
+    assert result == {"playlist": "当前歌 - 歌手C\n第一首 - 歌手A"}
+    assert handler.playlist_current_queries == 1
+    assert handler.driver.swipes == [(50, 320, 50, 0, 1000)]
+    assert handler.find_elements_calls == 2
 
 
 def test_get_playlist_info_scrolls_and_updates_playlist_when_current_title_visible(monkeypatch):
