@@ -3,14 +3,18 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.models.message_info import MessageInfo
 
 
 COMMAND_PREFIXES = (":", "：", "/", "／")
 SILENT_COMMAND_PREFIXES = ("/", "／")
 PRIVATE_REPLY_PREFIXES = ("$", "＄")
+QUEUE_COMMAND_PREFIXES = COMMAND_PREFIXES + PRIVATE_REPLY_PREFIXES
+QUEUE_COMMAND_PREFIX_CHARS = "".join(QUEUE_COMMAND_PREFIXES)
 
 
 class CommandManager(Singleton):
@@ -380,7 +384,67 @@ class CommandManager(Singleton):
             s = s[1:].lstrip()
         return bool(s) and s[0] in SILENT_COMMAND_PREFIXES
 
-    async def handle_message_commands(self, messages):
+    async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
+        command_messages = []
+        for message_info in queue_messages:
+            parts = (message_info.content or "").split(";")
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    continue
+                part = part.replace("{user_name}", message_info.nickname)
+                part_silent = bool(getattr(message_info, "silent", False))
+                if part.startswith(SILENT_COMMAND_PREFIXES):
+                    part_silent = True
+                if part.startswith(QUEUE_COMMAND_PREFIXES):
+                    command_messages.append(
+                        MessageInfo(
+                            content=part,
+                            nickname=message_info.nickname,
+                            silent=part_silent,
+                            sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
+                        )
+                    )
+                elif not part_silent:
+                    if send_screen_message is not None:
+                        send_screen_message(part)
+                elif self._logger is not None:
+                    self._logger.info(f"Silent command suppressed queued message: {part}")
+
+        if not command_messages:
+            return 0
+
+        await self.execute_command_messages(command_messages)
+        return len(command_messages)
+
+    async def execute_chat_scan(self, chats):
+        messages = []
+        for chat in chats:
+            match = self._match_scanned_chat_command(chat)
+            if not match:
+                continue
+
+            nickname = match.group(1).strip()
+            trigger = match.group(2)
+            message_content = match.group(3).strip()
+            message_content = f"{trigger}{message_content}" if message_content else ""
+            if not message_content.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                continue
+            messages.append(MessageInfo(message_content, nickname))
+
+        if messages:
+            await self.execute_command_messages(messages)
+
+        return messages
+
+    @staticmethod
+    def _match_scanned_chat_command(chat: str):
+        import re
+
+        pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
+        return re.match(pattern, chat)
+
+    async def execute_command_messages(self, messages):
         """
         处理消息中的命令
         Args:
@@ -439,6 +503,9 @@ class CommandManager(Singleton):
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
         return success_count
+
+    async def handle_message_commands(self, messages):
+        return await self.execute_command_messages(messages)
 
     def get_command_modules(self):
         """获取所有已加载的命令模块"""

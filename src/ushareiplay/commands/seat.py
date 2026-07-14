@@ -29,7 +29,7 @@ class SeatCommand(BaseCommand):
                     seat_number = int(parameters[1])
                     if seat_number < 1 or seat_number > 12:
                         return {'error': 'Invalid seat number. Must be between 1 and 12'}
-                    return await seat_manager.reservation.reserve_seat(message_info.nickname, seat_number)
+                    return await seat_manager.reserve_seat(message_info.nickname, seat_number)
                 except ValueError:
                     return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
             elif command == '2' and len(parameters) == 2:
@@ -38,7 +38,7 @@ class SeatCommand(BaseCommand):
                     seat_number = int(parameters[1])
                     if seat_number < 1 or seat_number > 12:
                         return {'error': 'Invalid seat number. Must be between 1 and 12'}
-                    return await seat_manager.seating.sit_at_specific_seat(seat_number)
+                    return await seat_manager.take_seat(seat_number)
                 except ValueError:
                     return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
             elif command == '3':
@@ -48,14 +48,14 @@ class SeatCommand(BaseCommand):
             elif command == '4':
                 if len(parameters) == 1:
                     # Remove owner from their current seat
-                    return await seat_manager.seating.seat_off_owner()
+                    return await seat_manager.remove_seat_occupant(None)
                 if len(parameters) == 2:
                     # Remove whoever is sitting at the specified seat
                     try:
                         seat_number = int(parameters[1])
                         if seat_number < 1 or seat_number > 12:
                             return {'error': 'Invalid seat number. Must be between 1 and 12'}
-                        return await seat_manager.seating.seat_off_specific_seat(seat_number)
+                        return await seat_manager.remove_seat_occupant(seat_number)
                     except ValueError:
                         return {'error': 'Invalid seat number. Must be a number between 1 and 12'}
                 return {'error': 'Invalid command. Use: :seat 4 [seat_number]'}
