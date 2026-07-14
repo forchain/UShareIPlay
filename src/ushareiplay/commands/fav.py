@@ -179,7 +179,9 @@ class FavCommand(BaseCommand):
         playlist_info = self.handler.get_playlist_info()
         playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return {'error': error}
+            self.handler.logger.warning(f"Failed to read favorites playlist after playback started: {error}")
+            playlist_text = "O Station"
+            first_song = None
 
         # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
         self.handler.navigate_to_home()
@@ -235,7 +237,9 @@ class FavCommand(BaseCommand):
         playlist_info = self.handler.get_playlist_info()
         playlist_text, first_song, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return {'error': error}
+            self.handler.logger.warning(f"Failed to read filtered favorites playlist after playback started: {error}")
+            playlist_text = keyword or "O Station"
+            first_song = None
 
         # 播放后先回到 QQ 音乐首页，再去 Soul 设置标题/话题
         self.handler.navigate_to_home()
@@ -320,7 +324,9 @@ class FavCommand(BaseCommand):
         playlist_info = self.handler.get_playlist_info()
         playlist_text, first_line, error = get_playlist_text_and_first_song(playlist_info)
         if error:
-            return {'error': error}
+            self.handler.logger.warning(f"Failed to read searched favorites playlist after playback started: {error}")
+            playlist_text = keyword or "O Station"
+            first_line = None
 
         first_song = (first_line or "").split(' - ')[0].strip() if first_line else keyword
 
