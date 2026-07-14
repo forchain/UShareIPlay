@@ -37,6 +37,27 @@ class SeatManager(SeatManagerBase):
             self.ui.handler = handler
             self.seating.handler = handler
 
+    async def prepare_for_chat_scan(self) -> bool:
+        """Prepare seat UI state before chat history scanning."""
+        is_expanded = self.ui.check_seats_state()
+        if is_expanded:
+            return await self.ui.collapse_seats()
+        return True
+
+    async def reserve_seat(self, username: str, seat_number: int) -> dict:
+        """Reserve a specific seat for a user."""
+        return await self.reservation.reserve_seat(username, seat_number)
+
+    async def take_seat(self, seat_number: int) -> dict:
+        """Take a specific seat number."""
+        return await self.seating.sit_at_specific_seat(seat_number)
+
+    async def remove_seat_occupant(self, seat_number=None) -> dict:
+        """Remove the owner or a specific seat occupant, preserving :seat 4 [n]."""
+        if seat_number is None:
+            return await self.seating.seat_off_owner()
+        return await self.seating.seat_off_specific_seat(seat_number)
+
 # Create a default instance with a None handler
 # This ensures seat_manager is never None, components will be properly initialized later
 seat_manager = SeatManager(None)
@@ -54,4 +75,4 @@ def init_seat_manager(handler):
     if not seat_manager.ui.handler:
         logging.getLogger('seat_manager').error("初始化后 seat_manager.ui.handler 仍为 None")
         
-    return seat_manager 
+    return seat_manager

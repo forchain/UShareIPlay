@@ -30,8 +30,29 @@ class _FakeCommandManager:
     def __init__(self):
         self.received = []
 
-    async def handle_message_commands(self, messages):
+    async def execute_command_messages(self, messages):
         self.received.extend(messages)
+        return len(messages)
+
+    async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
+        from ushareiplay.managers.command_manager import CommandManager
+
+        manager = CommandManager.__new__(CommandManager)
+        manager.__init__()
+        manager._logger = logging.getLogger("test_runtime_queue_fake_command_manager")
+        manager.execute_command_messages = self.execute_command_messages
+        return await manager.execute_runtime_queue_messages(
+            queue_messages,
+            send_screen_message=send_screen_message,
+        )
+
+    async def execute_chat_scan(self, rows):
+        from ushareiplay.managers.command_manager import CommandManager
+
+        manager = CommandManager.__new__(CommandManager)
+        manager.__init__()
+        manager.execute_command_messages = self.execute_command_messages
+        return await manager.execute_chat_scan(rows)
 
 
 class _FakeWrapper:
