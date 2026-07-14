@@ -1,14 +1,8 @@
-import re
 import traceback
 from pathlib import Path
 import json
 
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.models.message_info import MessageInfo
-
-
-COMMAND_PREFIXES = (":", "：", "/", "／", "$", "＄")
-SILENT_COMMAND_PREFIXES = ("/", "／")
 
 
 class RuntimeQueueDrainer:
@@ -28,41 +22,18 @@ class RuntimeQueueDrainer:
         if self.obs:
             self.obs.emit("queue.drain.start", ctx={"count": len(queue_messages)})
 
-        command_messages = []
-        for message_info in queue_messages.values():
-            parts = (message_info.content or "").split(";")
-            for part in parts:
-                part = part.strip()
-                if not part:
-                    continue
-                part = part.replace("{user_name}", message_info.nickname)
-                part_silent = bool(getattr(message_info, "silent", False))
-                if part.startswith(SILENT_COMMAND_PREFIXES):
-                    part_silent = True
-                if part.startswith(COMMAND_PREFIXES):
-                    command_messages.append(
-                        MessageInfo(
-                            content=part,
-                            nickname=message_info.nickname,
-                            silent=part_silent,
-                            sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
-                        )
-                    )
-                elif not part_silent:
-                    self.handler.send_message(part)
-                elif self.logger:
-                    self.logger.info(f"Silent command suppressed queued message: {part}")
-
-        if command_messages:
-            await self.command_manager.handle_message_commands(command_messages)
+        command_count = await self.command_manager.execute_runtime_queue_messages(
+            queue_messages.values(),
+            send_screen_message=self.handler.send_message,
+        )
 
         if self.obs:
             self.obs.emit(
                 "queue.drain.end",
-                ctx={"count": len(queue_messages), "command_count": len(command_messages)},
+                ctx={"count": len(queue_messages), "command_count": command_count},
             )
 
-        return len(queue_messages), len(command_messages)
+        return len(queue_messages), command_count
 
 
 class AgentCommandSpool:
@@ -131,54 +102,17 @@ class StatusReporter:
         self.soul_handler = soul_handler
         self.timer_manager = timer_manager
 
-    async def update(self, *, page_source: str, event_manager, automation=None) -> None:
+    async def update(self, *, screen: dict, automation=None) -> None:
         try:
-            pkgs = event_manager._packages_from_page_source(page_source)
-            soul_pkg = event_manager._soul_package_name()
-            qq_pkg = (self.config.get("qq_music", {}) or {}).get(
-                "package_name", "com.tencent.qqmusic"
-            )
-            launchers = set(event_manager._launcher_packages())
-
-            foreground_app = "Unknown"
-            if pkgs:
-                if soul_pkg in pkgs:
-                    foreground_app = "Soul"
-                elif qq_pkg in pkgs:
-                    foreground_app = "QQMusic"
-                elif pkgs & launchers:
-                    foreground_app = "Launcher"
-
-            anchors = []
-            soul_elements = (self.config.get("soul", {}) or {}).get("elements", {}) or {}
-
-            def selector_present(selector: str) -> bool:
-                if not selector or not isinstance(selector, str):
-                    return False
-                if selector in page_source:
-                    return True
-                if selector.startswith("//") and "@resource-id" in selector:
-                    m = re.search(r'@resource-id\s*=\s*"([^"]+)"', selector)
-                    if m and m.group(1) and m.group(1) in page_source:
-                        return True
-                return False
-
-            for key in ("message_content", "input_box_entry", "input_box"):
-                sel = soul_elements.get(key)
-                if sel and selector_present(sel):
-                    anchors.append(key)
-
+            foreground_app = screen["foreground_app"]
+            anchors = screen["anchors"]
             ui_lock_state = "locked" if (self.ui_lock and self.ui_lock.locked()) else "unlocked"
             queue_size = MessageQueue.instance().get_queue_size()
 
-            soul_ui_state = "Unknown"
-            if foreground_app == "Soul":
-                soul_ui_state = "InChatReady" if "message_content" in anchors else "InUnknownPage"
-
             status = {
                 "foreground_app": foreground_app,
-                "soul_ui_state": soul_ui_state,
-                "qqmusic_ui_state": "Unknown",
+                "soul_ui_state": screen["soul_ui_state"],
+                "qqmusic_ui_state": screen["qqmusic_ui_state"],
                 "anchors": anchors,
                 "pipeline": {"ui_lock": ui_lock_state, "queue_size": queue_size},
                 "business": {
@@ -192,7 +126,7 @@ class StatusReporter:
             }
             self.obs.write_status(status)
             self.obs.emit("state.snapshot", ctx={"foreground_app": foreground_app, "anchors": anchors})
-            if foreground_app == "Soul" and soul_ui_state == "InChatReady":
+            if foreground_app == "Soul" and screen["soul_ui_state"] == "InChatReady":
                 self.obs.emit(
                     "state.ready",
                     ctx={

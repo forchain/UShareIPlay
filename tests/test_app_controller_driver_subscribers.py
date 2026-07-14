@@ -145,7 +145,6 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
         get_page_source=lambda: "",
         process_events=lambda _page_source: None,
     )
-    controller._update_status_from_page_source = lambda _page_source: None
     controller.is_running = False
 
     message_queue = MessageQueue.instance()
@@ -177,3 +176,129 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
     queued = asyncio.run(MessageQueue.instance().get_all_messages())
     assert [m.content for m in queued.values()] == ["$info"]
     assert [m.nickname for m in queued.values()] == ["Outlier"]
+
+
+def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monkeypatch):
+    controller = controller_without_init()
+    controller.config = {"commands": []}
+    controller.input_queue = Queue()
+    controller.soul_handler = SimpleNamespace(
+        error_count=0,
+        log_error=lambda *_args, **_kwargs: None,
+        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
+    )
+    controller.logger = FakeLogger()
+    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+
+    async def _start_timer():
+        return None
+
+    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
+    controller._runtime_queue_drainer = None
+    controller._drain_agent_command_spool = lambda: None
+    controller.is_running = True
+    controller.in_console_mode = False
+
+    calls = []
+
+    async def fake_update_status(_screen):
+        calls.append("status")
+
+    async def fake_process_current_screen():
+        calls.append("processed")
+        controller.is_running = False
+        return {"page_source": "<hierarchy />", "screen": {}, "triggered_count": 0}
+
+    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+    controller._update_status_from_screen = fake_update_status
+
+    def fail_get_page_source():
+        raise AssertionError("monitor loop should not fetch page source directly")
+
+    controller.event_manager.get_page_source = fail_get_page_source
+    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    monkeypatch.setattr(
+        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
+        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
+    )
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.threading.Thread",
+        lambda target: SimpleNamespace(daemon=False, start=lambda: None),
+    )
+
+    async def noop_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+
+    asyncio.run(controller.start_monitoring())
+
+    assert calls == ["processed", "status"]
+
+
+def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(monkeypatch):
+    controller = controller_without_init()
+    controller.config = {"commands": []}
+    controller.input_queue = Queue()
+    controller.soul_handler = SimpleNamespace(
+        error_count=0,
+        log_error=lambda *_args, **_kwargs: None,
+        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
+    )
+    controller.logger = FakeLogger()
+    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+
+    async def _start_timer():
+        return None
+
+    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
+    controller._runtime_queue_drainer = None
+    controller._drain_agent_command_spool = lambda: None
+    controller.is_running = True
+    controller.in_console_mode = False
+    calls = []
+
+    async def fake_update_status(_screen):
+        calls.append("status")
+
+    async def fake_process_current_screen():
+        calls.append("processed")
+        controller.is_running = False
+        return {
+            "page_source": "<hierarchy />",
+            "screen": {},
+            "triggered_count": 0,
+            "recovery": {
+                "attempted": True,
+                "suppressed": None,
+                "pressed_back": True,
+                "ready_rechecked": True,
+                "backoff_seconds": 0.5,
+            },
+        }
+
+    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+    controller._update_status_from_screen = fake_update_status
+
+    def fail_direct_recovery():
+        raise AssertionError("monitor loop should not own recovery policy")
+
+    controller.event_manager.get_page_source = fail_direct_recovery
+    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    monkeypatch.setattr(
+        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
+        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
+    )
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.threading.Thread",
+        lambda target: SimpleNamespace(daemon=False, start=lambda: None),
+    )
+
+    async def noop_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+
+    asyncio.run(controller.start_monitoring())
+
+    assert calls == ["processed", "status"]

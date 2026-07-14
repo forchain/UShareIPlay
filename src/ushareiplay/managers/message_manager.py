@@ -104,10 +104,8 @@ class MessageManager(Singleton):
         # 回溯补漏前，确保座位面板收起（避免聊天区域过小导致回溯变慢）
         try:
             seat_manager = self._get_seat_manager()
-            if seat_manager and getattr(seat_manager, "ui", None):
-                is_expanded = seat_manager.ui.check_seats_state()
-                if is_expanded:
-                    await seat_manager.ui.collapse_seats()
+            if seat_manager:
+                await seat_manager.prepare_for_chat_scan()
         except Exception:
             self.handler.logger.error(f"收起座位失败（不影响补漏继续执行）: {traceback.format_exc()}")
 
@@ -209,31 +207,9 @@ class MessageManager(Singleton):
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
-        messages = []
-        for chat in self.latest_chats:
-            pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
-
-            match = re.match(pattern, chat)
-            if not match:
-                continue
-
-            # Extract actual message content
-            nickname = match.group(1).strip()
-            trigger = match.group(2)
-            message_content = match.group(3).strip()
-            # Re-add trigger to keep MessageInfo.content consistent with queue/console conventions.
-            message_content = f"{trigger}{message_content}" if message_content else ""
-            if not message_content.strip(COMMAND_PREFIX_CHARS).strip():
-                continue
-            message = MessageInfo(message_content, nickname)
-            messages.append(message)
-
-        # 有新的命令消息，触发命令处理
         from ushareiplay.managers.command_manager import CommandManager
         command_manager = CommandManager.instance()
-        await command_manager.handle_message_commands(messages)
-
-        return messages
+        return await command_manager.execute_chat_scan(self.latest_chats)
 
     def is_user_enter_message(self, message: str) -> tuple[bool, str]:
         """Check if message is a user enter notification
