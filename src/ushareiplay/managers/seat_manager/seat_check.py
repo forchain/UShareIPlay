@@ -71,9 +71,10 @@ class SeatCheckManager(SeatManagerBase):
     async def check_user_specific_seat(self, username: str, seat_number: int):
         # ensure seats are expanded first
         self.handler.logger.info("expanding seats for check")
-        await self.seat_ui.expand_seats()
+        if not await self.seat_ui.expand_seats():
+            self.handler.log_error("failed to expand seats for check")
+            return
         await asyncio.sleep(0.5)  # wait for expansion animation
-        self.handler.logger.info("seats expanded successfully")
 
         # get all seat desks
         seat_desks = self.handler.find_elements('seat_desk')
@@ -82,36 +83,23 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.send_message(f"System error: Unable to access seats for {username}")
             return
         self.handler.logger.info(f"found {len(seat_desks)} seat desks")
+        if len(seat_desks) != 6:
+            self.handler.log_error(
+                f"seat expansion incomplete: found {len(seat_desks)} desks, expected 6"
+            )
+            return
 
         # check and handle the user's specific seat
         self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
 
-        row_index = (seat_number - 1) // 4  # 0-based row index
-
-        # Handle row visibility based on index
-        if row_index == 0 or row_index == 2:  # First or Third row
-            # Use second row's desk (index 1) as reference for scrolling
+        desk_index = (seat_number - 1) // 2
+        row_index = desk_index // 2
+        if row_index in (0, 2):
             reference_desk = seat_desks[2]
-            desk_height = reference_desk.size['height']
-
-            if row_index == 0:  # First row
-                # Scroll down one row height
-                self.handler.driver.swipe(
-                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                    reference_desk.location['y'] + reference_desk.size['height'] // 2,
-                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                    reference_desk.location['y'] + reference_desk.size['height'] // 2 + desk_height,
-                    1000
-                )
-            else:  # Third row
-                # Scroll up one row height
-                self.handler.driver.swipe(
-                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                    reference_desk.location['y'] + reference_desk.size['height'] // 2,
-                    reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                    reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
-                    1000
-                )
+            center_x = reference_desk.location['x'] + reference_desk.size['width'] // 2
+            center_y = reference_desk.location['y'] + reference_desk.size['height'] // 2
+            offset = reference_desk.size['height'] if row_index == 0 else -reference_desk.size['height']
+            self.handler.driver.swipe(center_x, center_y, center_x, center_y + offset, 1000)
             await asyncio.sleep(0.5)
 
         await self._handle_occupied_seat(username, seat_desks, seat_number)
@@ -123,7 +111,8 @@ class SeatCheckManager(SeatManagerBase):
 
         # Determine if this is a left or right seat in the row
         is_left_seat = bool(seat_number % 2)
-        desk = seat_desks[int((seat_number - 1) / 2)]
+        desk_index = (seat_number - 1) // 2
+        desk = seat_desks[desk_index]
 
         # Find the specific seat element
         if is_left_seat:
