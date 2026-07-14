@@ -522,18 +522,11 @@ class AppController(Singleton):
         except Exception:
             self.obs.emit("artifact.screenshot.error", level="ERROR", ctx={"reason": reason, "error": traceback.format_exc()})
 
-    async def _update_status_from_page_source(self, page_source: str) -> None:
-        await self._update_status_from_screen(self.event_manager.describe_screen(page_source))
-
     async def _update_status_from_screen(self, screen: dict) -> None:
         await self._status_reporter.update(
             screen=screen,
             automation=getattr(self, "post_party_create_automation", None),
         )
-
-    async def _process_current_page(self, page_source: str) -> None:
-        await self._update_status_from_page_source(page_source)
-        await self.event_manager.react_to_page(page_source)
 
     async def stop(self):
         """Stop the application"""

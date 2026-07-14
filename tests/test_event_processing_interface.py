@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
+from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import StatusReporter
 from ushareiplay.managers.event_manager import EventManager
 
@@ -280,6 +281,7 @@ def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_hand
 
 
 def test_status_reporter_uses_supplied_screen_description():
+    asyncio.run(MessageQueue.instance().clear_queue())
     obs = FakeObserver()
     reporter = StatusReporter(
         config={"soul": {"default_party_id": "123"}},

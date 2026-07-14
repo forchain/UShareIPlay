@@ -145,7 +145,6 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
         get_page_source=lambda: "",
         process_events=lambda _page_source: None,
     )
-    controller._update_status_from_page_source = lambda _page_source: None
     controller.is_running = False
 
     message_queue = MessageQueue.instance()
@@ -177,25 +176,6 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
     queued = asyncio.run(MessageQueue.instance().get_all_messages())
     assert [m.content for m in queued.values()] == ["$info"]
     assert [m.nickname for m in queued.values()] == ["Outlier"]
-
-
-def test_process_current_page_delegates_to_event_processing_interface():
-    controller = controller_without_init()
-    calls = []
-
-    async def fake_update(page_source):
-        calls.append(("status", page_source))
-
-    class FakeEventManager:
-        async def react_to_page(self, page_source):
-            calls.append(("event", page_source))
-
-    controller._update_status_from_page_source = fake_update
-    controller.event_manager = FakeEventManager()
-
-    asyncio.run(controller._process_current_page("<hierarchy />"))
-
-    assert calls == [("status", "<hierarchy />"), ("event", "<hierarchy />")]
 
 
 def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monkeypatch):
@@ -230,7 +210,6 @@ def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monke
         return {"page_source": "<hierarchy />", "screen": {}, "triggered_count": 0}
 
     controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
-    controller._process_current_page = lambda _page_source: calls.append("unexpected")
     controller._update_status_from_screen = fake_update_status
 
     def fail_get_page_source():

@@ -383,7 +383,7 @@ class EventManager(Singleton):
             page_source: 页面源码 XML 字符串
             
         Returns:
-            触发的事件数量
+            事件触发数量和未知页面恢复结果
         """
         if not self._initialized:
             self.initialize()
