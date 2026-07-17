@@ -124,9 +124,6 @@ class MessageManager(Singleton):
             last_chat,
         )
 
-        # send empty message to scroll to bottom instantly
-        self.handler.send_message("")
-
         if not key:
             return None
 
