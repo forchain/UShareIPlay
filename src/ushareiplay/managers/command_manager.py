@@ -4,6 +4,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line, expand_queue_text
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
@@ -387,29 +388,28 @@ class CommandManager(Singleton):
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
         command_messages = []
         for message_info in queue_messages:
-            parts = (message_info.content or "").split(";")
-            for part in parts:
-                part = part.strip()
-                if not part:
-                    continue
-                part = part.replace("{user_name}", message_info.nickname)
-                part_silent = bool(getattr(message_info, "silent", False))
-                if part.startswith(SILENT_COMMAND_PREFIXES):
-                    part_silent = True
-                if part.startswith(QUEUE_COMMAND_PREFIXES):
+            results = expand_queue_text(
+                message_info.content,
+                message_info.nickname,
+                silent=bool(getattr(message_info, "silent", False)),
+                sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
+            )
+            for result in results:
+                if result.kind == ChatIntakeKind.COMMAND:
                     command_messages.append(
                         MessageInfo(
-                            content=part,
-                            nickname=message_info.nickname,
-                            silent=part_silent,
-                            sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
+                            content=result.text,
+                            nickname=result.nickname,
+                            silent=result.silent,
+                            private_reply=result.private_reply,
+                            sleep_exempt=result.sleep_exempt,
                         )
                     )
-                elif not part_silent:
+                elif not result.silent:
                     if send_screen_message is not None:
-                        send_screen_message(part)
+                        send_screen_message(result.text)
                 elif self._logger is not None:
-                    self._logger.info(f"Silent command suppressed queued message: {part}")
+                    self._logger.info(f"Silent command suppressed queued message: {result.text}")
 
         if not command_messages:
             return 0
@@ -420,29 +420,17 @@ class CommandManager(Singleton):
     async def execute_chat_scan(self, chats):
         messages = []
         for chat in chats:
-            match = self._match_scanned_chat_command(chat)
-            if not match:
+            result = classify_chat_line(chat)
+            if result.kind != ChatIntakeKind.COMMAND:
                 continue
-
-            nickname = match.group(1).strip()
-            trigger = match.group(2)
-            message_content = match.group(3).strip()
-            message_content = f"{trigger}{message_content}" if message_content else ""
-            if not message_content.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+            if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
                 continue
-            messages.append(MessageInfo(message_content, nickname))
+            messages.append(MessageInfo(result.text, result.nickname))
 
         if messages:
             await self.execute_command_messages(messages)
 
         return messages
-
-    @staticmethod
-    def _match_scanned_chat_command(chat: str):
-        import re
-
-        pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
-        return re.match(pattern, chat)
 
     async def execute_command_messages(self, messages):
         """

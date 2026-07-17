@@ -15,3 +15,7 @@ _Avoid_: Command parser, queue drainer, chat command handler
 **Event Processing**:
 All behavior that describes and reacts to the current app screen, including page-source readiness, screen classification, event priority, UI-busy suppression, and unknown-page recovery.
 _Avoid_: Event loop, page-source helper, fallback navigation
+
+**Chat Intake**:
+The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
+_Avoid_: Message parser, chat classifier, command matcher

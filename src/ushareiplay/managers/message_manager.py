@@ -4,19 +4,18 @@
 """
 import logging
 import os
-import re
 import traceback
 from collections import deque
 
 from selenium.common.exceptions import StaleElementReferenceException
 
+from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.models.message_info import MessageInfo
 
-COMMAND_PREFIX_CHARS = ":：/／$＄"
 
 # Global chat logger - will be initialized when needed
 chat_logger = None
@@ -124,7 +123,8 @@ class MessageManager(Singleton):
             last_chat,
         )
 
-        # send empty message to scroll to bottom instantly
+        # send empty message to scroll to bottom instantly (always, even if
+        # the anchor was not found — otherwise the view stays on old messages)
         self.handler.send_message("")
 
         if not key:
@@ -144,55 +144,35 @@ class MessageManager(Singleton):
                 missed_chats.add(chat)
                 is_missed = True
 
-            # Parse @我 keyword messages for missed chats
-            at_pattern = r'souler\[(.+)\]说：@我\s+(.+)'
-            at_match = re.match(at_pattern, chat)
-            if at_match and is_missed:
-                username = at_match.group(1).strip()
-                keyword_text = at_match.group(2).strip()
+            result = classify_chat_line(chat)
 
-                parts = keyword_text.split(None, 1)
-                keyword = parts[0] if parts else ""
-                params = parts[1] if len(parts) > 1 else ""
-
+            if result.kind == ChatIntakeKind.KEYWORD_MENTION and is_missed:
                 from ushareiplay.managers.keyword_manager import KeywordManager
                 keyword_manager = KeywordManager.instance()
 
-                keyword_record = await keyword_manager.find_keyword(keyword, username)
+                keyword_record = await keyword_manager.find_keyword(result.text, result.nickname)
                 if keyword_record:
                     await keyword_manager.execute_keyword(
                         keyword_record,
-                        username,
-                        params=params,
+                        result.nickname,
+                        params=result.params,
                         sleep_exempt=True,
                     )
                 else:
                     await keyword_manager.execute_default_keyword(
-                        username,
-                        params=params,
+                        result.nickname,
+                        params=result.params,
                         sleep_exempt=True,
                     )
 
                 continue
 
-            # Parse message content using pattern
-            pattern = r'souler\[(.+)\]说[:：]\s*([:：/／$＄])\s*(.+)'
-
-            match = re.match(pattern, chat)
-            if not match:
-                continue
-
-            # Extract actual message content
-            nickname = match.group(1).strip()
-            trigger = match.group(2)
-            command = match.group(3).strip()
-            # Re-add the original trigger so slash commands remain silent downstream.
-            # CommandManager will normalize whitespace/colon later.
-            command = f"{trigger}{command}" if command else ""
-            if not command.strip(COMMAND_PREFIX_CHARS).strip():
-                continue
-            command_set.add(command)
-            nickname_map[command] = nickname
+            if result.kind == ChatIntakeKind.COMMAND:
+                command = result.text
+                if not command.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                    continue
+                command_set.add(command)
+                nickname_map[command] = result.nickname
 
         message_queue = MessageQueue.instance()
         for command in command_set:
@@ -210,29 +190,3 @@ class MessageManager(Singleton):
         from ushareiplay.managers.command_manager import CommandManager
         command_manager = CommandManager.instance()
         return await command_manager.execute_chat_scan(self.latest_chats)
-
-    def is_user_enter_message(self, message: str) -> tuple[bool, str]:
-        """Check if message is a user enter notification
-        Args:
-            message: str, message to check
-        Returns:
-            tuple[bool, str]: (is_enter_message, username)
-        """
-        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
-        match = re.match(pattern, message)
-        if match:
-            return True, match.group(1)
-        return False, ""
-
-    def is_user_return_message(self, message: str) -> tuple[bool, str]:
-        """Check if message is a user return notification（用户重新打开 app 返回派对时的消息）
-        Args:
-            message: str, message to check
-        Returns:
-            tuple[bool, str]: (is_return_message, username)
-        """
-        pattern = r"^(.+)(?:进来陪你聊天啦|坐着.+来啦).*?$"
-        match = re.match(pattern, message)
-        if match:
-            return True, match.group(1)
-        return False, ""

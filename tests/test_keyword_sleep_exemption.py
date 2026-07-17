@@ -71,9 +71,6 @@ async def test_at_keyword_message_executes_keyword_with_sleep_exemption(monkeypa
             self.latest_chats = []
             self.recent_chats = []
 
-        def is_user_return_message(self, _content):
-            return False, ""
-
     class _Logger:
         def critical(self, *_args, **_kwargs):
             return None
