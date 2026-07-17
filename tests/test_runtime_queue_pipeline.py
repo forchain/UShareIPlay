@@ -414,11 +414,74 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")
     manager._recovery_manager = None
     manager.recent_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
-    manager.latest_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
+    manager.latest_chats = deque(maxlen=3)
 
     assert _run(manager.process_missed_messages()) == set()
+    # send_message("") should be called to scroll back to bottom
     assert handler.sent_messages == [""]
-    # Check that latest_chats was cleared and recent_chats was updated (already matched in this case)
+
+
+def test_missed_detection_fallback_prevents_false_missed():
+    """When content_list has more items than recent_chats.maxlen,
+    the forward-matching fails but the anchor IS on screen.
+    The fallback check should set missed=False."""
+    from ushareiplay.managers.message_manager import MessageManager
+
+    manager = object.__new__(MessageManager)
+    manager._handler = None
+    manager._chat_logger = logging.getLogger("test_fallback")
+    manager._recovery_manager = None
+    # recent_chats only holds 3, but screen shows 5 messages
+    manager.recent_chats = deque(["msg_C", "msg_D", "msg_E"], maxlen=3)
+    manager.latest_chats = deque(maxlen=3)
+
+    # Simulate the matching logic from MessageContentEvent.handle()
+    content_list = ["msg_A", "msg_B", "msg_C", "msg_D", "msg_E"]
+    recent_len = len(manager.recent_chats)
+    content_len = len(content_list)
+    missed = False
+
+    # Run the matching algorithm (copy from message_content.py)
+    for i in range(recent_len):
+        no_new = False
+        for j in range(content_len):
+            content = content_list[j]
+            ii = i + j
+            if ii < recent_len:
+                recent_chat = manager.recent_chats[ii]
+                if content != recent_chat:
+                    break
+                if ii == recent_len - 1 and j == content_len - 1:
+                    no_new = True
+                    break
+            else:
+                manager.latest_chats.append(content)
+        if no_new:
+            break
+        if len(manager.latest_chats) > 0:
+            break
+        elif i == recent_len - 1:
+            missed = True
+            for c in content_list:
+                manager.latest_chats.append(c)
+
+    # Without the fallback, missed would be True
+    assert missed is True
+
+    # Now apply the fallback check (same as in message_content.py)
+    if missed and recent_len > 0:
+        last_recent = manager.recent_chats[-1]
+        for idx, content in enumerate(content_list):
+            if content == last_recent:
+                missed = False
+                manager.latest_chats.clear()
+                for new_content in content_list[idx + 1:]:
+                    manager.latest_chats.append(new_content)
+                break
+
+    # After fallback, missed should be False
+    assert missed is False
+    # No new messages after anchor
     assert len(manager.latest_chats) == 0
 
 

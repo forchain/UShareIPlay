@@ -130,14 +130,6 @@ class MessageManager(Singleton):
         # send empty message to scroll to bottom instantly
         self.handler.send_message("")
 
-        # Update recent_chats with scanned chats to keep the message history context accurate
-        for chat in attribute_values:
-            if chat not in self.recent_chats:
-                self.recent_chats.append(chat)
-
-        # Clear latest_chats since history has been successfully synchronized
-        self.latest_chats.clear()
-
         command_set = set[str]()
         nickname_map = {}
 
