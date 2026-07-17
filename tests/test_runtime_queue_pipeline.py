@@ -531,9 +531,6 @@ def test_message_content_event_dispatches_dollar_command(monkeypatch):
             self.processed_new = False
             self.processed_missed = False
 
-        def is_user_return_message(self, _content):
-            return False, ""
-
         async def process_new_messages(self):
             self.processed_new = True
 
