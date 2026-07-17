@@ -391,7 +391,7 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
     assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
 
 
-def test_process_missed_messages_does_not_open_input_after_finding_anchor():
+def test_process_missed_messages_sends_empty_message_after_finding_anchor():
     from ushareiplay.managers.message_manager import MessageManager
 
     class _FakeSoulHandler:
@@ -414,10 +414,12 @@ def test_process_missed_messages_does_not_open_input_after_finding_anchor():
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")
     manager._recovery_manager = None
     manager.recent_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
+    manager.latest_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
 
     assert _run(manager.process_missed_messages()) == set()
-    assert handler.sent_messages == []
+    assert handler.sent_messages == [""]
+    # Check that latest_chats was cleared and recent_chats was updated (already matched in this case)
+    assert len(manager.latest_chats) == 0
 
 
 def test_message_content_update_logic_does_not_drain_runtime_queue():
