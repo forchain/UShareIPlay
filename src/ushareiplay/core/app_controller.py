@@ -470,16 +470,9 @@ class AppController(Singleton):
                 if paused:
                     continue
 
-                # 获取 page_source（一次性获取，供事件管理器和其他检测使用）
-                page_source = self.event_manager.get_page_source()
-                if not page_source:
-                    # 切回/启动瞬间 page_source 偶尔为空，做一次轻量重试以减少误判窗口
-                    await asyncio.sleep(0.2)
-                    page_source = self.event_manager.get_page_source()
-
-                if page_source:
-                    await self._update_status_from_page_source(page_source)
-                    await self.event_manager.process_events(page_source)
+                outcome = await self.event_manager.process_current_screen()
+                if outcome["page_source"]:
+                    await self._update_status_from_screen(outcome["screen"])
 
                 # clear error once back to normal
                 error_count = 0
@@ -529,10 +522,9 @@ class AppController(Singleton):
         except Exception:
             self.obs.emit("artifact.screenshot.error", level="ERROR", ctx={"reason": reason, "error": traceback.format_exc()})
 
-    async def _update_status_from_page_source(self, page_source: str) -> None:
+    async def _update_status_from_screen(self, screen: dict) -> None:
         await self._status_reporter.update(
-            page_source=page_source,
-            event_manager=self.event_manager,
+            screen=screen,
             automation=getattr(self, "post_party_create_automation", None),
         )
 
