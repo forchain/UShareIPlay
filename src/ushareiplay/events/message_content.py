@@ -7,10 +7,10 @@
 
 __multiple__ = True
 
-import re
 import traceback
 
 from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
 
@@ -96,58 +96,44 @@ class MessageContentEvent(BaseEvent):
 
             # 处理所有消息元素
             for content in message_manager.latest_chats:
+                result = classify_chat_line(content)
 
-                # 检查用户返回消息（原“进来陪你聊天啦/坐着xx来啦”为返回场景，仅触发返回事件，避免与进入事件冗余）
-                is_return, username = message_manager.is_user_return_message(content)
+                is_return = result.kind == ChatIntakeKind.USER_RETURN
                 if is_return:
-                    self.logger.critical(f"User returned: {username}")
-                    await self._notify_user_return(username)
+                    self.logger.critical(f"User returned: {result.nickname}")
+                    await self._notify_user_return(result.nickname)
 
-                # === 新增：检查 @我 + 关键字格式 ===
-                at_pattern = r"souler\[(.+)\]说：@我\s+(.+)"
-                at_match = re.match(at_pattern, content)
-                if at_match:
-                    username = at_match.group(1)
-                    keyword_text = at_match.group(2).strip()
-
-                    # 关键词空格后续的都是参数，例如 "播放 周杰伦 稻香" -> keyword="播放", params="周杰伦 稻香"
-                    parts = keyword_text.split(None, 1)
-                    keyword = parts[0] if parts else ""
-                    params = parts[1] if len(parts) > 1 else ""
-
-                    # 查找并执行关键字
+                if result.kind == ChatIntakeKind.KEYWORD_MENTION:
                     from ushareiplay.managers.keyword_manager import KeywordManager
                     keyword_manager = KeywordManager.instance()
 
-                    keyword_record = await keyword_manager.find_keyword(keyword, username)
+                    keyword_record = await keyword_manager.find_keyword(result.text, result.nickname)
                     if keyword_record:
-                        # 找到匹配的关键字，执行（command 中可用 {user_name}、{params} 占位符）
                         await keyword_manager.execute_keyword(
                             keyword_record,
-                            username,
-                            params=params,
+                            result.nickname,
+                            params=result.params,
                             sleep_exempt=True,
                         )
                     else:
-                        # 没有匹配，执行默认关键字
                         await keyword_manager.execute_default_keyword(
-                            username,
-                            params=params,
+                            result.nickname,
+                            params=result.params,
                             sleep_exempt=True,
                         )
 
                     chat_logger.critical(content)
-                    continue  # 跳过后续的命令检测
+                    continue
 
-                # 检查是否满足命令格式
-                pattern = r"souler\[.+\]说[:：]\s*[:：/／$＄]\s*\S.+"
-                match = re.match(pattern, content)
-                if match:
-                    # 标记有命令消息
-                    has_command_message = True
-                    chat_logger.critical(content)
-                else:
-                    chat_logger.info(content)
+                if result.kind == ChatIntakeKind.COMMAND:
+                    if result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                        has_command_message = True
+                        chat_logger.critical(content)
+                    else:
+                        chat_logger.info(content)
+                    continue
+
+                chat_logger.info(content)
 
             handled = False
             # 如果有命令消息，调用 get_latest_messages 获取命令
