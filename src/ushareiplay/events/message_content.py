@@ -94,6 +94,23 @@ class MessageContentEvent(BaseEvent):
                         for content in content_list:
                             message_manager.latest_chats.append(content)
 
+            # Fallback: the forward-matching above can fail when content_list
+            # contains more items than recent_chats.maxlen (3).  In that case
+            # content_list[0] is older than anything in recent_chats and every
+            # alignment attempt mismatches at j=0.  Check whether the anchor
+            # (recent_chats[-1]) actually *is* visible on screen; if so, we
+            # are not truly "missed" — only the window is wider than maxlen.
+            if missed and recent_len > 0:
+                last_recent = message_manager.recent_chats[-1]
+                for idx, content in enumerate(content_list):
+                    if content == last_recent:
+                        # Anchor visible — override missed.
+                        missed = False
+                        message_manager.latest_chats.clear()
+                        for new_content in content_list[idx + 1:]:
+                            message_manager.latest_chats.append(new_content)
+                        break
+
             # 处理所有消息元素
             for content in message_manager.latest_chats:
 
@@ -158,6 +175,10 @@ class MessageContentEvent(BaseEvent):
 
             if missed:
                 await message_manager.process_missed_messages()
+                # After processing, the view has changed (scrolled back to
+                # bottom via send_message).  Clear recent_chats so the next
+                # iteration starts fresh instead of re-detecting a stale gap.
+                message_manager.recent_chats.clear()
 
             for chat in message_manager.latest_chats:
                 message_manager.recent_chats.append(chat)
