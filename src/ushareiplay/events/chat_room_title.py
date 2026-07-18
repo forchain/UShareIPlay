@@ -47,12 +47,7 @@ class ChatRoomTitleEvent(BaseEvent):
             from ushareiplay.managers.title_manager import TitleManager
 
             title_manager = TitleManager.instance()
-
-            if (
-                title_manager.next_title == "日推"
-                and title_manager.theme_manager
-                and not title_manager.theme_manager.can_update_now()
-            ):
+            if title_manager.next_title:
                 return False
 
             title_manager.set_next_title("日推")
