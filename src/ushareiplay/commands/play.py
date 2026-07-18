@@ -36,7 +36,7 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.wait_for_element_clickable('result_item')
+        song_element = self.handler.element_finder.wait_for_element_clickable('result_item')
         song_element.click()
         self.handler.logger.info("Select first song")
 
@@ -48,7 +48,7 @@ class PlayCommand(BaseCommand):
 
     def play_favorites(self):
         """Navigate to favorites and play all"""
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
@@ -56,7 +56,7 @@ class PlayCommand(BaseCommand):
         if err:
             return err
 
-        result_item = self.handler.try_find_element('result_item')
+        result_item = self.handler.element_finder.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
@@ -65,7 +65,7 @@ class PlayCommand(BaseCommand):
                 song_text = elements[1].text
                 singer_text = elements[2].text
 
-        play_fav = self.handler.wait_for_element_clickable('play_all')
+        play_fav = self.handler.element_finder.wait_for_element_clickable('play_all')
         if not play_fav:
             return {'error': 'Cannot find play all button'}
         play_fav.click()
@@ -80,13 +80,13 @@ class PlayCommand(BaseCommand):
 
     def play_radar(self):
         """Navigate to favorites and play all"""
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info(f"Switched to QQ Music app")
 
         self.handler.navigate_to_home()
         self.handler.logger.info("Navigated to home page")
-        radar_nav = self.handler.try_find_element('radar_nav', log=False)
+        radar_nav = self.handler.element_finder.try_find_element('radar_nav', log=False)
         if not radar_nav:
             return {'error': 'Cannot find radar_nav'}
 
@@ -96,9 +96,9 @@ class PlayCommand(BaseCommand):
         self.handler.list_mode = 'radar'
 
         # Click on play all button
-        song = self.handler.wait_for_element_clickable('radar_song')
+        song = self.handler.element_finder.wait_for_element_clickable('radar_song')
         song_text = song.text if song else "Unknown"
-        singer = self.handler.wait_for_element_clickable('radar_singer')
+        singer = self.handler.element_finder.wait_for_element_clickable('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
         # 使用 title_manager 和 topic_manager 管理标题和话题

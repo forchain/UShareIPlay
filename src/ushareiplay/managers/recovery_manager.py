@@ -27,7 +27,7 @@ class RecoveryManager(Singleton):
         try:
             for attempt in range(1, max_attempts + 1):
                 # 使用 wait_for 获取可点击的元素
-                element = self.handler.wait_for_element_clickable(drawer_key)
+                element = self.handler.element_finder.wait_for_element_clickable(drawer_key)
                 if not element:
                     if not self._is_drawer_visible(drawer_key):
                         return self._confirm_drawer_closed(drawer_key, wait_element)
@@ -37,7 +37,7 @@ class RecoveryManager(Singleton):
                     return False
 
                 # 点击抽屉上方区域来关闭
-                click_success = self.handler.click_element_at(
+                click_success = self.handler.gesture_handler.click_element_at(
                     element, x_ratio=0.3, y_ratio=0, y_offset=-200
                 )
                 if not click_success:
@@ -60,7 +60,7 @@ class RecoveryManager(Singleton):
             return False
 
     def _is_drawer_visible(self, drawer_key: str) -> bool:
-        element = self.handler.try_find_element(drawer_key, log=False)
+        element = self.handler.element_finder.try_find_element(drawer_key, log=False)
         if not element:
             return False
         try:
@@ -70,11 +70,11 @@ class RecoveryManager(Singleton):
 
     def _confirm_drawer_closed(self, drawer_key: str, wait_element: str) -> bool:
         # 等待指定元素出现，确认界面已恢复正常；成功条件仍以抽屉消失为准。
-        target_element = self.handler.wait_for_element(wait_element)
+        target_element = self.handler.element_finder.wait_for_element(wait_element)
         if target_element:
             self.logger.info(f"Closed drawer: {drawer_key}, {wait_element} confirmed")
         else:
-            self.handler.press_back()
+            self.handler.key_actions.press_back()
             self.logger.warning(f"Closed drawer: {drawer_key}, but {wait_element} not found")
         return not self._is_drawer_visible(drawer_key)
 

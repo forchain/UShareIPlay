@@ -110,9 +110,9 @@ async def test_message_manager_prepares_chat_scan_through_seat_management(monkey
     seat_management = _FakeSeatManagement()
     manager = object.__new__(MessageManager)
     manager._handler = SimpleNamespace(
-        switch_to_app=lambda: True,
         logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
     )
+    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
     manager._chat_logger = None
     manager.previous_messages = {}
     manager.recent_chats = deque(maxlen=3)

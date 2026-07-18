@@ -45,6 +45,16 @@ class FakeHandler:
         self.swipes.append((start_x, start_y, end_x, end_y, duration_ms))
         return True
 
+    @property
+    def element_finder(self):
+        return self
+
+    @property
+    def gesture_handler(self):
+        return self
+
+    swipe = _perform_swipe
+
 
 @pytest.mark.asyncio
 async def test_accidental_touch_locker_uses_configured_element_key(monkeypatch):

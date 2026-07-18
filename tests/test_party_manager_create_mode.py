@@ -41,6 +41,10 @@ class _Handler:
             return _Element()
         return None
 
+    @property
+    def element_finder(self):
+        return self
+
 
 def test_party_create_mode_restore_clicks_restore_only():
     manager = PartyManager.instance()

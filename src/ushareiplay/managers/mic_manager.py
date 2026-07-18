@@ -1,4 +1,3 @@
-import traceback
 from ushareiplay.core.singleton import Singleton
 
 
@@ -22,30 +21,10 @@ class MicManager(Singleton):
         Returns:
             dict: 操作结果
         """
-        try:
-            if not self.soul_handler.switch_to_app():
-                return {'error': 'Failed to switch to Soul app'}
-            
-            action = "开启" if enable else "关闭"
-            self.logger.info(f"Attempting to {action} microphone")
-            
-            # 查找麦克风切换按钮
-            mic_button = self.soul_handler.try_find_element('toggle_mic')
-            if not mic_button:
-                return {'error': 'Microphone button not found'}
-            
-            # 检查当前状态（通过按钮的可点击性或其他属性判断）
-            # 这里假设按钮总是可点击的，实际状态通过其他方式判断
-            
-            mic_button.click()
-            self.logger.info(f"Clicked microphone button to {action}")
-            
-            state = "开启" if enable else "关闭"
-            return {'state': state}
-            
-        except Exception as e:
-            self.logger.error(f"Error toggling microphone: {traceback.format_exc()}")
-            return {'error': str(e)}
+        result = self.soul_handler.ui_actions.toggle_mic(enable)
+        if result == {'error': 'Failed to switch to app'}:
+            return {'error': 'Failed to switch to Soul app'}
+        return result
     
     def get_mic_status(self) -> dict:
         """
@@ -54,11 +33,11 @@ class MicManager(Singleton):
             dict: 麦克风状态信息
         """
         try:
-            if not self.soul_handler.switch_to_app():
+            if not self.soul_handler.key_actions.switch_to_app():
                 return {'error': 'Failed to switch to Soul app'}
             
             # 查找麦克风按钮
-            mic_button = self.soul_handler.try_find_element('toggle_mic')
+            mic_button = self.soul_handler.element_finder.try_find_element('toggle_mic')
             if not mic_button:
                 return {'error': 'Microphone button not found'}
             

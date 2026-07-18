@@ -1,10 +1,18 @@
 import asyncio
+from types import SimpleNamespace
 import logging
 from collections import deque
 
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _with_ui_components(handler):
+    handler.key_actions = handler
+    handler.gesture_handler = handler
+    handler.element_finder = handler
+    return handler
 
 
 class _FakeObs:
@@ -233,7 +241,7 @@ def test_process_new_messages_accepts_dollar_prefix_and_keeps_content():
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
         manager = object.__new__(MessageManager)
-        manager._handler = _FakeSoulHandler()
+        manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new")
         manager.recent_chats = deque(maxlen=3)
         manager.latest_chats = deque(maxlen=3)
@@ -266,7 +274,7 @@ def test_process_new_messages_accepts_fullwidth_dollar_prefix_and_keeps_content(
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
         manager = object.__new__(MessageManager)
-        manager._handler = _FakeSoulHandler()
+        manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new_fullwidth")
         manager.recent_chats = deque(maxlen=3)
         manager.latest_chats = deque(maxlen=3)
@@ -299,7 +307,7 @@ def test_process_new_messages_skips_non_command_and_keeps_following_dollar_comma
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
         manager = object.__new__(MessageManager)
-        manager._handler = _FakeSoulHandler()
+        manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new_mixed")
         manager.recent_chats = deque(maxlen=3)
         manager.latest_chats = deque(maxlen=3)
@@ -332,7 +340,7 @@ def test_process_new_messages_accepts_ascii_colon_in_chat_prefix():
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
         manager = object.__new__(MessageManager)
-        manager._handler = _FakeSoulHandler()
+        manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_ascii_colon")
         manager.recent_chats = deque(maxlen=3)
         manager.latest_chats = deque(maxlen=3)
@@ -370,7 +378,7 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
             return None
 
     manager = object.__new__(MessageManager)
-    manager._handler = _FakeSoulHandler()
+    manager._handler = _with_ui_components(_FakeSoulHandler())
     manager._chat_logger = logging.getLogger("test_chat_logger_missed")
     manager._recovery_manager = None
     manager.recent_chats = deque(maxlen=3)
@@ -408,7 +416,7 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
         def send_message(self, message):
             self.sent_messages.append(message)
 
-    handler = _FakeSoulHandler()
+    handler = _with_ui_components(_FakeSoulHandler())
     manager = object.__new__(MessageManager)
     manager._handler = handler
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")

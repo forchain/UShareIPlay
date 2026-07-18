@@ -263,7 +263,7 @@ class AppController(Singleton):
 
             # 5. 切换回应用
             if self.soul_handler:
-                self.soul_handler.switch_to_app()
+                self.soul_handler.key_actions.switch_to_app()
 
             if self.logger:
                 self.logger.info("==== Driver重建完成 ====")

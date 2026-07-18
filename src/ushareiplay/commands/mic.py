@@ -12,12 +12,12 @@ class MicCommand(BaseCommand):
             dict: Result with success or error
         """
         try:
-            toggle_mic_button = self.handler.wait_for_element_clickable('toggle_mic')
+            toggle_mic_button = self.handler.element_finder.wait_for_element_clickable('toggle_mic')
 
             if not toggle_mic_button:
                 return {'error': 'Microphone button not found'}
             
-            desc = self.handler.try_get_attribute(toggle_mic_button, 'content-desc')
+            desc = self.handler.element_finder.try_get_attribute(toggle_mic_button, 'content-desc')
             if not desc:
                 self.handler.logger.error('failed to get mic status')
                 return {'error': 'Failed to get mic status'}

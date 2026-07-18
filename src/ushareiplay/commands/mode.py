@@ -47,14 +47,14 @@ class ModeCommand(BaseCommand):
                 self.handler.logger.info(f"[MODE_TEST][{step}] {kv}".strip())
 
             # 0. 先切换到音乐App
-            switched = self.handler.switch_to_app()
+            switched = self.handler.key_actions.switch_to_app()
             if not switched:
                 self.handler.logger.info("无法切换到音乐App")
                 return {
                     'error': '无法切换到音乐App，稍后重试'
                 }
 
-            self.handler.press_back()
+            self.handler.key_actions.press_back()
 
             # 1. 尝试查找当前界面状态
             # - playing_bar: 在非播放页但底部有播放导航条，需要先点它进入播放页
@@ -65,7 +65,7 @@ class ModeCommand(BaseCommand):
                 'play_mode_single',
                 'play_mode_random',
             ]
-            found_element_key, found_element = self.handler.wait_for_any_element(element_keys)
+            found_element_key, found_element = self.handler.element_finder.wait_for_any_element(element_keys)
 
             if not found_element_key or not found_element:
                 self.handler.logger.info("未找到播放模式相关元素，说明现在没有播放音乐")
@@ -78,14 +78,14 @@ class ModeCommand(BaseCommand):
             # 2. 如果在非播放页：先点底部 Playing Bar 进入播放页
             if found_element_key == 'playing_bar':
                 self.handler.logger.info("找到 playing_bar，点击进入播放页")
-                if not self.handler.click_element_at(found_element):
+                if not self.handler.gesture_handler.click_element_at(found_element):
                     return {
                         'error': 'FAIL: 点击 playing_bar 进入播放页失败'
                     }
 
                 # 进入播放页后，再等待播放模式按钮出现
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
-                found_element_key, found_element = self.handler.wait_for_any_element(mode_element_keys)
+                found_element_key, found_element = self.handler.element_finder.wait_for_any_element(mode_element_keys)
                 log_step("Step1", after_playing_bar_found_key=found_element_key)
 
                 if not found_element_key or not found_element:
@@ -118,13 +118,13 @@ class ModeCommand(BaseCommand):
                     before_click_mode=mode_names[current_mode],
                     target_mode=mode_names[target_mode],
                 )
-                if not self.handler.click_element_at(current_mode_element):
+                if not self.handler.gesture_handler.click_element_at(current_mode_element):
                     self.handler.logger.warning("click_element_at 返回 False，继续下一次重试")
                     continue
 
                 # 重新检查当前模式
                 mode_element_keys = ['play_mode_list', 'play_mode_single', 'play_mode_random']
-                found_element_key, found_element = self.handler.wait_for_any_element(mode_element_keys)
+                found_element_key, found_element = self.handler.element_finder.wait_for_any_element(mode_element_keys)
 
                 if not found_element_key or not found_element:
                     self.handler.logger.warning("切换后未找到播放模式元素")

@@ -189,7 +189,7 @@ class SeatingManager(SeatManagerBase):
 
                 # Click the state element to open user profile popup
                 state_key = f'{side}_state'
-                state_element = self.handler.find_child_element(
+                state_element = self.handler.element_finder.find_child_element(
                     desk, state_key, log_failure=False
                 )
                 if not state_element:
@@ -199,12 +199,12 @@ class SeatingManager(SeatManagerBase):
                 self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
 
                 # Read the user name from the popup
-                found_key, name_element = self.handler.wait_for_any_element(
+                found_key, name_element = self.handler.element_finder.wait_for_any_element(
                     ['souler_name', 'user_name']
                 )
                 if not name_element:
                     self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
-                    self.handler.press_back()
+                    self.handler.key_actions.press_back()
                     continue
 
                 actual_username = name_element.text
@@ -214,12 +214,12 @@ class SeatingManager(SeatManagerBase):
 
                 if actual_username != target_username:
                     # Not the target user, close popup and continue
-                    self.handler.press_back()
+                    self.handler.key_actions.press_back()
                     await asyncio.sleep(0.3)
                     continue
 
                 # Found the target user! Close the popup first
-                self.handler.press_back()
+                self.handler.key_actions.press_back()
                 await asyncio.sleep(0.3)
 
                 # Check if the adjacent seat is available
@@ -331,12 +331,12 @@ class SeatingManager(SeatManagerBase):
         return None
 
     def _collect_desk_info(self, desk):
-        left_seat = self.handler.find_child_element(desk, 'left_seat', log_failure=False)
-        right_seat = self.handler.find_child_element(desk, 'right_seat', log_failure=False)
-        left_state = self.handler.find_child_element(desk, 'left_state', log_failure=False)
-        right_state = self.handler.find_child_element(desk, 'right_state', log_failure=False)
-        left_label_element = self.handler.find_child_element(desk, 'left_label', log_failure=False)
-        right_label_element = self.handler.find_child_element(desk, 'right_label', log_failure=False)
+        left_seat = self.handler.element_finder.find_child_element(desk, 'left_seat', log_failure=False)
+        right_seat = self.handler.element_finder.find_child_element(desk, 'right_seat', log_failure=False)
+        left_state = self.handler.element_finder.find_child_element(desk, 'left_state', log_failure=False)
+        right_state = self.handler.element_finder.find_child_element(desk, 'right_state', log_failure=False)
+        left_label_element = self.handler.element_finder.find_child_element(desk, 'left_label', log_failure=False)
+        right_label_element = self.handler.element_finder.find_child_element(desk, 'right_label', log_failure=False)
 
         left_label = left_label_element.text if left_label_element else ''
         right_label = right_label_element.text if right_label_element else ''
@@ -412,12 +412,12 @@ class SeatingManager(SeatManagerBase):
             seat_info['element'].click()
             self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
-            seat_off = self.handler.wait_for_element_clickable('seat_off')
+            seat_off = self.handler.element_finder.wait_for_element_clickable('seat_off')
             if not seat_off:
                 self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
                 return {'error': f'Unable to manage seat {seat_number}'}
 
-            found_key, souler_name = self.handler.wait_for_any_element(['souler_name', 'user_name'])
+            found_key, souler_name = self.handler.element_finder.wait_for_any_element(['souler_name', 'user_name'])
             if not souler_name:
                 self.handler.logger.error(f"No souler name found for seat {seat_number}")
                 return {'error': f'Failed to verify occupant on seat {seat_number}'}
@@ -438,16 +438,16 @@ class SeatingManager(SeatManagerBase):
 
         try:
             # Wait for confirmation dialog
-            confirm_button = self.handler.wait_for_element_clickable('confirm_seat')
+            confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_seat')
             if not confirm_button:
                 self.handler.logger.error("Failed to find confirm button")
                 return {'error': 'Failed to find confirm button'}
 
             confirm_button.click()
             self.handler.logger.info("Confirmed seat selection")
-            bottom_drawer = self.handler.wait_for_element_clickable('bottom_drawer')
+            bottom_drawer = self.handler.element_finder.wait_for_element_clickable('bottom_drawer')
             if bottom_drawer:
-                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
                 self.handler.logger.info("Hide bottom drawer")
             return {'success': 'Successfully took a seat'}
 

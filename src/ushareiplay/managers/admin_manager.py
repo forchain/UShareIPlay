@@ -39,7 +39,7 @@ class AdminManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        manager_invite = self.handler.wait_for_element_clickable('manager_invite')
+        manager_invite = self.handler.element_finder.wait_for_element_clickable('manager_invite')
         if not manager_invite:
             return {'error': 'Failed to find manager invite button', 'user': target_nickname}
 
@@ -48,12 +48,12 @@ class AdminManager(Singleton):
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
-                self.handler.press_back()
+                self.handler.key_actions.press_back()
                 recovery_manager.close_drawer('online_drawer')
                 return {'error': '你已经是管理员了', 'user': target_nickname}
         else:
             if current_text == "管理邀请":
-                self.handler.press_back()
+                self.handler.key_actions.press_back()
                 recovery_manager.close_drawer('online_drawer')
                 return {'error': '你还不是管理员', 'user': target_nickname}
 
@@ -61,10 +61,10 @@ class AdminManager(Singleton):
         self.logger.info("Clicked manager invite button")
 
         if enable:
-            confirm_button = self.handler.wait_for_element_clickable('confirm_invite')
+            confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_invite')
             action = "Invited"
         else:
-            confirm_button = self.handler.wait_for_element_clickable('confirm_dismiss')
+            confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_dismiss')
             action = "Dismissed"
 
         if not confirm_button:

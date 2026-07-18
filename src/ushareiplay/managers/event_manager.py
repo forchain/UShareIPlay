@@ -431,7 +431,7 @@ class EventManager(Singleton):
                         "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
                 else:
                     recovery["attempted"] = True
-                    self.handler.switch_to_app()
+                    self.handler.key_actions.switch_to_app()
                     ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
                     if not ready_source:
                         recovery["suppressed"] = "page_source_not_ready"
@@ -442,7 +442,7 @@ class EventManager(Singleton):
                         recovery["ready_rechecked"] = True
                         second_triggered = await self._process_events_once(ready_source)
                         if second_triggered == 0:
-                            self.handler.press_back()
+                            self.handler.key_actions.press_back()
                             recovery["pressed_back"] = True
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
                             self._consecutive_unknown_pages += 1
@@ -559,7 +559,7 @@ class EventManager(Singleton):
             try:
                 src = self.handler.driver.page_source
                 if not src:
-                    self.handler.switch_to_app()
+                    self.handler.key_actions.switch_to_app()
                     await asyncio.sleep(interval_s)
                     continue
 
@@ -577,7 +577,7 @@ class EventManager(Singleton):
                     self.logger.debug(
                         "PageSource foreground is not Soul (launcher detected); switching to Soul app"
                     )
-                self.handler.switch_to_app()
+                self.handler.key_actions.switch_to_app()
                 await asyncio.sleep(interval_s)
             except etree.XMLSyntaxError as e:
                 last_error = e

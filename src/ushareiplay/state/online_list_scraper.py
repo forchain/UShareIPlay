@@ -37,13 +37,13 @@ class OnlineListScraper(Singleton):
             target_count = RoomState.instance().user_count
 
             # 打开在线用户列表
-            user_count_elem = self.handler.try_find_element('user_count', log=False)
+            user_count_elem = self.handler.element_finder.try_find_element('user_count', log=False)
             if not user_count_elem:
                 return
             user_count_elem.click()
             self.logger.info("Clicked user count element")
 
-            online_container = self.handler.wait_for_element('online_users')
+            online_container = self.handler.element_finder.wait_for_element('online_users')
             if not online_container:
                 self.logger.error("Online users container not found")
                 return
@@ -73,11 +73,11 @@ class OnlineListScraper(Singleton):
                 end_y = None
 
             for swipe_idx in range(max_swipes + 1):
-                visible_containers = self.handler.find_child_elements(online_container, 'user_container')
+                visible_containers = self.handler.element_finder.find_child_elements(online_container, 'user_container')
                 if visible_containers:
                     for container in visible_containers:
                         try:
-                            user_elem = self.handler.find_child_element(container, 'online_user')
+                            user_elem = self.handler.element_finder.find_child_element(container, 'online_user')
                             if not user_elem:
                                 continue
                             username = user_elem.text
@@ -89,7 +89,7 @@ class OnlineListScraper(Singleton):
                                 continue
                             all_online_user_names.add(username)
 
-                            follow_state_elem = self.handler.find_child_element(container, 'follow_state')
+                            follow_state_elem = self.handler.element_finder.find_child_element(container, 'follow_state')
                             follow_state = follow_state_elem.text if follow_state_elem else None
 
                             if follow_state:
@@ -106,7 +106,7 @@ class OnlineListScraper(Singleton):
 
                 # 停止条件 1：到底提示出现
                 try:
-                    no_more = self.handler.try_find_element('no_more_data', log=False)
+                    no_more = self.handler.element_finder.try_find_element('no_more_data', log=False)
                     if no_more and no_more.is_displayed():
                         self.logger.info("Detected no_more_data, stop scrolling online users.")
                         break
@@ -134,12 +134,12 @@ class OnlineListScraper(Singleton):
 
                 try:
                     if swipe_x is not None:
-                        ok = self.handler._perform_swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
+                        ok = self.handler.gesture_handler.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
                         if not ok:
                             self.logger.warning("Swipe failed, stop scrolling online users.")
                             break
                     else:
-                        self.handler.driver.swipe(500, 1500, 500, 800, 600)
+                        self.handler.gesture_handler.swipe(500, 1500, 500, 800, 600)
                 except Exception as e:
                     self.logger.error(f"Error during swipe operation: {str(e)}")
                     break
@@ -151,9 +151,9 @@ class OnlineListScraper(Singleton):
 
             PresenceTracker.instance().update_online_users(list(all_online_user_names))
 
-            bottom_drawer = self.handler.wait_for_element('bottom_drawer')
+            bottom_drawer = self.handler.element_finder.wait_for_element('bottom_drawer')
             if bottom_drawer:
                 self.logger.info('Hide online users dialog')
-                self.handler.click_element_at(bottom_drawer, 0.5, -0.1)
+                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")

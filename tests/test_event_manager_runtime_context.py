@@ -46,6 +46,10 @@ class FakeHandler:
         self.press_back_calls += 1
         return True
 
+    @property
+    def key_actions(self):
+        return self
+
 
 class FakeRuntime:
     def __init__(self, busy):
@@ -107,8 +111,8 @@ def test_event_manager_skips_auto_back_when_runtime_ui_busy():
 
     assert triggered == 0
     assert runtime.calls == 1
-    assert manager.handler.switch_to_app_calls == 0
-    assert manager.handler.press_back_calls == 0
+    assert manager.handler.key_actions.switch_to_app_calls == 0
+    assert manager.handler.key_actions.press_back_calls == 0
     assert manager._consecutive_unknown_pages == 0
 
 
@@ -120,8 +124,8 @@ def test_event_manager_switches_to_app_and_presses_back_when_runtime_ui_not_busy
 
     assert triggered == 0
     assert runtime.calls == 1
-    assert manager.handler.switch_to_app_calls >= 1
-    assert manager.handler.press_back_calls == 1
+    assert manager.handler.key_actions.switch_to_app_calls >= 1
+    assert manager.handler.key_actions.press_back_calls == 1
     assert manager._consecutive_unknown_pages == 1
 
 
