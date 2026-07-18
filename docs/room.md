@@ -26,7 +26,7 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 
 **Auto-restart**: `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
 
-**Seat flow**: A user requests a seat → `SeatManager` validates level + reservation → `SeatManager.seating` performs UI actions to put the user on the specified seat number.
+**Seat flow**: A user requests a seat → `SeatManager` validates level + reservation → `SeatManager` performs UI actions to put the user on the specified seat number.
 
 **Pack opening**: `:pack` is auto-triggered when the online user count reaches ≥ 5; can also be called manually. It opens the backpack UI and uses the first available luck pack.
 
@@ -54,4 +54,4 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 
 - **New room UI action**: Add method to `SoulHandler`, call from appropriate manager or command.
 - **Change restart threshold**: Update `soul.party_restart_minutes` in `config.yaml` (or `config.local.yaml`).
-- **New seat rule**: Extend `SeatManager.seat_check` submodule.
+- **New seat rule**: Extend the `SeatManager` facade; if the rule requires seat-panel inspection, implement it as an internal component used by the facade.

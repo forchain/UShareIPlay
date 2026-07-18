@@ -459,7 +459,7 @@ class PartyManager(Singleton):
 
         seat_manager = self.handler.controller.seat_manager
         self.logger.info("Attempting to seat owner after party creation")
-        result = await seat_manager.seating.find_owner_seat()
+        result = await seat_manager.find_owner_seat()
         if 'success' in result:
             self.logger.info("Owner successfully seated")
         else:

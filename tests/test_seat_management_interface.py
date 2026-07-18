@@ -42,9 +42,9 @@ class _FakeSeating:
 
 def _manager_with_fakes(ui=None, reservation=None, seating=None):
     manager = object.__new__(SeatManager)
-    manager.ui = ui or _FakeSeatUI(expanded=False)
-    manager.reservation = reservation or _FakeReservation()
-    manager.seating = seating or _FakeSeating()
+    manager._ui = ui or _FakeSeatUI(expanded=False)
+    manager._reservation = reservation or _FakeReservation()
+    manager._seating = seating or _FakeSeating()
     return manager
 
 
@@ -77,7 +77,7 @@ async def test_seat_management_preserves_remove_occupant_paths():
 
 
 def test_seat_management_shares_ui_and_check_dependencies():
-    singleton_classes = (SeatManager, ReservationManager, SeatCheckManager, SeatUIManager, SeatingManager)
+    singleton_classes = (SeatManager,)
     for manager_class in singleton_classes:
         manager_class._instance = None
         manager_class._initialized = False
@@ -85,10 +85,10 @@ def test_seat_management_shares_ui_and_check_dependencies():
     handler = object()
     manager = SeatManager.get_instance(handler)
 
-    assert manager.ui is manager.check.seat_ui
-    assert manager.ui is manager.reservation.seat_ui
-    assert manager.ui is manager.seating.seat_ui
-    assert manager.reservation.seat_check is manager.check
+    assert manager._ui is manager._check.seat_ui
+    assert manager._ui is manager._reservation.seat_ui
+    assert manager._ui is manager._seating.seat_ui
+    assert manager._reservation.seat_check is manager._check
 
     for manager_class in singleton_classes:
         manager_class._instance = None

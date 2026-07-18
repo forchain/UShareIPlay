@@ -2,13 +2,12 @@ import asyncio
 import traceback
 from datetime import datetime, timedelta
 from ushareiplay.dal import SeatReservationDAO, UserDAO
-from ushareiplay.managers.seat_manager.base import SeatManagerBase
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 
 
-class SeatCheckManager(SeatManagerBase):
+class SeatCheckManager:
     def __init__(self, handler=None, seat_ui=None):
-        super().__init__(handler)
+        self.handler = handler
         self.seat_ui = seat_ui or SeatUIManager(handler)
         self._message_dispatch = None
 
