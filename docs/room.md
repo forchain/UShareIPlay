@@ -13,8 +13,7 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 |---|---|
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
-| `ThemeManager` | Room theme — persists value, combines with title for full room name |
-| `TitleManager` | Room title — persists value, enforces cooldown to avoid rate-limiting |
+| `RoomNameManager` | Room name invariant: theme, title, shared cooldown, UI write, notice restore |
 | `TopicManager` | Study-room topic display |
 | `NoticeManager` | Room announcement text |
 | `SeatManager` | Seat reservation + seating sub-managers (see users.md) |
@@ -22,7 +21,7 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 
 ## How It Works
 
-**Room name** = `{theme} {title}` — `ThemeManager` and `TitleManager` each own one half and write the combined value to the UI when either changes.
+**Room name** = `{theme}｜{title}` — `RoomNameManager` owns the combined value, the shared cooldown, pending state, and the single UI write. `ThemeManager` and `TitleManager` are kept as thin adapters for legacy callers.
 
 **Auto-restart**: `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
 
