@@ -28,15 +28,25 @@ class ChatRoomTitleEvent(BaseEvent):
                 return False
             self._last_check_ts = now
 
-            from ushareiplay.managers.title_manager import TitleManager
-
-            title_manager = TitleManager.instance()
-            room_title_text = title_manager.get_room_title_text_from_ui()
+            # EventManager already matched this element in the current
+            # page-source snapshot. Reuse the wrapper instead of issuing a
+            # second live find_element/getText request.
+            room_title_text = ""
+            if element_wrapper is not None:
+                room_title_text = (
+                    getattr(element_wrapper, "content", None)
+                    or getattr(element_wrapper, "text", None)
+                    or ""
+                ).strip()
             if not room_title_text:
                 return False
 
             if "｜" in room_title_text:
                 return False
+
+            from ushareiplay.managers.title_manager import TitleManager
+
+            title_manager = TitleManager.instance()
 
             if (
                 title_manager.next_title == "日推"
