@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 from typing import Optional, Tuple
 
+from lxml import etree
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions import interaction
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
@@ -191,6 +192,41 @@ class GestureHandler:
         # 收集所有找到的元素的 attribute 值列表
         attribute_values_list = []
         try:
+            def snapshot() -> tuple[str, int]:
+                try:
+                    page_source = self.driver.page_source or ""
+                    return page_source, hash(page_source)
+                except Exception:
+                    return "", 0
+
+            def target_values(source: str) -> tuple[list[str], bool]:
+                selector = (self.config.get("elements") or {}).get(element_key)
+                if not source or not selector:
+                    return [], False
+                root = etree.fromstring(source.encode("utf-8"))
+                elements = (
+                    root.xpath(selector)
+                    if selector.startswith("//")
+                    else root.xpath(f"//*[@resource-id='{selector}']")
+                )
+                attrs = attribute_name.split("|") if attribute_name else ["content-desc", "text"]
+                values = []
+                matched = False
+                for element in elements:
+                    element_values = [element.get(attr) for attr in attrs]
+                    value = next((item for item in element_values if item and item != "null"), None)
+                    if value is not None:
+                        values.append(value)
+                    if attribute_value is None or attribute_value in element_values:
+                        matched = True
+                return values, matched
+
+            page_source, prev_hash = snapshot()
+            values, matched = target_values(page_source)
+            attribute_values_list.extend(values)
+            if matched:
+                return element_key, None, self._reversed_if_needed(attribute_values_list, direction)
+
             # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
             container = self.owner.element_finder.wait_for_element_clickable(container_key)
             if not container:
@@ -244,82 +280,18 @@ class GestureHandler:
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
-            # 页面无变化检测：通过 page_source 哈希判断
-            def snapshot() -> int:
-                try:
-                    return hash(self.driver.page_source)
-                except Exception:
-                    return 0
-
             # 开始循环滑动查找
-            prev_hash = snapshot()
             stable_rounds = 0
             max_stable_rounds = 2  # 连续多次无变化则认为到达边界
 
-            # 收集所有找到的元素的 attribute 值列表
-            attribute_values_list = []
-
             # 查找目标元素的辅助函数
-            def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
-                """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
-                found = self.owner.element_finder.find_child_element(
-                    container, element_key, log_failure=False
-                )
-                if found:
-                    if attribute_name and attribute_value:
-                        elements = self.owner.element_finder.find_child_elements(container, element_key)
-                        for element in elements:
-                            # 收集所有找到的元素的 attribute 值（不管是否匹配）
-                            attr_list = attribute_name.split('|')
-                            collected_value = None
-                            for attr in attr_list:
-                                value = self.owner.element_finder.try_get_attribute(element, attr)
-                                if value is not None and value != 'null':
-                                    collected_value = value
-                                    break
-                            if collected_value is not None:
-                                attribute_values_list.append(collected_value)
-
-                            # 检查是否匹配目标值
-                            any_match = False
-                            for attr in attr_list:
-                                value = self.owner.element_finder.try_get_attribute(element, attr)
-                                if value == attribute_value:
-                                    any_match = True
-                                    break
-                            if any_match:
-                                return element_key, element
-                    else:
-                        # 如果没有指定属性匹配，也收集所有找到的元素
-                        elements = self.owner.element_finder.find_child_elements(container, element_key)
-                        for element in elements:
-                            if attribute_name:
-                                attr_list = attribute_name.split('|')
-                                for attr in attr_list:
-                                    value = self.owner.element_finder.try_get_attribute(element, attr)
-                                    if value is not None and value != 'null':
-                                        attribute_values_list.append(value)
-                                        break
-                            else:
-                                # 如果没有指定属性名，优先使用 content-desc，如果没有则使用 text
-                                content_desc = self.owner.element_finder.try_get_attribute(
-                                    element, "content-desc"
-                                )
-                                if content_desc is not None and content_desc != 'null':
-                                    attribute_values_list.append(content_desc)
-                                else:
-                                    text = self.owner.element_finder.try_get_attribute(element, "text")
-                                    if text is not None and text != 'null':
-                                        attribute_values_list.append(text)
-                        return element_key, found
-                return None, None
+            def find_target_element(source: str) -> Tuple[Optional[str], Optional[WebElement]]:
+                """从当前 page source 快照读取目标属性，不逐个访问 WebElement。"""
+                values, matched = target_values(source)
+                attribute_values_list.extend(values)
+                return (element_key, container) if matched else (None, None)
 
             for _ in range(max_swipes):
-                # 尝试在容器内查找目标
-                key, element = find_target_element()
-                if element:
-                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
-
                 # 计算滑动坐标并执行滑动
                 sx, sy, ex, ey = compute_points(direction)
                 ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=300)
@@ -330,12 +302,12 @@ class GestureHandler:
                     return None, None, self._reversed_if_needed(attribute_values_list, direction)
 
                 # 滑动后再试一次（元素可能已进入可视区）
-                key, element = find_target_element()
+                page_source, cur_hash = snapshot()
+                key, element = find_target_element(page_source)
                 if element:
                     return key, element, self._reversed_if_needed(attribute_values_list, direction)
 
                 # 判断是否到底/到边（页面无变化）
-                cur_hash = snapshot()
                 if cur_hash == prev_hash:
                     stable_rounds += 1
                 else:

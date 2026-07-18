@@ -126,3 +126,36 @@ def test_scroll_container_uses_deliberate_swipe_duration():
     handler.scroll_container_until_element("message_content", "message_list")
 
     handler._perform_swipe.assert_called_once_with(50, 90, 50, 10, duration_ms=300)
+
+
+def test_scroll_container_reads_target_attributes_from_page_source_cache():
+    driver = MagicMock()
+    driver.page_source = """
+        <hierarchy>
+          <node resource-id="message" content-desc="older" />
+          <node resource-id="message" text="anchor" />
+        </hierarchy>
+    """
+    handler = _make_handler(driver)
+    handler.owner.config = {"elements": {"message_content": "message"}}
+    handler.owner.element_finder = MagicMock()
+    handler.owner.element_finder.wait_for_element_clickable.return_value = SimpleNamespace(
+        location={"x": 0, "y": 0},
+        size={"width": 100, "height": 100},
+    )
+
+    result = handler.scroll_container_until_element(
+        "message_content",
+        "message_list",
+        direction="down",
+        attribute_name="content-desc|text",
+        attribute_value="anchor",
+    )
+
+    assert result[0] == "message_content"
+    assert result[2] == ["anchor", "older"]
+    handler.owner.element_finder.wait_for_element_clickable.assert_not_called()
+    handler.owner.element_finder.wait_for_element.assert_not_called()
+    handler.owner.element_finder.find_child_element.assert_not_called()
+    handler.owner.element_finder.find_child_elements.assert_not_called()
+    handler.owner.element_finder.try_get_attribute.assert_not_called()
