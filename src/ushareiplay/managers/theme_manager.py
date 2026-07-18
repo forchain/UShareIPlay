@@ -118,13 +118,13 @@ class ThemeManager(Singleton):
 
         try:
             # Find room title element
-            room_title_element = self.handler.try_find_element('chat_room_title', log=False)
+            room_title_element = self.handler.element_finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 self.logger.info("Room title element not found for initialization")
                 return {'error': 'Room title element not found'}
 
             # Get room title text
-            room_title_text = self.handler.get_element_text(room_title_element)
+            room_title_text = self.handler.element_finder.get_element_text(room_title_element)
             if not room_title_text:
                 self.logger.info("Room title text is empty for initialization")
                 return {'error': 'Room title text is empty'}

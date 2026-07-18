@@ -34,7 +34,7 @@ class MusicManager(Singleton):
         try:
             self.logger.info(f"Attempting to play song: {song_query}")
             
-            if not self.music_handler.switch_to_app():
+            if not self.music_handler.key_actions.switch_to_app():
                 return {'error': 'Failed to switch to music app'}
             
             # 搜索歌曲
@@ -247,14 +247,14 @@ class MusicManager(Singleton):
             times = abs(delta)
             self.logger.info(f"Decreasing volume by {times} steps")
             for i in range(times):
-                self.music_handler.press_volume_down()
+                self.music_handler.key_actions.press_volume_down()
                 self.logger.info(f"Decreased volume ({i + 1}/{times})")
         else:
             # Increase volume
             times = delta
             self.logger.info(f"Increasing volume by {times} steps")
             for i in range(times):
-                self.music_handler.press_volume_up()
+                self.music_handler.key_actions.press_volume_up()
                 self.logger.info(f"Increased volume ({i + 1}/{times})")
 
         # Get final volume level

@@ -53,17 +53,17 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
     follow_state_elem = MagicMock()
     follow_state_elem.text = ""
 
-    scraper._handler.try_find_element.side_effect = lambda key, **kwargs: {
+    scraper._handler.element_finder.try_find_element.side_effect = lambda key, **kwargs: {
         "user_count": user_count_elem,
         "online_users": online_container,
         "bottom_drawer": MagicMock(),
     }.get(key)
-    scraper._handler.find_child_elements.return_value = [user_container]
-    scraper._handler.find_child_element.side_effect = lambda parent, key, **kwargs: {
+    scraper._handler.element_finder.find_child_elements.return_value = [user_container]
+    scraper._handler.element_finder.find_child_element.side_effect = lambda parent, key, **kwargs: {
         "online_user": user_elem,
         "follow_state": follow_state_elem,
     }.get(key)
-    scraper._handler.wait_for_element.side_effect = lambda key: {
+    scraper._handler.element_finder.wait_for_element.side_effect = lambda key: {
         "online_users": online_container,
         "bottom_drawer": MagicMock(),
     }.get(key)
@@ -78,8 +78,8 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
 def test_refresh_online_users_no_op_when_user_count_element_missing(scraper):
     RoomState.initialize()
     PresenceTracker.initialize()
-    scraper._handler.try_find_element.return_value = None
+    scraper._handler.element_finder.try_find_element.return_value = None
     # Should return early without raising
     import asyncio
     asyncio.run(scraper.refresh_online_users())
-    scraper._handler.try_find_element.assert_called_once_with("user_count", log=False)
+    scraper._handler.element_finder.try_find_element.assert_called_once_with("user_count", log=False)

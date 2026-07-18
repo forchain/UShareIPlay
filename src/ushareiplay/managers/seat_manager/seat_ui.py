@@ -20,7 +20,7 @@ class SeatUIManager(SeatManagerBase):
         # self.handler.logger.info(f"检查座位状态，当前 is_expanded={self.is_expanded}")
 
         # 获取元素
-        expand_seats = self.handler.try_find_element('expand_seats', log=False)
+        expand_seats = self.handler.element_finder.try_find_element('expand_seats', log=False)
         if not expand_seats:
             # self.handler.logger.warning("未找到座位按钮，无法确定当前状态")
             return self.is_expanded
@@ -62,7 +62,7 @@ class SeatUIManager(SeatManagerBase):
         # 添加详细日志，查看找到的元素
         # self.handler.logger.info("尝试展开座位...")
         try:
-            expand_seats = self.handler.try_find_element('expand_seats', log=False)
+            expand_seats = self.handler.element_finder.try_find_element('expand_seats', log=False)
 
             # 记录按钮的实际文本内容
             if expand_seats:
@@ -93,7 +93,7 @@ class SeatUIManager(SeatManagerBase):
             return None
 
         await asyncio.sleep(0.5)
-        seat_desks = self.handler.find_elements('seat_desk')
+        seat_desks = self.handler.element_finder.find_elements('seat_desk')
         if not seat_desks:
             self.handler.logger.error("Failed to find seat desks")
             return None
@@ -119,12 +119,12 @@ class SeatUIManager(SeatManagerBase):
         desk_height = reference_desk.size['height']
 
         if row_index == 0:
-            self.handler.driver.swipe(
+            self.handler.gesture_handler.swipe(
                 center_x, center_y, center_x, center_y + desk_height, duration
             )
             self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
         elif row_index == 2:
-            self.handler.driver.swipe(
+            self.handler.gesture_handler.swipe(
                 center_x, center_y, center_x, center_y - desk_height, duration
             )
             self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
@@ -145,7 +145,7 @@ class SeatUIManager(SeatManagerBase):
             return True
 
         try:
-            expand_seats = self.handler.try_find_element('expand_seats', log=False)
+            expand_seats = self.handler.element_finder.try_find_element('expand_seats', log=False)
 
             if expand_seats:
                 actual_text = expand_seats.text

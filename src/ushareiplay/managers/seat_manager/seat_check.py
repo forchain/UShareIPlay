@@ -106,11 +106,11 @@ class SeatCheckManager(SeatManagerBase):
 
         # Find the specific seat element
         if is_left_seat:
-            seat_element = self.handler.find_child_element(desk, 'left_seat')
-            seat_label = self.handler.find_child_element(seat_element, 'left_label')
+            seat_element = self.handler.element_finder.find_child_element(desk, 'left_seat')
+            seat_label = self.handler.element_finder.find_child_element(seat_element, 'left_label')
         else:
-            seat_element = self.handler.find_child_element(desk, 'right_seat')
-            seat_label = self.handler.find_child_element(seat_element, 'right_label')
+            seat_element = self.handler.element_finder.find_child_element(desk, 'right_seat')
+            seat_label = self.handler.element_finder.find_child_element(seat_element, 'right_label')
 
         if not seat_element:
             self.handler.logger.error(f"Cannot find seat element for seat {seat_number}")
@@ -132,13 +132,13 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
         # Wait for seat off button
-        seat_off = self.handler.wait_for_element_clickable('seat_off')
+        seat_off = self.handler.element_finder.wait_for_element_clickable('seat_off')
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
             self.message_dispatch.send_screen_message(f"Unable to manage seat {seat_number} for {username}")
             return
 
-        found_key, souler_name = self.handler.wait_for_any_element(['souler_name', 'user_name'])
+        found_key, souler_name = self.handler.element_finder.wait_for_any_element(['souler_name', 'user_name'])
         if not souler_name:
             self.handler.logger.error(f"No souler name found for seat {seat_number}")
             self.message_dispatch.send_screen_message(f"Failed to verify occupant on seat {seat_number}")
@@ -148,7 +148,7 @@ class SeatCheckManager(SeatManagerBase):
         if souler_name_text == username:
             self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
             # No message needed - user is already seated successfully
-            self.handler.press_back()
+            self.handler.key_actions.press_back()
             return
 
         user = await UserDAO.get_by_username(username)
@@ -156,7 +156,7 @@ class SeatCheckManager(SeatManagerBase):
         if user and souler and user.level <= souler.level:
             self.handler.logger.info(
                 f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
-            self.handler.press_back()
+            self.handler.key_actions.press_back()
             self.message_dispatch.send_screen_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
             return
 

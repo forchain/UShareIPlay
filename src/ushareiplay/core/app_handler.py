@@ -1,7 +1,7 @@
 import logging
 
 from ushareiplay.core.log_formatter import ColoredFormatter
-from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator
+from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
 
 _shared_handler_file_handler = None
 _shared_handler_file_path = None
@@ -21,6 +21,7 @@ class AppHandler:
         self.key_actions = KeyActions(self)
         self.gesture_handler = GestureHandler(self)
         self.navigator = Navigator(self)
+        self.ui_actions = UIActions(self)
         self.logger.debug(f"AppHandler.__init__ 完成: {self.__class__.__name__}")
 
     @property
@@ -112,148 +113,3 @@ class AppHandler:
     def log_warning(self, message):
         """Log warning level message"""
         self.logger.warning(message)
-
-    def wait_for_element(self, element_key: str, timeout: int = 10):
-        return self.element_finder.wait_for_element(element_key, timeout=timeout)
-
-    def is_element_clickable(self, element):
-        return self.element_finder.is_element_clickable(element)
-
-    def wait_for_element_clickable(self, element_key: str, timeout: int = 10):
-        return self.element_finder.wait_for_element_clickable(element_key, timeout=timeout)
-
-    def try_find_element(self, element_key: str, log=False, clickable=False):
-        return self.element_finder.try_find_element(element_key, log=log, clickable=clickable)
-
-    def wait_for_element_polling(
-            self, locator_type, locator_value, timeout=10, poll_frequency=0.5
-    ):
-        return self.element_finder.wait_for_element_polling(
-            locator_type,
-            locator_value,
-            timeout=timeout,
-            poll_frequency=poll_frequency,
-        )
-
-    def wait_for_element_clickable_polling(
-            self, locator_type, locator_value, timeout=10, poll_frequency=0.5
-    ):
-        return self.element_finder.wait_for_element_clickable_polling(
-            locator_type,
-            locator_value,
-            timeout=timeout,
-            poll_frequency=poll_frequency,
-        )
-
-    def get_element_text(self, element):
-        return self.element_finder.get_element_text(element)
-
-    def try_get_attribute(self, element, attribute):
-        return self.element_finder.try_get_attribute(element, attribute)
-
-    def _get_locator(self, element_key: str):
-        return self.element_finder._get_locator(element_key)
-
-    def find_elements(self, element_key: str):
-        return self.element_finder.find_elements(element_key)
-
-    def find_child_element(self, parent, element_key, log_failure: bool = True):
-        return self.element_finder.find_child_element(
-            parent, element_key, log_failure=log_failure
-        )
-
-    def find_child_elements(self, parent, element_key: str):
-        return self.element_finder.find_child_elements(parent, element_key)
-
-    def wait_for_any_element(self, element_keys: list, timeout: int = 10):
-        return self.element_finder.wait_for_any_element(element_keys, timeout=timeout)
-
-    def try_find_any_element(self, element_keys: list):
-        return self.element_finder.try_find_any_element(element_keys)
-
-    def switch_to_app(self):
-        return self.key_actions.switch_to_app()
-
-    def close_app(self):
-        return self.key_actions.close_app()
-
-    def switch_to_activity(self, activity):
-        return self.key_actions.switch_to_activity(activity)
-
-    def press_enter(self, element):
-        return self.key_actions.press_enter(element)
-
-    def press_back(self):
-        return self.key_actions.press_back()
-
-    def press_dpad_down(self):
-        return self.key_actions.press_dpad_down()
-
-    def press_volume_up(self):
-        return self.key_actions.press_volume_up()
-
-    def press_volume_down(self):
-        return self.key_actions.press_volume_down()
-
-    def press_right_key(self, times=1):
-        return self.key_actions.press_right_key(times=times)
-
-    def set_clipboard_text(self, text):
-        return self.key_actions.set_clipboard_text(text)
-
-    def paste_text(self):
-        return self.key_actions.paste_text()
-
-    def click_element_at(
-            self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0
-    ):
-        return self.gesture_handler.click_element_at(
-            element,
-            x_ratio=x_ratio,
-            y_ratio=y_ratio,
-            x_offset=x_offset,
-            y_offset=y_offset,
-        )
-
-    def _reversed_if_needed(self, lst: list, direction: str):
-        return self.gesture_handler._reversed_if_needed(lst, direction)
-
-    def _perform_swipe(
-            self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
-    ):
-        return self.gesture_handler._perform_swipe(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            duration_ms=duration_ms,
-        )
-
-    def scroll_container_until_element(
-            self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
-            attribute_value: str = None, max_swipes: int = 10
-    ):
-        return self.gesture_handler.scroll_container_until_element(
-            element_key,
-            container_key,
-            direction=direction,
-            attribute_name=attribute_name,
-            attribute_value=attribute_value,
-            max_swipes=max_swipes,
-        )
-
-    def navigate_to_element(
-            self,
-            target_key: str,
-            interference_keys: list = None,
-            home_key: str = "home_nav",
-            back_keys=None,
-            max_attempts: int = 10,
-    ):
-        return self.navigator.navigate_to_element(
-            target_key,
-            interference_keys=interference_keys,
-            home_key=home_key,
-            back_keys=back_keys,
-            max_attempts=max_attempts,
-        )

@@ -107,7 +107,7 @@ def test_perform_swipe_uses_driver_swipe():
         SimpleNamespace(driver=driver, logger=FakeLogger(), config={})
     )
 
-    assert handler._perform_swipe(10, 20, 30, 40, duration_ms=250) is True
+    assert handler.swipe(10, 20, 30, 40, duration_ms=250) is True
     assert driver.swipes == [(10, 20, 30, 40, 250)]
 
 

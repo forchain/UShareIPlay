@@ -55,6 +55,7 @@ def make_event_manager(config=None):
             },
         },
     )
+    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: True)
     manager._logger = manager._handler.logger
     manager._config = manager._handler.config
     manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
@@ -179,10 +180,10 @@ def test_process_current_screen_reports_ui_busy_suppressed_recovery(monkeypatch)
 
     manager._process_events_once = fake_process_once
     manager._wait_page_source_ready_async = fail_wait_ready
-    manager.handler.switch_to_app = lambda: (_ for _ in ()).throw(
+    manager.handler.key_actions.switch_to_app = lambda: (_ for _ in ()).throw(
         AssertionError("should not switch app while ui is busy")
     )
-    manager.handler.press_back = lambda: (_ for _ in ()).throw(
+    manager.handler.key_actions.press_back = lambda: (_ for _ in ()).throw(
         AssertionError("should not press back while ui is busy")
     )
 
@@ -222,8 +223,8 @@ def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatc
 
     manager._process_events_once = fake_process_once
     manager._wait_page_source_ready_async = fake_wait_ready
-    manager.handler.switch_to_app = lambda: switch_calls.append(True)
-    manager.handler.press_back = lambda: pressed_back.append(True)
+    manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
     monkeypatch.setattr("ushareiplay.managers.event_manager.asyncio.sleep", fake_sleep)
 
     outcome = asyncio.run(manager.react_to_page("<initial />"))
@@ -259,8 +260,8 @@ def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_hand
 
     manager._process_events_once = fake_process_once
     manager._wait_page_source_ready_async = fake_wait_ready
-    manager.handler.switch_to_app = lambda: switch_calls.append(True)
-    manager.handler.press_back = lambda: (_ for _ in ()).throw(
+    manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
+    manager.handler.key_actions.press_back = lambda: (_ for _ in ()).throw(
         AssertionError("should not press back when ready recheck already handled an event")
     )
 

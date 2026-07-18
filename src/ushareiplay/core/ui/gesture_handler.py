@@ -158,6 +158,12 @@ class GestureHandler:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
             return False
 
+    def swipe(
+            self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
+    ) -> bool:
+        """Perform one swipe using the gesture abstraction."""
+        return self._perform_swipe(start_x, start_y, end_x, end_y, duration_ms=duration_ms)
+
     @with_driver_recovery(op="read")
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,

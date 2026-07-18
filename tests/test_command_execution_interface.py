@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import deque
+from types import SimpleNamespace
 
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
@@ -15,6 +16,7 @@ class _FakeHandler:
         self.sent = []
         self.logger = logging.getLogger("test_command_execution_interface")
         self.config = {"logging": {"directory": "logs"}}
+        self.key_actions = SimpleNamespace(switch_to_app=lambda: True)
 
     def send_message(self, message):
         self.sent.append(message)

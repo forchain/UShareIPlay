@@ -46,6 +46,14 @@ class _MockHandler:
     def wait_for_element_clickable(self, key):
         return self.elements.get(key)
 
+    @property
+    def element_finder(self):
+        return self
+
+    @property
+    def key_actions(self):
+        return self
+
 
 def test_end_party_direct_success():
     manager = PartyManager.instance()

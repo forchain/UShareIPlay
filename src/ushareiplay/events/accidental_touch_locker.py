@@ -21,7 +21,7 @@ class AccidentalTouchLockerEvent(BaseEvent):
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
             try:
-                element = self.handler.wait_for_element(
+                element = self.handler.element_finder.wait_for_element(
                     "accidental_touch_locker", timeout=3
                 )
                 if not element:
@@ -58,7 +58,7 @@ class AccidentalTouchLockerEvent(BaseEvent):
                     screen_h,
                 )
 
-                ok = self.handler._perform_swipe(
+                ok = self.handler.gesture_handler.swipe(
                     start_x, start_y, start_x, end_y, duration_ms=400
                 )
                 if not ok:

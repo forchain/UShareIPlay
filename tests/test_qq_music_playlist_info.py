@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 
 
@@ -44,7 +46,8 @@ def _playlist_item(song, singer):
 def test_get_current_playing_treats_missing_playback_nodes_as_optional():
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
-    handler.try_find_element = lambda key: None
+    handler.element_finder = SimpleNamespace()
+    handler.element_finder.try_find_element = lambda key: None
 
     result = handler.get_current_playing()
 
@@ -57,15 +60,20 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, 
     handler.logger = _Logger()
     handler.play_mode_key = "unknown"
     handler.driver = _Driver()
+    handler.element_finder = SimpleNamespace()
+    handler.key_actions = SimpleNamespace()
+    handler.gesture_handler = SimpleNamespace(
+        swipe=lambda *args: handler.driver.swipe(*args)
+    )
     handler.playlist_entry = _Element("entry")
     handler.playlist_current_queries = 0
-    handler.find_elements_calls = 0
+    handler.element_finder.find_elements_calls = 0
 
-    monkeypatch.setattr(handler, "switch_to_app", lambda: True)
-    monkeypatch.setattr(handler, "press_back", lambda: None)
+    handler.key_actions.switch_to_app = lambda: True
+    handler.key_actions.press_back = lambda: None
     monkeypatch.setattr(handler, "get_current_playing", lambda: {"song": current_song})
-    monkeypatch.setattr(handler, "wait_for_element_clickable", lambda key: handler.playlist_entry)
-    monkeypatch.setattr(handler, "try_find_any_element", lambda keys: (None, None))
+    handler.element_finder.wait_for_element_clickable = lambda key: handler.playlist_entry
+    handler.element_finder.try_find_any_element = lambda keys: (None, None)
 
     def try_find_element(key):
         if key == "playlist_entry":
@@ -79,13 +87,13 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, 
 
     def find_elements(key):
         assert key == "playlist_item_container"
-        handler.find_elements_calls += 1
-        if handler.find_elements_calls == 1 or updated_items is None:
+        handler.element_finder.find_elements_calls += 1
+        if handler.element_finder.find_elements_calls == 1 or updated_items is None:
             return visible_items
         return updated_items
 
-    monkeypatch.setattr(handler, "try_find_element", try_find_element)
-    monkeypatch.setattr(handler, "find_elements", find_elements)
+    handler.element_finder.try_find_element = try_find_element
+    handler.element_finder.find_elements = find_elements
     return handler
 
 
@@ -105,7 +113,7 @@ def test_get_playlist_info_returns_initial_list_when_current_marker_is_absent(mo
     assert result == {"playlist": "第一首 - 歌手A\n第二首 - 歌手B"}
     assert handler.playlist_current_queries == 1
     assert handler.driver.swipes == []
-    assert handler.find_elements_calls == 1
+    assert handler.element_finder.find_elements_calls == 1
 
 
 def test_get_playlist_info_scrolls_when_marker_exists_but_current_title_is_not_visible(monkeypatch):
@@ -127,7 +135,7 @@ def test_get_playlist_info_scrolls_when_marker_exists_but_current_title_is_not_v
     assert result == {"playlist": "当前歌 - 歌手C\n第一首 - 歌手A"}
     assert handler.playlist_current_queries == 1
     assert handler.driver.swipes == [(50, 320, 50, 0, 1000)]
-    assert handler.find_elements_calls == 2
+    assert handler.element_finder.find_elements_calls == 2
 
 
 def test_get_playlist_info_scrolls_and_updates_playlist_when_current_title_visible(monkeypatch):
@@ -149,4 +157,4 @@ def test_get_playlist_info_scrolls_and_updates_playlist_when_current_title_visib
     assert result == {"playlist": "上一首 - 歌手Z\n当前歌 - 歌手A"}
     assert handler.playlist_current_queries == 1
     assert handler.driver.swipes == [(50, 320, 50, 0, 1000)]
-    assert handler.find_elements_calls == 2
+    assert handler.element_finder.find_elements_calls == 2

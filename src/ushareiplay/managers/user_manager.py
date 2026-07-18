@@ -35,7 +35,7 @@ class UserManager(Singleton):
         Returns:
             dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
         """
-        user_count_elem = self.handler.wait_for_element('user_count')
+        user_count_elem = self.handler.element_finder.wait_for_element('user_count')
         if not user_count_elem:
             self.logger.warning("未找到在线用户人数")
             return {
@@ -46,7 +46,7 @@ class UserManager(Singleton):
         user_count_elem.click()
         self.logger.info("Opened online users list")
 
-        online_container = self.handler.wait_for_element('online_users')
+        online_container = self.handler.element_finder.wait_for_element('online_users')
         if not online_container:
             self.logger.warning("未找到在线用户列表")
             return {
@@ -54,7 +54,7 @@ class UserManager(Singleton):
                 'user': nickname,
             }
 
-        key, user_elem, _ = self.handler.scroll_container_until_element(
+        key, user_elem, _ = self.handler.gesture_handler.scroll_container_until_element(
             'online_user',
             'online_users',
             'up',
@@ -96,46 +96,46 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        send_gift_btn = self.handler.wait_for_element_clickable('send_gift')
+        send_gift_btn = self.handler.element_finder.wait_for_element_clickable('send_gift')
         if not send_gift_btn:
             self.logger.info("未找到送礼物按钮")
             return {'error': '未找到送礼物入口'}
 
-        self.handler.click_element_at(send_gift_btn)
+        self.handler.gesture_handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.wait_for_any_element(['give_gift', 'use_item'])
+        found_key, found_element = self.handler.element_finder.wait_for_any_element(['give_gift', 'use_item'])
         if not found_element:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
 
-        luck_item = self.handler.try_find_element('luck_item')
+        luck_item = self.handler.element_finder.try_find_element('luck_item')
         if not luck_item:
             self.logger.warning('Failed to find gift')
-            self.handler.press_back()
+            self.handler.key_actions.press_back()
             return {'error': 'Failed to find gift'}
 
         gift_name = luck_item.text
         if (parts := gift_name.split('x')) and len(parts) > 1:
             gift_name = parts[0]
 
-        soul_power = self.handler.try_find_element('soul_power')
+        soul_power = self.handler.element_finder.try_find_element('soul_power')
         soul_points = soul_power.text if soul_power else '0'
 
         # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
         if gift_name.strip() == YELLOW_DUCK_NAME:
-            self.handler.click_element_at(luck_item)
+            self.handler.gesture_handler.click_element_at(luck_item)
             self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
             self._close_online_drawer()
             return {'success': f'{gift_name} 送你啦'}
 
-        self.handler.click_element_at(found_element)
+        self.handler.gesture_handler.click_element_at(found_element)
         self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
 
         if found_key == 'use_item':
-            confirm_use = self.handler.wait_for_element('confirm_use')
+            confirm_use = self.handler.element_finder.wait_for_element('confirm_use')
             if not confirm_use:
-                self.handler.press_back()
+                self.handler.key_actions.press_back()
                 self.logger.warning("未找到确认使用按钮")
                 return {'error': '未找到确认使用按钮'}
 
@@ -159,24 +159,24 @@ class UserManager(Singleton):
         任意一步失败返回 False，不抛异常。
         """
         try:
-            self.handler.switch_to_app()
+            self.handler.key_actions.switch_to_app()
             open_result = self.open_user_profile_from_online_list(nickname)
             if 'error' in open_result:
                 self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")
                 return False
 
-            avatar = self.handler.wait_for_element_clickable(
+            avatar = self.handler.element_finder.wait_for_element_clickable(
                 'sender_avatar',
                 timeout=5,
             )
             if not avatar:
                 self.logger.warning(f"未找到头像入口: {nickname}")
                 return False
-            if not self.handler.click_element_at(avatar, y_ratio=0.7):
+            if not self.handler.gesture_handler.click_element_at(avatar, y_ratio=0.7):
                 self.logger.warning(f"点击头像入口失败: {nickname}")
                 return False
 
-            private_chat_btn = self.handler.wait_for_element_clickable(
+            private_chat_btn = self.handler.element_finder.wait_for_element_clickable(
                 'private_chat_button',
                 timeout=5,
             )
@@ -185,7 +185,7 @@ class UserManager(Singleton):
                 return False
             private_chat_btn.click()
 
-            input_box = self.handler.wait_for_element_clickable(
+            input_box = self.handler.element_finder.wait_for_element_clickable(
                 'private_message_input',
                 timeout=5,
             )
@@ -194,7 +194,7 @@ class UserManager(Singleton):
                 return False
             input_box.send_keys(message)
 
-            send_button = self.handler.wait_for_element_clickable(
+            send_button = self.handler.element_finder.wait_for_element_clickable(
                 'private_message_send',
                 timeout=5,
             )
@@ -211,14 +211,14 @@ class UserManager(Singleton):
     def _return_to_room_after_private_chat(self, nickname: str) -> bool:
         """私聊发送后返回聊天室。"""
         try:
-            _key, entry = self.handler.wait_for_any_element(
+            _key, entry = self.handler.element_finder.wait_for_any_element(
                 ['private_room_entry', 'floating_entry', 'item_left_back'],
                 timeout=3,
             )
             if entry:
                 entry.click()
                 if _key == 'item_left_back':
-                    titlebar_back = self.handler.wait_for_element_clickable(
+                    titlebar_back = self.handler.element_finder.wait_for_element_clickable(
                         'titlebar_back_ivbtn',
                         timeout=3,
                     )

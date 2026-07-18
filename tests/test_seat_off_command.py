@@ -84,13 +84,21 @@ class DummyHandler:
     def log_error(self, message):
         self.logger.error(message)
 
+    @property
+    def element_finder(self):
+        return self
+
+    @property
+    def key_actions(self):
+        return self
+
 
 class DummySeatUI:
     def __init__(self, handler):
         self.handler = handler
 
     async def expand_and_find_desks(self):
-        return self.handler.find_elements("seat_desk")
+        return self.handler.element_finder.find_elements("seat_desk")
 
     def scroll_to_row(self, desk_index, seat_desks, duration=100):
         pass

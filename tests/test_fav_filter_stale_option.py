@@ -68,6 +68,10 @@ class FakeHandler:
         assert key == "filter_favourite"
         return self.filter
 
+    @property
+    def element_finder(self):
+        return self
+
 
 class FakeController:
     def __init__(self):
