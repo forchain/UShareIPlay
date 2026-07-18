@@ -44,7 +44,7 @@ class PartyManager(Singleton):
             self._message_dispatch = MessageDispatch.instance().bind_handler(self.handler)
         return self._message_dispatch
 
-    def initialize(self):
+    def initialize_party(self):
         """初始化派对管理器"""
         if self.init_time is None:
             self.init_time = datetime.now()
@@ -63,7 +63,7 @@ class PartyManager(Singleton):
         try:
             # 确保已初始化
             if self.init_time is None:
-                self.initialize()
+                self.initialize_party()
                 return
 
             current_time = datetime.now()

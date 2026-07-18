@@ -22,7 +22,7 @@ def test_keyword_command_execution_does_not_sleep_exempt_by_default():
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.keyword_manager import KeywordManager
 
-    keyword_manager = KeywordManager.instance()
+    keyword_manager = KeywordManager.initialize()
     keyword_manager._logger = SimpleNamespace(
         info=lambda *_args, **_kwargs: None,
         error=lambda *_args, **_kwargs: None,

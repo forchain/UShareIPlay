@@ -7,9 +7,8 @@ from ushareiplay.state.room_state import RoomState
 
 @pytest.fixture
 def room_state():
-    if hasattr(RoomState, "_instance"):
-        del RoomState._instance
-    state = RoomState.instance()
+    RoomState.reset_instance()
+    state = RoomState.initialize()
     state._logger = SimpleNamespace(info=lambda _msg: None)
     return state
 

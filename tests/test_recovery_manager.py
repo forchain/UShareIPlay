@@ -9,11 +9,9 @@ from ushareiplay.managers.recovery_manager import RecoveryManager
 
 @pytest.fixture(autouse=True)
 def reset_recovery_manager_singleton():
-    if hasattr(RecoveryManager, "_instance"):
-        delattr(RecoveryManager, "_instance")
+    RecoveryManager.reset_instance()
     yield
-    if hasattr(RecoveryManager, "_instance"):
-        delattr(RecoveryManager, "_instance")
+    RecoveryManager.reset_instance()
 
 
 class FakeHandler:
@@ -47,7 +45,7 @@ class FakeHandler:
 
 def _make_manager(monkeypatch, handler):
     monkeypatch.setattr(SoulHandler, "instance", classmethod(lambda cls: handler))
-    return RecoveryManager.instance()
+    return RecoveryManager.initialize()
 
 
 def test_close_drawer_succeeds_after_second_tap(monkeypatch):

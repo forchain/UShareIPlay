@@ -137,16 +137,6 @@ class SleepManager(Singleton):
                     out.add(s)
         return out
 
-    @classmethod
-    def reset_for_tests(cls) -> None:
-        """
-        Official singleton reset hook for tests.
-
-        Do not use in production code.
-        """
-        if hasattr(cls, "_instance"):
-            delattr(cls, "_instance")
-
     def set_override(self, enabled: bool | None) -> None:
         if enabled is None:
             self._override_enabled = None
@@ -230,4 +220,3 @@ class SleepManager(Singleton):
         if cmd not in self._blocked_commands:
             return False
         return self.is_in_sleep_window(now)
-

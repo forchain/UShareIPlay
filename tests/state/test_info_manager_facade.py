@@ -20,9 +20,13 @@ def info_manager():
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
-        if hasattr(cls, "_instance"):
-            del cls._instance
-    manager = InfoManager.instance()
+        cls.reset_instance()
+    RoomState.initialize()
+    PresenceTracker.initialize()
+    PlaylistState.initialize()
+    PlaybackBroadcaster.initialize()
+    OnlineListScraper.initialize()
+    manager = InfoManager.initialize()
     manager._logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,

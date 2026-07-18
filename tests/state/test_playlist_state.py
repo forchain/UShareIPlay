@@ -7,9 +7,8 @@ from ushareiplay.state.playlist_state import PlaylistState
 
 @pytest.fixture
 def playlist_state():
-    if hasattr(PlaylistState, "_instance"):
-        del PlaylistState._instance
-    state = PlaylistState.instance()
+    PlaylistState.reset_instance()
+    state = PlaylistState.initialize()
     state._logger = SimpleNamespace(info=lambda _msg: None)
     return state
 
