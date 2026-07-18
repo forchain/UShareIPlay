@@ -58,6 +58,10 @@ class FakeSoulHandler(DriverAware):
     def switch_to_app(self):
         self.switch_to_app_called = True
 
+    @property
+    def key_actions(self):
+        return self
+
 
 def controller_without_init(driver=None):
     controller = AppController.__new__(AppController)

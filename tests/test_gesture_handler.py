@@ -107,7 +107,7 @@ def test_perform_swipe_uses_driver_swipe():
         SimpleNamespace(driver=driver, logger=FakeLogger(), config={})
     )
 
-    assert handler._perform_swipe(10, 20, 30, 40, duration_ms=250) is True
+    assert handler.swipe(10, 20, 30, 40, duration_ms=250) is True
     assert driver.swipes == [(10, 20, 30, 40, 250)]
 
 
@@ -115,13 +115,12 @@ def test_scroll_container_uses_deliberate_swipe_duration():
     driver = MagicMock()
     driver.page_source = "<page />"
     handler = _make_handler(driver)
-    handler.wait_for_element_clickable = MagicMock(
-        return_value=SimpleNamespace(
+    handler.owner.element_finder = MagicMock()
+    handler.owner.element_finder.wait_for_element_clickable.return_value = SimpleNamespace(
             location={"x": 0, "y": 0},
             size={"width": 100, "height": 100},
-        )
     )
-    handler.find_child_element = MagicMock(return_value=None)
+    handler.owner.element_finder.find_child_element.return_value = None
     handler._perform_swipe = MagicMock(return_value=False)
 
     handler.scroll_container_until_element("message_content", "message_list")

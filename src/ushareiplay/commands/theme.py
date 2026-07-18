@@ -13,7 +13,7 @@ class ThemeCommand(BaseCommand):
             dict: Result with theme info or error
         """
         # Switch to Soul app first
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
         self.handler.logger.info("Switched to Soul app")
 

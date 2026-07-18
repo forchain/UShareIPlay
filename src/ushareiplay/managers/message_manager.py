@@ -96,7 +96,7 @@ class MessageManager(Singleton):
 
     async def process_missed_messages(self):
 
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
@@ -115,7 +115,7 @@ class MessageManager(Singleton):
         # scroll back to the missing element
         self.handler.logger.critical(f"last_chat={last_chat}")
 
-        key, element, attribute_values = self.handler.scroll_container_until_element(
+        key, element, attribute_values = self.handler.gesture_handler.scroll_container_until_element(
             'message_content',
             'message_list',
             'down',
@@ -183,7 +183,7 @@ class MessageManager(Singleton):
         return command_set
 
     async def process_new_messages(self):
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 

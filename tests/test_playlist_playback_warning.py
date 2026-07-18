@@ -56,6 +56,10 @@ class _MusicHandler:
     def get_playlist_info(self):
         return {"error": "No songs found in playlist"}
 
+    @property
+    def element_finder(self):
+        return self
+
 
 class _TitleManager:
     def __init__(self):

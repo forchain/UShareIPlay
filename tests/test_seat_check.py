@@ -35,13 +35,17 @@ class DummyHandler:
             return object()
         return None
 
+    @property
+    def element_finder(self):
+        return self
+
 
 class DummySeatUI:
     def __init__(self, handler):
         self.handler = handler
 
     async def expand_and_find_desks(self):
-        seat_desks = self.handler.find_elements("seat_desk")
+        seat_desks = self.handler.element_finder.find_elements("seat_desk")
         if len(seat_desks) != 6:
             self.handler.log_error(
                 f"seat expansion incomplete: found {len(seat_desks)} desks, expected 6"

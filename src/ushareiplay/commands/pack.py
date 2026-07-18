@@ -44,7 +44,7 @@ class PackCommand(BaseCommand):
         """
         try:
             # Find luck pack button
-            luck_pack = self.handler.try_find_element('luck_pack', log=False)
+            luck_pack = self.handler.element_finder.try_find_element('luck_pack', log=False)
             if not luck_pack:
                 return {'error': 'No luck pack available'}
 
@@ -59,7 +59,7 @@ class PackCommand(BaseCommand):
             self.handler.logger.info("Clicked luck pack button")
 
             # Find and click luck item
-            luck_item = self.handler.wait_for_element_clickable('luck_item')
+            luck_item = self.handler.element_finder.wait_for_element_clickable('luck_item')
             if not luck_item:
                 self.handler.logger.error("Failed to find luck item")
                 return {'error': 'Failed to find luck item'}
@@ -71,14 +71,14 @@ class PackCommand(BaseCommand):
                 if user_count <= 10 and not (
                         "初级" in item_text or "中级" in item_text or "一级" in item_text or "二级" in item_text):
                     self.handler.logger.info(f"Skipping high level pack with {user_count} users: {item_text}")
-                    self.handler.press_back()
+                    self.handler.key_actions.press_back()
                     return {'error': 'Skipping high level pack (not enough users)'}
 
             luck_item.click()
             self.handler.logger.info("Selected luck item")
 
             # Find and click use pack button
-            use_pack = self.handler.wait_for_element_clickable('use_pack')
+            use_pack = self.handler.element_finder.wait_for_element_clickable('use_pack')
             if not use_pack:
                 self.handler.logger.error("Failed to find use pack button")
                 return {'error': 'Failed to find use pack button'}

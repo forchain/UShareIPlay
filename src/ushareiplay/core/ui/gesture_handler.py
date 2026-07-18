@@ -158,6 +158,12 @@ class GestureHandler:
             self.logger.error(f"Error performing swipe: {traceback.format_exc()}")
             return False
 
+    def swipe(
+            self, start_x: int, start_y: int, end_x: int, end_y: int, duration_ms: int = 300
+    ) -> bool:
+        """Perform one swipe using the gesture abstraction."""
+        return self._perform_swipe(start_x, start_y, end_x, end_y, duration_ms=duration_ms)
+
     @with_driver_recovery(op="read")
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
@@ -186,9 +192,9 @@ class GestureHandler:
         attribute_values_list = []
         try:
             # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
-            container = self.wait_for_element_clickable(container_key)
+            container = self.owner.element_finder.wait_for_element_clickable(container_key)
             if not container:
-                container = self.wait_for_element(container_key)
+                container = self.owner.element_finder.wait_for_element(container_key)
             if not container:
                 self.logger.warning(
                     f"scroll_container_until_element: 容器未找到: {container_key}"
@@ -256,18 +262,18 @@ class GestureHandler:
             # 查找目标元素的辅助函数
             def find_target_element() -> Tuple[Optional[str], Optional[WebElement]]:
                 """在容器内查找目标元素，支持属性匹配（支持 | 分隔的多个属性）"""
-                found = self.find_child_element(
+                found = self.owner.element_finder.find_child_element(
                     container, element_key, log_failure=False
                 )
                 if found:
                     if attribute_name and attribute_value:
-                        elements = self.find_child_elements(container, element_key)
+                        elements = self.owner.element_finder.find_child_elements(container, element_key)
                         for element in elements:
                             # 收集所有找到的元素的 attribute 值（不管是否匹配）
                             attr_list = attribute_name.split('|')
                             collected_value = None
                             for attr in attr_list:
-                                value = self.try_get_attribute(element, attr)
+                                value = self.owner.element_finder.try_get_attribute(element, attr)
                                 if value is not None and value != 'null':
                                     collected_value = value
                                     break
@@ -277,7 +283,7 @@ class GestureHandler:
                             # 检查是否匹配目标值
                             any_match = False
                             for attr in attr_list:
-                                value = self.try_get_attribute(element, attr)
+                                value = self.owner.element_finder.try_get_attribute(element, attr)
                                 if value == attribute_value:
                                     any_match = True
                                     break
@@ -285,22 +291,24 @@ class GestureHandler:
                                 return element_key, element
                     else:
                         # 如果没有指定属性匹配，也收集所有找到的元素
-                        elements = self.find_child_elements(container, element_key)
+                        elements = self.owner.element_finder.find_child_elements(container, element_key)
                         for element in elements:
                             if attribute_name:
                                 attr_list = attribute_name.split('|')
                                 for attr in attr_list:
-                                    value = self.try_get_attribute(element, attr)
+                                    value = self.owner.element_finder.try_get_attribute(element, attr)
                                     if value is not None and value != 'null':
                                         attribute_values_list.append(value)
                                         break
                             else:
                                 # 如果没有指定属性名，优先使用 content-desc，如果没有则使用 text
-                                content_desc = self.try_get_attribute(element, "content-desc")
+                                content_desc = self.owner.element_finder.try_get_attribute(
+                                    element, "content-desc"
+                                )
                                 if content_desc is not None and content_desc != 'null':
                                     attribute_values_list.append(content_desc)
                                 else:
-                                    text = self.try_get_attribute(element, "text")
+                                    text = self.owner.element_finder.try_get_attribute(element, "text")
                                     if text is not None and text != 'null':
                                         attribute_values_list.append(text)
                         return element_key, found

@@ -11,7 +11,7 @@ from ushareiplay.core.base_event import BaseEvent
 class PartyNameViolationLaterEvent(BaseEvent):
     async def handle(self, key: str, element_wrapper):
         try:
-            element = self.handler.wait_for_element_clickable("party_name_violation_later")
+            element = self.handler.element_finder.wait_for_element_clickable("party_name_violation_later")
             if not element:
                 self.logger.warning("party_name_violation_later present in page_source but not clickable")
                 return False

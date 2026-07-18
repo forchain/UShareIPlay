@@ -60,7 +60,7 @@ class FavCommand(BaseCommand):
         新版“筛选歌曲”页：同页展示歌手/语种/流派。
         流程：点筛选 -> 点选关键字(TextView[@text]) -> 点“确定（xxx首）”
         """
-        filter_favourite = self.handler.wait_for_element_clickable('filter_favourite')
+        filter_favourite = self.handler.element_finder.wait_for_element_clickable('filter_favourite')
         if not filter_favourite:
             return {'error': 'Cannot find filter button'}
         filter_favourite.click()
@@ -149,7 +149,7 @@ class FavCommand(BaseCommand):
 
     def play_favorites_all(self):
         """导航到收藏并播放所有"""
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
@@ -157,7 +157,7 @@ class FavCommand(BaseCommand):
         if err:
             return err
 
-        result_item = self.handler.try_find_element('result_item')
+        result_item = self.handler.element_finder.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
@@ -166,7 +166,7 @@ class FavCommand(BaseCommand):
                 song_text = elements[1].text
                 singer_text = elements[2].text
 
-        play_fav = self.handler.wait_for_element_clickable('play_all')
+        play_fav = self.handler.element_finder.wait_for_element_clickable('play_all')
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
@@ -194,7 +194,7 @@ class FavCommand(BaseCommand):
         参数:
             keyword: 筛选关键字，如“国语”“流行”“张国荣”
         """
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
@@ -208,7 +208,7 @@ class FavCommand(BaseCommand):
         count = filter_result.get('count') if isinstance(filter_result, dict) else None
 
         # Get song info from the first result
-        result_item = self.handler.try_find_element('result_item')
+        result_item = self.handler.element_finder.try_find_element('result_item')
         song_text = None
         singer_text = None
         if result_item:
@@ -218,7 +218,7 @@ class FavCommand(BaseCommand):
                 singer_text = elements[2].text
 
         # Click play all button
-        play_fav = self.handler.wait_for_element_clickable('play_all')
+        play_fav = self.handler.element_finder.wait_for_element_clickable('play_all')
         if not play_fav:
             return {'error': 'Cannot find play all button'}
         play_fav.click()
@@ -262,7 +262,7 @@ class FavCommand(BaseCommand):
         5) 标题=关键字；话题=搜索到的第一首歌
         6) 通过 InfoManager.current_playlist_name 广播歌单（在 process 内设置）
         """
-        if not self.handler.switch_to_app():
+        if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
         self.handler.logger.info("Switched to QQ Music app")
 
@@ -271,7 +271,7 @@ class FavCommand(BaseCommand):
             return err
 
         # 1) 在“全部播放”按钮上下滑动其高度，目的是显示搜索框
-        play_all_btn = self.handler.wait_for_element_clickable('play_all')
+        play_all_btn = self.handler.element_finder.wait_for_element_clickable('play_all')
         if not play_all_btn:
             return {'error': 'Cannot find play all button'}
 
@@ -281,26 +281,26 @@ class FavCommand(BaseCommand):
         cy = int(loc["y"] + size["height"] * 0.5)
         dy = max(60, int(size["height"]))
 
-        self.handler._perform_swipe(cx, cy, cx, cy + dy, duration_ms=260)
+        self.handler.gesture_handler.swipe(cx, cy, cx, cy + dy, duration_ms=260)
 
         # 2) 找到 search_box 并点击激活搜索框
-        search_box = self.handler.wait_for_element_clickable('search_box')
+        search_box = self.handler.element_finder.wait_for_element_clickable('search_box')
         if not search_box:
             return {'error': 'Cannot find search box in favourites'}
         search_box.click()
         self.handler.logger.info("Clicked favourite search box")
 
-        favourite_search = self.handler.wait_for_element('favourite_search')
+        favourite_search = self.handler.element_finder.wait_for_element('favourite_search')
         if not favourite_search:
             return {'error': 'Cannot find favourite search'}
 
         # 3) 粘贴关键字
-        self.handler.set_clipboard_text(keyword)
-        self.handler.paste_text()
+        self.handler.key_actions.set_clipboard_text(keyword)
+        self.handler.key_actions.paste_text()
         self.handler.logger.info(f"Pasted keyword: {keyword}")
 
         # 4) 点击 play_favourite_search 播放搜索的歌曲列表
-        play_search = self.handler.wait_for_element_clickable('play_favourite_search')
+        play_search = self.handler.element_finder.wait_for_element_clickable('play_favourite_search')
         if not play_search:
             return {'error': 'Cannot find play_favourite_search button'}
         play_search.click()

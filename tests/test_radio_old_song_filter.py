@@ -100,6 +100,13 @@ class _MusicHandler:
     def get_playlist_info(self):
         return {"playlist": self.playlists.pop(0)}
 
+    @property
+    def element_finder(self):
+        return self
+
+    @property
+    def key_actions(self):
+        return self
 
 class _SoulHandler:
     def __init__(self):
@@ -114,6 +121,14 @@ class _SoulHandler:
     def try_get_attribute(self, element, attribute):
         assert attribute == "content-desc"
         return element.content_desc
+
+    @property
+    def element_finder(self):
+        return self
+
+    @property
+    def key_actions(self):
+        return self
 
 
 class _TitleManager:
@@ -321,6 +336,10 @@ class _PlayMusicHandler:
     def wait_for_element_clickable(self, key):
         assert key == "result_item"
         return self.result_item
+
+    @property
+    def element_finder(self):
+        return self
 
     def ensure_favorited_in_playing_page(self, timeout=10):
         assert timeout == 10

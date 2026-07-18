@@ -115,33 +115,33 @@ class PartyManager(Singleton):
             self.message_dispatch.send_screen_message('Ending party')
 
             # Switch to Soul app first
-            if not self.handler.switch_to_app():
+            if not self.handler.key_actions.switch_to_app():
                 return {'error': 'Failed to switch to Soul app'}
             self.logger.info("Switched to Soul app")
 
             # Try direct exit_room_btn first
-            exit_room_btn = self.handler.try_find_element('exit_room_btn', log=False)
+            exit_room_btn = self.handler.element_finder.try_find_element('exit_room_btn', log=False)
             if exit_room_btn:
                 exit_room_btn.click()
                 self.logger.info("Clicked exit room button directly")
             else:
                 self.logger.info("Direct exit room button not found, trying more menu...")
                 # Click more menu
-                more_menu = self.handler.wait_for_element_clickable('more_menu')
+                more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
                 if not more_menu:
                     return {'error': 'Failed to find more menu'}
                 more_menu.click()
                 self.logger.info("Clicked more menu")
 
                 # Click end party option
-                end_party = self.handler.wait_for_element_clickable('end_party')
+                end_party = self.handler.element_finder.wait_for_element_clickable('end_party')
                 if not end_party:
                     return {'error': 'Failed to find end party option'}
                 end_party.click()
                 self.logger.info("Clicked end party option")
 
             # Click confirm end
-            confirm_end = self.handler.wait_for_element_clickable('confirm_end')
+            confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
             if not confirm_end:
                 return {'error': 'Failed to find confirm end button'}
             confirm_end.click()
@@ -195,17 +195,17 @@ class PartyManager(Singleton):
         """
         try:
             # Check if we can directly close the room (we are the host)
-            exit_room_btn = self.handler.try_find_element('exit_room_btn', log=False)
+            exit_room_btn = self.handler.element_finder.try_find_element('exit_room_btn', log=False)
             if exit_room_btn:
                 exit_room_btn.click()
                 self.logger.info("Clicked exit room button directly")
-                confirm_end = self.handler.wait_for_element_clickable('confirm_end')
+                confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
                 if confirm_end:
                     confirm_end.click()
                 self.handler.party_id = party_id
                 return {'party_id': party_id, 'user': message_info.nickname}
 
-            more_menu = self.handler.wait_for_element_clickable('more_menu')
+            more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
             if not more_menu:
                 return {
                     'error': 'Failed to find more menu button',
@@ -214,18 +214,18 @@ class PartyManager(Singleton):
             more_menu.click()
             self.logger.info("Clicked more menu button")
 
-            self.handler.wait_for_element('more_menu_container')
+            self.handler.element_finder.wait_for_element('more_menu_container')
 
-            end_party = self.handler.try_find_element('end_party', log=False)
+            end_party = self.handler.element_finder.try_find_element('end_party', log=False)
             if end_party:
                 end_party.click()
-                confirm_end = self.handler.wait_for_element_clickable('confirm_end')
+                confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
                 if confirm_end:
                     confirm_end.click()
                 self.handler.party_id = party_id
                 return {'party_id': party_id, 'user': message_info.nickname}
 
-            party_hall = self.handler.wait_for_element_clickable('party_hall')
+            party_hall = self.handler.element_finder.wait_for_element_clickable('party_hall')
             if not party_hall:
                 return {
                     'error': 'Failed to find party hall entry',
@@ -234,7 +234,7 @@ class PartyManager(Singleton):
             party_hall.click()
             self.logger.info("Clicked party hall entry")
 
-            search_entry = self.handler.wait_for_element_clickable('search_entry')
+            search_entry = self.handler.element_finder.wait_for_element_clickable('search_entry')
             if not search_entry:
                 return {
                     'error': 'Failed to find search entry',
@@ -243,7 +243,7 @@ class PartyManager(Singleton):
             search_entry.click()
             self.logger.info("Clicked search entry")
 
-            search_box = self.handler.wait_for_element_clickable('search_box')
+            search_box = self.handler.element_finder.wait_for_element_clickable('search_box')
             if not search_box:
                 return {
                     'error': 'Failed to find search box',
@@ -252,7 +252,7 @@ class PartyManager(Singleton):
             search_box.send_keys(party_id)
             self.logger.info(f"Entered party ID: {party_id}")
 
-            search_button = self.handler.wait_for_element_clickable('search_button')
+            search_button = self.handler.element_finder.wait_for_element_clickable('search_button')
             if not search_button:
                 return {
                     'error': 'Failed to find search button',
@@ -261,7 +261,7 @@ class PartyManager(Singleton):
             search_button.click()
             self.logger.info("Clicked search button")
 
-            parties_search = self.handler.wait_for_element('parties_search')
+            parties_search = self.handler.element_finder.wait_for_element('parties_search')
             if not parties_search:
                 return {
                     'error': 'Failed to find parties search',
@@ -270,10 +270,10 @@ class PartyManager(Singleton):
             self.logger.info("Found parties search result")
 
             time.sleep(1)
-            party_element = self.handler.find_child_element(parties_search, 'party_id')
+            party_element = self.handler.element_finder.find_child_element(parties_search, 'party_id')
             if not party_element:
                 self.logger.info("Party not found, returning to previous party")
-                floating_entry = self.handler.wait_for_element_clickable('floating_entry')
+                floating_entry = self.handler.element_finder.wait_for_element_clickable('floating_entry')
                 if floating_entry:
                     floating_entry.click()
                 return {
@@ -318,13 +318,13 @@ class PartyManager(Singleton):
         return False
 
     def _enter_party_hall_from_home(self) -> bool:
-        planet_tab = self.handler.try_find_element('planet_tab', log=False)
+        planet_tab = self.handler.element_finder.try_find_element('planet_tab', log=False)
         if not planet_tab:
             return False
         self.logger.info("发现首页，尝试进入派对")
         planet_tab.click()
 
-        party_hall_entry = self.handler.wait_for_element_clickable('party_hall_entry')
+        party_hall_entry = self.handler.element_finder.wait_for_element_clickable('party_hall_entry')
         if not party_hall_entry:
             self.logger.warning("未找到派对大厅入口")
             return False
@@ -333,7 +333,7 @@ class PartyManager(Singleton):
         return True
 
     def _search_and_try_enter_existing_party(self) -> bool:
-        key, element = self.handler.wait_for_any_element(['party_back', 'search_entry'])
+        key, element = self.handler.element_finder.wait_for_any_element(['party_back', 'search_entry'])
         if not element:
             self.logger.warning("未找到派对入口")
             return False
@@ -346,7 +346,7 @@ class PartyManager(Singleton):
         search_entry = element
         search_entry.click()
         self.logger.info("Clicked search entry")
-        search_box = self.handler.wait_for_element('search_box')
+        search_box = self.handler.element_finder.wait_for_element('search_box')
         if not search_box:
             self.logger.warning("未找到搜索框")
             return False
@@ -354,20 +354,20 @@ class PartyManager(Singleton):
         party_id = self.handler.party_id or self.handler.config['default_party_id']
         search_box.send_keys(party_id)
         self.logger.info(f"Entered party ID: {party_id}")
-        search_button = self.handler.wait_for_element('search_button')
+        search_button = self.handler.element_finder.wait_for_element('search_button')
         if not search_button:
             self.logger.warning("未找到搜索按钮")
             return False
         search_button.click()
         self.logger.info("Clicked search button")
 
-        room_card = self.handler.wait_for_element('room_card')
+        room_card = self.handler.element_finder.wait_for_element('room_card')
         if not room_card:
             self.logger.warning("未找到派对房间，视为派对关闭，准备重建派对")
             self._go_back_from_search()
             return False
 
-        party_online = self.handler.try_find_element('party_online')
+        party_online = self.handler.element_finder.try_find_element('party_online')
         if party_online:
             party_online.click()
             self.logger.info("Clicked party online")
@@ -378,16 +378,16 @@ class PartyManager(Singleton):
         return False
 
     def _go_back_from_search(self) -> None:
-        search_back = self.handler.wait_for_element('search_back')
+        search_back = self.handler.element_finder.wait_for_element('search_back')
         if search_back:
             search_back.click()
             self.logger.info("Clicked search back")
             return
         self.logger.warning("未找到搜索返回按钮，尝试系统返回")
-        self.handler.press_back()
+        self.handler.key_actions.press_back()
 
     def _create_party_flow(self) -> bool:
-        key, element = self.handler.wait_for_any_element(['create_party_entry', 'create_room_entry'])
+        key, element = self.handler.element_finder.wait_for_any_element(['create_party_entry', 'create_room_entry'])
         if not element:
             self.logger.warning("未找到派对入口")
             return False
@@ -399,7 +399,7 @@ class PartyManager(Singleton):
             wait_keys = ['restore_party', 'confirm_party', 'party_state_entry']
         else:
             wait_keys = ['new_party_entry', 'confirm_party', 'party_state_entry']
-        key, element = self.handler.wait_for_any_element(wait_keys)
+        key, element = self.handler.element_finder.wait_for_any_element(wait_keys)
         if not element:
             self.logger.warning("未找到派对创建或恢复按钮")
             return False
@@ -413,7 +413,7 @@ class PartyManager(Singleton):
         if key == 'new_party_entry' or key == 'confirm_party':
             element.click()
             self.logger.info(f"Clicked new party entry: {key}")
-            party_state_entry = self.handler.wait_for_element('party_state_entry')
+            party_state_entry = self.handler.element_finder.wait_for_element('party_state_entry')
         elif key == 'party_state_entry':
             party_state_entry = element
 
@@ -424,14 +424,14 @@ class PartyManager(Singleton):
         party_state_entry.click()
         self.logger.info("Clicked party state entry")
 
-        close_party_notification = self.handler.wait_for_element('close_party_notification')
+        close_party_notification = self.handler.element_finder.wait_for_element('close_party_notification')
         if not close_party_notification:
             self.logger.warning("未找到关闭派对推荐")
             return False
         close_party_notification.click()
         self.logger.info("Clicked close party notification")
 
-        create_party_button = self.handler.wait_for_element('create_party_button')
+        create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
         if not create_party_button:
             self.logger.warning("<UNK>")
             return False

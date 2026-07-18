@@ -52,7 +52,7 @@ class Navigator:
             interference_keys = []
 
         self.logger.info(f"开始导航到目标元素: {target_key}")
-        self.press_back()
+        self.owner.key_actions.press_back()
 
         for attempt in range(max_attempts):
             self.logger.debug(f"导航尝试 {attempt + 1}/{max_attempts}")
@@ -61,23 +61,25 @@ class Navigator:
             check_keys = interference_keys + [target_key] + back_keys + [home_key]
 
             # 使用 wait_for_any_element 检测当前状态
-            found_key, found_element = self.wait_for_any_element(check_keys)
+            found_key, found_element = self.owner.element_finder.wait_for_any_element(check_keys)
 
             if not found_element:
                 self.logger.warning(f"第 {attempt + 1} 次尝试：未检测到任何元素")
                 # 按系统返回键尝试返回
-                self.press_back()
+                self.owner.key_actions.press_back()
                 return None, None
 
             # 根据找到的元素类型执行相应操作
             if found_key == target_key:
                 # 命中目标后仅做干扰元素复核（无等待），避免误判后直接返回
-                interference_key, interference_element = self.try_find_any_element(interference_keys)
+                interference_key, interference_element = self.owner.element_finder.try_find_any_element(
+                    interference_keys
+                )
                 if interference_element:
                     self.logger.info(
                         f"命中目标 {target_key} 后发现干扰元素 {interference_key}，先按返回键关闭后重试确认"
                     )
-                    if not self.press_back():
+                    if not self.owner.key_actions.press_back():
                         self.logger.error("按系统返回键失败")
                         return None, None
                     continue
@@ -86,16 +88,16 @@ class Navigator:
                 return found_key, found_element
 
             elif found_key in back_keys:
-                if self.click_element_at(found_element):
+                if self.owner.gesture_handler.click_element_at(found_element):
                     self.logger.info(f"找到返回按钮: {found_key}，点击返回")
                 else:
                     self.logger.warning(f"点击返回按钮失败: {found_key}")
                     # 尝试系统返回键作为备选
-                    self.press_back()
+                    self.owner.key_actions.press_back()
 
             elif found_key in interference_keys:
                 self.logger.info(f"发现干扰元素: {found_key}，按系统返回键隐藏")
-                if not self.press_back():
+                if not self.owner.key_actions.press_back():
                     self.logger.error("按系统返回键失败")
                     return None, None
 
@@ -105,7 +107,7 @@ class Navigator:
 
             else:
                 self.logger.warning(f"检测到未知元素: {found_key}")
-                self.press_back()
+                self.owner.key_actions.press_back()
                 return None, None
 
         # 达到最大尝试次数

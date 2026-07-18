@@ -36,7 +36,7 @@ class PlaylistCommand(BaseCommand):
         """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""
         try:
             # Try to find playlist tab first
-            key, element = self.handler.wait_for_any_element(['playlist_tab', 'music_tabs'])
+            key, element = self.handler.element_finder.wait_for_any_element(['playlist_tab', 'music_tabs'])
 
             if key == 'playlist_tab':
                 playlist_tab = element
@@ -47,7 +47,7 @@ class PlaylistCommand(BaseCommand):
                 location = music_tabs.location
 
                 # Scroll to left (opposite direction of singer tab)
-                self.handler.driver.swipe(
+                self.handler.gesture_handler.swipe(
                     location['x'] + 200,  # Start from left
                     location['y'] + size['height'] // 2,
                     location['x'] + size['width'] - 10,  # End at right
@@ -56,7 +56,7 @@ class PlaylistCommand(BaseCommand):
                 )
 
                 # Try to find playlist tab again
-                playlist_tab = self.handler.try_find_element('playlist_tab')
+                playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
                 if not playlist_tab:
                     self.handler.logger.error("Failed to find playlist tab after scrolling")
                     return False
@@ -86,7 +86,7 @@ class PlaylistCommand(BaseCommand):
             }
         self.handler.logger.info("Selected playlist tab")
 
-        key, element = self.handler.wait_for_any_element(['playlist_result', 'not_found'])
+        key, element = self.handler.element_finder.wait_for_any_element(['playlist_result', 'not_found'])
         if not key or key == 'not_found':
             self.handler.logger.error(f"Failed to find playlist result with query {query}")
             return {
@@ -103,7 +103,7 @@ class PlaylistCommand(BaseCommand):
 
         subject, topic = parser.parse_playlist_name(playlist)
 
-        result_item = self.handler.try_find_element('result_item')
+        result_item = self.handler.element_finder.try_find_element('result_item')
         song_name = None
         singer_name = None
         if result_item:
@@ -123,7 +123,7 @@ class PlaylistCommand(BaseCommand):
             if song_name:
                 topic = song_name.text
 
-        key, play_button = self.handler.wait_for_any_element(['play_all', 'play_all_playlist', 'play_all_compact'])
+        key, play_button = self.handler.element_finder.wait_for_any_element(['play_all', 'play_all_playlist', 'play_all_compact'])
         if not play_button:
             self.handler.logger.error("Failed to find play all button (album or playlist)")
             return {
