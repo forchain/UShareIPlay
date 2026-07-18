@@ -22,10 +22,10 @@ class SeatManager(SeatManagerBase):
             super().__init__(handler)
             # Initialize component managers
             # FocusManager 已迁移到事件系统，不再需要
-            self.reservation = ReservationManager(handler)
-            self.check = SeatCheckManager(handler)
             self.ui = SeatUIManager(handler)
-            self.seating = SeatingManager(handler)
+            self.check = SeatCheckManager(handler, self.ui)
+            self.reservation = ReservationManager(handler, self.ui, self.check)
+            self.seating = SeatingManager(handler, self.ui)
             self.initialized = True
             logging.getLogger('seat_manager').info("SeatManager 初始化完成")
         elif handler and not self.handler:
@@ -34,6 +34,7 @@ class SeatManager(SeatManagerBase):
             self.handler = handler
             self.reservation.handler = handler
             self.check.handler = handler
+            self.check._message_dispatch = None
             self.ui.handler = handler
             self.seating.handler = handler
 
@@ -57,22 +58,3 @@ class SeatManager(SeatManagerBase):
         if seat_number is None:
             return await self.seating.seat_off_owner()
         return await self.seating.seat_off_specific_seat(seat_number)
-
-# Create a default instance with a None handler
-# This ensures seat_manager is never None, components will be properly initialized later
-seat_manager = SeatManager(None)
-
-def init_seat_manager(handler):
-    """Initialize the global seat manager instance"""
-    global seat_manager
-    # Since we're using the singleton pattern, this will update the existing instance
-    logging.getLogger('seat_manager').info(f"调用 init_seat_manager，handler={handler}")
-    seat_manager = SeatManager(handler)
-    
-    # 额外检查确保所有子管理器的handler都已正确设置
-    if not seat_manager.handler:
-        logging.getLogger('seat_manager').error("初始化后 seat_manager.handler 仍为 None")
-    if not seat_manager.ui.handler:
-        logging.getLogger('seat_manager').error("初始化后 seat_manager.ui.handler 仍为 None")
-        
-    return seat_manager

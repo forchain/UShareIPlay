@@ -6,10 +6,10 @@ import traceback
 
 
 class ReservationManager(SeatManagerBase):
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, seat_ui=None, seat_check=None):
         super().__init__(handler)
-        self.seat_ui = SeatUIManager(handler)
-        self.seat_check = SeatCheckManager(handler)
+        self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.seat_check = seat_check or SeatCheckManager(handler, self.seat_ui)
 
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """Reserve a seat for a user (data operation only)"""

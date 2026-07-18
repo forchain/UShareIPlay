@@ -37,8 +37,27 @@ class DummyHandler:
 
 
 class DummySeatUI:
-    async def expand_seats(self):
-        return True
+    def __init__(self, handler):
+        self.handler = handler
+
+    async def expand_and_find_desks(self):
+        seat_desks = self.handler.find_elements("seat_desk")
+        if len(seat_desks) != 6:
+            self.handler.log_error(
+                f"seat expansion incomplete: found {len(seat_desks)} desks, expected 6"
+            )
+            return None
+        return seat_desks
+
+    def scroll_to_row(self, desk_index, seat_desks, duration=100):
+        row_index = desk_index // 2
+        if row_index not in (0, 2):
+            return
+        reference_desk = seat_desks[2]
+        center_x = reference_desk.location["x"] + reference_desk.size["width"] // 2
+        center_y = reference_desk.location["y"] + reference_desk.size["height"] // 2
+        offset = reference_desk.size["height"] if row_index == 0 else -reference_desk.size["height"]
+        self.handler.driver.swipe(center_x, center_y, center_x, center_y + offset, duration)
 
 
 def _desk():
@@ -51,16 +70,12 @@ def _desk():
 def _manager(handler):
     SeatCheckManager._instance = None
     SeatCheckManager._initialized = False
-    manager = SeatCheckManager(handler)
-    manager.seat_ui = DummySeatUI()
-    return manager
+    return SeatCheckManager(handler, DummySeatUI(handler))
 
 
-def test_check_user_specific_seat_stops_when_expansion_shows_four_desks(monkeypatch):
+def test_check_user_specific_seat_stops_when_expansion_shows_four_desks():
     handler = DummyHandler([_desk() for _ in range(4)])
     manager = _manager(handler)
-    monkeypatch.setattr(seat_check_module.asyncio, "sleep", AsyncMock())
-
     asyncio.run(manager.check_user_specific_seat("Chainer", 9))
 
     assert handler.searched_desks == []
@@ -71,9 +86,10 @@ def test_check_user_specific_seat_uses_global_index_when_all_desks_are_visible(m
     seat_desks = [_desk() for _ in range(6)]
     handler = DummyHandler(seat_desks)
     manager = _manager(handler)
-    monkeypatch.setattr(seat_check_module.asyncio, "sleep", AsyncMock())
-
+    sleep = AsyncMock()
+    monkeypatch.setattr(seat_check_module.asyncio, "sleep", sleep)
     asyncio.run(manager.check_user_specific_seat("Chainer", 9))
 
     assert handler.swipes == [(5, 5, 5, -5, 1000)]
     assert handler.searched_desks == [seat_desks[4]]
+    sleep.assert_awaited_once_with(0.5)

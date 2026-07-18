@@ -7,9 +7,9 @@ from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 
 
 class SeatCheckManager(SeatManagerBase):
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, seat_ui=None):
         super().__init__(handler)
-        self.seat_ui = SeatUIManager(handler)
+        self.seat_ui = seat_ui or SeatUIManager(handler)
         self._message_dispatch = None
 
     @property
@@ -78,37 +78,18 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.log_error(f"Error checking seats: {traceback.format_exc()}")
 
     async def check_user_specific_seat(self, username: str, seat_number: int):
-        # ensure seats are expanded first
         self.handler.logger.info("expanding seats for check")
-        if not await self.seat_ui.expand_seats():
-            self.handler.log_error("failed to expand seats for check")
-            return
-        await asyncio.sleep(0.5)  # wait for expansion animation
-
-        # get all seat desks
-        seat_desks = self.handler.find_elements('seat_desk')
+        seat_desks = await self.seat_ui.expand_and_find_desks()
         if not seat_desks:
-            self.handler.log_error("cannot find seat desks")
-            self.message_dispatch.send_screen_message(f"System error: Unable to access seats for {username}")
             return
         self.handler.logger.info(f"found {len(seat_desks)} seat desks")
-        if len(seat_desks) != 6:
-            self.handler.log_error(
-                f"seat expansion incomplete: found {len(seat_desks)} desks, expected 6"
-            )
-            return
 
         # check and handle the user's specific seat
         self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
 
         desk_index = (seat_number - 1) // 2
-        row_index = desk_index // 2
-        if row_index in (0, 2):
-            reference_desk = seat_desks[2]
-            center_x = reference_desk.location['x'] + reference_desk.size['width'] // 2
-            center_y = reference_desk.location['y'] + reference_desk.size['height'] // 2
-            offset = reference_desk.size['height'] if row_index == 0 else -reference_desk.size['height']
-            self.handler.driver.swipe(center_x, center_y, center_x, center_y + offset, 1000)
+        self.seat_ui.scroll_to_row(desk_index, seat_desks, duration=1000)
+        if desk_index // 2 in (0, 2):
             await asyncio.sleep(0.5)
 
         await self._handle_occupied_seat(username, seat_desks, seat_number)

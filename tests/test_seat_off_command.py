@@ -86,8 +86,14 @@ class DummyHandler:
 
 
 class DummySeatUI:
-    async def expand_seats(self):
-        return True
+    def __init__(self, handler):
+        self.handler = handler
+
+    async def expand_and_find_desks(self):
+        return self.handler.find_elements("seat_desk")
+
+    def scroll_to_row(self, desk_index, seat_desks, duration=100):
+        pass
 
 
 def _desk(left_label="", left_occupied=False, right_label="", right_occupied=False):
@@ -105,7 +111,7 @@ def test_seat_1_delegates_reservation_to_seat_management(monkeypatch):
     manager = SimpleNamespace(
         reserve_seat=AsyncMock(return_value={"success": "Seat 5 reserved"})
     )
-    monkeypatch.setattr(seat_command_module, "seat_manager", manager)
+    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 1 5", nickname="Alice")
@@ -118,7 +124,7 @@ def test_seat_1_delegates_reservation_to_seat_management(monkeypatch):
 
 def test_seat_2_delegates_specific_seat_to_seat_management(monkeypatch):
     manager = SimpleNamespace(take_seat=AsyncMock(return_value={"success": "Took seat 5"}))
-    monkeypatch.setattr(seat_command_module, "seat_manager", manager)
+    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 2 5", nickname="Alice")
@@ -133,7 +139,7 @@ def test_seat_4_without_parameter_dispatches_owner_seat_off(monkeypatch):
     manager = SimpleNamespace(
         remove_seat_occupant=AsyncMock(return_value={"success": "Owner removed from seat"})
     )
-    monkeypatch.setattr(seat_command_module, "seat_manager", manager)
+    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4", nickname="Alice")
@@ -148,7 +154,7 @@ def test_seat_4_with_parameter_dispatches_specific_seat_off(monkeypatch):
     manager = SimpleNamespace(
         remove_seat_occupant=AsyncMock(return_value={"success": "Seat 5 removed"})
     )
-    monkeypatch.setattr(seat_command_module, "seat_manager", manager)
+    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4 5", nickname="Alice")
@@ -161,7 +167,7 @@ def test_seat_4_with_parameter_dispatches_specific_seat_off(monkeypatch):
 
 def test_seat_4_with_invalid_seat_number_returns_error(monkeypatch):
     manager = SimpleNamespace(remove_seat_occupant=AsyncMock())
-    monkeypatch.setattr(seat_command_module, "seat_manager", manager)
+    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4 13", nickname="Alice")
@@ -176,7 +182,7 @@ def test_seat_off_owner_clicks_owner_seat_and_seat_off_button():
     desks = [_desk(left_label="群主", left_occupied=True)]
     handler = DummyHandler(desks, popup_name="群主")
     manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI()
+    manager.seat_ui = DummySeatUI(handler)
 
     result = asyncio.run(manager.seat_off_owner())
 
@@ -192,7 +198,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
     ]
     handler = DummyHandler(desks, popup_name="C")
     manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI()
+    manager.seat_ui = DummySeatUI(handler)
 
     result = asyncio.run(manager.seat_off_specific_seat(3))
 
@@ -204,7 +210,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
 def test_seat_off_owner_returns_error_when_owner_not_found():
     handler = DummyHandler([_desk(left_label="Alice", left_occupied=True)])
     manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI()
+    manager.seat_ui = DummySeatUI(handler)
 
     result = asyncio.run(manager.seat_off_owner())
 

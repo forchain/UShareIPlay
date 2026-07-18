@@ -2,7 +2,7 @@ class SeatManagerBase:
     _instance = None
     _initialized = False
 
-    def __new__(cls, handler=None):
+    def __new__(cls, handler=None, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(SeatManagerBase, cls).__new__(cls)
         return cls._instance
@@ -23,7 +23,9 @@ class SeatManagerBase:
         return f"{self.__class__.__name__}(handler={handler_id}, initialized={self._initialized})"
 
     @classmethod
-    def get_instance(cls):
+    def get_instance(cls, handler=None, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance 
+            cls._instance = cls(handler, *args, **kwargs)
+        elif handler is not None:
+            cls(handler, *args, **kwargs)
+        return cls._instance
