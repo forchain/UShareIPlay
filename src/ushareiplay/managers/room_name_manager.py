@@ -229,6 +229,12 @@ class RoomNameManager(Singleton):
             - 'skipped': True if nothing was pending
             - 'current_title': the title after a successful update
         """
+        # Do not inspect the UI just to discover that there is no work queued.
+        # The monitoring loop calls this method every cycle; UI reads belong
+        # only to an actual pending title/theme update.
+        if not self.next_title and not self.pending_ui_update:
+            return {'skipped': True, 'reason': 'no pending update'}
+
         if not self.can_update_now():
             return {'cooldown': True, 'remaining_minutes': self.get_remaining_cooldown_minutes()}
 

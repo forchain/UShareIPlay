@@ -105,6 +105,7 @@ def test_process_pending_update_skips_when_nothing_pending():
     result = manager.process_pending_update()
 
     assert result["skipped"] is True
+    manager._handler.element_finder.try_find_element.assert_not_called()
 
 
 def test_process_pending_update_writes_ui_when_ready():
