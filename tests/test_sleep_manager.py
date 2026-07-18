@@ -5,8 +5,8 @@ def _fresh_manager(config: dict):
     from ushareiplay.managers.sleep_manager import SleepManager
 
     # Singleton test isolation (official hook)
-    SleepManager.reset_for_tests()
-    return SleepManager.instance(config)
+    SleepManager.reset_instance()
+    return SleepManager.initialize(config)
 
 
 def test_non_cross_midnight_window_start_inclusive_end_exclusive():
@@ -210,4 +210,3 @@ def test_default_blocked_commands_contains_required_minimum_set():
     required = ("play", "next", "fav", "singer", "album", "playlist", "radio")
     for cmd in required:
         assert mgr.is_blocked_command(cmd, dt.time(12, 0)) is True
-

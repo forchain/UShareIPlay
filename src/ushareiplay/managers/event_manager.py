@@ -84,7 +84,7 @@ class EventManager(Singleton):
             raise RuntimeError("EventManager runtime has not been configured")
         return self._runtime
 
-    def initialize(self):
+    def initialize_events(self):
         """初始化事件管理器，加载所有事件模块"""
         if self._initialized:
             return
@@ -386,7 +386,7 @@ class EventManager(Singleton):
             事件触发数量和未知页面恢复结果
         """
         if not self._initialized:
-            self.initialize()
+            self.initialize_events()
 
         if not page_source:
             return {

@@ -13,7 +13,7 @@ class EndCommand(BaseCommand):
         # 初始化派对管理器
         from ushareiplay.managers.party_manager import PartyManager
         self.party_manager = PartyManager.instance()
-        self.party_manager.initialize()
+        self.party_manager.initialize_party()
 
     async def do_process(self, message_info, parameters):
         """Process end command to close party"""

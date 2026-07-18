@@ -19,9 +19,12 @@ def info_manager():
         PresenceTracker,
         RoomState,
     ):
-        if hasattr(cls, "_instance"):
-            del cls._instance
-    manager = InfoManager.instance()
+        cls.reset_instance()
+    PlaybackBroadcaster.initialize()
+    PlaylistState.initialize()
+    PresenceTracker.initialize()
+    RoomState.initialize()
+    manager = InfoManager.initialize()
     manager._logger = SimpleNamespace(info=lambda _message: None)
     return manager
 

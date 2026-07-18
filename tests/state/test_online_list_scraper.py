@@ -10,9 +10,8 @@ from ushareiplay.state.presence_tracker import PresenceTracker
 
 @pytest.fixture
 def scraper():
-    if hasattr(OnlineListScraper, "_instance"):
-        del OnlineListScraper._instance
-    s = OnlineListScraper.instance()
+    OnlineListScraper.reset_instance()
+    s = OnlineListScraper.initialize()
     s._logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
@@ -24,19 +23,17 @@ def scraper():
 
 @pytest.fixture
 def reset_singletons():
-    if hasattr(RoomState, "_instance"):
-        del RoomState._instance
-    if hasattr(PresenceTracker, "_instance"):
-        del PresenceTracker._instance
+    RoomState.reset_instance()
+    PresenceTracker.reset_instance()
 
 
 @pytest.mark.asyncio
 async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_singletons):
-    room_state = RoomState.instance()
+    room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     room_state.user_count = 2
 
-    presence_tracker = PresenceTracker.instance()
+    presence_tracker = PresenceTracker.initialize()
     presence_tracker._logger = SimpleNamespace(
         info=lambda _msg: None,
         debug=lambda _msg: None,
@@ -79,6 +76,8 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
 
 
 def test_refresh_online_users_no_op_when_user_count_element_missing(scraper):
+    RoomState.initialize()
+    PresenceTracker.initialize()
     scraper._handler.try_find_element.return_value = None
     # Should return early without raising
     import asyncio

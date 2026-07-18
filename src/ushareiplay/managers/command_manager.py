@@ -232,12 +232,7 @@ class CommandManager(Singleton):
 
                     prefix = command_info.get("prefix") or ""
                     sleep_exempt = bool(getattr(message_info, "sleep_exempt", False))
-                    # Prefer root config (controller.config) so `sleep` can live at top-level.
-                    controller = self._get_command_controller()
-                    cfg = getattr(controller, "config", None) if controller is not None else None
-                    if not isinstance(cfg, dict):
-                        cfg = self.handler.config
-                    sg = SleepManager.instance(cfg)
+                    sg = SleepManager.instance()
                     if not sleep_exempt and sg.is_blocked_command(prefix):
                         result = {
                             "error": (

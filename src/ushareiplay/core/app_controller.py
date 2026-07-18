@@ -12,6 +12,7 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 from ushareiplay.core.runtime_services import (
     AgentCommandSpool,
@@ -301,11 +302,11 @@ class AppController(Singleton):
         """Initialize handlers after driver is ready"""
         try:
             # Initialize handlers using singleton pattern
-            self.soul_handler = SoulHandler.instance(
+            self.soul_handler = SoulHandler.initialize(
                 self.driver, self.config["soul"], self
             )
             self.register_driver_subscriber(self.soul_handler)
-            self.music_handler = QQMusicHandler.instance(
+            self.music_handler = QQMusicHandler.initialize(
                 self.driver, self.config["qq_music"], self
             )
             self.register_driver_subscriber(self.music_handler)
@@ -320,24 +321,52 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
+            from ushareiplay.managers.admin_manager import AdminManager
+            from ushareiplay.managers.keyword_manager import KeywordManager
+            from ushareiplay.managers.message_manager import MessageManager
+            from ushareiplay.managers.sleep_manager import SleepManager
+            from ushareiplay.managers.theme_manager import ThemeManager
+            from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.user_manager import UserManager
+            from ushareiplay.state.online_list_scraper import OnlineListScraper
+            from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+            from ushareiplay.state.playlist_state import PlaylistState
+            from ushareiplay.state.presence_tracker import PresenceTracker
+            from ushareiplay.state.room_state import RoomState
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
             self.seat_manager = SeatManager.get_instance(self.soul_handler)
-            self.topic_manager = TopicManager.instance()
-            self.mic_manager = MicManager.instance()
-            self.music_manager = MusicManager.instance()
+
+            # Creation is deliberately centralized here. Every other module uses
+            # .instance() as a lookup-only API.
+            UserManager.initialize()
+            SleepManager.initialize(self.config)
+            MessageQueue.initialize()
+            RecoveryManager.initialize()
+            MessageManager.initialize()
+            self.message_dispatch = MessageDispatch.initialize()
+            self.topic_manager = TopicManager.initialize()
+            self.mic_manager = MicManager.initialize()
+            self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
             self.recovery_manager = RecoveryManager.instance()
-            self.timer_manager = TimerManager.instance()
-            self.command_manager = CommandManager.instance()
+            self.timer_manager = TimerManager.initialize()
+            self.command_manager = CommandManager.initialize()
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            from ushareiplay.core.message_dispatch import MessageDispatch
-            self.message_dispatch = MessageDispatch.instance()
-            self.info_manager = InfoManager.instance()
-            self.party_manager = PartyManager.instance()
-            self.notice_manager = NoticeManager.instance()
+            RoomState.initialize()
+            PresenceTracker.initialize()
+            PlaylistState.initialize()
+            PlaybackBroadcaster.initialize()
+            OnlineListScraper.initialize()
+            self.info_manager = InfoManager.initialize()
+            self.party_manager = PartyManager.initialize()
+            self.notice_manager = NoticeManager.initialize()
+            ThemeManager.initialize()
+            TitleManager.initialize()
+            AdminManager.initialize()
+            KeywordManager.initialize()
             self.post_party_create_automation = PostPartyCreateAutomation(self)
             self._runtime_queue_drainer = RuntimeQueueDrainer(
                 handler=self.soul_handler,
@@ -355,9 +384,9 @@ class AppController(Singleton):
 
             # Initialize event manager
             self.logger.info("初始化事件管理器...")
-            self.event_manager = EventManager.instance()
+            self.event_manager = EventManager.initialize()
             self.event_manager.configure_runtime(self.event_runtime_context)
-            self.event_manager.initialize()
+            self.event_manager.initialize_events()
             self.logger.info("事件管理器初始化完成")
 
             self.logger.info("Handlers and managers initialized successfully")
@@ -546,3 +575,24 @@ class AppController(Singleton):
         # Stop async timer manager
         await self.timer_manager.stop()
         self.logger.info("Application stopped")
+
+    async def shutdown(self):
+        """Release per-run resources before the singleton graph is reset."""
+        self.is_running = False
+
+        if self._non_ui_task:
+            self._non_ui_task.cancel()
+            try:
+                await self._non_ui_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.timer_manager and self.timer_manager.is_running():
+            await self.timer_manager.stop()
+
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                if self.logger:
+                    self.logger.warning("Failed to close Appium driver during shutdown")

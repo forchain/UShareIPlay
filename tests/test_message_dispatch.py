@@ -39,15 +39,13 @@ class _UserManager:
 
 @pytest.fixture(autouse=True)
 def reset_message_dispatch_singleton():
-    if hasattr(MessageDispatch, "_instance"):
-        delattr(MessageDispatch, "_instance")
+    MessageDispatch.reset_instance()
     yield
-    if hasattr(MessageDispatch, "_instance"):
-        delattr(MessageDispatch, "_instance")
+    MessageDispatch.reset_instance()
 
 
 def _make_dispatch():
-    dispatch = MessageDispatch.instance()
+    dispatch = MessageDispatch.initialize()
     dispatch._handler = _Handler()
     dispatch._user_manager = _UserManager()
     runtime = _Runtime()
