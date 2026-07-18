@@ -27,6 +27,7 @@ class BaseCommand(ABC):
         self._title_manager = None
         self._topic_manager = None
         self._theme_manager = None
+        self._room_name_manager = None
         self._message_dispatch = None
 
     async def process(self, message_info, parameters):
@@ -105,6 +106,13 @@ class BaseCommand(ABC):
             from ushareiplay.managers.theme_manager import ThemeManager
             self._theme_manager = ThemeManager.instance()
         return self._theme_manager
+
+    @property
+    def room_name_manager(self):
+        if self._room_name_manager is None:
+            from ushareiplay.managers.room_name_manager import RoomNameManager
+            self._room_name_manager = RoomNameManager.instance()
+        return self._room_name_manager
 
     @property
     def message_dispatch(self):

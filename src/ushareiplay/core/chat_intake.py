@@ -151,6 +151,35 @@ def _detect_command_prefix(text: str) -> str | None:
     return first if first in QUEUE_COMMAND_PREFIXES else None
 
 
+def is_private_reply_prefix(text: str) -> bool:
+    """Return True if text starts with a private-reply prefix."""
+    s = (text or "").lstrip()
+    return bool(s) and s[0] in PRIVATE_REPLY_PREFIXES
+
+
+def is_silent_prefix(text: str) -> bool:
+    """Return True if text starts with a silent-command prefix (after optional private-reply prefix)."""
+    s = (text or "").lstrip()
+    if is_private_reply_prefix(s):
+        s = s[1:].lstrip()
+    return bool(s) and s[0] in SILENT_COMMAND_PREFIXES
+
+
+def normalize_command_text(raw: str) -> str:
+    """Strip the leading command trigger and surrounding whitespace.
+
+    Returns the cleaned command content, or an empty string if there is none.
+    """
+    s = (raw or "").lstrip()
+    if not s:
+        return ""
+    if is_private_reply_prefix(s):
+        s = s[1:].lstrip()
+    if s and s[0] in COMMAND_PREFIXES:
+        s = s[1:]
+    return s.lstrip()
+
+
 def expand_queue_text(
     text: str,
     nickname: str,

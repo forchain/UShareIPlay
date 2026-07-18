@@ -72,8 +72,6 @@ def _desk():
 
 
 def _manager(handler):
-    SeatCheckManager._instance = None
-    SeatCheckManager._initialized = False
     return SeatCheckManager(handler, DummySeatUI(handler))
 
 

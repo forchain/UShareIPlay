@@ -122,22 +122,7 @@ class MessageContentEvent(BaseEvent):
 
                 if result.kind == ChatIntakeKind.KEYWORD_MENTION:
                     from ushareiplay.managers.keyword_manager import KeywordManager
-                    keyword_manager = KeywordManager.instance()
-
-                    keyword_record = await keyword_manager.find_keyword(result.text, result.nickname)
-                    if keyword_record:
-                        await keyword_manager.execute_keyword(
-                            keyword_record,
-                            result.nickname,
-                            params=result.params,
-                            sleep_exempt=True,
-                        )
-                    else:
-                        await keyword_manager.execute_default_keyword(
-                            result.nickname,
-                            params=result.params,
-                            sleep_exempt=True,
-                        )
+                    await KeywordManager.instance().dispatch_mention(result, sleep_exempt=True)
 
                     chat_logger.critical(content)
                     continue

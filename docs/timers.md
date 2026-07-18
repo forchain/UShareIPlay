@@ -11,8 +11,8 @@ last-synced: 2026-03-23
 
 | Component | Responsibility |
 |---|---|
-| `TimerManager` | Async timer loop; loads/saves timers from DB; fires commands via `MessageQueue` |
-| `TimerCommand` | Handles `:timer` user commands (add, remove, list, enable/disable) |
+| `TimerManager` | Async timer loop; timer grammar/key allocation; loads/saves timers from DB; fires commands via `MessageQueue` |
+| `TimerCommand` | Handles `:timer` user commands (add, remove, list, start, stop, reset, reload) |
 | `Timer` (model) | ORM model mapping to `timer_events` table |
 | `TimerDAO` | DB CRUD for `Timer` model |
 
@@ -34,7 +34,10 @@ last-synced: 2026-03-23
 | `timer` | 9 | `add <key?> <time> <command...> [repeat]` | Add a new timer (key optional) |
 | `timer` | 9 | `remove <key>` | Delete a timer |
 | `timer` | 9 | `list` | List all timers with next trigger time |
-| `timer` | 9 | `enable/disable <key>` | Toggle a timer without deleting it |
+| `timer` | 9 | `start` | Start the timer loop |
+| `timer` | 9 | `stop` | Stop the timer loop |
+| `timer` | 9 | `reset` | Remove all timers |
+| `timer` | 9 | `reload` | Reload timers from DB |
 
 Examples:
 - `:timer add morning 08:00 play 早安音乐`

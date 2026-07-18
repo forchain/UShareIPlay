@@ -40,8 +40,8 @@ async def test_timer_manager_supports_numeric_delay():
     tm._logger = _DummyLogger()
 
     before = datetime.now()
-    ok = await tm.add_timer("delay10", "hello", "10", repeat=False)
-    assert ok is True
+    timer = await tm.create_timer(message="hello", target_time="10", repeat=False, key="delay10")
+    assert timer["key"] == "delay10"
 
     row = await TimerDAO.get_by_key("delay10")
     assert row is not None
@@ -66,7 +66,7 @@ async def test_timer_command_add_without_id_generates_key(monkeypatch):
     tm._logger = _DummyLogger()
 
     # 让生成器第一次冲突、第二次成功
-    await tm.add_timer("deadbeef", "existing", "10", repeat=False)
+    await tm.create_timer(message="existing", target_time="10", repeat=False, key="deadbeef")
     seq = iter(["deadbeef", "feedface"])
 
     def _fake_token_hex(n):
@@ -87,7 +87,7 @@ async def test_timer_command_add_without_id_generates_key(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_timer_command_strips_grouping_quotes_in_message(monkeypatch):
+async def test_timer_command_strips_grouping_quotes_in_message():
     from ushareiplay.core.db_manager import DatabaseManager
     from ushareiplay.commands.timer import TimerCommand
     from ushareiplay.managers.timer_manager import TimerManager
@@ -100,7 +100,7 @@ async def test_timer_command_strips_grouping_quotes_in_message(monkeypatch):
     tm._logger = _DummyLogger()
 
     cmd = TimerCommand(_DummyController())
-    result = await cmd._add_timer(["t1", "1", "\":play test\"", "@Console"])
+    result = await cmd._add_timer(["t1", "1", '":play test"', "@Console"])
     assert "timer" in result
 
     row = await TimerDAO.get_by_key("t1")
@@ -124,27 +124,16 @@ async def test_one_shot_timer_deleted_after_trigger():
     tm = TimerManager.instance()
     tm._logger = _DummyLogger()
 
-    await TimerDAO.create(
+    await tm.create_timer(
         key="oneshot",
         message="hello",
         target_time="10",
         repeat=False,
-        enabled=True,
-        next_trigger=datetime.now() - timedelta(seconds=1),
     )
-    tm._timers["oneshot"] = {
-        "key": "oneshot",
-        "message": "hello",
-        "target_time": "10",
-        "repeat": False,
-        "enabled": True,
-        "next_trigger": (datetime.now() - timedelta(seconds=1)).isoformat(),
-    }
 
-    await tm._trigger_timer("oneshot", tm._timers["oneshot"])
+    await tm.fire_timer("oneshot")
 
     assert await TimerDAO.get_by_key("oneshot") is None
     assert "oneshot" not in tm._timers
 
     await manager.close()
-

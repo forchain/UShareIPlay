@@ -19,12 +19,12 @@ def broadcaster():
         error=lambda _msg: None,
     )
     b._soul_handler = MagicMock()
-    b._music_handler = MagicMock()
+    b._music_manager = MagicMock()
     return b
 
 
 def test_update_playback_info_cache_sets_cache(broadcaster):
-    broadcaster._music_handler.get_playback_info.return_value = {
+    broadcaster._music_manager.get_playback_info.return_value = {
         "song": "SongA",
         "singer": "SingerA",
         "album": "AlbumA",
@@ -38,7 +38,7 @@ def test_update_playback_info_cache_sets_cache(broadcaster):
 
 
 def test_update_playback_info_cache_falls_back_on_error(broadcaster):
-    broadcaster._music_handler.get_playback_info.side_effect = RuntimeError("boom")
+    broadcaster._music_manager.get_playback_info.side_effect = RuntimeError("boom")
     broadcaster.update_playback_info_cache()
 
     cache = broadcaster.get_playback_info_cache()
@@ -49,7 +49,7 @@ def test_update_playback_info_cache_falls_back_on_error(broadcaster):
 def test_send_playing_message_respects_broadcast_toggle(broadcaster):
     info = {"song": "SongA", "singer": "SingerA", "album": "AlbumA"}
     broadcaster._playback_info_cache = info
-    broadcaster._music_handler.handle_song_quality_check.return_value = False
+    broadcaster._music_manager.handle_song_quality_check.return_value = False
 
     broadcaster._soul_handler.config = {"broadcast_playing_info": True}
     broadcaster.send_playing_message()
@@ -66,7 +66,7 @@ def test_send_playing_message_respects_broadcast_toggle(broadcaster):
 def test_send_playing_message_skips_when_song_quality_check_skips(broadcaster):
     info = {"song": "SongA", "singer": "SingerA", "album": "AlbumA"}
     broadcaster._playback_info_cache = info
-    broadcaster._music_handler.handle_song_quality_check.return_value = True
+    broadcaster._music_manager.handle_song_quality_check.return_value = True
 
     broadcaster._soul_handler.config = {"broadcast_playing_info": True}
     broadcaster.send_playing_message()
@@ -76,7 +76,7 @@ def test_send_playing_message_skips_when_song_quality_check_skips(broadcaster):
 def test_ensure_cached_release_date_fetches_when_missing(broadcaster):
     info = {"song": "SongA", "singer": "SingerA", "album": "AlbumA"}
     broadcaster._playback_info_cache = info
-    broadcaster._music_handler.ensure_release_date.side_effect = (
+    broadcaster._music_manager.ensure_release_date.side_effect = (
         lambda song_info: song_info.update({"release_date": "2020-01-02"})
     )
 
@@ -91,7 +91,7 @@ def test_update_detects_song_change_and_broadcasts(broadcaster):
         "singer": "SingerA",
         "album": "AlbumA",
     }
-    broadcaster._music_handler.handle_song_quality_check.return_value = False
+    broadcaster._music_manager.handle_song_quality_check.return_value = False
     broadcaster._soul_handler.config = {"broadcast_playing_info": True}
 
     # First update establishes baseline

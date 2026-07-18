@@ -8,6 +8,10 @@ UShareIPlay controls Soul App party rooms and QQ Music playback through chat-dri
 All behavior around Soul App party seats, including reservation policy, occupancy checks, automatic seating on entry, taking seats, removing occupants, and preparing seat UI state when another workflow depends on the seat panel.
 _Avoid_: Seat command, seating helper, seat UI layer
 
+**Room Name**:
+The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.
+_Avoid_: ThemeManager, TitleManager (legacy adapters)
+
 **Command Execution**:
 All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, and response delivery.
 _Avoid_: Command parser, queue drainer, chat command handler

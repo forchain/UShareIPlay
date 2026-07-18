@@ -2,6 +2,7 @@ import traceback
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.managers.music_manager import MusicManager
 
 
 class AlbumCommand(BaseCommand):
@@ -66,7 +67,7 @@ class AlbumCommand(BaseCommand):
 
     def play_album(self, query):
         if query == "":
-            info = self.handler.get_playback_info()
+            info = MusicManager.instance().get_playback_info()
             if not info:
                 self.handler.logger.error(f"Failed to get playback info with query {query}")
                 return {'error': f'Failed to get playback info'}

@@ -1,13 +1,12 @@
 from ushareiplay.dal import UserDAO, SeatReservationDAO
-from ushareiplay.managers.seat_manager.base import SeatManagerBase
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 import traceback
 
 
-class ReservationManager(SeatManagerBase):
+class ReservationManager:
     def __init__(self, handler=None, seat_ui=None, seat_check=None):
-        super().__init__(handler)
+        self.handler = handler
         self.seat_ui = seat_ui or SeatUIManager(handler)
         self.seat_check = seat_check or SeatCheckManager(handler, self.seat_ui)
 

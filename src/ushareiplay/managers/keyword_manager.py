@@ -358,6 +358,23 @@ class KeywordManager(Singleton):
             self.logger.error(f"Error revoking keyword access: {traceback.format_exc()}")
             return {'error': '取消授权失败'}
 
+    async def dispatch_mention(self, result, sleep_exempt: bool = True):
+        """Handle a keyword-mention ChatIntakeResult by finding and executing the keyword."""
+        keyword_record = await self.find_keyword(result.text, result.nickname)
+        if keyword_record:
+            await self.execute_keyword(
+                keyword_record,
+                result.nickname,
+                params=result.params,
+                sleep_exempt=sleep_exempt,
+            )
+        else:
+            await self.execute_default_keyword(
+                result.nickname,
+                params=result.params,
+                sleep_exempt=sleep_exempt,
+            )
+
     async def execute_keyword(
         self,
         keyword_record: Keyword,
