@@ -73,7 +73,7 @@ def test_runtime_queue_drainer_routes_commands_and_plain_messages():
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, obs=obs, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, obs=obs, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())
@@ -102,7 +102,7 @@ def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_m
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())
@@ -134,7 +134,7 @@ def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())
@@ -157,7 +157,7 @@ def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())
@@ -181,7 +181,7 @@ def test_runtime_queue_drainer_routes_dollar_parts_as_private_commands():
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())
@@ -205,7 +205,7 @@ def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, logger=handler.logger
+        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
     )
 
     drained, command_count = _run(drainer.drain())

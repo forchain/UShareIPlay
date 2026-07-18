@@ -14,6 +14,7 @@ class PartyManager(Singleton):
         # 延迟初始化，避免循环依赖
         self._handler = None
         self._logger = None
+        self._message_dispatch = None
 
         # 派对重启相关状态
         self.init_time = None  # 初始化时间
@@ -34,6 +35,14 @@ class PartyManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
+
+    @property
+    def message_dispatch(self):
+        if self._message_dispatch is None:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            self._message_dispatch = MessageDispatch.instance().bind_handler(self.handler)
+        return self._message_dispatch
 
     def initialize(self):
         """初始化派对管理器"""
@@ -103,7 +112,7 @@ class PartyManager(Singleton):
         返回包含结果的字典
         """
         try:
-            self.handler.send_message('Ending party')
+            self.message_dispatch.send_screen_message('Ending party')
 
             # Switch to Soul app first
             if not self.handler.switch_to_app():
