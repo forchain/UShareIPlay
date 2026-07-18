@@ -1,12 +1,26 @@
 import pytest
 from unittest.mock import MagicMock, patch
+
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.state.online_list_scraper import OnlineListScraper
+from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.state.presence_tracker import PresenceTracker
+from ushareiplay.state.room_state import RoomState
+
 
 @pytest.fixture
 def info_manager():
-    # Reset InfoManager singleton
-    if hasattr(InfoManager, '_instance'):
-        del InfoManager._instance
+    for cls in (
+        InfoManager,
+        RoomState,
+        PresenceTracker,
+        PlaylistState,
+        PlaybackBroadcaster,
+        OnlineListScraper,
+    ):
+        if hasattr(cls, '_instance'):
+            del cls._instance
     return InfoManager.instance()
 
 def test_send_playing_message_respects_broadcast_toggle(info_manager):

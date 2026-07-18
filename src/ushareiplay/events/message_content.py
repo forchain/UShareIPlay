@@ -12,7 +12,7 @@ import traceback
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
 from ushareiplay.managers.command_manager import CommandManager
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
 
 class MessageContentEvent(BaseEvent):
@@ -199,7 +199,6 @@ class MessageContentEvent(BaseEvent):
             command_manager.update_commands()
 
             # update playback info
-            info_manager = InfoManager.instance()
-            info_manager.update_playback_info_cache()
+            PlaybackBroadcaster.instance().update_playback_info_cache()
         except Exception as e:
             self.logger.error(f"Error processing update logic: {str(e)}")
