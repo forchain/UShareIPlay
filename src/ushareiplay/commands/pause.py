@@ -1,5 +1,7 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.managers.mic_manager import MicManager
+from ushareiplay.managers.music_manager import MusicManager
 
 
 class PauseCommand(BaseCommand):
@@ -13,7 +15,7 @@ class PauseCommand(BaseCommand):
         """
         try:
             # Get current playback info
-            current_info = self.music_handler.get_playback_info()
+            current_info = MusicManager.instance().get_playback_info()
             if 'error' in current_info:
                 return current_info
 
@@ -36,10 +38,6 @@ class PauseCommand(BaseCommand):
                         'action': 'Paused' if not is_playing else 'Resumed'
                     }
 
-            # 使用 mic_manager 和 music_manager 管理麦克风和音乐播放
-            from ushareiplay.managers.mic_manager import MicManager
-            from ushareiplay.managers.music_manager import MusicManager
-            
             mic_manager = MicManager.instance()
             music_manager = MusicManager.instance()
             

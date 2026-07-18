@@ -5,6 +5,7 @@ import time
 from langdetect import detect_langs
 import langdetect
 from html import unescape
+from ushareiplay.managers.music_manager import MusicManager
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0
@@ -89,7 +90,7 @@ class LyricsCommand(BaseCommand):
         # If no query provided, construct from current playing info
         if query == "":
             # Get current playing info
-            info = self.music_handler.get_playback_info()
+            info = MusicManager.instance().get_playback_info()
             if 'error' in info:
                 return {'error': 'Failed to get playback info'}
             
