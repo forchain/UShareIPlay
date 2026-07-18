@@ -7,6 +7,22 @@ from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
 
+class FakeMessageDispatch:
+    def __init__(self):
+        self.screen_messages = []
+        self.command_outputs = []
+
+    def bind_handler(self, _handler):
+        return self
+
+    def send_screen_message(self, message, silent=False):
+        self.screen_messages.append((message, silent))
+
+    def send_for_message_info(self, message_info, response, silent=False):
+        self.command_outputs.append((message_info.nickname, response, silent))
+        return True
+
+
 class FakeLogger:
     def __init__(self):
         self.messages = []
@@ -182,7 +198,10 @@ def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
 
     monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
     monkeypatch.setattr(manager, "process_command", _fake_process)
-    monkeypatch.setattr(manager, "_send_screen_message", lambda *args, **kwargs: None)
+    dispatch = FakeMessageDispatch()
+    monkeypatch.setattr(
+        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+    )
 
     processed = asyncio.run(
         manager.handle_message_commands(
@@ -208,24 +227,16 @@ def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeyp
         ]
     )
 
-    sent_public = []
-    sent_private = []
-
     async def _fake_process(_command, _message_info, _command_info):
         return "ok result @Console"
 
     monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
     monkeypatch.setattr(manager, "process_command", _fake_process)
 
-    def _fake_send_screen(message, silent=False):
-        sent_public.append((message, silent))
-
-    def _fake_send_private(message_info, response, silent=False):
-        sent_private.append((message_info.nickname, response, silent))
-        return True
-
-    monkeypatch.setattr(manager, "_send_screen_message", _fake_send_screen)
-    monkeypatch.setattr(manager, "_send_command_output", _fake_send_private)
+    dispatch = FakeMessageDispatch()
+    monkeypatch.setattr(
+        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+    )
 
     processed = asyncio.run(
         manager.handle_message_commands(
@@ -234,10 +245,10 @@ def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeyp
     )
 
     assert processed == 1
-    assert len(sent_public) == 1
-    assert sent_public[0][0].endswith("play ... @Console")
-    assert sent_public[0][1] is False
-    assert sent_private == [("Console", "ok result @Console", False)]
+    assert len(dispatch.screen_messages) == 1
+    assert dispatch.screen_messages[0][0].endswith("play ... @Console")
+    assert dispatch.screen_messages[0][1] is False
+    assert dispatch.command_outputs == [("Console", "ok result @Console", False)]
 
 
 def test_handle_message_commands_private_reply_error_routes_private(monkeypatch):
@@ -253,24 +264,16 @@ def test_handle_message_commands_private_reply_error_routes_private(monkeypatch)
         ]
     )
 
-    sent_public = []
-    sent_private = []
-
     async def _fake_process(_command, _message_info, _command_info):
         return "error boom @Console"
 
     monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
     monkeypatch.setattr(manager, "process_command", _fake_process)
 
-    def _fake_send_screen(message, silent=False):
-        sent_public.append((message, silent))
-
-    def _fake_send_private(message_info, response, silent=False):
-        sent_private.append((message_info.nickname, response, silent))
-        return True
-
-    monkeypatch.setattr(manager, "_send_screen_message", _fake_send_screen)
-    monkeypatch.setattr(manager, "_send_command_output", _fake_send_private)
+    dispatch = FakeMessageDispatch()
+    monkeypatch.setattr(
+        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+    )
 
     processed = asyncio.run(
         manager.handle_message_commands(
@@ -279,7 +282,7 @@ def test_handle_message_commands_private_reply_error_routes_private(monkeypatch)
     )
 
     assert processed == 1
-    assert len(sent_public) == 1
-    assert sent_public[0][0].endswith("play ... @Console")
-    assert sent_public[0][1] is False
-    assert sent_private == [("Console", "error boom @Console", False)]
+    assert len(dispatch.screen_messages) == 1
+    assert dispatch.screen_messages[0][0].endswith("play ... @Console")
+    assert dispatch.screen_messages[0][1] is False
+    assert dispatch.command_outputs == [("Console", "error boom @Console", False)]

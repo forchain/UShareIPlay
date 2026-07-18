@@ -37,10 +37,6 @@ class _Handler:
         self.logger = _Logger()
 
     def send_message(self, message):
-        from ushareiplay.core.command_silence import is_command_silent
-
-        if is_command_silent():
-            return None
         self.sent.append(message)
 
 
@@ -108,10 +104,14 @@ def test_slash_command_suppresses_screen_messages_but_still_executes(monkeypatch
 
     assert processed == 1
     assert handler.sent == []
-    assert [event[0] for event in runtime.events] == [
+    assert [event[0] for event in runtime.events if event[0].startswith("command.")] == [
         "command.received",
         "command.dispatch",
         "command.result",
+    ]
+    assert [event[0] for event in runtime.events if event[0] == "message.dispatch.suppressed"] == [
+        "message.dispatch.suppressed",
+        "message.dispatch.suppressed",
     ]
 
 
@@ -147,7 +147,7 @@ def test_colon_command_keeps_existing_screen_messages(monkeypatch):
     assert handler.sent[1] == "processed abc @Console"
 
 
-def test_silent_lifecycle_suppresses_direct_command_send_message():
+def test_silent_lifecycle_does_not_change_low_level_handler_primitive():
     manager, _runtime, handler = _make_manager()
     message_info = SimpleNamespace(content="/demo", nickname="Console")
     command_info = {
@@ -164,7 +164,7 @@ def test_silent_lifecycle_suppresses_direct_command_send_message():
     )
 
     assert response == "done @Console"
-    assert handler.sent == []
+    assert handler.sent == ["inside command"]
 
 
 def test_silent_lifecycle_marks_queued_keyword_commands_silent(monkeypatch):
@@ -193,6 +193,7 @@ def test_silent_lifecycle_marks_queued_keyword_commands_silent(monkeypatch):
         RuntimeQueueDrainer(
             handler=handler,
             command_manager=manager,
+            send_screen_message=handler.send_message,
         ).drain()
     )
 

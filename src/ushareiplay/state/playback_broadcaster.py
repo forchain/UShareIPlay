@@ -13,6 +13,7 @@ class PlaybackBroadcaster(Singleton):
         self._music_handler = None
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
+        self._message_dispatch = None
 
     @property
     def logger(self):
@@ -37,6 +38,14 @@ class PlaybackBroadcaster(Singleton):
             from ushareiplay.handlers.qq_music_handler import QQMusicHandler
             self._music_handler = QQMusicHandler.instance()
         return self._music_handler
+
+    @property
+    def message_dispatch(self):
+        if self._message_dispatch is None:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
+        return self._message_dispatch
 
     def update_playback_info_cache(self):
         """
@@ -116,7 +125,7 @@ class PlaybackBroadcaster(Singleton):
                     self.logger.info(f'Hidden "{playback_message}"')
                     return
 
-                self.soul_handler.send_message(playback_message)
+                self.message_dispatch.send_screen_message(playback_message)
         else:
             # 如果歌曲信息无效，记录错误但不中断监控
             if 'error' in info:

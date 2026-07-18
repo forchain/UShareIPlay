@@ -1,6 +1,5 @@
 import logging
 
-from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
@@ -27,10 +26,11 @@ class SoulHandler(AppHandler, Singleton):
         return self._message_manager
 
     def send_message(self, message):
-        """Send message"""
-        if is_command_silent():
-            self.logger.info(f"Silent command suppressed screen message: {message}")
-            return None
+        """Send a room message through the low-level Soul UI primitive.
+
+        Business code should use ``MessageDispatch`` so routing and suppression
+        are applied consistently.
+        """
 
         self.switch_to_app()
 

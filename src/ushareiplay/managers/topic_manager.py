@@ -13,6 +13,7 @@ class TopicManager(Singleton):
         # 延迟初始化 handler，避免循环依赖
         self._soul_handler = None
         self._logger = None
+        self._message_dispatch = None
         
         # 话题状态管理
         self.last_update_time = None
@@ -34,6 +35,14 @@ class TopicManager(Singleton):
         if self._logger is None:
             self._logger = self.soul_handler.logger
         return self._logger
+
+    @property
+    def message_dispatch(self):
+        if self._message_dispatch is None:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
+        return self._message_dispatch
     
     def get_status(self) -> dict:
         """
@@ -187,7 +196,7 @@ class TopicManager(Singleton):
                 self.current_topic = self.next_topic
                 self.next_topic = None
                 self.logger.info(f'Topic updated successfully to {self.current_topic}')
-                self.soul_handler.send_message(f"Updating topic to {self.current_topic}")
+                self.message_dispatch.send_screen_message(f"Updating topic to {self.current_topic}")
             else:
                 # 失败：保留 next_topic，等待下次冷却时间后重试
                 self.logger.warning(

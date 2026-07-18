@@ -25,7 +25,6 @@ class SayCommand(BaseCommand):
             return {'error': '消息内容不能为空'}
 
         # 发送消息
-        # self.handler.send_message(message)
         self.handler.logger.info(f"Say command executed by {message_info.nickname}: {message}")
 
         return {'message': f'{message}'}

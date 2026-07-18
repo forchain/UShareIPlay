@@ -10,6 +10,15 @@ class SeatCheckManager(SeatManagerBase):
     def __init__(self, handler=None):
         super().__init__(handler)
         self.seat_ui = SeatUIManager(handler)
+        self._message_dispatch = None
+
+    @property
+    def message_dispatch(self):
+        if self._message_dispatch is None:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            self._message_dispatch = MessageDispatch.instance().bind_handler(self.handler)
+        return self._message_dispatch
 
     async def check_seats_on_entry(self, username: str = None):
         """Check seats when user enters the party"""
@@ -80,7 +89,7 @@ class SeatCheckManager(SeatManagerBase):
         seat_desks = self.handler.find_elements('seat_desk')
         if not seat_desks:
             self.handler.log_error("cannot find seat desks")
-            self.handler.send_message(f"System error: Unable to access seats for {username}")
+            self.message_dispatch.send_screen_message(f"System error: Unable to access seats for {username}")
             return
         self.handler.logger.info(f"found {len(seat_desks)} seat desks")
         if len(seat_desks) != 6:
@@ -124,7 +133,7 @@ class SeatCheckManager(SeatManagerBase):
 
         if not seat_element:
             self.handler.logger.error(f"Cannot find seat element for seat {seat_number}")
-            self.handler.send_message(f"Failed to locate seat {seat_number} for {username}")
+            self.message_dispatch.send_screen_message(f"Failed to locate seat {seat_number} for {username}")
             return
 
         if not seat_label:
@@ -133,7 +142,7 @@ class SeatCheckManager(SeatManagerBase):
         self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text if seat_label else 'None'}")
         
         # Send welcome message only when seat is occupied to reduce message frequency
-        self.handler.send_message(f"Welcome {username}!")
+        self.message_dispatch.send_screen_message(f"Welcome {username}!")
 
         # wait for input dialog disappear
         await asyncio.sleep(1)
@@ -145,13 +154,13 @@ class SeatCheckManager(SeatManagerBase):
         seat_off = self.handler.wait_for_element_clickable('seat_off')
         if not seat_off:
             self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
-            self.handler.send_message(f"Unable to manage seat {seat_number} for {username}")
+            self.message_dispatch.send_screen_message(f"Unable to manage seat {seat_number} for {username}")
             return
 
         found_key, souler_name = self.handler.wait_for_any_element(['souler_name', 'user_name'])
         if not souler_name:
             self.handler.logger.error(f"No souler name found for seat {seat_number}")
-            self.handler.send_message(f"Failed to verify occupant on seat {seat_number}")
+            self.message_dispatch.send_screen_message(f"Failed to verify occupant on seat {seat_number}")
             return
 
         souler_name_text = souler_name.text
@@ -167,7 +176,7 @@ class SeatCheckManager(SeatManagerBase):
             self.handler.logger.info(
                 f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
             self.handler.press_back()
-            self.handler.send_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
+            self.message_dispatch.send_screen_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
             return
 
         seat_off.click()

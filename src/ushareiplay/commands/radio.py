@@ -44,7 +44,7 @@ class RadioCommand(BaseCommand):
 
     def _report_error(self, message: str):
         self.music_handler.logger.error(message)
-        self.soul_handler.send_message(message)
+        self.message_dispatch.send_screen_message(message)
         return {"error": message}
 
     def _navigate_home(self):

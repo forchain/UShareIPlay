@@ -8,9 +8,10 @@ from ushareiplay.core.message_queue import MessageQueue
 class RuntimeQueueDrainer:
     """Drain MessageQueue from runtime loop (single authoritative path)."""
 
-    def __init__(self, *, handler, command_manager, obs=None, logger=None):
+    def __init__(self, *, handler, command_manager, send_screen_message, obs=None, logger=None):
         self.handler = handler
         self.command_manager = command_manager
+        self.send_screen_message = send_screen_message
         self.obs = obs
         self.logger = logger or getattr(handler, "logger", None)
 
@@ -24,7 +25,7 @@ class RuntimeQueueDrainer:
 
         command_count = await self.command_manager.execute_runtime_queue_messages(
             queue_messages.values(),
-            send_screen_message=self.handler.send_message,
+            send_screen_message=self.send_screen_message,
         )
 
         if self.obs:

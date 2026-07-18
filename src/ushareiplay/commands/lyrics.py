@@ -222,7 +222,7 @@ class LyricsCommand(BaseCommand):
         l = 0
         for lyr in groups:
             l += len(lyr)
-            self.soul_handler.send_message(lyr)
+            self.message_dispatch.send_screen_message(lyr)
 
         prompt = f' {len(groups)} piece(s) of lyrics sent, {l} characters'
         # Send lyrics back to Soul using command's template
