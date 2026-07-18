@@ -2,10 +2,8 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 
 class NoticeCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-
-        self.handler = self.soul_handler
+    handler_attr = 'soul_handler'
+    error_message = 'Failed to process notice command: {error}'
 
     def change_notice(self, notice: str):
         """Change room notice with cooldown check using NoticeManager"""
@@ -28,18 +26,14 @@ class NoticeCommand(BaseCommand):
             self.handler.logger.error(f'Failed to update notice: {error_msg}')
             return {'error': f'Failed to update notice: {error_msg}'}
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process notice command"""
-        try:
-            # Get new notice from parameters
-            if not parameters:
-                return {'error': 'Missing notice parameter'}
+        # Get new notice from parameters
+        if not parameters:
+            return {'error': 'Missing notice parameter'}
 
-            new_notice = ' '.join(parameters)
-            return self.change_notice(new_notice)
-        except Exception as e:
-            self.handler.log_error(f"Error processing notice command: {str(e)}")
-            return {'error': f'Failed to process notice command: {str(e)}'}
+        new_notice = ' '.join(parameters)
+        return self.change_notice(new_notice)
 
     def update(self):
         """Check and update notice periodically using NoticeManager"""

@@ -75,7 +75,7 @@ def test_load_command_module_uses_injected_runtime_controller(tmp_path):
                 "        super().__init__(controller)",
                 "        self.controller.loaded_by_command_manager = True",
                 "",
-                "    async def process(self, message_info, parameters):",
+                "    async def do_process(self, message_info, parameters):",
                 "        return {'song': self.controller.marker}",
             ]
         ),

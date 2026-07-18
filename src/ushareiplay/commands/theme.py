@@ -1,17 +1,9 @@
-
-
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.theme_manager import ThemeManager
-from ushareiplay.managers.title_manager import TitleManager
+
+
 class ThemeCommand(BaseCommand):
-
-    def __init__(self, controller):
-        super().__init__(controller)
-
-        self.handler = controller.soul_handler
-        # Use singleton instances to ensure state synchronization
-        self.theme_manager = ThemeManager.instance()
-        self.title_manager = TitleManager.instance()
+    handler_attr = 'soul_handler'
+    error_message = '处理主题命令失败: {error}'
 
     def change_theme(self, theme: str):
         """Change room theme
@@ -89,40 +81,36 @@ class ThemeCommand(BaseCommand):
             self.handler.log_error(f"Error updating room title with new theme: {str(e)}")
             return {'ui_update': f'房间标题更新出错: {str(e)}'}
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process theme command"""
-        try:
-            # If no parameters, return detailed status information
-            if not parameters:
-                current_theme = self.theme_manager.get_current_theme()
-                current_title = self.title_manager.get_current_title()
-                next_title = self.title_manager.get_next_title()
-                remaining_minutes = self.theme_manager.get_remaining_cooldown_minutes()
-                
-                # Build status message
-                status_parts = [f'当前主题: {current_theme}']
-                
-                if current_title:
-                    status_parts.append(f'当前标题: {current_title}')
-                else:
-                    status_parts.append('当前标题: 未设置')
-                
-                if next_title:
-                    status_parts.append(f'即将更新标题: {next_title}')
-                    if remaining_minutes > 0:
-                        status_parts.append(f'剩余更新时间: {remaining_minutes}分钟')
-                    else:
-                        status_parts.append('剩余更新时间: 可立即更新')
-                else:
-                    status_parts.append('即将更新标题: 无')
-                
-                return {'theme': '\n'.join(status_parts)}
+        # If no parameters, return detailed status information
+        if not parameters:
+            current_theme = self.theme_manager.get_current_theme()
+            current_title = self.title_manager.get_current_title()
+            next_title = self.title_manager.get_next_title()
+            remaining_minutes = self.theme_manager.get_remaining_cooldown_minutes()
 
-            new_theme = ' '.join(parameters)
-            return self.change_theme(new_theme)
-        except Exception as e:
-            self.handler.log_error(f"Error processing theme command: {str(e)}")
-            return {'error': f'处理主题命令失败: {str(e)}'}
+            # Build status message
+            status_parts = [f'当前主题: {current_theme}']
+
+            if current_title:
+                status_parts.append(f'当前标题: {current_title}')
+            else:
+                status_parts.append('当前标题: 未设置')
+
+            if next_title:
+                status_parts.append(f'即将更新标题: {next_title}')
+                if remaining_minutes > 0:
+                    status_parts.append(f'剩余更新时间: {remaining_minutes}分钟')
+                else:
+                    status_parts.append('剩余更新时间: 可立即更新')
+            else:
+                status_parts.append('即将更新标题: 无')
+
+            return {'theme': '\n'.join(status_parts)}
+
+        new_theme = ' '.join(parameters)
+        return self.change_theme(new_theme)
 
     def get_current_theme(self):
         """Get current theme

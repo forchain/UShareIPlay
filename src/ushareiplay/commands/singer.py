@@ -5,17 +5,13 @@ from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
 
 class SingerCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.music_handler
+    handler_attr = 'music_handler'
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         query = " ".join(parameters)
 
         # 检查是否有其他用户正在播放列表
-        from ushareiplay.managers.info_manager import InfoManager
-
-        info_manager = InfoManager.instance()
+        info_manager = self.info_manager
         player_name = info_manager.player_name
         # 排除系统用户 Joyer 和 Timer
         if (
@@ -142,17 +138,10 @@ class SingerCommand(BaseCommand):
         self.handler.list_mode = "singer"
 
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        from ushareiplay.managers.info_manager import InfoManager
-
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        title_manager.set_next_title(singer_name)
-        topic_manager.change_topic(topic)
+        self.title_manager.set_next_title(singer_name)
+        self.topic_manager.change_topic(topic)
 
         # 存储完整的歌单名称到 InfoManager
-        info_manager = InfoManager.instance()
-        info_manager.current_playlist_name = singer_name
+        self.info_manager.current_playlist_name = singer_name
 
         return {"playlist": playlist_text}

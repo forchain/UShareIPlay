@@ -74,7 +74,7 @@ AppController
 ### Adding a New Command
 
 1. Create `src/ushareiplay/commands/<name>.py` with exactly one `BaseCommand` subclass
-2. Implement `process(self, message_info, parameters)` on that class
+2. Implement `do_process(self, message_info, parameters)` on that class — the concrete `BaseCommand.process()` wrapper owns the shell (mic prelude via `requires_mic`, handler alias via `handler_attr`, exception→`{'error': ...}` mapping via `error_message`)
 3. Do not add a `create_command()` factory or a module-level `command = None`
 4. Add command config entry in `config.yaml` under the commands section
 5. `CommandManager` auto-discovers commands via dynamic loading — no registration needed

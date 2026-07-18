@@ -1,50 +1,43 @@
-import traceback
-from datetime import datetime
-
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.timer_manager import TimerManager
 
 
 class TimerCommand(BaseCommand):
+    handler_attr = 'soul_handler'
+    error_message = '处理命令失败: {error}'
 
     def __init__(self, controller):
         super().__init__(controller)
 
-        self.handler = controller.soul_handler
         self.timer_manager = TimerManager.instance()
-        
+
         # Timer manager will be started by app_controller
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process timer command"""
-        try:
-            if not parameters:
-                return self._list_timers()
-            
-            command = parameters[0].lower()
-            
-            if command == 'add':
-                return await self._add_timer(parameters[1:])
-            elif command == 'remove' or command == 'del':
-                return await self._remove_timer(parameters[1:])
-            elif command == 'list':
-                return self._list_timers()
-            elif command == 'help':
-                return self._show_help()
-            elif command == 'reset':
-                return await self._reset_timers()
-            elif command == 'reload':
-                return await self._reload_timers()
-            elif command == 'start':
-                return await self._start_timer_manager()
-            elif command == 'stop':
-                return await self._stop_timer_manager()
-            else:
-                return {'error': f'未知命令: {command}。使用 "timer help" 查看帮助'}
-                
-        except Exception as e:
-            self.handler.log_error(f"Error processing timer command: {str(e)}")
-            return {'error': f'处理命令失败: {str(e)}'}
+        if not parameters:
+            return self._list_timers()
+
+        command = parameters[0].lower()
+
+        if command == 'add':
+            return await self._add_timer(parameters[1:])
+        elif command == 'remove' or command == 'del':
+            return await self._remove_timer(parameters[1:])
+        elif command == 'list':
+            return self._list_timers()
+        elif command == 'help':
+            return self._show_help()
+        elif command == 'reset':
+            return await self._reset_timers()
+        elif command == 'reload':
+            return await self._reload_timers()
+        elif command == 'start':
+            return await self._start_timer_manager()
+        elif command == 'stop':
+            return await self._stop_timer_manager()
+        else:
+            return {'error': f'未知命令: {command}。使用 "timer help" 查看帮助'}
 
     async def _add_timer(self, parameters):
         """Add a new timer
