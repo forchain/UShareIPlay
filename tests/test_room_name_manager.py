@@ -62,17 +62,16 @@ def test_get_remaining_cooldown_minutes_after_cooldown_set():
 
 def test_set_next_title_sanitizes_and_queues_title():
     manager = _manager_with_fake_handler()
-    manager._handler.ui_actions.switch_and_click.return_value = {}
 
     result = manager.set_next_title("Hello (world) | extra")
 
     assert manager.get_next_title() == "Hello"
     assert "Title will update" in result["title"]
+    manager._handler.ui_actions.switch_and_click.assert_not_called()
 
 
 def test_set_next_title_with_theme_updates_theme_too():
     manager = _manager_with_fake_handler()
-    manager._handler.ui_actions.switch_and_click.return_value = {}
 
     manager.set_next_title("My Title", theme="新")
 
@@ -80,12 +79,15 @@ def test_set_next_title_with_theme_updates_theme_too():
     assert manager.get_next_title() == "My Title"
 
 
-def test_set_next_title_returns_error_when_switch_fails():
+def test_set_next_title_queues_without_available_ui():
     manager = _manager_with_fake_handler()
     manager._handler.ui_actions.switch_and_click.return_value = {"error": "boom"}
 
     result = manager.set_next_title("Title")
-    assert "error" in result
+
+    assert manager.get_next_title() == "Title"
+    assert "Title will update" in result["title"]
+    manager._handler.ui_actions.switch_and_click.assert_not_called()
 
 
 def test_process_pending_update_skips_when_cooldown_active():
@@ -105,6 +107,7 @@ def test_process_pending_update_skips_when_nothing_pending():
     result = manager.process_pending_update()
 
     assert result["skipped"] is True
+    manager._handler.element_finder.try_find_element.assert_not_called()
 
 
 def test_process_pending_update_writes_ui_when_ready():
@@ -121,6 +124,9 @@ def test_process_pending_update_writes_ui_when_ready():
     result = manager.process_pending_update()
 
     assert result["ui_updated"] is True
+    manager._handler.ui_actions.switch_and_click.assert_called_once_with(
+        "chat_room_title", error_message="Failed to find room title"
+    )
     assert manager.get_current_title() == "New Title"
     assert manager.get_next_title() is None
     assert manager.has_pending_ui_update() is False

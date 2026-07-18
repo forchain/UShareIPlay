@@ -66,6 +66,13 @@ class LyricsCommand(BaseCommand):
                 if not lyrics_tab:
                     return False
 
+                # The scroll helper confirms the target from page source but
+                # returns the scrolled container to avoid idle element reads.
+                # Locate the actual tab only now, after the swipe operation.
+                lyrics_tab = self.music_handler.element_finder.try_find_element("lyrics_tab")
+                if not lyrics_tab:
+                    return False
+
             lyrics_tab.click()
             time.sleep(0.2)
             
