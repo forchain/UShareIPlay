@@ -196,13 +196,6 @@ class RoomNameManager(Singleton):
             if 'error' in theme_result:
                 return theme_result
 
-        result = self.handler.ui_actions.switch_and_click(
-            'chat_room_title', error_message='Failed to find room title'
-        )
-        if 'error' in result:
-            return result
-        self.logger.info("Switched to Soul app")
-
         new_title = title.split('|')[0].split('(')[0].strip()[:12]
         self.next_title = new_title
 
@@ -252,10 +245,13 @@ class RoomNameManager(Singleton):
 
     def _update_title_ui(self, title: str):
         """Single attempt to write the room name to the Soul UI."""
-        if not self.handler.key_actions.switch_to_app():
-            return {'error': 'Failed to switch to Soul app'}
-
         try:
+            result = self.handler.ui_actions.switch_and_click(
+                'chat_room_title', error_message='Failed to find room title'
+            )
+            if 'error' in result:
+                return result
+
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
 
