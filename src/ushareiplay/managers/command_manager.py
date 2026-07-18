@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line, expand_queue_text
 from ushareiplay.core.command_silence import command_silence
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.models.message_info import MessageInfo
@@ -38,6 +39,7 @@ class CommandManager(Singleton):
 
     def configure_runtime(self, runtime):
         self._runtime = runtime
+        MessageDispatch.instance().configure_runtime(runtime)
 
     @property
     def runtime(self):
@@ -59,6 +61,10 @@ class CommandManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
+
+    @property
+    def message_dispatch(self):
+        return MessageDispatch.instance().bind_handler(self.handler)
 
     def _get_command_controller(self):
         if self.controller is not None:
@@ -173,39 +179,6 @@ class CommandManager(Singleton):
         """Get command by name"""
         module = self.load_command_module(command_name)
         return module.command if module else None
-
-    def _send_screen_message(self, message: str, silent: bool = False):
-        if silent:
-            try:
-                self.logger.info(f"Silent command suppressed screen message: {message}")
-            except Exception:
-                pass
-            return None
-        return self.handler.send_message(message)
-
-    def _send_command_output(self, message_info, response: str, silent: bool = False):
-        """Route command execution output to private chat or screen."""
-        if not response:
-            return None
-        if getattr(message_info, "private_reply", False):
-            try:
-                from ushareiplay.managers.user_manager import UserManager
-
-                sent = UserManager.instance().send_private_message_to_user(
-                    message_info.nickname,
-                    response,
-                )
-                if not sent:
-                    self.logger.warning(
-                        f"Private reply dropped for {message_info.nickname}: send failed"
-                    )
-                return sent
-            except Exception:
-                self.logger.error(
-                    f"Private reply failed for {message_info.nickname}: {traceback.format_exc()}"
-                )
-                return False
-        return self._send_screen_message(response, silent=silent)
 
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
@@ -470,7 +443,7 @@ class CommandManager(Singleton):
                     # Handle different commands using match-case
                     cmd = command_info['prefix']
                     time_prefix = datetime.now().strftime('%H:%M:%S')
-                    self._send_screen_message(
+                    self.message_dispatch.send_screen_message(
                         f'[{time_prefix}] {cmd} ... @{message_info.nickname}',
                         silent=silent,
                     )
@@ -479,11 +452,13 @@ class CommandManager(Singleton):
                     if command:
                         response = await self.process_command(command, message_info, command_info)
                         if response:
-                            self._send_command_output(message_info, response, silent=silent)
+                            self.message_dispatch.send_for_message_info(
+                                message_info, response, silent=silent
+                            )
                         success_count += 1
                     else:
                         self.logger.error(f"Unknown command: {cmd}")
-                        self._send_screen_message(
+                        self.message_dispatch.send_screen_message(
                             f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}',
                             silent=silent,
                         )

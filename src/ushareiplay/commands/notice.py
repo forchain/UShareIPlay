@@ -52,7 +52,7 @@ class NoticeCommand(BaseCommand):
                 notice_content = str(success_message).replace('Notice restored to: ', '')
                 
                 self.handler.logger.info(f'Notice update completed: {notice_content}')
-                self.handler.send_message(f"Notice updated to: {notice_content}")
+                self.message_dispatch.send_screen_message(f"Notice updated to: {notice_content}")
 
         except Exception:
             self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")

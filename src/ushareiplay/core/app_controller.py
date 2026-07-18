@@ -333,6 +333,8 @@ class AppController(Singleton):
             self.command_manager = CommandManager.instance()
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
+            from ushareiplay.core.message_dispatch import MessageDispatch
+            self.message_dispatch = MessageDispatch.instance()
             self.info_manager = InfoManager.instance()
             self.party_manager = PartyManager.instance()
             self.notice_manager = NoticeManager.instance()
@@ -340,6 +342,7 @@ class AppController(Singleton):
             self._runtime_queue_drainer = RuntimeQueueDrainer(
                 handler=self.soul_handler,
                 command_manager=self.command_manager,
+                send_screen_message=self.message_dispatch.send_screen_message,
                 obs=self.obs,
                 logger=self.logger,
             )
@@ -462,7 +465,7 @@ class AppController(Singleton):
                                     )
                                     self.logger.info(f"{input_source} message added to queue: {message}")
                                 else:
-                                    self.soul_handler.send_message(message)
+                                    self.message_dispatch.send_screen_message(message)
 
                 except queue.Empty:
                     pass

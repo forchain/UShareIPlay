@@ -117,7 +117,7 @@ class TitleCommand(BaseCommand):
             if 'error' not in result:
                 # Success - update completed
                 self.handler.logger.info(f'标题更新成功: {self.title_manager.get_current_title()}')
-                self.handler.send_message(
+                self.message_dispatch.send_screen_message(
                     f"标题已更新为: {self.title_manager.get_current_title()}"
                 )
             else:

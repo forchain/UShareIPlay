@@ -27,6 +27,7 @@ class BaseCommand(ABC):
         self._title_manager = None
         self._topic_manager = None
         self._theme_manager = None
+        self._message_dispatch = None
 
     async def process(self, message_info, parameters):
         """Command shell: mic prelude -> do_process -> exception-to-error mapping.
@@ -104,6 +105,14 @@ class BaseCommand(ABC):
             from ushareiplay.managers.theme_manager import ThemeManager
             self._theme_manager = ThemeManager.instance()
         return self._theme_manager
+
+    @property
+    def message_dispatch(self):
+        if self._message_dispatch is None:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
+        return self._message_dispatch
 
     def update(self):
         """Update method called every monitoring loop
