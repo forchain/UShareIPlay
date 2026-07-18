@@ -75,7 +75,6 @@ class SeatUIManager(SeatManagerBase):
                     expand_seats.click()
                     self.handler.logger.info(f'Expanded seats')
                     self.is_expanded = True
-                    await asyncio.sleep(0.5)  # Give time for animation
                     return True
                 else:
                     self.handler.logger.warning(f"座位按钮文本不匹配预期，无法展开: '{actual_text}'")
@@ -87,6 +86,48 @@ class SeatUIManager(SeatManagerBase):
         except Exception as e:
             self.handler.logger.error(f"展开座位时出错: {str(e)}")
             return False
+
+    async def expand_and_find_desks(self):
+        """Expand the seat UI and return the six desk containers."""
+        if not await self.expand_seats():
+            return None
+
+        await asyncio.sleep(0.5)
+        seat_desks = self.handler.find_elements('seat_desk')
+        if not seat_desks:
+            self.handler.logger.error("Failed to find seat desks")
+            return None
+        if len(seat_desks) != 6:
+            self.handler.log_error(
+                f"seat expansion incomplete: found {len(seat_desks)} desks, expected 6"
+            )
+            return None
+        return seat_desks
+
+    def scroll_to_row(self, desk_index, seat_desks, duration=100):
+        """Scroll the requested desk row into view when it is outside the middle row."""
+        if not seat_desks or len(seat_desks) < 3:
+            return
+
+        row_index = desk_index // 2
+        if row_index == 1:
+            return
+
+        reference_desk = seat_desks[2]
+        center_x = reference_desk.location['x'] + reference_desk.size['width'] // 2
+        center_y = reference_desk.location['y'] + reference_desk.size['height'] // 2
+        desk_height = reference_desk.size['height']
+
+        if row_index == 0:
+            self.handler.driver.swipe(
+                center_x, center_y, center_x, center_y + desk_height, duration
+            )
+            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
+        elif row_index == 2:
+            self.handler.driver.swipe(
+                center_x, center_y, center_x, center_y - desk_height, duration
+            )
+            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
 
     async def collapse_seats(self):
         """Collapse seats if expanded"""

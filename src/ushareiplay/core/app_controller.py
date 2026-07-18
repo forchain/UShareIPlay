@@ -319,11 +319,11 @@ class AppController(Singleton):
             from ushareiplay.managers.timer_manager import TimerManager
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
-            from ushareiplay.managers.seat_manager import init_seat_manager
+            from ushareiplay.managers.seat_manager import SeatManager
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            self.seat_manager = init_seat_manager(self.soul_handler)
+            self.seat_manager = SeatManager.get_instance(self.soul_handler)
             self.topic_manager = TopicManager.instance()
             self.mic_manager = MicManager.instance()
             self.music_manager = MusicManager.instance()
