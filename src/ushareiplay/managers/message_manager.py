@@ -85,8 +85,8 @@ class MessageManager(Singleton):
 
     def _get_seat_manager(self):
         """Get the seat_manager lazily to avoid circular import issues"""
-        from ushareiplay.managers.seat_manager import seat_manager
-        return seat_manager
+        from ushareiplay.managers.seat_manager import SeatManager
+        return SeatManager.get_instance()
 
     def get_party_id(self):
         party_id = self.handler.party_id

@@ -5,6 +5,10 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.managers.seat_manager import SeatManager
+from ushareiplay.managers.seat_manager.reservation import ReservationManager
+from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
+from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
+from ushareiplay.managers.seat_manager.seating import SeatingManager
 
 
 class _FakeSeatUI:
@@ -70,6 +74,25 @@ async def test_seat_management_preserves_remove_occupant_paths():
 
     assert await manager.remove_seat_occupant(None) == {"removed": "owner"}
     assert await manager.remove_seat_occupant(3) == {"removed": 3}
+
+
+def test_seat_management_shares_ui_and_check_dependencies():
+    singleton_classes = (SeatManager, ReservationManager, SeatCheckManager, SeatUIManager, SeatingManager)
+    for manager_class in singleton_classes:
+        manager_class._instance = None
+        manager_class._initialized = False
+
+    handler = object()
+    manager = SeatManager.get_instance(handler)
+
+    assert manager.ui is manager.check.seat_ui
+    assert manager.ui is manager.reservation.seat_ui
+    assert manager.ui is manager.seating.seat_ui
+    assert manager.reservation.seat_check is manager.check
+
+    for manager_class in singleton_classes:
+        manager_class._instance = None
+        manager_class._initialized = False
 
 
 @pytest.mark.asyncio

@@ -6,9 +6,11 @@ import traceback
 
 
 class SeatingManager(SeatManagerBase):
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, seat_ui=None):
         super().__init__(handler)
-        if not hasattr(self, 'seat_ui'):
+        if seat_ui is not None:
+            self.seat_ui = seat_ui
+        elif not hasattr(self, 'seat_ui'):
             self.seat_ui = SeatUIManager(handler)
         elif handler and self.seat_ui.handler is None:
             self.seat_ui.handler = handler
@@ -29,21 +31,15 @@ class SeatingManager(SeatManagerBase):
             desk_index = (seat_number - 1) // 2
             side = 'left' if seat_number % 2 == 1 else 'right'
 
-            # Expand seats if needed
-            await self.seat_ui.expand_seats()
-            await asyncio.sleep(0.5)  # Wait for expansion animation
-
-            # Find all seat desks
-            seat_desks = self.handler.find_elements('seat_desk')
+            seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
-                self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
             if desk_index >= len(seat_desks):
                 return {'error': f'Desk {desk_index + 1} does not exist'}
 
             # Ensure the target row is visible
-            self._ensure_row_visible(desk_index, seat_desks)
+            self.seat_ui.scroll_to_row(desk_index, seat_desks)
 
             # Get the specific desk and collect its info
             desk = seat_desks[desk_index]
@@ -70,14 +66,8 @@ class SeatingManager(SeatManagerBase):
             return {'error': 'Handler not initialized'}
 
         try:
-            # Expand seats if needed
-            await self.seat_ui.expand_seats()
-            await asyncio.sleep(0.5)  # Wait for expansion animation
-
-            # Find all seat desks
-            seat_desks = self.handler.find_elements('seat_desk')
+            seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
-                self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
             if self.current_desk_index >= len(seat_desks):
@@ -103,7 +93,7 @@ class SeatingManager(SeatManagerBase):
 
             for desk_index in scan_order:
                 # Ensure the row containing this desk is visible
-                self._ensure_row_visible(desk_index, seat_desks)
+                self.seat_ui.scroll_to_row(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
                 # self.handler.logger.debug(f"desk_info: {desk_info}" )
@@ -128,7 +118,7 @@ class SeatingManager(SeatManagerBase):
                 # Ensure the row containing the target seat is visible before taking it
                 # This is important because we may have scrolled to other rows during scanning
                 try:
-                    self._ensure_row_visible(first_empty_candidate['desk_index'], seat_desks)
+                    self.seat_ui.scroll_to_row(first_empty_candidate['desk_index'], seat_desks)
                     # Re-collect desk info to get fresh element references after scrolling
                     desk = seat_desks[first_empty_candidate['desk_index']]
                     desk_info = self._collect_desk_info(desk)
@@ -164,21 +154,15 @@ class SeatingManager(SeatManagerBase):
                 if not info_manager.is_user_online(target_username):
                     return {'error': f'User {target_username} is not online'}
 
-            # Step 2: Expand seats
-            await self.seat_ui.expand_seats()
-            await asyncio.sleep(0.5)
-
-            # Find all seat desks
-            seat_desks = self.handler.find_elements('seat_desk')
+            seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
-                self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
             # Step 3: Iterate through all desks.
             # Optimization: only check desks with exactly one occupant, because
             # if both seats are occupied, we can't sit next to the target anyway.
             for desk_index in range(len(seat_desks)):
-                self._ensure_row_visible(desk_index, seat_desks)
+                self.seat_ui.scroll_to_row(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
 
@@ -269,16 +253,12 @@ class SeatingManager(SeatManagerBase):
             return {'error': 'Handler not initialized'}
 
         try:
-            await self.seat_ui.expand_seats()
-            await asyncio.sleep(0.5)
-
-            seat_desks = self.handler.find_elements('seat_desk')
+            seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
-                self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
             for desk_index in range(len(seat_desks)):
-                self._ensure_row_visible(desk_index, seat_desks)
+                self.seat_ui.scroll_to_row(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
 
@@ -303,18 +283,14 @@ class SeatingManager(SeatManagerBase):
             desk_index = (seat_number - 1) // 2
             side = 'left' if seat_number % 2 == 1 else 'right'
 
-            await self.seat_ui.expand_seats()
-            await asyncio.sleep(0.5)
-
-            seat_desks = self.handler.find_elements('seat_desk')
+            seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
-                self.handler.logger.error("Failed to find seat desks")
                 return {'error': 'Failed to find seat desks'}
 
             if desk_index >= len(seat_desks):
                 return {'error': f'Desk {desk_index + 1} does not exist'}
 
-            self._ensure_row_visible(desk_index, seat_desks)
+            self.seat_ui.scroll_to_row(desk_index, seat_desks)
             desk = seat_desks[desk_index]
             desk_info = self._collect_desk_info(desk)
             target_seat = desk_info[side]
@@ -402,43 +378,6 @@ class SeatingManager(SeatManagerBase):
 
     def _build_scan_order(self, total_count, start_index):
         return [(start_index + offset) % total_count for offset in range(total_count)]
-
-    def _ensure_row_visible(self, desk_index, seat_desks):
-        """Ensure the row containing the desk is visible by scrolling if needed"""
-        if not seat_desks or len(seat_desks) < 3:
-            return
-
-        # Calculate which row the desk belongs to (row_index = desk_index // 2)
-        row_index = desk_index // 2
-
-        # Row 1 (desk_index 2-3) is always visible, no scrolling needed
-        if row_index == 1:
-            return
-
-        # Use second row's first desk (index 2) as reference for scrolling
-        reference_desk = seat_desks[2]
-        desk_height = reference_desk.size['height']
-
-        if row_index == 0:  # First row (desk_index 0-1)
-            # Scroll down one row height to show first row
-            self.handler.driver.swipe(
-                reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                reference_desk.location['y'] + reference_desk.size['height'] // 2,
-                reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                reference_desk.location['y'] + reference_desk.size['height'] // 2 + desk_height,
-                100
-            )
-            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
-        elif row_index == 2:  # Third row (desk_index 4-5)
-            # Scroll up one row height to show third row
-            self.handler.driver.swipe(
-                reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                reference_desk.location['y'] + reference_desk.size['height'] // 2,
-                reference_desk.location['x'] + reference_desk.size['width'] // 2,
-                reference_desk.location['y'] + reference_desk.size['height'] // 2 - desk_height,
-                100
-            )
-            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
 
     def _take_seat(self, desk_index, seat_info, neighbor_label=None):
         if self.handler is None or not seat_info or not seat_info.get('element'):
