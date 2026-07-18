@@ -2,19 +2,11 @@ import traceback
 import shlex
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.title_manager import TitleManager
-from ushareiplay.managers.theme_manager import ThemeManager
 
 
 class TitleCommand(BaseCommand):
-
-    def __init__(self, controller):
-        super().__init__(controller)
-
-        self.handler = controller.soul_handler
-        # Use singleton instances to ensure state synchronization
-        self.theme_manager = ThemeManager.instance()
-        self.title_manager = TitleManager.instance()
+    handler_attr = 'soul_handler'
+    error_message = 'Failed to process title command: {error}'
 
     def change_title(self, title: str):
         """Change room title with cooldown check
@@ -45,63 +37,58 @@ class TitleCommand(BaseCommand):
         """
         return self.title_manager.get_next_title()
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process title command
-        
+
         Args:
             message_info: Message information
             parameters: List of parameters
                 - 1 parameter: title only (e.g., :title "Estas Tonne" or :title 疗愈)
                 - 2 parameters: title and theme (e.g., :title "Estas Tonne" "享乐" or :title 疗愈 助眠)
-        
+
         Returns:
             dict: Result with title/theme info or error
         """
-        try:
-            # Get parameters
-            if not parameters:
-                return {'error': 'Missing title parameter'}
+        # Get parameters
+        if not parameters:
+            return {'error': 'Missing title parameter'}
 
-            # Parse parameters using shlex to handle quoted strings
-            try:
-                params = shlex.split(' '.join(parameters))
-            except ValueError as e:
-                self.handler.log_error(f"Error parsing parameters: {str(e)}")
-                return {'error': 'Invalid parameter format. Use quotes for titles with spaces.'}
-            
-            if not params:
-                return {'error': 'Missing title parameter'}
-            
-            # Extract title and optional theme
-            new_title = params[0]
-            new_theme = params[1] if len(params) >= 2 else None
-            
-            # If theme is provided, update theme first
-            if new_theme:
-                # Validate and set theme
-                theme_result = self.theme_manager.set_theme(new_theme)
-                if 'error' in theme_result:
-                    return theme_result
-                
-                self.handler.logger.info(f"Theme will be updated to: {new_theme}")
-            
-            # Update title
-            title_result = self.change_title(new_title)
-            
-            # Combine results
-            if new_theme:
-                # If theme was updated, include it in response
-                if 'error' not in title_result:
-                    response_parts = [f"主题: {new_theme}", title_result.get('title', '')]
-                    return {'title': '\n'.join(response_parts)}
-                else:
-                    return title_result
+        # Parse parameters using shlex to handle quoted strings
+        try:
+            params = shlex.split(' '.join(parameters))
+        except ValueError as e:
+            self.handler.log_error(f"Error parsing parameters: {str(e)}")
+            return {'error': 'Invalid parameter format. Use quotes for titles with spaces.'}
+
+        if not params:
+            return {'error': 'Missing title parameter'}
+
+        # Extract title and optional theme
+        new_title = params[0]
+        new_theme = params[1] if len(params) >= 2 else None
+
+        # If theme is provided, update theme first
+        if new_theme:
+            # Validate and set theme
+            theme_result = self.theme_manager.set_theme(new_theme)
+            if 'error' in theme_result:
+                return theme_result
+
+            self.handler.logger.info(f"Theme will be updated to: {new_theme}")
+
+        # Update title
+        title_result = self.change_title(new_title)
+
+        # Combine results
+        if new_theme:
+            # If theme was updated, include it in response
+            if 'error' not in title_result:
+                response_parts = [f"主题: {new_theme}", title_result.get('title', '')]
+                return {'title': '\n'.join(response_parts)}
             else:
                 return title_result
-                
-        except Exception as e:
-            self.handler.log_error(f"Error processing title command: {str(e)}")
-            return {'error': f'Failed to process title command: {str(e)}'}
+        else:
+            return title_result
 
     def update(self):
         """Check and update title periodically with simple retry logic"""

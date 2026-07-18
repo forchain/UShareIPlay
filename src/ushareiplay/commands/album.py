@@ -2,17 +2,16 @@ import traceback
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
-class AlbumCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.music_handler
 
-    async def process(self, message_info, parameters):
+
+class AlbumCommand(BaseCommand):
+    handler_attr = 'music_handler'
+
+    async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)
-        
+
         # 检查是否有其他用户正在播放列表
-        from ushareiplay.managers.info_manager import InfoManager
-        info_manager = InfoManager.instance()
+        info_manager = self.info_manager
         player_name = info_manager.player_name
         # 排除系统用户 Joyer 和 Timer
         if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier", "Chainer"]:
@@ -20,7 +19,7 @@ class AlbumCommand(BaseCommand):
             if info_manager.is_user_online(player_name):
                 self.handler.logger.info(f"{message_info.nickname} 尝试播放专辑，但 {player_name} 正在播放")
                 return {'error': f'{player_name} 正在播放歌单，请等待'}
-        
+
         self.soul_handler.ensure_mic_active()
         info_manager.player_name = message_info.nickname
         info = self.play_album(query)
@@ -122,19 +121,13 @@ class AlbumCommand(BaseCommand):
         self.handler.list_mode = 'album'
 
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        from ushareiplay.managers.info_manager import InfoManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        topic_manager.change_topic(topic)
+        self.topic_manager.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
-        title_manager.set_next_title(title)
+        self.title_manager.set_next_title(title)
         self.handler.logger.info(f"changing album title  to {title}")
-        
+
         # 存储完整的歌单名称到 InfoManager
-        info_manager = InfoManager.instance()
-        info_manager.current_playlist_name = f"{title} - {topic}"
+        self.info_manager.current_playlist_name = f"{title} - {topic}"
 
         return {
             'playlist': playlist_text

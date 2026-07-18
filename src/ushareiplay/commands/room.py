@@ -1,8 +1,9 @@
-import traceback
 from ushareiplay.core.base_command import BaseCommand
 
 
 class RoomCommand(BaseCommand):
+    error_message = '{error}'
+
     def __init__(self, controller):
         super().__init__(controller)
         self._party_manager = None
@@ -14,7 +15,10 @@ class RoomCommand(BaseCommand):
             self._party_manager = PartyManager.instance()
         return self._party_manager
 
-    async def process(self, message_info, parameters):
+    def error_context(self, message_info, parameters):
+        return {'party_id': parameters[0] if len(parameters) > 0 else 'unknown'}
+
+    async def do_process(self, message_info, parameters):
         """
         处理 room 命令，邀请群主加入指定派对（切房）
         Args:
@@ -23,29 +27,21 @@ class RoomCommand(BaseCommand):
         Returns:
             dict: 包含 party_id、user 或 error、party_id
         """
-        try:
-            if len(parameters) == 0:
-                return {
-                    'error': 'Missing party ID parameter',
-                    'party_id': 'unknown'
-                }
-
-            party_id = parameters[0]
-            result = await self.party_manager.invite_user(message_info, party_id)
-
-            if 'error' in result:
-                return {
-                    'error': result['error'],
-                    'party_id': result.get('party_id', party_id)
-                }
+        if len(parameters) == 0:
             return {
-                'party_id': result.get('party_id', party_id),
-                'user': message_info.nickname
+                'error': 'Missing party ID parameter',
+                'party_id': 'unknown'
             }
 
-        except Exception as e:
-            self.soul_handler.log_error(f"Error in room command: {traceback.format_exc()}")
+        party_id = parameters[0]
+        result = await self.party_manager.invite_user(message_info, party_id)
+
+        if 'error' in result:
             return {
-                'error': str(e),
-                'party_id': parameters[0] if len(parameters) > 0 else 'unknown'
+                'error': result['error'],
+                'party_id': result.get('party_id', party_id)
             }
+        return {
+            'party_id': result.get('party_id', party_id),
+            'user': message_info.nickname
+        }

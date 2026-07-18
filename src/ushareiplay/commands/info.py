@@ -1,15 +1,12 @@
 from ushareiplay.core.base_command import BaseCommand
 
+
 class InfoCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.soul_handler
+    handler_attr = 'soul_handler'
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         # 从缓存获取播放信息
-        from ushareiplay.managers.info_manager import InfoManager
-
-        info_manager = InfoManager.instance()
+        info_manager = self.info_manager
         result = info_manager.ensure_cached_release_date()
 
         # 如果缓存未初始化，使用默认值
@@ -68,9 +65,5 @@ class InfoCommand(BaseCommand):
 
     def update(self):
         """Update playback info and user count - delegates to InfoManager"""
-        from ushareiplay.managers.info_manager import InfoManager
-
-        info_manager = InfoManager.instance()
-
         # Update playback info (handles playback info changes, quality check, etc.)
-        info_manager.update()
+        self.info_manager.update()

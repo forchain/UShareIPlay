@@ -5,7 +5,7 @@ from ushareiplay.managers.sleep_manager import SleepManager
 
 
 class SleepCommand(BaseCommand):
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         keyword = (parameters[0].strip().lower() if parameters else "status")
 
         # Prefer the controller's root config (contains `sleep`). Fall back to handler config.

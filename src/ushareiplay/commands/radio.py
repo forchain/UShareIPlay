@@ -5,32 +5,14 @@ from selenium.common import StaleElementReferenceException
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
-from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-from ushareiplay.handlers.soul_handler import SoulHandler
-from ushareiplay.managers.title_manager import TitleManager
-from ushareiplay.managers.topic_manager import TopicManager
+
 
 class RadioCommand(BaseCommand):
     def __init__(self, controller):
         super().__init__(controller)
-        self.music_handler: QQMusicHandler = controller.music_handler
-        self.soul_handler: SoulHandler = controller.soul_handler
-        self.title_manager = TitleManager.instance()
-        self.topic_manager = TopicManager.instance()
         self.song_release_lookup = QQMusicSongReleaseLookup()
 
-        # 延迟初始化 InfoManager
-        self._info_manager = None
-
-    @property
-    def info_manager(self):
-        """延迟获取 InfoManager 实例"""
-        if self._info_manager is None:
-            from ushareiplay.managers.info_manager import InfoManager
-            self._info_manager = InfoManager.instance()
-        return self._info_manager
-
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         if not parameters:
             return self._handle_collection(message_info)
 

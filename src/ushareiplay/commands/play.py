@@ -4,25 +4,19 @@ from ushareiplay.core.base_command import BaseCommand
 
 
 class PlayCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
+    requires_mic = True
+    handler_attr = 'music_handler'
 
-        self.handler = controller.music_handler
-
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)
-        self.soul_handler.ensure_mic_active()
-
-        from ushareiplay.managers.info_manager import InfoManager
-        info_manager = InfoManager.instance()
 
         if query == '':
             playing_info = self.play_favorites()
-            info_manager.player_name = message_info.nickname
+            self.info_manager.player_name = message_info.nickname
             return playing_info
         elif query == '?':
             playing_info = self.play_radar()
-            info_manager.player_name = message_info.nickname
+            self.info_manager.player_name = message_info.nickname
             return playing_info
         else:
             playing_info = self.play_song(query)
@@ -79,12 +73,8 @@ class PlayCommand(BaseCommand):
 
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        title_manager.set_next_title("O Station")
-        topic_manager.change_topic(song_text)
+        self.title_manager.set_next_title("O Station")
+        self.topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
 
@@ -112,11 +102,7 @@ class PlayCommand(BaseCommand):
         singer_text = singer.text if singer else "Unknown"
 
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        title_manager.set_next_title("O Radio")
-        topic_manager.change_topic(song_text)
+        self.title_manager.set_next_title("O Radio")
+        self.topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

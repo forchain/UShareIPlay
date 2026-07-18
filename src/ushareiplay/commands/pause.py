@@ -1,12 +1,8 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
-from datetime import datetime, timedelta
-import time
+
 
 class PauseCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-
     def pause_song(self, pause_state=None):
         """
         Pause/resume playback
@@ -74,7 +70,7 @@ class PauseCommand(BaseCommand):
             self.music_handler.logger.error(f"Error controlling playback: {traceback.format_exc()}")
             return {'error': f'Failed to pause/resume song, {pause_state}'}
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         pause_state = None
         if len(parameters) > 0:
             pause_state = int(parameters[0])
