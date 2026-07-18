@@ -1,8 +1,11 @@
 import asyncio
 import json
+import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict
+
+from tortoise.exceptions import IntegrityError
 
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
@@ -275,6 +278,127 @@ class TimerManager(Singleton):
         """Get specific timer"""
         return self._timers.get(timer_key, {})
 
+    @staticmethod
+    def is_time_token(token: str) -> bool:
+        """Return True if token is a time literal (delay seconds or HH:MM/HH:MM:SS)."""
+        t = (token or "").strip()
+        if not t:
+            return False
+        if t.isdigit():
+            return True
+        parts = t.split(':')
+        if len(parts) not in (2, 3):
+            return False
+        if not all(p.isdigit() for p in parts):
+            return False
+        if len(parts[0]) not in (1, 2):
+            return False
+        if any(len(p) != 2 for p in parts[1:]):
+            return False
+        return True
+
+    def parse_target_time(self, target_time: str, repeat: bool = False) -> datetime:
+        """Public parser/validator for timer time grammar."""
+        return self._compute_next_trigger(target_time, repeat)
+
+    async def create_timer(
+        self,
+        *,
+        message: str,
+        target_time: str,
+        repeat: bool = False,
+        key: str | None = None,
+    ) -> dict:
+        """Create a timer, allocating and retrying the key when none is supplied.
+
+        Raises:
+            ValueError: for invalid time grammar or duplicate explicit key.
+        """
+        from ushareiplay.dal.timer_dao import TimerDAO
+
+        next_trigger = self._compute_next_trigger(target_time, repeat)
+        target_time = (target_time or "").strip()
+
+        if key is None:
+            last_err = None
+            for _ in range(6):
+                candidate = secrets.token_hex(4)
+                if candidate in self._timers:
+                    last_err = ValueError(f'ID "{candidate}" 已存在')
+                    continue
+                try:
+                    await TimerDAO.create(
+                        key=candidate,
+                        message=message,
+                        target_time=target_time,
+                        repeat=repeat,
+                        enabled=True,
+                        next_trigger=next_trigger,
+                    )
+                    key = candidate
+                    break
+                except IntegrityError as e:
+                    last_err = e
+                except ValueError as e:
+                    if str(e).startswith('ID "'):
+                        last_err = e
+                    else:
+                        raise
+            if key is None:
+                raise ValueError(
+                    f'添加失败：生成ID冲突次数过多 ({last_err})' if last_err else '添加失败：生成ID冲突次数过多'
+                )
+        else:
+            if key in self._timers:
+                raise ValueError(f'ID "{key}" 已存在')
+            await TimerDAO.create(
+                key=key,
+                message=message,
+                target_time=target_time,
+                repeat=repeat,
+                enabled=True,
+                next_trigger=next_trigger,
+            )
+
+        self._timers[key] = {
+            'key': key,
+            'message': message,
+            'target_time': target_time,
+            'repeat': repeat,
+            'enabled': True,
+            'next_trigger': next_trigger.isoformat(),
+        }
+        self.logger.info(f"Added timer {key}: {message} at {target_time}")
+        return self._timers[key]
+
+    async def fire_timer(self, timer_key: str) -> dict:
+        """Manually fire a cached timer (used by tests and one-shot completion)."""
+        timer_data = self._timers.get(timer_key)
+        if not timer_data:
+            return {'error': f'Timer {timer_key} not found'}
+        await self._trigger_timer(timer_key, timer_data)
+        return {'fired': True}
+
+    async def add_timer(self, timer_key: str, message: str, target_time: str, repeat: bool = False) -> bool:
+        """Legacy low-level add; prefer create_timer."""
+        await self.create_timer(key=timer_key, message=message, target_time=target_time, repeat=repeat)
+        return True
+
+    async def remove_timer(self, timer_key: str) -> bool:
+        """Remove a timer"""
+        from ushareiplay.dal.timer_dao import TimerDAO
+
+        try:
+            deleted = await TimerDAO.delete_by_key(timer_key)
+            if deleted:
+                self._timers.pop(timer_key, None)
+                self.logger.info(f"Removed timer {timer_key}")
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error removing timer {timer_key}: {str(e)}")
+            return False
+
     def _compute_next_trigger(self, target_time: str, repeat: bool) -> datetime:
         """
         支持两类时间输入：
@@ -303,75 +427,3 @@ class TimerManager(Singleton):
         if target_datetime <= datetime.now():
             target_datetime += timedelta(days=1)
         return target_datetime
-
-    async def add_timer(self, timer_key: str, message: str, target_time: str, repeat: bool = False) -> bool:
-        """Add a new timer"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
-        next_trigger = self._compute_next_trigger(target_time=target_time, repeat=repeat)
-
-        await TimerDAO.create(
-            key=timer_key,
-            message=message,
-            target_time=(target_time or "").strip(),
-            repeat=repeat,
-            enabled=True,
-            next_trigger=next_trigger,
-        )
-
-        self._timers[timer_key] = {
-            'key': timer_key,
-            'message': message,
-            'target_time': (target_time or "").strip(),
-            'repeat': repeat,
-            'enabled': True,
-            'next_trigger': next_trigger.isoformat(),
-        }
-
-        self.logger.info(f"Added timer {timer_key}: {message} at {target_time}")
-        return True
-
-    async def remove_timer(self, timer_key: str) -> bool:
-        """Remove a timer"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
-        try:
-            deleted = await TimerDAO.delete_by_key(timer_key)
-            if deleted:
-                self._timers.pop(timer_key, None)
-                self.logger.info(f"Removed timer {timer_key}")
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error removing timer {timer_key}: {str(e)}")
-            return False
-
-    async def enable_timer(self, timer_key: str) -> bool:
-        """Enable a timer"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
-        try:
-            updated = await TimerDAO.update_enabled(timer_key, True)
-            if updated and timer_key in self._timers:
-                self._timers[timer_key]['enabled'] = True
-                self.logger.info(f"Enabled timer {timer_key}")
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error enabling timer {timer_key}: {str(e)}")
-            return False
-
-    async def disable_timer(self, timer_key: str) -> bool:
-        """Disable a timer"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
-        try:
-            updated = await TimerDAO.update_enabled(timer_key, False)
-            if updated and timer_key in self._timers:
-                self._timers[timer_key]['enabled'] = False
-                self.logger.info(f"Disabled timer {timer_key}")
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error disabling timer {timer_key}: {str(e)}")
-            return False
