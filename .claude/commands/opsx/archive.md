@@ -1,11 +1,14 @@
 ---
 name: "OPSX: Archive"
 description: Archive a completed change in the experimental workflow
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, archive, experimental]
 ---
 
 Archive a completed change in the experimental workflow.
+
+**Store selection:** If the user names a store (a store is a standalone OpenSpec repo registered on this machine) or the work lives in one, run `openspec store list --json` to discover registered store ids, then pass `--store <id>` on the commands that read or write specs and changes (`new change`, `status`, `instructions`, `list`, `show`, `validate`, `archive`, `doctor`, `context`). Other commands do not take the flag. Hints printed by commands already carry the flag; keep it on follow-ups. Without a store, commands act on the nearest local `openspec/` root.
 
 **Input**: Optionally specify a change name after `/opsx:archive` (e.g., `/opsx:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -26,6 +29,7 @@ Archive a completed change in the experimental workflow.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used
+   - `planningHome`, `changeRoot`, `artifactPaths`, and `actionContext`: path and scope context
    - `artifacts`: List of artifacts with their status (`done` or other)
 
    **If any artifacts are not `done`:**
@@ -48,7 +52,7 @@ Archive a completed change in the experimental workflow.
 
 4. **Assess delta spec sync state**
 
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
+   Use `artifactPaths.specs.existingOutputPaths` from status JSON to check for delta specs. If none exist, proceed without sync prompt.
 
    **If delta specs exist:**
    - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
@@ -61,59 +65,30 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
-5. **Check README and capability docs for drift**
+5. **Perform the archive**
 
-   Read `openspec/changes/<name>/proposal.md` — extract the **What Changes** and **Impact** sections to identify affected components and capabilities.
-
-   Always check `README.md`:
-   - Read the full README
-   - Identify sections relevant to the change (commands added/removed, config changes, architecture changes)
-   - If drift found: show the specific sections and proposed updates, ask user to confirm or skip
-
-   Then check `docs/*.md`:
-   - For each file in `docs/`, read its `covers:` frontmatter
-   - If any component/class name from the change's impact appears in a doc's `covers:` list, that doc is affected
-   - For each affected doc: read it, identify what changed, show proposed update, ask user to confirm or skip
-   - If no docs are affected: note this in summary
-
-   **Drift check is non-blocking**: if user skips all updates, archive proceeds normally with a warning note.
-
-   Show a combined pre-prompt summary before asking:
-   ```
-   ## Docs Review
-
-   **README:** [sections affected or "no drift detected"]
-   **docs/music.md:** [affected — covers QQMusicHandler]
-   **docs/timers.md:** [not affected]
-   ...
-   ```
-   Then prompt: "Update affected docs now, or skip and archive with warning?"
-
-6. **Perform the archive**
-
-   Create the archive directory if it doesn't exist:
+   Create an `archive` directory under `planningHome.changesDir` if it doesn't exist:
    ```bash
-   mkdir -p openspec/changes/archive
+   mkdir -p "<planningHome.changesDir>/archive"
    ```
 
    Generate target name using current date: `YYYY-MM-DD-<change-name>`
 
    **Check if target already exists:**
    - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive
+   - If no: Move `changeRoot` to the archive directory
 
    ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+   mv "<changeRoot>" "<planningHome.changesDir>/archive/YYYY-MM-DD-<name>"
    ```
 
-7. **Display summary**
+6. **Display summary**
 
    Show archive completion summary including:
    - Change name
    - Schema that was used
    - Archive location
    - Spec sync status (synced / sync skipped / no delta specs)
-   - Docs sync status (updated / skipped / no affected docs)
    - Note about any warnings (incomplete artifacts/tasks)
 
 **Output On Success**
@@ -123,9 +98,8 @@ Archive a completed change in the experimental workflow.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** the archive path derived from `planningHome.changesDir`/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs
-**Docs:** ✓ README and docs/timers.md updated
 
 All artifacts complete. All tasks complete.
 ```
@@ -137,9 +111,8 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** the archive path derived from `planningHome.changesDir`/YYYY-MM-DD-<name>/
 **Specs:** No delta specs
-**Docs:** No affected docs detected
 
 All artifacts complete. All tasks complete.
 ```
@@ -151,15 +124,13 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** the archive path derived from `planningHome.changesDir`/YYYY-MM-DD-<name>/
 **Specs:** Sync skipped (user chose to skip)
-**Docs:** Sync skipped (user chose to skip)
 
 **Warnings:**
 - Archived with 2 incomplete artifacts
 - Archived with 3 incomplete tasks
 - Delta spec sync was skipped (user chose to skip)
-- Docs sync was skipped (user chose to skip)
 
 Review the archive if this was not intentional.
 ```
@@ -170,7 +141,7 @@ Review the archive if this was not intentional.
 ## Archive Failed
 
 **Change:** <change-name>
-**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Target:** the archive path derived from `planningHome.changesDir`/YYYY-MM-DD-<name>/
 
 Target archive directory already exists.
 
@@ -188,6 +159,3 @@ Target archive directory already exists.
 - Show clear summary of what happened
 - If sync is requested, use the Skill tool to invoke `openspec-sync-specs` (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
-- Always run the docs drift check (step 5) — even if no delta specs exist
-- Use `covers:` frontmatter to identify affected docs; skip docs with no matching components
-- Docs drift check is non-blocking — user can skip all updates and archive still completes
