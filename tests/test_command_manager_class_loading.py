@@ -31,7 +31,7 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
                 "from ushareiplay.core.base_command import BaseCommand",
                 "",
                 "class DemoCommand(BaseCommand):",
-                "    async def process(self, message_info, parameters):",
+                "    async def do_process(self, message_info, parameters):",
                 "        return {'message': self.controller.marker}",
             ]
         ),

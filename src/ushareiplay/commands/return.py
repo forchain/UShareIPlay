@@ -11,11 +11,10 @@ from ushareiplay.dal.return_dao import ReturnDao
 
 
 class ReturnCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.soul_handler
+    handler_attr = 'soul_handler'
+    error_message = '处理返回命令时出错'
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process return command
 
         Args:
@@ -26,69 +25,64 @@ class ReturnCommand(BaseCommand):
             dict: Result with success message or error
         """
         try:
-            try:
-                original_content = message_info.content
-                parts = original_content.split(None, 1)
-                if len(parts) < 2:
-                    return {'error': '缺少参数。使用: :return [add|del|list|clear]'}
-
-                params = shlex.split(parts[1])
-            except ValueError:
-                return {'error': '参数格式错误，带空格的参数请使用引号包裹'}
-
-            if not params:
+            original_content = message_info.content
+            parts = original_content.split(None, 1)
+            if len(parts) < 2:
                 return {'error': '缺少参数。使用: :return [add|del|list|clear]'}
 
-            operation = params[0]
-            username = message_info.nickname
+            params = shlex.split(parts[1])
+        except ValueError:
+            return {'error': '参数格式错误，带空格的参数请使用引号包裹'}
 
-            if operation == 'add':
-                if len(params) < 2:
-                    return {'error': '缺少命令内容。使用: :return add "命令内容"'}
+        if not params:
+            return {'error': '缺少参数。使用: :return [add|del|list|clear]'}
 
-                cmd_text = params[1]
-                if not cmd_text.startswith((':', '：', '/', '／')):
-                    return {'error': '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
+        operation = params[0]
+        username = message_info.nickname
 
-                await ReturnDao.create(username, cmd_text)
-                return {'message': f'已添加返回命令: {cmd_text}'}
+        if operation == 'add':
+            if len(params) < 2:
+                return {'error': '缺少命令内容。使用: :return add "命令内容"'}
 
-            elif operation == 'del':
-                if len(params) < 2:
-                    return {'error': '缺少命令ID。使用: :return del <id>'}
+            cmd_text = params[1]
+            if not cmd_text.startswith((':', '：', '/', '／')):
+                return {'error': '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
 
-                try:
-                    command_id = int(params[1])
-                except ValueError:
-                    return {'error': '命令ID必须是数字'}
+            await ReturnDao.create(username, cmd_text)
+            return {'message': f'已添加返回命令: {cmd_text}'}
 
-                deleted = await ReturnDao.delete_by_id(command_id)
-                if deleted:
-                    return {'message': f'已删除命令 ID: {command_id}'}
-                return {'error': f'未找到命令 ID: {command_id}'}
+        elif operation == 'del':
+            if len(params) < 2:
+                return {'error': '缺少命令ID。使用: :return del <id>'}
 
-            elif operation == 'list':
-                commands = await ReturnDao.get_by_username(username)
-                if not commands:
-                    return {'message': '您还没有设置任何返回命令'}
+            try:
+                command_id = int(params[1])
+            except ValueError:
+                return {'error': '命令ID必须是数字'}
 
-                message_lines = ['您的返回命令列表:']
-                for cmd in commands:
-                    message_lines.append(f'  [{cmd.id}] {cmd.command}')
-                return {'message': '\n'.join(message_lines)}
+            deleted = await ReturnDao.delete_by_id(command_id)
+            if deleted:
+                return {'message': f'已删除命令 ID: {command_id}'}
+            return {'error': f'未找到命令 ID: {command_id}'}
 
-            elif operation == 'clear':
-                count = await ReturnDao.delete_all_by_username(username)
-                if count > 0:
-                    return {'message': f'已清除 {count} 个返回命令'}
-                return {'message': '您没有任何返回命令需要清除'}
+        elif operation == 'list':
+            commands = await ReturnDao.get_by_username(username)
+            if not commands:
+                return {'message': '您还没有设置任何返回命令'}
 
-            else:
-                return {'error': f'未知操作: {operation}。使用: :return [add|del|list|clear]'}
+            message_lines = ['您的返回命令列表:']
+            for cmd in commands:
+                message_lines.append(f'  [{cmd.id}] {cmd.command}')
+            return {'message': '\n'.join(message_lines)}
 
-        except Exception as e:
-            self.handler.log_error(f"Error processing return command: {traceback.format_exc()}")
-            return {'error': '处理返回命令时出错'}
+        elif operation == 'clear':
+            count = await ReturnDao.delete_all_by_username(username)
+            if count > 0:
+                return {'message': f'已清除 {count} 个返回命令'}
+            return {'message': '您没有任何返回命令需要清除'}
+
+        else:
+            return {'error': f'未知操作: {operation}。使用: :return [add|del|list|clear]'}
 
     async def user_return(self, username: str):
         """用户返回派对时调用（与 user_enter 逻辑一致，从数据库读取并执行该用户的返回命令）"""

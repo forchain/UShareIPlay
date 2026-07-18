@@ -2,7 +2,6 @@ from types import SimpleNamespace
 
 from selenium.common import StaleElementReferenceException
 
-from ushareiplay.commands import radio as radio_module
 from ushareiplay.commands.play import PlayCommand
 from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -146,8 +145,6 @@ class _InfoManager:
 def _make_command(monkeypatch, music_handler):
     title_manager = _TitleManager()
     topic_manager = _TopicManager()
-    monkeypatch.setattr(radio_module.TitleManager, "instance", lambda: title_manager)
-    monkeypatch.setattr(radio_module.TopicManager, "instance", lambda: topic_manager)
 
     controller = SimpleNamespace(
         music_handler=music_handler,
@@ -161,6 +158,8 @@ def _make_command(monkeypatch, music_handler):
         },
     )
     command = RadioCommand(controller)
+    command._title_manager = title_manager
+    command._topic_manager = topic_manager
     command._info_manager = _InfoManager()
     return command, title_manager, topic_manager
 

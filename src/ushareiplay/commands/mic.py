@@ -1,9 +1,8 @@
 from ushareiplay.core.base_command import BaseCommand
 
+
 class MicCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = controller.soul_handler
+    handler_attr = 'soul_handler'
 
     def toggle_mic(self, target_state=None):
         """Toggle or set microphone state
@@ -44,7 +43,7 @@ class MicCommand(BaseCommand):
             self.handler.log_error(f"Error in mic command: {str(e)}")
             return {'error': str(e)}
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process mic command
         Args:
             message_info: MessageInfo object

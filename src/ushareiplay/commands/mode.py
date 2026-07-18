@@ -1,40 +1,32 @@
 from ushareiplay.core.base_command import BaseCommand
 
-class ModeCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.music_handler
 
-    async def process(self, message_info, parameters):
+class ModeCommand(BaseCommand):
+    handler_attr = 'music_handler'
+    error_message = 'Mode change failed: {error}'
+
+    async def do_process(self, message_info, parameters):
         if len(parameters) == 0:
             return {
                 'error': 'Missing mode parameter'
             }
-        try:
-            mode = int(parameters[0])
-            if mode not in [0, 1, -1]:
-                raise ValueError
-
-            target_key = {0: 'list', 1: 'single', -1: 'random'}[mode]
-            if getattr(self.handler, 'play_mode_key', 'unknown') != 'unknown' and self.handler.play_mode_key == target_key:
-                return {
-                    'success': True,
-                    'mode': self.handler.play_mode_key_to_name(target_key),
-                    'message': f'已经是{self.handler.play_mode_key_to_name(target_key)}模式'
-                }
-
-            # 直接实现切换模式逻辑
-            result = await self._change_play_mode_direct(mode)
-            return result
-        except ValueError:
+        mode, err = self.coerce_int(parameters[0], error='Invalid mode parameter, must be 0, 1 or -1')
+        if err or mode not in [0, 1, -1]:
             return {
                 'error': 'Invalid mode parameter, must be 0, 1 or -1'
             }
-        except Exception as e:
-            self.handler.log_error(f"Error in mode command: {str(e)}")
+
+        target_key = {0: 'list', 1: 'single', -1: 'random'}[mode]
+        if getattr(self.handler, 'play_mode_key', 'unknown') != 'unknown' and self.handler.play_mode_key == target_key:
             return {
-                'error': f'Mode change failed: {str(e)}'
+                'success': True,
+                'mode': self.handler.play_mode_key_to_name(target_key),
+                'message': f'已经是{self.handler.play_mode_key_to_name(target_key)}模式'
             }
+
+        # 直接实现切换模式逻辑
+        result = await self._change_play_mode_direct(mode)
+        return result
 
     async def _change_play_mode_direct(self, target_mode):
         """直接实现切换模式功能"""

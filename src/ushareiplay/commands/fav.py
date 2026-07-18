@@ -11,9 +11,8 @@ import time
 
 
 class FavCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = controller.music_handler
+    requires_mic = True
+    handler_attr = 'music_handler'
 
     def _xpath_textview_text_equals(self, text_value: str) -> str:
         """
@@ -97,26 +96,21 @@ class FavCommand(BaseCommand):
                     count = None
         return {'count': count}
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """处理 fav 命令
         参数:
             无参数: 直接播放所有收藏
             两个参数及以上(第一个为 0 或 type, 其余为分类关键字): 筛选后播放
             两个参数及以上(第一个为 2 或 search, 其余为关键字): 收藏内搜索并播放搜索结果列表
         """
-        self.soul_handler.ensure_mic_active()
-
-        from ushareiplay.managers.info_manager import InfoManager
-        info_manager = InfoManager.instance()
-
         if len(parameters) == 0:
             # 无参数，直接播放所有收藏
             playing_info = self.play_favorites_all()
             if 'error' in playing_info:
                 return playing_info
 
-            info_manager.player_name = message_info.nickname
-            info_manager.current_playlist_name = "O Station"
+            self.info_manager.player_name = message_info.nickname
+            self.info_manager.current_playlist_name = "O Station"
             return playing_info
 
         # 有参数：第一个参数为子命令，其余为参数内容（允许带空格）
@@ -131,14 +125,14 @@ class FavCommand(BaseCommand):
             if 'error' in playing_info:
                 return playing_info
 
-            info_manager.player_name = message_info.nickname
+            self.info_manager.player_name = message_info.nickname
             # 与 play_favorites_by_type 内的 title 规则保持一致
             playlist_name = keyword
             if keyword == '粤语':
                 playlist_name = '粤音'
             elif keyword == '英语':
                 playlist_name = '英乐'
-            info_manager.current_playlist_name = playlist_name
+            self.info_manager.current_playlist_name = playlist_name
             return playing_info
 
         if subcmd in ['2', 'search']:
@@ -147,8 +141,8 @@ class FavCommand(BaseCommand):
             if 'error' in playing_info:
                 return playing_info
 
-            info_manager.player_name = message_info.nickname
-            info_manager.current_playlist_name = keyword
+            self.info_manager.player_name = message_info.nickname
+            self.info_manager.current_playlist_name = keyword
             return playing_info
 
         return {'error': f'第一个参数必须是 0/type 或 2/search，当前为: {parameters[0]}'}
@@ -189,12 +183,8 @@ class FavCommand(BaseCommand):
 
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        title_manager.set_next_title("O Station")
-        topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
+        self.title_manager.set_next_title("O Station")
+        self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
         return {'playlist': playlist_text}
 
@@ -247,18 +237,14 @@ class FavCommand(BaseCommand):
 
         self.handler.list_mode = 'favorites'
         # 使用 title_manager 和 topic_manager 管理标题和话题
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
         title = keyword if keyword else 'O Station'
         if keyword == '粤语':
             title = '粤音'
         elif keyword == '英语':
             title = '英乐'
 
-        title_manager.set_next_title(title)
-        topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
+        self.title_manager.set_next_title(title)
+        self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
         result = {'playlist': playlist_text, 'type': keyword}
         if count is not None:
@@ -337,17 +323,10 @@ class FavCommand(BaseCommand):
         self.handler.list_mode = 'favorites'
 
         # 5) 标题设置为关键字；话题设置为搜索到的第一首歌
-        from ushareiplay.managers.title_manager import TitleManager
-        from ushareiplay.managers.topic_manager import TopicManager
-        from ushareiplay.managers.info_manager import InfoManager
-        title_manager = TitleManager.instance()
-        topic_manager = TopicManager.instance()
-        info_manager = InfoManager.instance()
-
-        title_manager.set_next_title(keyword if keyword else "O Station")
-        topic_manager.change_topic(first_song or keyword)
+        self.title_manager.set_next_title(keyword if keyword else "O Station")
+        self.topic_manager.change_topic(first_song or keyword)
         # 由 InfoManager.current_playlist_name + InfoCommand 实现“回到 Soul 后广播这个列表”
-        info_manager.current_playlist_name = keyword
+        self.info_manager.current_playlist_name = keyword
 
         # 返回整个歌单文本，供上层在 Soul 中广播
         # 同时补充 song/singer 字段，以兼容默认的 response_template

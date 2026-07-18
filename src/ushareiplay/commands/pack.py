@@ -3,20 +3,18 @@ import traceback
 from ushareiplay.core.base_command import BaseCommand
 
 class PackCommand(BaseCommand):
+    handler_attr = 'soul_handler'
+    error_message = 'Failed to open luck pack'
+
     def __init__(self, controller):
         super().__init__(controller)
-        self.handler = self.soul_handler
         self.auto_mode = False
         self.previous_count = 0  # Track previous user count
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         """Process pack command to open luck pack"""
-        try:
-            self.auto_mode = False  # Manual mode
-            return self.open_luck_pack()  # Manual mode doesn't need user count
-        except Exception as e:
-            self.handler.log_error(f"Error processing pack command: {str(e)}")
-            return {'error': 'Failed to open luck pack'}
+        self.auto_mode = False  # Manual mode
+        return self.open_luck_pack()  # Manual mode doesn't need user count
 
     def update(self):
         """Check room count and auto open pack if needed"""

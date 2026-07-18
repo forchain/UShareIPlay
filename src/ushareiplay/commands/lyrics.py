@@ -42,9 +42,7 @@ def wrap_line_at_spaces(line: str, max_width: int) -> str:
 
 
 class LyricsCommand(BaseCommand):
-    def __init__(self, controller):
-        super().__init__(controller)
-        self.handler = self.soul_handler
+    handler_attr = 'soul_handler'
 
     def select_lyrics_tab(self):
         """Select lyrics tab in music player"""
@@ -198,7 +196,7 @@ class LyricsCommand(BaseCommand):
 
         return groups
 
-    async def process(self, message_info, parameters):
+    async def do_process(self, message_info, parameters):
         # Get lyrics of current song
         # Parse parameters
         force_groups = 0
