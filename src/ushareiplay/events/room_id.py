@@ -5,6 +5,7 @@
 """
 
 from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.state.room_state import RoomState
 
 
 class RoomIdEvent(BaseEvent):
@@ -13,13 +14,13 @@ class RoomIdEvent(BaseEvent):
     async def handle(self, key: str, element_wrapper):
         """
         处理房间ID事件
-        
-        获取房间ID文本并更新到 InfoManager
-        
+
+        获取房间ID文本并更新到 RoomState
+
         Args:
             key: 触发事件的元素 key，这里是 'room_id'
             element_wrapper: ElementWrapper 实例，包装了房间ID元素
-            
+
         Returns:
             bool: 默认返回 False，不中断后续处理
         """
@@ -29,10 +30,8 @@ class RoomIdEvent(BaseEvent):
             if not room_id_text:
                 return False
 
-            # 更新 InfoManager 中的房间ID
-            from ushareiplay.managers.info_manager import InfoManager
-            info_manager = InfoManager.instance()
-            info_manager.room_id = room_id_text
+            # 更新 RoomState 中的房间ID
+            RoomState.instance().room_id = room_id_text
 
             return False
 

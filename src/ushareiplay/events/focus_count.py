@@ -8,6 +8,8 @@
 import re
 
 from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.state.room_state import RoomState
 
 
 class FocusCountEvent(BaseEvent):
@@ -17,7 +19,7 @@ class FocusCountEvent(BaseEvent):
 
     async def handle(self, key: str, element_wrapper):
         """
-        解析专注人数；变化时更新 InfoManager、notify_focus_count_change。
+        解析专注人数；变化时更新 RoomState、notify_focus_count_change。
 
         Returns:
             False：不中断同轮其它事件处理。
@@ -39,11 +41,7 @@ class FocusCountEvent(BaseEvent):
             before = self.previous_focus_count
             self.previous_focus_count = current_focus_count
 
-            from ushareiplay.managers.info_manager import InfoManager
-            from ushareiplay.managers.command_manager import CommandManager
-
-            info_manager = InfoManager.instance()
-            info_manager.focus_count = current_focus_count
+            RoomState.instance().focus_count = current_focus_count
 
             await CommandManager.instance().notify_focus_count_change(before, current_focus_count)
 
