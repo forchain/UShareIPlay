@@ -1,12 +1,10 @@
 import asyncio
 import logging
 
-from ushareiplay.managers.seat_manager.base import SeatManagerBase
 
-
-class SeatUIManager(SeatManagerBase):
+class SeatUIManager:
     def __init__(self, handler=None):
-        super().__init__(handler)
+        self.handler = handler
         self.is_expanded = False
 
     def check_seats_state(self):

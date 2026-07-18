@@ -11,13 +11,13 @@ class SeatCommand(BaseCommand):
         """Process seat command"""
         if not parameters:
             # No parameters - find and take an available seat for owner
-            return await SeatManager.get_instance().seating.find_owner_seat(force_relocate=True)
+            return await SeatManager.get_instance().find_owner_seat(force_relocate=True)
 
         command = parameters[0]
 
         if command == '0':
             # Remove user's reservations
-            return await SeatManager.get_instance().reservation.remove_user_reservation(message_info.nickname)
+            return await SeatManager.get_instance().remove_user_reservation(message_info.nickname)
         elif command == '1' and len(parameters) == 2:
             # Reserve specific seat
             seat_number, err = self.coerce_int(
@@ -35,7 +35,7 @@ class SeatCommand(BaseCommand):
         elif command == '3':
             # Accompany a specific user (sit next to them)
             target_username = parameters[1] if len(parameters) > 1 else message_info.nickname
-            return await SeatManager.get_instance().seating.accompany_user(target_username, sender_username=message_info.nickname)
+            return await SeatManager.get_instance().accompany_user(target_username, sender_username=message_info.nickname)
         elif command == '4':
             if len(parameters) == 1:
                 # Remove owner from their current seat
@@ -55,7 +55,7 @@ class SeatCommand(BaseCommand):
         """Called when a user enters the party"""
         try:
             # Check seats when user enters, passing the username
-            await SeatManager.get_instance().check.check_seats_on_entry(username)
+            await SeatManager.get_instance().check_seats_on_entry(username)
         except Exception as e:
             self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
 
@@ -63,7 +63,7 @@ class SeatCommand(BaseCommand):
         """Called when a user returns to the party"""
         try:
             # Check seats when user returns, passing the username
-            await SeatManager.get_instance().check.check_seats_on_entry(username)
+            await SeatManager.get_instance().check_seats_on_entry(username)
         except Exception as e:
             self.handler.log_error(f"Error checking seats on user return: {traceback.format_exc()}")
 

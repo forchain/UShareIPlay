@@ -238,26 +238,34 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
     assert any("stale" in message for _, message in music_handler.logger.messages)
 
 
-def _make_handler_for_quality_check():
-    handler = QQMusicHandler.__new__(QQMusicHandler)
-    handler.logger = _Logger()
-    handler.list_mode = "playlist"
-    handler.no_skip = 0
-    handler.song_release_lookup = QQMusicSongReleaseLookup()
-    handler.config = {
-        "old_song_filter": {
-            "enabled": True,
-            "cutoff_date": "2000-01-01",
+class _FakeMusicHandler:
+    def __init__(self):
+        self.logger = _Logger()
+        self.list_mode = "playlist"
+        self.no_skip = 0
+        self.config = {
+            "old_song_filter": {
+                "enabled": True,
+                "cutoff_date": "2000-01-01",
+            }
         }
-    }
-    return handler
+
+
+def _make_music_manager_for_quality_check():
+    from ushareiplay.managers.music_manager import MusicManager
+    manager = MusicManager.__new__(MusicManager)
+    manager._handler = None
+    manager.logger = _Logger()
+    manager._song_release_lookup = None
+    manager.music_handler = _FakeMusicHandler()
+    return manager
 
 
 def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
-    handler = _make_handler_for_quality_check()
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1999-01-01")
+    manager = _make_music_manager_for_quality_check()
+    manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1999-01-01")
 
-    should_skip = handler.should_skip_low_quality_song(
+    should_skip = manager.should_skip_low_quality_song(
         {"song": "老歌", "singer": "歌手A", "album": "专辑A"}
     )
 
@@ -265,21 +273,21 @@ def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
 
 
 def test_quality_check_accepts_old_song_for_whitelisted_artist(monkeypatch):
-    handler = _make_handler_for_quality_check()
-    handler.config["old_song_filter"]["artist_whitelist"] = ["歌手A"]
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1999-01-01")
+    manager = _make_music_manager_for_quality_check()
+    manager.music_handler.config["old_song_filter"]["artist_whitelist"] = ["歌手A"]
+    manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1999-01-01")
     song_info = {"song": "老歌", "singer": "歌手A/歌手B", "album": "专辑A"}
 
-    should_skip = handler.should_skip_low_quality_song(song_info)
+    should_skip = manager.should_skip_low_quality_song(song_info)
 
     assert should_skip is False
     assert song_info["release_date"] == "1999-01-01"
 
 
 def test_quality_check_reads_artist_whitelist_from_controller_config(monkeypatch):
-    handler = _make_handler_for_quality_check()
-    handler.config = {}
-    handler.controller = SimpleNamespace(
+    manager = _make_music_manager_for_quality_check()
+    manager.music_handler.config = {}
+    manager.music_handler.controller = SimpleNamespace(
         config={
             "old_song_filter": {
                 "enabled": True,
@@ -288,32 +296,32 @@ def test_quality_check_reads_artist_whitelist_from_controller_config(monkeypatch
             }
         }
     )
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1993-09-07")
+    manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1993-09-07")
     song_info = {"song": "如风", "singer": "王菲", "album": "十万个为什么？(日本版）"}
 
-    should_skip = handler.should_skip_low_quality_song(song_info)
+    should_skip = manager.should_skip_low_quality_song(song_info)
 
     assert should_skip is False
     assert song_info["release_date"] == "1993-09-07"
 
 
 def test_quality_check_accepts_new_song_for_any_playback_mode(monkeypatch):
-    handler = _make_handler_for_quality_check()
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "2018-01-01")
+    manager = _make_music_manager_for_quality_check()
+    manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "2018-01-01")
     song_info = {"song": "新歌", "singer": "歌手A", "album": "专辑A"}
 
-    should_skip = handler.should_skip_low_quality_song(song_info)
+    should_skip = manager.should_skip_low_quality_song(song_info)
 
     assert should_skip is False
     assert song_info["release_date"] == "2018-01-01"
 
 
 def test_ensure_release_date_populates_song_info_without_skip_decision(monkeypatch):
-    handler = _make_handler_for_quality_check()
-    monkeypatch.setattr(handler.song_release_lookup, "get_release_date", lambda _song: "1993-09-07")
+    manager = _make_music_manager_for_quality_check()
+    manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1993-09-07")
     song_info = {"song": "如风", "singer": "王菲", "album": "十万个为什么？(日本版）"}
 
-    handler.ensure_release_date(song_info)
+    manager.ensure_release_date(song_info)
 
     assert song_info["release_date"] == "1993-09-07"
 
@@ -350,7 +358,7 @@ class _PlayMusicHandler:
         return True
 
 
-def test_play_command_checks_song_quality_immediately_after_playback_starts():
+def test_play_command_checks_song_quality_immediately_after_playback_starts(monkeypatch):
     music_handler = _PlayMusicHandler()
     controller = SimpleNamespace(
         music_handler=music_handler,
@@ -358,8 +366,20 @@ def test_play_command_checks_song_quality_immediately_after_playback_starts():
     )
     command = PlayCommand(controller)
 
+    quality_checked = []
+
+    class _FakeMusicManager:
+        def handle_song_quality_check(self, song_info):
+            quality_checked.append(song_info)
+            return True
+
+    monkeypatch.setattr(
+        "ushareiplay.managers.music_manager.MusicManager.instance",
+        staticmethod(lambda: _FakeMusicManager()),
+    )
+
     result = command.play_song("似是故人来 梅艳芳")
 
     assert result == music_handler.playing_info
     assert music_handler.result_item.clicks == 1
-    assert music_handler.quality_checked == [music_handler.playing_info]
+    assert quality_checked == [music_handler.playing_info]

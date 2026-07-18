@@ -10,18 +10,6 @@ from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.models.message_info import MessageInfo
 
 
-def _reset_seating_manager_singleton():
-    SeatingManager._instance = None
-    SeatingManager._initialized = False
-
-
-@pytest.fixture(autouse=True)
-def reset_seating_manager_singleton():
-    _reset_seating_manager_singleton()
-    yield
-    _reset_seating_manager_singleton()
-
-
 class DummyController:
     def __init__(self):
         self.soul_handler = SimpleNamespace(log_error=lambda message: None)

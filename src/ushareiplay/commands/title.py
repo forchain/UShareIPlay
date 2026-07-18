@@ -9,51 +9,22 @@ class TitleCommand(BaseCommand):
     error_message = 'Failed to process title command: {error}'
 
     def change_title(self, title: str):
-        """Change room title with cooldown check
-        Args:
-            title: str, new title text
-        Returns:
-            dict: Result with title info or error
-        """
-        # Switch to Soul app first
+        """Change room title with cooldown check."""
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
         self.handler.logger.info("Switched to Soul app")
-
-        # Use title manager to set next title
-        return self.title_manager.set_next_title(title)
-
-    def get_current_title(self):
-        """Get current title
-        Returns:
-            str: Current title or None if not set
-        """
-        return self.title_manager.get_current_title()
-
-    def get_next_title(self):
-        """Get next title
-        Returns:
-            str: Next title or None if not set
-        """
-        return self.title_manager.get_next_title()
+        return self.room_name_manager.set_next_title(title)
 
     async def do_process(self, message_info, parameters):
-        """Process title command
+        """Process title command.
 
-        Args:
-            message_info: Message information
-            parameters: List of parameters
-                - 1 parameter: title only (e.g., :title "Estas Tonne" or :title 疗愈)
-                - 2 parameters: title and theme (e.g., :title "Estas Tonne" "享乐" or :title 疗愈 助眠)
-
-        Returns:
-            dict: Result with title/theme info or error
+        Parameters:
+            - 1 parameter: title only
+            - 2 parameters: title and theme
         """
-        # Get parameters
         if not parameters:
             return {'error': 'Missing title parameter'}
 
-        # Parse parameters using shlex to handle quoted strings
         try:
             params = shlex.split(' '.join(parameters))
         except ValueError as e:
@@ -63,66 +34,28 @@ class TitleCommand(BaseCommand):
         if not params:
             return {'error': 'Missing title parameter'}
 
-        # Extract title and optional theme
         new_title = params[0]
         new_theme = params[1] if len(params) >= 2 else None
 
-        # If theme is provided, update theme first
         if new_theme:
-            # Validate and set theme
-            theme_result = self.theme_manager.set_theme(new_theme)
-            if 'error' in theme_result:
-                return theme_result
-
             self.handler.logger.info(f"Theme will be updated to: {new_theme}")
 
-        # Update title
-        title_result = self.change_title(new_title)
+        title_result = self.room_name_manager.set_next_title(new_title, theme=new_theme)
 
-        # Combine results
-        if new_theme:
-            # If theme was updated, include it in response
-            if 'error' not in title_result:
-                response_parts = [f"主题: {new_theme}", title_result.get('title', '')]
-                return {'title': '\n'.join(response_parts)}
-            else:
-                return title_result
-        else:
-            return title_result
+        if new_theme and 'error' not in title_result:
+            return {'title': f"主题: {new_theme}\n{title_result.get('title', '')}"}
+        return title_result
 
     def update(self):
-        """Check and update title periodically with simple retry logic"""
-        # super().update()
-
+        """Check and update title periodically with simple retry logic."""
         try:
-            if not self.title_manager.get_next_title():
+            result = self.room_name_manager.process_pending_update()
+            if not result.get('ui_updated'):
                 return
 
-            # Only attempt update if we can update now (cooldown has passed)
-            if not self.title_manager.can_update_now():
-                return
-
-            title_to_update = self.title_manager.get_next_title()
-            current_theme = self.theme_manager.get_current_theme()
-            
-            self.handler.logger.info(f'Title update attempt: title="{title_to_update}", theme="{current_theme}"')
-            
-            # Attempt to update
-            result = self.title_manager.update_title_ui(title_to_update, current_theme)
-            
-            # Always update cooldown time after attempt, regardless of success or failure
-            if self.theme_manager:
-                self.theme_manager.update_last_update_time()
-            
-            if 'error' not in result:
-                # Success - update completed
-                self.handler.logger.info(f'标题更新成功: {self.title_manager.get_current_title()}')
-                self.message_dispatch.send_screen_message(
-                    f"标题已更新为: {self.title_manager.get_current_title()}"
-                )
-            else:
-                # Failed - will retry after next cooldown period
-                self.handler.logger.info(f'标题更新失败，将在下个周期重试: {result["error"]}')
-
+            self.handler.logger.info(f'标题更新成功: {self.room_name_manager.get_current_title()}')
+            self.message_dispatch.send_screen_message(
+                f"标题已更新为: {self.room_name_manager.get_current_title()}"
+            )
         except Exception:
             self.handler.log_error(f"Error in title update: {traceback.format_exc()}")

@@ -8,7 +8,7 @@ from selenium.common import StaleElementReferenceException
 
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_release_date
+
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
@@ -21,7 +21,6 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.list_mode = 'unknown'
         self.play_mode_key = 'unknown'
-        self.song_release_lookup = QQMusicSongReleaseLookup()
 
     @staticmethod
     def play_mode_key_to_name(key: str) -> str:
@@ -427,184 +426,6 @@ class QQMusicHandler(AppHandler, Singleton):
             return {
                 'song': music_query,
                 'singer': 'unknown'
-            }
-
-    def skip_song(self):
-        """Skip to next song - delegates to MusicManager"""
-        try:
-            # 使用 MusicManager 的系统级跳过功能
-            from ushareiplay.managers.music_manager import MusicManager
-            music_manager = MusicManager.instance()
-            return music_manager.skip_song()
-
-        except Exception as e:
-            self.logger.error(f"Error skipping song: {traceback.format_exc()}")
-            return {
-                'song': 'Unknown',
-                'singer': 'Unknown'
-            }
-
-    def should_skip_low_quality_song(self, song_info):
-        """
-        检查是否应该跳过低质量歌曲
-        Args:
-            song_info: dict, 包含歌曲信息的字典 {'song': str, 'singer': str, 'album': str}
-        Returns:
-            bool: True if should skip, False otherwise
-        """
-        try:
-            song = song_info.get('song', '')
-            singer = song_info.get('singer', '')
-            album = song_info.get('album', '')
-
-            if self._is_old_song(song, singer, album, song_info):
-                return True
-
-            # 检查是否包含 DJ 或 Remix
-            if 'DJ' in song or 'Remix' in song:
-                self.logger.info(f"Skipping DJ/Remix song: {song}")
-                return True
-
-            # 针对歌手模式的特殊处理
-            if self.list_mode == 'singer':
-                # 多人合唱（>=4）在 singer 模式下自动跳过（play 插播通过 no_skip 允许一次）
-                singer_text = (singer or "").strip()
-                artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
-                if artist_count >= 4:
-                    if self.no_skip > 0:
-                        self.no_skip -= 1
-                        self.logger.info(
-                            f"Allowing multi-artist song (remaining skips: {self.no_skip}): {song} - {singer_text}"
-                        )
-                        return False
-                    self.logger.info(f"Skipping multi-artist song (>=4): {song} - {singer_text}")
-                    return True
-
-                # 检查是否是 Live 版本
-                if song.endswith('(Live)'):
-                    if self.no_skip > 0:
-                        self.no_skip -= 1
-                        self.logger.info(f"Allowing Live song (remaining skips: {self.no_skip}): {song}")
-                        return False
-                    else:
-                        self.logger.info(f"Skipping Live song (no skips left): {song}")
-                        return True
-
-            return False
-
-        except Exception as e:
-            self.logger.error(f"Error checking if should skip song: {traceback.format_exc()}")
-            return False
-
-    def _old_song_filter_config(self) -> dict:
-        controller_config = getattr(getattr(self, "controller", None), "config", None)
-        if isinstance(controller_config, dict) and "old_song_filter" in controller_config:
-            return controller_config.get("old_song_filter", {})
-        return (self.config or {}).get("old_song_filter", {})
-
-    def _is_old_song_whitelisted_artist(self, singer: str, config: dict) -> bool:
-        whitelist = {
-            str(artist).strip()
-            for artist in config.get("artist_whitelist", [])
-            if str(artist).strip()
-        }
-        if not whitelist or not singer:
-            return False
-
-        artists = {artist.strip() for artist in singer.split("/") if artist.strip()}
-        return bool(artists & whitelist)
-
-    def ensure_release_date(self, song_info: dict) -> None:
-        if not isinstance(song_info, dict) or song_info.get("release_date"):
-            return
-
-        song = song_info.get("song", "")
-        singer = song_info.get("singer", "")
-        album = song_info.get("album", "")
-        if not song:
-            return
-
-        query = " ".join(part for part in [song, singer, album] if part).strip()
-        try:
-            release_date = parse_release_date(self.song_release_lookup.get_release_date(query))
-        except Exception as exc:
-            self.logger.warning(f"Failed to query song release date for {query}: {exc}")
-            return
-
-        if release_date:
-            song_info["release_date"] = release_date.isoformat()
-
-    def _is_old_song(self, song: str, singer: str = "", album: str = "", song_info: dict = None) -> bool:
-        config = self._old_song_filter_config()
-        if not config.get("enabled", True):
-            return False
-
-        cutoff = parse_release_date(config.get("cutoff_date") or "2000-01-01")
-        if not cutoff or not song:
-            return False
-
-        if song_info is None:
-            song_info = {"song": song, "singer": singer, "album": album}
-
-        self.ensure_release_date(song_info)
-        release_date = parse_release_date(song_info.get("release_date"))
-        query = " ".join(part for part in [song, singer, album] if part).strip()
-        if not release_date:
-            self.logger.info(f"Release date unknown for {query}, accepting song")
-            return False
-
-        if self._is_old_song_whitelisted_artist(singer, config):
-            self.logger.info(f"Accepting old song for whitelisted artist: {query}")
-            return False
-
-        if release_date < cutoff:
-            self.logger.info(f"Skipping old song ({release_date} < {cutoff}): {query}")
-            return True
-        return False
-
-    def handle_song_quality_check(self, song_info):
-        """
-        处理歌曲质量检查和跳过逻辑
-        Args:
-            song_info: dict, 包含歌曲信息的字典
-        Returns:
-            bool: True if song was skipped, False otherwise
-        """
-        try:
-            if self.should_skip_low_quality_song(song_info):
-                skip_result = self.skip_song()
-                self.logger.info(f"Skipped low quality song: {song_info.get('song', 'Unknown')}")
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error handling song quality check: {traceback.format_exc()}")
-            return False
-
-    def get_volume_level(self):
-        """Get current volume level - delegates to MusicManager"""
-        try:
-            # 使用 MusicManager 的系统级音量获取功能
-            from ushareiplay.managers.music_manager import MusicManager
-            music_manager = MusicManager.instance()
-            return music_manager.get_volume_level()
-        except Exception as e:
-            self.logger.error(f"Error getting volume level: {str(e)}")
-            return 0
-
-    def get_playback_info(self):
-        """Get current playback information - delegates to MusicManager"""
-        try:
-            # 使用 MusicManager 的系统级播放信息获取功能
-            from ushareiplay.managers.music_manager import MusicManager
-            music_manager = MusicManager.instance()
-            return music_manager.get_current_song_info()
-        except Exception as e:
-            self.logger.error(f"Error getting playback info: {traceback.format_exc()}")
-            return {
-                'song': 'Unknown',
-                'singer': 'Unknown',
-                'album': 'Unknown',
-                'state': 'Unknown'
             }
 
     def get_playlist_info(self):

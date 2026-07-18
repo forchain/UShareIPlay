@@ -66,6 +66,13 @@ async def test_at_keyword_message_executes_keyword_with_sleep_exemption(monkeypa
                 }
             )
 
+        async def dispatch_mention(self, result, sleep_exempt=True):
+            keyword_record = await self.find_keyword(result.text, result.nickname)
+            if keyword_record:
+                await self.execute_keyword(
+                    keyword_record, result.nickname, params=result.params, sleep_exempt=sleep_exempt
+                )
+
     class _FakeMessageManager:
         def __init__(self):
             self.latest_chats = []

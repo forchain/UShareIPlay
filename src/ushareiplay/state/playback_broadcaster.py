@@ -10,7 +10,7 @@ class PlaybackBroadcaster(Singleton):
     def __init__(self):
         self._logger = None
         self._soul_handler = None
-        self._music_handler = None
+        self._music_manager = None
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
         self._message_dispatch = None
@@ -32,12 +32,12 @@ class PlaybackBroadcaster(Singleton):
         return self._soul_handler
 
     @property
-    def music_handler(self):
-        """延迟获取 QQMusicHandler 实例"""
-        if self._music_handler is None:
-            from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-            self._music_handler = QQMusicHandler.instance()
-        return self._music_handler
+    def music_manager(self):
+        """延迟获取 MusicManager 实例"""
+        if self._music_manager is None:
+            from ushareiplay.managers.music_manager import MusicManager
+            self._music_manager = MusicManager.instance()
+        return self._music_manager
 
     @property
     def message_dispatch(self):
@@ -54,7 +54,7 @@ class PlaybackBroadcaster(Singleton):
         """
         try:
             # 获取播放信息
-            info = self.music_handler.get_playback_info()
+            info = self.music_manager.get_playback_info()
             # ignore state
             info['state'] = None
             self._playback_info_cache = info
@@ -86,7 +86,7 @@ class PlaybackBroadcaster(Singleton):
             return info
 
         try:
-            self.music_handler.ensure_release_date(info)
+            self.music_manager.ensure_release_date(info)
         except Exception:
             self.logger.warning(f"Failed to ensure cached release date: {traceback.format_exc()}")
         return info
@@ -108,7 +108,7 @@ class PlaybackBroadcaster(Singleton):
         if 'error' not in info and all(key in info for key in ['song', 'singer', 'album']):
 
             # 检查是否需要跳过低质量歌曲
-            song_skipped = self.music_handler.handle_song_quality_check(info)
+            song_skipped = self.music_manager.handle_song_quality_check(info)
 
             # 只有在没有跳过歌曲的情况下才发送播放消息
             if not song_skipped:

@@ -1,24 +1,15 @@
 import asyncio
-from ushareiplay.managers.seat_manager.base import SeatManagerBase
-from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
 
 
-class SeatingManager(SeatManagerBase):
+class SeatingManager:
     def __init__(self, handler=None, seat_ui=None):
-        super().__init__(handler)
-        if seat_ui is not None:
-            self.seat_ui = seat_ui
-        elif not hasattr(self, 'seat_ui'):
-            self.seat_ui = SeatUIManager(handler)
-        elif handler and self.seat_ui.handler is None:
-            self.seat_ui.handler = handler
-
-        if not hasattr(self, 'current_desk_index'):
-            self.current_desk_index = 0
-        if not hasattr(self, 'current_side'):
-            self.current_side = None
+        self.handler = handler
+        self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.current_desk_index = 0
+        self.current_side = None
 
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12)"""

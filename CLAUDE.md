@@ -85,7 +85,6 @@ AppController
 - Android device and Appium server settings
 - 100+ Soul App UI element XPath selectors
 - 80+ QQ Music UI element XPath selectors
-- 24+ scheduled timer definitions
 - Command templates with response/error message templates
 
 Element selectors and UI automation logic are tightly coupled to `config.yaml` — changes to the target apps require updating selectors here.

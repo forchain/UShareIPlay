@@ -336,6 +336,7 @@ class AppController(Singleton):
             from ushareiplay.managers.sleep_manager import SleepManager
             from ushareiplay.managers.theme_manager import ThemeManager
             from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.room_name_manager import RoomNameManager
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -372,6 +373,7 @@ class AppController(Singleton):
             self.info_manager = InfoManager.initialize()
             self.party_manager = PartyManager.initialize()
             self.notice_manager = NoticeManager.initialize()
+            RoomNameManager.initialize()
             ThemeManager.initialize()
             TitleManager.initialize()
             AdminManager.initialize()
@@ -483,27 +485,28 @@ class AppController(Singleton):
                                         ctx={"error": traceback.format_exc(), "reason": input_source},
                                     )
                             else:
-                                # Allow leading whitespace and spaces after colon.
-                                # Keep the queued content in its original (colon-triggered) form.
-                                trimmed = message.lstrip()
-                                if trimmed and trimmed[0] in (':', '：', '/', '／', '$', '＄') and trimmed[1:].strip():
-                                    # Create MessageInfo for queue
-                                    from ushareiplay.models.message_info import MessageInfo
-                                    message_info = MessageInfo(
-                                        content=trimmed,
-                                        nickname=nickname
-                                    )
+                                from ushareiplay.core.chat_intake import ChatIntakeKind, expand_queue_text
+                                from ushareiplay.models.message_info import MessageInfo
 
-                                    # Add message to queue
-                                    message_queue = MessageQueue.instance()
-                                    await message_queue.put_message(message_info)
-                                    self.obs.emit(
-                                        "queue.enqueue",
-                                        ctx={"source": input_source, "content": message_info.content, "nickname": message_info.nickname},
-                                    )
-                                    self.logger.info(f"{input_source} message added to queue: {message}")
-                                else:
-                                    self.message_dispatch.send_screen_message(message)
+                                for result in expand_queue_text(message, nickname):
+                                    if result.kind == ChatIntakeKind.COMMAND and result.text.strip():
+                                        message_info = MessageInfo(
+                                            content=result.text,
+                                            nickname=nickname,
+                                            silent=result.silent,
+                                            private_reply=result.private_reply,
+                                            sleep_exempt=result.sleep_exempt,
+                                        )
+                                        await MessageQueue.instance().put_message(message_info)
+                                        self.obs.emit(
+                                            "queue.enqueue",
+                                            ctx={"source": input_source, "content": message_info.content, "nickname": message_info.nickname},
+                                        )
+                                        self.logger.info(f"{input_source} message added to queue: {message_info.content}")
+                                    elif result.kind == ChatIntakeKind.PLAIN_CHAT and not result.silent:
+                                        self.message_dispatch.send_screen_message(result.text)
+                                    elif result.kind == ChatIntakeKind.PLAIN_CHAT and result.silent:
+                                        self.logger.info(f"Silent queued message suppressed: {result.text}")
 
                 except queue.Empty:
                     pass

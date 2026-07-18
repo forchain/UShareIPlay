@@ -4,19 +4,20 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line, expand_queue_text
+from ushareiplay.core.chat_intake import (
+    QUEUE_COMMAND_PREFIX_CHARS,
+    ChatIntakeKind,
+    classify_chat_line,
+    expand_queue_text,
+    is_private_reply_prefix,
+    is_silent_prefix,
+    normalize_command_text,
+)
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.models.message_info import MessageInfo
-
-
-COMMAND_PREFIXES = (":", "：", "/", "／")
-SILENT_COMMAND_PREFIXES = ("/", "／")
-PRIVATE_REPLY_PREFIXES = ("$", "＄")
-QUEUE_COMMAND_PREFIXES = COMMAND_PREFIXES + PRIVATE_REPLY_PREFIXES
-QUEUE_COMMAND_PREFIX_CHARS = "".join(QUEUE_COMMAND_PREFIXES)
 
 
 class CommandManager(Singleton):
@@ -310,48 +311,16 @@ class CommandManager(Singleton):
         return self.command_parser.parse_command(content)
 
     def _normalize_command_candidate(self, raw: str) -> str:
-        """
-        Normalize command-candidate text for robust parsing.
-
-        Accepts:
-        - leading whitespace (e.g. "  : help")
-        - fullwidth colon (：)
-        - silent slash prefixes (/ and ／)
-        - whitespace after trigger (e.g. ": help")
-
-        Returns:
-            str: cleaned command content WITHOUT the trigger colon, and with
-                 leading whitespace removed. Returns "" if no command content.
-        """
-        if not raw:
-            return ""
-        s = raw.lstrip()
-        if not s:
-            return ""
-        if s[0] in COMMAND_PREFIXES:
-            s = s[1:]
-        return s.lstrip()
+        """Normalize command-candidate text for robust parsing."""
+        return normalize_command_text(raw)
 
     def _extract_private_reply_and_normalize(self, raw: str) -> tuple[bool, str]:
-        """
-        Extract private-reply marker and normalize command candidate.
-
-        Returns:
-            tuple[bool, str]: (private_reply, normalized_command_content)
-        """
-        s = (raw or "").lstrip()
-        if not s:
-            return False, ""
-        private_reply = s.startswith(PRIVATE_REPLY_PREFIXES)
-        if private_reply:
-            s = s[1:]
-        return private_reply, self._normalize_command_candidate(s)
+        """Extract private-reply marker and normalize command candidate."""
+        private_reply = is_private_reply_prefix(raw)
+        return private_reply, normalize_command_text(raw)
 
     def _is_silent_command_candidate(self, raw: str) -> bool:
-        s = (raw or "").lstrip()
-        if s.startswith(PRIVATE_REPLY_PREFIXES):
-            s = s[1:].lstrip()
-        return bool(s) and s[0] in SILENT_COMMAND_PREFIXES
+        return is_silent_prefix(raw)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
         command_messages = []
