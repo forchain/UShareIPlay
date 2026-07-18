@@ -44,13 +44,13 @@ uv run pytest -q tests/test_timer_add.py tests/test_db_manager.py
 main.py
   → ConfigLoader.load_config()        # Loads config.yaml
   → DatabaseManager.init()            # SQLite via Tortoise ORM
-  → AppController.instance(config)    # Main singleton orchestrator
+  → AppController.initialize(config)  # Main singleton orchestrator
   → controller.start_monitoring()     # Main event loop
 ```
 
 ### Key Design Patterns
 
-- **Singleton** — All managers and handlers use thread-safe singletons; never call constructors directly, always use `.instance()`
+- **Singleton** — The composition root creates managers and handlers once with `.initialize(...)`; all other code uses `.instance()` as a lookup-only API. Never call singleton constructors directly.
 - **Manager Pattern** — Business logic split into 14+ specialized managers under `src/managers/`
 - **Command Pattern** — 30+ commands under `src/commands/`, all inheriting from `BaseCommand`; commands are dynamically loaded by `CommandManager`
 - **DAO Pattern** — Database access via DAOs in `src/dal/`; models in `src/models/` using Tortoise ORM

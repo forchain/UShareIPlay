@@ -8,9 +8,8 @@ from ushareiplay.state.presence_tracker import PresenceTracker
 
 @pytest.fixture
 def presence_tracker():
-    if hasattr(PresenceTracker, "_instance"):
-        del PresenceTracker._instance
-    tracker = PresenceTracker.instance()
+    PresenceTracker.reset_instance()
+    tracker = PresenceTracker.initialize()
     tracker._logger = SimpleNamespace(
         info=lambda _msg: None,
         debug=lambda _msg: None,

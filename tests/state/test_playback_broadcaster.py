@@ -3,14 +3,16 @@ from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
 
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
 
 @pytest.fixture
 def broadcaster():
-    if hasattr(PlaybackBroadcaster, "_instance"):
-        del PlaybackBroadcaster._instance
-    b = PlaybackBroadcaster.instance()
+    MessageDispatch.reset_instance()
+    MessageDispatch.initialize()
+    PlaybackBroadcaster.reset_instance()
+    b = PlaybackBroadcaster.initialize()
     b._logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,

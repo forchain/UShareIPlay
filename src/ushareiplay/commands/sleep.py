@@ -8,12 +8,7 @@ class SleepCommand(BaseCommand):
     async def do_process(self, message_info, parameters):
         keyword = (parameters[0].strip().lower() if parameters else "status")
 
-        # Prefer the controller's root config (contains `sleep`). Fall back to handler config.
-        config = getattr(self.controller, "config", None)
-        if not isinstance(config, dict):
-            config = getattr(self.soul_handler, "config", {}) or {}
-
-        manager = SleepManager.instance(config)
+        manager = SleepManager.instance()
 
         if keyword == "on":
             manager.set_override(True)

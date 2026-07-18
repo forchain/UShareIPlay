@@ -1,6 +1,7 @@
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.core.singleton import Singleton
 import asyncio
 
 
@@ -17,14 +18,25 @@ async def close_db():
 async def run_app():
     config = ConfigLoader.load_config()
     await init_db()
-    controller = AppController.instance(config)
-    return await controller.start_monitoring()
+    controller = None
+    try:
+        controller = AppController.initialize(config)
+        return await controller.start_monitoring()
+    finally:
+        if controller is not None:
+            await controller.shutdown()
+        Singleton.reset_all_instances()
 
 
 async def main():
     run_count = 0
     while run_count <= 9:
-        res = await run_app()
+        try:
+            res = await run_app()
+        except Exception:
+            run_count += 1
+            print(f"[main]App crashed, restarting... {run_count}")
+            continue
         if res:
             break
         run_count += 1
