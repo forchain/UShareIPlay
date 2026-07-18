@@ -1,5 +1,4 @@
 import threading
-import weakref
 
 
 class SingletonError(RuntimeError):
@@ -9,13 +8,7 @@ class SingletonError(RuntimeError):
 class SingletonMeta(type):
     """所有单例类共用的元类"""
     _lock = threading.RLock()
-    _registry: weakref.WeakSet[type] = weakref.WeakSet()
-    _initialization_order: list[weakref.ReferenceType[type]] = []
-
-    def __init__(cls, name, bases, namespace, **kwargs):
-        super().__init__(name, bases, namespace, **kwargs)
-        if any(isinstance(base, SingletonMeta) for base in bases):
-            SingletonMeta._registry.add(cls)
+    _initialization_order: list[type] = []
 
     def __call__(cls, *args, **kwargs):
         raise SingletonError(
@@ -34,7 +27,7 @@ class SingletonMeta(type):
             instance = type.__call__(cls, *args, **kwargs)
             cls._instance = instance
             cls._singleton_initialized = True
-            SingletonMeta._initialization_order.append(weakref.ref(cls))
+            SingletonMeta._initialization_order.append(cls)
             return instance
 
 
@@ -68,10 +61,8 @@ class Singleton(metaclass=SingletonMeta):
         """Reset initialized singletons in reverse creation order."""
         with SingletonMeta._lock:
             initialized = []
-            for class_ref in SingletonMeta._initialization_order:
-                singleton_class = class_ref()
-                if singleton_class is not None:
-                    initialized.append(singleton_class)
+            for singleton_class in SingletonMeta._initialization_order:
+                initialized.append(singleton_class)
 
             for singleton_class in reversed(initialized):
                 singleton_class.reset_instance()

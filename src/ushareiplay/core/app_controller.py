@@ -42,13 +42,22 @@ class AppController(Singleton):
         self.obs.emit("app.start", ctx={"component": "AppController"})
 
         # 先创建主driver（会自动启动Soul app）
-        self.obs.emit("driver.init.start")
-        self.driver = self._init_driver()
-        self._driver_subscribers = []
-        self.obs.emit("driver.init.ok")
+        self.driver = None
+        try:
+            self.obs.emit("driver.init.start")
+            self.driver = self._init_driver()
+            self._driver_subscribers = []
+            self.obs.emit("driver.init.ok")
 
-        # 使用主driver启动其他应用
-        self._start_apps()
+            # 使用主driver启动其他应用
+            self._start_apps()
+        except Exception:
+            if self.driver:
+                try:
+                    self.driver.quit()
+                except Exception:
+                    pass
+            raise
         self.input_queue = queue.Queue()
         self.agent_command_dir = Path(".agent") / "commands"
         self.is_running = True

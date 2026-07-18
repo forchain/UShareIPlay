@@ -43,7 +43,7 @@ No linter configuration (flake8/pylint/ruff) is committed. Use `python -m py_com
 ### Key gotchas
 
 - `config.yaml` is 26k+ lines. Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
-- All managers use the Singleton pattern via `Singleton` metaclass — always call `.instance()`, never construct directly.
+- Singleton creation is limited to the composition root: call `.initialize(...)` exactly once there, then use `.instance()` for lookup only. Never construct singleton classes directly.
 - The project is configured via `pyproject.toml` and can be run with `uv run ushareiplay`.
 
 ### GitHub / PR account switching

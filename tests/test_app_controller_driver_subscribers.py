@@ -2,6 +2,8 @@ import asyncio
 from types import SimpleNamespace
 from queue import Queue
 
+import pytest
+
 from ushareiplay.core.app_controller import AppController
 
 
@@ -66,6 +68,22 @@ def controller_without_init(driver=None):
     controller.obs = FakeObserver()
     controller.soul_handler = None
     return controller
+
+
+def test_controller_init_closes_driver_when_starting_apps_fails(monkeypatch):
+    driver = FakeDriver("startup-driver")
+    controller = object.__new__(AppController)
+    monkeypatch.setattr(AppController, "_init_driver", lambda _self: driver)
+
+    def fail_to_start_apps(_self):
+        raise RuntimeError("startup failed")
+
+    monkeypatch.setattr(AppController, "_start_apps", fail_to_start_apps)
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        AppController.__init__(controller, {})
+
+    assert driver.quit_called is True
 
 
 def test_register_driver_subscriber_adds_unique_objects_and_current_driver():

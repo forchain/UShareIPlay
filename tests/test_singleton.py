@@ -47,7 +47,19 @@ def test_initialize_twice_raises_clear_error():
         _FooService.initialize()
 
 
+def test_instance_rejects_constructor_arguments():
+    with pytest.raises(TypeError):
+        _FooService.instance("unexpected")
+
+
 def test_direct_constructor_is_not_a_creation_api():
+    with pytest.raises(SingletonError, match="Use _FooService.initialize"):
+        _FooService()
+
+
+def test_direct_constructor_rejects_creation_after_initialize():
+    _FooService.initialize()
+
     with pytest.raises(SingletonError, match="Use _FooService.initialize"):
         _FooService()
 
