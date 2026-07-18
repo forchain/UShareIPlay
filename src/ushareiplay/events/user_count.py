@@ -7,6 +7,8 @@
 import re
 
 from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.state.room_state import RoomState
+from ushareiplay.state.online_list_scraper import OnlineListScraper
 
 
 class UserCountEvent(BaseEvent):
@@ -15,13 +17,13 @@ class UserCountEvent(BaseEvent):
     async def handle(self, key: str, element_wrapper):
         """
         处理在线人数事件
-        
-        解析人数文本并更新到 InfoManager
-        
+
+        解析人数文本并更新到 RoomState；人数变化时触发在线用户列表 UI 刷新。
+
         Args:
             key: 触发事件的元素 key，这里是 'user_count'
             element_wrapper: ElementWrapper 实例，包装了在线人数元素
-            
+
         Returns:
             bool: 默认返回 False，不中断后续处理
         """
@@ -44,12 +46,11 @@ class UserCountEvent(BaseEvent):
                 self.logger.warning(f"无法将提取的文本转换为整数: {match.group(1)}")
                 return False
 
-            # 更新 InfoManager 中的在线人数
-            from ushareiplay.managers.info_manager import InfoManager
-            info_manager = InfoManager.instance()
-            if user_count != info_manager.user_count:
-                info_manager.user_count = user_count
-                await info_manager.refresh_online_users()
+            # 更新 RoomState 中的在线人数
+            room_state = RoomState.instance()
+            if user_count != room_state.user_count:
+                room_state.user_count = user_count
+                await OnlineListScraper.instance().refresh_online_users()
 
             return False
 

@@ -4,12 +4,23 @@ import pytest
 
 from ushareiplay.commands.info import InfoCommand
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.state.presence_tracker import PresenceTracker
+from ushareiplay.state.room_state import RoomState
 
 
 @pytest.fixture
 def info_manager():
-    if hasattr(InfoManager, "_instance"):
-        del InfoManager._instance
+    for cls in (
+        InfoManager,
+        PlaybackBroadcaster,
+        PlaylistState,
+        PresenceTracker,
+        RoomState,
+    ):
+        if hasattr(cls, "_instance"):
+            del cls._instance
     manager = InfoManager.instance()
     manager._logger = SimpleNamespace(info=lambda _message: None)
     return manager
