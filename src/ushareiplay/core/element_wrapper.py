@@ -156,6 +156,25 @@ class ElementWrapper:
             return clickable.lower() == 'true'
         return False
 
+    def context_text(self, *, ancestor_levels: int = 3) -> str:
+        """Return nearby snapshot text for events that need dialog context."""
+        try:
+            container = self._xml_element
+            for _ in range(ancestor_levels):
+                parent = container.getparent()
+                if parent is None:
+                    break
+                container = parent
+            values = []
+            for node in container.iter():
+                for attribute in ("text", "content-desc"):
+                    value = node.get(attribute)
+                    if value and value != "null":
+                        values.append(value)
+            return "\n".join(values)
+        except Exception:
+            return ""
+
     @property
     def bounds(self) -> Optional[dict]:
         """
@@ -188,4 +207,3 @@ class ElementWrapper:
         resource_id = self.get_attribute('resource-id') or ''
         text = self.text[:20] if self.text else ''
         return f"<ElementWrapper tag={self.tag} resource-id={resource_id} text={text}>"
-
