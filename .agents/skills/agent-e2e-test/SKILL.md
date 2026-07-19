@@ -1,163 +1,141 @@
 ---
 name: agent-e2e-test
-description: Use when the user asks to manually or automatically run a real end-to-end test of UShareIPlay behavior through the running app, Android device, logs, DB, artifacts, screenshots, page source, or backend input. This skill is an Agent-led test orchestration workflow, not a fixed command runner.
+description: Use when validating UShareIPlay through a real local or remote service, shared Android/Appium device, runtime logs, artifacts, timers, database, or UI state; also use after a change whose risk requires runtime evidence.
 license: MIT
 ---
 
 # Agent E2E Test
 
-Use this skill for real runtime validation. The Agent owns the test plan and pass/fail judgment. Scripts are only a toolbelt for deterministic low-level actions.
+Run a real UShareIPlay workflow and make the pass/fail decision from fresh runtime evidence. The Agent owns the oracle and reasoning; scripts only provide deterministic actions.
 
-## Core Rule
+## Hard Rules
 
-Do not call unit tests, static inspection, or `scripts/agent_e2e.py --mode smoke` an end-to-end test. Smoke mode is only a runner self-check and does not start `run.sh` or exercise Android.
+- Unit tests, static inspection, and `scripts/agent_e2e.py --mode smoke` are not E2E. Smoke only self-checks the runner.
+- For command tests, satisfy `CommandReady` before injection. Read [agent/preconditions.md](../../../agent/preconditions.md).
+- Inject through the console/queue path (`.agent/commands/*.cmd` is the background channel). Do not create a second Appium session or mutate the device UI from the test agent.
+- Treat a live PID, successful file injection, old logs, or a stale screenshot as insufficient evidence.
+- Use structured events first; use logs, DB, page source, and screenshots to answer the test-specific oracle. Read [agent/event_taxonomy.md](../../../agent/event_taxonomy.md).
+- Establish exclusive Device Lease ownership before starting a service. The cleanup unit is the whole E2E Session, including service, runner, toolbelt, and session helpers.
+- When production state matters, collect a remote status/log snapshot before pausing it. A remote pause uses graceful stop; only the user can authorize remote force-stop.
 
 ## Workflow
 
-1. Restate the user's test intent in concrete terms.
-2. Classify the surfaces involved: process, Android/ADB, UI, input/command, DB, logs, timers, recovery, artifacts, or mixed.
-3. Create a short test plan:
-   - preconditions
-   - whether to restart or reuse the service
-   - tool actions to perform
-   - evidence to collect
-   - success criteria
-   - failure/blocker handling
-4. Before executing the plan, run a tool/resource self-check for the actions the plan needs.
-   - Check only required capabilities, plus shared basics.
-   - Prepare directories/files when safe.
-   - Stop with a blocker if required tools, config, permissions, or resources are missing.
-5. Start or reuse the real service:
-   - `dev`: restart managed process and start via `./run.sh`
-   - `test`: reuse a healthy managed process; if missing or unhealthy, start via `./run.sh`
-6. Execute the plan using toolbelt actions.
-7. Read runtime evidence and decide pass/fail with reasoning.
-8. If failing and fixable in repo, fix code and rerun focused checks plus E2E.
-9. If blocked by device/Appium/account/page state/missing evidence, report a blocker with collected evidence.
-10. After each difficult or repetitive test, decide whether the E2E toolbelt or the system's testability should evolve.
+### 1. Define the oracle
 
-## Toolbelt
+Restate the request as one observable behavior. Classify the required surfaces: process, Android/ADB, UI, command/input, DB, logs, timers, recovery, artifacts, or a combination.
 
-Use the bundled toolbelt for atomic operations:
+Write a compact plan containing:
+
+- `trigger`: `manual` for an explicit user request, `auto` for a risk-based validation after tests;
+- `scenario`: `dev` when code/config changed, `test` when validating the current build;
+- preconditions and readiness gate;
+- lifecycle action, input channel, evidence sources, timeout, and pass/fail criteria.
+
+Completion criterion: the plan names the expected result and the evidence that would prove or disprove it.
+
+### 2. Establish a freshness boundary
+
+Before execution, record the current time and latest artifact run. For a reused process, verify all of these are current and connected:
+
+- managed PID is alive and is the intended process;
+- `status.json` and `events.jsonl` are fresh after the boundary or carry the current `run_id`;
+- readiness matches the requested surface, including `CommandReady` anchors and `pipeline.ui_lock == unlocked` for command tests;
+- the background input spool is writable.
+
+Never promote an old `CommandReady`, log line, screenshot, or artifact to current evidence merely because the process is alive.
+
+### 3. Coordinate the shared device
+
+Treat the Android/Appium target as a shared resource across every local worktree and remote deployment. Before any local start, inspect and clear prior local E2E Sessions, including manually started UShareIPlay processes, then acquire the user-wide Device Lease. The toolbelt reports every cleared PID, group, command, and worktree.
+
+When production behavior, remote logs, a changed remote configuration, or an expired remote-silence proof makes the remote state relevant, run `remote-status` and `remote-logs` before local execution. Pause the discovered remote service with `remote-pause`; if it remains alive, preserve evidence, report the candidate processes, and request approval before `remote-force-stop --confirm`.
+
+Remote setup needs only `agent_e2e.remote.host` and `deploy_path` in the ignored `config.local.yaml`. Read [remote-operations.md](remote-operations.md) whenever remote access, pause, recovery, or logs are in scope.
+
+Completion criterion: the local Device Lease is held, no conflicting local E2E Session remains, and the required remote state is evidenced or explicitly blocked.
+
+### 4. Self-check required capabilities
+
+Run the self-check after the plan and before the real action. Request only the needed capabilities plus shared basics:
 
 ```bash
 source .venv/bin/activate
-python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py <subcommand> [args]
+python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py doctor --needs process,input,adb,db,logs,artifacts
 ```
 
-Common subcommands:
+Remove categories the plan does not need. A non-zero result, missing config/run script, unavailable ADB, unreadable DB, or unwritable input/log/artifact path is a blocker. Resolve it or report it before starting the test.
 
-- `doctor --needs adb,db,logs,artifacts,input,process`: self-check required tools/resources before running the plan.
-- `process-status`: show managed PID, whether alive, latest artifact run.
-- `start --scenario test|dev`: start or restart the real service through `./run.sh`.
-- `stop`: stop the managed process.
-- `inject --text '...'`: write backend input into `.agent/commands/*.cmd`.
-- `adb-devices`: list Android devices through `adb devices`.
-- `adb-current`: show current focused package/activity through `adb shell dumpsys window`.
-- `adb-screenshot --out <png>`: capture a device screenshot through ADB.
-- `adb-logcat --seconds <n> --out <txt>`: capture recent logcat output.
-- `artifacts-latest`: print latest `artifacts/<run_id>` paths.
-- `read-status`: print latest `status.json`.
-- `tail-events --limit <n>`: print recent structured events.
-- `tail-logs --pattern <regex>`: inspect workspace logs.
-- `db-query --sql 'select ...'`: run a SQLite query against `data/soul_bot.db`.
-- `request-dump`: inject `!dump` so the running process exports page source/screenshot using its existing Appium session.
-- `record-gap --kind missing-tool|repeatable-flow|temporary-helper|testability-gap|architecture-upgrade --title '...' --detail '...'`: record a toolbelt or system testability evolution opportunity.
+Completion criterion: every capability named in the plan is available, or the run is explicitly reported blocked with the doctor output.
 
-`scripts/agent_e2e.py` is also available as a low-level runner. Its `--command` argument means “inject this text into the backend input path.” It is not the skill interface and not the whole E2E process.
+### 5. Select the lifecycle
 
-## Evidence Rules
+- `dev`: restart the managed process and start the latest code with `start --scenario dev` (or the equivalent composed runner command).
+- `test`: reuse the managed process only after the freshness and readiness checks above. If it is missing, run `start --scenario test`; if it is alive but unhealthy, run `stop` first and then `start --scenario test` because the toolbelt reuses any live PID.
 
-Prefer evidence from the real runtime:
+After starting or reusing, wait for the readiness gate. If it does not arrive, use `request-dump` for a read-only page source/screenshot and stop as blocked; do not inject early.
 
-- `artifacts/<run_id>/events.jsonl`
-- `artifacts/<run_id>/status.json`
-- `artifacts/<run_id>/page_source.xml`
-- `artifacts/<run_id>/screenshot.png`
-- workspace logs
-- SQLite query results
-- ADB current activity / screenshots / logcat
+### 6. Execute and collect evidence
 
-Static source/config reads can support analysis, but they cannot replace runtime evidence for a manual E2E request.
-
-## Self-Check Rule
-
-After drafting the test plan and before executing it, identify the required tool categories and run `doctor`.
-
-Examples:
+Use the narrowest tool action that exercises the requested behavior:
 
 ```bash
-python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py doctor --needs process,adb,artifacts,logs
-python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py doctor --needs process,input,db,logs
+python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py inject --text ':help'
 ```
 
-If `doctor` reports missing config, unavailable ADB, unreadable DB, missing `run.sh`, unwritable `.agent/commands`, unavailable logs/artifacts paths, or extra authorization/resource needs, resolve or report the blocker before starting the actual test.
+For composed command scenarios, `scripts/agent_e2e.py` may be used with `--scenario dev|test`, `--trigger auto|manual`, and `--command`; do not use its `--mode smoke` as the test.
 
-## Toolbelt And Testability Evolution
+Collect evidence from the same run boundary:
 
-The toolbelt and the system under test must evolve through real collaboration. After drafting or running a test plan, check whether the current tools or the application's architecture made the work slower, weaker, ambiguous, or impossible.
+- `artifacts/<run_id>/events.jsonl` and `status.json`;
+- relevant workspace logs;
+- SQLite queries when the plan includes DB behavior;
+- `page_source.xml` and `screenshot.png`, requested through `!dump` or `request-dump` when UI evidence is required;
+- ADB activity, screenshot, or logcat when the plan requires device evidence.
 
-Use five levels:
+For command E2E, assert the event chain `queue.enqueue → queue.drain.start → command.received → command.dispatch → command.result → queue.drain.end`, correlated to the current run/trace where available. For timers, also assert the relevant timer event or queue entry and the expected DB mutation. Follow the scenario-specific details in [agent/playbooks/command_e2e.md](../../../agent/playbooks/command_e2e.md) or [agent/playbooks/timer_e2e.md](../../../agent/playbooks/timer_e2e.md).
 
-1. **Fill tool gaps**: if a required observation/action cannot be performed with current tools, add or propose a reusable tool.
-2. **Script repeatable flows**: if Agent repeatedly performs the same monitor/collect/compare sequence, promote it into a script while keeping Agent responsible for pass/fail reasoning.
-3. **Temporary targeted helpers**: if one specific test would be inefficient through manual orchestration, create a temporary helper under `.agent/e2e-tools/`; promote it into the skill only if it becomes generally useful.
-4. **Expose testability gaps**: if Agent can observe behavior only through fragile log scraping, screenshots, or timing guesses, record the missing structured state/report/event that would make the system testable.
-5. **Propose architecture upgrades**: if repeated tool calls still cannot prove behavior reliably, propose concrete system changes such as structured intermediate reports, stronger event taxonomy, stable state anchors, explicit health/readiness endpoints, or better DB/log correlation IDs.
+Completion criterion: each planned assertion has a cited artifact, event, log excerpt, DB result, or UI file from this run.
 
-Record discoveries with:
+### 7. Decide and report
 
-```bash
-python .agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py record-gap \
-  --kind testability-gap \
-  --title "Need focused room-entry state report" \
-  --detail "Current tools require fragile manual correlation of ADB activity, status, and logs."
-```
+Pass only when the expected behavior is observed and every required assertion is backed by fresh, causally connected evidence. Report:
 
-When adding durable tools, prefer extending `.agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py` or adding a small script under `.agents/skills/agent-e2e-test/scripts/`. Keep tools business-neutral when possible. If a helper is scenario-specific, mark it temporary first and only promote it after reuse.
+- trigger, scenario, lifecycle action, and injection channel;
+- readiness state and anchors;
+- assertion results for events, status, logs, DB, and UI as applicable;
+- artifact paths and relevant timestamps/run IDs;
+- Device Lease owner, local sessions cleared, remote status/pause/log snapshot, and any remote recovery state;
+- failures, uncertainty, and the next action.
 
-When proposing architecture upgrades, be specific: name the missing signal, where it should be emitted, how Agent would use it, and what tests it would make possible. Do not keep adding scripts when the real issue is missing system observability or unstable architecture.
+Report a blocker instead of success when the device/Appium/account/app state, process health, readiness, injection path, artifact freshness, expected behavior, or required evidence is missing. A deadline does not lower the evidence bar.
 
-## Blockers
+### 8. Recover or evolve
 
-Stop and report a blocker instead of claiming success if:
+If evidence identifies a repo defect, fix it, run focused unit/script checks, then repeat the E2E with a fresh boundary. If the failure is environmental or the expected behavior is underspecified, preserve the evidence and report the blocker.
 
-- `./run.sh` was not executed and no healthy real process was reused
-- no Android device is connected/responding
-- Appium is unavailable
-- required app package/activity cannot be observed
-- artifacts are missing or stale
-- `CommandReady` or the required UI state is not reached in time
-- page source/screenshot cannot be produced when needed
-- the expected behavior is ambiguous
-- required tool/resource self-check fails
+After a difficult or repeated run, record a reusable gap with `record-gap`. Use `agent/known_issues.md` for deferred failures, `agent/questions.md` for missing user input, or propose an infrastructure change when the missing signal is architectural. Add a tool only when it removes a repeatable observation/action gap; do not script away the Agent's pass/fail judgment.
 
-## Examples
-
-### Command-Like Behavior
-
-For “test Help command output freshness,” command injection is one action in the plan:
+## Toolbelt Quick Reference
 
 ```text
-Plan:
-- start/reuse real service
-- inject ":help"
-- read events/logs/status and runtime output evidence
-- compare observed output against current command capability
-- fix and retest if stale
-```
-
-Do not stop at “the inject script returned ok.” The Agent must inspect evidence.
-
-### Non-Command Behavior
-
-For “test behavior before entering a room,” no command is required:
-
-```text
-Plan:
-- start/reuse real service
-- observe Android current activity
-- read status/events/logs
-- request or inspect screenshot/page_source
-- decide whether pre-room behavior matches the requirement
+doctor --needs <csv>                 capability preflight
+process-status                       managed PID and latest artifact run
+cleanup-local                        clear other local E2E sessions for the shared device
+start --scenario dev|test            clear conflicts, acquire lease, then restart or start service
+stop                                 stop managed service
+remote-status                        inspect configured remote deployment (read-only)
+remote-logs                          save redacted recent remote logs as a local artifact
+remote-pause                         gracefully pause the configured remote deployment
+remote-force-stop --confirm          force-stop remote only after user approval
+remote-resume                        restore a deployment paused by this E2E session
+inject --text '...'                  background console/queue input
+request-dump                         current process page source + screenshot
+adb-devices | adb-current            device and focused activity
+adb-screenshot --out <png>           device screenshot
+adb-logcat --seconds <n> --out <txt> recent device logs
+artifacts-latest | read-status       latest run paths/status
+tail-events --limit <n>              structured runtime events
+tail-logs --pattern <regex>          workspace logs
+db-query --sql '...'                 SQLite evidence
+record-gap --kind ...                durable testability feedback
 ```

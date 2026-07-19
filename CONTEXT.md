@@ -23,3 +23,11 @@ _Avoid_: Event loop, page-source helper, fallback navigation
 **Chat Intake**:
 The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
 _Avoid_: Message parser, chat classifier, command matcher
+
+**E2E Session**:
+One owned run of UShareIPlay validation, including the service and every helper process that can contend for its Android/Appium target.
+_Avoid_: Test PID, runner process
+
+**Device Lease**:
+The machine-wide ownership record that grants one E2E Session exclusive use of a shared Android/Appium target.
+_Avoid_: Lock file, local PID

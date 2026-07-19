@@ -16,6 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from e2e_coordination import (
+    LeaseConflict,
+    acquire_lease,
+    discover_local_sessions,
+    load_remote_target,
+    release_lease,
+    remote_command,
+    terminate_sessions,
+    transfer_lease_owner,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 ARTIFACTS_ROOT = REPO_ROOT / "artifacts"
@@ -23,6 +34,8 @@ AGENT_DIR = REPO_ROOT / ".agent"
 PID_FILE = AGENT_DIR / "ushareiplay.pid"
 COMMAND_DIR = AGENT_DIR / "commands"
 EVOLUTION_LOG = AGENT_DIR / "e2e-toolbelt-evolution.jsonl"
+CONFIG_LOCAL = REPO_ROOT / "config.local.yaml"
+REMOTE_SESSION_FILE = AGENT_DIR / "remote-session.json"
 
 
 def _now() -> float:
@@ -31,6 +44,41 @@ def _now() -> float:
 
 def _run(cmd: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+
+
+def _device_id(args: argparse.Namespace) -> str:
+    if getattr(args, "device_id", ""):
+        return args.device_id
+    try:
+        import yaml
+
+        for path in (CONFIG_LOCAL, REPO_ROOT / "config.yaml"):
+            if not path.exists():
+                continue
+            config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            name = config.get("device", {}).get("name")
+            if isinstance(name, str) and name:
+                return name
+    except Exception:
+        pass
+    raise RuntimeError("device id is required: configure device.name or pass --device-id")
+
+
+def _cleanup_local_sessions(args: argparse.Namespace) -> list[dict[str, Any]]:
+    sessions = discover_local_sessions(_device_id(args))
+    if not sessions:
+        return []
+    remaining = terminate_sessions(sessions, timeout_s=args.stop_timeout, force=True)
+    if remaining:
+        raise RuntimeError(f"local E2E sessions remain after cleanup: {json.dumps(remaining, ensure_ascii=False)}")
+    return sessions
+
+
+def _remote_target():
+    target = load_remote_target(CONFIG_LOCAL)
+    if not target:
+        raise RuntimeError("remote configuration missing: add agent_e2e.remote.host and deploy_path to config.local.yaml")
+    return target
 
 
 def _pid_alive(pid: int) -> bool:
@@ -67,6 +115,15 @@ def _managed_pgid() -> int | None:
     except Exception:
         return None
     return None
+
+
+def _managed_session() -> tuple[str | None, str | None]:
+    try:
+        raw = PID_FILE.read_text(encoding="utf-8").strip()
+        obj = json.loads(raw) if raw.startswith("{") else {}
+        return obj.get("session_id"), obj.get("device_id")
+    except Exception:
+        return None, None
 
 
 def _safe_getpgid(pid: int) -> int | None:
@@ -240,7 +297,10 @@ def _stop(timeout_s: float) -> None:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
+    session_id, device_id = _managed_session()
     _stop(args.timeout)
+    if session_id and device_id:
+        release_lease(device_id, session_id=session_id)
     return cmd_process_status(args)
 
 
@@ -307,13 +367,90 @@ def cmd_stop_all(args: argparse.Namespace) -> int:
 
     return cmd_process_status(args)
 
+
+def cmd_cleanup_local(args: argparse.Namespace) -> int:
+    cleaned = _cleanup_local_sessions(args)
+    print(json.dumps({"device_id": _device_id(args), "cleaned": cleaned}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_remote(action: str) -> subprocess.CompletedProcess[str]:
+    return _run(remote_command(_remote_target(), action), timeout=30)
+
+
+def cmd_remote_status(_: argparse.Namespace) -> int:
+    result = _run_remote("status")
+    print(result.stdout.rstrip())
+    return result.returncode
+
+
+def cmd_remote_pause(_: argparse.Namespace) -> int:
+    result = _run_remote("pause")
+    payload = {
+        "target": _remote_target().host,
+        "deploy_path": _remote_target().deploy_path,
+        "paused_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "pause_output": result.stdout,
+    }
+    if result.returncode == 0:
+        AGENT_DIR.mkdir(parents=True, exist_ok=True)
+        REMOTE_SESSION_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return result.returncode
+
+
+def cmd_remote_force_stop(args: argparse.Namespace) -> int:
+    if not args.confirm:
+        print("remote force-stop requires --confirm", file=sys.stderr)
+        return 2
+    result = _run_remote("force-stop")
+    print(result.stdout.rstrip())
+    return result.returncode
+
+
+def cmd_remote_resume(_: argparse.Namespace) -> int:
+    if not REMOTE_SESSION_FILE.exists():
+        print("remote resume requires a successful remote-pause from this E2E session", file=sys.stderr)
+        return 2
+    receipt = json.loads(REMOTE_SESSION_FILE.read_text(encoding="utf-8"))
+    target = _remote_target()
+    if receipt.get("target") != target.host or receipt.get("deploy_path") != target.deploy_path:
+        print("remote target changed since pause; refusing automatic resume", file=sys.stderr)
+        return 2
+    result = _run_remote("resume")
+    print(result.stdout.rstrip())
+    if result.returncode == 0:
+        REMOTE_SESSION_FILE.unlink(missing_ok=True)
+    return result.returncode
+
+
+def cmd_remote_logs(args: argparse.Namespace) -> int:
+    result = _run_remote("logs")
+    if result.returncode:
+        print(result.stdout.rstrip(), file=sys.stderr)
+        return result.returncode
+    run_id = datetime.now(timezone.utc).strftime("remote-logs-%Y%m%dT%H%M%SZ")
+    out = ARTIFACTS_ROOT / run_id / "remote-log-files.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(result.stdout, encoding="utf-8")
+    files = [line.removeprefix("==> ") for line in result.stdout.splitlines() if line.startswith("==> ")]
+    print(json.dumps({"remote": _remote_target().host, "captured_at": datetime.now(timezone.utc).isoformat(), "path": str(out), "files": files, "bytes": len(result.stdout.encode("utf-8"))}, ensure_ascii=False, indent=2))
+    return 0
+
 def cmd_start(args: argparse.Namespace) -> int:
     AGENT_DIR.mkdir(parents=True, exist_ok=True)
+    cleaned = _cleanup_local_sessions(args)
+    session_id = uuid.uuid4().hex
+    try:
+        lease = acquire_lease(_device_id(args), session_id=session_id, worktree=str(REPO_ROOT))
+    except LeaseConflict as exc:
+        raise RuntimeError(f"device remains leased after cleanup: {json.dumps(exc.lease, ensure_ascii=False)}") from exc
     pid = _managed_pid()
     if args.scenario == "dev":
         _stop(args.stop_timeout)
     elif pid and _pid_alive(pid):
-        print(json.dumps({"action": "reused", "pid": pid}, ensure_ascii=False))
+        lease = transfer_lease_owner(_device_id(args), session_id=session_id, owner_pid=pid)
+        print(json.dumps({"action": "reused", "pid": pid, "session_id": session_id, "lease": lease, "cleaned": cleaned}, ensure_ascii=False))
         return 0
 
     log_path = AGENT_DIR / "run.log"
@@ -330,8 +467,9 @@ def cmd_start(args: argparse.Namespace) -> int:
         pgid = os.getpgid(proc.pid)
     except Exception:
         pgid = proc.pid
-    PID_FILE.write_text(json.dumps({"pid": proc.pid, "pgid": pgid}, ensure_ascii=False), encoding="utf-8")
-    print(json.dumps({"action": "started", "pid": proc.pid, "log": str(log_path)}, ensure_ascii=False))
+    lease = transfer_lease_owner(_device_id(args), session_id=session_id, owner_pid=proc.pid)
+    PID_FILE.write_text(json.dumps({"pid": proc.pid, "pgid": pgid, "session_id": session_id, "device_id": _device_id(args)}, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps({"action": "started", "pid": proc.pid, "log": str(log_path), "session_id": session_id, "lease": lease, "cleaned": cleaned}, ensure_ascii=False))
     return 0
 
 
@@ -486,6 +624,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("start")
     p.add_argument("--scenario", choices=["dev", "test"], default="test")
     p.add_argument("--stop-timeout", type=float, default=8.0)
+    p.add_argument("--device-id", default="", help="Shared Android device identifier; defaults to device.name")
     p.set_defaults(func=cmd_start)
 
     p = sub.add_parser("stop")
@@ -495,6 +634,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("stop-all")
     p.add_argument("--timeout", type=float, default=8.0)
     p.set_defaults(func=cmd_stop_all)
+
+    p = sub.add_parser("cleanup-local")
+    p.add_argument("--device-id", default="", help="Shared Android device identifier; defaults to device.name")
+    p.add_argument("--stop-timeout", type=float, default=8.0)
+    p.set_defaults(func=cmd_cleanup_local)
+
+    sub.add_parser("remote-status").set_defaults(func=cmd_remote_status)
+    sub.add_parser("remote-pause").set_defaults(func=cmd_remote_pause)
+    p = sub.add_parser("remote-force-stop")
+    p.add_argument("--confirm", action="store_true", help="Required after reporting a failed remote pause")
+    p.set_defaults(func=cmd_remote_force_stop)
+    sub.add_parser("remote-resume").set_defaults(func=cmd_remote_resume)
+    sub.add_parser("remote-logs").set_defaults(func=cmd_remote_logs)
 
     p = sub.add_parser("inject")
     p.add_argument("--text", required=True)

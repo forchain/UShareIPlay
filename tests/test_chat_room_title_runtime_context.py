@@ -96,6 +96,23 @@ def test_chat_room_title_uses_event_snapshot_instead_of_live_lookup(monkeypatch)
     assert live_lookup_calls == 0
 
 
+def test_chat_room_title_prefers_visible_title_over_content_description(monkeypatch):
+    queued_titles = []
+
+    class FakeTitleManager:
+        next_title = None
+
+        def set_next_title(self, title):
+            queued_titles.append(title)
+
+    monkeypatch.setattr(TitleManager, "instance", lambda: FakeTitleManager())
+    event = ChatRoomTitleEvent(FakeHandler(), runtime=FakeRuntime(busy=False))
+    wrapper = type("Wrapper", (), {"text": "享乐｜即兴的华彩", "content": "房间名称：Joyer"})()
+
+    assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
+    assert queued_titles == []
+
+
 def test_chat_room_title_does_not_overwrite_pending_business_title(monkeypatch):
     runtime = FakeRuntime(busy=False)
     queued_titles = []
