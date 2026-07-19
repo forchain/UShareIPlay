@@ -34,8 +34,8 @@ class ChatRoomTitleEvent(BaseEvent):
             room_title_text = ""
             if element_wrapper is not None:
                 room_title_text = (
-                    getattr(element_wrapper, "content", None)
-                    or getattr(element_wrapper, "text", None)
+                    getattr(element_wrapper, "text", None)
+                    or getattr(element_wrapper, "content", None)
                     or ""
                 ).strip()
             if not room_title_text:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shlex
@@ -202,17 +203,26 @@ def remote_command(target: RemoteTarget, action: str) -> list[str]:
         else shlex.quote(target.deploy_path)
     )
     find_pids = (
-        "find_pids() { ps -eo pid=,args= | awk -v root=\"$PWD\" "
-        "'index($0, root) || /ushareiplay|agent_e2e|e2e_toolbelt|run\\.sh/ {print $1}'; }"
+        "find_processes() { ps -eo pid=,ppid=,pgid=,args= | awk -v root=\"$PWD\" -v self=\"$$\" "
+        "'$1 != self && $2 != self && $4 != \"awk\" && (index($0, root) || /bash \\.\\/run\\.sh$/ || /uv run ushareiplay/) {print $1, $3}'; }; "
+        "find_pids() { find_processes | awk '{print $1}'; }; "
+        "find_pgids() { find_processes | awk '{print $2}' | sort -u; }"
     )
     if action == "status":
         script = f"set -eu; cd -- {root}; {find_pids}; printf 'cwd=%s\\n' \"$PWD\"; find_pids"
     elif action == "pause":
-        script = f"set -eu; cd -- {root}; {find_pids}; pids=$(find_pids); for pid in $pids; do kill -INT \"$pid\" || true; done; sleep 2; remaining=$(find_pids); test -z \"$remaining\" || {{ printf '%s\\n' \"$remaining\"; exit 3; }}"
+        script = f"set -eu; cd -- {root}; {find_pids}; pgids=$(find_pgids); for pgid in $pgids; do kill -INT -- -\"$pgid\" || true; done; for _ in {{1..8}}; do remaining=$(find_pids); test -z \"$remaining\" && exit 0; sleep 1; done; printf '%s\\n' \"$remaining\"; exit 3"
     elif action == "force-stop":
         script = f"set -eu; cd -- {root}; {find_pids}; for pid in $(find_pids); do kill -KILL \"$pid\" || true; done"
     elif action == "resume":
-        script = f"set -eu; cd -- {root}; mkdir -p .agent; nohup bash ./run.sh > .agent/e2e-remote-resume.log 2>&1 & printf 'pid=%s\\n' \"$!\""
+        script = (
+            f"set -eu; cd -- {root}; mkdir -p .agent; "
+            "if command -v uv >/dev/null 2>&1; then "
+            "nohup bash ./run.sh > .agent/e2e-remote-resume.log 2>&1 & "
+            "else test -x ./.venv/bin/ushareiplay; "
+            "nohup ./.venv/bin/ushareiplay > .agent/e2e-remote-resume.log 2>&1 & fi; "
+            "printf 'pid=%s\\n' \"$!\""
+        )
     elif action == "logs":
         script = (
             f"set -eu; cd -- {root}; "
@@ -222,4 +232,5 @@ def remote_command(target: RemoteTarget, action: str) -> list[str]:
         )
     else:
         raise ValueError(f"unknown remote action: {action}")
-    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target.host, script]
+    encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target.host, f"echo {encoded} | base64 -d | bash"]

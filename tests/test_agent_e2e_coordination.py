@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+import base64
 from pathlib import Path
 
 
@@ -14,6 +15,11 @@ def _load_coordination():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _remote_script(command):
+    payload = command[-1].split()[1]
+    return base64.b64decode(payload).decode("utf-8")
 
 
 def test_load_remote_target_requires_only_host_and_deploy_path(tmp_path):
@@ -91,9 +97,9 @@ def test_remote_pause_command_is_graceful_and_force_is_explicit():
     graceful = coordination.remote_command(target, "pause")
     force = coordination.remote_command(target, "force-stop")
 
-    assert "kill -INT" in graceful[-1]
-    assert "kill -KILL" not in graceful[-1]
-    assert "kill -KILL" in force[-1]
+    assert "kill -INT" in _remote_script(graceful)
+    assert "kill -KILL" not in _remote_script(graceful)
+    assert "kill -KILL" in _remote_script(force)
 
 
 def test_remote_resume_uses_the_deployment_run_script():
@@ -102,7 +108,16 @@ def test_remote_resume_uses_the_deployment_run_script():
 
     command = coordination.remote_command(target, "resume")
 
-    assert "nohup bash ./run.sh" in command[-1]
+    assert "nohup bash ./run.sh" in _remote_script(command)
+
+
+def test_remote_resume_falls_back_to_the_project_virtualenv():
+    coordination = _load_coordination()
+    target = coordination.RemoteTarget(host="tony@192.168.8.103", deploy_path="~/github.com/forchain/UShareIPlay")
+
+    command = coordination.remote_command(target, "resume")
+
+    assert "./.venv/bin/ushareiplay" in _remote_script(command)
 
 
 def test_remote_command_expands_a_home_relative_deploy_path():
@@ -111,4 +126,21 @@ def test_remote_command_expands_a_home_relative_deploy_path():
 
     command = coordination.remote_command(target, "status")
 
-    assert "$HOME/github.com/forchain/UShareIPlay" in command[-1]
+    assert "$HOME/github.com/forchain/UShareIPlay" in _remote_script(command)
+
+
+def test_remote_pause_runs_under_bash_and_excludes_its_own_pid():
+    coordination = _load_coordination()
+    target = coordination.RemoteTarget(host="tony@192.168.8.103", deploy_path="~/github.com/forchain/UShareIPlay")
+
+    command = coordination.remote_command(target, "pause")
+
+    assert command[-1].endswith("| base64 -d | bash")
+    script = _remote_script(command)
+    assert "-v self=" in script
+    assert "$1 != self" in script
+    assert "$2 != self" in script
+    assert "$4 != \"awk\"" in script
+    assert "find_pgids" in script
+    assert "kill -INT -- -" in script
+    assert "/bash \\.\\/run\\.sh$/" in script
