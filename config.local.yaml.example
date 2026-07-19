@@ -15,6 +15,13 @@ appium:
   host: "localhost"
   port: 4723
 
+# E2E 远程协同。实际值写入 config.local.yaml（该文件已忽略）。
+# host 可为 SSH config alias，也可为 user@host；部署方式和日志路径由 toolbelt 自动发现。
+agent_e2e:
+  remote:
+    host: "tony@192.168.8.103"
+    deploy_path: "~/github.com/forchain/UShareIPlay"
+
 # Soul App 派对 ID（开发环境使用测试派对）
 soul:
   default_party_id: "FM00000000"   # 替换为你的测试派对 ID
