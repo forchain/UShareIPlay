@@ -211,7 +211,7 @@ def remote_command(target: RemoteTarget, action: str) -> list[str]:
     if action == "status":
         script = f"set -eu; cd -- {root}; {find_pids}; printf 'cwd=%s\\n' \"$PWD\"; find_pids"
     elif action == "pause":
-        script = f"set -eu; cd -- {root}; {find_pids}; pgids=$(find_pgids); for pgid in $pgids; do kill -INT -- -\"$pgid\" || true; done; for _ in {{1..8}}; do remaining=$(find_pids); test -z \"$remaining\" && exit 0; sleep 1; done; printf '%s\\n' \"$remaining\"; exit 3"
+        script = f"set -eu; cd -- {root}; mkdir -p .agent/commands; target=.agent/commands/$(date +%s%N)-remote-stop.cmd; tmp=\"$target.tmp.$$\"; printf '!stop\\n' > \"$tmp\"; mv \"$tmp\" \"$target\"; printf 'queued=%s\\n' \"$target\""
     elif action == "force-stop":
         script = f"set -eu; cd -- {root}; {find_pids}; for pid in $(find_pids); do kill -KILL \"$pid\" || true; done"
     elif action == "resume":

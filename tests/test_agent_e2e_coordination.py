@@ -90,14 +90,15 @@ def test_process_inventory_marks_manual_repo_process_as_external_session(monkeyp
     assert sessions[0]["pid"] == 123
 
 
-def test_remote_pause_command_is_graceful_and_force_is_explicit():
+def test_remote_pause_queues_stop_command_and_force_is_explicit():
     coordination = _load_coordination()
     target = coordination.RemoteTarget(host="tony@192.168.8.103", deploy_path="~/github.com/forchain/UShareIPlay")
 
     graceful = coordination.remote_command(target, "pause")
     force = coordination.remote_command(target, "force-stop")
 
-    assert "kill -INT" in _remote_script(graceful)
+    assert "!stop" in _remote_script(graceful)
+    assert "commands" in _remote_script(graceful)
     assert "kill -KILL" not in _remote_script(graceful)
     assert "kill -KILL" in _remote_script(force)
 
@@ -129,7 +130,7 @@ def test_remote_command_expands_a_home_relative_deploy_path():
     assert "$HOME/github.com/forchain/UShareIPlay" in _remote_script(command)
 
 
-def test_remote_pause_runs_under_bash_and_excludes_its_own_pid():
+def test_remote_pause_uses_safe_bash_transport():
     coordination = _load_coordination()
     target = coordination.RemoteTarget(host="tony@192.168.8.103", deploy_path="~/github.com/forchain/UShareIPlay")
 
@@ -137,10 +138,5 @@ def test_remote_pause_runs_under_bash_and_excludes_its_own_pid():
 
     assert command[-1].endswith("| base64 -d | bash")
     script = _remote_script(command)
-    assert "-v self=" in script
-    assert "$1 != self" in script
-    assert "$2 != self" in script
-    assert "$4 != \"awk\"" in script
-    assert "find_pgids" in script
-    assert "kill -INT -- -" in script
-    assert "/bash \\.\\/run\\.sh$/" in script
+    assert "!stop" in script
+    assert "commands" in script
