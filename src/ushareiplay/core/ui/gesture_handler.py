@@ -224,8 +224,6 @@ class GestureHandler:
             page_source, prev_hash = snapshot()
             values, matched = target_values(page_source)
             attribute_values_list.extend(values)
-            if matched:
-                return element_key, None, self._reversed_if_needed(attribute_values_list, direction)
 
             # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
             container = self.owner.element_finder.wait_for_element_clickable(container_key)
@@ -236,6 +234,32 @@ class GestureHandler:
                     f"scroll_container_until_element: 容器未找到: {container_key}"
                 )
                 return None, None, attribute_values_list
+
+            def find_visible_target() -> Optional[WebElement]:
+                candidates = self.owner.element_finder.find_child_elements(
+                    container, element_key
+                )
+                if attribute_value is None:
+                    return candidates[0] if candidates else None
+
+                attrs = (
+                    attribute_name.split("|")
+                    if attribute_name
+                    else ["content-desc", "text"]
+                )
+                for candidate in candidates:
+                    for attr in attrs:
+                        value = self.owner.element_finder.try_get_attribute(
+                            candidate, attr
+                        )
+                        if value == attribute_value:
+                            return candidate
+                return None
+
+            if matched:
+                target = find_visible_target()
+                if target:
+                    return element_key, target, self._reversed_if_needed(attribute_values_list, direction)
 
             # 方向规范化
             valid_dirs = {"up", "down", "left", "right"}
@@ -286,10 +310,13 @@ class GestureHandler:
 
             # 查找目标元素的辅助函数
             def find_target_element(source: str) -> Tuple[Optional[str], Optional[WebElement]]:
-                """从当前 page source 快照读取目标属性，不逐个访问 WebElement。"""
+                """先用 page source 判断命中，再解析对应的可见元素。"""
                 values, matched = target_values(source)
                 attribute_values_list.extend(values)
-                return (element_key, container) if matched else (None, None)
+                if not matched:
+                    return None, None
+                target = find_visible_target()
+                return (element_key, target) if target else (None, None)
 
             for _ in range(max_swipes):
                 # 计算滑动坐标并执行滑动
