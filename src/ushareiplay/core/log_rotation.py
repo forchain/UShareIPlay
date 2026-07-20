@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +35,10 @@ def archive_active_log_on_startup(log_dir: Path, active_name: str) -> Path:
         return active_path
 
     archive_path = _archive_path(log_dir, active_name, _log_file_created_at(active_path))
-    os.replace(active_path, archive_path)
-    active_path.touch()
+    # Preserve the active file's inode. Existing ``tail -f`` processes follow
+    # the open descriptor, so replacing the path would leave them on the
+    # archived file forever. Copy the snapshot, then truncate in place.
+    shutil.copy2(active_path, archive_path)
+    with active_path.open("r+b") as active_file:
+        active_file.truncate(0)
     return active_path
