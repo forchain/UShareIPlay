@@ -143,6 +143,13 @@ def test_scroll_container_reads_target_attributes_from_page_source_cache():
         location={"x": 0, "y": 0},
         size={"width": 100, "height": 100},
     )
+    older = MagicMock()
+    anchor = MagicMock()
+    handler.owner.element_finder.find_child_elements.return_value = [older, anchor]
+    handler.owner.element_finder.try_get_attribute.side_effect = lambda element, attribute: {
+        (older, "content-desc"): "older",
+        (anchor, "text"): "anchor",
+    }.get((element, attribute))
 
     result = handler.scroll_container_until_element(
         "message_content",
@@ -153,9 +160,42 @@ def test_scroll_container_reads_target_attributes_from_page_source_cache():
     )
 
     assert result[0] == "message_content"
+    assert result[1] is anchor
     assert result[2] == ["anchor", "older"]
-    handler.owner.element_finder.wait_for_element_clickable.assert_not_called()
+    handler.owner.element_finder.wait_for_element_clickable.assert_called_once_with("message_list")
     handler.owner.element_finder.wait_for_element.assert_not_called()
     handler.owner.element_finder.find_child_element.assert_not_called()
-    handler.owner.element_finder.find_child_elements.assert_not_called()
-    handler.owner.element_finder.try_get_attribute.assert_not_called()
+
+
+def test_scroll_container_returns_the_visible_element_matching_attribute_value():
+    driver = MagicMock()
+    driver.page_source = """
+        <hierarchy>
+          <node resource-id="online-name" text="Joyer" />
+          <node resource-id="online-name" text="Outlier" />
+        </hierarchy>
+    """
+    handler = _make_handler(driver)
+    handler.owner.config = {"elements": {"online_user": "online-name"}}
+    handler.owner.element_finder = MagicMock()
+    container = SimpleNamespace(
+        location={"x": 0, "y": 0},
+        size={"width": 100, "height": 100},
+    )
+    joyer = MagicMock(text="Joyer")
+    outlier = MagicMock(text="Outlier")
+    handler.owner.element_finder.wait_for_element_clickable.return_value = container
+    handler.owner.element_finder.find_child_elements.return_value = [joyer, outlier]
+    handler.owner.element_finder.try_get_attribute.side_effect = (
+        lambda element, attribute: element.text if attribute == "text" else None
+    )
+
+    result = handler.scroll_container_until_element(
+        "online_user",
+        "online_users",
+        attribute_name="text",
+        attribute_value="Outlier",
+    )
+
+    assert result[0] == "online_user"
+    assert result[1] is outlier
