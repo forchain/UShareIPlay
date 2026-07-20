@@ -59,6 +59,27 @@ def test_archive_active_log_uses_created_time_in_archive_name(
     assert active_file.read_text(encoding="utf-8") == ""
 
 
+def test_archive_active_log_preserves_active_inode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from ushareiplay.core import log_rotation
+
+    active_file = tmp_path / "chat.log"
+    active_file.write_text("old\n", encoding="utf-8")
+    original_inode = active_file.stat().st_ino
+    monkeypatch.setattr(
+        log_rotation,
+        "_log_file_created_at",
+        lambda path: datetime(2026, 7, 9, 8, 7, 6),
+    )
+
+    log_rotation.archive_active_log_on_startup(tmp_path, "chat.log")
+
+    assert active_file.stat().st_ino == original_inode
+    assert active_file.read_text(encoding="utf-8") == ""
+
+
 def test_app_handler_loggers_share_fixed_active_file(
     tmp_path: Path,
     monkeypatch,
