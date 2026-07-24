@@ -6,11 +6,12 @@ from ushareiplay.core.singleton import Singleton
 
 class InfoManager(Singleton):
     """
-    信息管理器（门面）
+    信息管理器（显式门面，见 docs/adr/0002-info-manager-facade.md）
 
     原 InfoManager 是一个 kitchen sink，混合了房间状态、在线用户、播放缓存、
     UI 抓取等多个职责。现在这些职责已拆分到 ushareiplay.state 下的专门模块，
-    InfoManager 保留为薄门面，保持现有调用点兼容。
+    InfoManager 保留为薄门面：调用方穿越一个接缝，即可到达 5 个状态模块。
+    测试需要注入 handler/logger 时，请直接注入目标状态模块。
     """
 
     def __init__(self):
@@ -20,39 +21,11 @@ class InfoManager(Singleton):
         self._logger = None
         self._party_manager = None
 
-    def __setattr__(self, name, value):
-        """保留旧测试直接注入 _handler/_logger 的能力，并同步给子模块。"""
-        super().__setattr__(name, value)
-        if name in ('_handler', '_logger') and value is not None:
-            self._propagate_injected_handler_logger()
-
-    def _propagate_injected_handler_logger(self):
-        """如果外部测试已注入 _handler/_logger，同步给已创建的子模块。"""
-        handler = self.__dict__.get('_handler')
-        logger = self.__dict__.get('_logger')
-        if hasattr(self, '_InfoManager__room_state') and logger is not None:
-            self.__room_state._logger = logger
-        if hasattr(self, '_InfoManager__presence_tracker') and logger is not None:
-            self.__presence_tracker._logger = logger
-        if hasattr(self, '_InfoManager__playlist_state') and logger is not None:
-            self.__playlist_state._logger = logger
-        if hasattr(self, '_InfoManager__playback_broadcaster'):
-            if handler is not None:
-                self.__playback_broadcaster._soul_handler = handler
-            if logger is not None:
-                self.__playback_broadcaster._logger = logger
-        if hasattr(self, '_InfoManager__online_list_scraper'):
-            if handler is not None:
-                self.__online_list_scraper._handler = handler
-            if logger is not None:
-                self.__online_list_scraper._logger = logger
-
     @property
     def _room_state(self):
         if not hasattr(self, '__room_state'):
             from ushareiplay.state.room_state import RoomState
             self.__room_state = RoomState.instance()
-            self._propagate_injected_handler_logger()
         return self.__room_state
 
     @property
@@ -60,7 +33,6 @@ class InfoManager(Singleton):
         if not hasattr(self, '__presence_tracker'):
             from ushareiplay.state.presence_tracker import PresenceTracker
             self.__presence_tracker = PresenceTracker.instance()
-            self._propagate_injected_handler_logger()
         return self.__presence_tracker
 
     @property
@@ -68,7 +40,6 @@ class InfoManager(Singleton):
         if not hasattr(self, '__playlist_state'):
             from ushareiplay.state.playlist_state import PlaylistState
             self.__playlist_state = PlaylistState.instance()
-            self._propagate_injected_handler_logger()
         return self.__playlist_state
 
     @property
@@ -76,7 +47,6 @@ class InfoManager(Singleton):
         if not hasattr(self, '__playback_broadcaster'):
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             self.__playback_broadcaster = PlaybackBroadcaster.instance()
-            self._propagate_injected_handler_logger()
         return self.__playback_broadcaster
 
     @property
@@ -84,7 +54,6 @@ class InfoManager(Singleton):
         if not hasattr(self, '__online_list_scraper'):
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             self.__online_list_scraper = OnlineListScraper.instance()
-            self._propagate_injected_handler_logger()
         return self.__online_list_scraper
 
     @property
@@ -109,25 +78,6 @@ class InfoManager(Singleton):
             from ushareiplay.managers.party_manager import PartyManager
             self._party_manager = PartyManager.instance()
         return self._party_manager
-
-    # ------------------------------------------------------------------
-    # 兼容旧测试直接注入的内部属性
-    # ------------------------------------------------------------------
-    @property
-    def _online_users(self):
-        return self._presence_tracker._online_users
-
-    @_online_users.setter
-    def _online_users(self, value):
-        self._presence_tracker._online_users = set(value) if value is not None else set()
-
-    @property
-    def _playback_info_cache(self):
-        return self._playback_broadcaster._playback_info_cache
-
-    @_playback_info_cache.setter
-    def _playback_info_cache(self, value):
-        self._playback_broadcaster._playback_info_cache = value
 
     # ------------------------------------------------------------------
     # Playlist / Player 状态（委托给 PlaylistState）

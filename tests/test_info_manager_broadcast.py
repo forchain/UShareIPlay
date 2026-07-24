@@ -40,14 +40,20 @@ def _music_manager_mock():
     return mock, skip_result
 
 
+def _inject_broadcaster(mock_handler, mock_logger, cache):
+    """直接向 PlaybackBroadcaster 注入测试替身（见 ADR-0002）。"""
+    broadcaster = PlaybackBroadcaster.instance()
+    broadcaster._soul_handler = mock_handler
+    broadcaster._logger = mock_logger
+    broadcaster._playback_info_cache = cache
+
+
 def test_send_playing_message_respects_broadcast_toggle(info_manager):
     mock_handler = MagicMock()
     mock_logger = MagicMock()
-    info_manager._handler = mock_handler
-    info_manager._logger = mock_logger
 
     info = {'song': 'SongA', 'singer': 'SingerA', 'album': 'AlbumA'}
-    info_manager._playback_info_cache = info
+    _inject_broadcaster(mock_handler, mock_logger, info)
 
     mock_music_manager, skip_result = _music_manager_mock()
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
@@ -86,11 +92,9 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
 
 def test_send_playing_message_default_behavior(info_manager):
     mock_handler = MagicMock()
-    info_manager._handler = mock_handler
-    info_manager._logger = MagicMock()
 
     info = {'song': 'SongA', 'singer': 'SingerA', 'album': 'AlbumA'}
-    info_manager._playback_info_cache = info
+    _inject_broadcaster(mock_handler, MagicMock(), info)
 
     mock_music_manager = MagicMock()
     mock_music_manager.handle_song_quality_check.side_effect = (
@@ -105,9 +109,9 @@ def test_send_playing_message_default_behavior(info_manager):
 
 def test_send_playing_message_backward_compatible_nested_config(info_manager):
     mock_handler = MagicMock()
-    info_manager._handler = mock_handler
-    info_manager._logger = MagicMock()
-    info_manager._playback_info_cache = {'song': 'SongA', 'singer': 'SingerA', 'album': 'AlbumA'}
+    _inject_broadcaster(
+        mock_handler, MagicMock(), {'song': 'SongA', 'singer': 'SingerA', 'album': 'AlbumA'}
+    )
 
     mock_music_manager = MagicMock()
     mock_music_manager.handle_song_quality_check.return_value = False
@@ -119,7 +123,7 @@ def test_send_playing_message_backward_compatible_nested_config(info_manager):
 
 
 def test_ensure_cached_release_date_updates_playback_cache(info_manager):
-    info_manager._playback_info_cache = {
+    PlaybackBroadcaster.instance()._playback_info_cache = {
         "song": "如风",
         "singer": "王菲",
         "album": "十万个为什么？(日本版）",
