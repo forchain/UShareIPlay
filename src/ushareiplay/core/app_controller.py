@@ -12,11 +12,8 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 from ushareiplay.core.runtime_services import (
     AgentCommandSpool,
-    RuntimeQueueDrainer,
     StatusReporter,
 )
 from ushareiplay.core.runtime_context import (
@@ -26,11 +23,6 @@ from ushareiplay.core.runtime_context import (
 )
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.observability import Observability, new_run_id
-from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-from ushareiplay.handlers.soul_handler import SoulHandler
-from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.managers.notice_manager import NoticeManager
-from ushareiplay.managers.party_manager import PartyManager
 
 
 class AppController(Singleton):
@@ -308,98 +300,13 @@ class AppController(Singleton):
         self._agent_command_spool.drain()
 
     def _init_handlers(self):
-        """Initialize handlers after driver is ready"""
+        """Initialize handlers after driver is ready.
+
+        初始化顺序与依赖由 InitGraph 持有（见 core/init_graph.py）。
+        """
         try:
-            # Initialize handlers using singleton pattern
-            self.soul_handler = SoulHandler.initialize(
-                self.driver, self.config["soul"], self
-            )
-            self.register_driver_subscriber(self.soul_handler)
-            self.music_handler = QQMusicHandler.initialize(
-                self.driver, self.config["qq_music"], self
-            )
-            self.register_driver_subscriber(self.music_handler)
-            self.logger = self.soul_handler.logger
-
-            # Initialize managers using singleton pattern (no parameters needed)
-            from ushareiplay.managers.topic_manager import TopicManager
-            from ushareiplay.managers.mic_manager import MicManager
-            from ushareiplay.managers.music_manager import MusicManager
-            from ushareiplay.managers.recovery_manager import RecoveryManager
-            from ushareiplay.managers.timer_manager import TimerManager
-            from ushareiplay.managers.command_manager import CommandManager
-            from ushareiplay.managers.info_manager import InfoManager
-            from ushareiplay.managers.seat_manager import SeatManager
-            from ushareiplay.managers.admin_manager import AdminManager
-            from ushareiplay.managers.keyword_manager import KeywordManager
-            from ushareiplay.managers.message_manager import MessageManager
-            from ushareiplay.managers.sleep_manager import SleepManager
-            from ushareiplay.managers.theme_manager import ThemeManager
-            from ushareiplay.managers.title_manager import TitleManager
-            from ushareiplay.managers.room_name_manager import RoomNameManager
-            from ushareiplay.managers.user_manager import UserManager
-            from ushareiplay.state.online_list_scraper import OnlineListScraper
-            from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-            from ushareiplay.state.playlist_state import PlaylistState
-            from ushareiplay.state.presence_tracker import PresenceTracker
-            from ushareiplay.state.room_state import RoomState
-
-            # Initialize managers after handlers are ready
-            self.logger.info("创建 manager 实例...")
-            self.seat_manager = SeatManager.get_instance(self.soul_handler)
-
-            # Creation is deliberately centralized here. Every other module uses
-            # .instance() as a lookup-only API.
-            UserManager.initialize()
-            SleepManager.initialize(self.config)
-            MessageQueue.initialize()
-            RecoveryManager.initialize()
-            MessageManager.initialize()
-            self.message_dispatch = MessageDispatch.initialize()
-            self.topic_manager = TopicManager.initialize()
-            self.mic_manager = MicManager.initialize()
-            self.music_manager = MusicManager.initialize()
-            self.register_driver_subscriber(self.music_manager)
-            self.recovery_manager = RecoveryManager.instance()
-            self.timer_manager = TimerManager.initialize()
-            self.command_manager = CommandManager.initialize()
-            self.command_manager.controller = self
-            self.command_manager.configure_runtime(self.command_runtime_context)
-            RoomState.initialize()
-            PresenceTracker.initialize()
-            PlaylistState.initialize()
-            PlaybackBroadcaster.initialize()
-            OnlineListScraper.initialize()
-            self.info_manager = InfoManager.initialize()
-            self.party_manager = PartyManager.initialize()
-            self.notice_manager = NoticeManager.initialize()
-            RoomNameManager.initialize()
-            ThemeManager.initialize()
-            TitleManager.initialize()
-            AdminManager.initialize()
-            KeywordManager.initialize()
-            self.post_party_create_automation = PostPartyCreateAutomation(self)
-            self._runtime_queue_drainer = RuntimeQueueDrainer(
-                handler=self.soul_handler,
-                command_manager=self.command_manager,
-                send_screen_message=self.message_dispatch.send_screen_message,
-                obs=self.obs,
-                logger=self.logger,
-            )
-            self._status_reporter.soul_handler = self.soul_handler
-            self._status_reporter.timer_manager = self.timer_manager
-
-            # Initialize command manager with config
-            self.logger.info("初始化命令解析器...")
-            self.command_manager.initialize_parser(self.config["commands"])
-
-            # Initialize event manager
-            self.logger.info("初始化事件管理器...")
-            self.event_manager = EventManager.initialize()
-            self.event_manager.configure_runtime(self.event_runtime_context)
-            self.event_manager.initialize_events()
-            self.logger.info("事件管理器初始化完成")
-
+            from ushareiplay.core.init_graph import InitGraph
+            InitGraph(self).run()
             self.logger.info("Handlers and managers initialized successfully")
             self.logger.info("所有 handlers 和 managers 初始化完成")
 
