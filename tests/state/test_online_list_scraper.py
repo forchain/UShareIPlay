@@ -4,8 +4,41 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from ushareiplay.state.online_list_scraper import OnlineListScraper
+from ushareiplay.state.online_list_ui import OnlineListUI
 from ushareiplay.state.room_state import RoomState
 from ushareiplay.state.presence_tracker import PresenceTracker
+
+
+class FakeOnlineListUI(OnlineListUI):
+    """第二个适配器：测试用的 UISeen 端口实现，让 seam 成为真 seam。"""
+
+    def __init__(self):
+        self.elements = {}
+        self.wait_elements = {}
+        self.child_elements = []
+        self.child_element_map = {}
+        self.swipes = []
+        self.clicks = []
+
+    def try_find_element(self, key, log=True):
+        return self.elements.get(key)
+
+    def wait_for_element(self, key):
+        return self.wait_elements.get(key)
+
+    def find_child_elements(self, parent, key):
+        return self.child_elements
+
+    def find_child_element(self, parent, key):
+        return self.child_element_map.get(key)
+
+    def swipe(self, start_x, start_y, end_x, end_y, duration_ms=300):
+        self.swipes.append((start_x, start_y, end_x, end_y, duration_ms))
+        return True
+
+    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
+        self.clicks.append((element, x_ratio, y_ratio))
+        return True
 
 
 @pytest.fixture
@@ -17,7 +50,7 @@ def scraper():
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    s._handler = MagicMock()
+    s._ui = FakeOnlineListUI()
     return s
 
 
@@ -53,20 +86,15 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
     follow_state_elem = MagicMock()
     follow_state_elem.text = ""
 
-    scraper._handler.element_finder.try_find_element.side_effect = lambda key, **kwargs: {
-        "user_count": user_count_elem,
-        "online_users": online_container,
-        "bottom_drawer": MagicMock(),
-    }.get(key)
-    scraper._handler.element_finder.find_child_elements.return_value = [user_container]
-    scraper._handler.element_finder.find_child_element.side_effect = lambda parent, key, **kwargs: {
+    ui = scraper._ui
+    ui.elements["user_count"] = user_count_elem
+    ui.wait_elements["online_users"] = online_container
+    ui.wait_elements["bottom_drawer"] = MagicMock()
+    ui.child_elements = [user_container]
+    ui.child_element_map = {
         "online_user": user_elem,
         "follow_state": follow_state_elem,
-    }.get(key)
-    scraper._handler.element_finder.wait_for_element.side_effect = lambda key: {
-        "online_users": online_container,
-        "bottom_drawer": MagicMock(),
-    }.get(key)
+    }
 
     with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()):
         await scraper.refresh_online_users()
@@ -78,8 +106,8 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
 def test_refresh_online_users_no_op_when_user_count_element_missing(scraper):
     RoomState.initialize()
     PresenceTracker.initialize()
-    scraper._handler.element_finder.try_find_element.return_value = None
     # Should return early without raising
     import asyncio
     asyncio.run(scraper.refresh_online_users())
-    scraper._handler.element_finder.try_find_element.assert_called_once_with("user_count", log=False)
+    assert scraper._ui.swipes == []
+    assert scraper._ui.clicks == []
