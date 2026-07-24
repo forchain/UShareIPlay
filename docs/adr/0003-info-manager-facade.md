@@ -1,0 +1,7 @@
+# InfoManager is an explicit facade over the state modules
+
+The room/playback/online-user state that used to live in one kitchen-sink `InfoManager` is now split across five focused modules under `ushareiplay.state` (`RoomState`, `PresenceTracker`, `PlaylistState`, `PlaybackBroadcaster`, `OnlineListScraper`). We decided to keep `InfoManager` as an **explicit facade** over those modules rather than dissolving it and migrating its ~50 call sites in 14 production files.
+
+This gives callers a single, stable seam — one import, one place that knows which state module owns which concern — while the state modules stay independently testable. Dissolving the facade would scatter that knowledge across every caller (many of which touch two or three state concerns per call site) for no behavior gain. The facade carries no behavior of its own beyond delegation and two derived read models (`get_party_duration_info`, `get_playlist_info`).
+
+The trade-off we explicitly rejected: `InfoManager` previously carried test infrastructure in production code — a `__setattr__` hook (`_propagate_injected_handler_logger`) that propagated test-injected `_handler`/`_logger` into the state modules, plus `_online_users`/`_playback_info_cache` pass-through properties kept only for old tests. Those are removed. Tests now inject doubles directly into the state module under test (`PlaybackBroadcaster.instance()._soul_handler = ...`), which is the same pattern the state modules' own lazy `handler`/`logger` properties already support.
