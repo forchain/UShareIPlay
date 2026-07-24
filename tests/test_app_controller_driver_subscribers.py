@@ -63,14 +63,35 @@ class FakeSoulHandler(DriverAware):
         return self
 
 
+def _make_lifecycle(controller, driver):
+    from ushareiplay.core.driver_lifecycle import DriverLifecycle
+
+    # Wrap the call in a lambda so monkeypatching ``controller._init_driver``
+    # (the existing test pattern) is observed at call time, not captured
+    # at construction time.
+    lifecycle = DriverLifecycle(
+        factory=lambda: controller._init_driver(),
+        settings={
+            "waitForIdleTimeout": 0,
+            "waitForSelectorTimeout": 2000,
+            "waitForPageLoad": 2000,
+        },
+        on_reinit=getattr(controller, "_on_driver_reinit", None),
+        obs=controller.obs,
+        sleep=lambda _seconds: None,
+    )
+    lifecycle._driver = driver
+    return lifecycle
+
+
 def controller_without_init(driver=None):
     controller = AppController.__new__(AppController)
-    controller.driver = driver or FakeDriver("old-driver")
-    controller._driver_subscribers = []
-    controller._is_reinitializing = False
     controller.logger = FakeLogger()
     controller.obs = FakeObserver()
     controller.soul_handler = None
+    controller.driver_lifecycle = _make_lifecycle(
+        controller, driver or FakeDriver("old-driver")
+    )
     return controller
 
 
@@ -97,19 +118,26 @@ def test_register_driver_subscriber_adds_unique_objects_and_current_driver():
     controller.register_driver_subscriber(subscriber)
     controller.register_driver_subscriber(subscriber)
 
-    assert controller._driver_subscribers == [subscriber]
+    assert controller.driver_lifecycle.subscribers == [subscriber]
     assert subscriber.driver is controller.driver
 
 
-def test_notify_driver_subscribers_sets_driver_on_each_registered_object():
+def test_lifecycle_propagates_new_driver_to_attached_subscribers():
+    from ushareiplay.core.driver_lifecycle import DriverLifecycle
+
     controller = controller_without_init()
     first = DriverAware()
     second = DriverAware()
-    new_driver = SimpleNamespace(name="new-driver")
+    new_driver = FakeDriver("new-driver")
 
-    controller.register_driver_subscriber(first)
-    controller.register_driver_subscriber(second)
-    controller._notify_driver_subscribers(new_driver)
+    lifecycle = DriverLifecycle(
+        factory=lambda: new_driver,
+        obs=controller.obs,
+        sleep=lambda _seconds: None,
+    )
+    lifecycle.attach(first)
+    lifecycle.attach(second)
+    lifecycle.initialize()
 
     assert first.driver is new_driver
     assert second.driver is new_driver

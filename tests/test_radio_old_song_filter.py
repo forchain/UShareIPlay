@@ -4,6 +4,7 @@ from selenium.common import StaleElementReferenceException
 
 from ushareiplay.commands.play import PlayCommand
 from ushareiplay.commands.radio import RadioCommand
+from ushareiplay.core.radio_workflow import RadioWorkflow
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup
 
@@ -157,26 +158,29 @@ class _InfoManager:
         return False
 
 
-def _make_command(monkeypatch, music_handler):
+def _make_workflow(monkeypatch, music_handler):
     title_manager = _TitleManager()
     topic_manager = _TopicManager()
-
-    controller = SimpleNamespace(
-        music_handler=music_handler,
-        soul_handler=_SoulHandler(),
-        config={
-            "old_song_filter": {
-                "enabled": True,
-                "cutoff_date": "2000-01-01",
-                "radio_max_refreshes": 3,
-            }
-        },
+    info_manager = _InfoManager()
+    soul_handler = _SoulHandler()
+    config = {
+        "old_song_filter": {
+            "enabled": True,
+            "cutoff_date": "2000-01-01",
+            "radio_max_refreshes": 3,
+        }
+    }
+    song_release_lookup = QQMusicSongReleaseLookup()
+    workflow = RadioWorkflow(
+        music_ui=music_handler,
+        soul_ui=soul_handler,
+        info_manager=info_manager,
+        title_manager=title_manager,
+        topic_manager=topic_manager,
+        song_release_lookup=song_release_lookup,
+        config=config,
     )
-    command = RadioCommand(controller)
-    command._title_manager = title_manager
-    command._topic_manager = topic_manager
-    command._info_manager = _InfoManager()
-    return command, title_manager, topic_manager
+    return workflow, title_manager, topic_manager, song_release_lookup
 
 
 def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
@@ -184,15 +188,13 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
         ["新歌 - 歌手C\n第二首 - 歌手D"],
         topics=["老歌", "新歌"],
     )
-    command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    workflow, title_manager, topic_manager, lookup = _make_workflow(monkeypatch, music_handler)
     release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
-        command.song_release_lookup,
-        "get_release_date",
-        lambda song: release_dates[song],
+        lookup, "get_release_date", lambda song: release_dates[song],
     )
 
-    result = command._handle_collection(SimpleNamespace(nickname="Alice"))
+    result = workflow._handle_collection(SimpleNamespace(nickname="Alice"))
 
     assert result == {"playlist": "新歌 - 歌手C\n第二首 - 歌手D"}
     assert len(music_handler.play_buttons) == 2
@@ -206,10 +208,10 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
 
 def test_default_radio_accepts_song_when_release_date_unknown(monkeypatch):
     music_handler = _MusicHandler(["未知歌 - 歌手A"])
-    command, _title_manager, _topic_manager = _make_command(monkeypatch, music_handler)
-    monkeypatch.setattr(command.song_release_lookup, "get_release_date", lambda _song: None)
+    workflow, _title_manager, _topic_manager, lookup = _make_workflow(monkeypatch, music_handler)
+    monkeypatch.setattr(lookup, "get_release_date", lambda _song: None)
 
-    result = command._handle_collection(SimpleNamespace(nickname="Alice"))
+    result = workflow._handle_collection(SimpleNamespace(nickname="Alice"))
 
     assert result == {"playlist": "未知歌 - 歌手A"}
     assert len(music_handler.play_buttons) == 1
@@ -222,15 +224,13 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
         topics=["老歌", "新歌"],
     )
     music_handler.stale_topics.add("新歌")
-    command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    workflow, title_manager, topic_manager, lookup = _make_workflow(monkeypatch, music_handler)
     release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
-        command.song_release_lookup,
-        "get_release_date",
-        lambda song: release_dates[song],
+        lookup, "get_release_date", lambda song: release_dates[song],
     )
 
-    result = command._handle_collection(SimpleNamespace(nickname="Alice"))
+    result = workflow._handle_collection(SimpleNamespace(nickname="Alice"))
 
     assert result == {"playlist": "新歌 - 歌手C"}
     assert title_manager.titles == ["新歌"]
