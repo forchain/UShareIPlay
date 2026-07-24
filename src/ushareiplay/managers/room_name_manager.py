@@ -10,9 +10,8 @@ class RoomNameManager(Singleton):
     """Deep module that owns the room-name invariant: {theme}｜{title}.
 
     This is the single place that knows about the shared cooldown, pending
-    theme/title state, the Soul UI write, and notice restoration. Commands,
-    events, and the legacy ThemeManager/TitleManager adapters are seams around
-    it.
+    theme/title state, the Soul UI write, and notice restoration. Commands and
+    events are seams around it.
     """
 
     def __init__(self):
