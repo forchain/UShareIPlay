@@ -121,10 +121,10 @@ class AlbumCommand(BaseCommand):
 
         self.handler.list_mode = 'album'
 
-        # 使用 title_manager 和 topic_manager 管理标题和话题
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
         self.topic_manager.change_topic(topic)
         self.handler.logger.info(f"changing album topic to {topic}")
-        self.title_manager.set_next_title(title)
+        self.room_name_manager.set_next_title(title)
         self.handler.logger.info(f"changing album title  to {title}")
 
         # 存储完整的歌单名称到 InfoManager

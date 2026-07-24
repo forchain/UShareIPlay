@@ -32,9 +32,9 @@ class PartyNameViolationLaterEvent(BaseEvent):
                 self.logger.info("Skipped title reset: tvLater snapshot has no party-name violation evidence")
                 return True
 
-            from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.room_name_manager import RoomNameManager
 
-            TitleManager.instance().set_next_title("日推")
+            RoomNameManager.instance().set_next_title("日推")
             return True
         except Exception as e:
             self.logger.error(f"PartyNameViolationLaterEvent: {e}")

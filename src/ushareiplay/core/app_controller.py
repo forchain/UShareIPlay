@@ -334,8 +334,6 @@ class AppController(Singleton):
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.managers.sleep_manager import SleepManager
-            from ushareiplay.managers.theme_manager import ThemeManager
-            from ushareiplay.managers.title_manager import TitleManager
             from ushareiplay.managers.room_name_manager import RoomNameManager
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -374,8 +372,6 @@ class AppController(Singleton):
             self.party_manager = PartyManager.initialize()
             self.notice_manager = NoticeManager.initialize()
             RoomNameManager.initialize()
-            ThemeManager.initialize()
-            TitleManager.initialize()
             AdminManager.initialize()
             KeywordManager.initialize()
             self.post_party_create_automation = PostPartyCreateAutomation(self)

@@ -131,7 +131,7 @@ class _SoulHandler:
         return self
 
 
-class _TitleManager:
+class _RoomNameManager:
     def __init__(self):
         self.titles = []
 
@@ -158,7 +158,7 @@ class _InfoManager:
 
 
 def _make_command(monkeypatch, music_handler):
-    title_manager = _TitleManager()
+    title_manager = _RoomNameManager()
     topic_manager = _TopicManager()
 
     controller = SimpleNamespace(
@@ -173,7 +173,7 @@ def _make_command(monkeypatch, music_handler):
         },
     )
     command = RadioCommand(controller)
-    command._title_manager = title_manager
+    command._room_name_manager = title_manager
     command._topic_manager = topic_manager
     command._info_manager = _InfoManager()
     return command, title_manager, topic_manager
