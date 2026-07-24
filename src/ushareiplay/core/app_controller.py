@@ -323,7 +323,6 @@ class AppController(Singleton):
 
             # Initialize managers using singleton pattern (no parameters needed)
             from ushareiplay.managers.topic_manager import TopicManager
-            from ushareiplay.managers.mic_manager import MicManager
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.managers.timer_manager import TimerManager
@@ -357,7 +356,6 @@ class AppController(Singleton):
             MessageManager.initialize()
             self.message_dispatch = MessageDispatch.initialize()
             self.topic_manager = TopicManager.initialize()
-            self.mic_manager = MicManager.initialize()
             self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
             self.recovery_manager = RecoveryManager.instance()

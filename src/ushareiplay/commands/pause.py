@@ -1,6 +1,5 @@
 import traceback
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.music_manager import MusicManager
 
 
@@ -38,12 +37,12 @@ class PauseCommand(BaseCommand):
                         'action': 'Paused' if not is_playing else 'Resumed'
                     }
 
-            mic_manager = MicManager.instance()
+            mic_toggle = self.soul_handler.ui_actions.toggle_mic
             music_manager = MusicManager.instance()
-            
+
             if should_pause:
                 # If pausing, turn off mic first
-                mic_result = mic_manager.toggle_mic(False)  # Turn mic off
+                mic_result = mic_toggle(False)  # Turn mic off
                 if 'error' in mic_result:
                     self.music_handler.logger.warning(f"Failed to turn off mic: {mic_result['error']}")
 
@@ -54,7 +53,7 @@ class PauseCommand(BaseCommand):
 
             if not should_pause:
                 # If resuming, turn on mic after resuming playback
-                mic_result = mic_manager.toggle_mic(True)  # Turn mic on
+                mic_result = mic_toggle(True)  # Turn mic on
                 if 'error' in mic_result:
                     self.music_handler.logger.warning(f"Failed to turn on mic: {mic_result['error']}")
 
