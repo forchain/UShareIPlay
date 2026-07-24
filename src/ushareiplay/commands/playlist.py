@@ -139,8 +139,8 @@ class PlaylistCommand(BaseCommand):
             self.handler.logger.warning(f"Failed to read playlist after playback started: {error}")
             playlist_text = original_playlist_name
 
-        # 使用 title_manager 和 topic_manager 管理标题和话题
-        self.title_manager.set_next_title(subject)
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
+        self.room_name_manager.set_next_title(subject)
         self.topic_manager.change_topic(topic)
         self.handler.list_mode = 'playlist'
 

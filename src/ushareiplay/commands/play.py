@@ -73,8 +73,8 @@ class PlayCommand(BaseCommand):
         self.handler.logger.info("Clicked play all button")
 
         self.handler.list_mode = 'favorites'
-        # 使用 title_manager 和 topic_manager 管理标题和话题
-        self.title_manager.set_next_title("O Station")
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
+        self.room_name_manager.set_next_title("O Station")
         self.topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
@@ -102,8 +102,8 @@ class PlayCommand(BaseCommand):
         singer = self.handler.element_finder.wait_for_element_clickable('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
-        # 使用 title_manager 和 topic_manager 管理标题和话题
-        self.title_manager.set_next_title("O Radio")
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
+        self.room_name_manager.set_next_title("O Radio")
         self.topic_manager.change_topic(song_text)
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

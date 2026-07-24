@@ -24,9 +24,7 @@ class BaseCommand(ABC):
         self.handler = getattr(controller, self.handler_attr) if self.handler_attr else None
         self.last_update_time = time.time()
         self._info_manager = None
-        self._title_manager = None
         self._topic_manager = None
-        self._theme_manager = None
         self._room_name_manager = None
         self._message_dispatch = None
 
@@ -87,25 +85,11 @@ class BaseCommand(ABC):
         return self._info_manager
 
     @property
-    def title_manager(self):
-        if self._title_manager is None:
-            from ushareiplay.managers.title_manager import TitleManager
-            self._title_manager = TitleManager.instance()
-        return self._title_manager
-
-    @property
     def topic_manager(self):
         if self._topic_manager is None:
             from ushareiplay.managers.topic_manager import TopicManager
             self._topic_manager = TopicManager.instance()
         return self._topic_manager
-
-    @property
-    def theme_manager(self):
-        if self._theme_manager is None:
-            from ushareiplay.managers.theme_manager import ThemeManager
-            self._theme_manager = ThemeManager.instance()
-        return self._theme_manager
 
     @property
     def room_name_manager(self):

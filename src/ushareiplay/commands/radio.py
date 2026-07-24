@@ -60,7 +60,7 @@ class RadioCommand(BaseCommand):
         return None
 
     def _set_room_context(self, room_name: str, topic_text: Optional[str] = None):
-        title_result = self.title_manager.set_next_title(room_name)
+        title_result = self.room_name_manager.set_next_title(room_name)
         if "error" in title_result:
             return self._report_error(title_result["error"])
         if topic_value := topic_text.strip() if topic_text else None:

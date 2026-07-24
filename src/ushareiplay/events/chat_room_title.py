@@ -44,13 +44,13 @@ class ChatRoomTitleEvent(BaseEvent):
             if "｜" in room_title_text:
                 return False
 
-            from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.room_name_manager import RoomNameManager
 
-            title_manager = TitleManager.instance()
-            if title_manager.next_title:
+            room_name_manager = RoomNameManager.instance()
+            if room_name_manager.next_title:
                 return False
 
-            title_manager.set_next_title("日推")
+            room_name_manager.set_next_title("日推")
             return False
         except Exception as e:
             self.logger.debug(f"ChatRoomTitleEvent skipped: {e}")

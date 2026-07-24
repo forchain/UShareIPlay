@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
-from ushareiplay.managers.title_manager import TitleManager
+from ushareiplay.managers.room_name_manager import RoomNameManager
 
 
 class FakeLogger:
@@ -30,13 +30,13 @@ class FakeRuntime:
         return self.busy
 
 
-def test_chat_room_title_skips_title_manager_when_runtime_ui_busy(monkeypatch):
+def test_chat_room_title_skips_room_name_manager_when_runtime_ui_busy(monkeypatch):
     runtime = FakeRuntime(busy=True)
 
-    def fail_if_title_manager_is_touched():
-        pytest.fail("TitleManager.instance should not be called while UI is busy")
+    def fail_if_room_name_manager_is_touched():
+        pytest.fail("RoomNameManager.instance should not be called while UI is busy")
 
-    monkeypatch.setattr(TitleManager, "instance", fail_if_title_manager_is_touched)
+    monkeypatch.setattr(RoomNameManager, "instance", fail_if_room_name_manager_is_touched)
 
     event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
 
@@ -48,20 +48,20 @@ def test_chat_room_title_skips_title_manager_when_runtime_ui_busy(monkeypatch):
 
 def test_chat_room_title_busy_skip_does_not_consume_throttle(monkeypatch):
     runtime = FakeRuntime(busy=True)
-    title_manager_calls = 0
+    room_name_manager_calls = 0
 
-    class FakeTitleManager:
+    class FakeRoomNameManager:
         next_title = None
 
         def get_room_title_text_from_ui(self):
             return None
 
-    def title_manager_instance():
-        nonlocal title_manager_calls
-        title_manager_calls += 1
-        return FakeTitleManager()
+    def room_name_manager_instance():
+        nonlocal room_name_manager_calls
+        room_name_manager_calls += 1
+        return FakeRoomNameManager()
 
-    monkeypatch.setattr(TitleManager, "instance", title_manager_instance)
+    monkeypatch.setattr(RoomNameManager, "instance", room_name_manager_instance)
 
     event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
 
@@ -72,14 +72,14 @@ def test_chat_room_title_busy_skip_does_not_consume_throttle(monkeypatch):
     assert first_handled is False
     assert second_handled is False
     assert runtime.calls == 2
-    assert title_manager_calls == 0
+    assert room_name_manager_calls == 0
 
 
 def test_chat_room_title_uses_event_snapshot_instead_of_live_lookup(monkeypatch):
     runtime = FakeRuntime(busy=False)
     live_lookup_calls = 0
 
-    class FakeTitleManager:
+    class FakeRoomNameManager:
         next_title = None
         theme_manager = None
 
@@ -88,7 +88,7 @@ def test_chat_room_title_uses_event_snapshot_instead_of_live_lookup(monkeypatch)
             live_lookup_calls += 1
             return "wrong live value"
 
-    monkeypatch.setattr(TitleManager, "instance", lambda: FakeTitleManager())
+    monkeypatch.setattr(RoomNameManager, "instance", lambda: FakeRoomNameManager())
     event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
     wrapper = type("Wrapper", (), {"content": "享乐｜Radio"})()
 
@@ -99,13 +99,13 @@ def test_chat_room_title_uses_event_snapshot_instead_of_live_lookup(monkeypatch)
 def test_chat_room_title_prefers_visible_title_over_content_description(monkeypatch):
     queued_titles = []
 
-    class FakeTitleManager:
+    class FakeRoomNameManager:
         next_title = None
 
         def set_next_title(self, title):
             queued_titles.append(title)
 
-    monkeypatch.setattr(TitleManager, "instance", lambda: FakeTitleManager())
+    monkeypatch.setattr(RoomNameManager, "instance", lambda: FakeRoomNameManager())
     event = ChatRoomTitleEvent(FakeHandler(), runtime=FakeRuntime(busy=False))
     wrapper = type("Wrapper", (), {"text": "享乐｜即兴的华彩", "content": "房间名称：Joyer"})()
 
@@ -117,14 +117,14 @@ def test_chat_room_title_does_not_overwrite_pending_business_title(monkeypatch):
     runtime = FakeRuntime(busy=False)
     queued_titles = []
 
-    class FakeTitleManager:
+    class FakeRoomNameManager:
         next_title = "老夫妇"
         theme_manager = None
 
         def set_next_title(self, title):
             queued_titles.append(title)
 
-    monkeypatch.setattr(TitleManager, "instance", lambda: FakeTitleManager())
+    monkeypatch.setattr(RoomNameManager, "instance", lambda: FakeRoomNameManager())
     event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
     wrapper = type("Wrapper", (), {"content": "旧房名"})()
 
