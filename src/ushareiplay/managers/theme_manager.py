@@ -18,6 +18,9 @@ class ThemeManager(Singleton):
             self._room_name_manager = RoomNameManager.instance()
         return self._room_name_manager
 
+    def get_default_theme(self):
+        return self._room_name.get_default_theme()
+
     def get_current_theme(self):
         return self._room_name.get_current_theme()
 

@@ -21,7 +21,7 @@ class RoomNameManager(Singleton):
         self._notice_manager = None
 
         # Theme state
-        self.current_theme = "享乐"
+        self.current_theme = self.get_default_theme()
         self.last_update_time = None
         self.cooldown_minutes = 10
         self.pending_ui_update = False
@@ -55,6 +55,16 @@ class RoomNameManager(Singleton):
             from ushareiplay.managers.notice_manager import NoticeManager
             self._notice_manager = NoticeManager.instance()
         return self._notice_manager
+
+    def get_default_theme(self) -> str:
+        from ushareiplay.core.config_loader import ConfigLoader
+        config = ConfigLoader.load_config()
+        return config.get('soul', {}).get('default_theme', '享乐')
+
+    def get_default_title(self) -> str:
+        from ushareiplay.core.config_loader import ConfigLoader
+        config = ConfigLoader.load_config()
+        return config.get('soul', {}).get('default_title', '日推')
 
     # ------------------------------------------------------------------
     # Theme API
@@ -139,7 +149,7 @@ class RoomNameManager(Singleton):
         return {'error': f'Theme verification failed: expected {expected_theme}, got {self.current_theme}'}
 
     def reset_theme(self):
-        return self.set_theme("享乐")
+        return self.set_theme(self.get_default_theme())
 
     # ------------------------------------------------------------------
     # Title API
@@ -295,10 +305,11 @@ class RoomNameManager(Singleton):
 
                 room_title_text = self.get_room_title_text_from_ui()
                 if room_title_text and '｜' not in room_title_text:
-                    if not (self.next_title == '日推' and not self.can_update_now()):
-                        self.next_title = '日推'
+                    default_title = self.get_default_title()
+                    if not (self.next_title == default_title and not self.can_update_now()):
+                        self.next_title = default_title
                         self.logger.info(
-                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 日推'
+                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 {default_title}'
                         )
 
                 self._restore_notice_if_needed()

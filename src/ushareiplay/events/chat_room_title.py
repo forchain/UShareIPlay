@@ -50,7 +50,8 @@ class ChatRoomTitleEvent(BaseEvent):
             if title_manager.next_title:
                 return False
 
-            title_manager.set_next_title("日推")
+            default_title = getattr(title_manager, "get_default_title", lambda: "日推")()
+            title_manager.set_next_title(default_title)
             return False
         except Exception as e:
             self.logger.debug(f"ChatRoomTitleEvent skipped: {e}")
