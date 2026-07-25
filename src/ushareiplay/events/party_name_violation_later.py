@@ -34,7 +34,9 @@ class PartyNameViolationLaterEvent(BaseEvent):
 
             from ushareiplay.managers.title_manager import TitleManager
 
-            TitleManager.instance().set_next_title("日推")
+            title_manager = TitleManager.instance()
+            default_title = getattr(title_manager, "get_default_title", lambda: "听歌")()
+            title_manager.set_next_title(default_title)
             return True
         except Exception as e:
             self.logger.error(f"PartyNameViolationLaterEvent: {e}")

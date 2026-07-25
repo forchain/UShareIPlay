@@ -156,3 +156,31 @@ def test_initialize_from_ui_falls_back_when_no_separator():
 
     assert manager.get_current_title() == "JustATitle"
     assert manager.is_initialized is True
+
+
+def test_get_default_theme_and_title_from_config(monkeypatch):
+    from ushareiplay.core.config_loader import ConfigLoader
+    monkeypatch.setattr(
+        ConfigLoader,
+        "load_config",
+        lambda *args, **kwargs: {"soul": {"default_theme": "测试", "default_title": "自定义"}}
+    )
+    manager = _manager_with_fake_handler()
+
+    assert manager.get_default_theme() == "测试"
+    assert manager.get_default_title() == "自定义"
+
+
+def test_reset_theme_uses_default_theme_from_config(monkeypatch):
+    from ushareiplay.core.config_loader import ConfigLoader
+    monkeypatch.setattr(
+        ConfigLoader,
+        "load_config",
+        lambda *args, **kwargs: {"soul": {"default_theme": "电音"}}
+    )
+    manager = _manager_with_fake_handler()
+    manager.current_theme = "旧"
+    manager.reset_theme()
+
+    assert manager.get_current_theme() == "电音"
+    assert manager.has_pending_ui_update() is True
