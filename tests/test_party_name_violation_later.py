@@ -76,7 +76,7 @@ def test_confirmed_party_name_violation_queues_daily_title(monkeypatch):
 
     assert handled is True
     assert element.clicked is True
-    assert queued_titles == ["日推"]
+    assert queued_titles == ["听歌"]
 
 
 def test_confirmed_party_name_violation_queues_configured_default_title(monkeypatch):
