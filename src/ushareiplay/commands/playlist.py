@@ -33,33 +33,25 @@ class PlaylistCommand(BaseCommand):
         return playing_info
 
     def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""
+        """Select the 'Playlist' tab in search results"""
         try:
-            # Try to find playlist tab first
+            # Try to find playlist tab first or music tabs container
             key, element = self.handler.element_finder.wait_for_any_element(['playlist_tab', 'music_tabs'])
 
             if key == 'playlist_tab':
                 playlist_tab = element
             elif key == 'music_tabs':
-                # Get size and location for scrolling
-                music_tabs = element
-                size = music_tabs.size
-                location = music_tabs.location
-
-                # Scroll to left (opposite direction of singer tab)
-                self.handler.gesture_handler.swipe(
-                    location['x'] + 200,  # Start from left
-                    location['y'] + size['height'] // 2,
-                    location['x'] + size['width'] - 10,  # End at right
-                    location['y'] + size['height'] // 2,
-                    1000
+                _, playlist_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
+                    'playlist_tab',
+                    'music_tabs',
+                    'left',
+                    max_swipes=10,
                 )
-
-                # Try to find playlist tab again
-                playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
                 if not playlist_tab:
-                    self.handler.logger.error("Failed to find playlist tab after scrolling")
-                    return False
+                    playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
+                    if not playlist_tab:
+                        self.handler.logger.error("Failed to find playlist tab after scrolling")
+                        return False
             else:
                 self.handler.logger.error("Failed to find music tabs or playlist tab")
                 return False

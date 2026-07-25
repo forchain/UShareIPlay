@@ -38,31 +38,19 @@ class SingerCommand(BaseCommand):
             singer_tab = self.handler.element_finder.try_find_element("singer_tab")
             if not singer_tab:
                 # If not found, scroll music_tabs to find it
-                music_tabs = self.handler.element_finder.wait_for_element_clickable("music_tabs")
-                if not music_tabs:
-                    self.handler.logger.error("Failed to find music tabs")
-                    return False
-
-                # Get size and location for scrolling
-                size = music_tabs.size
-                location = music_tabs.location
-
-                # Scroll to right
-                self.handler.gesture_handler.swipe(
-                    location["x"] + 200,  # Start from left
-                    location["y"] + size["height"] // 2,
-                    location["x"] + size["width"] - 10,  # End at right
-                    location["y"] + size["height"] // 2,
-                    1000,
+                _, singer_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
+                    "singer_tab",
+                    "music_tabs",
+                    "left",
+                    max_swipes=10,
                 )
-
-                # Try to find singer tab again
-                singer_tab = self.handler.element_finder.try_find_element("singer_tab")
                 if not singer_tab:
-                    self.handler.logger.error(
-                        "Failed to find singer tab after scrolling"
-                    )
-                    return False
+                    singer_tab = self.handler.element_finder.try_find_element("singer_tab")
+                    if not singer_tab:
+                        self.handler.logger.error(
+                            "Failed to find singer tab after scrolling"
+                        )
+                        return False
 
             singer_tab.click()
             self.handler.logger.info("Selected singer tab")
@@ -84,26 +72,27 @@ class SingerCommand(BaseCommand):
         play_singer = None
         singer_name = 'Unknown'
         if from_key == "home_nav":
-            key, element = self.handler.element_finder.wait_for_any_element(["first_song", "not_found"])
-            if not key or key == "not_found":
-                self.handler.logger.error(f'not found singer with query {query}')
-                return {
-                    'error': f'not found singer with query {query}',
-                }
-
-            if play_singer := self.handler.element_finder.try_find_element("play_singer_1"):
-                if singer_name := self.handler.element_finder.try_get_attribute(play_singer, "content-desc"):
-                    singer_name = singer_name.split(': ')[1]
-                    singer_name = singer_name.split('的歌曲')[0]
-            elif play_singer := self.handler.element_finder.try_find_element("play_singer"):
-                if singer_name_element := self.handler.element_finder.try_find_element("singer_name"):
-                    singer_name = singer_name_element.text
+            key, element = self.handler.element_finder.wait_for_any_element(["music_tabs", "not_found"], timeout=5)
+            if key and key != "not_found":
+                if play_singer_elem := self.handler.element_finder.try_find_element("play_singer_1"):
+                    play_singer = play_singer_elem
+                    if singer_name_attr := self.handler.element_finder.try_get_attribute(play_singer, "content-desc"):
+                        singer_name = singer_name_attr.split(': ')[1]
+                        singer_name = singer_name.split('的歌曲')[0]
+                elif play_singer_elem := self.handler.element_finder.try_find_element("play_singer"):
+                    play_singer = play_singer_elem
+                    if singer_name_element := self.handler.element_finder.try_find_element("singer_name"):
+                        singer_name = singer_name_element.text
 
         if play_singer:
             play_singer.click()
             self.handler.logger.info("Selected singer play")
         else:
-            self.select_singer_tab()
+            if not self.select_singer_tab():
+                self.handler.logger.error(f"Failed to select singer tab with query {query}")
+                return {
+                    'error': f'not found singer with query {query}',
+                }
             key, element = self.handler.element_finder.wait_for_any_element(["singer_result", "not_found"])
             if not key or key == "not_found":
                 self.handler.logger.error(f'not found singer with query {query}')

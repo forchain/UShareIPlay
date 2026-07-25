@@ -33,29 +33,17 @@ class AlbumCommand(BaseCommand):
             album_tab = self.handler.element_finder.try_find_element('album_tab')
             if not album_tab:
                 # If not found, scroll music_tabs to find it
-                music_tabs = self.handler.element_finder.try_find_element('music_tabs')
-                if not music_tabs:
-                    self.handler.logger.error("Failed to find music tabs")
-                    return False
-
-                # Get size and location for scrolling
-                size = music_tabs.size
-                location = music_tabs.location
-
-                # Scroll to right
-                self.handler.gesture_handler.swipe(
-                    location['x'] + 200,  # Start from left
-                    location['y'] + size['height'] // 2,
-                    location['x'] + size['width'] - 10,  # End at right
-                    location['y'] + size['height'] // 2,
-                    1000
+                _, album_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
+                    'album_tab',
+                    'music_tabs',
+                    'left',
+                    max_swipes=10,
                 )
-
-                # Try to find album tab again
-                album_tab = self.handler.element_finder.try_find_element('album_tab')
                 if not album_tab:
-                    self.handler.logger.error("Failed to find album tab after scrolling")
-                    return False
+                    album_tab = self.handler.element_finder.try_find_element('album_tab')
+                    if not album_tab:
+                        self.handler.logger.error("Failed to find album tab after scrolling")
+                        return False
 
             album_tab.click()
             self.handler.logger.info("Selected album tab")
