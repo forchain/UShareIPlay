@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import sys
 import traceback
@@ -250,6 +251,7 @@ class CommandManager(Singleton):
             
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             result = {'error': 'unknown'}
+            retry_enabled = bool(command_info.get("retry"))
             with command_silence(silent):
                 async with self.runtime.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
                     try:
@@ -265,6 +267,24 @@ class CommandManager(Singleton):
                     except Exception:
                         pass
                     result = await command.process(message_info, parameters)
+                    if 'error' in result and retry_enabled:
+                        cmd_prefix = command_info.get('prefix', 'unknown')
+                        self.logger.warning(
+                            f"Command '{cmd_prefix}' failed on first attempt ({result.get('error')}), retrying (1/1)..."
+                        )
+                        try:
+                            self.runtime.emit(
+                                "command.retry",
+                                ctx={
+                                    "prefix": cmd_prefix,
+                                    "first_error": result.get("error"),
+                                    "nickname": message_info.nickname,
+                                },
+                            )
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.5)
+                        result = await command.process(message_info, parameters)
 
             if 'error' in result:
                 # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染

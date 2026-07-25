@@ -13,7 +13,7 @@ The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, 
 _Avoid_: ThemeManager, TitleManager (legacy adapters)
 
 **Command Execution**:
-All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, and response delivery.
+All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, configured command retries, and response delivery.
 _Avoid_: Command parser, queue drainer, chat command handler
 
 **Event Processing**:
