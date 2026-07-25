@@ -59,12 +59,12 @@ class RoomNameManager(Singleton):
     def get_default_theme(self) -> str:
         from ushareiplay.core.config_loader import ConfigLoader
         config = ConfigLoader.load_config()
-        return config.get('soul', {}).get('default_theme', '享乐')
+        return config.get('soul', {}).get('default_theme', '听歌')
 
     def get_default_title(self) -> str:
         from ushareiplay.core.config_loader import ConfigLoader
         config = ConfigLoader.load_config()
-        return config.get('soul', {}).get('default_title', '日推')
+        return config.get('soul', {}).get('default_title', '听歌')
 
     # ------------------------------------------------------------------
     # Theme API
