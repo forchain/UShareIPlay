@@ -33,8 +33,9 @@ def test_play_singer_falls_back_to_singer_tab_when_first_song_not_found():
     singer_result.text = "Lofi Girl"
     play_all_button = MagicMock()
 
+    command.handler.element_finder.try_find_element.return_value = None
     command.handler.element_finder.wait_for_any_element.side_effect = [
-        (None, None),  # first_song wait
+        ("music_tabs", MagicMock()),  # music_tabs wait
         ("singer_result", singer_result),  # singer_result wait
     ]
     command.handler.element_finder.wait_for_element_clickable.return_value = play_all_button

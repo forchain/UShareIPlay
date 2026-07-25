@@ -72,7 +72,7 @@ class SingerCommand(BaseCommand):
         play_singer = None
         singer_name = 'Unknown'
         if from_key == "home_nav":
-            key, element = self.handler.element_finder.wait_for_any_element(["first_song", "not_found"])
+            key, element = self.handler.element_finder.wait_for_any_element(["music_tabs", "not_found"], timeout=5)
             if key and key != "not_found":
                 if play_singer_elem := self.handler.element_finder.try_find_element("play_singer_1"):
                     play_singer = play_singer_elem
