@@ -300,22 +300,27 @@ lyrics:
 commands:
   - prefix: "play"
     level: 1
+    retry: true
     response_template: "{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 1
+    retry: true
     response_template: "{playlist}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 1
+    retry: true
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
     level: 0
+    retry: true
     response_template: "Added {song} by {singer} in {album} • {release_date} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     level: 1
+    retry: true
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
@@ -324,10 +329,12 @@ commands:
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     level: 2
+    retry: true
     response_template: "Accompaniment mode {enabled}"
     error_template: "Failed to toggle accompaniment mode, because {error}"
   - prefix: "lyrics"
     level: 1
+    retry: true
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "help"
@@ -352,14 +359,17 @@ commands:
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
+    retry: true
     response_template: "{playlist}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
+    retry: true
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "radio"
     level: 2
+    retry: true
     response_template: "{playlist}"
     error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
@@ -377,6 +387,7 @@ commands:
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
     level: 2
+    retry: true
     response_template: "{playlist}"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
