@@ -96,7 +96,8 @@ def test_seat_management_shares_ui_and_check_dependencies():
 
 
 @pytest.mark.asyncio
-async def test_message_manager_prepares_chat_scan_through_seat_management(monkeypatch):
+async def test_command_execution_recover_missed_history_prepares_chat_scan(monkeypatch):
+    from ushareiplay.managers.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
     class _FakeSeatManagement:
@@ -107,22 +108,40 @@ async def test_message_manager_prepares_chat_scan_through_seat_management(monkey
             self.prepared = True
             return True
 
-    seat_management = _FakeSeatManagement()
-    manager = object.__new__(MessageManager)
-    manager._handler = SimpleNamespace(
-        logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
-    )
-    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-    manager._chat_logger = None
-    manager.previous_messages = {}
-    manager.recent_chats = deque(maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
+    class _FakeGestureHandler:
+        def scroll_container_until_element(self, *_args, **_kwargs):
+            return None, None, []
 
+        def send_message(self, _message):
+            return None
+
+    seat_management = _FakeSeatManagement()
     monkeypatch.setattr(
         MessageManager,
         "_get_seat_manager",
         lambda self: seat_management,
     )
+    # Command Execution seam resolves the seat manager through MessageManager.
+    # The conftest fixture resets all singletons between tests; ensure
+    # MessageManager is initialised for this test and reverted afterwards.
+    # Ensure MessageManager singleton exists for the duration of this test.
+    # The conftest fixture's teardown will reset all singletons afterwards.
+    if not MessageManager.__dict__.get("_singleton_initialized", False):
+        MessageManager.initialize()
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: object.__new__(CommandManager)), raising=False)
 
-    assert await manager.process_missed_messages() is None
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
+    handler = SimpleNamespace(
+        logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
+    )
+    handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
+    handler.gesture_handler = _FakeGestureHandler()
+    handler.send_message = lambda _message: None
+    manager._handler = handler
+    manager._chat_logger = None
+    manager._recent_chats = deque(["souler[Anchor]说：:noop"], maxlen=3)
+    manager._latest_chats = deque(maxlen=3)
+
+    assert await manager.recover_missed_history() is None
     assert seat_management.prepared is True

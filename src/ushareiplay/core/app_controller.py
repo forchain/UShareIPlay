@@ -11,6 +11,7 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.core.driver_lifecycle import DriverLifecycle
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
@@ -41,22 +42,24 @@ class AppController(Singleton):
         self.obs = Observability(run_id=self.run_id)
         self.obs.emit("app.start", ctx={"component": "AppController"})
 
-        # 先创建主driver（会自动启动Soul app）
-        self.driver = None
+        # Appium driver lifecycle is delegated to a dedicated module.
+        # AppController only orchestrates startup and subscriber wiring.
+        self.driver_lifecycle = DriverLifecycle(
+            factory=self._init_driver,
+            settings={
+                "waitForIdleTimeout": 0,
+                "waitForSelectorTimeout": 2000,
+                "waitForPageLoad": 2000,
+            },
+            on_reinit=self._on_driver_reinit,
+            obs=self.obs,
+        )
         try:
-            self.obs.emit("driver.init.start")
-            self.driver = self._init_driver()
-            self._driver_subscribers = []
-            self.obs.emit("driver.init.ok")
-
+            self.driver_lifecycle.initialize()
             # 使用主driver启动其他应用
             self._start_apps()
         except Exception:
-            if self.driver:
-                try:
-                    self.driver.quit()
-                except Exception:
-                    pass
+            self.driver_lifecycle.shutdown()
             raise
         self.input_queue = queue.Queue()
         self.agent_command_dir = Path(".agent") / "commands"
@@ -92,8 +95,6 @@ class AppController(Singleton):
         self.command_runtime_context = CommandRuntimeContext(controller=self)
         self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock)
 
-        # Driver重建防护标志
-        self._is_reinitializing = False
         self._runtime_queue_drainer = None
         self._agent_command_spool = AgentCommandSpool(
             input_queue=self.input_queue,
@@ -193,89 +194,35 @@ class AppController(Singleton):
         return driver
 
     def register_driver_subscriber(self, component) -> None:
-        """Register a component whose .driver reference must track controller.driver."""
-        if component is None:
-            return
-        if not hasattr(self, "_driver_subscribers"):
-            self._driver_subscribers = []
-        if component in self._driver_subscribers:
-            return
-        self._driver_subscribers.append(component)
-        if hasattr(component, "driver"):
-            component.driver = self.driver
-
-    def _notify_driver_subscribers(self, driver) -> None:
-        if not hasattr(self, "_driver_subscribers"):
-            self._driver_subscribers = []
-        for component in list(self._driver_subscribers):
-            if not hasattr(component, "driver"):
-                continue
-            component.driver = driver
-            if self.logger:
-                self.logger.debug(
-                    "更新 %s.driver",
-                    component.__class__.__name__,
-                )
+        # Thin shim that delegates to the Driver Lifecycle module so the
+        # lifecycle seam owns the subscriber bookkeeping.
+        self.driver_lifecycle.attach(component)
 
     def reinitialize_driver(self) -> bool:
-        """
-        统一的driver重建入口
-        所有组件检测到driver失效时必须调用此方法
-        """
-        # 防止重入（虽然顺序执行，但加个保险）
-        if self._is_reinitializing:
-            if self.logger:
-                self.logger.warning("Driver正在重建中，跳过重复请求")
-            return False
+        # 统一的driver重建入口。所有组件检测到driver失效时必须调用此方法。
+        # Reentry guard lives in DriverLifecycle so this stays a thin shim.
+        return self.driver_lifecycle.reinitialize()
 
-        self._is_reinitializing = True
-        try:
-            if self.logger:
-                self.logger.warning("==== 开始重建driver ====")
-            self.obs.emit("driver.reinit.start")
+    @property
+    def driver(self):
+        return self.driver_lifecycle.driver
 
-            # 1. 关闭旧driver
-            try:
-                self.driver.quit()
-            except Exception as e:
-                if self.logger:
-                    self.logger.debug(f"关闭旧driver出错: {str(e)}")
+    @driver.setter
+    def driver(self, value):
+        # Tests still poke ``controller.driver``; preserve that affordance
+        # by routing the assignment through the lifecycle module.
+        self.driver_lifecycle._driver = value
 
-            # 2. 等待清理
-            time.sleep(1)
+    @property
+    def _driver_subscribers(self):
+        return self.driver_lifecycle.subscribers
 
-            # 3. 创建新driver
-            self.driver = self._init_driver()
-            if self.logger:
-                self.logger.info("新driver创建成功")
-            self.obs.emit("driver.reinit.ok")
-
-            # Optimize driver settings
-            self.driver.update_settings({
-                "waitForIdleTimeout": 0,  # Don't wait for idle state
-                "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
-                "waitForPageLoad": 2000  # Wait up to 2 seconds for page load
-            })
-            self.logger.info("Optimized driver settings")
-
-            # 4. 更新所有订阅组件的driver引用
-            self._notify_driver_subscribers(self.driver)
-
-            # 5. 切换回应用
-            if self.soul_handler:
-                self.soul_handler.key_actions.switch_to_app()
-
-            if self.logger:
-                self.logger.info("==== Driver重建完成 ====")
-            return True
-
-        except Exception:
-            if self.logger:
-                self.logger.error(f"Driver重建失败: {traceback.format_exc()}")
-            self.obs.emit("driver.reinit.error", level="ERROR", ctx={"error": traceback.format_exc()})
-            return False
-        finally:
-            self._is_reinitializing = False
+    def _on_driver_reinit(self, _driver) -> None:
+        # Hook called by DriverLifecycle after a successful reinit.
+        if self.soul_handler and hasattr(self.soul_handler, "key_actions"):
+            self.soul_handler.key_actions.switch_to_app()
+        if self.logger:
+            self.logger.info("Driver reinitialized and propagated to subscribers")
 
     def _toggle_console_mode(self):
         """Toggle console mode on Ctrl+P"""
@@ -602,9 +549,4 @@ class AppController(Singleton):
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
 
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                if self.logger:
-                    self.logger.warning("Failed to close Appium driver during shutdown")
+        self.driver_lifecycle.shutdown()

@@ -29,74 +29,20 @@ class AppHandler:
         return getattr(self.controller, "driver_recovery_context", None)
 
     def _setup_logger(self):
-        """Setup logger for the handler
-        Returns:
-            logging.Logger: Configured logger instance
-        """
-        global _shared_handler_file_handler, _shared_handler_file_path
+        """Setup logger for the handler.
 
-        from ushareiplay.core.log_rotation import archive_active_log_on_startup
-        from ushareiplay.core.paths import ensure_dir, resolve_log_directory
+        Delegates to the RuntimeLogging module so path resolution, archiving,
+        handler construction, and reset behavior share one implementation
+        across the app log and the chat log.
+        """
+        from ushareiplay.core.runtime_logging import get_runtime_logging
 
         cfg = None
         if getattr(self, "controller", None) is not None:
             cfg = getattr(self.controller, "config", None)
-        if not ((cfg or {}).get("logging", {}) or {}).get("directory", None):
-            from ushareiplay.core.config_loader import ConfigLoader
-            loaded = ConfigLoader.load_config()
-            if loaded:
-                cfg = loaded
-        configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
-        log_dir_path = resolve_log_directory(configured, default_rel="logs")
-        ensure_dir(log_dir_path)
-        log_file_path = log_dir_path / "UShareIPlay.log"
-
-        # Create logger
-        logger = logging.getLogger(self.__class__.__name__)
-
-        # Clear any existing handlers
-        if logger.hasHandlers():
-            logger.handlers.clear()
-
-        logger.setLevel(logging.DEBUG)
-
-        # Create console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG)
-
-        # Create formatters with timestamp and short level names
-        # File formatter without colors
-        file_formatter = ColoredFormatter(
-            fmt="%(asctime)s [%(levelname)s]%(funcName)s:%(lineno)d - %(message)s",
-            datefmt="%m-%d %H:%M:%S",
-            use_colors=False
+        return get_runtime_logging().attach_app_logger(
+            self.__class__.__name__, cfg
         )
-        # Console formatter with colors
-        console_formatter = ColoredFormatter(
-            fmt="%(asctime)s [%(levelname)s]%(funcName)s:%(lineno)d - %(message)s",
-            datefmt="%m-%d %H:%M:%S",
-            use_colors=True
-        )
-
-        if (
-            _shared_handler_file_handler is None
-            or _shared_handler_file_path != log_file_path
-        ):
-            if _shared_handler_file_handler is not None:
-                _shared_handler_file_handler.close()
-            log_file_path = archive_active_log_on_startup(log_dir_path, "UShareIPlay.log")
-            _shared_handler_file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
-            _shared_handler_file_handler.setLevel(logging.DEBUG)
-            _shared_handler_file_path = log_file_path
-
-        _shared_handler_file_handler.setFormatter(file_formatter)
-        console_handler.setFormatter(console_formatter)
-
-        # Add handlers to logger
-        logger.addHandler(_shared_handler_file_handler)
-        logger.addHandler(console_handler)
-
-        return logger
 
     def log_info(self, message):
         """Log info level message"""

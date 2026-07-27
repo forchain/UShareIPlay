@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import sys
 import traceback
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +39,11 @@ class CommandManager(Singleton):
         self.commands_path = Path(__file__).parent.parent / 'commands'
         self.command_modules = {}  # Cache for loaded command modules
         self.command_parser = None  # Will be initialized when needed
+
+        # Cursor state owned by Command Execution -- the live screen's anchor
+        # against which newly visible chat rows are diffed.
+        self._recent_chats = deque(maxlen=3)
+        self._latest_chats = deque(maxlen=3)
 
     def configure_runtime(self, runtime):
         self._runtime = runtime
@@ -388,6 +394,250 @@ class CommandManager(Singleton):
             await self.execute_command_messages(messages)
 
         return messages
+
+    # ------------------------------------------------------------------
+    # Command Execution seam: visible chat batch -> Chat Intake ->
+    # routing -> execution -> outcomes. Owns cursor/dedupe/anchor state,
+    # missed-history recovery, and all Chat Intake outcome dispatch.
+    # ------------------------------------------------------------------
+
+    @property
+    def chat_logger(self):
+        # Lazily resolve the chat logger (transport-owned).
+        from ushareiplay.managers.message_manager import get_chat_logger
+
+        return get_chat_logger(self.handler.config)
+
+    def _apply_anchor_match(self, content_list):
+        # Diff a fresh visible batch against the cursor.
+        #
+        # Returns ``(latest_chats, missed)``. ``latest_chats`` is the
+        # fresh slice that the caller should classify and dispatch.
+        # ``missed`` is True when the screen contains rows older than the
+        # anchor and we cannot prove the anchor is visible.
+        latest_chats = deque(maxlen=3)
+        recent_len = len(self._recent_chats)
+        content_len = len(content_list)
+        missed = False
+
+        if recent_len == 0:
+            for content in content_list:
+                latest_chats.append(content)
+        else:
+            for i in range(recent_len):
+                no_new = False
+                for j in range(content_len):
+                    content = content_list[j]
+                    ii = i + j
+                    if ii < recent_len:
+                        recent_chat = self._recent_chats[ii]
+                        if content != recent_chat:
+                            break
+                        if ii == recent_len - 1 and j == content_len - 1:
+                            no_new = True
+                            break
+                    else:
+                        latest_chats.append(content)
+                if no_new:
+                    break
+                if len(latest_chats) > 0:
+                    break
+                elif i == recent_len - 1:
+                    missed = True
+                    for content in content_list:
+                        latest_chats.append(content)
+
+            # Fallback: when the visible window is wider than
+            # recent_chats.maxlen (3), every alignment mismatches at j=0
+            # because content_list[0] is older than any anchor. If the
+            # anchor is still visible, treat that as not-missed and slice
+            # the fresh tail off the end.
+            if missed and recent_len > 0:
+                last_recent = self._recent_chats[-1]
+                for idx, content in enumerate(content_list):
+                    if content == last_recent:
+                        missed = False
+                        latest_chats.clear()
+                        for new_content in content_list[idx + 1:]:
+                            latest_chats.append(new_content)
+                        break
+
+        return latest_chats, missed
+
+    async def _dispatch_chat_outcome(self, content):
+        # Classify one chat row and route to its outcome sink.
+        #
+        # Returns ``True`` when the row was a non-empty command (so the
+        # caller knows there is at least one command to execute). All
+        # rows are logged at the appropriate severity.
+        result = classify_chat_line(content)
+
+        if result.kind == ChatIntakeKind.USER_RETURN:
+            self.logger.critical(f"User returned: {result.nickname}")
+            await self.notify_user_return(result.nickname)
+            return False
+
+        if result.kind == ChatIntakeKind.KEYWORD_MENTION:
+            from ushareiplay.managers.keyword_manager import KeywordManager
+
+            await KeywordManager.instance().dispatch_mention(
+                result, sleep_exempt=True
+            )
+            self.chat_logger.critical(content)
+            return False
+
+        if result.kind == ChatIntakeKind.COMMAND:
+            if result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                self.chat_logger.critical(content)
+                return True
+            self.chat_logger.info(content)
+            return False
+
+        self.chat_logger.info(content)
+        return False
+
+    def _tick_idle_outcome(self):
+        # Outcome of a live batch that contained no commands.
+        self.update_commands()
+        try:
+            from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+
+            PlaybackBroadcaster.instance().update_playback_info_cache()
+        except Exception:
+            self.logger.error(
+                f"Error updating playback cache: {traceback.format_exc()}"
+            )
+
+    async def process_live_batch(self, rows):
+        # Process a visible chat batch through the Command Execution seam.
+        #
+        # Owns dedupe/anchor matching, Chat Intake classification, routing,
+        # execution, logging, missed-history recovery, and cursor
+        # advancement. Event Processing callers pass the freshly scraped
+        # ``rows`` in; this method is the only place that talks to Chat
+        # Intake / KeywordManager / PlaybackBroadcaster for live screen
+        # updates.
+        content_list = [content for content in (rows or []) if content]
+        latest_chats, missed = self._apply_anchor_match(content_list)
+
+        has_command = False
+        for content in latest_chats:
+            if await self._dispatch_chat_outcome(content):
+                has_command = True
+
+        if has_command:
+            await self.execute_chat_scan(list(latest_chats))
+        else:
+            self._tick_idle_outcome()
+
+        if missed:
+            await self.recover_missed_history()
+
+        # After recovery the view scrolls back to bottom; reset the cursor
+        # to the fresh tail so the next iteration does not re-detect a
+        # stale gap.
+        self._recent_chats.clear()
+        for chat in latest_chats:
+            self._recent_chats.append(chat)
+
+        return {
+            "missed": missed,
+            "command_count": sum(
+                1
+                for chat in latest_chats
+                if classify_chat_line(chat).kind == ChatIntakeKind.COMMAND
+                and classify_chat_line(chat)
+                .text.strip(QUEUE_COMMAND_PREFIX_CHARS)
+                .strip()
+            ),
+        }
+
+    async def recover_missed_history(self):
+        # Scroll back to the anchor and queue any missed commands.
+        #
+        # Mirrors the prior MessageManager.process_missed_messages contract:
+        # collapses the seat panel, scrolls the chat list until the anchor
+        # (self._recent_chats[-1]) is visible, then enqueues each command
+        # that is not already in the anchor/visible-tail sets. Always
+        # sends an empty message to scroll back to the bottom after recovery.
+        if not self.handler.key_actions.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
+            return None
+
+        try:
+            from ushareiplay.managers.message_manager import MessageManager
+
+            seat_manager = MessageManager.instance()._get_seat_manager()
+            if seat_manager:
+                await seat_manager.prepare_for_chat_scan()
+        except Exception:
+            self.handler.logger.error(
+                f"failed to collapse seat panel (recovery continues): {traceback.format_exc()}"
+            )
+
+        last_chat = self._recent_chats[-1] if len(self._recent_chats) > 0 else None
+        if not last_chat:
+            return None
+
+        self.handler.logger.critical(f"last_chat={last_chat}")
+
+        key, _element, attribute_values = (
+            self.handler.gesture_handler.scroll_container_until_element(
+                "message_content",
+                "message_list",
+                "down",
+                "content-desc|text",
+                last_chat,
+            )
+        )
+
+        self.handler.send_message("")
+
+        if not key:
+            return None
+
+        from ushareiplay.core.message_queue import MessageQueue
+
+        command_set = set[str]()
+        nickname_map = {}
+        missed_chats = set[str]()
+
+        for chat in attribute_values:
+            if last_chat == chat:
+                continue
+            is_missed = (
+                chat not in self._recent_chats
+                and chat not in self._latest_chats
+                and chat not in missed_chats
+            )
+            if is_missed:
+                self.chat_logger.warning(chat)
+                missed_chats.add(chat)
+
+            result = classify_chat_line(chat)
+
+            if result.kind == ChatIntakeKind.KEYWORD_MENTION and is_missed:
+                from ushareiplay.managers.keyword_manager import KeywordManager
+
+                await KeywordManager.instance().dispatch_mention(
+                    result, sleep_exempt=True
+                )
+                continue
+
+            if result.kind == ChatIntakeKind.COMMAND:
+                command = result.text
+                if not command.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                    continue
+                command_set.add(command)
+                nickname_map[command] = result.nickname
+
+        message_queue = MessageQueue.instance()
+        for command in command_set:
+            message = MessageInfo(command, nickname_map[command])
+            await message_queue.put_message(message)
+            self.handler.logger.info(f"Missed command added to queue: {command}")
+
+        return command_set
 
     async def execute_command_messages(self, messages):
         """

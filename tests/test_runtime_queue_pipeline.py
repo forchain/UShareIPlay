@@ -224,144 +224,81 @@ def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands
     assert [m.content for m in command_manager.received] == ["＄info"]
 
 
-def test_process_new_messages_accepts_dollar_prefix_and_keeps_content():
+def _build_live_batch_manager(monkeypatch):
+    """Build a CommandManager suitable for live-batch tests."""
     from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
 
-    class _FakeSoulHandler:
-        def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_new")
-            self.config = {"logging": {"directory": "logs"}}
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
+    manager._handler = _with_ui_components(_FakeHandler())
+    manager._chat_logger = logging.getLogger("test_chat_logger")
+    manager._recent_chats = deque(maxlen=3)
+    manager._latest_chats = deque(maxlen=3)
 
-        def switch_to_app(self):
-            return True
+    received = []
 
-    original_cmd_instance = CommandManager.instance
-    try:
-        fake_command_manager = _FakeCommandManager()
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
-        manager._handler = _with_ui_components(_FakeSoulHandler())
-        manager._chat_logger = logging.getLogger("test_chat_logger_new")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：$play 123")
+    async def _capture(messages):
+        received.extend(messages)
+        return len(messages)
 
-        messages = _run(manager.process_new_messages())
+    async def _no_recover():
+        return None
 
-        assert [m.content for m in messages] == ["$play 123"]
-        assert [m.content for m in fake_command_manager.received] == ["$play 123"]
-        assert [m.nickname for m in fake_command_manager.received] == ["Alice"]
-    finally:
-        CommandManager.instance = original_cmd_instance
+    monkeypatch.setattr(manager, "execute_command_messages", _capture)
+    monkeypatch.setattr(manager, "recover_missed_history", _no_recover)
+    return manager, received
 
 
-def test_process_new_messages_accepts_fullwidth_dollar_prefix_and_keeps_content():
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+def test_process_live_batch_accepts_dollar_prefix_and_keeps_content(monkeypatch):
+    manager, received = _build_live_batch_manager(monkeypatch)
 
-    class _FakeSoulHandler:
-        def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_new_fullwidth")
-            self.config = {"logging": {"directory": "logs"}}
+    result = _run(manager.process_live_batch(["souler[Alice]说：$play 123"]))
 
-        def switch_to_app(self):
-            return True
-
-    original_cmd_instance = CommandManager.instance
-    try:
-        fake_command_manager = _FakeCommandManager()
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
-        manager._handler = _with_ui_components(_FakeSoulHandler())
-        manager._chat_logger = logging.getLogger("test_chat_logger_new_fullwidth")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：＄info")
-
-        messages = _run(manager.process_new_messages())
-
-        assert [m.content for m in messages] == ["＄info"]
-        assert [m.content for m in fake_command_manager.received] == ["＄info"]
-        assert [m.nickname for m in fake_command_manager.received] == ["Alice"]
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert [m.content for m in received] == ["$play 123"]
+    assert [m.nickname for m in received] == ["Alice"]
+    assert result["missed"] is False
+    assert result["command_count"] == 1
+    # Anchor advanced to the freshly-classified tail.
+    assert list(manager._recent_chats) == ["souler[Alice]说：$play 123"]
 
 
-def test_process_new_messages_skips_non_command_and_keeps_following_dollar_command():
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+def test_process_live_batch_accepts_fullwidth_dollar_prefix_and_keeps_content(monkeypatch):
+    manager, received = _build_live_batch_manager(monkeypatch)
 
-    class _FakeSoulHandler:
-        def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_new_mixed")
-            self.config = {"logging": {"directory": "logs"}}
+    _run(manager.process_live_batch(["souler[Alice]说：＄info"]))
 
-        def switch_to_app(self):
-            return True
-
-    original_cmd_instance = CommandManager.instance
-    try:
-        fake_command_manager = _FakeCommandManager()
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
-        manager._handler = _with_ui_components(_FakeSoulHandler())
-        manager._chat_logger = logging.getLogger("test_chat_logger_new_mixed")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：hello")
-        manager.latest_chats.append("souler[Alice]说：$play 123")
-
-        messages = _run(manager.process_new_messages())
-
-        assert [m.content for m in messages] == ["$play 123"]
-        assert [m.content for m in fake_command_manager.received] == ["$play 123"]
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert [m.content for m in received] == ["＄info"]
+    assert [m.nickname for m in received] == ["Alice"]
 
 
-def test_process_new_messages_accepts_ascii_colon_in_chat_prefix():
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+def test_process_live_batch_skips_non_command_and_keeps_following_dollar_command(monkeypatch):
+    manager, received = _build_live_batch_manager(monkeypatch)
 
-    class _FakeSoulHandler:
-        def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_ascii_colon")
-            self.config = {"logging": {"directory": "logs"}}
+    _run(
+        manager.process_live_batch(
+            ["souler[Alice]说：hello", "souler[Alice]说：$play 123"]
+        )
+    )
 
-        def switch_to_app(self):
-            return True
-
-    original_cmd_instance = CommandManager.instance
-    try:
-        fake_command_manager = _FakeCommandManager()
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
-        manager._handler = _with_ui_components(_FakeSoulHandler())
-        manager._chat_logger = logging.getLogger("test_chat_logger_ascii_colon")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说:$info")
-
-        messages = _run(manager.process_new_messages())
-
-        assert [m.content for m in messages] == ["$info"]
-        assert [m.content for m in fake_command_manager.received] == ["$info"]
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert [m.content for m in received] == ["$play 123"]
 
 
-def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
+def test_process_live_batch_accepts_ascii_colon_in_chat_prefix(monkeypatch):
+    manager, received = _build_live_batch_manager(monkeypatch)
+
+    _run(manager.process_live_batch(["souler[Alice]说:$info"]))
+
+    assert [m.content for m in received] == ["$info"]
+
+
+def test_recover_missed_history_accepts_dollar_prefix_and_queues_command(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_missed")
+            self.logger = logging.getLogger("test_recover_missed_history")
             self.config = {"logging": {"directory": "logs"}}
 
         def switch_to_app(self):
@@ -377,20 +314,21 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
         def send_message(self, _message):
             return None
 
-    manager = object.__new__(MessageManager)
+    fake_command_manager = _FakeCommandManager()
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager), raising=False)
+    monkeypatch.setattr(MessageManager, "_get_seat_manager", lambda self: None, raising=False)
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
     manager._handler = _with_ui_components(_FakeSoulHandler())
     manager._chat_logger = logging.getLogger("test_chat_logger_missed")
-    manager._recovery_manager = None
-    manager.recent_chats = deque(maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
-    manager.recent_chats.clear()
-    manager.latest_chats.clear()
-    manager.recent_chats.append("souler[Anchor]说：:noop")
+    manager._recent_chats = deque(maxlen=3)
+    manager._latest_chats = deque(maxlen=3)
+    manager._recent_chats.append("souler[Anchor]说：:noop")
 
     queue = MessageQueue.instance()
     _run(queue.clear_queue())
 
-    command_set = _run(manager.process_missed_messages())
+    command_set = _run(manager.recover_missed_history())
 
     queued_messages = list(_run(queue.get_all_messages()).values())
 
@@ -399,12 +337,14 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
     assert any(m.content == "$play later" and m.nickname == "Bob" for m in queued_messages)
 
 
-def test_process_missed_messages_sends_empty_message_after_finding_anchor():
+def test_recover_missed_history_sends_empty_message_after_finding_anchor(monkeypatch):
+    from ushareiplay.managers.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
-            self.logger = logging.getLogger("test_message_manager_missed_anchor")
+            self.logger = logging.getLogger("test_recover_missed_anchor")
+            self.config = {"logging": {"directory": "logs"}}
             self.sent_messages = []
 
         def switch_to_app(self):
@@ -417,14 +357,16 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
             self.sent_messages.append(message)
 
     handler = _with_ui_components(_FakeSoulHandler())
-    manager = object.__new__(MessageManager)
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: object.__new__(CommandManager)), raising=False)
+    monkeypatch.setattr(MessageManager, "_get_seat_manager", lambda self: None, raising=False)
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
     manager._handler = handler
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")
-    manager._recovery_manager = None
-    manager.recent_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
+    manager._recent_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
+    manager._latest_chats = deque(maxlen=3)
 
-    assert _run(manager.process_missed_messages()) == set()
+    assert _run(manager.recover_missed_history()) == set()
     # send_message("") should be called to scroll back to bottom
     assert handler.sent_messages == [""]
 
@@ -493,79 +435,60 @@ def test_missed_detection_fallback_prevents_false_missed():
     assert len(manager.latest_chats) == 0
 
 
-def test_message_content_update_logic_does_not_drain_runtime_queue():
+def test_process_live_batch_idle_outcome_does_not_drain_runtime_queue(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.events.message_content import MessageContentEvent
     from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.info_manager import InfoManager
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.models.message_info import MessageInfo
 
-    class _FakeCmdMgr:
+    class _FakeCommandManager:
         def update_commands(self):
             return None
 
-    class _FakeInfoMgr:
+    class _FakePlaybackBroadcaster:
         def update_playback_info_cache(self):
             return None
 
-    original_cmd_instance = CommandManager.instance
-    original_info_instance = InfoManager.instance
-    CommandManager.instance = classmethod(lambda cls: _FakeCmdMgr())
-    InfoManager.instance = classmethod(lambda cls: _FakeInfoMgr())
-    try:
-        queue = MessageQueue.instance()
-        _run(queue.clear_queue())
-        _run(queue.put_message(MessageInfo(content=":timer list", nickname="Timer")))
-
-        handler = _FakeHandler()
-        event = MessageContentEvent(handler)
-        _run(event._process_update_logic())
-
-        assert queue.get_queue_size() == 1
-    finally:
-        CommandManager.instance = original_cmd_instance
-        InfoManager.instance = original_info_instance
-
-
-def test_message_content_event_dispatches_dollar_command(monkeypatch):
-    from ushareiplay.events import message_content as message_content_module
-    from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.message_manager import MessageManager
-
-    class _FakeMessageManager:
-        def __init__(self):
-            self.recent_chats = deque(maxlen=3)
-            self.latest_chats = deque(maxlen=3)
-            self.processed_new = False
-            self.processed_missed = False
-
-        async def process_new_messages(self):
-            self.processed_new = True
-
-        async def process_missed_messages(self):
-            self.processed_missed = True
-
-    class _FakeChatLogger:
-        def critical(self, _message):
-            return None
-
-        def info(self, _message):
-            return None
-
-    fake_manager = _FakeMessageManager()
-    original_message_manager_instance = MessageManager.instance
-    monkeypatch.setattr(MessageManager, "instance", classmethod(lambda cls: fake_manager))
+    fake_command_manager = _FakeCommandManager()
+    fake_broadcaster = _FakePlaybackBroadcaster()
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager), raising=False)
     monkeypatch.setattr(
-        message_content_module,
-        "get_chat_logger",
-        lambda _config=None: _FakeChatLogger(),
+        PlaybackBroadcaster,
+        "instance",
+        classmethod(lambda cls: fake_broadcaster),
         raising=False,
     )
-    try:
-        event = MessageContentEvent(_FakeHandler())
 
-        _run(event.handle("message_content", [_FakeWrapper("souler[Outlier]说：$info")]))
+    queue = MessageQueue.instance()
+    _run(queue.clear_queue())
+    _run(queue.put_message(MessageInfo(content=":timer list", nickname="Timer")))
 
-        assert fake_manager.processed_new is True
-    finally:
-        MessageManager.instance = original_message_manager_instance
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
+    manager._handler = _with_ui_components(_FakeHandler())
+    manager._chat_logger = logging.getLogger("test_idle_outcome")
+    manager._recent_chats = deque(maxlen=3)
+    manager._latest_chats = deque(maxlen=3)
+
+    _run(manager.process_live_batch(["souler[Alice]说：hello world"]))
+
+    assert queue.get_queue_size() == 1
+
+
+def test_message_content_event_submits_rows_to_command_execution(monkeypatch):
+    from ushareiplay.events.message_content import MessageContentEvent
+    from ushareiplay.managers.command_manager import CommandManager
+
+    received = []
+
+    class _FakeCommandManager:
+        async def process_live_batch(self, rows):
+            received.append(list(rows))
+
+    fake_command_manager = _FakeCommandManager()
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager), raising=False)
+
+    event = MessageContentEvent(_FakeHandler())
+    _run(event.handle("message_content", [_FakeWrapper("souler[Outlier]说：$info")]))
+
+    assert received == [["souler[Outlier]说：$info"]]
