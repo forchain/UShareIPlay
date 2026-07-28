@@ -26,9 +26,9 @@ A Python command-line tool owns only `ushareiplay-audio`, `ushareiplay-audio-roo
 
 The default AVD uses the current ARM64 Google Play image and remains unrooted so the operator can install applications normally. It is intentionally started without host-audio input. Any root-capable Android image is an isolated Linux investigation, not a fallback that turns the Emulator route into a working audio backend.
 
-### Linux PipeWire backend is a candidate, not a default router
+### Linux Waydroid PipeWire backend is the default router
 
-The macOS Emulator launcher keeps host-audio disabled by default because enabling it injects the host default input and still produced silence in Android. The next candidate is Ubuntu with PipeWire and an Android runtime that provides direct controllable audio-device access. It must use a dedicated virtual source and must not rely on macOS defaults. No Android runtime is selected or claimed working until the verifier produces passing evidence.
+The macOS Emulator launcher keeps host-audio disabled by default because enabling it injects the host default input and still produced silence in Android. Ubuntu Waydroid uses PipeWire PulseAudio compatibility with a dedicated sink and its monitor source. The verifier passed a direct Android playback-to-microphone run with the route enabled and failed with the route disabled. The backend does not rely on macOS defaults.
 
 ### The verifier is an independent Android client plus host analyzer
 
@@ -48,5 +48,5 @@ Only a retained failed standard verification result enables root investigation. 
 
 1. Add tool and unit tests without changing existing device defaults.
 2. Provision the default AVD and generate an ignored local override only when the operator selects it for UI work.
-3. Implement and verify a Linux candidate against the retained evidence gate before using it for UShareIPlay runs.
+3. Use the verified Linux backend for UShareIPlay runs, retaining a new evidence directory whenever the audio implementation changes.
 4. Stop deletes or restores only resources owned by the verified Linux backend.

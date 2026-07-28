@@ -5,7 +5,7 @@ UShareIPlay currently requires a physical Android device plus hardware audio loo
 ## What Changes
 
 - Add a managed Android Emulator Virtual Audio Device with a visible Play Store AVD for manual application installation and Appium use.
-- Retain the macOS AVD only for manual application installation and Appium UI use; investigate a Linux PipeWire Android backend for audio routing.
+- Retain the macOS AVD only for manual application installation and Appium UI use; use the verified Linux Waydroid/PipeWire backend for audio routing.
 - Add a deterministic Android playback-to-microphone verifier with retained raw evidence and a required failing negative control.
 - Gate every proposed audio backend, including any root fallback, behind retained positive and negative-control evidence.
 - Add operator documentation and a single launcher workflow that provisions, opens, and health-checks the Virtual Audio Device.
@@ -16,7 +16,7 @@ UShareIPlay currently requires a physical Android device plus hardware audio loo
 
 - `virtual-audio-device`: Provision, start, stop, and connect UShareIPlay to a managed Android Emulator target.
 - `audio-loopback-verification`: Produce objective positive and negative-control evidence for Android playback-to-microphone routing.
-- `host-audio-loopback`: Verify a Linux PipeWire Android backend without changing a macOS operator's default microphone.
+- `host-audio-loopback`: Route Waydroid playback to its microphone through a reversible Linux PipeWire backend without changing a macOS operator's default microphone.
 
 ### Modified Capabilities
 
