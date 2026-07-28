@@ -19,12 +19,12 @@ The system SHALL generate an ignored local configuration override targeting the 
 - **THEN** the generated local override SHALL target that emulator without changing the tracked base configuration
 
 ### Requirement: Disposable Root Fallback
-The system SHALL keep a rootable Google APIs AVD named `ushareiplay-audio-root` separate from the default AVD and SHALL only make it available after retained standard-route failure evidence exists.
+The system SHALL keep any root-capable Android runtime separate from the macOS UI AVD and SHALL only make it available on Linux after retained standard-route failure evidence exists.
 
-#### Scenario: Fallback is requested before standard evidence exists
-- **WHEN** an operator requests Root Fallback without a failed standard verification report
+#### Scenario: Root investigation is requested before standard evidence exists
+- **WHEN** an operator requests a root investigation without a failed standard verification report
 - **THEN** the system SHALL refuse to start it and identify the missing evidence
 
-#### Scenario: Fallback is requested after standard-route failure
-- **WHEN** a retained standard verification report records failure
-- **THEN** the system SHALL create or start only the disposable root fallback AVD
+#### Scenario: Root investigation is requested on an unsupported host
+- **WHEN** an operator requests a root investigation on macOS
+- **THEN** the system SHALL refuse to start it and identify Linux as the required host

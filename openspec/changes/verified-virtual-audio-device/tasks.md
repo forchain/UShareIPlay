@@ -6,9 +6,9 @@
 
 ## 2. Host Audio Loopback
 
-- [ ] 2.1 Implement macOS BlackHole readiness detection, audio-session state capture, and restoration behavior.
-- [ ] 2.2 Implement Linux PipeWire readiness detection and reversible loopback session behavior.
-- [ ] 2.3 Enable Emulator host microphone input for managed sessions and record host-audio setup diagnostics.
+- [x] 2.1 Evaluate the standard macOS Emulator host-input route with reversible state capture and restoration; reject it for microphone routing when Android capture remains silent.
+- [ ] 2.2 Investigate and implement Linux PipeWire readiness detection and a reversible virtual-source session for a non-Emulator Android backend.
+- [x] 2.3 Confirm that Emulator host microphone input is opt-in only, uses the host default input, and is not enabled by the normal launcher.
 
 ## 3. Audio Loopback Verification
 
@@ -18,9 +18,9 @@
 
 ## 4. Operator Workflow and Real Verification
 
-- [ ] 4.1 Add documented setup, launch, stop, verify, and Appium workflows for macOS and Linux.
-- [ ] 4.2 Install/configure the macOS backend, provision the default AVD, and execute the required negative and positive real-device verification runs.
-- [ ] 4.3 If and only if standard verification fails, execute and document the root-fallback investigation with retained evidence.
+- [ ] 4.1 Add documented setup, launch, stop, verify, and Appium workflows for the supported Linux backend; preserve the macOS Emulator launch workflow as UI-only.
+- [x] 4.2 Provision the default AVD and execute the required standard-Emulator negative and host-loopback attempts; retain evidence and reject the route when the positive capture fails.
+- [ ] 4.3 If and only if the Linux standard backend fails its acceptance test, execute and document a guarded root-fallback investigation with retained evidence.
 
 ## 5. Completion
 

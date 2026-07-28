@@ -73,7 +73,7 @@ def test_sdk_tools_use_explicit_sdk_root(tmp_path):
     assert tools.sdkmanager == sdk_root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
 
 
-def test_default_launch_command_enables_host_microphone(tmp_path):
+def test_default_launch_command_does_not_enable_host_microphone(tmp_path):
     tool = _load_tool()
     emulator = tmp_path / "emulator"
 
@@ -85,9 +85,16 @@ def test_default_launch_command_enables_host_microphone(tmp_path):
         "ushareiplay-audio",
         "-port",
         "5556",
-        "-allow-host-audio",
         "-no-snapshot-save",
     ]
+
+
+def test_host_audio_launch_command_requires_explicit_opt_in(tmp_path):
+    tool = _load_tool()
+
+    command = tool.emulator_launch_command(tmp_path / "emulator", tool.avd_spec(root_fallback=False), port=5556, host_audio=True)
+
+    assert "-allow-host-audio" in command
 
 
 def test_generated_override_preserves_unrelated_local_values(tmp_path):
@@ -184,7 +191,7 @@ def test_provision_installs_missing_image_and_creates_only_named_avd(tmp_path):
     ]
 
 
-def test_open_avd_waits_for_its_own_serial_enables_host_mic_and_writes_override(tmp_path, monkeypatch):
+def test_open_avd_does_not_enable_host_mic_without_opt_in(tmp_path, monkeypatch):
     tool = _load_tool()
     sdk_root = tmp_path / "sdk"
     (sdk_root / "emulator").mkdir(parents=True)
@@ -193,8 +200,9 @@ def test_open_avd_waits_for_its_own_serial_enables_host_mic_and_writes_override(
     commands = []
 
     monkeypatch.setattr(tool, "provision_avd", lambda *args, **kwargs: commands.append(("provision", args[1].name)))
-    monkeypatch.setattr(tool.subprocess, "Popen", lambda command: commands.append(("popen", command)) or object())
+    monkeypatch.setattr(tool.subprocess, "Popen", lambda command, **kwargs: commands.append(("popen", command)) or object())
     monkeypatch.setattr(tool.subprocess, "run", lambda command, **kwargs: commands.append(("run", command, kwargs)))
+    monkeypatch.setattr(tool, "wait_for_authorized_device", lambda *args, **kwargs: None)
     monkeypatch.setattr(tool, "write_appium_override", lambda path, serial: commands.append(("override", path, serial)))
 
     serial = tool.open_avd(tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}), tool.avd_spec(root_fallback=False), port=5556, config_path=tmp_path / "config.local.yaml")
@@ -202,11 +210,45 @@ def test_open_avd_waits_for_its_own_serial_enables_host_mic_and_writes_override(
     assert serial == "emulator-5556"
     assert commands == [
         ("provision", "ushareiplay-audio"),
-        ("popen", [str(sdk_root / "emulator" / "emulator"), "-avd", "ushareiplay-audio", "-port", "5556", "-allow-host-audio", "-no-snapshot-save"]),
+        ("popen", [str(sdk_root / "emulator" / "emulator"), "-avd", "ushareiplay-audio", "-port", "5556", "-no-snapshot-save"]),
         ("run", [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "wait-for-device"], {"check": True, "timeout": 180}),
-        ("run", [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "emu", "avd", "hostmicon"], {"check": True, "timeout": 30}),
         ("override", tmp_path / "config.local.yaml", "emulator-5556"),
     ]
+
+
+def test_open_avd_enables_host_mic_only_when_requested(tmp_path, monkeypatch):
+    tool = _load_tool()
+    sdk_root = tmp_path / "sdk"
+    (sdk_root / "emulator").mkdir(parents=True)
+    (sdk_root / "platform-tools").mkdir()
+    (sdk_root / "cmdline-tools" / "latest" / "bin").mkdir(parents=True)
+    commands = []
+    monkeypatch.setattr(tool, "provision_avd", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tool.subprocess, "Popen", lambda command, **kwargs: commands.append(command) or object())
+    monkeypatch.setattr(tool.subprocess, "run", lambda command, **kwargs: commands.append(command))
+    monkeypatch.setattr(tool, "wait_for_authorized_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tool, "write_appium_override", lambda *args: None)
+
+    tool.open_avd(tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}), tool.avd_spec(root_fallback=False), port=5556, config_path=tmp_path / "config.local.yaml", host_audio=True)
+
+    assert [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "emu", "avd", "hostmicon"] in commands
+
+
+def test_wait_for_authorized_device_rejects_unauthorized_serial(monkeypatch):
+    tool = _load_tool()
+    outputs = iter([
+        "List of devices attached\nemulator-5556\tunauthorized\n",
+    ])
+    monkeypatch.setattr(tool.subprocess, "run", lambda *args, **kwargs: type("Result", (), {"stdout": next(outputs)})())
+    times = iter([0.0, 0.0, 1.0])
+    monkeypatch.setattr(tool.time, "monotonic", lambda: next(times))
+
+    try:
+        tool.wait_for_authorized_device(Path("adb"), "emulator-5556", timeout_seconds=0, sleep=lambda _: None)
+    except RuntimeError as error:
+        assert "unauthorized" in str(error)
+    else:
+        raise AssertionError("expected unauthorized emulator to fail")
 
 
 def test_java_home_uses_existing_explicit_value_before_homebrew_default(tmp_path):

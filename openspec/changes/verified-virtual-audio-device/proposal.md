@@ -5,9 +5,9 @@ UShareIPlay currently requires a physical Android device plus hardware audio loo
 ## What Changes
 
 - Add a managed Android Emulator Virtual Audio Device with a visible Play Store AVD for manual application installation and Appium use.
-- Add platform-specific Host Audio Loopback setup for macOS BlackHole and Linux PipeWire, while preserving normal host-audio settings after a session.
+- Retain the macOS AVD only for manual application installation and Appium UI use; investigate a Linux PipeWire Android backend for audio routing.
 - Add a deterministic Android playback-to-microphone verifier with retained raw evidence and a required failing negative control.
-- Add a disposable rootable AVD fallback that is available only after evidence shows the supported host-loopback route failed.
+- Gate every proposed audio backend, including any root fallback, behind retained positive and negative-control evidence.
 - Add operator documentation and a single launcher workflow that provisions, opens, and health-checks the Virtual Audio Device.
 
 ## Capabilities
@@ -16,7 +16,7 @@ UShareIPlay currently requires a physical Android device plus hardware audio loo
 
 - `virtual-audio-device`: Provision, start, stop, and connect UShareIPlay to a managed Android Emulator target.
 - `audio-loopback-verification`: Produce objective positive and negative-control evidence for Android playback-to-microphone routing.
-- `host-audio-loopback`: Configure the supported macOS and Linux host-audio implementations used by a Virtual Audio Device.
+- `host-audio-loopback`: Verify a Linux PipeWire Android backend without changing a macOS operator's default microphone.
 
 ### Modified Capabilities
 
@@ -24,4 +24,4 @@ UShareIPlay currently requires a physical Android device plus hardware audio loo
 
 ## Impact
 
-The change adds an operator-facing tooling surface, Android SDK/AVD and host-audio dependencies, a verifier test artifact, generated local configuration, and ignored runtime evidence. Soul and QQ Music automation logic remains unchanged; the existing Appium driver configuration is the integration boundary.
+The change adds an operator-facing AVD launcher, a verifier test artifact, generated local configuration, and retained runtime evidence. Soul and QQ Music automation logic remains unchanged; the existing Appium driver configuration is the integration boundary.

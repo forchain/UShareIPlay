@@ -5,6 +5,8 @@ logs
 data
 *.swp
 artifacts/
+tools/loopback-verifier/build/
+tools/loopback-verifier/debug.keystore
 config/keywords.yaml
 config.local.yaml
 .agent/

@@ -1,19 +1,19 @@
 ## ADDED Requirements
 
-### Requirement: Supported host-audio backend selection
-The system SHALL select BlackHole 2ch on macOS and PipeWire on Linux, and SHALL fail with an actionable diagnostic on unsupported hosts or missing required backend components.
+### Requirement: Linux candidate backend selection
+The system SHALL select a PipeWire-backed Android runtime only on Linux and SHALL fail with an actionable diagnostic on unsupported hosts or missing required backend components. The macOS Android Emulator SHALL NOT be presented as an audio-routing backend.
 
-#### Scenario: macOS backend is unavailable
-- **WHEN** a macOS operator prepares Host Audio Loopback without BlackHole 2ch available
-- **THEN** the system SHALL report installation and restart requirements without reporting audio ready
+#### Scenario: macOS operator opens the managed AVD
+- **WHEN** a macOS operator opens the managed Android Emulator
+- **THEN** the system SHALL keep host microphone injection disabled unless explicitly requested for diagnosis and SHALL not report audio ready
 
 #### Scenario: Linux backend is unavailable
 - **WHEN** a Linux operator prepares Host Audio Loopback without an active PipeWire service
 - **THEN** the system SHALL report the missing service without reporting audio ready
 
-### Requirement: Host audio settings are restored
-The system SHALL restore the host audio-device defaults it changed after a managed session stops or fails.
+### Requirement: Dedicated audio routing
+The system SHALL use a dedicated Linux virtual source for a candidate audio session and SHALL not modify macOS host input defaults.
 
-#### Scenario: Managed session exits
-- **WHEN** a managed session that changed host audio defaults exits
-- **THEN** the system SHALL attempt restoration and record the outcome in its artifacts
+#### Scenario: Candidate session exits
+- **WHEN** a Linux candidate session exits
+- **THEN** the system SHALL remove its owned PipeWire links and record the outcome in its artifacts

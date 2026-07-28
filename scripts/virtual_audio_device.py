@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import subprocess
+import time
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -95,18 +96,20 @@ def sdk_tools(env: dict[str, str] | None = None) -> SdkTools:
     )
 
 
-def emulator_launch_command(emulator: Path, spec: AvdSpec, *, port: int) -> list[str]:
+def emulator_launch_command(emulator: Path, spec: AvdSpec, *, port: int, host_audio: bool = False) -> list[str]:
     if port < 5554 or port > 5682 or port % 2:
         raise ValueError("emulator console port must be even and between 5554 and 5682")
-    return [
+    command = [
         str(emulator),
         "-avd",
         spec.name,
         "-port",
         str(port),
-        "-allow-host-audio",
         "-no-snapshot-save",
     ]
+    if host_audio:
+        command.insert(-1, "-allow-host-audio")
+    return command
 
 
 def avd_exists(spec: AvdSpec, avd_home: Path | None = None) -> bool:
@@ -136,6 +139,26 @@ def parse_emulator_serials(adb_devices_output: str) -> list[str]:
         if len(fields) == 2 and fields[0].startswith("emulator-") and fields[1] == "device":
             serials.append(fields[0])
     return serials
+
+
+def _adb_state(adb_devices_output: str, serial: str) -> str | None:
+    for line in adb_devices_output.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == serial:
+            return fields[1]
+    return None
+
+
+def wait_for_authorized_device(adb: Path, serial: str, *, timeout_seconds: int = 180, sleep: Callable[[float], None] = time.sleep) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_state = None
+    while time.monotonic() <= deadline:
+        result = subprocess.run([str(adb), "devices"], text=True, check=True, capture_output=True)
+        last_state = _adb_state(result.stdout, serial)
+        if last_state == "device":
+            return
+        sleep(1)
+    raise RuntimeError(f"{serial} did not become authorized (last ADB state: {last_state or 'missing'})")
 
 
 def _image_directory(tools: SdkTools, spec: AvdSpec) -> Path:
@@ -202,12 +225,20 @@ def root_fallback_allowed(report_path: Path) -> bool:
     return report.get("status") == "failed" and report.get("mode") == "standard"
 
 
-def open_avd(tools: SdkTools, spec: AvdSpec, *, port: int, config_path: Path) -> str:
+def open_avd(tools: SdkTools, spec: AvdSpec, *, port: int, config_path: Path, host_audio: bool = False) -> str:
     provision_avd(tools, spec)
     serial = f"emulator-{port}"
-    subprocess.Popen(emulator_launch_command(tools.emulator, spec, port=port))
+    subprocess.Popen(
+        emulator_launch_command(tools.emulator, spec, port=port, host_audio=host_audio),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     subprocess.run([str(tools.adb), "-s", serial, "wait-for-device"], check=True, timeout=180)
-    subprocess.run([str(tools.adb), "-s", serial, "emu", "avd", "hostmicon"], check=True, timeout=30)
+    wait_for_authorized_device(tools.adb, serial)
+    if host_audio:
+        subprocess.run([str(tools.adb), "-s", serial, "emu", "avd", "hostmicon"], check=True, timeout=30)
     write_appium_override(config_path, serial)
     return serial
 
@@ -217,6 +248,7 @@ def main() -> int:
     parser.add_argument("action", choices=("status", "prepare", "open"), help="operation to perform")
     parser.add_argument("--root-fallback", action="store_true", help="select the disposable rootable AVD")
     parser.add_argument("--port", type=int, default=5556, help="even emulator console port")
+    parser.add_argument("--enable-host-audio", action="store_true", help="opt in to routing the current host input into Android")
     parser.add_argument("--config-path", type=Path, default=Path(__file__).resolve().parents[1] / "config.local.yaml")
     parser.add_argument("--failure-report", type=Path, help="required failed standard verification report for Root Fallback")
     args = parser.parse_args()
@@ -237,7 +269,7 @@ def main() -> int:
         print(f"prepared {spec.name}")
         return 0
 
-    serial = open_avd(tools, spec, port=args.port, config_path=args.config_path)
+    serial = open_avd(tools, spec, port=args.port, config_path=args.config_path, host_audio=args.enable_host_audio)
     print(f"opened {spec.name} as {serial}")
     return 0
 
