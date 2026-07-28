@@ -182,3 +182,39 @@ def test_provision_installs_missing_image_and_creates_only_named_avd(tmp_path):
         ([str(sdk_root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"), "--install", "system-images;android-36;google_apis_playstore;arm64-v8a"], None),
         ([str(sdk_root / "cmdline-tools" / "latest" / "bin" / "avdmanager"), "create", "avd", "--force", "--name", "ushareiplay-audio", "--package", "system-images;android-36;google_apis_playstore;arm64-v8a", "--device", "pixel_7"], "no\n"),
     ]
+
+
+def test_open_avd_waits_for_its_own_serial_enables_host_mic_and_writes_override(tmp_path, monkeypatch):
+    tool = _load_tool()
+    sdk_root = tmp_path / "sdk"
+    (sdk_root / "emulator").mkdir(parents=True)
+    (sdk_root / "platform-tools").mkdir()
+    (sdk_root / "cmdline-tools" / "latest" / "bin").mkdir(parents=True)
+    commands = []
+
+    monkeypatch.setattr(tool, "provision_avd", lambda *args, **kwargs: commands.append(("provision", args[1].name)))
+    monkeypatch.setattr(tool.subprocess, "Popen", lambda command: commands.append(("popen", command)) or object())
+    monkeypatch.setattr(tool.subprocess, "run", lambda command, **kwargs: commands.append(("run", command, kwargs)))
+    monkeypatch.setattr(tool, "write_appium_override", lambda path, serial: commands.append(("override", path, serial)))
+
+    serial = tool.open_avd(tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}), tool.avd_spec(root_fallback=False), port=5556, config_path=tmp_path / "config.local.yaml")
+
+    assert serial == "emulator-5556"
+    assert commands == [
+        ("provision", "ushareiplay-audio"),
+        ("popen", [str(sdk_root / "emulator" / "emulator"), "-avd", "ushareiplay-audio", "-port", "5556", "-allow-host-audio", "-no-snapshot-save"]),
+        ("run", [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "wait-for-device"], {"check": True, "timeout": 180}),
+        ("run", [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "emu", "avd", "hostmicon"], {"check": True, "timeout": 30}),
+        ("override", tmp_path / "config.local.yaml", "emulator-5556"),
+    ]
+
+
+def test_java_home_uses_existing_explicit_value_before_homebrew_default(tmp_path):
+    tool = _load_tool()
+    explicit = tmp_path / "explicit"
+    homebrew = tmp_path / "homebrew"
+    explicit.mkdir()
+    homebrew.mkdir()
+
+    assert tool.java_home({"JAVA_HOME": str(explicit)}, homebrew) == explicit
+    assert tool.java_home({}, homebrew) == homebrew

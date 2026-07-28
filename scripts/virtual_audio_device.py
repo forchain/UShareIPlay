@@ -142,8 +142,21 @@ def _image_directory(tools: SdkTools, spec: AvdSpec) -> Path:
     return tools.sdk_root / spec.package.replace(";", "/")
 
 
+def java_home(env: dict[str, str] | None = None, homebrew_default: Path | None = None) -> Path | None:
+    values = env or os.environ
+    configured = values.get("JAVA_HOME")
+    if configured and Path(configured).is_dir():
+        return Path(configured)
+    default = homebrew_default or Path("/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
+    return default if default.is_dir() else None
+
+
 def _run_checked(command: list[str], *, input_text: str | None = None) -> None:
-    subprocess.run(command, input=input_text, text=True, check=True)
+    environment = os.environ.copy()
+    if (detected_java_home := java_home(environment)) is not None:
+        environment["JAVA_HOME"] = str(detected_java_home)
+        environment["PATH"] = f"{detected_java_home / 'bin'}:{environment['PATH']}"
+    subprocess.run(command, input=input_text, text=True, check=True, env=environment)
 
 
 def provision_avd(
@@ -152,8 +165,9 @@ def provision_avd(
     avd_home: Path | None = None,
     runner: Callable[..., None] = _run_checked,
 ) -> None:
-    if not _image_directory(tools, spec).is_dir():
-        runner([str(tools.sdkmanager), "--install", spec.package])
+    # SDK directories can outlive the package-manager metadata. sdkmanager's
+    # idempotent install operation is the only authoritative availability check.
+    runner([str(tools.sdkmanager), "--install", spec.package])
     if not avd_exists(spec, avd_home):
         runner(create_avd_command(tools.avdmanager, spec), input_text="no\n")
 
@@ -188,18 +202,44 @@ def root_fallback_allowed(report_path: Path) -> bool:
     return report.get("status") == "failed" and report.get("mode") == "standard"
 
 
+def open_avd(tools: SdkTools, spec: AvdSpec, *, port: int, config_path: Path) -> str:
+    provision_avd(tools, spec)
+    serial = f"emulator-{port}"
+    subprocess.Popen(emulator_launch_command(tools.emulator, spec, port=port))
+    subprocess.run([str(tools.adb), "-s", serial, "wait-for-device"], check=True, timeout=180)
+    subprocess.run([str(tools.adb), "-s", serial, "emu", "avd", "hostmicon"], check=True, timeout=30)
+    write_appium_override(config_path, serial)
+    return serial
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("status", "prepare", "open"), help="operation to perform")
     parser.add_argument("--root-fallback", action="store_true", help="select the disposable rootable AVD")
-    parser.add_argument("--status", action="store_true", help="print the selected virtual device contract")
+    parser.add_argument("--port", type=int, default=5556, help="even emulator console port")
+    parser.add_argument("--config-path", type=Path, default=Path(__file__).resolve().parents[1] / "config.local.yaml")
+    parser.add_argument("--failure-report", type=Path, help="required failed standard verification report for Root Fallback")
     args = parser.parse_args()
 
-    if args.status:
-        print({"avd": asdict(avd_spec(root_fallback=args.root_fallback)), "audio_backend": host_backend().value})
+    spec = avd_spec(root_fallback=args.root_fallback)
+    if args.root_fallback and not args.failure_report:
+        parser.error("--root-fallback requires --failure-report")
+    if args.root_fallback and not root_fallback_allowed(args.failure_report):
+        parser.error("Root Fallback requires a failed standard verification report")
+
+    if args.action == "status":
+        print({"avd": asdict(spec), "audio_backend": host_backend().value})
         return 0
 
-    parser.error("choose an action; use --status for the current device contract")
-    return 2
+    tools = sdk_tools()
+    if args.action == "prepare":
+        provision_avd(tools, spec)
+        print(f"prepared {spec.name}")
+        return 0
+
+    serial = open_avd(tools, spec, port=args.port, config_path=args.config_path)
+    print(f"opened {spec.name} as {serial}")
+    return 0
 
 
 if __name__ == "__main__":
