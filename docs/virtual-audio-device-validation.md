@@ -23,6 +23,8 @@ No backend is ready until it produces both of the following artifacts:
 
 Raw source and capture PCM, hashes, command logs, and the machine-readable report must be retained for both runs.
 
-## Next Backend
+## Accepted Backend
 
-The next candidate is an Ubuntu host using Waydroid with PipeWire. It must expose a dedicated PipeWire virtual source to Android without changing macOS device defaults, then pass the same acceptance rule. This is a new backend investigation, not a claimed solution.
+The controlled acceptance run completed on Ubuntu using Waydroid with PipeWire. The route exposes a dedicated `ushareiplay_music_sink` and selects its monitor as Android microphone input without changing macOS device defaults. The positive and negative verifier results are recorded in `docs/waydroid-virtual-audio.md` and the ADR.
+
+The Parallels ARM64 Ubuntu VM is the recommended deployment target because QQ Music and Soul run natively as `arm64-v8a` applications. The VM has passed container, binder, GPU/audio device, and native application startup checks. A fresh verifier run on that VM remains a release-gate task; successful startup alone is not treated as audio acceptance.
