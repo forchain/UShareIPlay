@@ -7,9 +7,11 @@ import argparse
 import json
 import os
 import platform
+import subprocess
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -105,6 +107,55 @@ def emulator_launch_command(emulator: Path, spec: AvdSpec, *, port: int) -> list
         "-allow-host-audio",
         "-no-snapshot-save",
     ]
+
+
+def avd_exists(spec: AvdSpec, avd_home: Path | None = None) -> bool:
+    home = avd_home or Path(os.environ.get("ANDROID_AVD_HOME", Path.home() / ".android" / "avd"))
+    return (home / f"{spec.name}.avd").is_dir()
+
+
+def create_avd_command(avdmanager: Path, spec: AvdSpec) -> list[str]:
+    return [
+        str(avdmanager),
+        "create",
+        "avd",
+        "--force",
+        "--name",
+        spec.name,
+        "--package",
+        spec.package,
+        "--device",
+        "pixel_7",
+    ]
+
+
+def parse_emulator_serials(adb_devices_output: str) -> list[str]:
+    serials = []
+    for line in adb_devices_output.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0].startswith("emulator-") and fields[1] == "device":
+            serials.append(fields[0])
+    return serials
+
+
+def _image_directory(tools: SdkTools, spec: AvdSpec) -> Path:
+    return tools.sdk_root / spec.package.replace(";", "/")
+
+
+def _run_checked(command: list[str], *, input_text: str | None = None) -> None:
+    subprocess.run(command, input=input_text, text=True, check=True)
+
+
+def provision_avd(
+    tools: SdkTools,
+    spec: AvdSpec,
+    avd_home: Path | None = None,
+    runner: Callable[..., None] = _run_checked,
+) -> None:
+    if not _image_directory(tools, spec).is_dir():
+        runner([str(tools.sdkmanager), "--install", spec.package])
+    if not avd_exists(spec, avd_home):
+        runner(create_avd_command(tools.avdmanager, spec), input_text="no\n")
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

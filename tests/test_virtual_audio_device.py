@@ -121,3 +121,64 @@ def test_root_fallback_requires_failed_standard_report(tmp_path):
 
     report.write_text('{"status": "failed", "mode": "standard"}', encoding="utf-8")
     assert tool.root_fallback_allowed(report) is True
+
+
+def test_avd_exists_uses_only_the_named_avd_home_entry(tmp_path):
+    tool = _load_tool()
+    avd_home = tmp_path / "avd"
+    avd_home.mkdir()
+    (avd_home / "other.avd").mkdir()
+
+    assert tool.avd_exists(tool.avd_spec(root_fallback=False), avd_home) is False
+
+    (avd_home / "ushareiplay-audio.avd").mkdir()
+    assert tool.avd_exists(tool.avd_spec(root_fallback=False), avd_home) is True
+
+
+def test_create_avd_command_is_noninteractive_and_uses_selected_image(tmp_path):
+    tool = _load_tool()
+    avdmanager = tmp_path / "avdmanager"
+
+    command = tool.create_avd_command(avdmanager, tool.avd_spec(root_fallback=False))
+
+    assert command == [
+        str(avdmanager),
+        "create",
+        "avd",
+        "--force",
+        "--name",
+        "ushareiplay-audio",
+        "--package",
+        "system-images;android-36;google_apis_playstore;arm64-v8a",
+        "--device",
+        "pixel_7",
+    ]
+
+
+def test_parse_adb_devices_returns_only_emulator_serials():
+    tool = _load_tool()
+
+    serials = tool.parse_emulator_serials(
+        "List of devices attached\n192.168.8.151:5555\tdevice\nemulator-5556\tdevice\nemulator-5558\toffline\n"
+    )
+
+    assert serials == ["emulator-5556"]
+
+
+def test_provision_installs_missing_image_and_creates_only_named_avd(tmp_path):
+    tool = _load_tool()
+    sdk_root = tmp_path / "sdk"
+    (sdk_root / "emulator").mkdir(parents=True)
+    (sdk_root / "platform-tools").mkdir()
+    (sdk_root / "cmdline-tools" / "latest" / "bin").mkdir(parents=True)
+    commands = []
+
+    def runner(command, *, input_text=None):
+        commands.append((command, input_text))
+
+    tool.provision_avd(tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}), tool.avd_spec(root_fallback=False), tmp_path / "avd", runner)
+
+    assert commands == [
+        ([str(sdk_root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"), "--install", "system-images;android-36;google_apis_playstore;arm64-v8a"], None),
+        ([str(sdk_root / "cmdline-tools" / "latest" / "bin" / "avdmanager"), "create", "avd", "--force", "--name", "ushareiplay-audio", "--package", "system-images;android-36;google_apis_playstore;arm64-v8a", "--device", "pixel_7"], "no\n"),
+    ]
