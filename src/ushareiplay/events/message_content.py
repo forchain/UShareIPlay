@@ -111,14 +111,28 @@ class MessageContentEvent(BaseEvent):
                             message_manager.latest_chats.append(new_content)
                         break
 
+            room_owner = None
+            if hasattr(self.handler, 'config') and isinstance(self.handler.config, dict):
+                soul_cfg = self.handler.config.get("soul", {})
+                if isinstance(soul_cfg, dict):
+                    room_owner = soul_cfg.get("room_owner")
+                if not room_owner:
+                    room_owner = self.handler.config.get("room_owner")
+
             # 处理所有消息元素
             for content in message_manager.latest_chats:
-                result = classify_chat_line(content)
+                result = classify_chat_line(content, room_owner=room_owner)
 
                 is_return = result.kind == ChatIntakeKind.USER_RETURN
                 if is_return:
                     self.logger.critical(f"User returned: {result.nickname}")
                     await self._notify_user_return(result.nickname)
+
+                if result.kind == ChatIntakeKind.GIFT_RECEIVE:
+                    chat_logger.critical(content)
+                    self.logger.info(f"Gift received from user: {result.nickname}")
+                    await self._notify_gift_receive(result.nickname)
+                    continue
 
                 if result.kind == ChatIntakeKind.KEYWORD_MENTION:
                     from ushareiplay.managers.keyword_manager import KeywordManager
@@ -167,6 +181,15 @@ class MessageContentEvent(BaseEvent):
             await command_manager.notify_user_enter(username)
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
+
+    async def _notify_gift_receive(self, username: str):
+        """通知所有命令收礼物事件"""
+        try:
+            command_manager = CommandManager.instance()
+            await command_manager.notify_gift_receive(username)
+        except Exception as e:
+            self.logger.error(f"Error notifying gift receive: {str(e)}")
+
 
     async def _notify_user_return(self, username: str):
         """通知所有命令用户返回"""
