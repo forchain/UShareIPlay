@@ -51,8 +51,8 @@ class DatabaseManager:
 
     async def _ensure_receive_events_created_at(self) -> None:
         """
-        既有 receive_events 表若 created_at 为 NULL，回填为当前时间；
-        新插入由 Tortoise auto_now_add 写入。
+        确保 receive_events 表的 created_at 列具备 SQLite 默认值 `DEFAULT (datetime('now'))`；
+        已有的 NULL 记录回填为当前时间。
         """
         conn = connections.get("default")
         try:
@@ -63,9 +63,35 @@ class DatabaseManager:
                 return
         except Exception:
             return
+
         await conn.execute_script(
             "UPDATE receive_events SET created_at = datetime('now') WHERE created_at IS NULL;"
         )
+
+        rows = await conn.execute_query_dict("PRAGMA table_info(receive_events)")
+        columns = {r.get("name"): r for r in rows}
+        created_at_col = columns.get("created_at")
+
+        if not created_at_col:
+            await conn.execute_script(
+                "ALTER TABLE receive_events ADD COLUMN created_at DATETIME DEFAULT (datetime('now'));"
+            )
+        elif created_at_col.get("dflt_value") is None:
+            await conn.execute_script(
+                """
+                CREATE TABLE receive_events_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    command TEXT NOT NULL,
+                    created_at DATETIME DEFAULT (datetime('now')),
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+                );
+                INSERT INTO receive_events_new (id, command, created_at, user_id)
+                SELECT id, command, COALESCE(created_at, datetime('now')), user_id FROM receive_events;
+                DROP TABLE receive_events;
+                ALTER TABLE receive_events_new RENAME TO receive_events;
+                """
+            )
+
 
 
     async def _ensure_user_canonical_column(self) -> None:
