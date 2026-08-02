@@ -530,7 +530,22 @@ class CommandManager(Singleton):
             except Exception:
                 self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
 
+    async def notify_gift_receive(self, username: str):
+        """
+        Notify all commands when a gift or heat contribution is received
+
+        Args:
+            username: Username of the user who sent the gift
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, 'user_gift_receive'):
+                    await module.command.user_gift_receive(username)
+            except Exception:
+                self.logger.error(f"Error in command user_gift_receive: {traceback.format_exc()}")
+
     async def notify_focus_count_change(self, before: int | None, after: int):
+
         """
         Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) changes.
 
