@@ -7,5 +7,7 @@ from ushareiplay.models.return_event import ReturnEvent
 from ushareiplay.models.exit_event import ExitEvent
 from ushareiplay.models.focus_event import FocusEvent
 from ushareiplay.models.timer import Timer
+from ushareiplay.models.receive_event import ReceiveEvent
 
-__all__ = ['User', 'SeatReservation', 'MessageInfo', 'Keyword', 'EnterEvent', 'ReturnEvent', 'ExitEvent', 'FocusEvent', 'Timer'] 
+__all__ = ['User', 'SeatReservation', 'MessageInfo', 'Keyword', 'EnterEvent', 'ReturnEvent', 'ExitEvent', 'FocusEvent', 'Timer', 'ReceiveEvent']
+ 
