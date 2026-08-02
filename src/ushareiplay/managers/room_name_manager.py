@@ -130,11 +130,12 @@ class RoomNameManager(Singleton):
             parts = room_title_text.split('｜', 1)
             if len(parts) == 2:
                 theme_part = parts[0].strip()
-                self.current_theme = theme_part
+                if not self.pending_ui_update:
+                    self.current_theme = theme_part
                 self.current_title = parts[1].strip()
                 self.is_initialized = True
-                self.logger.info(f'Initialized room name from UI: theme={theme_part}, title={self.current_title}')
-                return {'success': True, 'theme': theme_part, 'title': self.current_title, 'initialized': True}
+                self.logger.info(f'Initialized room name from UI: theme={self.current_theme}, title={self.current_title}')
+                return {'success': True, 'theme': self.current_theme, 'title': self.current_title, 'initialized': True}
 
         self.current_title = room_title_text
         self.is_initialized = True
@@ -179,7 +180,9 @@ class RoomNameManager(Singleton):
         if '｜' in room_title_text:
             parts = room_title_text.split('｜', 1)
             if len(parts) == 2:
-                self.current_theme = parts[0].strip()
+                theme_part = parts[0].strip()
+                if not self.pending_ui_update:
+                    self.current_theme = theme_part
                 self.current_title = parts[1].strip()
                 self.is_initialized = True
                 self.logger.info(f"Initialized room name from UI: theme={self.current_theme}, title={self.current_title}")
