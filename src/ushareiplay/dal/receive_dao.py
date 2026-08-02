@@ -15,9 +15,9 @@ class ReceiveDao:
 
     @staticmethod
     async def get_by_username(username: str) -> List[ReceiveEvent]:
-        """Get all receive commands for a user"""
-        effective_user = await UserDAO.get_or_create(username=username)
-        return await ReceiveEvent.filter(user_id=effective_user.id).order_by('id').prefetch_related('user')
+        """Get all receive commands for a user (including canonical account and all aliases)"""
+        user_ids = await UserDAO.get_all_associated_user_ids(username=username)
+        return await ReceiveEvent.filter(user_id__in=user_ids).order_by('id').prefetch_related('user')
 
     @staticmethod
     async def get_by_id(command_id: int) -> Optional[ReceiveEvent]:
@@ -35,7 +35,8 @@ class ReceiveDao:
 
     @staticmethod
     async def delete_all_by_username(username: str) -> int:
-        """Delete all receive commands for a user"""
-        effective_user = await UserDAO.get_or_create(username=username)
-        return await ReceiveEvent.filter(user_id=effective_user.id).delete()
+        """Delete all receive commands for a user (including canonical account and all aliases)"""
+        user_ids = await UserDAO.get_all_associated_user_ids(username=username)
+        return await ReceiveEvent.filter(user_id__in=user_ids).delete()
+
 

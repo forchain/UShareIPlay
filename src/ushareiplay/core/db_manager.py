@@ -29,6 +29,7 @@ class DatabaseManager:
         await self._ensure_keyword_mode_column()
         await self._ensure_keyword_allowed_users_column()
         await self._ensure_focus_events_created_at()
+        await self._ensure_receive_events_created_at()
 
     async def _ensure_focus_events_created_at(self) -> None:
         """
@@ -47,6 +48,25 @@ class DatabaseManager:
         await conn.execute_script(
             "UPDATE focus_events SET created_at = datetime('now') WHERE created_at IS NULL;"
         )
+
+    async def _ensure_receive_events_created_at(self) -> None:
+        """
+        既有 receive_events 表若 created_at 为 NULL，回填为当前时间；
+        新插入由 Tortoise auto_now_add 写入。
+        """
+        conn = connections.get("default")
+        try:
+            tables = await conn.execute_query_dict(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='receive_events'"
+            )
+            if not tables:
+                return
+        except Exception:
+            return
+        await conn.execute_script(
+            "UPDATE receive_events SET created_at = datetime('now') WHERE created_at IS NULL;"
+        )
+
 
     async def _ensure_user_canonical_column(self) -> None:
         """

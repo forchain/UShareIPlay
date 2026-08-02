@@ -119,8 +119,18 @@ class MessageContentEvent(BaseEvent):
                 if not room_owner:
                     room_owner = self.handler.config.get("room_owner")
 
+            if not room_owner:
+                try:
+                    from ushareiplay.models import User
+                    owner_user = await User.filter(level=9).first()
+                    if owner_user:
+                        room_owner = owner_user.username
+                except Exception:
+                    pass
+
             # 处理所有消息元素
             for content in message_manager.latest_chats:
+
                 result = classify_chat_line(content, room_owner=room_owner)
 
                 is_return = result.kind == ChatIntakeKind.USER_RETURN

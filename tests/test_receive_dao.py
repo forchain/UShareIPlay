@@ -41,3 +41,21 @@ async def test_receive_dao_delete_all(db_init):
     assert count == 2
     items = await ReceiveDao.get_by_username("Bob")
     assert len(items) == 0
+
+
+@pytest.mark.asyncio
+async def test_receive_dao_alias_resolution(db_init):
+    from ushareiplay.dal.user_dao import UserDAO
+    from ushareiplay.models import User
+
+    outlier = await UserDAO.get_or_create_raw("Outlier")
+    chainer = await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
+
+    # Outlier creates a receive command
+    await ReceiveDao.create("Outlier", ":say Thanks from Outlier")
+
+    # Querying by alias Chainer should find Outlier's receive commands
+    items = await ReceiveDao.get_by_username("Chainer")
+    assert len(items) == 1
+    assert items[0].command == ":say Thanks from Outlier"
+
