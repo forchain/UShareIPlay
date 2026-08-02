@@ -27,6 +27,8 @@ _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
 _KEYWORD_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*@我\s+(.+)")
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
+_GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]送给([^\s【]+)")
+_GIFT_TYPE2_PATTERN = re.compile(r"恭喜(.+?)在此房间贡献出\d+热力值")
 
 
 class ChatIntakeKind(Enum):
@@ -37,6 +39,7 @@ class ChatIntakeKind(Enum):
     KEYWORD_MENTION = "keyword_mention"
     COMMAND = "command"
     PLAIN_CHAT = "plain_chat"
+    GIFT_RECEIVE = "gift_receive"
 
 
 @dataclass(frozen=True)
@@ -69,10 +72,10 @@ class ChatIntakeResult:
     raw: str = ""
 
 
-def classify_chat_line(raw: str) -> ChatIntakeResult:
+def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeResult:
     """Classify a single raw chat line.
 
-    Order of precedence: user enter/return, keyword mention, command, plain chat.
+    Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
     The result is frozen; callers may convert it to a mutable MessageInfo if needed.
     """
     raw = raw or ""
@@ -92,6 +95,29 @@ def classify_chat_line(raw: str) -> ChatIntakeResult:
             text=username,
             raw=raw,
         )
+
+    gift1_match = _GIFT_TYPE1_PATTERN.search(raw)
+    if gift1_match:
+        giver = gift1_match.group(1).strip()
+        receiver = gift1_match.group(2).strip()
+        if room_owner and receiver == room_owner.strip():
+            return ChatIntakeResult(
+                kind=ChatIntakeKind.GIFT_RECEIVE,
+                nickname=giver,
+                text=giver,
+                raw=raw,
+            )
+
+    gift2_match = _GIFT_TYPE2_PATTERN.search(raw)
+    if gift2_match:
+        giver = gift2_match.group(1).strip()
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.GIFT_RECEIVE,
+            nickname=giver,
+            text=giver,
+            raw=raw,
+        )
+
 
     keyword_match = _KEYWORD_PATTERN.match(raw)
     if keyword_match:

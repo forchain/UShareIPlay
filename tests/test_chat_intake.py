@@ -119,6 +119,23 @@ class TestClassifyChatLine:
         with pytest.raises(AttributeError):
             result.text = "mutated"
 
+    def test_gift_type1_matches_when_receiver_is_room_owner(self):
+        result = classify_chat_line("souler[🍻🥂🥃🍸🍷🍺]送给Joyer", room_owner="Joyer")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
+        assert result.text == "🍻🥂🥃🍸🍷🍺"
+
+    def test_gift_type1_ignored_when_receiver_is_not_room_owner(self):
+        result = classify_chat_line("souler[Alice]送给Bob", room_owner="Joyer")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_gift_type2_heat_contribution_matches(self):
+        result = classify_chat_line("08-02 17:44:58 [I] 恭喜🍻🥂🥃🍸🍷🍺在此房间贡献出3120热力值")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
+        assert result.text == "🍻🥂🥃🍸🍷🍺"
+
+
 
 class TestExpandQueueText:
     def test_splits_plain_and_command_parts(self):

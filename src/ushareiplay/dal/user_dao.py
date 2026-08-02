@@ -105,3 +105,20 @@ class UserDAO:
         result = set(aliases)
         result.add(canonical.username)  # 主账号本身也加进来
         return result
+
+    @staticmethod
+    async def get_all_associated_user_ids(username: str) -> list[int]:
+        """
+        获取某个用户（可以是别名或主账号）所有相关账号的 DB ID 列表（包含主账号、所有别名及原始 user 对象）。
+        """
+        raw_user = await UserDAO.get_or_create_raw(username)
+        canonical = await UserDAO.resolve_canonical(raw_user)
+
+        alias_ids = await User.filter(canonical_user_id=canonical.id).values_list(
+            "id", flat=True
+        )
+
+        user_ids = set(alias_ids)
+        user_ids.add(canonical.id)
+        user_ids.add(raw_user.id)
+        return list(user_ids)
