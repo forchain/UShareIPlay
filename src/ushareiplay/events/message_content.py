@@ -115,9 +115,10 @@ class MessageContentEvent(BaseEvent):
             if hasattr(self.handler, 'config') and isinstance(self.handler.config, dict):
                 soul_cfg = self.handler.config.get("soul", {})
                 if isinstance(soul_cfg, dict):
-                    room_owner = soul_cfg.get("room_owner")
+                    room_owner = soul_cfg.get("room_owner") or soul_cfg.get("owner_username")
                 if not room_owner:
-                    room_owner = self.handler.config.get("room_owner")
+                    room_owner = self.handler.config.get("room_owner") or self.handler.config.get("owner_username")
+
 
             if not room_owner:
                 try:
