@@ -184,3 +184,26 @@ def test_reset_theme_uses_default_theme_from_config(monkeypatch):
 
     assert manager.get_current_theme() == "电音"
     assert manager.has_pending_ui_update() is True
+
+
+def test_process_pending_update_preserves_theme_when_uninitialized():
+    manager = _manager_with_fake_handler()
+    assert manager.is_initialized is False
+
+    manager.set_theme("三福")
+    assert manager.get_current_theme() == "三福"
+    assert manager.has_pending_ui_update() is True
+
+    fake_element = MagicMock()
+    manager._handler.element_finder.try_find_element.return_value = fake_element
+    manager._handler.element_finder.get_element_text.return_value = "回家｜Lofi Girl"
+    manager._handler.element_finder.wait_for_element_clickable.return_value = fake_element
+    manager._handler.gesture_handler.click_element_at.return_value = True
+    manager._handler.element_finder.wait_for_any_element.return_value = ("title_edit_entry", fake_element)
+
+    result = manager.process_pending_update()
+
+    assert result["ui_updated"] is True
+    fake_element.send_keys.assert_called_once_with("三福｜Lofi Girl")
+    assert manager.get_current_theme() == "三福"
+
