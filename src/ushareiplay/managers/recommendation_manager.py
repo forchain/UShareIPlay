@@ -107,6 +107,22 @@ class RecommendationManager(Singleton):
             self.logger.error(f"Error updating recommendation UI: {traceback.format_exc()}")
             return {"error": "Error updating recommendation UI"}
 
+    def close_title_dialog(self) -> None:
+        """
+        关闭房间信息弹窗，确保返回到派对主界面。
+        由于切换推荐选项后可能停留在房间信息弹窗（父级对话框），需要确保彻底退出弹窗。
+        """
+        try:
+            self.handler.key_actions.press_back()
+            elem = self.handler.element_finder.try_find_element(
+                "party_recommendation_status", log=False
+            )
+            if elem:
+                self.logger.info("Room info window still visible after back, pressing back again to exit")
+                self.handler.key_actions.press_back()
+        except Exception as e:
+            self.logger.warning(f"Error closing title dialog: {str(e)}")
+
     def ensure_synced_on_return(self) -> dict:
         """
         主动同步：回到/恢复房间时调用。
@@ -128,7 +144,7 @@ class RecommendationManager(Singleton):
             )
             result = self.update_recommendation_ui(target_state)
 
-            self.handler.key_actions.press_back()
+            self.close_title_dialog()
             self.logger.info("Closed title dialog after active recommendation sync")
             return result
         except Exception:

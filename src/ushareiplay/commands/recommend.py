@@ -31,7 +31,7 @@ class RecommendCommand(BaseCommand):
             return click_res
 
         update_res = rec_manager.update_recommendation_ui(target_state)
-        self.handler.key_actions.press_back()
+        rec_manager.close_title_dialog()
 
         if 'error' in update_res:
             return update_res

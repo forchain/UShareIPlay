@@ -52,7 +52,7 @@ def recommendation_setup():
     info_manager = InfoManager.initialize()
     info_manager._logger = SimpleNamespace(info=lambda _msg: None)
     rec_manager = RecommendationManager.initialize()
-    rec_manager._logger = SimpleNamespace(info=lambda _msg: None)
+    rec_manager._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None)
     return rec_manager, room_state
 
 
@@ -107,11 +107,11 @@ def test_ensure_synced_on_return_executes_sync_when_unsaved(recommendation_setup
     title_elem = MockElement(text="关闭推荐分发")
     chat_title = MockElement()
     opt_open = MockElement(text="所有人")
-    pressed_back = False
+    back_count = 0
 
     def press_back():
-        nonlocal pressed_back
-        pressed_back = True
+        nonlocal back_count
+        back_count += 1
 
     handler = SimpleNamespace(
         element_finder=MockElementFinder(
@@ -133,4 +133,29 @@ def test_ensure_synced_on_return_executes_sync_when_unsaved(recommendation_setup
     assert room_state.recommendation_enabled is True
     assert title_elem.clicked is True
     assert opt_open.clicked is True
-    assert pressed_back is True
+    assert back_count >= 1
+
+
+def test_close_title_dialog_presses_back_twice_if_window_still_open(recommendation_setup):
+    rec_manager, room_state = recommendation_setup
+    back_count = 0
+    finder = MockElementFinder()
+
+    def press_back():
+        nonlocal back_count
+        back_count += 1
+        # After first back, window is still open; after second back, element is gone
+        if back_count == 1:
+            finder.elements["party_recommendation_status"] = MockElement(text="关闭推荐分发")
+        else:
+            finder.elements.pop("party_recommendation_status", None)
+
+    handler = SimpleNamespace(
+        element_finder=finder,
+        key_actions=SimpleNamespace(press_back=press_back),
+        logger=SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None),
+    )
+    rec_manager._handler = handler
+
+    rec_manager.close_title_dialog()
+    assert back_count == 2
