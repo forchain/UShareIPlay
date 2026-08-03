@@ -100,11 +100,11 @@ def test_ensure_synced_on_return_skips_when_already_saved(recommendation_setup):
     assert result.get("reason") == "already_saved"
 
 
-def test_ensure_synced_on_return_executes_sync_when_unsaved(recommendation_setup):
+def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendation_setup):
     rec_manager, room_state = recommendation_setup
     room_state.recommendation_enabled = None
 
-    title_elem = MockElement(text="关闭推荐分发")
+    title_elem = MockElement(text="所有人")
     chat_title = MockElement()
     opt_open = MockElement(text="所有人")
     back_count = 0
@@ -131,9 +131,9 @@ def test_ensure_synced_on_return_executes_sync_when_unsaved(recommendation_setup
 
     assert result.get("success") is True
     assert room_state.recommendation_enabled is True
-    assert title_elem.clicked is True
-    assert opt_open.clicked is True
-    assert back_count >= 1
+    assert title_elem.clicked is False
+    assert opt_open.clicked is False
+    assert back_count == 1
 
 
 def test_close_title_dialog_presses_back_twice_if_window_still_open(recommendation_setup):
@@ -144,7 +144,6 @@ def test_close_title_dialog_presses_back_twice_if_window_still_open(recommendati
     def press_back():
         nonlocal back_count
         back_count += 1
-        # After first back, window is still open; after second back, element is gone
         if back_count == 1:
             finder.elements["party_recommendation_status"] = MockElement(text="关闭推荐分发")
         else:

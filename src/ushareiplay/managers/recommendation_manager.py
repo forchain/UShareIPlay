@@ -125,9 +125,10 @@ class RecommendationManager(Singleton):
 
     def ensure_synced_on_return(self) -> dict:
         """
-        主动同步：回到/恢复房间时调用。
-        若 RoomState 已有保存状态，则跳过（不强行打开弹窗）；
-        若状态未保存 (None)，主动打开标题弹窗校验并设置。
+        主动同步：回到/恢复房间或执行 info 时调用。
+        若 RoomState 已有保存状态，则跳过（不打开弹窗）；
+        若状态未保存 (None)，仅打开第 2 层房间信息窗口，读取 tv_private_title 文本保存状态，
+        随后按一次返回键退出第二层窗口。不强行点击进入第三层选项列表。
         """
         if self.room_state.recommendation_enabled is not None:
             return {"skipped": True, "reason": "already_saved"}
@@ -139,14 +140,14 @@ class RecommendationManager(Singleton):
             if isinstance(switch_res, dict) and "error" in switch_res:
                 return switch_res
 
-            target_state = bool(
-                self.handler.config.get("create_party_recommendation", True)
-            )
-            result = self.update_recommendation_ui(target_state)
+            ui_status = self.inspect_current_ui_status()
+            if ui_status is not None:
+                self.room_state.recommendation_enabled = ui_status
+                self.logger.info(f"Inspected room recommendation status from UI: {ui_status}")
 
-            self.close_title_dialog()
-            self.logger.info("Closed title dialog after active recommendation sync")
-            return result
+            self.handler.key_actions.press_back()
+            self.logger.info("Closed room info window after reading recommendation status")
+            return {"success": True, "recommendation_enabled": ui_status}
         except Exception:
             self.logger.error(f"Error in ensure_synced_on_return: {traceback.format_exc()}")
             return {"error": "Error during active recommendation sync"}
