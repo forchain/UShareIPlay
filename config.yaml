@@ -28,6 +28,8 @@ soul:
   party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
   # 派对创建模式：new_party_entry(新建) / restore_party(恢复)
   party_create_mode: "restore_party"
+  # 创建派对时是否开启推荐：true(开启) / false(关闭)
+  create_party_recommendation: true
 
   # 新建派对成功后的自动化（仅投递命令到 MessageQueue）
   post_party_create:
@@ -100,6 +102,9 @@ soul:
     new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
     party_state_entry: '//android.widget.TextView[@text="已公开" or @text="已隐藏"]' # 已公开｜已隐藏
     close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
+    party_recommendation_status: "cn.soulapp.android:id/tv_private_title"
+    party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
+    party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'
     create_party_button: '//android.widget.TextView[@text="创建房间"]'
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"
@@ -355,7 +360,7 @@ commands:
     error_template: "别名绑定失败: {error}"
   - prefix: "info"
     level: 0
-    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n{song} - {singer} • {album} • {release_date}"
+    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
@@ -452,6 +457,11 @@ commands:
     level: 4
     response_template: "{message}"
     error_template: "{error}"
+
+  - prefix: "recommend"
+    level: 1
+    response_template: "派对推荐已设置为: {status}"
+    error_template: "设置派对推荐失败: {error}"
 
 old_song_filter:
   enabled: true

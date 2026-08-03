@@ -11,6 +11,7 @@ class RoomState(Singleton):
         self._user_count: Optional[int] = None
         self._focus_count: Optional[int] = None
         self._room_id: Optional[str] = None
+        self._recommendation_enabled: Optional[bool] = None
 
     @property
     def logger(self):
@@ -19,6 +20,18 @@ class RoomState(Singleton):
             from ushareiplay.handlers.soul_handler import SoulHandler
             self._logger = SoulHandler.instance().logger
         return self._logger
+
+    @property
+    def recommendation_enabled(self) -> Optional[bool]:
+        """获取房间推荐状态（True: 所有人/开放, False: 关闭推荐分发, None: 未保存/未知）"""
+        return self._recommendation_enabled
+
+    @recommendation_enabled.setter
+    def recommendation_enabled(self, value: Optional[bool]):
+        """设置房间推荐状态"""
+        if self._recommendation_enabled != value:
+            self.logger.info(f"Recommendation status updated: {self._recommendation_enabled} -> {value}")
+        self._recommendation_enabled = value
 
     @property
     def user_count(self) -> Optional[int]:
@@ -60,4 +73,6 @@ class RoomState(Singleton):
         self._user_count = None
         self._focus_count = None
         self._room_id = None
+        self._recommendation_enabled = None
         self.logger.info("Cleared room state")
+
