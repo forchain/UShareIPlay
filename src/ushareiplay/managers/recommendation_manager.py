@@ -33,18 +33,25 @@ class RecommendationManager(Singleton):
     def room_state(self):
         return RoomState.instance()
 
-    def inspect_current_ui_status(self) -> Optional[bool]:
+    def inspect_current_ui_status(self, wait: bool = False) -> Optional[bool]:
         """
         在房间标题弹窗已打开的前提下，检查当前的推荐状态。
+        Args:
+            wait: 是否等待元素出现（当刚点击打开标题弹窗时建议设为 True）
         Returns:
             True: 显示 "所有人" (开放推荐)
             False: 显示 "关闭推荐分发" (关闭推荐)
             None: 未定位到元素或不匹配
         """
         try:
-            elem = self.handler.element_finder.try_find_element(
-                "party_recommendation_status", log=False
-            )
+            if wait:
+                elem = self.handler.element_finder.wait_for_element(
+                    "party_recommendation_status"
+                )
+            else:
+                elem = self.handler.element_finder.try_find_element(
+                    "party_recommendation_status", log=False
+                )
             if not elem:
                 return None
             text = self.handler.element_finder.get_element_text(elem)
@@ -140,7 +147,7 @@ class RecommendationManager(Singleton):
             if isinstance(switch_res, dict) and "error" in switch_res:
                 return switch_res
 
-            ui_status = self.inspect_current_ui_status()
+            ui_status = self.inspect_current_ui_status(wait=True)
             if ui_status is not None:
                 self.room_state.recommendation_enabled = ui_status
                 self.logger.info(f"Inspected room recommendation status from UI: {ui_status}")

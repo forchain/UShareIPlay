@@ -17,6 +17,9 @@ class MockElementFinder:
     def try_find_element(self, key, log=True):
         return self.elements.get(key)
 
+    def wait_for_element(self, key):
+        return self.elements.get(key)
+
     def wait_for_element_clickable(self, key):
         return self.elements.get(key)
 

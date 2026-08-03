@@ -17,6 +17,9 @@ class MockElementFinder:
     def try_find_element(self, key, log=True):
         return self.elements.get(key)
 
+    def wait_for_element(self, key):
+        return self.elements.get(key)
+
     def wait_for_element_clickable(self, key):
         return self.elements.get(key)
 
@@ -54,7 +57,7 @@ def info_cmd_setup():
     info_manager._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
     rec_manager = RecommendationManager.initialize()
-    rec_manager._logger = SimpleNamespace(info=lambda _msg: None)
+    rec_manager._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None)
 
     title_elem = MockElement(text="所有人")
     opt_open = MockElement(text="所有人")
@@ -69,7 +72,7 @@ def info_cmd_setup():
         ),
         ui_actions=SimpleNamespace(switch_and_click=lambda key, **kwargs: {'success': True}),
         key_actions=SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: None),
-        logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None),
+        logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None),
         config={"create_party_recommendation": True},
     )
     rec_manager._handler = soul_handler
