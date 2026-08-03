@@ -24,7 +24,9 @@ class FollowerMessageEvent(BaseEvent):
         支持多种格式：
         1. "你关注的Outlier进入房间啦，打个招呼吧～" - 进入房间
         2. "你的兄弟 Outlier进来啦～" - 进入房间
-        3. "荒草 为派对点赞了" - 点赞
+        3. "你的兄弟 Outlier正在房间玩～" - 正在房间
+        4. "你的密友Chainer正在房间里，打个招呼吧～" - 正在房间
+        5. "荒草 为派对点赞了" - 点赞
         
         Args:
             message_text: follower_message 文本
@@ -32,23 +34,37 @@ class FollowerMessageEvent(BaseEvent):
         Returns:
             tuple: (nickname, is_join)
             nickname: 解析出的用户名，如果解析失败返回 None
-            is_join: 是否是进入房间消息
+            is_join: 是否是进入房间/在房间消息（需打招呼）
         """
-        # 格式1: 你关注的XXX进入房间啦
-        match = re.search(r'你关注的(.+?)进入房间啦', message_text)
-        if match:
-            return match.group(1).strip(), True
-        
-        # 格式2: 你的XX XXX进来啦（XX是两位字符，后面有空格）
-        match = re.search(r'你的.{2} (.+?)进来啦', message_text)
-        if match:
-            return match.group(1).strip(), True
-
-        # 格式3: XXX 为派对点赞了
+        # 格式: XXX 为派对点赞了
         match = re.search(r'(.+?) 为派对点赞了', message_text)
         if match:
             return match.group(1).strip(), False
-        
+
+        # 进入房间 / 在房间 消息动作关键字
+        action_pattern = r'(?:进入房间|进来|正在房间|在房间|来到了房间)'
+
+        # 格式1: 你关注的XXX...
+        match = re.search(r'你关注的(.+?)' + action_pattern, message_text)
+        if match:
+            return match.group(1).strip(), True
+
+        # 格式2: 你的<已知关系词> XXX... (无论是否有空格)
+        relations = r'(?:兄弟|密友|挚友|死党|闺蜜|基友|搭子|特别关注|好友|心动|同城|星人|萌友|CP|关注)'
+        match = re.search(r'你的' + relations + r'\s*(.+?)' + action_pattern, message_text)
+        if match:
+            return match.group(1).strip(), True
+
+        # 格式3: 你的<关系词> XXX... (带空格分隔的任意关系词)
+        match = re.search(r'你的\S{1,6}\s+(.+?)' + action_pattern, message_text)
+        if match:
+            return match.group(1).strip(), True
+
+        # 格式4: 备选通用兜底：你的XXX...
+        match = re.search(r'你的(.+?)' + action_pattern, message_text)
+        if match:
+            return match.group(1).strip(), True
+
         return None, False
 
     async def handle(self, key: str, element_wrapper):
