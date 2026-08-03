@@ -265,6 +265,10 @@ class RoomNameManager(Singleton):
             if 'error' in result:
                 return result
 
+            from ushareiplay.managers.recommendation_manager import RecommendationManager
+            if RecommendationManager.is_initialized():
+                RecommendationManager.instance().sync_ui_status_if_dialog_open()
+
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
 

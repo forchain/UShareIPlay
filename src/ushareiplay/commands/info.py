@@ -61,6 +61,14 @@ class InfoCommand(BaseCommand):
         result["play_mode_key"] = play_mode_key
         result["play_mode"] = music_handler.play_mode_key_to_name(play_mode_key) if music_handler else "未知"
 
+        rec_status = info_manager.recommendation_enabled
+        if rec_status is True:
+            result["party_recommendation"] = "开放"
+        elif rec_status is False:
+            result["party_recommendation"] = "关闭"
+        else:
+            result["party_recommendation"] = "未知"
+
         return result
 
     def update(self):

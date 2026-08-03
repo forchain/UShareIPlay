@@ -304,6 +304,9 @@ class PartyManager(Singleton):
                 return False
 
             if self._search_and_try_enter_existing_party():
+                from ushareiplay.managers.recommendation_manager import RecommendationManager
+                if RecommendationManager.is_initialized():
+                    RecommendationManager.instance().ensure_synced_on_return()
                 return True
 
             if not self._create_party_flow():
@@ -424,12 +427,22 @@ class PartyManager(Singleton):
         party_state_entry.click()
         self.logger.info("Clicked party state entry")
 
-        close_party_notification = self.handler.element_finder.wait_for_element('close_party_notification')
-        if not close_party_notification:
-            self.logger.warning("未找到关闭派对推荐")
-            return False
-        close_party_notification.click()
-        self.logger.info("Clicked close party notification")
+        party_recommend_config = bool(self.handler.config.get('create_party_recommendation', True))
+        if not party_recommend_config:
+            close_party_notification = self.handler.element_finder.wait_for_element('close_party_notification')
+            if not close_party_notification:
+                self.logger.warning("未找到关闭派对推荐")
+                return False
+            close_party_notification.click()
+            self.logger.info("Clicked close party notification")
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized():
+                RoomState.instance().recommendation_enabled = False
+        else:
+            self.logger.info("Keep party recommendation enabled as configured")
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized():
+                RoomState.instance().recommendation_enabled = True
 
         create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
         if not create_party_button:
