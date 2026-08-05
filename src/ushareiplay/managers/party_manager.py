@@ -509,7 +509,7 @@ class PartyManager(Singleton):
         try:
             for _ in range(3):
                 is_dialog_open = False
-                for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry']:
+                for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry', 'edit_notice_entry']:
                     if self.handler.element_finder.try_find_element(key, log=False):
                         is_dialog_open = True
                         break

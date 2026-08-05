@@ -161,3 +161,31 @@ def test_ensure_room_info_window_closed_presses_back_until_closed():
     manager.ensure_room_info_window_closed()
 
     assert handler.key_actions.back_presses == 2
+
+
+def test_ensure_room_info_window_closed_detects_notice_edit():
+    manager = PartyManager.instance()
+    remaining = {'count': 1}
+
+    class _DynamicHandler(_Handler):
+        def try_find_element(self, key, log=False):
+            if key == 'edit_notice_entry':
+                if remaining['count'] > 0:
+                    return _Element()
+            return None
+
+    handler = _DynamicHandler()
+
+    def on_press_back():
+        handler.key_actions.back_presses += 1
+        remaining['count'] -= 1
+
+    handler.key_actions.press_back = on_press_back
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    manager.ensure_room_info_window_closed()
+
+    assert handler.key_actions.back_presses == 1
+
