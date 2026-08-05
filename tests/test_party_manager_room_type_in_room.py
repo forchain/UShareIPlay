@@ -189,3 +189,41 @@ def test_ensure_room_info_window_closed_detects_notice_edit():
 
     assert handler.key_actions.back_presses == 1
 
+
+def test_sync_and_correct_room_type_if_dialog_open_when_open():
+    manager = PartyManager.instance()
+    type_option = _Element(text="闲聊唠嗑")
+    singing_option = _Element(text="唱歌听歌")
+
+    elements = {
+        'party_room_type_option': type_option,
+        'party_type_singing': singing_option,
+    }
+    handler = _Handler(config={}, elements=elements)
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.sync_and_correct_room_type_if_dialog_open()
+
+    assert res.get('success') is True
+    assert res.get('switched') is True
+    assert handler.key_actions.back_presses == 0
+
+
+def test_sync_and_correct_room_type_if_dialog_open_when_not_open():
+    manager = PartyManager.instance()
+    room_topic = _Element()
+    elements = {
+        'room_topic': room_topic,
+    }
+    handler = _Handler(config={}, elements=elements)
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.sync_and_correct_room_type_if_dialog_open()
+
+    assert res.get('skipped') is True
+    assert res.get('reason') == 'dialog_not_open'
+    assert room_topic.clicked is False
+
+

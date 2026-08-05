@@ -571,3 +571,15 @@ class PartyManager(Singleton):
             if auto_close:
                 self.ensure_room_info_window_closed()
 
+    def sync_and_correct_room_type_if_dialog_open(self) -> dict:
+        """
+        被动纠偏：当房间信息窗口因任何原因（如更新标题/主题/公告/推荐）打开时被动调用。
+        读取当前 UI 中的 party_room_type_option，若为“闲聊唠嗑”则修正为“唱歌听歌”，
+        选择后自动返回并保持在房间信息窗口中（不自动关窗，供后续修改/检查使用）。
+        """
+        type_elem = self.handler.element_finder.try_find_element('party_room_type_option', log=False)
+        if not type_elem:
+            return {'skipped': True, 'reason': 'dialog_not_open'}
+        return self.check_and_correct_room_type(auto_close=False)
+
+

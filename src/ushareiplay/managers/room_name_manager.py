@@ -269,6 +269,13 @@ class RoomNameManager(Singleton):
             if RecommendationManager.is_initialized():
                 RecommendationManager.instance().sync_ui_status_if_dialog_open()
 
+            from ushareiplay.managers.party_manager import PartyManager
+            if PartyManager.is_initialized():
+                try:
+                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive room type sync skipped: {e}")
+
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
 
