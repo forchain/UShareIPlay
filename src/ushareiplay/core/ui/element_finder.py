@@ -96,6 +96,37 @@ class ElementFinder:
             return None
 
     @with_driver_recovery(op="read")
+    def wait_for_element_disappear(
+            self, element_key: str, timeout: float = 3.0, poll_frequency: float = 0.1
+    ) -> bool:
+        """
+        使用 Selenium/Appium SDK 的 WebDriverWait + EC.invisibility_of_element_located 动态等待元素消失。
+
+        Args:
+            element_key: 元素在 config.elements 中的 key
+            timeout: 最长等待超时时间（秒），默认 3.0 秒
+            poll_frequency: 轮询检查间隔（秒），默认 0.1 秒
+
+        Returns:
+            bool: 元素消失或不可见返回 True，超时仍可见返回 False
+        """
+        try:
+            locator_type, value = self._get_locator(element_key)
+            WebDriverWait(self.driver, timeout, poll_frequency=poll_frequency).until(
+                EC.invisibility_of_element_located((locator_type, value))
+            )
+            self.logger.debug(f"Element {element_key} disappeared dynamically")
+            return True
+        except TimeoutException:
+            self.logger.warning(
+                f"Element {element_key} did not disappear within {timeout} seconds"
+            )
+            return False
+        except Exception as e:
+            self.logger.warning(f"Error waiting for element {element_key} to disappear: {str(e)}")
+            return False
+
+    @with_driver_recovery(op="read")
     def try_find_element(
             self, element_key: str, log=False, clickable=False
     ) -> WebElement:

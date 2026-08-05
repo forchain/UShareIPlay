@@ -44,11 +44,15 @@ class RecoveryManager(Singleton):
                     self.logger.warning(f"Failed to click drawer: {drawer_key}")
                     return False
 
-                # 给 UI 动画 0.3s 的响应沉淀时间，避免因界面尚未刷出而误判为 drawer 依然可见
-                import time
-                time.sleep(0.3)
+                # 使用 Appium/Selenium SDK 的 WebDriverWait + EC.invisibility 动态等待抽屉消失
+                # poll_frequency=0.1s：抽屉一旦消失立即可返回，无需主观 sleep 固化延迟
+                drawer_disappeared = False
+                if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                    drawer_disappeared = self.handler.element_finder.wait_for_element_disappear(
+                        drawer_key, timeout=3.0, poll_frequency=0.1
+                    )
 
-                if not self._is_drawer_visible(drawer_key):
+                if drawer_disappeared or not self._is_drawer_visible(drawer_key):
                     return self._confirm_drawer_closed(drawer_key, wait_element)
 
                 self.logger.warning(
