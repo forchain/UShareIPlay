@@ -102,6 +102,8 @@ soul:
     new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
     party_state_entry: '//android.widget.TextView[@text="已公开" or @text="已隐藏"]' # 已公开｜已隐藏
     close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
+    party_type_chat: '//android.widget.TextView[@text="闲聊唠嗑"]'
+    party_type_singing: '//android.widget.TextView[@text="唱歌听歌"]'
     party_recommendation_status: "cn.soulapp.android:id/tv_private_title"
     party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
     party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'

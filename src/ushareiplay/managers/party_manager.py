@@ -444,9 +444,26 @@ class PartyManager(Singleton):
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = True
 
+        change_party_type = bool(self.handler.config.get('change_party_type', True))
+        if change_party_type:
+            party_type_chat = self.handler.element_finder.wait_for_element('party_type_chat')
+            if not party_type_chat:
+                self.logger.warning("未找到闲聊唠嗑派对类型按钮")
+                return False
+            party_type_chat.click()
+            self.logger.info("Clicked party type chat entry (闲聊唠嗑)")
+
+            target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
+            party_type_target = self.handler.element_finder.wait_for_element(target_type_key)
+            if not party_type_target:
+                self.logger.warning(f"未找到目标派对类型按钮: {target_type_key}")
+                return False
+            party_type_target.click()
+            self.logger.info(f"Clicked target party type entry ({target_type_key})")
+
         create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
         if not create_party_button:
-            self.logger.warning("<UNK>")
+            self.logger.warning("未找到创建房间按钮")
             return False
         create_party_button.click()
         self.logger.info("Clicked create party button")
