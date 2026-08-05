@@ -159,6 +159,13 @@ class RecommendationManager(Singleton):
                 except Exception as e:
                     self.logger.warning(f"Error syncing room type in ensure_synced_on_return: {e}")
 
+            from ushareiplay.managers.notice_manager import NoticeManager
+            if NoticeManager.is_initialized():
+                try:
+                    NoticeManager.instance().sync_and_correct_notice_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Error syncing notice in ensure_synced_on_return: {e}")
+
             from ushareiplay.managers.room_name_manager import RoomNameManager
             if RoomNameManager.is_initialized():
                 try:

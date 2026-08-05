@@ -44,6 +44,10 @@ class RecoveryManager(Singleton):
                     self.logger.warning(f"Failed to click drawer: {drawer_key}")
                     return False
 
+                # 给 UI 动画 0.3s 的响应沉淀时间，避免因界面尚未刷出而误判为 drawer 依然可见
+                import time
+                time.sleep(0.3)
+
                 if not self._is_drawer_visible(drawer_key):
                     return self._confirm_drawer_closed(drawer_key, wait_element)
 

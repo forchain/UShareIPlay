@@ -10,15 +10,29 @@ class NoticeManager(Singleton):
     """Notice管理器，统一处理notice的设置操作"""
 
     def __init__(self):
-        # 获取 SoulHandler 单例实例
-        from ushareiplay.handlers.soul_handler import SoulHandler
-        self.handler = SoulHandler.instance()
-        self.logger = self.handler.logger
-
-        # 冷却时间管理
         self.last_update_time = None
         self.cooldown_minutes = 15  # 15分钟冷却时间
         self.pending_notice = None  # 待设置的notice
+
+    @property
+    def handler(self):
+        if not hasattr(self, '_handler') or self._handler is None:
+            from ushareiplay.handlers.soul_handler import SoulHandler
+            if SoulHandler.is_initialized():
+                self._handler = SoulHandler.instance()
+            else:
+                self._handler = None
+        return self._handler
+
+    @property
+    def logger(self):
+        if not hasattr(self, '_logger') or self._logger is None:
+            if self.handler and hasattr(self.handler, 'logger'):
+                self._logger = self.handler.logger
+            else:
+                import logging
+                self._logger = logging.getLogger("NoticeManager")
+        return self._logger
 
     def can_update_now(self) -> bool:
         """检查是否可以立即更新notice
@@ -256,3 +270,66 @@ class NoticeManager(Singleton):
             'default_notice': self.handler.config.get('default_notice') if self.handler and hasattr(self.handler,
                                                                                                     'config') else None
         }
+
+    def sync_and_correct_notice_if_dialog_open(self) -> Dict:
+        """
+        当房间信息窗口已打开时，被动检查并修正派对公告。
+        若发现公告被系统重置（例如匹配 system_default_notices），自动点击 edit_notice_entry 并恢复默认公告。
+        """
+        try:
+            edit_entry = self.handler.element_finder.try_find_element('edit_notice_entry', log=False)
+            if not edit_entry:
+                return {'skipped': 'edit_notice_entry not visible'}
+
+            current_text = self.handler.element_finder.get_element_text(edit_entry)
+            system_notices = self.handler.config.get('soul', {}).get('system_default_notices', [])
+
+            is_reset = False
+            for sys_notice in system_notices:
+                if sys_notice in current_text:
+                    is_reset = True
+                    break
+
+            if not is_reset:
+                return {'status': 'notice_normal', 'current_text': current_text}
+
+            default_notice = self.handler.config.get('default_notice', 'U Share I Play\n分享音乐 享受快乐')
+            self.logger.info(f"Notice reset detected in dialog ('{current_text}'), restoring default notice: {default_notice}")
+
+            edit_entry.click()
+            self.logger.info("Clicked edit_notice_entry in room info window")
+
+            close_notice = self.handler.element_finder.wait_for_element('close_notice')
+            if not close_notice:
+                return {'error': 'close_notice not found'}
+
+            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
+            if not customize:
+                close_notice.click()
+                self.logger.warning('Bottom drawer is open, notice customization is disabled')
+                return {'error': 'Failed to find customize notice button'}
+
+            customize.click()
+
+            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
+            if not notice_input:
+                return {'error': 'Failed to find notice input'}
+
+            notice_input.clear()
+            notice_input.send_keys(default_notice)
+
+            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
+            if confirm:
+                confirm.click()
+
+            close_notice = self.handler.element_finder.wait_for_element('close_notice')
+            if close_notice:
+                close_notice.click()
+
+            self.last_update_time = datetime.now()
+            self.pending_notice = None
+            self.logger.info(f"Successfully restored notice in room info window to: {default_notice}")
+            return {'success': True, 'restored_notice': default_notice}
+        except Exception as e:
+            self.logger.error(f"Error in sync_and_correct_notice_if_dialog_open: {traceback.format_exc()}")
+            return {'error': str(e)}
