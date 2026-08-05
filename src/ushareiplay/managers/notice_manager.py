@@ -10,15 +10,29 @@ class NoticeManager(Singleton):
     """Notice管理器，统一处理notice的设置操作"""
 
     def __init__(self):
-        # 获取 SoulHandler 单例实例
-        from ushareiplay.handlers.soul_handler import SoulHandler
-        self.handler = SoulHandler.instance()
-        self.logger = self.handler.logger
-
-        # 冷却时间管理
         self.last_update_time = None
         self.cooldown_minutes = 15  # 15分钟冷却时间
         self.pending_notice = None  # 待设置的notice
+
+    @property
+    def handler(self):
+        if not hasattr(self, '_handler') or self._handler is None:
+            from ushareiplay.handlers.soul_handler import SoulHandler
+            if SoulHandler.is_initialized():
+                self._handler = SoulHandler.instance()
+            else:
+                self._handler = None
+        return self._handler
+
+    @property
+    def logger(self):
+        if not hasattr(self, '_logger') or self._logger is None:
+            if self.handler and hasattr(self.handler, 'logger'):
+                self._logger = self.handler.logger
+            else:
+                import logging
+                self._logger = logging.getLogger("NoticeManager")
+        return self._logger
 
     def can_update_now(self) -> bool:
         """检查是否可以立即更新notice
@@ -256,3 +270,105 @@ class NoticeManager(Singleton):
             'default_notice': self.handler.config.get('default_notice') if self.handler and hasattr(self.handler,
                                                                                                     'config') else None
         }
+
+    def get_system_default_notices(self) -> list:
+        if not self.handler or not hasattr(self.handler, 'config') or not self.handler.config:
+            return ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
+        cfg = self.handler.config
+        if 'system_default_notices' in cfg:
+            return cfg.get('system_default_notices', [])
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('system_default_notices', [])
+        return ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
+
+    def get_default_notice(self) -> str:
+        fallback = 'U Share I Play\n分享音乐 享受快乐'
+        if not self.handler or not hasattr(self.handler, 'config') or not self.handler.config:
+            return fallback
+        cfg = self.handler.config
+        if 'default_notice' in cfg:
+            return cfg.get('default_notice', fallback)
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('default_notice', fallback)
+        return fallback
+
+    def get_notice_text_from_ui(self) -> str:
+        """
+        在房间信息窗口中读取派对公告的真实文本内容。
+        使用已有的 chat_room_notice 元素，避免误读 edit_notice_entry ('编辑' 按钮文本)。
+        """
+        elem = self.handler.element_finder.try_find_element('chat_room_notice', log=False)
+        if elem:
+            text = (self.handler.element_finder.get_element_text(elem) or "").strip()
+            if text and text != "编辑":
+                return text
+        return ""
+
+    def sync_and_correct_notice_if_dialog_open(self) -> Dict:
+        """
+        当房间信息窗口已打开时，被动检查并修正派对公告。
+        若发现公告被系统重置（例如匹配 system_default_notices），自动点击 edit_notice_entry 并恢复默认公告。
+        """
+        try:
+            # 等待 edit_notice_entry 呈现（支持在前一步刚执行过房间类型切换后的界面过渡）
+            edit_entry = self.handler.element_finder.wait_for_element('edit_notice_entry', timeout=2)
+            if not edit_entry:
+                return {'skipped': 'edit_notice_entry not visible'}
+
+            current_text = self.get_notice_text_from_ui()
+            self.logger.info(f"Inspected room notice text from UI: '{current_text}'")
+
+            system_notices = self.get_system_default_notices()
+
+            is_reset = False
+            if not current_text:
+                is_reset = True
+            else:
+                for sys_notice in system_notices:
+                    if sys_notice in current_text:
+                        is_reset = True
+                        break
+
+            if not is_reset:
+                return {'status': 'notice_normal', 'current_text': current_text}
+
+            default_notice = self.get_default_notice()
+            self.logger.info(f"Notice reset detected in dialog ('{current_text}'), restoring default notice: {default_notice}")
+
+            edit_entry.click()
+            self.logger.info("Clicked edit_notice_entry in room info window")
+
+            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
+            if not close_notice:
+                return {'error': 'close_notice not found'}
+
+            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'], timeout=3)
+            if not customize:
+                close_notice.click()
+                self.logger.warning('Bottom drawer is open, notice customization is disabled')
+                return {'error': 'Failed to find customize notice button'}
+
+            customize.click()
+
+            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input', timeout=3)
+            if not notice_input:
+                return {'error': 'Failed to find notice input'}
+
+            notice_input.clear()
+            notice_input.send_keys(default_notice)
+
+            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm', timeout=3)
+            if confirm:
+                confirm.click()
+
+            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
+            if close_notice:
+                close_notice.click()
+
+            self.last_update_time = datetime.now()
+            self.pending_notice = None
+            self.logger.info(f"Successfully restored notice in room info window to: {default_notice}")
+            return {'success': True, 'restored_notice': default_notice}
+        except Exception as e:
+            self.logger.error(f"Error in sync_and_correct_notice_if_dialog_open: {traceback.format_exc()}")
+            return {'error': str(e)}

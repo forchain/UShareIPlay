@@ -23,11 +23,12 @@ soul:
   system_default_notices:
     - "弹唱大会"
     - "Souler们在随便聊聊ing"
+    - "蹲一个人"
 
   # 派对智能重启配置
   party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
   # 派对创建模式：new_party_entry(新建) / restore_party(恢复)
-  party_create_mode: "restore_party"
+  party_create_mode: "new_party_entry"
   # 创建派对时是否开启推荐：true(开启) / false(关闭)
   create_party_recommendation: true
 
@@ -102,6 +103,9 @@ soul:
     new_party_entry: 'cn.soulapp.android:id/linCreate' # 新建派对
     party_state_entry: '//android.widget.TextView[@text="已公开" or @text="已隐藏"]' # 已公开｜已隐藏
     close_party_notification: '//android.widget.TextView[@text="关闭推荐分发"]'
+    party_type_chat: '//android.widget.TextView[@text="闲聊唠嗑"]'
+    party_type_singing: '//android.widget.TextView[@text="唱歌听歌"]'
+    party_room_type_option: "cn.soulapp.android:id/tv_type"
     party_recommendation_status: "cn.soulapp.android:id/tv_private_title"
     party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
     party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'
@@ -125,6 +129,7 @@ soul:
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
     confirm_seat: "cn.soulapp.android:id/tvOperation"
     chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
+    room_name_in_dialog: "cn.soulapp.android:id/tv_room_name"
     chat_room_notice: "cn.soulapp.android:id/tv_notice"
     title_edit_entry: "cn.soulapp.android:id/iv_edit"
     title_edit_input: "cn.soulapp.android:id/et_content"

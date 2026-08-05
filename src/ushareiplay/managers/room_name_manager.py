@@ -177,8 +177,9 @@ class RoomNameManager(Singleton):
             return None
 
         self.logger.info(f"Found room title in UI: {room_title_text}")
-        if '｜' in room_title_text:
-            parts = room_title_text.split('｜', 1)
+        sep = '｜' if '｜' in room_title_text else ('|' if '|' in room_title_text else None)
+        if sep:
+            parts = room_title_text.split(sep, 1)
             if len(parts) == 2:
                 theme_part = parts[0].strip()
                 if not self.pending_ui_update:
@@ -195,11 +196,21 @@ class RoomNameManager(Singleton):
 
     def get_room_title_text_from_ui(self):
         try:
+            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
+            dialog_element = self.handler.element_finder.wait_for_element('room_name_in_dialog', timeout=2)
+            if dialog_element:
+                text = self.handler.element_finder.get_element_text(dialog_element)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+
+            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
             room_title_element = self.handler.element_finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None
             text = self.handler.element_finder.get_element_text(room_title_element)
-            return (text or "").strip() or None
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+            return None
         except Exception:
             return None
 
@@ -267,7 +278,17 @@ class RoomNameManager(Singleton):
 
             from ushareiplay.managers.recommendation_manager import RecommendationManager
             if RecommendationManager.is_initialized():
-                RecommendationManager.instance().sync_ui_status_if_dialog_open()
+                try:
+                    RecommendationManager.instance().sync_ui_status_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive recommendation sync skipped: {e}")
+
+            from ushareiplay.managers.party_manager import PartyManager
+            if PartyManager.is_initialized():
+                try:
+                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive room type sync skipped: {e}")
 
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
