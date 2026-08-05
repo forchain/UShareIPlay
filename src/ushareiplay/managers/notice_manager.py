@@ -271,6 +271,27 @@ class NoticeManager(Singleton):
                                                                                                     'config') else None
         }
 
+    def get_system_default_notices(self) -> list:
+        if not self.handler or not hasattr(self.handler, 'config') or not self.handler.config:
+            return ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
+        cfg = self.handler.config
+        if 'system_default_notices' in cfg:
+            return cfg.get('system_default_notices', [])
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('system_default_notices', [])
+        return ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
+
+    def get_default_notice(self) -> str:
+        fallback = 'U Share I Play\n分享音乐 享受快乐'
+        if not self.handler or not hasattr(self.handler, 'config') or not self.handler.config:
+            return fallback
+        cfg = self.handler.config
+        if 'default_notice' in cfg:
+            return cfg.get('default_notice', fallback)
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('default_notice', fallback)
+        return fallback
+
     def get_notice_text_from_ui(self) -> str:
         """
         在房间信息窗口中读取派对公告的真实文本内容。
@@ -297,7 +318,7 @@ class NoticeManager(Singleton):
             current_text = self.get_notice_text_from_ui()
             self.logger.info(f"Inspected room notice text from UI: '{current_text}'")
 
-            system_notices = self.handler.config.get('soul', {}).get('system_default_notices', [])
+            system_notices = self.get_system_default_notices()
 
             is_reset = False
             if not current_text:
@@ -311,7 +332,7 @@ class NoticeManager(Singleton):
             if not is_reset:
                 return {'status': 'notice_normal', 'current_text': current_text}
 
-            default_notice = self.handler.config.get('default_notice', 'U Share I Play\n分享音乐 享受快乐')
+            default_notice = self.get_default_notice()
             self.logger.info(f"Notice reset detected in dialog ('{current_text}'), restoring default notice: {default_notice}")
 
             edit_entry.click()
