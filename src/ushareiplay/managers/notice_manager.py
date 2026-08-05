@@ -271,6 +271,19 @@ class NoticeManager(Singleton):
                                                                                                     'config') else None
         }
 
+    def get_notice_text_from_ui(self) -> str:
+        """
+        在房间信息窗口中读取派对公告的真实文本内容。
+        避免误读 edit_notice_entry ('编辑' 按钮文本)。
+        """
+        for key in ['party_notice_content', 'chat_room_notice']:
+            elem = self.handler.element_finder.try_find_element(key, log=False)
+            if elem:
+                text = (self.handler.element_finder.get_element_text(elem) or "").strip()
+                if text and text != "编辑":
+                    return text
+        return ""
+
     def sync_and_correct_notice_if_dialog_open(self) -> Dict:
         """
         当房间信息窗口已打开时，被动检查并修正派对公告。
@@ -282,14 +295,19 @@ class NoticeManager(Singleton):
             if not edit_entry:
                 return {'skipped': 'edit_notice_entry not visible'}
 
-            current_text = self.handler.element_finder.get_element_text(edit_entry)
+            current_text = self.get_notice_text_from_ui()
+            self.logger.info(f"Inspected room notice text from UI: '{current_text}'")
+
             system_notices = self.handler.config.get('soul', {}).get('system_default_notices', [])
 
             is_reset = False
-            for sys_notice in system_notices:
-                if sys_notice in current_text:
-                    is_reset = True
-                    break
+            if not current_text:
+                is_reset = True
+            else:
+                for sys_notice in system_notices:
+                    if sys_notice in current_text:
+                        is_reset = True
+                        break
 
             if not is_reset:
                 return {'status': 'notice_normal', 'current_text': current_text}

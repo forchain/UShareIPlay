@@ -120,6 +120,7 @@ soul:
     edit_topic_confirm: "cn.soulapp.android:id/tvConfim"
     little_assistant: "cn.soulapp.android:id/ivLittleAssistant"
     edit_notice_entry: "cn.soulapp.android:id/tv_notice_edit"
+    party_notice_content: "cn.soulapp.android:id/tv_notice_content"
     customize_notice_button: '//android.widget.TextView[@text="自定义"]'
     modify_notice_button: '//android.widget.TextView[@text="修改自定义"]'
     edit_notice_input: "//android.widget.EditText"
@@ -129,6 +130,7 @@ soul:
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
     confirm_seat: "cn.soulapp.android:id/tvOperation"
     chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
+    room_name_in_dialog: "cn.soulapp.android:id/tv_room_name"
     chat_room_notice: "cn.soulapp.android:id/tv_notice"
     title_edit_entry: "cn.soulapp.android:id/iv_edit"
     title_edit_input: "cn.soulapp.android:id/et_content"

@@ -195,6 +195,14 @@ class RoomNameManager(Singleton):
 
     def get_room_title_text_from_ui(self):
         try:
+            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)
+            dialog_element = self.handler.element_finder.try_find_element('room_name_in_dialog', log=False)
+            if dialog_element:
+                text = self.handler.element_finder.get_element_text(dialog_element)
+                if text and text.strip():
+                    return text.strip()
+
+            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
             room_title_element = self.handler.element_finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None

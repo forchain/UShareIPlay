@@ -56,7 +56,8 @@ def test_sync_and_correct_notice_if_dialog_open_detects_reset():
     NoticeManager.reset_instance()
     manager = NoticeManager.initialize()
 
-    edit_entry = _Element(text="蹲一个人 蹲了那么久，终于等到你！")
+    edit_entry = _Element(text="编辑")
+    notice_content = _Element(text="蹲一个人 蹲了那么久，终于等到你！")
     close_notice = _Element()
     customize_btn = _Element()
     input_elem = _Element()
@@ -64,6 +65,7 @@ def test_sync_and_correct_notice_if_dialog_open_detects_reset():
 
     handler = _Handler(elements={
         'edit_notice_entry': edit_entry,
+        'party_notice_content': notice_content,
         'close_notice': close_notice,
         'customize_notice_button': customize_btn,
         'edit_notice_input': input_elem,
@@ -85,8 +87,12 @@ def test_sync_and_correct_notice_if_dialog_open_skips_when_normal():
     NoticeManager.reset_instance()
     manager = NoticeManager.initialize()
 
-    edit_entry = _Element(text="Welcome to my singing room")
-    handler = _Handler(elements={'edit_notice_entry': edit_entry})
+    edit_entry = _Element(text="编辑")
+    notice_content = _Element(text="Welcome to my singing room")
+    handler = _Handler(elements={
+        'edit_notice_entry': edit_entry,
+        'party_notice_content': notice_content
+    })
     manager._handler = handler
     manager._logger = handler.logger
 
