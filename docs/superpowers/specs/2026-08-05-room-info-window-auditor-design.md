@@ -20,7 +20,7 @@ Whenever the Room Info Window is opened—whether actively (e.g. during room cre
 2. **`recommendation` (派对推荐分发)**: Inspect `party_recommendation_status` (`tv_private_title`). If `RoomState.recommendation_enabled` is uninitialized (`None`), sync state from UI; if target recommendation config is specified and UI differs, update UI option.
 3. **`theme & title` (主题与标题)**: Inspect UI text `{theme}｜{title}` against `RoomNameManager`. If a pending update exists and cooldown allows (`can_update_now()`), update UI; if in the 10-minute cooldown period, sync memory state (`current_theme`, `current_title`) from the actual UI text.
 4. **`notice` (派对公告)**: Inspect notice text via `edit_notice_entry`. If UI notice matches system reset defaults (e.g. "Souler们在随便聊聊ing"), re-write the default custom notice; otherwise sync `current_notice` in memory.
-5. **Safe Exit Guard**: At the end of any audit or upon error, `ensure_room_info_window_closed()` checks for open dialog indicators (`party_room_type_option`, `party_recommendation_status`, `edit_topic_entry`, `edit_notice_entry`) and presses back until the Room Info Window is completely closed and the main room screen is restored.
+5. **Safe Exit Guard**: At the end of any audit or upon error, `ensure_room_info_window_closed()` inspects for open dialog indicators (`party_room_type_option`, `party_recommendation_status`, `edit_topic_entry`, `edit_notice_entry`, `slide_drawer`). If open, it prioritizes closing via UI drawer action (`RecoveryManager.instance().close_drawer('slide_drawer')`). Fallback to `press_back()` is used ONLY if drawer action fails and dialog indicators remain visible, preventing accidental exit from the party room.
 
 ## User Stories
 

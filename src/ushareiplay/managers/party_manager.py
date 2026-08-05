@@ -504,20 +504,30 @@ class PartyManager(Singleton):
     def ensure_room_info_window_closed(self) -> None:
         """
         检查并确保房间信息窗口/分类弹窗已被关闭，恢复至主房间界面。
-        避免留存弹窗阻塞后续消息接收或自动化操作。
+        优先使用 UI 正规关窗操作 (RecoveryManager.close_drawer('slide_drawer'))；
+        仅在抽屉关窗未成功且弹窗标志依然存留时，才使用 press_back() 作为最后的保底防御，
+        防止因过快盲按 press_back() 导致误退出派对房间的风险。
         """
         try:
-            for _ in range(3):
-                is_dialog_open = False
-                for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry', 'edit_notice_entry']:
-                    if self.handler.element_finder.try_find_element(key, log=False):
-                        is_dialog_open = True
-                        break
-                if is_dialog_open:
-                    self.logger.info("Room info window still open, pressing back to close")
-                    self.handler.key_actions.press_back()
-                else:
+            is_dialog_open = False
+            for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry', 'edit_notice_entry', 'slide_drawer']:
+                if self.handler.element_finder.try_find_element(key, log=False):
+                    is_dialog_open = True
                     break
+
+            if not is_dialog_open:
+                return
+
+            self.logger.info("Room info window is open, attempting to close via close_drawer UI action")
+            from ushareiplay.managers.recovery_manager import RecoveryManager
+            if RecoveryManager.is_initialized():
+                closed = RecoveryManager.instance().close_drawer('slide_drawer')
+                if closed:
+                    self.logger.info("Successfully closed room info window via close_drawer")
+                    return
+
+            self.logger.warning("close_drawer did not close room info window, falling back to press_back")
+            self.handler.key_actions.press_back()
         except Exception as e:
             self.logger.warning(f"Error ensuring room info window closed: {e}")
 
