@@ -39,13 +39,13 @@ class _Handler:
     def get_element_text(self, element):
         return getattr(element, 'text', '')
 
-    def wait_for_element(self, key):
+    def wait_for_element(self, key, timeout=10):
         return self.elements.get(key)
 
-    def wait_for_element_clickable(self, key):
+    def wait_for_element_clickable(self, key, timeout=10):
         return self.elements.get(key)
 
-    def wait_for_any_element(self, keys):
+    def wait_for_any_element(self, keys, timeout=10):
         for k in keys:
             if k in self.elements:
                 return k, self.elements[k]

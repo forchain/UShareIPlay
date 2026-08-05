@@ -277,7 +277,8 @@ class NoticeManager(Singleton):
         若发现公告被系统重置（例如匹配 system_default_notices），自动点击 edit_notice_entry 并恢复默认公告。
         """
         try:
-            edit_entry = self.handler.element_finder.try_find_element('edit_notice_entry', log=False)
+            # 等待 edit_notice_entry 呈现（支持在前一步刚执行过房间类型切换后的界面过渡）
+            edit_entry = self.handler.element_finder.wait_for_element('edit_notice_entry', timeout=2)
             if not edit_entry:
                 return {'skipped': 'edit_notice_entry not visible'}
 
@@ -299,11 +300,11 @@ class NoticeManager(Singleton):
             edit_entry.click()
             self.logger.info("Clicked edit_notice_entry in room info window")
 
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
+            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
             if not close_notice:
                 return {'error': 'close_notice not found'}
 
-            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
+            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'], timeout=3)
             if not customize:
                 close_notice.click()
                 self.logger.warning('Bottom drawer is open, notice customization is disabled')
@@ -311,18 +312,18 @@ class NoticeManager(Singleton):
 
             customize.click()
 
-            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
+            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input', timeout=3)
             if not notice_input:
                 return {'error': 'Failed to find notice input'}
 
             notice_input.clear()
             notice_input.send_keys(default_notice)
 
-            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
+            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm', timeout=3)
             if confirm:
                 confirm.click()
 
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
+            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
             if close_notice:
                 close_notice.click()
 
