@@ -267,7 +267,10 @@ class RoomNameManager(Singleton):
 
             from ushareiplay.managers.recommendation_manager import RecommendationManager
             if RecommendationManager.is_initialized():
-                RecommendationManager.instance().sync_ui_status_if_dialog_open()
+                try:
+                    RecommendationManager.instance().sync_ui_status_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive recommendation sync skipped: {e}")
 
             from ushareiplay.managers.party_manager import PartyManager
             if PartyManager.is_initialized():

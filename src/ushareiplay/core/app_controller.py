@@ -376,6 +376,8 @@ class AppController(Singleton):
             self.notice_manager = NoticeManager.initialize()
             RecommendationManager.initialize()
             RoomNameManager.initialize()
+            from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+            RoomInfoWindowAuditor.initialize()
             ThemeManager.initialize()
             TitleManager.initialize()
             AdminManager.initialize()

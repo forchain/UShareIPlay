@@ -147,45 +147,54 @@ class RecommendationManager(Singleton):
             if isinstance(switch_res, dict) and "error" in switch_res:
                 return switch_res
 
-            ui_status = self.inspect_current_ui_status(wait=True)
-            if ui_status is not None:
-                self.room_state.recommendation_enabled = ui_status
-                self.logger.info(f"Inspected room recommendation status from UI: {ui_status}")
-
-            from ushareiplay.managers.party_manager import PartyManager
-            if PartyManager.is_initialized():
+            from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+            if RoomInfoWindowAuditor.is_initialized():
                 try:
-                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+                    auditor_res = RoomInfoWindowAuditor.instance().audit_and_close()
+                    rec_res = auditor_res.get('recommendation', {})
+                    ui_status = rec_res.get('status')
                 except Exception as e:
-                    self.logger.warning(f"Error syncing room type in ensure_synced_on_return: {e}")
+                    self.logger.warning(f"Error in auditor audit_and_close: {e}")
+                    ui_status = self.inspect_current_ui_status(wait=True)
+            else:
+                ui_status = self.inspect_current_ui_status(wait=True)
+                if ui_status is not None:
+                    self.room_state.recommendation_enabled = ui_status
 
-            from ushareiplay.managers.notice_manager import NoticeManager
-            if NoticeManager.is_initialized():
-                try:
-                    NoticeManager.instance().sync_and_correct_notice_if_dialog_open()
-                except Exception as e:
-                    self.logger.warning(f"Error syncing notice in ensure_synced_on_return: {e}")
+                from ushareiplay.managers.party_manager import PartyManager
+                if PartyManager.is_initialized():
+                    try:
+                        PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+                    except Exception:
+                        pass
 
-            from ushareiplay.managers.room_name_manager import RoomNameManager
-            if RoomNameManager.is_initialized():
-                try:
-                    RoomNameManager.instance().initialize_from_ui()
-                except Exception as e:
-                    self.logger.warning(f"Error initializing room name in ensure_synced_on_return: {e}")
+                from ushareiplay.managers.notice_manager import NoticeManager
+                if NoticeManager.is_initialized():
+                    try:
+                        NoticeManager.instance().sync_and_correct_notice_if_dialog_open()
+                    except Exception:
+                        pass
 
-            closed_by_party_mgr = False
-            if PartyManager.is_initialized():
-                try:
-                    PartyManager.instance().ensure_room_info_window_closed()
-                    closed_by_party_mgr = True
-                except Exception as e:
-                    self.logger.warning(f"PartyManager close window failed, falling back to press_back: {e}")
+                from ushareiplay.managers.room_name_manager import RoomNameManager
+                if RoomNameManager.is_initialized():
+                    try:
+                        RoomNameManager.instance().initialize_from_ui()
+                    except Exception:
+                        pass
 
-            if not closed_by_party_mgr:
-                self.handler.key_actions.press_back()
+                closed_by_party_mgr = False
+                if PartyManager.is_initialized():
+                    try:
+                        PartyManager.instance().ensure_room_info_window_closed()
+                        closed_by_party_mgr = True
+                    except Exception:
+                        pass
+
+                if not closed_by_party_mgr:
+                    self.handler.key_actions.press_back()
 
             self.logger.info("Closed room info window after reading recommendation status and auditing room attributes")
-            return {"success": True, "recommendation_enabled": ui_status}
+            return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
         except Exception:
             self.logger.error(f"Error in ensure_synced_on_return: {traceback.format_exc()}")
             return {"error": "Error during active recommendation sync"}
