@@ -65,7 +65,7 @@ def test_sync_and_correct_notice_if_dialog_open_detects_reset():
 
     handler = _Handler(elements={
         'edit_notice_entry': edit_entry,
-        'party_notice_content': notice_content,
+        'chat_room_notice': notice_content,
         'close_notice': close_notice,
         'customize_notice_button': customize_btn,
         'edit_notice_input': input_elem,
@@ -91,7 +91,7 @@ def test_sync_and_correct_notice_if_dialog_open_skips_when_normal():
     notice_content = _Element(text="Welcome to my singing room")
     handler = _Handler(elements={
         'edit_notice_entry': edit_entry,
-        'party_notice_content': notice_content
+        'chat_room_notice': notice_content
     })
     manager._handler = handler
     manager._logger = handler.logger

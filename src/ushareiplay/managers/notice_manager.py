@@ -274,14 +274,13 @@ class NoticeManager(Singleton):
     def get_notice_text_from_ui(self) -> str:
         """
         在房间信息窗口中读取派对公告的真实文本内容。
-        避免误读 edit_notice_entry ('编辑' 按钮文本)。
+        使用已有的 chat_room_notice 元素，避免误读 edit_notice_entry ('编辑' 按钮文本)。
         """
-        for key in ['party_notice_content', 'chat_room_notice']:
-            elem = self.handler.element_finder.try_find_element(key, log=False)
-            if elem:
-                text = (self.handler.element_finder.get_element_text(elem) or "").strip()
-                if text and text != "编辑":
-                    return text
+        elem = self.handler.element_finder.try_find_element('chat_room_notice', log=False)
+        if elem:
+            text = (self.handler.element_finder.get_element_text(elem) or "").strip()
+            if text and text != "编辑":
+                return text
         return ""
 
     def sync_and_correct_notice_if_dialog_open(self) -> Dict:
