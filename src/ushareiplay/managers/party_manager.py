@@ -500,3 +500,74 @@ class PartyManager(Singleton):
             await automation.on_party_created_new()
         else:
             self.logger.warning("post_party_create_automation not initialized; skip auto commands")
+
+    def ensure_room_info_window_closed(self) -> None:
+        """
+        检查并确保房间信息窗口/分类弹窗已被关闭，恢复至主房间界面。
+        避免留存弹窗阻塞后续消息接收或自动化操作。
+        """
+        try:
+            for _ in range(3):
+                is_dialog_open = False
+                for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry']:
+                    if self.handler.element_finder.try_find_element(key, log=False):
+                        is_dialog_open = True
+                        break
+                if is_dialog_open:
+                    self.logger.info("Room info window still open, pressing back to close")
+                    self.handler.key_actions.press_back()
+                else:
+                    break
+        except Exception as e:
+            self.logger.warning(f"Error ensuring room info window closed: {e}")
+
+    def check_and_correct_room_type(self, auto_close: bool = True) -> dict:
+        """
+        在派对房间内检查并校正房间类型。
+        点击房间标题打开房间信息窗口，读取 tv_type 文本；
+        如文本为“闲聊唠嗑”，自动点击进入二级弹窗切为“唱歌听歌”（选择后自动返回）。
+        完成或退出时通过 ensure_room_info_window_closed 保证窗口彻底关闭。
+
+        Args:
+            auto_close: 是否在完成后自动关闭房间信息窗口 (默认 True)
+        """
+        try:
+            type_elem = self.handler.element_finder.try_find_element('party_room_type_option', log=False)
+            if not type_elem:
+                room_topic = self.handler.element_finder.wait_for_element_clickable('room_topic')
+                if not room_topic:
+                    return {'error': 'Failed to find room topic entry'}
+                room_topic.click()
+                self.logger.info("Clicked room_topic to open room info window")
+                type_elem = self.handler.element_finder.wait_for_element('party_room_type_option')
+
+            if not type_elem:
+                self.logger.warning("未找到房间类型选项 (party_room_type_option)")
+                return {'error': 'Failed to find party_room_type_option'}
+
+            current_type_text = (getattr(type_elem, 'text', '') or "").strip()
+            self.logger.info(f"Inspected in-room party type: '{current_type_text}'")
+
+            if "闲聊唠嗑" in current_type_text or current_type_text == "闲聊唠嗑":
+                self.logger.info("Party type is '闲聊唠嗑', attempting to switch to '唱歌听歌'")
+                type_elem.click()
+
+                target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
+                target_elem = self.handler.element_finder.wait_for_element(target_type_key)
+                if not target_elem:
+                    self.logger.warning(f"未找到目标房间类型按钮 ({target_type_key})")
+                    return {'error': f'Failed to find target party type button ({target_type_key})'}
+
+                target_elem.click()
+                self.logger.info(f"Successfully clicked target party type ({target_type_key})")
+                return {'success': True, 'switched': True}
+            else:
+                self.logger.info(f"Party type already target/different ('{current_type_text}'), no switch needed")
+                return {'success': True, 'switched': False}
+        except Exception as e:
+            self.logger.error(f"Error checking/correcting room type: {traceback.format_exc()}")
+            return {'error': str(e)}
+        finally:
+            if auto_close:
+                self.ensure_room_info_window_closed()
+
