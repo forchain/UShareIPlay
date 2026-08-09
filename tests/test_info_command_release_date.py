@@ -41,7 +41,8 @@ def _patch_common_info_dependencies(monkeypatch, info_manager):
         "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
         lambda: _MusicHandler(),
     )
-    info_manager._online_users = set()
+    # 直接注入目标状态模块（见 ADR-0002）
+    PresenceTracker.instance()._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
 
 
@@ -60,7 +61,7 @@ async def test_info_command_returns_empty_release_date_when_cache_missing(monkey
 @pytest.mark.asyncio
 async def test_info_command_preserves_cached_release_date(monkeypatch, info_manager):
     _patch_common_info_dependencies(monkeypatch, info_manager)
-    info_manager._playback_info_cache = {
+    PlaybackBroadcaster.instance()._playback_info_cache = {
         "song": "泼墨桃花",
         "singer": "林峯",
         "album": "爱在记忆中找你",

@@ -21,17 +21,22 @@ def info_manager():
         OnlineListScraper,
     ):
         cls.reset_instance()
-    RoomState.initialize()
-    PresenceTracker.initialize()
-    PlaylistState.initialize()
-    PlaybackBroadcaster.initialize()
-    OnlineListScraper.initialize()
-    manager = InfoManager.initialize()
-    manager._logger = SimpleNamespace(
+    fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
+    # 状态模块各自持有 logger；测试直接注入目标模块（见 ADR-0002）
+    for cls in (
+        RoomState,
+        PresenceTracker,
+        PlaylistState,
+        PlaybackBroadcaster,
+        OnlineListScraper,
+    ):
+        cls.initialize()._logger = fake_logger
+    manager = InfoManager.initialize()
+    manager._logger = fake_logger
     return manager
 
 
@@ -74,7 +79,7 @@ def test_facade_delegates_online_users(info_manager):
 
 def test_facade_delegates_playback_info_cache(info_manager):
     cache = {"song": "SongA", "singer": "SingerA", "album": "AlbumA"}
-    info_manager._playback_info_cache = cache
+    PlaybackBroadcaster.instance()._playback_info_cache = cache
     assert info_manager.get_playback_info_cache() is cache
     assert info_manager._playback_broadcaster.get_playback_info_cache() is cache
 
