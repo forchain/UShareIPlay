@@ -29,10 +29,10 @@ class UIActions:
         return {"success": True}
 
     def toggle_mic(self, enable: bool) -> dict:
-        """Toggle the microphone while retaining MicManager's result contract."""
+        """Toggle the microphone on or off."""
         try:
             if not self.owner.key_actions.switch_to_app():
-                return {"error": "Failed to switch to app"}
+                return {"error": "Failed to switch to Soul app"}
 
             mic_button = self.owner.element_finder.try_find_element("toggle_mic")
             if not mic_button:
