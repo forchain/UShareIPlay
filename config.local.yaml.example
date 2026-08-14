@@ -32,8 +32,11 @@ soul:
 # 大模型自然语言解析本地覆盖配置（例如配置你的 API Key）
 # llm:
 #   enabled: true
-#   base_url: "https://api.deepseek.com/v1"
-#   api_key: "sk-your-deepseek-api-key"
-#   model: "deepseek-chat"
-#   timeout: 4.0
+#   # DeepSeek: https://api.deepseek.com/v1
+#   # MiniMax Token Plan: https://api.minimaxi.com/v1 (模型可选 MiniMax-M2.7, MiniMax-M3, MiniMax-Text-01)
+#   # OpenAI: https://api.openai.com/v1
+#   base_url: "https://api.minimaxi.com/v1"
+#   api_key: "sk-your-api-key"
+#   model: "MiniMax-M2.7"
+#   timeout: 10.0
 
