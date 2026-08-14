@@ -500,3 +500,12 @@ device:
   platform_version: "10"
   automation_name: "UiAutomator2"
   no_reset: true
+
+# 大模型自然语言命令解析配置（OpenAI 兼容协议）
+llm:
+  enabled: false
+  base_url: "https://api.openai.com/v1"
+  api_key: ""
+  model: "deepseek-chat"
+  timeout: 4.0
+

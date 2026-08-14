@@ -31,3 +31,7 @@ _Avoid_: Test PID, runner process
 **Device Lease**:
 The machine-wide ownership record that grants one E2E Session exclusive use of a shared Android/Appium target.
 _Avoid_: Lock file, local PID
+
+**Natural Language Command Resolution**:
+The intent translation boundary that resolves unstructured `@我` mentions into concrete commands or conversational replies via an LLM when no registered keyword matches. It enriches the prompt with the speaker's level, system command schemas, and playback context, enforces strict JSON schema extraction, and gracefully falls back to the default keyword on timeouts, parse failures, or disabled LLM state.
+_Avoid_: Chatbot, AI agent, prompt helper

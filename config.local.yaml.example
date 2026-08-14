@@ -28,3 +28,12 @@ soul:
   # 可选：本机桌面/启动器包名（用于事件循环判定是否回到 Soul）
   # launcher_packages:
   #   - "com.miui.home"
+
+# 大模型自然语言解析本地覆盖配置（例如配置你的 API Key）
+# llm:
+#   enabled: true
+#   base_url: "https://api.deepseek.com/v1"
+#   api_key: "sk-your-deepseek-api-key"
+#   model: "deepseek-chat"
+#   timeout: 4.0
+

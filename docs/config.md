@@ -47,6 +47,7 @@ device:
 | `appium` | `host`, `port` for Appium server connection |
 | `device` | `name` (ADB address), `platform_name`, `platform_version`, `automation_name`, `no_reset` |
 | `logging` | `directory` for log files |
+| `llm` | OpenAI-compatible LLM config: `enabled`, `base_url`, `api_key`, `model`, `timeout` |
 
 ## Common Local Overrides
 
