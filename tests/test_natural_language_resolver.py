@@ -207,3 +207,36 @@ async def test_resolver_handles_malformed_json(mock_commands_config):
         )
 
         assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolver_handles_thinking_model_tags(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com/v1",
+        }
+    )
+
+    content = (
+        "<think>用户想听胡彦斌的潇湘雨。等级L1，输出 :play。\n"
+        '{"type": "command", "content": ":play 潇湘雨 胡彦斌"}\n'
+        "</think>\n\n"
+        '{"type": "command", "content": ":play 潇湘雨 胡彦斌"}'
+    )
+    mock_response = {"choices": [{"message": {"content": content}}]}
+
+    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+        mock_api.return_value = json.dumps(mock_response)
+        result = await resolver.resolve(
+            user_text="来首胡彦斌的潇湘雨",
+            user_name="Outlier",
+            user_level=1,
+            commands_config=mock_commands_config,
+        )
+
+        assert result == NaturalLanguageResult(
+            type="command", content=":play 潇湘雨 胡彦斌"
+        )
+

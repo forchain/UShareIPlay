@@ -93,6 +93,9 @@ class NaturalLanguageResolver:
             return None
         raw = raw_content.strip()
 
+        # Remove <think>...</think> reasoning tags if emitted by thinking models
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
         # Check for markdown code fence
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
         if match:
@@ -109,12 +112,27 @@ class NaturalLanguageResolver:
             if isinstance(data, dict) and "type" in data and "content" in data:
                 return data
         except Exception:
-            logger.debug(f"Failed to parse JSON from LLM output: {raw_content}")
+            pass
+
+        # Fallback: search for any standalone valid JSON object matching our schema
+        for chunk in re.findall(r"\{[^{}]*\}", raw):
+            try:
+                data = json.loads(chunk)
+                if isinstance(data, dict) and "type" in data and "content" in data:
+                    return data
+            except Exception:
+                continue
+
+        logger.debug(f"Failed to parse JSON from LLM output: {raw_content}")
         return None
 
     def _sync_http_call(self, payload: dict) -> str:
         """Synchronous HTTP call to OpenAI-compatible endpoint."""
-        url = f"{self.base_url}/chat/completions"
+        base = self.base_url.rstrip("/")
+        if base.endswith("/chat/completions"):
+            url = base
+        else:
+            url = f"{base}/chat/completions"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
