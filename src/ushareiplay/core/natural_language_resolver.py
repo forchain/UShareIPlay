@@ -27,36 +27,6 @@ class NaturalLanguageResult:
     content: str
 
 
-BUILTIN_COMMAND_SCHEMAS: dict[str, str] = {
-    "play": "播放指定歌曲。参数格式: <歌名> [歌手名]，例如 :play 晴天 周杰伦",
-    "next": "切歌或将歌曲加入待播列表。参数格式: [歌名] [歌手名]，无参数表示切下一首，例如 :next 或 :next 稻香",
-    "skip": "跳过当前正在播放的歌曲。无参数，例如 :skip",
-    "fav": "从收藏歌单播放。参数格式: [0 语言]，无参数表示随机播放收藏夹，例如 :fav 或 :fav 0 粤语",
-    "pause": "暂停或恢复播放。参数格式: [0/1]，0=恢复, 1=暂停，无参数表示切换，例如 :pause",
-    "vol": "调节音量。参数格式: [0-15]，无参数表示查看当前音量，例如 :vol 10",
-    "mode": "切换播放模式。参数格式: <0/1/-1>，0=顺序, 1=单曲循环, -1=随机，例如 :mode 1",
-    "acc": "伴唱/伴奏模式开关。参数格式: [0/1]，0=关, 1=开，无参数表示切换，例如 :acc",
-    "lyrics": "查看当前播放歌曲的歌词。无参数，例如 :lyrics",
-    "singer": "播放指定歌手的热门歌曲。参数格式: <歌手名>，例如 :singer 周杰伦",
-    "album": "播放整张专辑。参数格式: <专辑名>，例如 :album 范特西",
-    "playlist": "播放指定歌单。参数格式: <歌单名>，例如 :playlist 欧美流行",
-    "radio": "播放推荐电台。参数格式: <guess/daily/collection/sleep>，例如 :radio daily",
-    "info": "查看房间当前播放信息、在线用户与定时器。无参数，例如 :info",
-    "recommend": "开启或关闭派对推荐。参数格式: <on/off>，例如 :recommend on",
-    "seat": "派对麦位管理。参数格式: <1/2/4> [座位号]，1=预约, 2=上麦, 4=抱下麦，例如 :seat 2 1",
-    "mic": "开麦或闭麦。参数格式: <0/1>，0=闭麦, 1=开麦，例如 :mic 1",
-    "theme": "设置派对主题。参数格式: <主题文字>，例如 :theme 听歌",
-    "title": "设置派对标题。参数格式: <标题文字>，例如 :title 欢迎光临",
-    "topic": "设置派对房间话题。参数格式: <话题文字>，例如 :topic 音乐分享",
-    "notice": "设置房间公告。参数格式: <公告内容>，例如 :notice 严禁骂人",
-    "timer": "定时器管理。参数格式: <add/del/list> [参数]，例如 :timer add 提醒 10m :say 时间到了",
-    "room": "切换或邀请进入指定派对房间。参数格式: <party_id>，例如 :room FM123456",
-    "admin": "设置或取消管理员。参数格式: <add/del> <用户名>，例如 :admin add 张三",
-    "help": "查看帮助信息。无参数，例如 :help",
-    "exit": "退出当前房间。无参数，例如 :exit",
-}
-
-
 class NaturalLanguageResolver:
     """Resolves natural language requests into structured commands or replies using an LLM."""
 
@@ -82,12 +52,7 @@ class NaturalLanguageResolver:
             if not prefix:
                 continue
             lvl = cmd.get("level", 0)
-            desc = (
-                cmd.get("description")
-                or BUILTIN_COMMAND_SCHEMAS.get(prefix)
-                or cmd.get("response_template")
-                or prefix
-            )
+            desc = cmd.get("description") or cmd.get("response_template") or prefix
             cmd_lines.append(f"- `:{prefix}` (所需等级: L{lvl}): {desc}")
 
         cmd_table = "\n".join(cmd_lines) if cmd_lines else "- `:play` (所需等级: L1): 播放指定歌曲"
