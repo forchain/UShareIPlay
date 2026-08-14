@@ -28,3 +28,15 @@ soul:
   # 可选：本机桌面/启动器包名（用于事件循环判定是否回到 Soul）
   # launcher_packages:
   #   - "com.miui.home"
+
+# 大模型自然语言解析本地覆盖配置（例如配置你的 API Key）
+# llm:
+#   enabled: true
+#   # DeepSeek: https://api.deepseek.com/v1
+#   # MiniMax Token Plan: https://api.minimaxi.com/v1 (模型可选 MiniMax-M2.7, MiniMax-M3, MiniMax-Text-01)
+#   # OpenAI: https://api.openai.com/v1
+#   base_url: "https://api.minimaxi.com/v1"
+#   api_key: "sk-your-api-key"
+#   model: "MiniMax-M2.7"
+#   timeout: 10.0
+

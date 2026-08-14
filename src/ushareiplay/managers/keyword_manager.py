@@ -20,6 +20,7 @@ class KeywordManager(Singleton):
         self._logger = None
         self._config = None
         self._default_keyword_command = None
+        self._nl_resolver = None
         self._mode_aliases = {
             'sequence': Keyword.MODE_SEQUENCE,
             'sequential': Keyword.MODE_SEQUENCE,
@@ -58,10 +59,30 @@ class KeywordManager(Singleton):
 
     @property
     def config(self):
-        """延迟获取配置"""
-        if self._config is None:
-            self._config = self.handler.config
-        return self._config
+        """延迟获取全局根配置"""
+        if self._config is not None:
+            return self._config
+
+        if (
+            self._handler is not None
+            and getattr(self._handler, "controller", None) is not None
+            and getattr(self._handler.controller, "config", None) is not None
+        ):
+            return self._handler.controller.config
+
+        try:
+            from ushareiplay.core.config_loader import ConfigLoader
+
+            loaded = ConfigLoader.load_config()
+            if loaded:
+                return loaded
+        except Exception:
+            pass
+
+        if self._handler is not None and getattr(self._handler, "config", None) is not None:
+            return self._handler.config
+
+        return {}
 
     async def load_keywords_from_config(self):
         """从配置文件加载关键字到数据库
@@ -358,6 +379,79 @@ class KeywordManager(Singleton):
             self.logger.error(f"Error revoking keyword access: {traceback.format_exc()}")
             return {'error': '取消授权失败'}
 
+    @property
+    def nl_resolver(self):
+        """延迟获取 NaturalLanguageResolver 实例"""
+        if self._nl_resolver is None:
+            from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
+
+            root_cfg = self.config or {}
+            cfg = root_cfg.get("llm") or (root_cfg.get("soul", {}) or {}).get("llm", {})
+            self._nl_resolver = NaturalLanguageResolver(cfg)
+        return self._nl_resolver
+
+    def _get_playback_info(self) -> Optional[dict]:
+        """获取当前活跃的播放信息缓存"""
+        try:
+            from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+
+            broadcaster = PlaybackBroadcaster.instance()
+            if broadcaster and hasattr(broadcaster, "_playback_info_cache") and broadcaster._playback_info_cache:
+                return broadcaster._playback_info_cache
+        except Exception:
+            pass
+        return None
+
+    async def _resolve_natural_language(self, result, sleep_exempt: bool = True) -> bool:
+        """Attempt to resolve an unmatched keyword mention via Natural Language Command Resolution.
+
+        Returns True if resolved and dispatched, False if unhandled/fallback needed.
+        """
+        try:
+            user_text = f"{result.text} {result.params}".strip() if result.params else result.text
+            if not user_text:
+                return False
+
+            user_level = 0
+            try:
+                user = await UserDAO.get_or_create(result.nickname)
+                if user:
+                    user_level = user.level
+            except Exception:
+                pass
+
+            commands_config = (self.config or {}).get("commands", [])
+            playback_info = self._get_playback_info()
+
+            resolved = await self.nl_resolver.resolve(
+                user_text=user_text,
+                user_name=result.nickname,
+                user_level=user_level,
+                commands_config=commands_config,
+                playback_info=playback_info,
+            )
+
+            if not resolved or not resolved.content:
+                return False
+
+            from ushareiplay.core.message_queue import MessageQueue
+            from ushareiplay.models.message_info import MessageInfo
+
+            message_queue = MessageQueue.instance()
+            message_info = MessageInfo(
+                content=resolved.content,
+                nickname=result.nickname,
+                sleep_exempt=sleep_exempt,
+            )
+            await message_queue.put_message(message_info)
+            self.logger.info(
+                f"Natural language resolution ({resolved.type}) executed for {result.nickname}: {resolved.content}"
+            )
+            return True
+        except Exception:
+            self.logger.error(f"Error during natural language resolution: {traceback.format_exc()}")
+            return False
+
     async def dispatch_mention(self, result, sleep_exempt: bool = True):
         """Handle a keyword-mention ChatIntakeResult by finding and executing the keyword."""
         keyword_record = await self.find_keyword(result.text, result.nickname)
@@ -368,12 +462,19 @@ class KeywordManager(Singleton):
                 params=result.params,
                 sleep_exempt=sleep_exempt,
             )
-        else:
-            await self.execute_default_keyword(
-                result.nickname,
-                params=result.params,
-                sleep_exempt=sleep_exempt,
-            )
+            return
+
+        # Fallback 1: Try Natural Language Command Resolution via LLM
+        resolved = await self._resolve_natural_language(result, sleep_exempt=sleep_exempt)
+        if resolved:
+            return
+
+        # Fallback 2: Execute default keyword command
+        await self.execute_default_keyword(
+            result.nickname,
+            params=result.params,
+            sleep_exempt=sleep_exempt,
+        )
 
     async def execute_keyword(
         self,
