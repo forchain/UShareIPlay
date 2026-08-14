@@ -197,3 +197,56 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
     assert msg.content == ":help"
     assert msg.nickname == "David"
     assert msg.sleep_exempt is True
+
+
+@pytest.mark.asyncio
+async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch):
+    """Verify KeywordManager reads root config (with llm and commands) instead of only soul config."""
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+
+    keyword_manager = KeywordManager.initialize()
+    keyword_manager._logger = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+    )
+    keyword_manager._config = None
+    keyword_manager._nl_resolver = None
+
+    root_config = {
+        "soul": {"room_owner": "Chainer"},
+        "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
+        "llm": {"enabled": True, "api_key": "test-key"},
+    }
+
+    # Simulate SoulHandler where handler.config is only root_config["soul"]
+    # and handler.controller.config is root_config
+    fake_controller = SimpleNamespace(config=root_config)
+    fake_handler = SimpleNamespace(config=root_config["soul"], controller=fake_controller)
+    keyword_manager._handler = fake_handler
+
+    async def _mock_find_keyword(_keyword, _username):
+        return None
+
+    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
+
+    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
+        mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 胡彦斌 潇湘雨")
+
+        intake_result = ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Outlier",
+            text="来首胡彦斌的潇湘雨",
+            params="",
+        )
+
+        await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+
+        assert keyword_manager.nl_resolver.enabled is True
+        mock_resolve.assert_awaited_once()
+        messages = await MessageQueue.instance().get_all_messages()
+        assert len(messages) == 1
+        msg = next(iter(messages.values()))
+        assert msg.content == ":play 胡彦斌 潇湘雨"
+

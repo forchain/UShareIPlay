@@ -59,10 +59,30 @@ class KeywordManager(Singleton):
 
     @property
     def config(self):
-        """延迟获取配置"""
-        if self._config is None:
-            self._config = self.handler.config
-        return self._config
+        """延迟获取全局根配置"""
+        if self._config is not None:
+            return self._config
+
+        if (
+            self._handler is not None
+            and getattr(self._handler, "controller", None) is not None
+            and getattr(self._handler.controller, "config", None) is not None
+        ):
+            return self._handler.controller.config
+
+        try:
+            from ushareiplay.core.config_loader import ConfigLoader
+
+            loaded = ConfigLoader.load_config()
+            if loaded:
+                return loaded
+        except Exception:
+            pass
+
+        if self._handler is not None and getattr(self._handler, "config", None) is not None:
+            return self._handler.config
+
+        return {}
 
     async def load_keywords_from_config(self):
         """从配置文件加载关键字到数据库
@@ -365,7 +385,8 @@ class KeywordManager(Singleton):
         if self._nl_resolver is None:
             from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
 
-            cfg = (self.config or {}).get("llm", {})
+            root_cfg = self.config or {}
+            cfg = root_cfg.get("llm") or (root_cfg.get("soul", {}) or {}).get("llm", {})
             self._nl_resolver = NaturalLanguageResolver(cfg)
         return self._nl_resolver
 
