@@ -1,5 +1,5 @@
 ---
-covers: [UserManager, AdminManager, MessageManager, KeywordManager, UserDAO, EnterDAO, ExitDAO, ReturnDAO, AdminCommand, HelloCommand, SayCommand, KeywordCommand, EnterCommand, ExitCommand, ReturnCommand, GiftCommand]
+covers: [UserManager, AdminManager, MessageManager, KeywordManager, UserDAO, EnterDAO, ExitDAO, ReturnDAO, AdminCommand, HelloCommand, SayCommand, KeywordCommand, EnterCommand, ExitCommand, ReturnCommand, GiftCommand, LevelCommand]
 last-synced: 2026-03-23
 ---
 
@@ -53,6 +53,7 @@ Level  Role
 
 | Prefix | Level | Params | Description |
 |---|---|---|---|
+| `level` | 0 | `[<user>] [<level>]` | View own level, view target user's level, or set target user's level (if caller has higher level or is system user) |
 | `admin` | 9 | `1/0 <user>` | Grant (1) or revoke (0) admin role in room UI |
 | `hello` | 1 | `<user> "<msg>" "<song>"` | Set greeting rule for a user |
 | `say` | 1 | `<message>` | Post a message to room chat |

@@ -11,6 +11,7 @@ SIMPLE_COMMAND_MODULES = {
     "help",
     "info",
     "keyword",
+    "level",
     "mode",
     "next",
     "notice",
