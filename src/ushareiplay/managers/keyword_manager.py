@@ -391,16 +391,53 @@ class KeywordManager(Singleton):
         return self._nl_resolver
 
     def _get_playback_info(self) -> Optional[dict]:
-        """获取当前活跃的播放信息缓存"""
+        """获取当前活跃的播放与歌单信息缓存"""
+        info = {}
         try:
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
             broadcaster = PlaybackBroadcaster.instance()
             if broadcaster and hasattr(broadcaster, "_playback_info_cache") and broadcaster._playback_info_cache:
-                return broadcaster._playback_info_cache
+                info.update(broadcaster._playback_info_cache)
         except Exception:
             pass
-        return None
+
+        try:
+            from ushareiplay.state.playlist_state import PlaylistState
+
+            playlist_state = PlaylistState.instance()
+            if playlist_state:
+                if playlist_state.player_name:
+                    info["player"] = playlist_state.player_name
+                if playlist_state.current_playlist_name:
+                    info["playlist_name"] = playlist_state.current_playlist_name
+        except Exception:
+            pass
+
+        try:
+            from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+
+            music_handler = QQMusicHandler.instance()
+            if music_handler:
+                list_mode = getattr(music_handler, "list_mode", None)
+                if list_mode:
+                    playlist_type_map = {
+                        "singer": "歌手",
+                        "playlist": "歌单",
+                        "album": "专辑",
+                        "radio": "电台",
+                        "favorites": "收藏",
+                        "radar": "雷达",
+                        "unknown": "未知",
+                    }
+                    info["playlist_type"] = playlist_type_map.get(list_mode, list_mode)
+                play_mode_key = getattr(music_handler, "play_mode_key", None)
+                if play_mode_key:
+                    info["play_mode"] = music_handler.play_mode_key_to_name(play_mode_key)
+        except Exception:
+            pass
+
+        return info if info else None
 
     async def _resolve_natural_language(self, result, sleep_exempt: bool = True) -> bool:
         """Attempt to resolve an unmatched keyword mention via Natural Language Command Resolution.
