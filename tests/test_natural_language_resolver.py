@@ -240,3 +240,54 @@ async def test_resolver_handles_thinking_model_tags(mock_commands_config):
             type="command", content=":play 潇湘雨 胡彦斌"
         )
 
+
+def test_resolver_injects_room_info_into_prompt(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+        }
+    )
+
+    room_info_host = {
+        "is_guest_room": False,
+        "room_id": "FM15321640",
+        "user_count": 10,
+        "focus_count": 4,
+        "recommendation_enabled": True,
+    }
+
+    prompt_host = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=mock_commands_config,
+        room_info=room_info_host,
+    )
+
+    assert "主房间（宿主模式" in prompt_host
+    assert "FM15321640" in prompt_host
+    assert "10人" in prompt_host
+    assert "4人" in prompt_host
+    assert "派对推荐: 开启" in prompt_host
+
+    room_info_guest = {
+        "is_guest_room": True,
+        "room_id": "FM999999",
+        "user_count": 3,
+        "focus_count": 0,
+        "recommendation_enabled": False,
+    }
+
+    prompt_guest = resolver._build_system_prompt(
+        user_name="Bob",
+        user_level=1,
+        commands_config=mock_commands_config,
+        room_info=room_info_guest,
+    )
+
+    assert "他人房间（客房模式" in prompt_guest
+    assert "FM999999" in prompt_guest
+    assert "3人" in prompt_guest
+    assert "派对推荐: 关闭" in prompt_guest
+
+

@@ -208,3 +208,62 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
     assert "theme" not in passed_prefixes
     assert "seat" not in passed_prefixes
 
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_all_seat_manager_actions():
+    from ushareiplay.managers.seat_manager import SeatManager
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    seat_mgr = SeatManager()
+
+    # take seat
+    res = await seat_mgr.take_seat(1)
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # reserve seat
+    res = await seat_mgr.reserve_seat("Alice", 1)
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # find owner seat
+    res = await seat_mgr.find_owner_seat()
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # accompany user
+    res = await seat_mgr.accompany_user("Bob")
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # remove seat occupant
+    res = await seat_mgr.remove_seat_occupant(1)
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # remove user reservation
+    res = await seat_mgr.remove_user_reservation("Alice")
+    assert res.get("error") == "他人房间不支持座位功能"
+
+    # check seats on entry (should return None safely without touching UI)
+    res = await seat_mgr.check_seats_on_entry("Alice")
+    assert res is None
+
+    # prepare for chat scan (should return True immediately without collapsing seat panel)
+    res = await seat_mgr.prepare_for_chat_scan()
+    assert res is True
+
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_seat_command_user_enter():
+    from ushareiplay.commands.seat import SeatCommand
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    fake_controller = SimpleNamespace(soul_handler=HandlerStub(config={}), music_handler=None)
+    seat_cmd = SeatCommand(fake_controller)
+
+    with patch("ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry", new_callable=AsyncMock) as mock_check:
+        await seat_cmd.user_enter("Alice")
+        await seat_cmd.user_return("Alice")
+        mock_check.assert_not_awaited()
+
+

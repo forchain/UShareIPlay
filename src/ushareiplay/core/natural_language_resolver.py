@@ -44,8 +44,9 @@ class NaturalLanguageResolver:
         user_level: int,
         commands_config: list[dict],
         playback_info: Optional[dict] = None,
+        room_info: Optional[dict] = None,
     ) -> str:
-        """Construct the system prompt with command schemas, user context, and playback state."""
+        """Construct the system prompt with command schemas, user context, playback state, and room state."""
         cmd_lines = []
         for cmd in commands_config or []:
             prefix = cmd.get("prefix", "")
@@ -64,12 +65,35 @@ class NaturalLanguageResolver:
             if song:
                 playback_desc = f"{song} - {singer}" if singer else song
 
+        room_desc_lines = []
+        if room_info:
+            is_guest = room_info.get("is_guest_room", False)
+            room_type_str = "他人房间（客房模式，仅支持点歌）" if is_guest else "主房间（宿主模式，支持全部功能）"
+            room_desc_lines.append(f"- 房间类型: {room_type_str}")
+            room_id = room_info.get("room_id")
+            if room_id:
+                room_desc_lines.append(f"- 房间ID: {room_id}")
+            user_count = room_info.get("user_count")
+            if user_count is not None:
+                room_desc_lines.append(f"- 在线人数: {user_count}人")
+            focus_count = room_info.get("focus_count")
+            if focus_count is not None:
+                room_desc_lines.append(f"- 专注人数: {focus_count}人")
+            rec = room_info.get("recommendation_enabled")
+            if rec is not None:
+                room_desc_lines.append(f"- 派对推荐: {'开启' if rec else '关闭'}")
+        else:
+            room_desc_lines.append("- 房间类型: 主房间（宿主模式）")
+
+        room_desc = "\n".join(room_desc_lines)
+
         return f"""你是一个智能派对房间命令解析助手。你的任务是将用户的自然语言转换为标准命令或友好的中文回复。
 
 【当前环境与上下文】
 - 发言用户: {user_name}
 - 用户权限等级: L{user_level}
 - 当前正在播放歌曲: {playback_desc}
+{room_desc}
 
 【可用系统命令列表】
 {cmd_table}
@@ -81,9 +105,10 @@ class NaturalLanguageResolver:
    - 若 用户等级 >= 命令所需等级: 输出 {{"type": "command", "content": ":<命令前缀> <参数>"}}，如 {{"type": "command", "content": ":play 周杰伦 晴天"}} 或 {{"type": "command", "content": ":next"}}。
    - 若 用户等级 < 命令所需等级: 输出 {{"type": "reply", "content": "你的权限不足（当前等级 L{user_level}，需要 L<所需等级>），请关注群主或联系房管升级~"}}。
 4. 如果用户表达的是代词（如“这首歌”、“重新播放”、“再放一遍”），结合当前正在播放歌曲转译出准确的歌曲命令。
-5. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
+5. 如果用户询问当前房间状态（如房间ID、当前是在主房间还是他人房间、在线人数、推荐状态等），结合【当前环境与上下文】中的房间信息用友好的中文直接回答。
+6. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
    - 输出 {{"type": "reply", "content": "<简短友好的中文回复>"}}。
-6. 如果用户意图完全无法理解或无法匹配任何操作:
+7. 如果用户意图完全无法理解或无法匹配任何操作:
    - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。
 """
 
@@ -154,6 +179,7 @@ class NaturalLanguageResolver:
         user_level: int = 0,
         commands_config: Optional[list[dict]] = None,
         playback_info: Optional[dict] = None,
+        room_info: Optional[dict] = None,
     ) -> Optional[NaturalLanguageResult]:
         """Resolve a natural language user utterance into a command or reply.
 
@@ -163,6 +189,7 @@ class NaturalLanguageResolver:
             user_level: Current level of the user (defaults to 0)
             commands_config: List of command configurations
             playback_info: Active playback information dictionary
+            room_info: Active room information dictionary
 
         Returns:
             NaturalLanguageResult if successfully resolved, or None if disabled/error/timeout.
@@ -175,6 +202,7 @@ class NaturalLanguageResolver:
             user_level=user_level,
             commands_config=commands_config or [],
             playback_info=playback_info,
+            room_info=room_info,
         )
 
         payload = {
