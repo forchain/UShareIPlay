@@ -291,3 +291,107 @@ def test_resolver_injects_room_info_into_prompt(mock_commands_config):
     assert "派对推荐: 关闭" in prompt_guest
 
 
+def test_resolver_injects_playback_and_playlist_info_into_prompt(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+        }
+    )
+
+    playback_info = {
+        "song": "Fictional (Stripped)",
+        "singer": "Khloe Rose",
+        "player": "不约儿童🐏🐏",
+        "playlist_name": "咿鸭咿鸭yo宝天天开心",
+        "playlist_type": "歌单",
+        "play_mode": "随机播放",
+    }
+
+    prompt = resolver._build_system_prompt(
+        user_name="不约儿童🐏🐏",
+        user_level=0,
+        commands_config=mock_commands_config,
+        playback_info=playback_info,
+    )
+
+    assert "当前正在播放歌曲: Fictional (Stripped) - Khloe Rose" in prompt
+    assert "当前播放者/点歌人: 不约儿童🐏🐏" in prompt
+    assert "当前播放列表/歌单: [歌单] 咿鸭咿鸭yo宝天天开心 (by 不约儿童🐏🐏)" in prompt
+    assert "播放模式: 随机播放" in prompt
+    assert "播我的歌单" in prompt or "歌单" in prompt
+
+
+def test_resolver_prompt_when_no_active_playlist(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+        }
+    )
+
+    playback_info = {
+        "song": "晴天",
+        "singer": "周杰伦",
+        "player": "Joyer",
+    }
+
+    prompt = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=mock_commands_config,
+        playback_info=playback_info,
+    )
+
+    assert "当前正在播放歌曲: 晴天 - 周杰伦" in prompt
+    assert "当前播放者/点歌人: Joyer" in prompt
+    assert "当前播放列表/歌单: 暂无活跃歌单" in prompt
+
+
+@pytest.mark.asyncio
+async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com/v1",
+        }
+    )
+
+    playback_info = {
+        "song": "Fictional (Stripped)",
+        "singer": "Khloe Rose",
+        "player": "不约儿童🐏🐏",
+        "playlist_name": "咿鸭咿鸭yo宝天天开心",
+        "playlist_type": "歌单",
+        "play_mode": "随机播放",
+    }
+
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {"type": "reply", "content": "是的，现在正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"}
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+        mock_api.return_value = json.dumps(mock_response)
+        result = await resolver.resolve(
+            user_text="现在是播我的歌单吗",
+            user_name="不约儿童🐏🐏",
+            user_level=0,
+            commands_config=mock_commands_config,
+            playback_info=playback_info,
+        )
+
+        assert result == NaturalLanguageResult(
+            type="reply", content="是的，现在正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
+        )
+
+
+

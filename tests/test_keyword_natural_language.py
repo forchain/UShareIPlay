@@ -291,3 +291,254 @@ async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
         assert msg.nickname == "Alice"
 
 
+def test_get_playback_info_enrichment(monkeypatch):
+    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.state.playlist_state import PlaylistState
+
+    keyword_manager = KeywordManager.initialize()
+    broadcaster = PlaybackBroadcaster.initialize()
+    playlist_state = PlaylistState.initialize()
+
+    broadcaster._playback_info_cache = {
+        "song": "Fictional (Stripped)",
+        "singer": "Khloe Rose",
+        "album": "Fictional (Stripped)",
+        "release_date": "2023-05-12",
+    }
+    playlist_state.player_name = "不约儿童🐏🐏"
+    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+
+    fake_music_handler = SimpleNamespace(
+        list_mode="playlist",
+        play_mode_key="random",
+        play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
+    )
+    monkeypatch.setattr(
+        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        lambda: fake_music_handler,
+    )
+
+    info = keyword_manager._get_playback_info()
+    assert info is not None
+    assert info["song"] == "Fictional (Stripped)"
+    assert info["singer"] == "Khloe Rose"
+    assert info["album"] == "Fictional (Stripped)"
+    assert info["release_date"] == "2023-05-12"
+    assert info["player"] == "不约儿童🐏🐏"
+    assert info["playlist_name"] == "咿鸭咿鸭yo宝天天开心"
+    assert info["playlist_type"] == "歌单"
+    assert info["play_mode"] == "随机播放"
+
+
+def test_get_playback_info_handles_exceptions_gracefully(monkeypatch):
+    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+
+    keyword_manager = KeywordManager.initialize()
+    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster._playback_info_cache = {"song": "SongA", "singer": "SingerA"}
+
+    def _raise():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "ushareiplay.state.playlist_state.PlaylistState.instance",
+        _raise,
+    )
+
+    info = keyword_manager._get_playback_info()
+    assert info is not None
+    assert info["song"] == "SongA"
+
+
+@pytest.mark.asyncio
+async def test_mention_query_own_playlist_e2e(monkeypatch):
+    import json
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.state.playlist_state import PlaylistState
+
+    keyword_manager = KeywordManager.initialize()
+    keyword_manager._logger = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+    )
+    keyword_manager._config = {
+        "llm": {
+            "enabled": True,
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com/v1",
+        },
+        "commands": [{"prefix": "play", "level": 1}],
+    }
+    keyword_manager._nl_resolver = None
+
+    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster._playback_info_cache = {
+        "song": "Fictional (Stripped)",
+        "singer": "Khloe Rose",
+        "album": "Fictional (Stripped)",
+        "release_date": "2023-05-12",
+    }
+    playlist_state = PlaylistState.initialize()
+    playlist_state.player_name = "不约儿童🐏🐏"
+    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+
+    fake_music_handler = SimpleNamespace(
+        list_mode="playlist",
+        play_mode_key="random",
+        play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
+    )
+    monkeypatch.setattr(
+        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        lambda: fake_music_handler,
+    )
+
+    async def _mock_find_keyword(_keyword, _username):
+        return None
+
+    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
+
+    captured_payload = {}
+
+    async def _fake_call_api(payload):
+        nonlocal captured_payload
+        captured_payload = payload
+        mock_response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "type": "reply",
+                                "content": "是的，当前正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~",
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+        return json.dumps(mock_response)
+
+    monkeypatch.setattr(
+        keyword_manager.nl_resolver,
+        "_call_api",
+        _fake_call_api,
+    )
+
+    intake_result = ChatIntakeResult(
+        kind=ChatIntakeKind.KEYWORD_MENTION,
+        nickname="不约儿童🐏🐏",
+        text="现在是播我的歌单吗",
+        params="",
+    )
+
+    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+
+    # Verify system prompt contained complete context
+    system_prompt = captured_payload["messages"][0]["content"]
+    assert "当前播放者/点歌人: 不约儿童🐏🐏" in system_prompt
+    assert "当前播放列表/歌单: [歌单] 咿鸭咿鸭yo宝天天开心 (by 不约儿童🐏🐏)" in system_prompt
+    assert "播放模式: 随机播放" in system_prompt
+
+    # Verify message queue has the response
+    messages = await MessageQueue.instance().get_all_messages()
+    assert len(messages) == 1
+    msg = next(iter(messages.values()))
+    assert msg.content == "是的，当前正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
+    assert msg.nickname == "不约儿童🐏🐏"
+    assert msg.sleep_exempt is True
+
+
+@pytest.mark.asyncio
+async def test_mention_query_others_playlist_e2e(monkeypatch):
+    import json
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.state.playlist_state import PlaylistState
+
+    keyword_manager = KeywordManager.initialize()
+    keyword_manager._logger = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+    )
+    keyword_manager._config = {
+        "llm": {
+            "enabled": True,
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com/v1",
+        },
+        "commands": [{"prefix": "play", "level": 1}],
+    }
+    keyword_manager._nl_resolver = None
+
+    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster._playback_info_cache = {
+        "song": "Fictional (Stripped)",
+        "singer": "Khloe Rose",
+    }
+    playlist_state = PlaylistState.initialize()
+    playlist_state.player_name = "不约儿童🐏🐏"
+    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+
+    fake_music_handler = SimpleNamespace(
+        list_mode="playlist",
+        play_mode_key="random",
+        play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
+    )
+    monkeypatch.setattr(
+        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        lambda: fake_music_handler,
+    )
+
+    async def _mock_find_keyword(_keyword, _username):
+        return None
+
+    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
+
+    async def _fake_call_api(payload):
+        mock_response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "type": "reply",
+                                "content": "现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~",
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+        return json.dumps(mock_response)
+
+    monkeypatch.setattr(
+        keyword_manager.nl_resolver,
+        "_call_api",
+        _fake_call_api,
+    )
+
+    intake_result = ChatIntakeResult(
+        kind=ChatIntakeKind.KEYWORD_MENTION,
+        nickname="Alice",
+        text="现在是播我的歌单吗",
+        params="",
+    )
+
+    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+
+    messages = await MessageQueue.instance().get_all_messages()
+    assert len(messages) == 1
+    msg = next(iter(messages.values()))
+    assert msg.content == "现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~"
+    assert msg.nickname == "Alice"
+
+
+
+

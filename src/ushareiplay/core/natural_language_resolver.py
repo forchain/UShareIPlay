@@ -58,12 +58,35 @@ class NaturalLanguageResolver:
 
         cmd_table = "\n".join(cmd_lines) if cmd_lines else "- `:play` (所需等级: L1): 播放指定歌曲"
 
+        playback_lines = []
         playback_desc = "无"
         if playback_info:
             song = playback_info.get("song") or ""
             singer = playback_info.get("singer") or ""
-            if song:
-                playback_desc = f"{song} - {singer}" if singer else song
+            if song and song != "Unknown":
+                playback_desc = f"{song} - {singer}" if (singer and singer != "Unknown") else song
+        playback_lines.append(f"- 当前正在播放歌曲: {playback_desc}")
+
+        if playback_info:
+            player = playback_info.get("player")
+            if player:
+                playback_lines.append(f"- 当前播放者/点歌人: {player}")
+
+            playlist_name = playback_info.get("playlist_name")
+            if playlist_name:
+                ptype = playback_info.get("playlist_type") or "歌单"
+                owner_tag = f" (by {player})" if player else ""
+                playback_lines.append(f"- 当前播放列表/歌单: [{ptype}] {playlist_name}{owner_tag}")
+            else:
+                playback_lines.append("- 当前播放列表/歌单: 暂无活跃歌单")
+
+            play_mode = playback_info.get("play_mode")
+            if play_mode and play_mode != "未知":
+                playback_lines.append(f"- 播放模式: {play_mode}")
+        else:
+            playback_lines.append("- 当前播放列表/歌单: 暂无活跃歌单")
+
+        playback_section = "\n".join(playback_lines)
 
         room_desc_lines = []
         if room_info:
@@ -92,7 +115,7 @@ class NaturalLanguageResolver:
 【当前环境与上下文】
 - 发言用户: {user_name}
 - 用户权限等级: L{user_level}
-- 当前正在播放歌曲: {playback_desc}
+{playback_section}
 {room_desc}
 
 【可用系统命令列表】
@@ -106,9 +129,14 @@ class NaturalLanguageResolver:
    - 若 用户等级 < 命令所需等级: 输出 {{"type": "reply", "content": "你的权限不足（当前等级 L{user_level}，需要 L<所需等级>），请关注群主或联系房管升级~"}}。
 4. 如果用户表达的是代词（如“这首歌”、“重新播放”、“再放一遍”），结合当前正在播放歌曲转译出准确的歌曲命令。
 5. 如果用户询问当前房间状态（如房间ID、当前是在主房间还是他人房间、在线人数、推荐状态等），结合【当前环境与上下文】中的房间信息用友好的中文直接回答。
-6. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
+6. 如果用户询问当前播放状态（如“现在是播我的歌单吗”、“现在在播谁的歌/歌单”、“当前播的是什么歌单”、“当前播放模式是什么”等）:
+   - 必须对比发言用户与【当前环境与上下文】中的当前播放者/点歌人及歌单信息。
+   - 若发言用户与当前播放者一致且有活跃歌单，明确肯定回复（例如“是的，当前正在播放你的歌单《...》哦~”）。
+   - 若发言用户与当前播放者不一致，明确告知当前正在播放的是谁点播的歌/歌单。
+   - 若当前暂无活跃歌单或未在播放歌曲，也如实友好回答。
+7. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
    - 输出 {{"type": "reply", "content": "<简短友好的中文回复>"}}。
-7. 如果用户意图完全无法理解或无法匹配任何操作:
+8. 如果用户意图完全无法理解或无法匹配任何操作:
    - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。
 """
 
