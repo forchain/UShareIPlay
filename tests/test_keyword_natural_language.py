@@ -250,3 +250,44 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
         msg = next(iter(messages.values()))
         assert msg.content == ":play 胡彦斌 潇湘雨"
 
+
+@pytest.mark.asyncio
+async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
+    from ushareiplay.core.chat_intake import classify_chat_line
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+
+    keyword_manager = KeywordManager.initialize()
+    keyword_manager._logger = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+    )
+    keyword_manager._config = {
+        "soul": {"room_owner": "Chainer"},
+        "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
+        "llm": {"enabled": True, "api_key": "test-key"},
+    }
+
+    async def _mock_find_keyword(_keyword, _username):
+        return None
+
+    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
+
+    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
+        mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
+
+        raw_chat = "souler[Alice]说: @Chainer 帮我放一首周杰伦的晴天"
+        intake_result = classify_chat_line(raw_chat, room_owner="Chainer")
+        assert intake_result.kind == ChatIntakeKind.KEYWORD_MENTION
+
+        await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+
+        mock_resolve.assert_awaited_once()
+        messages = await MessageQueue.instance().get_all_messages()
+        assert len(messages) == 1
+        msg = next(iter(messages.values()))
+        assert msg.content == ":play 周杰伦 晴天"
+        assert msg.nickname == "Alice"
+
+

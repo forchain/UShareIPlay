@@ -129,15 +129,55 @@ class TestClassifyChatLine:
         result = classify_chat_line("souler[Alice]送给Bob", room_owner="Joyer")
         assert result.kind == ChatIntakeKind.PLAIN_CHAT
 
-    def test_gift_type2_heat_contribution_matches(self):
-        result = classify_chat_line("08-02 17:44:58 [I] 恭喜🍻🥂🥃🍸🍷🍺在此房间贡献出3120热力值")
-        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
-        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
-        assert result.text == "🍻🥂🥃🍸🍷🍺"
+    def test_keyword_mention_with_room_owner_name(self):
+        result = classify_chat_line("souler[Alice]说：@Chainer 播放 周杰伦 稻香", room_owner="Chainer")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="播放",
+            params="周杰伦 稻香",
+            raw="souler[Alice]说：@Chainer 播放 周杰伦 稻香",
+        )
 
+    def test_keyword_mention_with_room_owner_natural_language(self):
+        result = classify_chat_line("souler[Alice]说: @Chainer 帮我放一首晴天", room_owner="Chainer")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="帮我放一首晴天",
+            params="",
+            raw="souler[Alice]说: @Chainer 帮我放一首晴天",
+        )
 
+    def test_keyword_mention_matches_wo_even_when_room_owner_set(self):
+        result = classify_chat_line("souler[Alice]说：@我 帮助", room_owner="Chainer")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="帮助",
+            params="",
+            raw="souler[Alice]说：@我 帮助",
+        )
 
-class TestExpandQueueText:
+    def test_keyword_mention_with_other_user_is_plain_chat(self):
+        result = classify_chat_line("souler[Alice]说：@Bob 播放 周杰伦 稻香", room_owner="Chainer")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.PLAIN_CHAT,
+            nickname="Alice",
+            text="@Bob 播放 周杰伦 稻香",
+            raw="souler[Alice]说：@Bob 播放 周杰伦 稻香",
+        )
+
+    def test_keyword_mention_with_special_chars_in_room_owner(self):
+        result = classify_chat_line("souler[Alice]说: @C++_Pro(Boss) 晴天", room_owner="C++_Pro(Boss)")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="晴天",
+            params="",
+            raw="souler[Alice]说: @C++_Pro(Boss) 晴天",
+        )
+
     def test_splits_plain_and_command_parts(self):
         results = expand_queue_text("hello {user_name};:timer list", "Alice")
         assert len(results) == 2

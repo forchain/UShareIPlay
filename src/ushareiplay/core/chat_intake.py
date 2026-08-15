@@ -119,7 +119,14 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
         )
 
 
-    keyword_match = _KEYWORD_PATTERN.match(raw)
+    keyword_match = None
+    if room_owner and room_owner.strip() and room_owner.strip() != "我":
+        escaped_owner = re.escape(room_owner.strip())
+        pattern = rf"souler\[(.+?)\]说[:：]\s*(?:@我|@{escaped_owner})\s+(.+)"
+        keyword_match = re.match(pattern, raw)
+    else:
+        keyword_match = _KEYWORD_PATTERN.match(raw)
+
     if keyword_match:
         nickname = keyword_match.group(1).strip()
         keyword_text = keyword_match.group(2).strip()

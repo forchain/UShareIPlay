@@ -248,7 +248,23 @@ class CommandManager(Singleton):
                 except Exception:
                     # Guard should never break command execution.
                     pass
-            
+
+            # 他人房间（客房模式）限制：仅支持点歌功能，所有群管理和配置命令全部禁用
+            try:
+                from ushareiplay.state.room_state import RoomState
+                room_state = RoomState.instance()
+                prefix = command_info.get("prefix") or ""
+                if room_state.is_guest_room and not room_state.is_command_allowed_in_guest_room(prefix):
+                    result = {
+                        'error': '当前处于他人房间，仅支持点歌功能，群管理功能已禁用'
+                    }
+                    format_kwargs = {'user': message_info.nickname, **result}
+                    if parameters:
+                        format_kwargs['party_id'] = parameters[0]
+                    return command_info.get('error_template', '{error}').format(**format_kwargs)
+            except Exception:
+                pass
+
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             result = {'error': 'unknown'}
             retry_enabled = bool(command_info.get("retry"))
