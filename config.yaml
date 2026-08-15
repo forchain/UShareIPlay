@@ -375,6 +375,11 @@ commands:
     description: "设置别名绑定。参数: <add/del/list> [用户名]，例如 :alias add 分身"
     response_template: "{message}"
     error_template: "别名绑定失败: {error}"
+  - prefix: "level"
+    level: 0
+    description: "查看或设置用户等级。参数: [用户名] [等级]，例如 :level、:level 张三、:level 张三 3"
+    response_template: "{message}"
+    error_template: "{error}"
   - prefix: "info"
     level: 0
     description: "查看房间当前播放信息、在线用户与定时器。无参数，例如 :info"
