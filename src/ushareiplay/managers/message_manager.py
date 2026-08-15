@@ -88,6 +88,16 @@ class MessageManager(Singleton):
         from ushareiplay.managers.seat_manager import SeatManager
         return SeatManager.get_instance()
 
+    def get_room_owner(self) -> str | None:
+        if hasattr(self.handler, 'config') and isinstance(self.handler.config, dict):
+            soul_cfg = self.handler.config.get("soul", {})
+            if isinstance(soul_cfg, dict):
+                owner = soul_cfg.get("room_owner") or soul_cfg.get("owner_username")
+                if owner:
+                    return owner
+            return self.handler.config.get("room_owner") or self.handler.config.get("owner_username")
+        return None
+
     def get_party_id(self):
         party_id = self.handler.party_id
         if not party_id:
@@ -133,6 +143,7 @@ class MessageManager(Singleton):
         command_set = set[str]()
         nickname_map = {}
 
+        room_owner = self.get_room_owner()
         missed_chats = set[str]()
         for chat in attribute_values:
             if last_chat == chat:
@@ -144,7 +155,7 @@ class MessageManager(Singleton):
                 missed_chats.add(chat)
                 is_missed = True
 
-            result = classify_chat_line(chat)
+            result = classify_chat_line(chat, room_owner=room_owner)
 
             if result.kind == ChatIntakeKind.KEYWORD_MENTION and is_missed:
                 from ushareiplay.managers.keyword_manager import KeywordManager

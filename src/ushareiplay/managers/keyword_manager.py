@@ -421,6 +421,25 @@ class KeywordManager(Singleton):
                 pass
 
             commands_config = (self.config or {}).get("commands", [])
+            room_info = None
+            try:
+                from ushareiplay.state.room_state import RoomState
+                room_state = RoomState.instance()
+                room_info = {
+                    "is_guest_room": room_state.is_guest_room,
+                    "room_id": room_state.room_id,
+                    "user_count": room_state.user_count,
+                    "focus_count": room_state.focus_count,
+                    "recommendation_enabled": room_state.recommendation_enabled,
+                }
+                if room_state.is_guest_room:
+                    commands_config = [
+                        cmd for cmd in commands_config
+                        if room_state.is_command_allowed_in_guest_room(cmd.get("prefix", ""))
+                    ]
+            except Exception:
+                pass
+
             playback_info = self._get_playback_info()
 
             resolved = await self.nl_resolver.resolve(
@@ -429,6 +448,7 @@ class KeywordManager(Singleton):
                 user_level=user_level,
                 commands_config=commands_config,
                 playback_info=playback_info,
+                room_info=room_info,
             )
 
             if not resolved or not resolved.content:
