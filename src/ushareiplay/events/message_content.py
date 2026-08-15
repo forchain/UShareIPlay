@@ -141,7 +141,14 @@ class MessageContentEvent(BaseEvent):
 
                 if result.kind == ChatIntakeKind.GIFT_RECEIVE:
                     chat_logger.critical(content)
-                    self.logger.info(f"Gift received from user: {result.nickname}")
+                    if getattr(result, "heat_value", 0) > 0:
+                        self.logger.info(
+                            f"Heat contribution received from user '{result.nickname}': +{result.heat_value} heat"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Gift received from user '{result.nickname}' (sent to room_owner '{room_owner}')"
+                        )
                     await self._handle_gift_receive(result)
                     continue
 
@@ -193,10 +200,16 @@ class MessageContentEvent(BaseEvent):
             from ushareiplay.models.message_info import MessageInfo
 
             username = result.nickname
-            if getattr(result, "heat_value", 0) > 0:
-                await UserDAO.record_heat_contribution(username, result.heat_value)
+            heat_val = getattr(result, "heat_value", 0)
+            if heat_val > 0:
+                user = await UserDAO.record_heat_contribution(username, heat_val)
             else:
-                await UserDAO.record_owner_gift(username)
+                user = await UserDAO.record_owner_gift(username)
+
+            if user:
+                self.logger.info(
+                    f"User '{user.username}' status after gift/heat processing: level=L{user.level}, cumulative_heat={user.heat_value}"
+                )
 
             # 自动发送 @用户 谢谢
             thank_msg = MessageInfo(
@@ -204,6 +217,7 @@ class MessageContentEvent(BaseEvent):
                 nickname=username,
             )
             await MessageQueue.instance().put_message(thank_msg)
+            self.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
 
             # 触发命令管理器的收礼物通知
             await self._notify_gift_receive(username)
