@@ -124,10 +124,30 @@ class TestClassifyChatLine:
         assert result.kind == ChatIntakeKind.GIFT_RECEIVE
         assert result.nickname == "🍻🥂🥃🍸🍷🍺"
         assert result.text == "🍻🥂🥃🍸🍷🍺"
+        assert result.heat_value == 0
+
+    def test_gift_type1_matches_with_trailing_gift_name(self):
+        result = classify_chat_line("souler[🍻🥂🥃🍸🍷🍺]送给Joyer 【为你爆灯】", room_owner="Joyer")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
+        assert result.heat_value == 0
 
     def test_gift_type1_ignored_when_receiver_is_not_room_owner(self):
         result = classify_chat_line("souler[Alice]送给Bob", room_owner="Joyer")
         assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_gift_type2_heat_contribution_matches(self):
+        result = classify_chat_line("08-02 17:44:58 [I] 恭喜🍻🥂🥃🍸🍷🍺在此房间贡献出3120热力值")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
+        assert result.text == "🍻🥂🥃🍸🍷🍺"
+        assert result.heat_value == 3120
+
+    def test_gift_type2_heat_contribution_large_value(self):
+        result = classify_chat_line("恭喜Alice在此房间贡献出1000000热力值")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "Alice"
+        assert result.heat_value == 1000000
 
     def test_keyword_mention_with_room_owner_name(self):
         result = classify_chat_line("souler[Alice]说：@Chainer 播放 周杰伦 稻香", room_owner="Chainer")

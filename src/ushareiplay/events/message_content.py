@@ -141,8 +141,15 @@ class MessageContentEvent(BaseEvent):
 
                 if result.kind == ChatIntakeKind.GIFT_RECEIVE:
                     chat_logger.critical(content)
-                    self.logger.info(f"Gift received from user: {result.nickname}")
-                    await self._notify_gift_receive(result.nickname)
+                    if getattr(result, "heat_value", 0) > 0:
+                        self.logger.info(
+                            f"Heat contribution received from user '{result.nickname}': +{result.heat_value} heat"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Gift received from user '{result.nickname}' (sent to room_owner '{room_owner}')"
+                        )
+                    await self._handle_gift_receive(result)
                     continue
 
                 if result.kind == ChatIntakeKind.KEYWORD_MENTION:
@@ -184,6 +191,38 @@ class MessageContentEvent(BaseEvent):
         except Exception:
             self.logger.error(f"Error processing message content event: {traceback.format_exc()}")
             return False
+
+    async def _handle_gift_receive(self, result):
+        """处理收礼物与热力值贡献：自动升级等级、发送感谢消息、触发自定义命令"""
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            from ushareiplay.core.message_queue import MessageQueue
+            from ushareiplay.models.message_info import MessageInfo
+
+            username = result.nickname
+            heat_val = getattr(result, "heat_value", 0)
+            if heat_val > 0:
+                user = await UserDAO.record_heat_contribution(username, heat_val)
+            else:
+                user = await UserDAO.record_owner_gift(username)
+
+            if user:
+                self.logger.info(
+                    f"User '{user.username}' status after gift/heat processing: level=L{user.level}, cumulative_heat={user.heat_value}"
+                )
+
+            # 自动发送 @用户 谢谢
+            thank_msg = MessageInfo(
+                content=f"@{username} 谢谢",
+                nickname=username,
+            )
+            await MessageQueue.instance().put_message(thank_msg)
+            self.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
+
+            # 触发命令管理器的收礼物通知
+            await self._notify_gift_receive(username)
+        except Exception:
+            self.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
 
     async def _notify_user_enter(self, username: str):
         """通知所有命令用户进入"""

@@ -1,5 +1,9 @@
+import logging
 from typing import Optional
 from ushareiplay.models import User
+
+logger = logging.getLogger("UserDAO")
+
 
 class UserDAO:
     @staticmethod
@@ -59,8 +63,10 @@ class UserDAO:
         """Update user level"""
         user = await User.get_or_none(id=user_id)
         if user:
+            old_level = user.level
             user.level = level
             await user.save()
+            logger.info(f"User ID {user_id} ('{user.username}') level updated: L{old_level} -> L{level}")
         return user
     
     @staticmethod
@@ -75,9 +81,78 @@ class UserDAO:
             Updated user or None if user doesn't exist
         """
         user = await UserDAO.get_or_create(username=username)
-        if user and user.level < target_level:
+        if user:
+            if user.level < target_level:
+                old_level = user.level
+                user.level = target_level
+                await user.save()
+                logger.info(
+                    f"User '{user.username}' level upgraded: L{old_level} -> L{target_level} (target: L{target_level})"
+                )
+            else:
+                logger.info(
+                    f"User '{user.username}' current level L{user.level} >= target L{target_level}, no level upgrade needed"
+                )
+        return user
+
+    @staticmethod
+    async def record_owner_gift(username: str) -> Optional[User]:
+        """
+        Record gift sent to room owner: automatically upgrades user to Level 4
+        if their current level is below 4.
+        """
+        logger.info(f"Recording owner gift for user '{username}' (minimum target: L4)")
+        return await UserDAO.update_level_if_lower(username, 4)
+
+    @staticmethod
+    async def record_heat_contribution(username: str, heat_value: int) -> Optional[User]:
+        """
+        Record heat contribution in the room:
+        1. Accumulates heat_value onto the canonical user profile.
+        2. Applies level promotion:
+           - Base heat contribution promotion to Level 5 (if level < 5).
+           - Cumulative heat > 10,000 promotion to Level 6 (if level < 6).
+           - Cumulative heat > 100,000 promotion to Level 7 (if level < 7).
+           - Cumulative heat > 1,000,000 promotion to Level 8 (if level < 8).
+           - Preserves higher existing levels without downgrading.
+        """
+        user = await UserDAO.get_or_create(username=username)
+        if not user:
+            logger.warning(f"Failed to find or create user for heat contribution: '{username}'")
+            return None
+
+        heat_amount = max(0, int(heat_value or 0))
+        old_heat = user.heat_value or 0
+        user.heat_value = old_heat + heat_amount
+
+        # Determine target level based on cumulative heat thresholds
+        if user.heat_value > 1_000_000:
+            target_level = 8
+            reason = "cumulative heat > 1,000,000"
+        elif user.heat_value > 100_000:
+            target_level = 7
+            reason = "cumulative heat > 100,000"
+        elif user.heat_value > 10_000:
+            target_level = 6
+            reason = "cumulative heat > 10,000"
+        else:
+            target_level = 5
+            reason = "base heat contribution"
+
+        if user.level < target_level:
+            old_level = user.level
             user.level = target_level
             await user.save()
+            logger.info(
+                f"User '{user.username}' heat contribution +{heat_amount} (cumulative: {old_heat} -> {user.heat_value}): "
+                f"level upgraded L{old_level} -> L{target_level} ({reason})"
+            )
+        else:
+            await user.save()
+            logger.info(
+                f"User '{user.username}' heat contribution +{heat_amount} (cumulative: {old_heat} -> {user.heat_value}): "
+                f"current level L{user.level} >= target L{target_level} ({reason}), no level upgrade needed"
+            )
         return user
 
     @staticmethod
