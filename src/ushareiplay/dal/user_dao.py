@@ -81,6 +81,49 @@ class UserDAO:
         return user
 
     @staticmethod
+    async def record_owner_gift(username: str) -> Optional[User]:
+        """
+        Record gift sent to room owner: automatically upgrades user to Level 4
+        if their current level is below 4.
+        """
+        return await UserDAO.update_level_if_lower(username, 4)
+
+    @staticmethod
+    async def record_heat_contribution(username: str, heat_value: int) -> Optional[User]:
+        """
+        Record heat contribution in the room:
+        1. Accumulates heat_value onto the canonical user profile.
+        2. Applies level promotion:
+           - Base heat contribution promotion to Level 5 (if level < 5).
+           - Cumulative heat > 10,000 promotion to Level 6 (if level < 6).
+           - Cumulative heat > 100,000 promotion to Level 7 (if level < 7).
+           - Cumulative heat > 1,000,000 promotion to Level 8 (if level < 8).
+           - Preserves higher existing levels without downgrading.
+        """
+        user = await UserDAO.get_or_create(username=username)
+        if not user:
+            return None
+
+        heat_amount = max(0, int(heat_value or 0))
+        user.heat_value = (user.heat_value or 0) + heat_amount
+
+        # Determine target level based on cumulative heat thresholds
+        if user.heat_value > 1_000_000:
+            target_level = 8
+        elif user.heat_value > 100_000:
+            target_level = 7
+        elif user.heat_value > 10_000:
+            target_level = 6
+        else:
+            target_level = 5
+
+        if user.level < target_level:
+            user.level = target_level
+
+        await user.save()
+        return user
+
+    @staticmethod
     async def get_all_avatar_usernames(username: str) -> set:
         """
         获取某个用户（可以是别名或主账号）所有分身的 username 集合，

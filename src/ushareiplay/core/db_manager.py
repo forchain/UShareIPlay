@@ -26,6 +26,7 @@ class DatabaseManager:
         )
         await Tortoise.generate_schemas()
         await self._ensure_user_canonical_column()
+        await self._ensure_user_heat_value_column()
         await self._ensure_keyword_mode_column()
         await self._ensure_keyword_allowed_users_column()
         await self._ensure_focus_events_created_at()
@@ -110,6 +111,23 @@ class DatabaseManager:
             """
             ALTER TABLE users ADD COLUMN canonical_user_id INTEGER NULL REFERENCES users(id);
             CREATE INDEX IF NOT EXISTS idx_users_canonical_user_id ON users(canonical_user_id);
+            """
+        )
+
+    async def _ensure_user_heat_value_column(self) -> None:
+        """
+        Tortoise `generate_schemas()` does not evolve existing SQLite tables.
+        We apply a minimal additive schema patch for the new `users.heat_value` column.
+        """
+        conn = connections.get("default")
+        rows = await conn.execute_query_dict("PRAGMA table_info(users)")
+        columns = {r.get("name") for r in rows}
+        if "heat_value" in columns:
+            return
+
+        await conn.execute_script(
+            """
+            ALTER TABLE users ADD COLUMN heat_value INTEGER NOT NULL DEFAULT 0;
             """
         )
 
