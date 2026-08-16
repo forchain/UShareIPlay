@@ -321,20 +321,27 @@ class PartyManager(Singleton):
             key, result_element = self.handler.element_finder.wait_for_any_element(
                 ['party_online', 'room_card', 'parties_search', 'party_search_empty', 'no_party_from_hall'], timeout=5
             )
-            party_element = None
-            if key == 'party_online' and result_element:
-                party_element = result_element
-            else:
-                party_online = self.handler.element_finder.try_find_element('party_online', log=False)
-                if party_online:
-                    party_element = party_online
+
+            # 寻找可点击的房间卡片
+            room_card = self.handler.element_finder.try_find_element('room_card', log=False)
+            if not room_card:
+                if key == 'parties_search' and result_element:
+                    room_card = self.handler.element_finder.find_child_element(result_element, 'party_id') or \
+                                self.handler.element_finder.find_child_element(result_element, 'room_card') or result_element
+                elif key in ('party_online', 'room_card') and result_element:
+                    room_card = result_element
+
+            # 检查是否有在线标识 party_online（确保派对未关闭）
+            party_online = self.handler.element_finder.try_find_element('party_online', log=False)
+            if not party_online:
+                if key == 'party_online' and result_element:
+                    party_online = result_element
                 elif key == 'parties_search' and result_element:
-                    party_element = self.handler.element_finder.find_child_element(result_element, 'party_online')
-                    if not party_element:
-                        party_element = self.handler.element_finder.find_child_element(result_element, 'party_id')
+                    party_online = self.handler.element_finder.find_child_element(result_element, 'party_online') or \
+                                   self.handler.element_finder.find_child_element(result_element, 'party_id')
 
             # 4. 如果目标房间未开启（未找到在线标识）或不存在，安全返回当前房间，不关闭当前房间
-            if not party_element:
+            if not room_card or not party_online:
                 self.logger.warning(f"Target party {party_id} is closed or not found, restoring previous party")
                 self._restore_current_party()
                 return {
@@ -342,13 +349,13 @@ class PartyManager(Singleton):
                     'party_id': party_id
                 }
 
-            # 5. 目标房间已开启，点击进入目标房间
-            party_element.click()
-            self.logger.info(f"Entered target party {party_id}")
+            # 5. 目标房间已开启，点击 room_card 卡片进入目标房间
+            room_card.click()
+            self.logger.info(f"Clicked room_card to enter target party {party_id}")
 
             # 若弹出解散/退出当前房间的确认提示，自动确认
             confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
-                ['confirm_end', 'confirm_close', 'confirm_btn'], timeout=2
+                ['confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
             )
             if confirm_btn:
                 confirm_btn.click()
@@ -445,8 +452,8 @@ class PartyManager(Singleton):
 
         party_online = self.handler.element_finder.try_find_element('party_online')
         if party_online:
-            party_online.click()
-            self.logger.info("Clicked party online")
+            room_card.click()
+            self.logger.info("Clicked room card")
             return True
 
         self.logger.warning("派对关闭了")
