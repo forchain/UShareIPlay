@@ -223,33 +223,34 @@ class PartyManager(Singleton):
             dict: 成功含 party_id、user；失败含 error、party_id
         """
         try:
-            # 1. 导航进入派对大厅（不解散/关闭当前房间，保持原房间在悬浮态）
-            party_hall = self.handler.element_finder.try_find_element('party_hall', log=False)
-            search_entry = self.handler.element_finder.try_find_element('search_entry', log=False)
+            # 1. 优先点击最小化房间按钮 (ivChatZoomIn) 返回主界面，保持当前房间在悬浮态
+            minimized = False
+            minimize_btn = self.handler.element_finder.try_find_element('minimize_room', log=False)
+            if minimize_btn:
+                minimize_btn.click()
+                self.logger.info("Clicked minimize_room button (ivChatZoomIn)")
+                minimized = True
+                if not self.handler.element_finder.try_find_element('search_entry', log=False):
+                    self._enter_party_hall_from_home()
 
-            if not party_hall and not search_entry:
-                more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
-                if not more_menu:
-                    return {
-                        'error': 'Failed to find more menu button',
-                        'party_id': party_id
-                    }
-                more_menu.click()
-                self.logger.info("Clicked more menu button")
+            # 若未找到最小化按钮，尝试通过 more_menu 或大厅入口导航
+            if not minimized:
+                party_hall = self.handler.element_finder.try_find_element('party_hall', log=False)
+                search_entry = self.handler.element_finder.try_find_element('search_entry', log=False)
 
-                self.handler.element_finder.wait_for_element('more_menu_container')
+                if not party_hall and not search_entry:
+                    more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
+                    if more_menu:
+                        more_menu.click()
+                        self.logger.info("Clicked more menu button")
+                        self.handler.element_finder.wait_for_element('more_menu_container')
+                        party_hall = self.handler.element_finder.wait_for_element_clickable('party_hall')
 
-                party_hall = self.handler.element_finder.wait_for_element_clickable('party_hall')
-                if not party_hall:
-                    self._restore_current_party()
-                    return {
-                        'error': 'Failed to find party hall entry',
-                        'party_id': party_id
-                    }
-
-            if party_hall:
-                party_hall.click()
-                self.logger.info("Clicked party hall entry")
+                if party_hall:
+                    party_hall.click()
+                    self.logger.info("Clicked party hall entry")
+                elif not search_entry:
+                    self._enter_party_hall_from_home()
 
             # 2. 进入搜索并查找目标 party_id
             search_entry = self.handler.element_finder.wait_for_element_clickable('search_entry')

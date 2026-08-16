@@ -131,6 +131,50 @@ async def test_invite_user_target_party_not_found_does_not_close_current_room():
 
 
 @pytest.mark.asyncio
+async def test_invite_user_with_minimize_room_button_found_and_switches():
+    """
+    当存在 minimize_room (ivChatZoomIn) 按钮时：
+    1. 点击 minimize_room 最小化房间
+    2. 进入搜索查找目标房间
+    3. 找到目标房间并切换进入
+    """
+    manager = PartyManager.instance()
+
+    minimize_room = _Element("minimize_room")
+    search_entry = _Element("search_entry")
+    search_box = _Element("search_box")
+    search_button = _Element("search_button")
+    parties_search = _Element("parties_search")
+    party_item = _Element("party_id")
+
+    handler = _MockHandler(elements={
+        "minimize_room": minimize_room,
+        "search_entry": search_entry,
+        "search_box": search_box,
+        "search_button": search_button,
+        "parties_search": parties_search,
+    })
+    handler.child_elements = {
+        (parties_search, 'party_id'): party_item
+    }
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    msg = MessageInfo(nickname="Alice", content=":room 555555")
+    result = await manager.invite_user(msg, "555555")
+
+    assert 'error' not in result
+    assert result['party_id'] == "555555"
+    assert minimize_room.clicked is True
+    assert search_entry.clicked is True
+    assert party_item.clicked is True
+    assert handler.grabbed_mic is True
+    assert handler.party_id == "555555"
+
+
+
+@pytest.mark.asyncio
 async def test_invite_user_target_party_open_switches_successfully():
     """
     当目标房间确认开启时：

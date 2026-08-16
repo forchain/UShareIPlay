@@ -49,6 +49,7 @@ soul:
     tv_open_luck_bag: "cn.soulapp.android:id/tv_open_luck_bag" # 确认（礼物已经发放到你的背包中）
     new_message_tip: "cn.soulapp.android:id/tvNewMsgTip"
     floating_entry: "cn.soulapp.android:id/background"
+    minimize_room: "cn.soulapp.android:id/ivChatZoomIn"
     private_room_entry: "cn.soulapp.android:id/lottie_in_party"
     item_left_back: "cn.soulapp.android:id/item_left_back"
     titlebar_back_ivbtn: "cn.soulapp.android:id/titlebar_back_ivbtn"
