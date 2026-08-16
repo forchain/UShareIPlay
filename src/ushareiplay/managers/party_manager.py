@@ -215,47 +215,33 @@ class PartyManager(Singleton):
 
     def _navigate_back_to_hall_entry(self, max_attempts: int = 5) -> bool:
         """
-        不断返回直到找到进入建房/派对大厅的入口 (party_hall_entry / planet_tab / search_entry)，
-        并进入派对大厅。
+        不断返回直到找到进入建房/派对大厅的入口并进入派对大厅（确保进入后 search_entry 可点击）
         """
         for attempt in range(max_attempts):
-            # 1. 如果已经在派对大厅/搜索入口，直接返回 True
+            # 1. 如果已经在派对大厅且搜索按钮可用，直接返回 True
             if self.handler.element_finder.try_find_element('search_entry', log=False):
                 self.logger.info("Already at search entry")
                 return True
 
-            # 2. 检查是否有派对大厅入口 (party_hall_entry)
+            # 2. 如果在首页（星球页），尝试从首页进入派对大厅
+            if self._enter_party_hall_from_home():
+                if self.handler.element_finder.wait_for_element_clickable('search_entry'):
+                    self.logger.info("Successfully entered party hall from home")
+                    return True
+
+            # 3. 检查是否有单独的派对大厅入口 (party_hall_entry)
             party_hall_entry = self.handler.element_finder.try_find_element('party_hall_entry', log=False)
             if party_hall_entry:
                 party_hall_entry.click()
-                self.logger.info("Clicked party_hall_entry")
-                return True
-
-            # 3. 检查是否有星球 Tab (planet_tab)
-            planet_tab = self.handler.element_finder.try_find_element('planet_tab', log=False)
-            if planet_tab:
-                planet_tab.click()
-                self.logger.info("Clicked planet_tab")
-                entry = self.handler.element_finder.wait_for_element_clickable('party_hall_entry')
-                if entry:
-                    entry.click()
-                    self.logger.info("Clicked party_hall_entry after planet_tab")
+                self.logger.info("Clicked party_hall_entry directly")
+                if self.handler.element_finder.wait_for_element_clickable('search_entry'):
                     return True
 
-            # 4. 检查是否有派对 Tab (party_tab)
-            party_tab = self.handler.element_finder.try_find_element('party_tab', log=False)
-            if party_tab:
-                party_tab.click()
-                self.logger.info("Clicked party_tab")
-                if self.handler.element_finder.try_find_element('search_entry', log=False):
-                    return True
-
-            # 5. 若上述入口均未出现，尝试返回上一级界面（不断返回）
+            # 4. 若不在首页或大厅，尝试返回上一级（排除 party_hall_back，避免误退出大厅）
             self.logger.info(f"Navigating back to find hall entry (attempt {attempt + 1}/{max_attempts})")
             back_keys = [
-                'party_hall_back', 'search_back', 'item_left_back',
-                'titlebar_back_ivbtn', 'go_back', 'go_back_1',
-                'h5_back', 'group_back', 'close_button', 'activity_back'
+                'item_left_back', 'titlebar_back_ivbtn', 'go_back', 'go_back_1',
+                'h5_back', 'group_back', 'close_button', 'close_btn', 'activity_back'
             ]
             back_key, back_elem = self.handler.element_finder.wait_for_any_element(back_keys, timeout=1)
             if back_elem:
@@ -265,8 +251,10 @@ class PartyManager(Singleton):
                 self.handler.key_actions.press_back()
                 self.logger.info("Pressed system back key")
 
-        # 兜底：尝试从首页进入派对大厅
-        return self._enter_party_hall_from_home()
+        # 最终尝试一次
+        if self._enter_party_hall_from_home():
+            return bool(self.handler.element_finder.wait_for_element_clickable('search_entry'))
+        return bool(self.handler.element_finder.try_find_element('search_entry', log=False))
 
     async def invite_user(self, message_info: MessageInfo, party_id: str) -> dict:
         """
