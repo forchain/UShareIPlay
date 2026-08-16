@@ -417,12 +417,14 @@ class PartyManager(Singleton):
         返回True表示执行了操作，False表示没有找到需要处理的情况
         """
         try:
-            from ushareiplay.state.room_state import RoomState
-            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
-                return False
-
             if not self._enter_party_hall_from_home():
                 return False
+
+            # 发现首页并进入大厅，说明已离开前一个房间（无论原为主房还是客房），清空旧房间状态
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized():
+                RoomState.instance().clear()
+            self.handler.party_id = None
 
             if self._search_and_try_enter_existing_party():
                 from ushareiplay.managers.recommendation_manager import RecommendationManager
@@ -434,7 +436,6 @@ class PartyManager(Singleton):
                 return False
             await self._after_party_created()
             return True
-
 
         except Exception as e:
             self.logger.debug(f"检测首页时出错: {str(e)}")
@@ -475,7 +476,16 @@ class PartyManager(Singleton):
             self.logger.warning("未找到搜索框")
             return False
 
-        party_id = self.handler.party_id or self.handler.config['default_party_id']
+        default_party_id = (
+            self.handler.config.get('soul', {}).get('default_party_id')
+            or self.handler.config.get('default_party_id')
+        )
+        party_id = default_party_id or self.handler.party_id
+        if not party_id:
+            self.logger.warning("未配置 default_party_id，直接准备创建派对")
+            self._go_back_from_search()
+            return False
+
         search_box.send_keys(party_id)
         self.logger.info(f"Entered party ID: {party_id}")
         search_button = self.handler.element_finder.wait_for_element('search_button')

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.models import MessageInfo
 
@@ -29,6 +29,7 @@ class _Element:
         self.clicked = True
 
     def send_keys(self, value):
+        self.text = value
         self.keys.append(value)
 
 
@@ -550,6 +551,75 @@ async def test_navigate_back_to_hall_entry_via_party_hall_entry_directly():
     res = manager._navigate_back_to_hall_entry(max_attempts=3)
     assert res is True
     assert party_hall_entry.clicked is True
+
+
+@pytest.mark.asyncio
+async def test_join_party_recreates_room_after_guest_room_closed():
+    """
+    当他人房间关闭后，机器人回到首页（planet_tab）：
+    1. join_party 应清空旧客房状态
+    2. 进入派对大厅并搜索 default_party_id
+    3. 若 default_party_id 不在线，则自动创建新房间
+    """
+    from ushareiplay.state.room_state import RoomState
+    RoomState.reset_instance()
+    room_state = RoomState.initialize()
+    room_state._logger = type('_L', (), {'info': lambda s, *a: None})()
+    room_state.is_guest_room = True
+    room_state.room_id = "FM18633292"
+
+    manager = PartyManager.instance()
+
+    planet_tab = _Element("planet_tab")
+    party_hall_entry = _Element("party_hall_entry")
+    search_entry = _Element("search_entry")
+    search_box = _Element("search_box")
+    search_button = _Element("search_button")
+    search_back = _Element("search_back")
+    create_party_entry = _Element("create_party_entry")
+    new_party_entry = _Element("new_party_entry")
+    create_party_button = _Element("create_party_button")
+
+    handler = _MockHandler(elements={
+        "planet_tab": planet_tab,
+        "party_hall_entry": party_hall_entry,
+        "search_entry": search_entry,
+        "search_box": search_box,
+        "search_button": search_button,
+        "search_back": search_back,
+        "create_party_entry": create_party_entry,
+        "new_party_entry": new_party_entry,
+        "create_party_button": create_party_button,
+    })
+    handler.config["default_party_id"] = "FM13515566"
+    handler.config["change_party_type"] = False
+    handler.config["create_party_recommendation"] = True
+
+    # 模拟 controller
+    class _MockController:
+        def __init__(self):
+            self.notice_manager = type('_MockNM', (), {'set_default_notice': AsyncMock(return_value={'success': True})})()
+            self.seat_manager = type('_MockSM', (), {'find_owner_seat': AsyncMock(return_value={'success': True})})()
+            self.post_party_create_automation = None
+
+    handler.controller = _MockController()
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = await manager.join_party()
+    assert res is True
+    assert planet_tab.clicked is True
+    assert party_hall_entry.clicked is True
+    assert search_entry.clicked is True
+    assert search_box.text == "FM13515566"
+    assert search_button.clicked is True
+    assert search_back.clicked is True
+    assert create_party_entry.clicked is True
+    assert new_party_entry.clicked is True
+    assert create_party_button.clicked is True
+    assert room_state.is_guest_room is False
+
 
 
 
