@@ -72,6 +72,9 @@ class RecommendationManager(Singleton):
         被动纠偏：当标题弹窗因任何原因（如更新标题/主题）被打开时被动调用。
         读取当前真实 UI 状态并同步修正 RoomState 中的记录。
         """
+        if self.room_state.is_guest_room:
+            return None
+
         ui_status = self.inspect_current_ui_status()
         if ui_status is not None:
             current_saved = self.room_state.recommendation_enabled
@@ -86,6 +89,9 @@ class RecommendationManager(Singleton):
         """
         在标题弹窗已打开的前提下，将推荐状态更新为目标状态 target_state。
         """
+        if self.room_state.is_guest_room:
+            return {"error": "他人房间模式下不可修改推荐状态"}
+
         try:
             current_status = self.inspect_current_ui_status()
             if current_status == target_state:
@@ -137,6 +143,9 @@ class RecommendationManager(Singleton):
         若状态未保存 (None)，仅打开第 2 层房间信息窗口，读取 tv_private_title 文本保存状态，
         随后按一次返回键退出第二层窗口。不强行点击进入第三层选项列表。
         """
+        if self.room_state.is_guest_room:
+            return {"skipped": True, "reason": "guest_room"}
+
         if self.room_state.recommendation_enabled is not None:
             return {"skipped": True, "reason": "already_saved"}
 

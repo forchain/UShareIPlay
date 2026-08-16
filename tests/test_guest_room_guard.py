@@ -103,7 +103,7 @@ async def test_guest_room_blocks_room_management_commands():
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    management_prefixes = ["theme", "title", "topic", "notice", "seat", "mic", "pack", "end", "room", "admin", "timer", "recommend"]
+    management_prefixes = ["theme", "title", "topic", "notice", "seat", "mic", "pack", "end", "admin", "timer", "recommend"]
 
     for prefix in management_prefixes:
         dummy_cmd = DummyCommand()
@@ -265,5 +265,85 @@ async def test_guest_room_blocks_seat_command_user_enter():
         await seat_cmd.user_enter("Alice")
         await seat_cmd.user_return("Alice")
         mock_check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_room_name_and_title_updates():
+    from ushareiplay.managers.room_name_manager import RoomNameManager
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    RoomNameManager.reset_instance()
+    rnm = RoomNameManager.initialize()
+    rnm._handler = HandlerStub(config={})
+    rnm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+
+    try:
+        # set_theme in guest room
+        res = rnm.set_theme("听歌")
+        assert "error" in res
+
+        # process_pending_update in guest room
+        rnm.pending_ui_update = True
+        res = rnm.process_pending_update()
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+
+        # _update_title_ui in guest room
+        res = rnm._update_title_ui("新歌速递")
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+    finally:
+        RoomNameManager.reset_instance()
+
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_notice_updates():
+    from ushareiplay.managers.notice_manager import NoticeManager
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    NoticeManager.reset_instance()
+    nm = NoticeManager.initialize()
+    nm._handler = HandlerStub(config={})
+    nm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+
+    try:
+        res = nm.set_notice_with_cooldown("欢迎来听歌")
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+
+        res = nm._set_notice_immediate("欢迎来听歌")
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+    finally:
+        NoticeManager.reset_instance()
+
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_recommendation_sync():
+    from ushareiplay.managers.recommendation_manager import RecommendationManager
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    RecommendationManager.reset_instance()
+    rm = RecommendationManager.initialize()
+    rm._handler = HandlerStub(config={})
+    rm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+
+    try:
+        res = rm.ensure_synced_on_return()
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+
+        res = rm.update_recommendation_ui(True)
+        assert "error" in res
+    finally:
+        RecommendationManager.reset_instance()
+
+
 
 

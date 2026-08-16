@@ -62,6 +62,10 @@ class PartyManager(Singleton):
     def update(self):
         """检查并自动管理派对"""
         try:
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+                return
+
             # 确保已初始化
             if self.init_time is None:
                 self.initialize_party()
@@ -391,18 +395,13 @@ class PartyManager(Singleton):
                 confirm_btn.click()
                 self.logger.info(f"Confirmed room switch dialog ({confirm_key})")
 
-            # 8. 进入后自动抢麦并更新 party_id
+            # 8. 进入后自动抢麦并更新 party_id 与 RoomState
             self.handler.grab_mic_and_confirm()
             self.handler.party_id = party_id
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized():
+                RoomState.instance().room_id = party_id
             return {'party_id': party_id, 'user': message_info.nickname}
-
-        except Exception as e:
-            self.logger.error(f"Error inviting to party: {traceback.format_exc()}")
-            self._restore_current_party()
-            return {
-                'error': str(e),
-                'party_id': party_id
-            }
 
         except Exception as e:
             self.logger.error(f"Error inviting to party: {traceback.format_exc()}")
@@ -418,6 +417,10 @@ class PartyManager(Singleton):
         返回True表示执行了操作，False表示没有找到需要处理的情况
         """
         try:
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+                return False
+
             if not self._enter_party_hall_from_home():
                 return False
 
@@ -592,6 +595,10 @@ class PartyManager(Singleton):
 
     async def _after_party_created(self) -> None:
         self.reset_party_time()
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized():
+            RoomState.instance().room_id = self.handler.party_id
+            RoomState.instance().is_guest_room = False
         self.logger.info("派对创建成功，准备设置默认notice")
 
         notice_manager = self.handler.controller.notice_manager

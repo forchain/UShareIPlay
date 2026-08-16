@@ -66,6 +66,11 @@ class NoticeManager(Singleton):
         Returns:
             dict: 包含成功、错误或冷却信息的结果
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping notice update in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         if not self.can_update_now():
             remaining_minutes = self.get_remaining_cooldown_minutes()
             self.pending_notice = notice
@@ -102,6 +107,11 @@ class NoticeManager(Singleton):
         Returns:
             dict: 包含成功或错误信息的结果
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping notice update in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         try:
             self.logger.info(f"准备设置notice: {notice}")
 
@@ -180,6 +190,10 @@ class NoticeManager(Singleton):
         Returns:
             dict: 处理结果
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': 'guest_room'}
+
         if not self.pending_notice:
             return {'skipped': 'No pending notice'}
 

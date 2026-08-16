@@ -9,7 +9,7 @@ class RoomState(Singleton):
     GUEST_ALLOWED_COMMANDS = {
         "play", "next", "fav", "skip", "pause", "vol", "mode",
         "acc", "lyrics", "singer", "album", "playlist", "radio",
-        "info", "help"
+        "info", "help", "room"
     }
 
     def __init__(self):
@@ -96,8 +96,17 @@ class RoomState(Singleton):
             return self._is_guest_room
 
         default_party_id = self._get_default_party_id()
-        if self._room_id and default_party_id:
-            return self._room_id.strip() != default_party_id.strip()
+        current_party_id = self._room_id
+        if not current_party_id:
+            try:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                if SoulHandler.is_initialized():
+                    current_party_id = SoulHandler.instance().party_id
+            except Exception:
+                pass
+
+        if current_party_id and default_party_id:
+            return current_party_id.strip() != default_party_id.strip()
 
         return False
 
