@@ -394,4 +394,109 @@ async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
         )
 
 
+def test_resolver_prompt_with_system_user_timer(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+        }
+    )
+
+    playback_info = {
+        "song": "稻香",
+        "singer": "周杰伦",
+        "player": "Timer",
+        "playlist_name": "每日早安曲",
+        "playlist_type": "歌单",
+    }
+
+    prompt = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=mock_commands_config,
+        playback_info=playback_info,
+    )
+
+    assert "当前播放者/点歌人: Timer (系统定时器自动播放)" in prompt
+    assert "当前播放列表/歌单: [歌单] 每日早安曲 (by Timer [系统播放])" in prompt
+    assert "若当前播放者是系统用户（如 Timer、Console、Agent 等系统角色）" in prompt
+
+
+def test_resolver_prompt_with_system_user_console(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "system_users": ["Console", "CustomBot"],
+        }
+    )
+
+    playback_info = {
+        "song": "晴天",
+        "singer": "周杰伦",
+        "player": "Console",
+    }
+
+    prompt = resolver._build_system_prompt(
+        user_name="Bob",
+        user_level=1,
+        commands_config=mock_commands_config,
+        playback_info=playback_info,
+    )
+
+    assert "当前播放者/点歌人: Console (系统控制台/后台指令)" in prompt
+
+    playback_info_custom = {
+        "song": "晴天",
+        "singer": "周杰伦",
+        "player": "CustomBot",
+    }
+    prompt_custom = resolver._build_system_prompt(
+        user_name="Bob",
+        user_level=1,
+        commands_config=mock_commands_config,
+        playback_info=playback_info_custom,
+    )
+    assert "当前播放者/点歌人: CustomBot (系统自动化任务/非普通用户)" in prompt_custom
+
+
+def test_resolver_custom_prompt_injection(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "system_prompt": "额外指令：请用俏皮可爱的语气回复，每句话结尾加上喵~",
+        }
+    )
+
+    prompt = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=mock_commands_config,
+    )
+
+    assert "【用户自定义行为指令 / 补充设定】" in prompt
+    assert "额外指令：请用俏皮可爱的语气回复，每句话结尾加上喵~" in prompt
+
+
+def test_resolver_custom_prompt_alias_key(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "custom_prompt": "自定义指令：保持专业简洁风格。",
+        }
+    )
+
+    prompt = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=mock_commands_config,
+    )
+
+    assert "【用户自定义行为指令 / 补充设定】" in prompt
+    assert "自定义指令：保持专业简洁风格。" in prompt
+
+
+
 

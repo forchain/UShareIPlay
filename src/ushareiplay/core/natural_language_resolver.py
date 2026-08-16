@@ -37,6 +37,27 @@ class NaturalLanguageResolver:
         self.api_key = str(cfg.get("api_key", "")).strip()
         self.model = str(cfg.get("model", "deepseek-chat"))
         self.timeout = float(cfg.get("timeout", 4.0))
+        self.custom_prompt = str(cfg.get("custom_prompt") or cfg.get("system_prompt") or "").strip()
+        system_users_cfg = cfg.get("system_users")
+        if system_users_cfg is not None:
+            self.system_users = set(system_users_cfg)
+        else:
+            self.system_users = {"Timer", "Console", "Agent"}
+
+    def _format_player_description(self, player: str, system_users: set[str]) -> str:
+        """Format player name, distinguishing system users."""
+        if not player:
+            return ""
+        if player in system_users or player.lower() in {u.lower() for u in system_users}:
+            p_lower = player.lower()
+            if p_lower == "timer":
+                return f"{player} (系统定时器自动播放)"
+            elif p_lower == "console":
+                return f"{player} (系统控制台/后台指令)"
+            elif p_lower == "agent":
+                return f"{player} (系统智能体/后台任务)"
+            return f"{player} (系统自动化任务/非普通用户)"
+        return player
 
     def _build_system_prompt(
         self,
@@ -70,12 +91,17 @@ class NaturalLanguageResolver:
         if playback_info:
             player = playback_info.get("player")
             if player:
-                playback_lines.append(f"- 当前播放者/点歌人: {player}")
+                player_desc = self._format_player_description(player, self.system_users)
+                playback_lines.append(f"- 当前播放者/点歌人: {player_desc}")
 
             playlist_name = playback_info.get("playlist_name")
             if playlist_name:
                 ptype = playback_info.get("playlist_type") or "歌单"
-                owner_tag = f" (by {player})" if player else ""
+                if player:
+                    is_sys = player in self.system_users or player.lower() in {u.lower() for u in self.system_users}
+                    owner_tag = f" (by {player} [系统播放])" if is_sys else f" (by {player})"
+                else:
+                    owner_tag = ""
                 playback_lines.append(f"- 当前播放列表/歌单: [{ptype}] {playlist_name}{owner_tag}")
             else:
                 playback_lines.append("- 当前播放列表/歌单: 暂无活跃歌单")
@@ -110,6 +136,10 @@ class NaturalLanguageResolver:
 
         room_desc = "\n".join(room_desc_lines)
 
+        custom_section = ""
+        if self.custom_prompt:
+            custom_section = f"\n\n【用户自定义行为指令 / 补充设定】\n{self.custom_prompt}"
+
         return f"""你是一个智能派对房间命令解析助手。你的任务是将用户的自然语言转换为标准命令或友好的中文回复。
 
 【当前环境与上下文】
@@ -131,13 +161,14 @@ class NaturalLanguageResolver:
 5. 如果用户询问当前房间状态（如房间ID、当前是在主房间还是他人房间、在线人数、推荐状态等），结合【当前环境与上下文】中的房间信息用友好的中文直接回答。
 6. 如果用户询问当前播放状态（如“现在是播我的歌单吗”、“现在在播谁的歌/歌单”、“当前播的是什么歌单”、“当前播放模式是什么”等）:
    - 必须对比发言用户与【当前环境与上下文】中的当前播放者/点歌人及歌单信息。
-   - 若发言用户与当前播放者一致且有活跃歌单，明确肯定回复（例如“是的，当前正在播放你的歌单《...》哦~”）。
-   - 若发言用户与当前播放者不一致，明确告知当前正在播放的是谁点播的歌/歌单。
+   - 若当前播放者是系统用户（如 Timer、Console、Agent 等系统角色）：必须明确告知当前是由系统（如定时任务、控制台或系统自动化）自动播放，而非普通房间听众点播；若用户询问是否是自己的歌单，明确告知是系统自动播放。
+   - 若发言用户与当前播放者一致且有活跃歌单（且非系统用户），明确肯定回复（例如“是的，当前正在播放你的歌单《...》哦~”）。
+   - 若发言用户与当前播放者不一致（且播放者为其他普通用户），明确告知当前正在播放的是哪位用户点播的歌/歌单。
    - 若当前暂无活跃歌单或未在播放歌曲，也如实友好回答。
 7. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
    - 输出 {{"type": "reply", "content": "<简短友好的中文回复>"}}。
 8. 如果用户意图完全无法理解或无法匹配任何操作:
-   - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。
+   - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。{custom_section}
 """
 
     def _extract_json(self, raw_content: str) -> Optional[dict]:

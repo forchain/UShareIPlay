@@ -548,4 +548,7 @@ llm:
   api_key: ""
   model: "deepseek-chat"
   timeout: 4.0
+  # 自定义系统提示词/人设补充指令（可选，支持多行文本，用于在不修改代码的情况下调整 Agent 语气风格与行为）
+  system_prompt: ""
+
 
