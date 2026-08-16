@@ -69,12 +69,12 @@ def test_explicit_is_guest_room_setter_overrides_comparison(room_state, monkeypa
 
 
 def test_is_command_allowed_in_guest_room(room_state):
-    allowed = ["play", "next", "fav", "skip", "pause", "vol", "mode", "acc", "lyrics", "singer", "album", "playlist", "radio", "info", "help", "room", "mic", "say"]
+    allowed = ["play", "next", "fav", "skip", "pause", "vol", "mode", "acc", "lyrics", "singer", "album", "playlist", "radio", "info", "help", "room", "mic", "say", "end"]
     for cmd in allowed:
         assert room_state.is_command_allowed_in_guest_room(cmd) is True
         assert room_state.is_command_allowed_in_guest_room(f":{cmd}") is True
 
-    blocked = ["theme", "title", "topic", "notice", "seat", "pack", "end", "admin", "alias", "keyword", "enter", "exit", "return", "gift", "timer", "recommend"]
+    blocked = ["theme", "title", "topic", "notice", "seat", "pack", "admin", "alias", "keyword", "enter", "exit", "return", "gift", "timer", "recommend"]
     for cmd in blocked:
         assert room_state.is_command_allowed_in_guest_room(cmd) is False
         assert room_state.is_command_allowed_in_guest_room(f":{cmd}") is False

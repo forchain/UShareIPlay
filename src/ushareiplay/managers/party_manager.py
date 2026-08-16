@@ -160,6 +160,13 @@ class PartyManager(Singleton):
             confirm_elem.click()
             self.logger.info(f"Clicked confirm button: {confirm_key}")
 
+            # Reset state after ending/exiting party
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized():
+                RoomState.instance().expected_party_id = None
+                RoomState.instance().clear()
+            self.handler.party_id = None
+
             return {'success': 'Party ended'}
         except Exception as e:
             self.logger.error(f"Error processing end command: {traceback.format_exc()}")

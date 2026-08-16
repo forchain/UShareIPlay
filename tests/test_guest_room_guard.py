@@ -110,7 +110,7 @@ async def test_guest_room_blocks_room_management_commands():
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    management_prefixes = ["theme", "title", "topic", "notice", "seat", "pack", "end", "admin", "timer", "recommend"]
+    management_prefixes = ["theme", "title", "topic", "notice", "seat", "pack", "admin", "timer", "recommend"]
 
     for prefix in management_prefixes:
         dummy_cmd = DummyCommand()

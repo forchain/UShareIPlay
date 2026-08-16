@@ -11,7 +11,7 @@ class RoomState(Singleton):
     GUEST_ALLOWED_COMMANDS = {
         "play", "next", "fav", "skip", "pause", "vol", "mode",
         "acc", "lyrics", "singer", "album", "playlist", "radio",
-        "info", "help", "room", "mic", "say"
+        "info", "help", "room", "mic", "say", "end"
     }
 
     def __init__(self):
