@@ -154,9 +154,9 @@ class PartyManager(Singleton):
                 if exit_key == 'exit_party_item':
                     clicked_guest_exit = True
 
-            # 2. 点击二次确认弹窗（若有弹窗：包含客房/麦位「确认解除」、主房「解散派对」、或「退出派对」、「确定」等）
+            # 2. 点击二次确认弹窗（若有弹窗：包含客房「确认退出」/「确认解除」、主房「解散派对」、或「退出派对」、「确定」等）
             confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
-                ['confirm_dismiss', 'confirm_end', 'confirm_exit_party', 'confirm_close', 'confirm_mic', 'confirm_btn'],
+                ['confirm_quit', 'confirm_dismiss', 'confirm_end', 'confirm_exit_party', 'confirm_close', 'confirm_mic', 'confirm_btn'],
                 timeout=3
             )
             if confirm_elem:
@@ -405,7 +405,7 @@ class PartyManager(Singleton):
 
             # 若弹出确认提示，自动确认（包含解除连麦/退出派对/解散派对）
             confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
-                ['confirm_dismiss', 'confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
+                ['confirm_quit', 'confirm_dismiss', 'confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
             )
             if confirm_btn:
                 confirm_btn.click()
