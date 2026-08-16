@@ -130,7 +130,6 @@ class PartyManager(Singleton):
 
             # Try direct exit_room_btn first
             exit_room_btn = self.handler.element_finder.try_find_element('exit_room_btn', log=False)
-            clicked_guest_exit = False
             if exit_room_btn:
                 exit_room_btn.click()
                 self.logger.info("Clicked exit room button directly")
@@ -143,27 +142,20 @@ class PartyManager(Singleton):
                 more_menu.click()
                 self.logger.info("Clicked more menu")
 
-                # Click end/exit party option (房主为"关闭派对"，客房为"退出派对")
-                exit_key, exit_elem = self.handler.element_finder.wait_for_any_element(
-                    ['exit_party_item', 'end_party']
-                )
-                if not exit_elem:
-                    return {'error': 'Failed to find end/exit party option'}
-                exit_elem.click()
-                self.logger.info(f"Clicked {exit_key} option")
-                if exit_key == 'exit_party_item':
-                    clicked_guest_exit = True
+                # Click end/exit party option (config 中的 end_party 兼容"关闭派对"与"退出派对")
+                end_party = self.handler.element_finder.wait_for_element_clickable('end_party')
+                if not end_party:
+                    return {'error': 'Failed to find end party option'}
+                end_party.click()
+                self.logger.info("Clicked end party option")
 
-            # 2. 点击二次确认弹窗（若有弹窗：包含客房「确认退出」/「确认解除」、主房「解散派对」、或「退出派对」、「确定」等）
-            confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
-                ['confirm_quit', 'confirm_dismiss', 'confirm_end', 'confirm_exit_party', 'confirm_close', 'confirm_mic', 'confirm_btn'],
-                timeout=3
-            )
-            if confirm_elem:
-                confirm_elem.click()
-                self.logger.info(f"Clicked confirm button: {confirm_key}")
+            # Click confirm if present (config 中的 confirm_end 兼容"解散派对"、"确认退出"、"退出派对"等)
+            confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end', timeout=3)
+            if confirm_end:
+                confirm_end.click()
+                self.logger.info("Clicked confirm end button")
             else:
-                self.logger.info("No confirmation dialog appeared, proceeding directly")
+                self.logger.info("No confirm button found, proceeding directly")
 
             # Reset state after ending/exiting party
             from ushareiplay.state.room_state import RoomState
@@ -403,13 +395,11 @@ class PartyManager(Singleton):
             room_card.click()
             self.logger.info(f"Clicked room_card to enter target party {party_id}")
 
-            # 若弹出确认提示，自动确认（包含解除连麦/退出派对/解散派对）
-            confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
-                ['confirm_quit', 'confirm_dismiss', 'confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
-            )
+            # 若弹出确认提示，自动确认（confirm_end 涵盖解除/退出/解散/确定）
+            confirm_btn = self.handler.element_finder.wait_for_element_clickable('confirm_end', timeout=2)
             if confirm_btn:
                 confirm_btn.click()
-                self.logger.info(f"Confirmed room switch dialog ({confirm_key})")
+                self.logger.info("Confirmed room switch dialog")
 
             # 8. 进入后自动抢麦并更新 party_id 与 RoomState (含预期目标ID)
             self.handler.grab_mic_and_confirm()

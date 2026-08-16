@@ -50,10 +50,10 @@ class _MockHandler:
             return None
         return self.elements.get(key)
 
-    def wait_for_element(self, key):
+    def wait_for_element(self, key, timeout=None, **kwargs):
         return self.elements.get(key)
 
-    def wait_for_element_clickable(self, key):
+    def wait_for_element_clickable(self, key, timeout=None, **kwargs):
         return self.elements.get(key)
 
     def wait_for_any_element(self, keys, timeout=None):
