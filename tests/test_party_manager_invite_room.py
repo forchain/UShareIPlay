@@ -359,3 +359,95 @@ async def test_invite_user_missing_search_box_error():
     assert result['party_id'] == '123456'
     assert floating_entry.clicked is True
 
+
+@pytest.mark.asyncio
+async def test_navigate_back_to_hall_entry_via_back_loop_to_planet_tab():
+    """
+    测试当最小化后处于子页面时，不断点击返回直到出现 planet_tab，随后进入 party_hall_entry
+    """
+    manager = PartyManager.instance()
+
+    item_left_back = _Element("item_left_back")
+    planet_tab = _Element("planet_tab")
+    party_hall_entry = _Element("party_hall_entry")
+
+    class _DeepScreenHandler(_MockHandler):
+        def __init__(self):
+            super().__init__()
+            self.back_clicks = 0
+
+        def try_find_element(self, key, log=True):
+            if key == 'search_entry':
+                return None
+            if key == 'party_hall_entry':
+                return party_hall_entry if planet_tab.clicked else None
+            if key == 'planet_tab':
+                return planet_tab if self.back_clicks >= 2 else None
+            return None
+
+        def wait_for_element_clickable(self, key):
+            if key == 'party_hall_entry':
+                return party_hall_entry
+            return None
+
+        def wait_for_any_element(self, keys, timeout=None):
+            if self.back_clicks < 2 and 'item_left_back' in keys:
+                return 'item_left_back', item_left_back
+            return None, None
+
+    handler = _DeepScreenHandler()
+
+    def _on_back_click():
+        item_left_back.clicked = True
+        handler.back_clicks += 1
+
+    item_left_back.click = _on_back_click
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager._navigate_back_to_hall_entry(max_attempts=5)
+    assert res is True
+    assert handler.back_clicks == 2
+    assert planet_tab.clicked is True
+    assert party_hall_entry.clicked is True
+
+
+@pytest.mark.asyncio
+async def test_navigate_back_to_hall_entry_via_party_tab():
+    """
+    测试直接检测到 party_tab 并成功进入搜索
+    """
+    manager = PartyManager.instance()
+
+    party_tab = _Element("party_tab")
+    search_entry = _Element("search_entry")
+
+    class _PartyTabHandler(_MockHandler):
+        def __init__(self):
+            super().__init__()
+            self.tab_clicked = False
+
+        def try_find_element(self, key, log=True):
+            if key == 'party_tab':
+                return party_tab
+            if key == 'search_entry':
+                return search_entry if self.tab_clicked else None
+            return None
+
+    handler = _PartyTabHandler()
+
+    def _on_tab_click():
+        party_tab.clicked = True
+        handler.tab_clicked = True
+
+    party_tab.click = _on_tab_click
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager._navigate_back_to_hall_entry(max_attempts=3)
+    assert res is True
+    assert party_tab.clicked is True
+
+
