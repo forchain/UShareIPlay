@@ -74,6 +74,10 @@ class RoomNameManager(Singleton):
         return self.current_theme
 
     def set_theme(self, theme: str):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'error': '他人房间模式下不可修改房间主题'}
+
         if len(theme) > 2:
             return {'error': '主题最多两个字符'}
 
@@ -215,6 +219,11 @@ class RoomNameManager(Singleton):
             return None
 
     def set_next_title(self, title: str, theme: str = None):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping set_next_title in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         if theme:
             theme_result = self.set_theme(theme)
             if 'error' in theme_result:
@@ -246,6 +255,10 @@ class RoomNameManager(Singleton):
             - 'skipped': True if nothing was pending
             - 'current_title': the title after a successful update
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': True, 'reason': 'guest_room'}
+
         # Do not inspect the UI just to discover that there is no work queued.
         # The monitoring loop calls this method every cycle; UI reads belong
         # only to an actual pending title/theme update.
@@ -269,6 +282,11 @@ class RoomNameManager(Singleton):
 
     def _update_title_ui(self, title: str):
         """Single attempt to write the room name to the Soul UI."""
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping room title UI update in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         try:
             result = self.handler.ui_actions.switch_and_click(
                 'chat_room_title', error_message='Failed to find room title'
@@ -369,6 +387,10 @@ class RoomNameManager(Singleton):
     # ------------------------------------------------------------------
 
     def _check_notice_reset(self):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': 'guest_room'}
+
         try:
             notice_element = self.handler.element_finder.wait_for_element('chat_room_notice')
             if not notice_element:

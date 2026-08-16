@@ -41,6 +41,10 @@ class RoomInfoWindowAuditor(Singleton):
         在已打开的房间信息窗口中，一次性顺序完成所有属性检查与修正。
         在所有修正尝试完成之前，绝对不提前关闭窗口。
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': True, 'reason': 'guest_room'}
+
         results = {}
 
         # 1. 推荐分发检查与同步
@@ -115,10 +119,14 @@ class RoomInfoWindowAuditor(Singleton):
 
         return results
 
-    def process_pending_retry() -> Dict:
+    def process_pending_retry(self) -> Dict:
         """
         定时器/循环补救机制：若之前的审计存在未完成项，主动打开房间信息窗口重新执行一次性修正。
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': 'guest_room'}
+
         if not self.pending_audit_retry:
             return {'skipped': 'No pending audit retry'}
 
