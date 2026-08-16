@@ -154,17 +154,16 @@ class PartyManager(Singleton):
                 if exit_key == 'exit_party_item':
                     clicked_guest_exit = True
 
-            if not clicked_guest_exit:
-                # 房主关闭派对弹窗确认"解散派对"
-                confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
-                    ['confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'],
-                    timeout=5
-                )
-                if confirm_elem:
-                    confirm_elem.click()
-                    self.logger.info(f"Clicked confirm button: {confirm_key}")
-                elif not exit_room_btn:
-                    return {'error': 'Failed to find confirm end button'}
+            # 2. 点击二次确认弹窗（若有弹窗：包含客房/麦位「确认解除」、主房「解散派对」、或「退出派对」、「确定」等）
+            confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
+                ['confirm_dismiss', 'confirm_end', 'confirm_exit_party', 'confirm_close', 'confirm_mic', 'confirm_btn'],
+                timeout=3
+            )
+            if confirm_elem:
+                confirm_elem.click()
+                self.logger.info(f"Clicked confirm button: {confirm_key}")
+            else:
+                self.logger.info("No confirmation dialog appeared, proceeding directly")
 
             # Reset state after ending/exiting party
             from ushareiplay.state.room_state import RoomState
@@ -404,9 +403,9 @@ class PartyManager(Singleton):
             room_card.click()
             self.logger.info(f"Clicked room_card to enter target party {party_id}")
 
-            # 若弹出确认提示，自动确认
+            # 若弹出确认提示，自动确认（包含解除连麦/退出派对/解散派对）
             confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
-                ['confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
+                ['confirm_dismiss', 'confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
             )
             if confirm_btn:
                 confirm_btn.click()

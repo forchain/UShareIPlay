@@ -107,7 +107,32 @@ def test_end_party_fallback_success():
     assert confirm_btn.clicked is True
 
 
-def test_exit_guest_party_success():
+def test_exit_guest_party_with_confirm_dismiss():
+    manager = PartyManager.instance()
+
+    more_menu_btn = _Element("more_menu")
+    exit_party_item_btn = _Element("exit_party_item")
+    confirm_dismiss_btn = _Element("confirm_dismiss")
+
+    handler = _MockHandler(elements={
+        "more_menu": more_menu_btn,
+        "exit_party_item": exit_party_item_btn,
+        "confirm_dismiss": confirm_dismiss_btn,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.end_party()
+
+    assert res == {'success': 'Party ended'}
+    assert handler.switched is True
+    assert more_menu_btn.clicked is True
+    assert exit_party_item_btn.clicked is True
+    assert confirm_dismiss_btn.clicked is True
+
+
+def test_exit_guest_party_without_confirm_dialog():
     manager = PartyManager.instance()
 
     more_menu_btn = _Element("more_menu")
@@ -127,6 +152,8 @@ def test_exit_guest_party_success():
     assert handler.switched is True
     assert more_menu_btn.clicked is True
     assert exit_party_item_btn.clicked is True
+
+
 
 
 
