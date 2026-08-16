@@ -184,9 +184,38 @@ class PartyManager(Singleton):
             self.logger.error(f"检查派对状态时出错: {traceback.format_exc()}")
             return False
 
+    def _restore_current_party(self) -> bool:
+        """安全返回当前派对（通过悬浮窗/返回入口恢复当前房间）"""
+        try:
+            keys = ['private_room_entry', 'floating_entry', 'party_back']
+            key, element = self.handler.element_finder.wait_for_any_element(keys, timeout=2)
+            if element:
+                element.click()
+                self.logger.info(f"Restored current party via {key}")
+                return True
+
+            search_back = self.handler.element_finder.try_find_element('search_back', log=False)
+            if search_back:
+                search_back.click()
+                self.logger.info("Clicked search_back before restoring party")
+            elif hasattr(self.handler.key_actions, 'press_back'):
+                self.handler.key_actions.press_back()
+
+            key, element = self.handler.element_finder.wait_for_any_element(keys, timeout=2)
+            if element:
+                element.click()
+                self.logger.info(f"Restored current party via {key} after back")
+                return True
+
+            self.logger.warning("未能找到恢复派对的悬浮窗入口")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Error restoring current party: {e}")
+            return False
+
     async def invite_user(self, message_info: MessageInfo, party_id: str) -> dict:
         """
-        邀请当前账号加入指定派对（切房）
+        邀请当前账号加入指定派对（切房前先校验目标房间是否开启）
         Args:
             message_info: 消息信息（用于等级校验和返回展示）
             party_id: 派对 ID
@@ -194,48 +223,38 @@ class PartyManager(Singleton):
             dict: 成功含 party_id、user；失败含 error、party_id
         """
         try:
-            # Check if we can directly close the room (we are the host)
-            exit_room_btn = self.handler.element_finder.try_find_element('exit_room_btn', log=False)
-            if exit_room_btn:
-                exit_room_btn.click()
-                self.logger.info("Clicked exit room button directly")
-                confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
-                if confirm_end:
-                    confirm_end.click()
-                self.handler.party_id = party_id
-                return {'party_id': party_id, 'user': message_info.nickname}
+            # 1. 导航进入派对大厅（不解散/关闭当前房间，保持原房间在悬浮态）
+            party_hall = self.handler.element_finder.try_find_element('party_hall', log=False)
+            search_entry = self.handler.element_finder.try_find_element('search_entry', log=False)
 
-            more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
-            if not more_menu:
-                return {
-                    'error': 'Failed to find more menu button',
-                    'party_id': party_id
-                }
-            more_menu.click()
-            self.logger.info("Clicked more menu button")
+            if not party_hall and not search_entry:
+                more_menu = self.handler.element_finder.wait_for_element_clickable('more_menu')
+                if not more_menu:
+                    return {
+                        'error': 'Failed to find more menu button',
+                        'party_id': party_id
+                    }
+                more_menu.click()
+                self.logger.info("Clicked more menu button")
 
-            self.handler.element_finder.wait_for_element('more_menu_container')
+                self.handler.element_finder.wait_for_element('more_menu_container')
 
-            end_party = self.handler.element_finder.try_find_element('end_party', log=False)
-            if end_party:
-                end_party.click()
-                confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
-                if confirm_end:
-                    confirm_end.click()
-                self.handler.party_id = party_id
-                return {'party_id': party_id, 'user': message_info.nickname}
+                party_hall = self.handler.element_finder.wait_for_element_clickable('party_hall')
+                if not party_hall:
+                    self._restore_current_party()
+                    return {
+                        'error': 'Failed to find party hall entry',
+                        'party_id': party_id
+                    }
 
-            party_hall = self.handler.element_finder.wait_for_element_clickable('party_hall')
-            if not party_hall:
-                return {
-                    'error': 'Failed to find party hall entry',
-                    'party_id': party_id
-                }
-            party_hall.click()
-            self.logger.info("Clicked party hall entry")
+            if party_hall:
+                party_hall.click()
+                self.logger.info("Clicked party hall entry")
 
+            # 2. 进入搜索并查找目标 party_id
             search_entry = self.handler.element_finder.wait_for_element_clickable('search_entry')
             if not search_entry:
+                self._restore_current_party()
                 return {
                     'error': 'Failed to find search entry',
                     'party_id': party_id
@@ -245,6 +264,7 @@ class PartyManager(Singleton):
 
             search_box = self.handler.element_finder.wait_for_element_clickable('search_box')
             if not search_box:
+                self._restore_current_party()
                 return {
                     'error': 'Failed to find search box',
                     'party_id': party_id
@@ -254,6 +274,7 @@ class PartyManager(Singleton):
 
             search_button = self.handler.element_finder.wait_for_element_clickable('search_button')
             if not search_button:
+                self._restore_current_party()
                 return {
                     'error': 'Failed to find search button',
                     'party_id': party_id
@@ -261,34 +282,48 @@ class PartyManager(Singleton):
             search_button.click()
             self.logger.info("Clicked search button")
 
+            # 3. 检查搜索结果，验证目标房间是否开启/存在
             parties_search = self.handler.element_finder.wait_for_element('parties_search')
-            if not parties_search:
-                return {
-                    'error': 'Failed to find parties search',
-                    'party_id': party_id
-                }
-            self.logger.info("Found parties search result")
-
-            time.sleep(1)
-            party_element = self.handler.element_finder.find_child_element(parties_search, 'party_id')
+            party_element = None
+            if parties_search:
+                self.logger.info("Found parties search result container")
+                party_element = self.handler.element_finder.find_child_element(parties_search, 'party_id')
+                if not party_element:
+                    party_element = self.handler.element_finder.find_child_element(parties_search, 'room_card')
             if not party_element:
-                self.logger.info("Party not found, returning to previous party")
-                floating_entry = self.handler.element_finder.wait_for_element_clickable('floating_entry')
-                if floating_entry:
-                    floating_entry.click()
+                party_element = self.handler.element_finder.try_find_element('party_online', log=False)
+                if not party_element:
+                    party_element = self.handler.element_finder.try_find_element('room_card', log=False)
+
+            # 4. 如果目标房间未开启或不存在，安全返回当前房间，不关闭当前房间
+            if not party_element:
+                self.logger.warning(f"Target party {party_id} not found or not open, restoring previous party")
+                self._restore_current_party()
                 return {
-                    'error': f'Party {party_id} not found',
+                    'error': f'Party {party_id} not found or not open',
                     'party_id': party_id
                 }
 
+            # 5. 目标房间已开启，点击进入目标房间
             party_element.click()
-            self.logger.info(f"Entered party {party_id}")
+            self.logger.info(f"Entered target party {party_id}")
 
+            # 若弹出解散/退出当前房间的确认提示，自动确认
+            confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
+                ['confirm_end', 'confirm_close', 'confirm_btn'], timeout=2
+            )
+            if confirm_btn:
+                confirm_btn.click()
+                self.logger.info(f"Confirmed room switch dialog ({confirm_key})")
+
+            # 进入后自动抢麦/上麦确认
             self.handler.grab_mic_and_confirm()
+            self.handler.party_id = party_id
             return {'party_id': party_id, 'user': message_info.nickname}
 
         except Exception as e:
             self.logger.error(f"Error inviting to party: {traceback.format_exc()}")
+            self._restore_current_party()
             return {
                 'error': str(e),
                 'party_id': party_id

@@ -41,7 +41,7 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 | `mic` | 2 | `0/1` | Turn microphone off (0) or on (1) |
 | `pack` | 1 | — | Open luck pack from backpack |
 | `end` | 4 | — | Close the party (requires owner's friend present) |
-| `room` | 4 | `<party_id>` | Switch to a different party room |
+| `room` | 4 | `<party_id>` | Switch to a different party room (pre-checks target room availability before switching; restores current party if target is not open) |
 
 ## Data Model
 
