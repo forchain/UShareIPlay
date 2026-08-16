@@ -67,6 +67,9 @@ class _MockHandler:
     def grab_mic_and_confirm(self):
         self.grabbed_mic = True
 
+    def switch_to_app(self, app_name=None):
+        return True
+
     @property
     def element_finder(self):
         return self
@@ -210,6 +213,56 @@ async def test_invite_user_target_party_closed_card_with_no_party_online_restore
     assert result['party_id'] == 'FM13515566'
     assert room_card.clicked is False
     assert floating_entry.clicked is True
+
+
+@pytest.mark.asyncio
+async def test_invite_user_closes_current_party_before_entering_target():
+    """
+    当当前账号是房主正在开房时：
+    1. 最小化房间去搜索目标房间
+    2. 确认目标房间在线开启 (party_online 存在)
+    3. 返回原房间并结束当前房间 (end_party)
+    4. 再次搜索并进入目标房间
+    """
+    manager = PartyManager.instance()
+
+    minimize_room = _Element("minimize_room")
+    search_entry = _Element("search_entry")
+    search_box = _Element("search_box")
+    search_button = _Element("search_button")
+    room_card = _Element("room_card")
+    party_online = _Element("party_online")
+    floating_entry = _Element("floating_entry")
+    exit_room_btn = _Element("exit_room_btn")
+    confirm_end = _Element("confirm_end")
+
+    handler = _MockHandler(elements={
+        "minimize_room": minimize_room,
+        "search_entry": search_entry,
+        "search_box": search_box,
+        "search_button": search_button,
+        "room_card": room_card,
+        "party_online": party_online,
+        "floating_entry": floating_entry,
+        "exit_room_btn": exit_room_btn,
+        "confirm_end": confirm_end,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+    manager._message_dispatch = type('_MockDispatch', (), {'send_screen_message': lambda self, *args, **kwargs: None})()
+
+    msg = MessageInfo(nickname="Outlier", content=":room FM18633292")
+    result = await manager.invite_user(msg, "FM18633292")
+
+    assert 'error' not in result
+    assert result['party_id'] == "FM18633292"
+    assert floating_entry.clicked is True
+    assert exit_room_btn.clicked is True
+    assert confirm_end.clicked is True
+    assert room_card.clicked is True
+    assert handler.party_id == "FM18633292"
+
 
 
 
