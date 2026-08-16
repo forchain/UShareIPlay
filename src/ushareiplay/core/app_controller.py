@@ -307,8 +307,8 @@ class AppController(Singleton):
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
 
-    def _detect_initial_room_state(self):
-        """开服启动时检测当前是否已在房间中，并初始化 RoomState (主房/客房识别)"""
+    async def _detect_initial_room_state(self):
+        """开服启动时检测当前是否已在房间中，并核对 RoomState (主房/客房/未知房间核验)"""
         try:
             if not self.soul_handler or not hasattr(self.soul_handler, 'element_finder'):
                 return
@@ -317,12 +317,23 @@ class AppController(Singleton):
                 room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
                 if room_id_text and isinstance(room_id_text, str):
                     clean_id = room_id_text.strip()
-                    self.soul_handler.party_id = clean_id
                     from ushareiplay.state.room_state import RoomState
                     if RoomState.is_initialized():
-                        RoomState.instance().room_id = clean_id
+                        room_state = RoomState.instance()
+                        expected_id = room_state.get_expected_party_id()
+                        if expected_id and clean_id != expected_id:
+                            self.logger.warning(
+                                f"Startup room ID mismatch: current={clean_id}, expected={expected_id}. "
+                                f"Exiting unauthorized room to recreate default party..."
+                            )
+                            if hasattr(self, 'party_manager') and self.party_manager:
+                                await self.party_manager.leave_and_recreate_party()
+                                return
+
+                        self.soul_handler.party_id = clean_id
+                        room_state.room_id = clean_id
                         self.logger.info(
-                            f"Startup room detected: {clean_id}, is_guest_room={RoomState.instance().is_guest_room}"
+                            f"Startup room verified: {clean_id}, is_guest_room={room_state.is_guest_room}"
                         )
         except Exception as e:
             if self.logger:
@@ -467,7 +478,7 @@ class AppController(Singleton):
         self.logger.info("控制台输入线程已启动")
 
         # Detect initial room state on startup
-        self._detect_initial_room_state()
+        await self._detect_initial_room_state()
 
         self.logger.info("开始主监控循环...")
 

@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
@@ -19,6 +21,7 @@ class RoomState(Singleton):
         self._room_id: Optional[str] = None
         self._recommendation_enabled: Optional[bool] = None
         self._is_guest_room: Optional[bool] = None
+        self._expected_party_id: Optional[str] = self._load_persisted_expected_party_id()
 
     @property
     def logger(self):
@@ -74,6 +77,47 @@ class RoomState(Singleton):
         if self._room_id != value:
             self.logger.info(f"Room ID updated: {self._room_id} -> {value}")
         self._room_id = value
+
+    def _get_state_file_path(self) -> Path:
+        return Path("data/room_state.json")
+
+    def _load_persisted_expected_party_id(self) -> Optional[str]:
+        try:
+            state_file = self._get_state_file_path()
+            if state_file.exists():
+                data = json.loads(state_file.read_text(encoding="utf-8"))
+                return data.get("expected_party_id")
+        except Exception:
+            pass
+        return None
+
+    def _save_persisted_expected_party_id(self, party_id: Optional[str]):
+        try:
+            state_file = self._get_state_file_path()
+            state_file.parent.mkdir(parents=True, exist_ok=True)
+            data = {"expected_party_id": party_id}
+            state_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    @property
+    def expected_party_id(self) -> Optional[str]:
+        """获取显式设置的预期房间ID"""
+        return self._expected_party_id
+
+    @expected_party_id.setter
+    def expected_party_id(self, value: Optional[str]):
+        """设置并持久化预期房间ID"""
+        if self._expected_party_id != value:
+            self.logger.info(f"Expected party ID updated: {self._expected_party_id} -> {value}")
+        self._expected_party_id = value
+        self._save_persisted_expected_party_id(value)
+
+    def get_expected_party_id(self) -> Optional[str]:
+        """获取当前应当所处的房间ID（优先返回客房目标ID，回退为配置的默认主房间ID）"""
+        if self._expected_party_id:
+            return self._expected_party_id.strip()
+        return self._get_default_party_id()
 
     def _get_default_party_id(self) -> Optional[str]:
         """获取配置中的默认主房间ID"""

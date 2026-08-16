@@ -29,11 +29,25 @@ class RoomIdEvent(BaseEvent):
             room_id_text = element_wrapper.text
             if not room_id_text:
                 return False
+            clean_room_id = room_id_text.strip()
+            room_state = RoomState.instance()
+
+            # 校验当前房间是否与预期房间一致（防止被系统自动调入随机房间）
+            expected_id = room_state.get_expected_party_id()
+            if expected_id and clean_room_id != expected_id:
+                self.logger.warning(
+                    f"Room ID mismatch detected: current={clean_room_id}, expected={expected_id}. "
+                    f"Possible unauthorized auto-redirect by system. Exiting room and recreating party..."
+                )
+                party_manager = getattr(self.controller, 'party_manager', None)
+                if party_manager:
+                    await party_manager.leave_and_recreate_party()
+                    return True
 
             # 更新 RoomState 中的房间ID
-            RoomState.instance().room_id = room_id_text
+            room_state.room_id = clean_room_id
             if self.handler:
-                self.handler.party_id = room_id_text
+                self.handler.party_id = clean_room_id
 
             return False
 

@@ -395,11 +395,12 @@ class PartyManager(Singleton):
                 confirm_btn.click()
                 self.logger.info(f"Confirmed room switch dialog ({confirm_key})")
 
-            # 8. 进入后自动抢麦并更新 party_id 与 RoomState
+            # 8. 进入后自动抢麦并更新 party_id 与 RoomState (含预期目标ID)
             self.handler.grab_mic_and_confirm()
             self.handler.party_id = party_id
             from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
+                RoomState.instance().expected_party_id = party_id
                 RoomState.instance().room_id = party_id
             return {'party_id': party_id, 'user': message_info.nickname}
 
@@ -410,6 +411,27 @@ class PartyManager(Singleton):
                 'error': str(e),
                 'party_id': party_id
             }
+
+    async def leave_and_recreate_party(self) -> bool:
+        """
+        当检测到当前房间与预期房间不匹配（例如被系统自动调入随机房间）时：
+        1. 退出当前随机房间
+        2. 清空预期客房 ID 并恢复为默认主房间
+        3. 重新进入派对大厅，搜索默认房间或创建新房间
+        """
+        self.logger.warning("Leaving unexpected/unauthorized room and returning to home to recreate party...")
+        try:
+            self.end_party()
+        except Exception as e:
+            self.logger.warning(f"Error while leaving unexpected room: {e}")
+
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized():
+            RoomState.instance().expected_party_id = None
+            RoomState.instance().clear()
+        self.handler.party_id = None
+
+        return await self.join_party()
 
     async def join_party(self) -> bool:
         """
@@ -607,6 +629,7 @@ class PartyManager(Singleton):
         self.reset_party_time()
         from ushareiplay.state.room_state import RoomState
         if RoomState.is_initialized():
+            RoomState.instance().expected_party_id = None
             RoomState.instance().room_id = self.handler.party_id
             RoomState.instance().is_guest_room = False
         self.logger.info("派对创建成功，准备设置默认notice")
