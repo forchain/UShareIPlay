@@ -219,6 +219,11 @@ class RoomNameManager(Singleton):
             return None
 
     def set_next_title(self, title: str, theme: str = None):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping set_next_title in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         if theme:
             theme_result = self.set_theme(theme)
             if 'error' in theme_result:

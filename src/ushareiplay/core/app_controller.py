@@ -307,6 +307,27 @@ class AppController(Singleton):
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
 
+    def _detect_initial_room_state(self):
+        """开服启动时检测当前是否已在房间中，并初始化 RoomState (主房/客房识别)"""
+        try:
+            if not self.soul_handler or not hasattr(self.soul_handler, 'element_finder'):
+                return
+            room_id_elem = self.soul_handler.element_finder.try_find_element('room_id', log=False)
+            if room_id_elem:
+                room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
+                if room_id_text and isinstance(room_id_text, str):
+                    clean_id = room_id_text.strip()
+                    self.soul_handler.party_id = clean_id
+                    from ushareiplay.state.room_state import RoomState
+                    if RoomState.is_initialized():
+                        RoomState.instance().room_id = clean_id
+                        self.logger.info(
+                            f"Startup room detected: {clean_id}, is_guest_room={RoomState.instance().is_guest_room}"
+                        )
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"Initial room detection skipped: {e}")
+
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
         try:
@@ -444,6 +465,9 @@ class AppController(Singleton):
         input_thread.daemon = True
         input_thread.start()
         self.logger.info("控制台输入线程已启动")
+
+        # Detect initial room state on startup
+        self._detect_initial_room_state()
 
         self.logger.info("开始主监控循环...")
 

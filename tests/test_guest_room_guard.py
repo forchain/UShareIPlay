@@ -28,6 +28,7 @@ class HandlerStub:
                 return None
 
         self.logger = _Logger()
+        self.controller = None
 
 
 class MessageInfoStub:
@@ -294,6 +295,11 @@ async def test_guest_room_blocks_room_name_and_title_updates():
         res = rnm._update_title_ui("新歌速递")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
+
+        # set_next_title in guest room
+        res = rnm.set_next_title("新歌速递")
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
     finally:
         RoomNameManager.reset_instance()
 
@@ -343,6 +349,41 @@ async def test_guest_room_blocks_recommendation_sync():
         assert "error" in res
     finally:
         RecommendationManager.reset_instance()
+
+
+@pytest.mark.asyncio
+async def test_guest_room_blocks_events_and_auditor():
+    from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
+    from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
+    from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    handler = HandlerStub(config={})
+
+    # ChatRoomTitleEvent in guest room
+    evt = ChatRoomTitleEvent(handler)
+    fake_wrapper = SimpleNamespace(text="开发测试，慎入", content="开发测试，慎入")
+    res = await evt.handle("chat_room_title", fake_wrapper)
+    assert res is False
+
+    # RoomInfoWindowAuditor in guest room
+    RoomInfoWindowAuditor.reset_instance()
+    auditor = RoomInfoWindowAuditor.initialize()
+    auditor._handler = handler
+    auditor._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+
+    try:
+        res = auditor.audit_all_in_open_window()
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+
+        res = auditor.process_pending_retry()
+        assert res.get("skipped") == "guest_room"
+    finally:
+        RoomInfoWindowAuditor.reset_instance()
+
 
 
 

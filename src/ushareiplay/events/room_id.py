@@ -32,6 +32,8 @@ class RoomIdEvent(BaseEvent):
 
             # 更新 RoomState 中的房间ID
             RoomState.instance().room_id = room_id_text
+            if self.handler:
+                self.handler.party_id = room_id_text
 
             return False
 
