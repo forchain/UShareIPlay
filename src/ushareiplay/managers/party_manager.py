@@ -154,16 +154,17 @@ class PartyManager(Singleton):
                 if exit_key == 'exit_party_item':
                     clicked_guest_exit = True
 
-            # Click confirm if present (房主关闭派对弹窗确认"解散派对"；客房点击"退出派对"后直接退出，无需二次确认)
-            confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
-                ['confirm_end', 'confirm_exit_party', 'confirm_close', 'confirm_mic', 'confirm_btn'],
-                timeout=2 if clicked_guest_exit else 5
-            )
-            if confirm_elem:
-                confirm_elem.click()
-                self.logger.info(f"Clicked confirm button: {confirm_key}")
-            elif not clicked_guest_exit and not exit_room_btn:
-                return {'error': 'Failed to find confirm end button'}
+            if not clicked_guest_exit:
+                # 房主关闭派对弹窗确认"解散派对"
+                confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
+                    ['confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'],
+                    timeout=5
+                )
+                if confirm_elem:
+                    confirm_elem.click()
+                    self.logger.info(f"Clicked confirm button: {confirm_key}")
+                elif not exit_room_btn:
+                    return {'error': 'Failed to find confirm end button'}
 
             # Reset state after ending/exiting party
             from ushareiplay.state.room_state import RoomState

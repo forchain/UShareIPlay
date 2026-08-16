@@ -112,31 +112,6 @@ def test_exit_guest_party_success():
 
     more_menu_btn = _Element("more_menu")
     exit_party_item_btn = _Element("exit_party_item")
-    confirm_exit_party_btn = _Element("confirm_exit_party")
-
-    handler = _MockHandler(elements={
-        "more_menu": more_menu_btn,
-        "exit_party_item": exit_party_item_btn,
-        "confirm_exit_party": confirm_exit_party_btn
-    })
-
-    manager._handler = handler
-    manager._logger = handler.logger
-
-    res = manager.end_party()
-
-    assert res == {'success': 'Party ended'}
-    assert handler.switched is True
-    assert more_menu_btn.clicked is True
-    assert exit_party_item_btn.clicked is True
-    assert confirm_exit_party_btn.clicked is True
-
-
-def test_exit_guest_party_without_confirm_dialog_success():
-    manager = PartyManager.instance()
-
-    more_menu_btn = _Element("more_menu")
-    exit_party_item_btn = _Element("exit_party_item")
 
     handler = _MockHandler(elements={
         "more_menu": more_menu_btn,
@@ -152,5 +127,6 @@ def test_exit_guest_party_without_confirm_dialog_success():
     assert handler.switched is True
     assert more_menu_btn.clicked is True
     assert exit_party_item_btn.clicked is True
+
 
 
