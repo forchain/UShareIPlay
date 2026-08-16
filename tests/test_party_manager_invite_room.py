@@ -173,6 +173,46 @@ async def test_invite_user_with_minimize_room_button_found_and_switches():
     assert handler.party_id == "555555"
 
 
+@pytest.mark.asyncio
+async def test_invite_user_target_party_closed_card_with_no_party_online_restores_room():
+    """
+    针对用户上报的具体线上场景：
+    搜索 FM13515566 时，页面显示了 room_card（提示“派对已结束~”），但 party_online 不存在。
+    此时系统必须判定为派对未开启，安全点击 floating_entry 返回原房间，并返回错误提示。
+    """
+    manager = PartyManager.instance()
+
+    minimize_room = _Element("minimize_room")
+    search_entry = _Element("search_entry")
+    search_box = _Element("search_box")
+    search_button = _Element("search_button")
+    room_card = _Element("room_card", text="派对已结束~")
+    floating_entry = _Element("floating_entry")
+
+    handler = _MockHandler(elements={
+        "minimize_room": minimize_room,
+        "search_entry": search_entry,
+        "search_box": search_box,
+        "search_button": search_button,
+        "room_card": room_card,
+        # party_online is None because party is closed
+        "party_online": None,
+        "floating_entry": floating_entry,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    msg = MessageInfo(nickname="Outlier", content=":room FM13515566")
+    result = await manager.invite_user(msg, "FM13515566")
+
+    assert 'error' in result
+    assert result['party_id'] == 'FM13515566'
+    assert room_card.clicked is False
+    assert floating_entry.clicked is True
+
+
+
 
 @pytest.mark.asyncio
 async def test_invite_user_target_party_open_switches_successfully():

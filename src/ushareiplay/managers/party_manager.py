@@ -329,25 +329,28 @@ class PartyManager(Singleton):
             search_button.click()
             self.logger.info("Clicked search button")
 
-            # 3. 检查搜索结果，验证目标房间是否开启/存在
-            parties_search = self.handler.element_finder.wait_for_element('parties_search')
+            # 3. 检查搜索结果，验证目标房间是否开启（必须在线）
+            key, result_element = self.handler.element_finder.wait_for_any_element(
+                ['party_online', 'room_card', 'parties_search', 'party_search_empty', 'no_party_from_hall'], timeout=5
+            )
             party_element = None
-            if parties_search:
-                self.logger.info("Found parties search result container")
-                party_element = self.handler.element_finder.find_child_element(parties_search, 'party_id')
-                if not party_element:
-                    party_element = self.handler.element_finder.find_child_element(parties_search, 'room_card')
-            if not party_element:
-                party_element = self.handler.element_finder.try_find_element('party_online', log=False)
-                if not party_element:
-                    party_element = self.handler.element_finder.try_find_element('room_card', log=False)
+            if key == 'party_online' and result_element:
+                party_element = result_element
+            else:
+                party_online = self.handler.element_finder.try_find_element('party_online', log=False)
+                if party_online:
+                    party_element = party_online
+                elif key == 'parties_search' and result_element:
+                    party_element = self.handler.element_finder.find_child_element(result_element, 'party_online')
+                    if not party_element:
+                        party_element = self.handler.element_finder.find_child_element(result_element, 'party_id')
 
-            # 4. 如果目标房间未开启或不存在，安全返回当前房间，不关闭当前房间
+            # 4. 如果目标房间未开启（未找到在线标识）或不存在，安全返回当前房间，不关闭当前房间
             if not party_element:
-                self.logger.warning(f"Target party {party_id} not found or not open, restoring previous party")
+                self.logger.warning(f"Target party {party_id} is closed or not found, restoring previous party")
                 self._restore_current_party()
                 return {
-                    'error': f'Party {party_id} not found or not open',
+                    'error': f'Party {party_id} is closed or not found',
                     'party_id': party_id
                 }
 
