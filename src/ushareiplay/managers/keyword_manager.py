@@ -387,6 +387,12 @@ class KeywordManager(Singleton):
 
             root_cfg = self.config or {}
             cfg = root_cfg.get("llm") or (root_cfg.get("soul", {}) or {}).get("llm", {})
+            if isinstance(cfg, dict):
+                cfg = cfg.copy()
+                if "system_users" not in cfg:
+                    sys_users = (root_cfg.get("soul") or {}).get("system_users") or root_cfg.get("system_users")
+                    if sys_users:
+                        cfg["system_users"] = sys_users
             self._nl_resolver = NaturalLanguageResolver(cfg)
         return self._nl_resolver
 
