@@ -142,19 +142,23 @@ class PartyManager(Singleton):
                 more_menu.click()
                 self.logger.info("Clicked more menu")
 
-                # Click end party option
-                end_party = self.handler.element_finder.wait_for_element_clickable('end_party')
-                if not end_party:
-                    return {'error': 'Failed to find end party option'}
-                end_party.click()
-                self.logger.info("Clicked end party option")
+                # Click end/exit party option (房主为"关闭派对"，客房为"退出派对")
+                exit_key, exit_elem = self.handler.element_finder.wait_for_any_element(
+                    ['exit_party_item', 'end_party']
+                )
+                if not exit_elem:
+                    return {'error': 'Failed to find end/exit party option'}
+                exit_elem.click()
+                self.logger.info(f"Clicked {exit_key} option")
 
-            # Click confirm end
-            confirm_end = self.handler.element_finder.wait_for_element_clickable('confirm_end')
-            if not confirm_end:
-                return {'error': 'Failed to find confirm end button'}
-            confirm_end.click()
-            self.logger.info("Clicked confirm end button")
+            # Click confirm (房主为"解散派对"，客房为"退出派对"，或通用"确定"/"确认")
+            confirm_key, confirm_elem = self.handler.element_finder.wait_for_any_element(
+                ['confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn']
+            )
+            if not confirm_elem:
+                return {'error': 'Failed to find confirm end/exit button'}
+            confirm_elem.click()
+            self.logger.info(f"Clicked confirm button: {confirm_key}")
 
             return {'success': 'Party ended'}
         except Exception as e:
@@ -389,7 +393,7 @@ class PartyManager(Singleton):
 
             # 若弹出确认提示，自动确认
             confirm_key, confirm_btn = self.handler.element_finder.wait_for_any_element(
-                ['confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
+                ['confirm_exit_party', 'confirm_end', 'confirm_close', 'confirm_mic', 'confirm_btn'], timeout=2
             )
             if confirm_btn:
                 confirm_btn.click()

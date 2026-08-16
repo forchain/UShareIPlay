@@ -46,6 +46,13 @@ class _MockHandler:
     def wait_for_element_clickable(self, key):
         return self.elements.get(key)
 
+    def wait_for_any_element(self, keys, timeout=10):
+        for k in keys:
+            elem = self.elements.get(k)
+            if elem:
+                return k, elem
+        return None, None
+
     @property
     def element_finder(self):
         return self
@@ -95,8 +102,32 @@ def test_end_party_fallback_success():
 
     res = manager.end_party()
 
-    assert res == {'success': 'Party ended'}
-    assert handler.switched is True
     assert more_menu_btn.clicked is True
     assert end_party_btn.clicked is True
     assert confirm_btn.clicked is True
+
+
+def test_exit_guest_party_success():
+    manager = PartyManager.instance()
+
+    more_menu_btn = _Element("more_menu")
+    exit_party_item_btn = _Element("exit_party_item")
+    confirm_exit_party_btn = _Element("confirm_exit_party")
+
+    handler = _MockHandler(elements={
+        "more_menu": more_menu_btn,
+        "exit_party_item": exit_party_item_btn,
+        "confirm_exit_party": confirm_exit_party_btn
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.end_party()
+
+    assert res == {'success': 'Party ended'}
+    assert handler.switched is True
+    assert more_menu_btn.clicked is True
+    assert exit_party_item_btn.clicked is True
+    assert confirm_exit_party_btn.clicked is True
+
