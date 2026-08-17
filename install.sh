@@ -109,9 +109,9 @@ install_appium() {
   fi
 
   # Check uiautomator2 driver
-  if ! appium driver list --installed 2>/dev/null | grep -q "uiautomator2"; then
+  if ! appium driver list --installed 2>&1 | grep -q "uiautomator2"; then
     log_info "安装 uiautomator2 驱动..."
-    appium driver install uiautomator2 || sudo appium driver install uiautomator2 || true
+    appium driver install uiautomator2 >/dev/null 2>&1 || sudo appium driver install uiautomator2 >/dev/null 2>&1 || true
   fi
   log_succ "Appium 就绪: $(appium --version 2>/dev/null || echo 'installed')"
 }
