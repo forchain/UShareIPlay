@@ -164,6 +164,14 @@ install_apks() {
   local tmp_dir="/tmp/ushareiplay_apks"
   mkdir -p "${tmp_dir}"
 
+  local install_apk_file
+  install_apk_file() {
+    local target_apk="$1"
+    if [[ -s "${target_apk}" ]]; then
+      waydroid app install "${target_apk}" >/dev/null 2>&1 || adb install -r "${target_apk}" >/dev/null 2>&1 || true
+    fi
+  }
+
   # 8.1 QQ Music
   if sudo waydroid shell pm list packages 2>/dev/null | grep -q "com.tencent.qqmusic"; then
     log_succ "QQ 音乐 (com.tencent.qqmusic) 已安装。"
@@ -171,10 +179,10 @@ install_apks() {
     log_info "下载并安装 QQ 音乐..."
     local qq_apk="${tmp_dir}/qqmusic.apk"
     if [[ ! -s "${qq_apk}" ]]; then
-      wget -q -O "${qq_apk}" "${QQMUSIC_APK_URL}" || true
+      curl -fsSL -A "Mozilla/5.0 (Linux; Android 13; Mobile)" -o "${qq_apk}" "${QQMUSIC_APK_URL}" 2>/dev/null || wget -q -U "Mozilla/5.0" -O "${qq_apk}" "${QQMUSIC_APK_URL}" || true
     fi
     if [[ -s "${qq_apk}" ]]; then
-      sudo waydroid app install "${qq_apk}" >/dev/null 2>&1 || adb install -r "${qq_apk}" >/dev/null 2>&1 || true
+      install_apk_file "${qq_apk}"
       log_succ "QQ 音乐安装成功。"
     else
       log_warn "QQ 音乐 APK 下载未完成，可在启动后手动安装或通过环境变量 QQMUSIC_APK_URL 指定。"
@@ -188,10 +196,10 @@ install_apks() {
     log_info "下载并安装 Soul App..."
     local soul_apk="${tmp_dir}/soul.apk"
     if [[ ! -s "${soul_apk}" ]]; then
-      wget -q -O "${soul_apk}" "${SOUL_APK_URL}" || true
+      curl -fsSL -A "Mozilla/5.0 (Linux; Android 13; Mobile)" -o "${soul_apk}" "${SOUL_APK_URL}" 2>/dev/null || wget -q -U "Mozilla/5.0" -O "${soul_apk}" "${SOUL_APK_URL}" || true
     fi
     if [[ -s "${soul_apk}" ]]; then
-      sudo waydroid app install "${soul_apk}" >/dev/null 2>&1 || adb install -r "${soul_apk}" >/dev/null 2>&1 || true
+      install_apk_file "${soul_apk}"
       log_succ "Soul App 安装成功。"
     else
       log_warn "Soul App APK 下载未完成，可在启动后手动安装或通过环境变量 SOUL_APK_URL 指定。"
@@ -203,8 +211,17 @@ install_apks() {
   sudo waydroid shell pm grant cn.soulapp.android android.permission.MODIFY_AUDIO_SETTINGS 2>/dev/null || true
 
   # 8.3 Loopback Verifier
+  local verifier_apk=""
   if [[ -f "${TARGET_DIR}/tools/loopback-verifier/build/loopback-verifier.apk" ]]; then
-    sudo waydroid app install "${TARGET_DIR}/tools/loopback-verifier/build/loopback-verifier.apk" >/dev/null 2>&1 || true
+    verifier_apk="${TARGET_DIR}/tools/loopback-verifier/build/loopback-verifier.apk"
+  elif [[ -f "${TARGET_DIR}/tools/loopback-verifier/loopback-verifier.apk" ]]; then
+    verifier_apk="${TARGET_DIR}/tools/loopback-verifier/loopback-verifier.apk"
+  fi
+
+  if [[ -n "${verifier_apk}" ]]; then
+    install_apk_file "${verifier_apk}"
+    sudo waydroid shell pm grant io.ushareiplay.loopback android.permission.RECORD_AUDIO 2>/dev/null || true
+    log_succ "回环验证组件 (io.ushareiplay.loopback) 已就绪。"
   fi
 }
 
