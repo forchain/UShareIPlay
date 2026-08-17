@@ -248,7 +248,23 @@ class CommandManager(Singleton):
                 except Exception:
                     # Guard should never break command execution.
                     pass
-            
+
+            # 他人房间（客房模式）限制：仅支持点歌功能，所有群管理和配置命令全部禁用
+            try:
+                from ushareiplay.state.room_state import RoomState
+                room_state = RoomState.instance()
+                prefix = command_info.get("prefix") or ""
+                if room_state.is_guest_room and not room_state.is_command_allowed_in_guest_room(prefix):
+                    result = {
+                        'error': '当前处于他人房间，仅支持点歌功能，群管理功能已禁用'
+                    }
+                    format_kwargs = {'user': message_info.nickname, **result}
+                    if parameters:
+                        format_kwargs['party_id'] = parameters[0]
+                    return command_info.get('error_template', '{error}').format(**format_kwargs)
+            except Exception:
+                pass
+
             # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
             result = {'error': 'unknown'}
             retry_enabled = bool(command_info.get("retry"))
@@ -530,7 +546,22 @@ class CommandManager(Singleton):
             except Exception:
                 self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
 
+    async def notify_gift_receive(self, username: str):
+        """
+        Notify all commands when a gift or heat contribution is received
+
+        Args:
+            username: Username of the user who sent the gift
+        """
+        for module in self.get_command_modules().values():
+            try:
+                if hasattr(module.command, 'user_gift_receive'):
+                    await module.command.user_gift_receive(username)
+            except Exception:
+                self.logger.error(f"Error in command user_gift_receive: {traceback.format_exc()}")
+
     async def notify_focus_count_change(self, before: int | None, after: int):
+
         """
         Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) changes.
 

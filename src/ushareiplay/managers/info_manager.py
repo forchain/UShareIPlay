@@ -245,12 +245,20 @@ class InfoManager(Singleton):
         """
         self._room_state.room_id = value
 
+    @property
+    def recommendation_enabled(self) -> Optional[bool]:
+        """获取房间推荐状态"""
+        return self._room_state.recommendation_enabled
+
+    @recommendation_enabled.setter
+    def recommendation_enabled(self, value: Optional[bool]):
+        """设置房间推荐状态"""
+        self._room_state.recommendation_enabled = value
+
     def clear(self):
         """清空在线用户列表与房间状态"""
         self._presence_tracker._online_users.clear()
-        self._room_state._user_count = None
-        self._room_state._focus_count = None
-        self._room_state._room_id = None
+        self._room_state.clear()
         self.logger.info("Cleared online users list")
 
     # ------------------------------------------------------------------

@@ -50,6 +50,11 @@ class Singleton(metaclass=SingletonMeta):
         return cls._instance
 
     @classmethod
+    def is_initialized(cls) -> bool:
+        """Check if this singleton has been initialized."""
+        return bool(cls.__dict__.get("_singleton_initialized", False))
+
+    @classmethod
     def reset_instance(cls) -> None:
         """Reset one singleton. Intended for tests and process restart only."""
         with SingletonMeta._lock:

@@ -27,6 +27,8 @@ _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
 _KEYWORD_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*@我\s+(.+)")
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
+_GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]送给([^\s【]+)")
+_GIFT_TYPE2_PATTERN = re.compile(r"恭喜(.+?)在此房间贡献出(\d+)热力值")
 
 
 class ChatIntakeKind(Enum):
@@ -37,6 +39,7 @@ class ChatIntakeKind(Enum):
     KEYWORD_MENTION = "keyword_mention"
     COMMAND = "command"
     PLAIN_CHAT = "plain_chat"
+    GIFT_RECEIVE = "gift_receive"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class ChatIntakeResult:
         private_reply: True if the command should be answered privately.
         sleep_exempt: Inherited sleep-exemption flag (queue expansion only).
         raw: The original input string, preserved for debugging.
+        heat_value: Heat value amount (only set for GIFT_RECEIVE Type 2).
     """
 
     kind: ChatIntakeKind
@@ -67,12 +71,13 @@ class ChatIntakeResult:
     private_reply: bool = False
     sleep_exempt: bool = False
     raw: str = ""
+    heat_value: int = 0
 
 
-def classify_chat_line(raw: str) -> ChatIntakeResult:
+def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeResult:
     """Classify a single raw chat line.
 
-    Order of precedence: user enter/return, keyword mention, command, plain chat.
+    Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
     The result is frozen; callers may convert it to a mutable MessageInfo if needed.
     """
     raw = raw or ""
@@ -93,7 +98,40 @@ def classify_chat_line(raw: str) -> ChatIntakeResult:
             raw=raw,
         )
 
-    keyword_match = _KEYWORD_PATTERN.match(raw)
+    gift1_match = _GIFT_TYPE1_PATTERN.search(raw)
+    if gift1_match:
+        giver = gift1_match.group(1).strip()
+        receiver = gift1_match.group(2).strip()
+        if room_owner and receiver == room_owner.strip():
+            return ChatIntakeResult(
+                kind=ChatIntakeKind.GIFT_RECEIVE,
+                nickname=giver,
+                text=giver,
+                raw=raw,
+                heat_value=0,
+            )
+
+    gift2_match = _GIFT_TYPE2_PATTERN.search(raw)
+    if gift2_match:
+        giver = gift2_match.group(1).strip()
+        heat_val = int(gift2_match.group(2))
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.GIFT_RECEIVE,
+            nickname=giver,
+            text=giver,
+            raw=raw,
+            heat_value=heat_val,
+        )
+
+
+    keyword_match = None
+    if room_owner and room_owner.strip() and room_owner.strip() != "我":
+        escaped_owner = re.escape(room_owner.strip())
+        pattern = rf"souler\[(.+?)\]说[:：]\s*(?:@我|@{escaped_owner})\s+(.+)"
+        keyword_match = re.match(pattern, raw)
+    else:
+        keyword_match = _KEYWORD_PATTERN.match(raw)
+
     if keyword_match:
         nickname = keyword_match.group(1).strip()
         keyword_text = keyword_match.group(2).strip()

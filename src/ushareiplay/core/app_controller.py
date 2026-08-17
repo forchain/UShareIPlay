@@ -307,6 +307,38 @@ class AppController(Singleton):
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
 
+    async def _detect_initial_room_state(self):
+        """开服启动时检测当前是否已在房间中，并核对 RoomState (主房/客房/未知房间核验)"""
+        try:
+            if not self.soul_handler or not hasattr(self.soul_handler, 'element_finder'):
+                return
+            room_id_elem = self.soul_handler.element_finder.try_find_element('room_id', log=False)
+            if room_id_elem:
+                room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
+                if room_id_text and isinstance(room_id_text, str):
+                    clean_id = room_id_text.strip()
+                    from ushareiplay.state.room_state import RoomState
+                    if RoomState.is_initialized():
+                        room_state = RoomState.instance()
+                        expected_id = room_state.get_expected_party_id()
+                        if expected_id and clean_id != expected_id:
+                            self.logger.warning(
+                                f"Startup room ID mismatch: current={clean_id}, expected={expected_id}. "
+                                f"Exiting unauthorized room to recreate default party..."
+                            )
+                            if hasattr(self, 'party_manager') and self.party_manager:
+                                await self.party_manager.leave_and_recreate_party()
+                                return
+
+                        self.soul_handler.party_id = clean_id
+                        room_state.room_id = clean_id
+                        self.logger.info(
+                            f"Startup room verified: {clean_id}, is_guest_room={room_state.is_guest_room}"
+                        )
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"Initial room detection skipped: {e}")
+
     def _init_handlers(self):
         """Initialize handlers after driver is ready"""
         try:
@@ -336,6 +368,7 @@ class AppController(Singleton):
             from ushareiplay.managers.sleep_manager import SleepManager
             from ushareiplay.managers.theme_manager import ThemeManager
             from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.recommendation_manager import RecommendationManager
             from ushareiplay.managers.room_name_manager import RoomNameManager
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -373,7 +406,10 @@ class AppController(Singleton):
             self.info_manager = InfoManager.initialize()
             self.party_manager = PartyManager.initialize()
             self.notice_manager = NoticeManager.initialize()
+            RecommendationManager.initialize()
             RoomNameManager.initialize()
+            from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+            RoomInfoWindowAuditor.initialize()
             ThemeManager.initialize()
             TitleManager.initialize()
             AdminManager.initialize()
@@ -440,6 +476,9 @@ class AppController(Singleton):
         input_thread.daemon = True
         input_thread.start()
         self.logger.info("控制台输入线程已启动")
+
+        # Detect initial room state on startup
+        await self._detect_initial_room_state()
 
         self.logger.info("开始主监控循环...")
 

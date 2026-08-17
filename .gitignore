@@ -16,3 +16,4 @@ config.local.yaml
 .opencode/package-lock.json
 *.log
 .antigravitycli
+.orca

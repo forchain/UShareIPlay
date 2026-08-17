@@ -5,6 +5,7 @@ class User(Model):
     id = fields.IntField(pk=True)
     username = fields.CharField(max_length=255, unique=True, index=True)
     level = fields.IntField(default=0)  # Default level is 0
+    heat_value = fields.IntField(default=0)  # Cumulative heat contribution in the room
     canonical_user = fields.ForeignKeyField(
         'models.User',
         related_name='aliases',

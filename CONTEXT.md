@@ -47,3 +47,8 @@ _Avoid_: Audio HAL hook, rooted audio router, AVD system modification
 **Root Fallback**:
 Audio-routing work inside a disposable, rootable Virtual Audio Device after the supported Host Audio Loopback has failed with retained verification evidence. It never includes weakening the host operating system's security controls.
 _Avoid_: Primary audio route, host system modification
+
+**Natural Language Command Resolution**:
+The intent translation boundary that resolves unstructured `@我` mentions into concrete commands or conversational replies via an LLM when no registered keyword matches. It enriches the prompt with the speaker's level, system command schemas, and playback context, enforces strict JSON schema extraction, and gracefully falls back to the default keyword on timeouts, parse failures, or disabled LLM state.
+_Avoid_: Chatbot, AI agent, prompt helper
+

@@ -15,8 +15,12 @@ class PlaylistState(Singleton):
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            try:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                self._logger = SoulHandler.instance().logger
+            except Exception:
+                import logging
+                return logging.getLogger(__name__)
         return self._logger
 
     @property

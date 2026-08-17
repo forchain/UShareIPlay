@@ -111,14 +111,46 @@ class MessageContentEvent(BaseEvent):
                             message_manager.latest_chats.append(new_content)
                         break
 
+            room_owner = None
+            if hasattr(self.handler, 'config') and isinstance(self.handler.config, dict):
+                soul_cfg = self.handler.config.get("soul", {})
+                if isinstance(soul_cfg, dict):
+                    room_owner = soul_cfg.get("room_owner") or soul_cfg.get("owner_username")
+                if not room_owner:
+                    room_owner = self.handler.config.get("room_owner") or self.handler.config.get("owner_username")
+
+
+            if not room_owner:
+                try:
+                    from ushareiplay.models import User
+                    owner_user = await User.filter(level=9).first()
+                    if owner_user:
+                        room_owner = owner_user.username
+                except Exception:
+                    pass
+
             # 处理所有消息元素
             for content in message_manager.latest_chats:
-                result = classify_chat_line(content)
+
+                result = classify_chat_line(content, room_owner=room_owner)
 
                 is_return = result.kind == ChatIntakeKind.USER_RETURN
                 if is_return:
                     self.logger.critical(f"User returned: {result.nickname}")
                     await self._notify_user_return(result.nickname)
+
+                if result.kind == ChatIntakeKind.GIFT_RECEIVE:
+                    chat_logger.critical(content)
+                    if getattr(result, "heat_value", 0) > 0:
+                        self.logger.info(
+                            f"Heat contribution received from user '{result.nickname}': +{result.heat_value} heat"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Gift received from user '{result.nickname}' (sent to room_owner '{room_owner}')"
+                        )
+                    await self._handle_gift_receive(result)
+                    continue
 
                 if result.kind == ChatIntakeKind.KEYWORD_MENTION:
                     from ushareiplay.managers.keyword_manager import KeywordManager
@@ -160,6 +192,38 @@ class MessageContentEvent(BaseEvent):
             self.logger.error(f"Error processing message content event: {traceback.format_exc()}")
             return False
 
+    async def _handle_gift_receive(self, result):
+        """处理收礼物与热力值贡献：自动升级等级、发送感谢消息、触发自定义命令"""
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            from ushareiplay.core.message_queue import MessageQueue
+            from ushareiplay.models.message_info import MessageInfo
+
+            username = result.nickname
+            heat_val = getattr(result, "heat_value", 0)
+            if heat_val > 0:
+                user = await UserDAO.record_heat_contribution(username, heat_val)
+            else:
+                user = await UserDAO.record_owner_gift(username)
+
+            if user:
+                self.logger.info(
+                    f"User '{user.username}' status after gift/heat processing: level=L{user.level}, cumulative_heat={user.heat_value}"
+                )
+
+            # 自动发送 @用户 谢谢
+            thank_msg = MessageInfo(
+                content=f"@{username} 谢谢",
+                nickname=username,
+            )
+            await MessageQueue.instance().put_message(thank_msg)
+            self.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
+
+            # 触发命令管理器的收礼物通知
+            await self._notify_gift_receive(username)
+        except Exception:
+            self.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
+
     async def _notify_user_enter(self, username: str):
         """通知所有命令用户进入"""
         try:
@@ -167,6 +231,15 @@ class MessageContentEvent(BaseEvent):
             await command_manager.notify_user_enter(username)
         except Exception as e:
             self.logger.error(f"Error notifying user enter: {str(e)}")
+
+    async def _notify_gift_receive(self, username: str):
+        """通知所有命令收礼物事件"""
+        try:
+            command_manager = CommandManager.instance()
+            await command_manager.notify_gift_receive(username)
+        except Exception as e:
+            self.logger.error(f"Error notifying gift receive: {str(e)}")
+
 
     async def _notify_user_return(self, username: str):
         """通知所有命令用户返回"""
