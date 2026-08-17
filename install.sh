@@ -230,7 +230,7 @@ setup_adb_forwarding() {
   log_info "配置持久化 ADB 端口转发 (宿主机:5555 -> Waydroid 容器:5555)..."
 
   # Enable IP forwarding persistently in sysctl
-  echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-ushareiplay-forward.conf >/dev/null
+  printf "net.ipv4.ip_forward=1\nnet.ipv4.conf.all.route_localnet=1\n" | sudo tee /etc/sysctl.d/99-ushareiplay-forward.conf >/dev/null
   sudo sysctl -p /etc/sysctl.d/99-ushareiplay-forward.conf >/dev/null 2>&1 || sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null
 
   # Install forward script

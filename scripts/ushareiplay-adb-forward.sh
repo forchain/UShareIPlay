@@ -23,11 +23,15 @@ apply_forwarding() {
 
   # Ensure IP forwarding is enabled
   sysctl -w net.ipv4.ip_forward=1 >/dev/null
+  sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null
 
-  # NAT PREROUTING chain
+  # NAT PREROUTING & OUTPUT chain
   iptables -t nat -N USHAREIPLAY_ADB_FWD 2>/dev/null || iptables -t nat -F USHAREIPLAY_ADB_FWD
   if ! iptables -t nat -C PREROUTING -p tcp --dport 5555 -j USHAREIPLAY_ADB_FWD 2>/dev/null; then
     iptables -t nat -I PREROUTING -p tcp --dport 5555 -j USHAREIPLAY_ADB_FWD
+  fi
+  if ! iptables -t nat -C OUTPUT -p tcp -o lo --dport 5555 -j USHAREIPLAY_ADB_FWD 2>/dev/null; then
+    iptables -t nat -I OUTPUT -p tcp -o lo --dport 5555 -j USHAREIPLAY_ADB_FWD
   fi
   iptables -t nat -A USHAREIPLAY_ADB_FWD -p tcp --dport 5555 -j DNAT --to-destination "${target_ip}:5555"
 
