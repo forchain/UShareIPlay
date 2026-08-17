@@ -17,9 +17,9 @@ log_err()  { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 # Environment defaults
 TARGET_DIR="${TARGET_DIR:-${INSTALL_DIR:-}}"
 REPO_URL="${REPO_URL:-https://github.com/forchain/UShareIPlay.git}"
-BRANCH="${BRANCH:-main}"
-QQMUSIC_APK_URL="${QQMUSIC_APK_URL:-https://dldir1v6.qq.com/music/clntupate/QQMusic_Setup_ARM64.apk}"
-SOUL_APK_URL="${SOUL_APK_URL:-https://res.soulapp.cn/apk/soul.apk}"
+BRANCH="${BRANCH:-feat/ubuntu-one-click-installer}"
+QQMUSIC_APK_URL="${QQMUSIC_APK_URL:-https://dldir1v6.qq.com/music/release/upload/t_mm_file_publish/10200113.apk}"
+SOUL_APK_URL="${SOUL_APK_URL:-https://china-img.soulapp.cn/apk/channel/soul_channel_soul64.apk}"
 
 # 1. Sanity Checks
 check_prerequisites() {
@@ -71,7 +71,7 @@ install_system_packages() {
   sudo apt-get update -qq
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     curl wget git iptables iptables-persistent netfilter-persistent \
-    pipewire-pulse wireplumber pulseaudio-utils adb jq nodejs npm \
+    pipewire-pulse wireplumber pulseaudio-utils adb jq \
     python3 python3-pip python3-venv libglib2.0-0 libpulse0 >/dev/null
   log_succ "系统依赖安装完成。"
 }
@@ -89,7 +89,13 @@ install_uv() {
 
 # 5. Install Node.js Appium & uiautomator2 driver
 install_appium() {
-  log_info "检查并安装 Appium 及 uiautomator2 驱动..."
+  log_info "检查并安装 Node.js LTS 与 Appium 及 uiautomator2 驱动..."
+  if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]]; then
+    log_info "配置并安装 Node.js LTS (v20)..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs >/dev/null
+  fi
+
   if ! command -v appium >/dev/null 2>&1; then
     sudo npm install -g appium --quiet
   fi
@@ -264,7 +270,7 @@ print_summary() {
   printf "• ADB 端口:  %s:5555 (外部/宿主机直连)\n" "${ip_addr}"
   printf "• Appium:    http://%s:4723\n" "${ip_addr}"
   printf "• 音频回环:  ushareiplay_music_sink (PipeWire Null Sink)\n"
-  printf "--------------------------------------------------------\n"
+  printf '%s\n' "--------------------------------------------------------"
   printf "${YELLOW}后续使用指南：${NC}\n"
   printf "1. 在云机/桌面中打开模拟器图形界面登录账号：\n"
   printf "   ${BLUE}waydroid show-full-ui${NC}\n"
