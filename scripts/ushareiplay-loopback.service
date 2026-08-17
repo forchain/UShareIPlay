@@ -1,0 +1,11 @@
+[Unit]
+Description=UShareIPlay PipeWire Audio Loopback Route
+After=pipewire.service wireplumber.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c "pactl list short sinks | grep -q ushareiplay_music_sink || pactl load-module module-null-sink sink_name=ushareiplay_music_sink sink_properties=device.description=UShareIPlay_Music_Input; pactl set-default-sink ushareiplay_music_sink; pactl set-default-source ushareiplay_music_sink.monitor"
+
+[Install]
+WantedBy=default.target
