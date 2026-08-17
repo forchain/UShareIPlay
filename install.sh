@@ -18,7 +18,7 @@ log_err()  { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 TARGET_DIR="${TARGET_DIR:-${INSTALL_DIR:-}}"
 REPO_URL="${REPO_URL:-https://github.com/forchain/UShareIPlay.git}"
 BRANCH="${BRANCH:-feat/ubuntu-one-click-installer}"
-QQMUSIC_APK_URL="${QQMUSIC_APK_URL:-https://dldir1v6.qq.com/music/release/upload/t_mm_file_publish/10200113.apk}"
+QQMUSIC_APK_URL="${QQMUSIC_APK_URL:-http://imtt.dd.qq.com/sjy.00022/sjy.00004/16891/apk/7F21EA29367F8C5FC19DB2867E80766F.apk?fsname=com.tencent.qqmusic_20.7.5.8.apk}"
 SOUL_APK_URL="${SOUL_APK_URL:-https://china-img.soulapp.cn/apk/channel/soul_channel_soul64.apk}"
 
 # 1. Sanity Checks
