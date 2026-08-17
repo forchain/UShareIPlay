@@ -20,6 +20,8 @@ REPO_URL="${REPO_URL:-https://github.com/forchain/UShareIPlay.git}"
 BRANCH="${BRANCH:-feat/ubuntu-one-click-installer}"
 QQMUSIC_APK_URL="${QQMUSIC_APK_URL:-http://imtt.dd.qq.com/sjy.00022/sjy.00004/16891/apk/7F21EA29367F8C5FC19DB2867E80766F.apk?fsname=com.tencent.qqmusic_20.7.5.8.apk}"
 SOUL_APK_URL="${SOUL_APK_URL:-https://china-img.soulapp.cn/apk/channel/soul_channel_soul64.apk}"
+GOOGLE_WEBVIEW_APK_URL="${GOOGLE_WEBVIEW_APK_URL:-https://github.com/JonaNorman/WebViewPackage/releases/download/google/146.0.7680.164_min29_arm32%2B64.apk}"
+WECHAT_APK_URL="${WECHAT_APK_URL:-https://dldir1v6.qq.com/weixin/android/weixin8076android3141_0x28004c31_arm64.apk}"
 
 # 1. Sanity Checks
 check_prerequisites() {
@@ -161,12 +163,18 @@ setup_waydroid() {
       sleep 3
     fi
   fi
+
+  # Optimize Android captive portal & network stack (domestic mirror)
+  sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- settings put global captive_portal_mode 0 2>/dev/null || true
+  sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- settings put global captive_portal_https_url https://connect.rom.miui.com/generate_204 2>/dev/null || true
+  sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- settings put global captive_portal_http_url http://connect.rom.miui.com/generate_204 2>/dev/null || true
+
   log_succ "Waydroid 服务与容器就绪。"
 }
 
-# 8. Install Applications (QQ Music, Soul, Loopback Verifier)
+# 8. Install Applications (WebView, QQ Music, Soul, WeChat, Loopback Verifier)
 install_apks() {
-  log_info "检查并安装 QQ 音乐、Soul App 及回环验证组件..."
+  log_info "检查并安装 Google WebView、QQ 音乐、Soul App、微信及回环验证组件..."
   local tmp_dir="/tmp/ushareiplay_apks"
   mkdir -p "${tmp_dir}"
 
@@ -174,15 +182,35 @@ install_apks() {
   install_apk_file() {
     local target_apk="$1"
     if [[ -s "${target_apk}" ]]; then
-      waydroid app install "${target_apk}" >/dev/null 2>&1 || adb install -r "${target_apk}" >/dev/null 2>&1 || true
+      local apk_size
+      apk_size="$(stat -c%s "${target_apk}" 2>/dev/null || stat -f%z "${target_apk}" 2>/dev/null || true)"
+      if [[ -n "${apk_size}" ]]; then
+        sudo sh -c "lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm install -r -d -S ${apk_size} < '${target_apk}'" >/dev/null 2>&1 || \
+          waydroid app install "${target_apk}" >/dev/null 2>&1 || adb install -r "${target_apk}" >/dev/null 2>&1 || true
+      fi
     fi
   }
 
-  # 8.1 QQ Music
-  if sudo waydroid shell pm list packages 2>/dev/null | grep -q "com.tencent.qqmusic"; then
-    log_succ "QQ 音乐 (com.tencent.qqmusic) 已安装。"
+  # 8.1 Google Android System WebView
+  if sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm list packages 2>/dev/null | grep -q "com.google.android.webview"; then
+    log_succ "Google System WebView (com.google.android.webview) 已安装。"
   else
-    log_info "下载并安装 QQ 音乐..."
+    log_info "下载并安装 Google System WebView (ARM64)..."
+    local webview_apk="${tmp_dir}/google_webview.apk"
+    if [[ ! -s "${webview_apk}" ]]; then
+      curl -fsSL -o "${webview_apk}" "${GOOGLE_WEBVIEW_APK_URL}" 2>/dev/null || wget -q -O "${webview_apk}" "${GOOGLE_WEBVIEW_APK_URL}" || true
+    fi
+    if [[ -s "${webview_apk}" ]]; then
+      install_apk_file "${webview_apk}"
+      log_succ "Google System WebView 安装成功。"
+    fi
+  fi
+
+  # 8.2 QQ Music (Phone Edition)
+  if sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm list packages 2>/dev/null | grep -q "com.tencent.qqmusic"; then
+    log_succ "QQ 音乐手机版 (com.tencent.qqmusic) 已安装。"
+  else
+    log_info "下载并安装 QQ 音乐手机版..."
     local qq_apk="${tmp_dir}/qqmusic.apk"
     if [[ ! -s "${qq_apk}" ]]; then
       curl -fsSL -A "Mozilla/5.0 (Linux; Android 13; Mobile)" -o "${qq_apk}" "${QQMUSIC_APK_URL}" 2>/dev/null || wget -q -U "Mozilla/5.0" -O "${qq_apk}" "${QQMUSIC_APK_URL}" || true
@@ -195,8 +223,8 @@ install_apks() {
     fi
   fi
 
-  # 8.2 Soul App
-  if sudo waydroid shell pm list packages 2>/dev/null | grep -q "cn.soulapp.android"; then
+  # 8.3 Soul App
+  if sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm list packages 2>/dev/null | grep -q "cn.soulapp.android"; then
     log_succ "Soul App (cn.soulapp.android) 已安装。"
   else
     log_info "下载并安装 Soul App..."
@@ -213,10 +241,25 @@ install_apks() {
   fi
 
   # Grant Audio / Mic permissions to Soul App
-  sudo waydroid shell pm grant cn.soulapp.android android.permission.RECORD_AUDIO 2>/dev/null || true
-  sudo waydroid shell pm grant cn.soulapp.android android.permission.MODIFY_AUDIO_SETTINGS 2>/dev/null || true
+  sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm grant cn.soulapp.android android.permission.RECORD_AUDIO 2>/dev/null || true
+  sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm grant cn.soulapp.android android.permission.MODIFY_AUDIO_SETTINGS 2>/dev/null || true
 
-  # 8.3 Loopback Verifier
+  # 8.4 WeChat (for convenient authorization/QR scan login)
+  if sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm list packages 2>/dev/null | grep -q "com.tencent.mm"; then
+    log_succ "微信 (com.tencent.mm) 已安装。"
+  else
+    log_info "下载并安装微信应用 (用于扫码与快捷授权登录)..."
+    local wechat_apk="${tmp_dir}/wechat.apk"
+    if [[ ! -s "${wechat_apk}" ]]; then
+      curl -fsSL -A "Mozilla/5.0 (Linux; Android 13; Mobile)" -o "${wechat_apk}" "${WECHAT_APK_URL}" 2>/dev/null || wget -q -U "Mozilla/5.0" -O "${wechat_apk}" "${WECHAT_APK_URL}" || true
+    fi
+    if [[ -s "${wechat_apk}" ]]; then
+      install_apk_file "${wechat_apk}"
+      log_succ "微信安装成功。"
+    fi
+  fi
+
+  # 8.5 Loopback Verifier
   local verifier_apk=""
   if [[ -f "${TARGET_DIR}/tools/loopback-verifier/build/loopback-verifier.apk" ]]; then
     verifier_apk="${TARGET_DIR}/tools/loopback-verifier/build/loopback-verifier.apk"
@@ -226,7 +269,7 @@ install_apks() {
 
   if [[ -n "${verifier_apk}" ]]; then
     install_apk_file "${verifier_apk}"
-    sudo waydroid shell pm grant io.ushareiplay.loopback android.permission.RECORD_AUDIO 2>/dev/null || true
+    sudo lxc-attach -P /var/lib/waydroid/lxc -n waydroid -- pm grant io.ushareiplay.loopback android.permission.RECORD_AUDIO 2>/dev/null || true
     log_succ "回环验证组件 (io.ushareiplay.loopback) 已就绪。"
   fi
 }
