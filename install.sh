@@ -84,6 +84,12 @@ install_uv() {
     curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
+  if [[ -f "${HOME}/.local/bin/uv" ]]; then
+    sudo ln -sf "${HOME}/.local/bin/uv" /usr/local/bin/uv 2>/dev/null || true
+  fi
+  if ! grep -q '.local/bin' "${HOME}/.bashrc" 2>/dev/null; then
+    echo 'export PATH="${HOME}/.local/bin:${PATH}"' >> "${HOME}/.bashrc"
+  fi
   log_succ "uv 版本: $(uv --version)"
 }
 
