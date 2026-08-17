@@ -129,6 +129,7 @@ Detailed reference for the AI agent and contributors:
 | [docs/timers.md](docs/timers.md) | Timer system, DB model, scheduling logic |
 | [docs/config.md](docs/config.md) | Config loading, local overrides, structure reference |
 | [docs/system.md](docs/system.md) | Architecture, startup flow, singleton pattern, crash recovery |
+| [docs/waydroid-virtual-audio.md](docs/waydroid-virtual-audio.md) | Parallels/Ubuntu Waydroid deployment, PipeWire routing, manual flow, and objective acceptance |
 
 ## Project Structure
 
