@@ -5,7 +5,8 @@ logs
 data
 *.swp
 artifacts/
-tools/loopback-verifier/build/
+tools/loopback-verifier/build/*
+!tools/loopback-verifier/build/loopback-verifier.apk
 tools/loopback-verifier/debug.keystore
 config/keywords.yaml
 config.local.yaml

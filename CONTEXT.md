@@ -52,3 +52,11 @@ _Avoid_: Primary audio route, host system modification
 The intent translation boundary that resolves unstructured `@我` mentions into concrete commands or conversational replies via an LLM when no registered keyword matches. It enriches the prompt with the speaker's level, system command schemas, and playback context, enforces strict JSON schema extraction, and gracefully falls back to the default keyword on timeouts, parse failures, or disabled LLM state.
 _Avoid_: Chatbot, AI agent, prompt helper
 
+**One-Click Installer**:
+The idempotent provisioning boundary and entry point (`install.sh`) that establishes a complete UShareIPlay runtime on Ubuntu Linux. It bootstraps system prerequisites, clones/updates the repository, provisions the Virtual Audio Device and Host Audio Loopback, installs application packages, configures Appium background service, and registers Persistent ADB Port Forwarding.
+_Avoid_: Setup helper, install script, deploy tool
+
+**Persistent ADB Port Forward**:
+The host-level NAT DNAT/FORWARD routing mechanism and lifecycle supervisor that maps incoming host ADB traffic (port 5555) to the internal Virtual Audio Device container across container IP renewals, service restarts, and host reboots.
+_Avoid_: Adb tunnel, port map helper, adb forwarder
+
