@@ -7,6 +7,8 @@ STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/ushareiplay"
 STATE_FILE="${STATE_DIR}/waydroid-audio.env"
 UI_UNIT="ushareiplay-waydroid-ui"
 SESSION_UNIT="ushareiplay-waydroid-session"
+VIRTUAL_SINK="ushareiplay_music_sink"
+VIRTUAL_SOURCE="${VIRTUAL_SINK}.monitor"
 
 if [[ -z "${XDG_RUNTIME_DIR:-}" && -d "/run/user/$(id -u)" ]]; then
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -55,18 +57,43 @@ open_ui() {
 route_start() {
   need pactl
   mkdir -p "${STATE_DIR}"
-  [[ ! -e "${STATE_FILE}" ]] || { printf 'Waydroid loopback is already active.\n' >&2; return; }
+  if [[ -r "${STATE_FILE}" ]]; then
+    # Reuse a live module instead of creating another null sink after a restart.
+    # shellcheck disable=SC1090
+    source "${STATE_FILE}"
+    if pactl list short sinks | awk '{print $2}' | grep -qx "${VIRTUAL_SINK}" && \
+       pactl list modules short | awk -v id="${module_id}" '$1 == id { found=1 } END { exit !found }'; then
+      pactl set-default-sink "${VIRTUAL_SINK}"
+      pactl set-default-source "${VIRTUAL_SOURCE}"
+      printf 'Waydroid loopback is already active.\n' >&2
+      return
+    fi
+    rm -f "${STATE_FILE}"
+  fi
+
+  # Remove orphaned instances left by an interrupted session or stale state.
+  while read -r module_id; do
+    [[ -n "${module_id}" ]] && pactl unload-module "${module_id}" || true
+  done < <(pactl list modules short | awk '$2 == "module-null-sink" && $0 ~ /sink_name=ushareiplay_music_sink/ { print $1 }')
+
   local old_sink old_source module_id
   old_sink="$(pactl get-default-sink)"
   old_source="$(pactl get-default-source)"
-  module_id="$(pactl load-module module-null-sink sink_name=ushareiplay_music_sink sink_properties=device.description=UShareIPlay_Music_Input)"
+  if [[ "${old_sink}" == "${VIRTUAL_SINK}" ]]; then
+    old_sink="$(pactl list short sinks | awk '$2 != "ushareiplay_music_sink" { print $2; exit }')"
+  fi
+  if [[ "${old_source}" == "${VIRTUAL_SOURCE}" ]]; then
+    old_source="$(pactl list short sources | awk '$2 != "ushareiplay_music_sink.monitor" && $2 !~ /\.monitor$/ { print $2; exit }')"
+  fi
+  [[ -n "${old_sink}" && -n "${old_source}" ]] || { printf 'Could not find physical PipeWire defaults.\n' >&2; exit 1; }
+  module_id="$(pactl load-module module-null-sink sink_name="${VIRTUAL_SINK}" sink_properties=device.description=UShareIPlay_Music_Input)"
   {
     printf 'old_sink=%q\n' "${old_sink}"
     printf 'old_source=%q\n' "${old_source}"
     printf 'module_id=%q\n' "${module_id}"
   } > "${STATE_FILE}"
-  pactl set-default-sink ushareiplay_music_sink
-  pactl set-default-source ushareiplay_music_sink.monitor
+  pactl set-default-sink "${VIRTUAL_SINK}"
+  pactl set-default-source "${VIRTUAL_SOURCE}"
   printf 'Waydroid loopback active: Android playback is routed to its microphone.\n'
 }
 
