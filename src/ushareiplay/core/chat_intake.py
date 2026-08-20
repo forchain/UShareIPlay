@@ -26,7 +26,7 @@ QUEUE_COMMAND_PREFIX_CHARS = "".join(QUEUE_COMMAND_PREFIXES)
 # Raw chat-line patterns. Compiled once; no I/O, no mutable state.
 _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
-_KEYWORD_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*.*?@我\s+(.+)")
+
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]送给([^\s【]+)")
 _GIFT_TYPE2_PATTERN = re.compile(r"恭喜(.+?)在此房间贡献出(\d+)热力值")
@@ -125,17 +125,115 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
         )
 
 
-    keyword_match = None
+
+def _find_keyword_mention(
+    raw: str,
+    mention_re: str,
+) -> tuple[str, str] | None:
+    """Return (nickname, keyword_text) if *raw* contains a keyword mention, else None.
+
+    Two matching paths are tried in order:
+
+    1. **Content-after**: ``@mention`` appears anywhere in the message body,
+       followed by mandatory whitespace and at least one character of content.
+       This is the normal case (mention at start or middle).  The mandatory
+       ``\\s+`` prevents false positives from粘连 forms like ``@ownerXYZ``.
+
+    2. **Content-before**: ``@mention`` appears at the very end of the line
+       (optional trailing whitespace).  The content is whatever preceded the
+       mention.  At least one non-whitespace character must be present before
+       the mention so a bare ``@owner`` (no surrounding text) is not matched.
+
+    Args:
+        raw: Full raw chat line.
+        mention_re: Compiled regex fragment that matches the mention token
+                    (e.g. ``@我`` or ``(?:@我|@Joyer)``).
+
+    Returns:
+        ``(nickname, keyword_text)`` on success, ``None`` otherwise.
+        *keyword_text* is the raw content string (not yet split into
+        keyword/params); callers must strip and split as needed.
+    """
+    # Path 1: content comes AFTER the mention (mention at start or middle)
+    m = re.match(
+        rf"souler\[(.+?)\]说[:：]\s*.*?{mention_re}\s+(.+)",
+        raw,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2)
+
+    # Path 2: mention is at the end; content comes BEFORE it.
+    # (.+?) ensures at least one char of content before the mention.
+    m = re.match(
+        rf"souler\[(.+?)\]说[:：]\s*(.+?)\s*{mention_re}\s*$",
+        raw,
+    )
+    if m:
+        return m.group(1).strip(), m.group(2)
+
+    return None
+
+
+def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeResult:
+    """Classify a single raw chat line.
+
+    Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
+    The result is frozen; callers may convert it to a mutable MessageInfo if needed.
+    """
+    raw = raw or ""
+
+    # User enter/return notifications are system-style lines without the souler
+    # wrapper; check them first so they are not mistaken for plain chat.
+    enter_match = _ENTER_RETURN_PATTERN.match(raw)
+    if enter_match:
+        username = enter_match.group(1).strip()
+        # Soul uses the same wording for "user entered" and "user returned" chat
+        # lines. The existing code treats both as return events to avoid double
+        # firing with InfoManager's online-user diff, which is the real source of
+        # user-enter notifications. Preserve that behavior.
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.USER_RETURN,
+            nickname=username,
+            text=username,
+            raw=raw,
+        )
+
+    gift1_match = _GIFT_TYPE1_PATTERN.search(raw)
+    if gift1_match:
+        giver = gift1_match.group(1).strip()
+        receiver = gift1_match.group(2).strip()
+        if room_owner and receiver == room_owner.strip():
+            return ChatIntakeResult(
+                kind=ChatIntakeKind.GIFT_RECEIVE,
+                nickname=giver,
+                text=giver,
+                raw=raw,
+                heat_value=0,
+            )
+
+    gift2_match = _GIFT_TYPE2_PATTERN.search(raw)
+    if gift2_match:
+        giver = gift2_match.group(1).strip()
+        heat_val = int(gift2_match.group(2))
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.GIFT_RECEIVE,
+            nickname=giver,
+            text=giver,
+            raw=raw,
+            heat_value=heat_val,
+        )
+
     if room_owner and room_owner.strip() and room_owner.strip() != "我":
         escaped_owner = re.escape(room_owner.strip())
-        pattern = rf"souler\[(.+?)\]说[:：]\s*.*?(?:@我|@{escaped_owner})\s+(.+)"
-        keyword_match = re.match(pattern, raw)
+        mention_re = rf"(?:@我|@{escaped_owner})"
     else:
-        keyword_match = _KEYWORD_PATTERN.match(raw)
+        mention_re = "@我"
 
-    if keyword_match:
-        nickname = keyword_match.group(1).strip()
-        keyword_text = keyword_match.group(2).strip()
+    keyword_result = _find_keyword_mention(raw, mention_re)
+
+    if keyword_result:
+        nickname, keyword_text = keyword_result
+        keyword_text = keyword_text.strip()
         parts = keyword_text.split(None, 1)
         keyword = parts[0] if parts else ""
         params = parts[1] if len(parts) > 1 else ""

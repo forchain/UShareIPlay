@@ -237,9 +237,46 @@ class TestClassifyChatLine:
         assert result.kind == ChatIntakeKind.PLAIN_CHAT
 
     def test_keyword_mention_owner_at_end_no_content_is_plain_chat(self):
-        """@owner at the very end with no content after is NOT a keyword mention."""
+        """@owner alone with no preceding content is NOT a keyword mention."""
         result = classify_chat_line("souler[Alice]说：@Chainer", room_owner="Chainer")
         assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_keyword_mention_owner_at_end_with_preceding_content(self):
+        """@owner at the very end with preceding text extracts that text as keyword."""
+        result = classify_chat_line(
+            "souler[Joyer]说：房间有哪些人@Joyer", room_owner="Joyer"
+        )
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Joyer",
+            text="房间有哪些人",
+            params="",
+            raw="souler[Joyer]说：房间有哪些人@Joyer",
+        )
+
+    def test_keyword_mention_owner_at_end_with_space_separated_content(self):
+        """@owner at end with space-separated preceding text."""
+        result = classify_chat_line(
+            "souler[Alice]说：帮我查下 @Chainer", room_owner="Chainer"
+        )
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="帮我查下",
+            params="",
+            raw="souler[Alice]说：帮我查下 @Chainer",
+        )
+
+    def test_keyword_mention_wo_at_end_with_preceding_content(self):
+        """@我 at end with preceding text (no room_owner set)."""
+        result = classify_chat_line("souler[Alice]说：播放晴天@我")
+        assert result == ChatIntakeResult(
+            kind=ChatIntakeKind.KEYWORD_MENTION,
+            nickname="Alice",
+            text="播放晴天",
+            params="",
+            raw="souler[Alice]说：播放晴天@我",
+        )
 
     def test_splits_plain_and_command_parts(self):
         results = expand_queue_text("hello {user_name};:timer list", "Alice")
