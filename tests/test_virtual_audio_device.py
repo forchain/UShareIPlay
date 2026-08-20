@@ -97,6 +97,45 @@ def test_host_audio_launch_command_requires_explicit_opt_in(tmp_path):
     assert "-allow-host-audio" in command
 
 
+def test_writable_system_launch_command_requires_explicit_opt_in(tmp_path):
+    tool = _load_tool()
+
+    command = tool.emulator_launch_command(
+        tmp_path / "emulator",
+        tool.avd_spec(root_fallback=True),
+        port=5556,
+        writable_system=True,
+    )
+
+    assert "-writable-system" in command
+    assert "-allow-host-audio" not in command
+
+
+def test_camera_modes_are_forwarded_to_emulator(tmp_path):
+    tool = _load_tool()
+
+    command = tool.emulator_launch_command(
+        tmp_path / "emulator",
+        tool.avd_spec(root_fallback=True),
+        port=5558,
+        camera_front="webcam0",
+        camera_back="emulated",
+    )
+
+    assert command == [
+        str(tmp_path / "emulator"),
+        "-avd",
+        "ushareiplay-audio-root",
+        "-port",
+        "5558",
+        "-camera-front",
+        "webcam0",
+        "-camera-back",
+        "emulated",
+        "-no-snapshot-save",
+    ]
+
+
 def test_generated_override_preserves_unrelated_local_values(tmp_path):
     tool = _load_tool()
     config_path = tmp_path / "config.local.yaml"
@@ -232,6 +271,33 @@ def test_open_avd_enables_host_mic_only_when_requested(tmp_path, monkeypatch):
     tool.open_avd(tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}), tool.avd_spec(root_fallback=False), port=5556, config_path=tmp_path / "config.local.yaml", host_audio=True)
 
     assert [str(sdk_root / "platform-tools" / "adb"), "-s", "emulator-5556", "emu", "avd", "hostmicon"] in commands
+
+
+def test_open_avd_can_enable_writable_system_without_host_audio(tmp_path, monkeypatch):
+    tool = _load_tool()
+    sdk_root = tmp_path / "sdk"
+    (sdk_root / "emulator").mkdir(parents=True)
+    (sdk_root / "platform-tools").mkdir()
+    (sdk_root / "cmdline-tools" / "latest" / "bin").mkdir(parents=True)
+    commands = []
+
+    monkeypatch.setattr(tool, "provision_avd", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tool.subprocess, "Popen", lambda command, **kwargs: commands.append(("popen", command)) or object())
+    monkeypatch.setattr(tool.subprocess, "run", lambda command, **kwargs: commands.append(("run", command, kwargs)))
+    monkeypatch.setattr(tool, "wait_for_authorized_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tool, "write_appium_override", lambda *args, **kwargs: None)
+
+    tool.open_avd(
+        tool.sdk_tools({"ANDROID_SDK_ROOT": str(sdk_root)}),
+        tool.avd_spec(root_fallback=True),
+        port=5556,
+        config_path=tmp_path / "config.local.yaml",
+        writable_system=True,
+    )
+
+    command = commands[0][1]
+    assert "-writable-system" in command
+    assert "-allow-host-audio" not in command
 
 
 def test_wait_for_authorized_device_rejects_unauthorized_serial(monkeypatch):
