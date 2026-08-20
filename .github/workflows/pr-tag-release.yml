@@ -1,0 +1,52 @@
+name: "PR Tag & Release"
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tag-and-release:
+    name: "Tag & Publish Release"
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git Identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Existing Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p .release-tmp
+          gh release list --json tagName,name,isLatest,createdAt --limit 100 > .release-tmp/releases.json || echo "[]" > .release-tmp/releases.json
+
+      - name: Calculate Release & Backfill Plan
+        id: calc
+        run: |
+          python3 .github/scripts/calculate_release.py \
+            --version-file VERSION \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --releases-json .release-tmp/releases.json \
+            --output .release-tmp/plan.json
+          cat .release-tmp/plan.json
+
+      - name: Publish Release & Update Backfills
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/publish_release.py --plan .release-tmp/plan.json
