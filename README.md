@@ -1,5 +1,14 @@
 # U Share I Play
 
+<div align="center">
+  <video src="docs/demo/ushareiplay-demo.mp4" controls width="100%" style="max-width:960px">
+    <a href="docs/demo/ushareiplay-demo.mp4">▶ 点击下载 / Download demo video</a>
+  </video>
+  <br/><sub>↑ Demo: Soul App party room automation with QQ Music control via chat commands</sub>
+</div>
+
+---
+
 Android automation framework that controls the **Soul App** party room and **QQ Music** via Appium. Receives chat commands (including natural language `@我` mentions via LLM) from room members, plays music, manages seats and timers, and handles room administration — all through a command-driven architecture running on macOS.
 
 ## Quick Start
