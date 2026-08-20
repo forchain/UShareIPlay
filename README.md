@@ -1,10 +1,11 @@
 # U Share I Play
 
 <div align="center">
-  <video src="docs/demo/ushareiplay-demo.mp4" controls width="100%" style="max-width:960px">
-    <a href="docs/demo/ushareiplay-demo.mp4">▶ 点击下载 / Download demo video</a>
-  </video>
-  <br/><sub>↑ Demo: Soul App party room automation with QQ Music control via chat commands</sub>
+
+https://github.com/user-attachments/assets/50d9822d-3c32-471e-91fb-8e50892290de
+
+*Demo: Soul App party room automation with QQ Music control via chat commands*
+
 </div>
 
 ---
