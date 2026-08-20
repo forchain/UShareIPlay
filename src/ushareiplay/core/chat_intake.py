@@ -1,7 +1,8 @@
 """Chat Intake — pure classification/normalization boundary for raw chat text.
 
 This module is side-effect-free and singleton-free. It owns the regex families
-that recognize user-enter/return notifications, keyword mentions (@我), chat-room
+that recognize user-enter/return notifications, keyword mentions (@我 or @owner,
+anywhere in the message body), chat-room
 commands, and plain chat lines, plus the queue grammar used by timer/runtime
 messages (`;` split, `{user_name}` expansion, silent/private prefix detection).
 
@@ -25,7 +26,7 @@ QUEUE_COMMAND_PREFIX_CHARS = "".join(QUEUE_COMMAND_PREFIXES)
 # Raw chat-line patterns. Compiled once; no I/O, no mutable state.
 _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
-_KEYWORD_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*@我\s+(.+)")
+_KEYWORD_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*.*?@我\s+(.+)")
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]送给([^\s【]+)")
 _GIFT_TYPE2_PATTERN = re.compile(r"恭喜(.+?)在此房间贡献出(\d+)热力值")
@@ -127,7 +128,7 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
     keyword_match = None
     if room_owner and room_owner.strip() and room_owner.strip() != "我":
         escaped_owner = re.escape(room_owner.strip())
-        pattern = rf"souler\[(.+?)\]说[:：]\s*(?:@我|@{escaped_owner})\s+(.+)"
+        pattern = rf"souler\[(.+?)\]说[:：]\s*.*?(?:@我|@{escaped_owner})\s+(.+)"
         keyword_match = re.match(pattern, raw)
     else:
         keyword_match = _KEYWORD_PATTERN.match(raw)
