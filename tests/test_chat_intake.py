@@ -132,6 +132,12 @@ class TestClassifyChatLine:
         assert result.nickname == "🍻🥂🥃🍸🍷🍺"
         assert result.heat_value == 0
 
+    def test_gift_type1_matches_with_spaces(self):
+        result = classify_chat_line("souler[🍻🥂🥃🍸🍷🍺] 送给 Joyer 【为你爆灯】", room_owner="Joyer")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "🍻🥂🥃🍸🍷🍺"
+        assert result.heat_value == 0
+
     def test_gift_type1_ignored_when_receiver_is_not_room_owner(self):
         result = classify_chat_line("souler[Alice]送给Bob", room_owner="Joyer")
         assert result.kind == ChatIntakeKind.PLAIN_CHAT
@@ -142,6 +148,13 @@ class TestClassifyChatLine:
         assert result.nickname == "🍻🥂🥃🍸🍷🍺"
         assert result.text == "🍻🥂🥃🍸🍷🍺"
         assert result.heat_value == 3120
+
+    def test_gift_type2_heat_contribution_with_spaces(self):
+        result = classify_chat_line("08-22 15:23:48 [W] 恭喜 dio🤐 在此房间贡献出 11667热力值")
+        assert result.kind == ChatIntakeKind.GIFT_RECEIVE
+        assert result.nickname == "dio🤐"
+        assert result.text == "dio🤐"
+        assert result.heat_value == 11667
 
     def test_gift_type2_heat_contribution_large_value(self):
         result = classify_chat_line("恭喜Alice在此房间贡献出1000000热力值")
