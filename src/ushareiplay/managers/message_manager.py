@@ -163,6 +163,34 @@ class MessageManager(Singleton):
 
                 continue
 
+            if result.kind == ChatIntakeKind.GIFT_RECEIVE and is_missed:
+                from ushareiplay.dal.user_dao import UserDAO
+                from ushareiplay.managers.command_manager import CommandManager
+
+                username = result.nickname
+                heat_val = getattr(result, "heat_value", 0)
+                if heat_val > 0:
+                    user = await UserDAO.record_heat_contribution(username, heat_val)
+                    if user:
+                        self.handler.logger.info(
+                            f"Missed heat contribution processed for user '{user.username}': level=L{user.level}, cumulative_heat={user.heat_value}"
+                        )
+                else:
+                    user = await UserDAO.record_owner_gift(username)
+                    if user:
+                        self.handler.logger.info(
+                            f"Missed gift processed for user '{user.username}': level=L{user.level}"
+                        )
+
+                thank_msg = MessageInfo(
+                    content=f"@{username} 谢谢",
+                    nickname=username,
+                )
+                await MessageQueue.instance().put_message(thank_msg)
+                self.handler.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
+                await CommandManager.instance().notify_gift_receive(username)
+                continue
+
             if result.kind == ChatIntakeKind.COMMAND:
                 command = result.text
                 if not command.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():

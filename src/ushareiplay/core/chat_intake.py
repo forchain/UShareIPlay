@@ -28,8 +28,8 @@ _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
 
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
-_GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]送给([^\s【]+)")
-_GIFT_TYPE2_PATTERN = re.compile(r"恭喜(.+?)在此房间贡献出(\d+)热力值")
+_GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
+_GIFT_TYPE2_PATTERN = re.compile(r"恭喜\s*(.+?)\s*在此房间贡献出\s*(\d+)\s*热力值")
 
 
 class ChatIntakeKind(Enum):
@@ -73,56 +73,6 @@ class ChatIntakeResult:
     sleep_exempt: bool = False
     raw: str = ""
     heat_value: int = 0
-
-
-def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeResult:
-    """Classify a single raw chat line.
-
-    Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
-    The result is frozen; callers may convert it to a mutable MessageInfo if needed.
-    """
-    raw = raw or ""
-
-    # User enter/return notifications are system-style lines without the souler
-    # wrapper; check them first so they are not mistaken for plain chat.
-    enter_match = _ENTER_RETURN_PATTERN.match(raw)
-    if enter_match:
-        username = enter_match.group(1).strip()
-        # Soul uses the same wording for "user entered" and "user returned" chat
-        # lines. The existing code treats both as return events to avoid double
-        # firing with InfoManager's online-user diff, which is the real source of
-        # user-enter notifications. Preserve that behavior.
-        return ChatIntakeResult(
-            kind=ChatIntakeKind.USER_RETURN,
-            nickname=username,
-            text=username,
-            raw=raw,
-        )
-
-    gift1_match = _GIFT_TYPE1_PATTERN.search(raw)
-    if gift1_match:
-        giver = gift1_match.group(1).strip()
-        receiver = gift1_match.group(2).strip()
-        if room_owner and receiver == room_owner.strip():
-            return ChatIntakeResult(
-                kind=ChatIntakeKind.GIFT_RECEIVE,
-                nickname=giver,
-                text=giver,
-                raw=raw,
-                heat_value=0,
-            )
-
-    gift2_match = _GIFT_TYPE2_PATTERN.search(raw)
-    if gift2_match:
-        giver = gift2_match.group(1).strip()
-        heat_val = int(gift2_match.group(2))
-        return ChatIntakeResult(
-            kind=ChatIntakeKind.GIFT_RECEIVE,
-            nickname=giver,
-            text=giver,
-            raw=raw,
-            heat_value=heat_val,
-        )
 
 
 
