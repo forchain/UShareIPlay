@@ -96,7 +96,16 @@ def sdk_tools(env: dict[str, str] | None = None) -> SdkTools:
     )
 
 
-def emulator_launch_command(emulator: Path, spec: AvdSpec, *, port: int, host_audio: bool = False) -> list[str]:
+def emulator_launch_command(
+    emulator: Path,
+    spec: AvdSpec,
+    *,
+    port: int,
+    host_audio: bool = False,
+    writable_system: bool = False,
+    camera_front: str | None = None,
+    camera_back: str | None = None,
+) -> list[str]:
     if port < 5554 or port > 5682 or port % 2:
         raise ValueError("emulator console port must be even and between 5554 and 5682")
     command = [
@@ -109,6 +118,14 @@ def emulator_launch_command(emulator: Path, spec: AvdSpec, *, port: int, host_au
     ]
     if host_audio:
         command.insert(-1, "-allow-host-audio")
+    if writable_system:
+        command.insert(-1, "-writable-system")
+    if camera_front is not None:
+        command.insert(-1, "-camera-front")
+        command.insert(-1, camera_front)
+    if camera_back is not None:
+        command.insert(-1, "-camera-back")
+        command.insert(-1, camera_back)
     return command
 
 
@@ -225,11 +242,29 @@ def root_fallback_allowed(report_path: Path) -> bool:
     return report.get("status") == "failed" and report.get("mode") == "standard"
 
 
-def open_avd(tools: SdkTools, spec: AvdSpec, *, port: int, config_path: Path, host_audio: bool = False) -> str:
+def open_avd(
+    tools: SdkTools,
+    spec: AvdSpec,
+    *,
+    port: int,
+    config_path: Path,
+    host_audio: bool = False,
+    writable_system: bool = False,
+    camera_front: str | None = None,
+    camera_back: str | None = None,
+) -> str:
     provision_avd(tools, spec)
     serial = f"emulator-{port}"
     subprocess.Popen(
-        emulator_launch_command(tools.emulator, spec, port=port, host_audio=host_audio),
+        emulator_launch_command(
+            tools.emulator,
+            spec,
+            port=port,
+            host_audio=host_audio,
+            writable_system=writable_system,
+            camera_front=camera_front,
+            camera_back=camera_back,
+        ),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -249,6 +284,8 @@ def main() -> int:
     parser.add_argument("--root-fallback", action="store_true", help="select the disposable rootable AVD")
     parser.add_argument("--port", type=int, default=5556, help="even emulator console port")
     parser.add_argument("--enable-host-audio", action="store_true", help="opt in to routing the current host input into Android")
+    parser.add_argument("--camera-front", help="emulator camera mode/device, e.g. webcam0 or emulated")
+    parser.add_argument("--camera-back", help="emulator camera mode/device, e.g. webcam0 or emulated")
     parser.add_argument("--config-path", type=Path, default=Path(__file__).resolve().parents[1] / "config.local.yaml")
     parser.add_argument("--failure-report", type=Path, help="required failed standard verification report for Root Fallback")
     args = parser.parse_args()
@@ -269,7 +306,15 @@ def main() -> int:
         print(f"prepared {spec.name}")
         return 0
 
-    serial = open_avd(tools, spec, port=args.port, config_path=args.config_path, host_audio=args.enable_host_audio)
+    serial = open_avd(
+        tools,
+        spec,
+        port=args.port,
+        config_path=args.config_path,
+        host_audio=args.enable_host_audio,
+        camera_front=args.camera_front,
+        camera_back=args.camera_back,
+    )
     print(f"opened {spec.name} as {serial}")
     return 0
 
