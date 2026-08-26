@@ -11,6 +11,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ushareiplay.core.chat_intake import format_ai_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -288,6 +290,8 @@ class NaturalLanguageResolver:
             result_type = str(parsed.get("type", "")).strip().lower()
             result_content = str(parsed.get("content", "")).strip()
             if result_type in ("command", "reply") and result_content:
+                if result_type == "reply":
+                    result_content = format_ai_message(result_content)
                 return NaturalLanguageResult(type=result_type, content=result_content)
         except Exception as e:
             logger.warning(f"NaturalLanguageResolver error during resolution: {e}")

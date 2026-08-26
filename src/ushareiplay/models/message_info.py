@@ -9,3 +9,4 @@ class MessageInfo:
     silent: bool = False
     private_reply: bool = False
     sleep_exempt: bool = False
+    source: str | None = None

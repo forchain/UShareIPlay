@@ -448,7 +448,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     messages = await MessageQueue.instance().get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
-    assert msg.content == "是的，当前正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
+    assert msg.content == "[智能] 是的，当前正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
     assert msg.nickname == "不约儿童🐏🐏"
     assert msg.sleep_exempt is True
 
@@ -536,7 +536,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
     messages = await MessageQueue.instance().get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
-    assert msg.content == "现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~"
+    assert msg.content == "[智能] 现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~"
     assert msg.nickname == "Alice"
 
 

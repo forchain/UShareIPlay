@@ -10,6 +10,8 @@ from ushareiplay.core.chat_intake import (
     ChatIntakeKind,
     classify_chat_line,
     expand_queue_text,
+    format_manual_message,
+    is_manual_operator,
     is_private_reply_prefix,
     is_silent_prefix,
     normalize_command_text,
@@ -379,8 +381,13 @@ class CommandManager(Singleton):
                         )
                     )
                 elif not result.silent:
+                    screen_text = (
+                        format_manual_message(result.text)
+                        if is_manual_operator(result.nickname, getattr(message_info, "source", None))
+                        else result.text
+                    )
                     if send_screen_message is not None:
-                        send_screen_message(result.text)
+                        send_screen_message(screen_text)
                 elif self._logger is not None:
                     self._logger.info(f"Silent command suppressed queued message: {result.text}")
 

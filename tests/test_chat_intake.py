@@ -363,3 +363,53 @@ class TestClassifyChatLine:
 class TestQueueCommandPrefixChars:
     def test_includes_all_triggers(self):
         assert QUEUE_COMMAND_PREFIX_CHARS == ":：/／$＄"
+
+
+class TestMessageSourceFormatting:
+    def test_format_ai_message_adds_prefix(self):
+        from ushareiplay.core.chat_intake import format_ai_message
+
+        assert format_ai_message("你好呀") == "[智能] 你好呀"
+
+    def test_format_ai_message_preserves_existing_prefix(self):
+        from ushareiplay.core.chat_intake import format_ai_message
+
+        assert format_ai_message("[智能] 你好呀") == "[智能] 你好呀"
+        assert format_ai_message("【智能】你好呀") == "【智能】你好呀"
+        assert format_ai_message("[人工] 你好呀") == "[人工] 你好呀"
+        assert format_ai_message("【人工】你好呀") == "【人工】你好呀"
+
+    def test_format_ai_message_empty(self):
+        from ushareiplay.core.chat_intake import format_ai_message
+
+        assert format_ai_message("") == ""
+        assert format_ai_message(None) == ""
+
+    def test_format_manual_message_adds_prefix(self):
+        from ushareiplay.core.chat_intake import format_manual_message
+
+        assert format_manual_message("大家好") == "[人工] 大家好"
+
+    def test_format_manual_message_preserves_existing_prefix(self):
+        from ushareiplay.core.chat_intake import format_manual_message
+
+        assert format_manual_message("[人工] 大家好") == "[人工] 大家好"
+        assert format_manual_message("【人工】大家好") == "【人工】大家好"
+        assert format_manual_message("[智能] 大家好") == "[智能] 大家好"
+        assert format_manual_message("【智能】大家好") == "【智能】大家好"
+
+    def test_format_manual_message_empty(self):
+        from ushareiplay.core.chat_intake import format_manual_message
+
+        assert format_manual_message("") == ""
+        assert format_manual_message(None) == ""
+
+    def test_is_manual_operator(self):
+        from ushareiplay.core.chat_intake import is_manual_operator
+
+        assert is_manual_operator("Console") is True
+        assert is_manual_operator("Alice", source="console") is True
+        assert is_manual_operator("Alice", source="agent_spool") is True
+        assert is_manual_operator("Alice", source="chat") is False
+        assert is_manual_operator("Bob") is False
+        assert is_manual_operator(None) is False

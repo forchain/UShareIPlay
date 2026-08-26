@@ -166,7 +166,7 @@ def _image_directory(tools: SdkTools, spec: AvdSpec) -> Path:
 
 
 def java_home(env: dict[str, str] | None = None, homebrew_default: Path | None = None) -> Path | None:
-    values = env or os.environ
+    values = os.environ if env is None else env
     configured = values.get("JAVA_HOME")
     if configured and Path(configured).is_dir():
         return Path(configured)

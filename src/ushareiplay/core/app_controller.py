@@ -524,7 +524,12 @@ class AppController(Singleton):
                                         ctx={"error": traceback.format_exc(), "reason": input_source},
                                     )
                             else:
-                                from ushareiplay.core.chat_intake import ChatIntakeKind, expand_queue_text
+                                from ushareiplay.core.chat_intake import (
+                                    ChatIntakeKind,
+                                    expand_queue_text,
+                                    format_manual_message,
+                                    is_manual_operator,
+                                )
                                 from ushareiplay.models.message_info import MessageInfo
 
                                 for result in expand_queue_text(message, nickname):
@@ -535,6 +540,7 @@ class AppController(Singleton):
                                             silent=result.silent,
                                             private_reply=result.private_reply,
                                             sleep_exempt=result.sleep_exempt,
+                                            source=input_source,
                                         )
                                         await MessageQueue.instance().put_message(message_info)
                                         self.obs.emit(
@@ -543,7 +549,12 @@ class AppController(Singleton):
                                         )
                                         self.logger.info(f"{input_source} message added to queue: {message_info.content}")
                                     elif result.kind == ChatIntakeKind.PLAIN_CHAT and not result.silent:
-                                        self.message_dispatch.send_screen_message(result.text)
+                                        screen_text = (
+                                            format_manual_message(result.text)
+                                            if is_manual_operator(nickname, input_source)
+                                            else result.text
+                                        )
+                                        self.message_dispatch.send_screen_message(screen_text)
                                     elif result.kind == ChatIntakeKind.PLAIN_CHAT and result.silent:
                                         self.logger.info(f"Silent queued message suppressed: {result.text}")
 
