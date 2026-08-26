@@ -134,7 +134,43 @@ async def test_resolver_success_reply(mock_commands_config):
         )
 
         assert result == NaturalLanguageResult(
-            type="reply", content="你好呀！我是派对音乐助手~"
+            type="reply", content="[智能] 你好呀！我是派对音乐助手~"
+        )
+
+
+@pytest.mark.asyncio
+async def test_resolver_reply_already_tagged_is_idempotent(mock_commands_config):
+    resolver = NaturalLanguageResolver(
+        config={
+            "enabled": True,
+            "api_key": "test-key",
+            "base_url": "https://api.openai.com/v1",
+        }
+    )
+
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {"type": "reply", "content": "[智能] 已经在播放啦"}
+                    )
+                }
+            }
+        ]
+    }
+
+    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+        mock_api.return_value = json.dumps(mock_response)
+        result = await resolver.resolve(
+            user_text="放歌了吗",
+            user_name="Bob",
+            user_level=0,
+            commands_config=mock_commands_config,
+        )
+
+        assert result == NaturalLanguageResult(
+            type="reply", content="[智能] 已经在播放啦"
         )
 
 
@@ -390,7 +426,7 @@ async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
         )
 
         assert result == NaturalLanguageResult(
-            type="reply", content="是的，现在正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
+            type="reply", content="[智能] 是的，现在正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
         )
 
 
