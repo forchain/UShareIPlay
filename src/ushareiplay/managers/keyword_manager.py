@@ -485,6 +485,18 @@ class KeywordManager(Singleton):
 
             playback_info = self._get_playback_info()
 
+            memory_context = None
+            try:
+                from ushareiplay.managers.memory_manager import MemoryManager
+                if MemoryManager.is_initialized():
+                    memory_context = await MemoryManager.instance().get_user_dialogue_context(
+                        result.nickname,
+                        user_level=user_level,
+                    )
+            except Exception:
+                pass
+
+
             resolved = await self.nl_resolver.resolve(
                 user_text=user_text,
                 user_name=result.nickname,
@@ -492,7 +504,9 @@ class KeywordManager(Singleton):
                 commands_config=commands_config,
                 playback_info=playback_info,
                 room_info=room_info,
+                memory_context=memory_context,
             )
+
 
             if not resolved or not resolved.content:
                 return False
@@ -517,7 +531,17 @@ class KeywordManager(Singleton):
 
     async def dispatch_mention(self, result, sleep_exempt: bool = True):
         """Handle a keyword-mention ChatIntakeResult by finding and executing the keyword."""
+        # 记录用户 @群主 的发言至 UserChatLog 供记忆系统使用
+        user_text = f"{result.text} {result.params}".strip() if result.params else (result.text or "").strip()
+        if result.nickname and user_text:
+            try:
+                from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
+                await UserChatLogDAO.create(username=result.nickname, content=user_text)
+            except Exception:
+                self.logger.error(f"Error logging user chat for {result.nickname}: {traceback.format_exc()}")
+
         keyword_record = await self.find_keyword(result.text, result.nickname)
+
         if keyword_record:
             await self.execute_keyword(
                 keyword_record,

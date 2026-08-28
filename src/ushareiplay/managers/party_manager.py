@@ -164,7 +164,16 @@ class PartyManager(Singleton):
                 RoomState.instance().clear()
             self.handler.party_id = None
 
+            # Trigger background memory consolidation sweep on party end
+            try:
+                from ushareiplay.managers.memory_manager import MemoryManager
+                if MemoryManager.is_initialized():
+                    MemoryManager.instance().schedule_consolidation_all()
+            except Exception:
+                self.logger.warning("Failed to schedule memory consolidation on end_party")
+
             return {'success': 'Party ended'}
+
         except Exception as e:
             self.logger.error(f"Error processing end command: {traceback.format_exc()}")
             return {'error': 'Failed to end party'}
@@ -660,6 +669,15 @@ class PartyManager(Singleton):
             await automation.on_party_created_new()
         else:
             self.logger.warning("post_party_create_automation not initialized; skip auto commands")
+
+        # Trigger background memory consolidation sweep on party create/restart
+        try:
+            from ushareiplay.managers.memory_manager import MemoryManager
+            if MemoryManager.is_initialized():
+                MemoryManager.instance().schedule_consolidation_all()
+        except Exception:
+            self.logger.warning("Failed to schedule memory consolidation on _after_party_created")
+
 
     def ensure_room_info_window_closed(self) -> None:
         """

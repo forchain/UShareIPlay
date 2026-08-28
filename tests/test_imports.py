@@ -33,6 +33,8 @@ MODULES = [
     "ushareiplay.models.exit_event",
     "ushareiplay.models.return_event",
     "ushareiplay.models.timer",
+    "ushareiplay.models.user_chat_log",
+    "ushareiplay.models.user_memory",
     # dal
     "ushareiplay.dal",
     "ushareiplay.dal.user_dao",
@@ -42,7 +44,10 @@ MODULES = [
     "ushareiplay.dal.enter_dao",
     "ushareiplay.dal.exit_dao",
     "ushareiplay.dal.return_dao",
+    "ushareiplay.dal.user_chat_log_dao",
+    "ushareiplay.dal.user_memory_dao",
     # helpers
+
     "ushareiplay.helpers.playlist_parser",
 ]
 

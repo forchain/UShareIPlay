@@ -8,6 +8,22 @@ from ushareiplay.models.exit_event import ExitEvent
 from ushareiplay.models.focus_event import FocusEvent
 from ushareiplay.models.timer import Timer
 from ushareiplay.models.receive_event import ReceiveEvent
+from ushareiplay.models.user_chat_log import UserChatLog
+from ushareiplay.models.user_memory import UserMemory
 
-__all__ = ['User', 'SeatReservation', 'MessageInfo', 'Keyword', 'EnterEvent', 'ReturnEvent', 'ExitEvent', 'FocusEvent', 'Timer', 'ReceiveEvent']
+__all__ = [
+    'User',
+    'SeatReservation',
+    'MessageInfo',
+    'Keyword',
+    'EnterEvent',
+    'ReturnEvent',
+    'ExitEvent',
+    'FocusEvent',
+    'Timer',
+    'ReceiveEvent',
+    'UserChatLog',
+    'UserMemory',
+]
+
  

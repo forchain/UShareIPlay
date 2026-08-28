@@ -76,7 +76,9 @@ class AppController(Singleton):
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
+        self.memory_manager = None
         self.post_party_create_automation = None
+
 
         # Non-UI operations task
         self._non_ui_task = None
@@ -414,7 +416,11 @@ class AppController(Singleton):
             TitleManager.initialize()
             AdminManager.initialize()
             KeywordManager.initialize()
+            from ushareiplay.managers.memory_manager import MemoryManager
+            self.memory_manager = MemoryManager.initialize()
+            self.memory_manager.configure(self.config)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
+
             self._runtime_queue_drainer = RuntimeQueueDrainer(
                 handler=self.soul_handler,
                 command_manager=self.command_manager,
@@ -469,6 +475,15 @@ class AppController(Singleton):
         self.logger.info("初始化定时器管理器...")
         await self.timer_manager.start()
         self.logger.info("定时器管理器初始化完成")
+
+        # Start async memory manager worker
+        if getattr(self, "memory_manager", None):
+            self.logger.info("初始化记忆管理器...")
+            await self.memory_manager.start()
+            self.logger.info("记忆管理器初始化完成")
+
+
+
 
         # Start console input thread
         self.logger.info("启动控制台输入线程...")
@@ -636,6 +651,8 @@ class AppController(Singleton):
 
         # Stop async timer manager
         await self.timer_manager.stop()
+        if hasattr(self, 'memory_manager') and self.memory_manager:
+            await self.memory_manager.stop()
         self.logger.info("Application stopped")
 
     async def shutdown(self):
@@ -651,6 +668,10 @@ class AppController(Singleton):
 
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
+
+        if hasattr(self, 'memory_manager') and self.memory_manager:
+            await self.memory_manager.stop()
+
 
         if self.driver:
             try:
