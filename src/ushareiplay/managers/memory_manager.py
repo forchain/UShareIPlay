@@ -23,6 +23,7 @@ class MemoryManager(Singleton):
         self._worker_task: Optional[asyncio.Task] = None
         self._running: bool = False
         self._min_messages: int = 10
+        self._min_level_for_long_term: int = 20
         self._worker_delay: float = 1.0
         self._enabled: bool = True
         self._last_user_trigger_time: Dict[str, float] = {}  # username -> timestamp for debouncing
@@ -36,12 +37,17 @@ class MemoryManager(Singleton):
         
         self._enabled = bool(mem_cfg.get("enabled", True))
         self._min_messages = int(mem_cfg.get("min_messages", 10))
+        self._min_level_for_long_term = int(mem_cfg.get("min_level_for_long_term", 20))
         self._worker_delay = float(mem_cfg.get("worker_delay_seconds", 1.0))
         self._config = cfg
 
     @property
     def min_messages(self) -> int:
         return self._min_messages
+
+    @property
+    def min_level_for_long_term(self) -> int:
+        return self._min_level_for_long_term
 
     @property
     def is_enabled(self) -> bool:
@@ -54,8 +60,11 @@ class MemoryManager(Singleton):
         from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
         return await UserChatLogDAO.create(username=username, content=content)
 
-    async def get_user_dialogue_context(self, username: str) -> dict:
-        """获取用于对话注入的记忆上下文（长期铁律区、画像与短期临时聊天）"""
+    async def get_user_dialogue_context(self, username: str, user_level: int = 0) -> dict:
+        """获取用于对话注入的记忆上下文（长期铁律区、画像与短期临时聊天）。
+        
+        若用户等级低于 min_level_for_long_term（默认 20 级），仅加载短期临时聊天记录，不加载长期记忆。
+        """
         if not self._enabled or not username:
             return {"directives": [], "profile": "", "short_term_chats": []}
 
@@ -67,8 +76,13 @@ class MemoryManager(Singleton):
             canonical_user = await UserDAO.get_or_create(username=username)
             memory = await UserMemoryDAO.get_by_user_id(canonical_user.id)
 
-            directives = memory.immutable_directives if memory else []
-            profile = memory.profile_summary if memory else ""
+            if user_level >= self._min_level_for_long_term:
+                directives = memory.immutable_directives if memory else []
+                profile = memory.profile_summary if memory else ""
+            else:
+                directives = []
+                profile = ""
+
             since = memory.last_consolidated_at if memory else None
 
             recent_logs = await UserChatLogDAO.get_unconsolidated_logs(
@@ -83,6 +97,7 @@ class MemoryManager(Singleton):
                 "last_consolidated_at": since,
             }
         except Exception:
+
             logger.error(f"Error fetching user dialogue context for {username}: {traceback.format_exc()}")
             return {"directives": [], "profile": "", "short_term_chats": []}
 

@@ -90,10 +90,11 @@ async def test_memory_manager_get_user_dialogue_context():
         await UserChatLogDAO.create("david", "放首电音")
         await UserChatLogDAO.create("david", "音量调大点")
 
-        ctx_filled = await mm.get_user_dialogue_context("david")
+        ctx_filled = await mm.get_user_dialogue_context("david", user_level=20)
         assert ctx_filled["directives"] == ["称谓: 大卫哥"]
         assert ctx_filled["profile"] == "喜欢电子乐"
         assert ctx_filled["short_term_chats"] == ["放首电音", "音量调大点"]
+
 
     finally:
         await db.close()

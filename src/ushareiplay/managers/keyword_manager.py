@@ -489,9 +489,13 @@ class KeywordManager(Singleton):
             try:
                 from ushareiplay.managers.memory_manager import MemoryManager
                 if MemoryManager.is_initialized():
-                    memory_context = await MemoryManager.instance().get_user_dialogue_context(result.nickname)
+                    memory_context = await MemoryManager.instance().get_user_dialogue_context(
+                        result.nickname,
+                        user_level=user_level,
+                    )
             except Exception:
                 pass
+
 
             resolved = await self.nl_resolver.resolve(
                 user_text=user_text,
