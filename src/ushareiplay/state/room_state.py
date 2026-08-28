@@ -28,7 +28,11 @@ class RoomState(Singleton):
         """延迟获取 logger 实例"""
         if self._logger is None:
             from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            if SoulHandler.is_initialized():
+                self._logger = SoulHandler.instance().logger
+            else:
+                import logging
+                self._logger = logging.getLogger("ushareiplay.state.room_state")
         return self._logger
 
     @property

@@ -599,6 +599,8 @@ class PartyManager(Singleton):
                 return False
             close_party_notification.click()
             self.logger.info("Clicked close party notification")
+            if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                self.handler.element_finder.wait_for_element_disappear('close_party_notification', timeout=2.0)
             from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = False
@@ -610,22 +612,46 @@ class PartyManager(Singleton):
 
         change_party_type = bool(self.handler.config.get('change_party_type', True))
         if change_party_type:
-            party_type_chat = self.handler.element_finder.wait_for_element('party_type_chat')
-            if not party_type_chat:
-                self.logger.warning("未找到闲聊唠嗑派对类型按钮")
-                return False
-            party_type_chat.click()
-            self.logger.info("Clicked party type chat entry (闲聊唠嗑)")
-
             target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
-            party_type_target = self.handler.element_finder.wait_for_element(target_type_key)
+            party_type_target = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                party_type_chat = (
+                    self.handler.element_finder.wait_for_element_clickable('party_type_chat', timeout=3)
+                    if hasattr(self.handler.element_finder, 'wait_for_element_clickable')
+                    else None
+                )
+                if not party_type_chat:
+                    party_type_chat = self.handler.element_finder.wait_for_element('party_type_chat')
+
+                if not party_type_chat:
+                    self.logger.warning("未找到闲聊唠嗑派对类型按钮")
+                    return False
+
+                party_type_chat.click()
+                self.logger.info(f"Clicked party type chat entry (闲聊唠嗑) (attempt {attempt + 1})")
+
+                party_type_target = self.handler.element_finder.wait_for_element(target_type_key, timeout=3)
+                if party_type_target:
+                    party_type_target.click()
+                    self.logger.info(f"Clicked target party type entry ({target_type_key})")
+                    if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                        self.handler.element_finder.wait_for_element_disappear(target_type_key, timeout=2.0)
+                    break
+                else:
+                    self.logger.warning(f"未在弹窗中找到目标派对类型按钮 ({target_type_key})，准备重试点击类型入口...")
+
             if not party_type_target:
                 self.logger.warning(f"未找到目标派对类型按钮: {target_type_key}")
                 return False
-            party_type_target.click()
-            self.logger.info(f"Clicked target party type entry ({target_type_key})")
 
-        create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
+        create_party_button = (
+            self.handler.element_finder.wait_for_element_clickable('create_party_button', timeout=5)
+            if hasattr(self.handler.element_finder, 'wait_for_element_clickable')
+            else None
+        )
+        if not create_party_button:
+            create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
         if not create_party_button:
             self.logger.warning("未找到创建房间按钮")
             return False
