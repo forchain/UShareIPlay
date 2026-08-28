@@ -85,18 +85,53 @@ preflight_checks() {
   fi
 
   # 2. Appium Service check
-  if command -v curl >/dev/null 2>&1; then
-    if ! curl -s -m 2 http://127.0.0.1:4723/status >/dev/null 2>&1; then
-      log "Appium 服务未就绪，尝试唤起系统服务..."
-      if command -v systemctl >/dev/null 2>&1; then
-        sudo systemctl start ushareiplay-appium 2>/dev/null || systemctl --user start ushareiplay-appium 2>/dev/null || true
-      fi
-      sleep 2
-      if ! curl -s -m 2 http://127.0.0.1:4723/status >/dev/null 2>&1; then
-        log "提示: Appium (http://127.0.0.1:4723) 仍在启动中或未安装为服务。"
-      fi
+  local appium_host="${APPIUM_HOST:-}"
+  local appium_port="${APPIUM_PORT:-}"
+
+  if [[ -z "${appium_host}" || -z "${appium_port}" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      local cfg_host="" cfg_port=""
+      read -r cfg_host cfg_port < <(uv run python -c "
+try:
+    from ushareiplay.core.config_loader import ConfigLoader
+    cfg = ConfigLoader.load_config('${ROOT_DIR}/config.yaml')
+    print(cfg.get('appium', {}).get('host', '127.0.0.1'), cfg.get('appium', {}).get('port', 4723))
+except Exception:
+    print('127.0.0.1 4723')
+" 2>/dev/null || echo "127.0.0.1 4723")
+      appium_host="${appium_host:-$cfg_host}"
+      appium_port="${appium_port:-$cfg_port}"
     fi
   fi
+
+  appium_host="${appium_host:-127.0.0.1}"
+  appium_port="${appium_port:-4723}"
+
+  local is_local=0
+  if [[ "${appium_host}" == "127.0.0.1" || "${appium_host}" == "localhost" ]]; then
+    is_local=1
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    local appium_url="http://${appium_host}:${appium_port}/status"
+    if ! curl -s -L -k -m 3 "${appium_url}" >/dev/null 2>&1; then
+      if [[ "${is_local}" -eq 1 ]]; then
+        log "本地 Appium 服务 (${appium_url}) 未就绪，尝试唤起系统服务..."
+        if command -v systemctl >/dev/null 2>&1; then
+          sudo systemctl start ushareiplay-appium 2>/dev/null || systemctl --user start ushareiplay-appium 2>/dev/null || true
+        fi
+        sleep 2
+        if ! curl -s -L -k -m 3 "${appium_url}" >/dev/null 2>&1; then
+          log "提示: 本地 Appium (${appium_url}) 仍在启动中或未安装为服务。"
+        fi
+      else
+        log "警告: 远程 Appium 服务 (${appium_url}) 当前无法连通，请检查网络或远程服务状态。"
+      fi
+    else
+      log "Appium 服务健康 (${appium_url})。"
+    fi
+  fi
+
 
   # 3. ADB connectivity check
   if command -v adb >/dev/null 2>&1; then
