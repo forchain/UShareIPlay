@@ -515,6 +515,14 @@ class CommandManager(Singleton):
                 f"as canonical '{canonical_username}'"
             )
 
+            # Schedule memory consolidation for the leaving user (canonical)
+            try:
+                from ushareiplay.managers.memory_manager import MemoryManager
+                if MemoryManager.is_initialized():
+                    MemoryManager.instance().schedule_consolidation_user(canonical_username)
+            except Exception:
+                self.logger.warning(f"Failed to schedule memory consolidation for user_leave '{canonical_username}'")
+
             for module in self.get_command_modules().values():
                 try:
                     if hasattr(module.command, 'user_leave'):
@@ -532,6 +540,13 @@ class CommandManager(Singleton):
         Args:
             username: Username of the user who entered
         """
+        try:
+            from ushareiplay.managers.memory_manager import MemoryManager
+            if MemoryManager.is_initialized():
+                MemoryManager.instance().schedule_consolidation_user(username)
+        except Exception:
+            self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
+
         for module in self.get_command_modules().values():
             try:
                 if hasattr(module.command, 'user_enter'):
@@ -546,12 +561,20 @@ class CommandManager(Singleton):
         Args:
             username: Username of the user who returned
         """
+        try:
+            from ushareiplay.managers.memory_manager import MemoryManager
+            if MemoryManager.is_initialized():
+                MemoryManager.instance().schedule_consolidation_user(username)
+        except Exception:
+            self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
+
         for module in self.get_command_modules().values():
             try:
                 if hasattr(module.command, 'user_return'):
                     await module.command.user_return(username)
             except Exception:
                 self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
+
 
     async def notify_gift_receive(self, username: str):
         """

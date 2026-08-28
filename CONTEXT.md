@@ -60,3 +60,11 @@ _Avoid_: Setup helper, install script, deploy tool
 The host-level NAT DNAT/FORWARD routing mechanism and lifecycle supervisor that maps incoming host ADB traffic (port 5555) to the internal Virtual Audio Device container across container IP renewals, service restarts, and host reboots.
 _Avoid_: Adb tunnel, port map helper, adb forwarder
 
+**User Memory System**:
+The dual-layer personalized memory architecture comprising per-user `@群主` Chat Logs, Short-Term Memory (unconsolidated messages since the last update cursor), and Long-Term Memory (structured JSON containing Immutable Directives such as user honorifics/hard preferences and an Evolving Profile). It injects relevant memory into Natural Language Command Resolution during active conversations.
+_Avoid_: Chat history cache, user notes, prompt memory
+
+**Memory Consolidation**:
+The decoupled, low-priority background distillation pipeline triggered by room lifecycle events (room creation, room closure) and user presence events (user enter, user exit). It evaluates users against a minimum unsummarized message threshold, invokes an LLM to incrementally refine the user's Long-Term Memory without modifying Immutable Directives unless explicitly instructed by the user, and advances the consolidation timestamp cursor upon success.
+_Avoid_: Memory sync, log summarizer, batch updater
+
