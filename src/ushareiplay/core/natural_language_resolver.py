@@ -200,7 +200,7 @@ class NaturalLanguageResolver:
 """
 
 
-    def _extract_json(self, raw_content: str) -> Optional[dict]:
+    def _extract_json(self, raw_content: str, required_keys: Optional[list[str]] = None) -> Optional[dict]:
         """Extract and parse JSON object from raw LLM output text."""
         if not raw_content:
             return None
@@ -220,18 +220,25 @@ class NaturalLanguageResolver:
             else:
                 json_str = raw
 
+        def _matches_schema(parsed_dict: Any) -> bool:
+            if not isinstance(parsed_dict, dict):
+                return False
+            if required_keys:
+                return all(key in parsed_dict for key in required_keys)
+            return True
+
         try:
             data = json.loads(json_str)
-            if isinstance(data, dict) and "type" in data and "content" in data:
+            if _matches_schema(data):
                 return data
         except Exception:
             pass
 
-        # Fallback: search for any standalone valid JSON object matching our schema
+        # Fallback: search for any standalone valid JSON object
         for chunk in re.findall(r"\{[^{}]*\}", raw):
             try:
                 data = json.loads(chunk)
-                if isinstance(data, dict) and "type" in data and "content" in data:
+                if _matches_schema(data):
                     return data
             except Exception:
                 continue
@@ -239,7 +246,8 @@ class NaturalLanguageResolver:
         logger.debug(f"Failed to parse JSON from LLM output: {raw_content}")
         return None
 
-    def _sync_http_call(self, payload: dict) -> str:
+    def _sync_http_call(self, payload: dict, timeout: Optional[float] = None) -> str:
+
         """Synchronous HTTP call to OpenAI-compatible endpoint."""
         base = self.base_url.rstrip("/")
         if base.endswith("/chat/completions"):
@@ -253,12 +261,13 @@ class NaturalLanguageResolver:
         data_bytes = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
 
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        effective_timeout = float(timeout) if timeout is not None else self.timeout
+        with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
             return resp.read().decode("utf-8")
 
-    async def _call_api(self, payload: dict) -> str:
+    async def _call_api(self, payload: dict, timeout: Optional[float] = None) -> str:
         """Asynchronous wrapper for API call."""
-        return await asyncio.to_thread(self._sync_http_call, payload)
+        return await asyncio.to_thread(self._sync_http_call, payload, timeout=timeout)
 
     async def resolve(
         self,
@@ -314,9 +323,10 @@ class NaturalLanguageResolver:
                 return None
 
             content = choices[0].get("message", {}).get("content", "")
-            parsed = self._extract_json(content)
+            parsed = self._extract_json(content, required_keys=["type", "content"])
             if not parsed:
                 return None
+
 
             result_type = str(parsed.get("type", "")).strip().lower()
             result_content = str(parsed.get("content", "")).strip()

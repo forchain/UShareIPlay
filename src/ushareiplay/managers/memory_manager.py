@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import traceback
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +27,7 @@ class MemoryManager(Singleton):
         self._min_messages: int = 10
         self._min_level_for_long_term: int = 20
         self._worker_delay: float = 1.0
+        self._timeout: float = 30.0
         self._enabled: bool = True
         self._last_user_trigger_time: Dict[str, float] = {}  # username -> timestamp for debouncing
         self._debounce_interval: float = 60.0  # 1 minute debounce for presence triggers
@@ -39,11 +42,17 @@ class MemoryManager(Singleton):
         self._min_messages = int(mem_cfg.get("min_messages", 10))
         self._min_level_for_long_term = int(mem_cfg.get("min_level_for_long_term", 20))
         self._worker_delay = float(mem_cfg.get("worker_delay_seconds", 1.0))
+        self._timeout = float(mem_cfg.get("timeout", 30.0))
         self._config = cfg
+
+    @property
+    def timeout(self) -> float:
+        return self._timeout
 
     @property
     def min_messages(self) -> int:
         return self._min_messages
+
 
     @property
     def min_level_for_long_term(self) -> int:
@@ -299,15 +308,14 @@ class MemoryManager(Singleton):
                 "temperature": 0.1,
             }
 
-            resp_str = await resolver._call_api(payload)
-            import json
+            resp_str = await resolver._call_api(payload, timeout=self._timeout)
             resp_data = json.loads(resp_str)
             choices = resp_data.get("choices", [])
             if not choices:
                 return False, existing_directives, existing_profile
 
             content = choices[0].get("message", {}).get("content", "")
-            parsed = resolver._extract_json(content)
+            parsed = resolver._extract_json(content, required_keys=["directives", "profile"])
             if not parsed:
                 return False, existing_directives, existing_profile
 
@@ -327,5 +335,6 @@ class MemoryManager(Singleton):
             return True, updated_directives, updated_profile
 
         except Exception as e:
-            logger.error(f"Error calling consolidation LLM: {e}")
+            logger.error(f"Error calling consolidation LLM (timeout={self._timeout}s): {e}")
             return False, existing_directives, existing_profile
+

@@ -534,5 +534,31 @@ def test_resolver_custom_prompt_alias_key(mock_commands_config):
     assert "自定义指令：保持专业简洁风格。" in prompt
 
 
+def test_sync_http_call_custom_timeout():
+    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key", "timeout": 4.0})
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"result": "ok"}'
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        # 1. Default timeout
+        resolver._sync_http_call({"model": "deepseek-chat"})
+        assert mock_urlopen.call_args[1]["timeout"] == 4.0
+
+        # 2. Custom timeout override
+        resolver._sync_http_call({"model": "deepseek-chat"}, timeout=30.0)
+        assert mock_urlopen.call_args[1]["timeout"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_call_api_custom_timeout():
+    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key", "timeout": 4.0})
+    with patch.object(resolver, "_sync_http_call", return_value='{"result": "ok"}') as mock_sync:
+        res = await resolver._call_api({"model": "deepseek-chat"}, timeout=25.0)
+        assert res == '{"result": "ok"}'
+        mock_sync.assert_called_once_with({"model": "deepseek-chat"}, timeout=25.0)
+
+
+
 
 

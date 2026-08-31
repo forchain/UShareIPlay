@@ -551,5 +551,13 @@ llm:
   timeout: 4.0
   # 自定义系统提示词/人设补充指令（可选，支持多行文本，用于在不修改代码的情况下调整 Agent 语气风格与行为）
   system_prompt: ""
+  # 用户个性化记忆系统配置
+  memory:
+    enabled: true
+    min_messages: 10
+    min_level_for_long_term: 20
+    worker_delay_seconds: 1.0
+    timeout: 30.0  # 异步记忆提炼 LLM 超时时间（秒，默认 30.0）
+
 
 

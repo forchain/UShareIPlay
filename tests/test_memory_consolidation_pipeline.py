@@ -190,3 +190,67 @@ async def test_memory_manager_worker_loop_and_debouncing():
 
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_manager_timeout_configuration_and_forwarding():
+    db = DatabaseManager(db_url="sqlite://:memory:")
+    await db.init()
+    try:
+        if not MemoryManager.is_initialized():
+            MemoryManager.initialize()
+        mm = MemoryManager.instance()
+
+        # 1. Default timeout should be 30.0s
+        mm.configure({"llm": {"memory": {"enabled": True}}})
+        assert mm.timeout == 30.0
+
+        # 2. Configured custom timeout
+        mm.configure({"llm": {"memory": {"enabled": True, "timeout": 45.0}}})
+        assert mm.timeout == 45.0
+
+        # 3. Verify _call_consolidation_llm passes timeout to resolver._call_api
+        from ushareiplay.managers.keyword_manager import KeywordManager
+        if not KeywordManager.is_initialized():
+            KeywordManager.initialize()
+        km = KeywordManager.instance()
+        km._config = {
+            "llm": {
+                "enabled": True,
+                "api_key": "test-key",
+                "model": "deepseek-chat",
+                "memory": {"enabled": True, "timeout": 45.0},
+            }
+        }
+        # Reset resolver to pick up new config
+        km._nl_resolver = None
+
+
+        mock_llm_response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps({"directives": ["称谓: 浩哥"], "profile": "喜欢流行"})
+                    }
+                }
+            ]
+        }
+
+        with patch.object(km.nl_resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = json.dumps(mock_llm_response)
+            success, directives, profile = await mm._call_consolidation_llm(
+                user_name="test_user",
+                existing_directives=[],
+                existing_profile="",
+                new_messages=["消息1", "消息2"],
+            )
+            assert success is True
+            assert directives == ["称谓: 浩哥"]
+            assert profile == "喜欢流行"
+            # Verify _call_api was called with timeout=45.0
+            mock_api.assert_called_once()
+            assert mock_api.call_args[1].get("timeout") == 45.0
+
+    finally:
+        await db.close()
+
