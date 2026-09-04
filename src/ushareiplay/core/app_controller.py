@@ -11,6 +11,7 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
@@ -290,18 +291,42 @@ class AppController(Singleton):
 
     def _console_input(self):
         """Background thread for console input"""
+        muter = ConsoleLogMuter.get_instance()
+
         while self.is_running:
             try:
-                user_input = input("Console> " if self.in_console_mode else "")
-                # Process all input, including empty strings (just pressing Enter)
-                self.input_queue.put((user_input, "console"))
-                self.logger.critical(f"{user_input}")
+                if self.in_console_mode:
+                    user_input = input("Console> ")
+                    if user_input.strip():
+                        self.input_queue.put((user_input, "console"))
+                        if self.logger:
+                            self.logger.critical(f"{user_input}")
+                else:
+                    user_input = input("")
+                    if not user_input.strip():
+                        # First Enter received: mute console log output and prompt for command
+                        muter.mute()
+                        try:
+                            command = input("Command> ")
+                            if command.strip():
+                                self.input_queue.put((command, "console"))
+                                if self.logger:
+                                    self.logger.critical(f"{command}")
+                        finally:
+                            muter.unmute()
+                    else:
+                        # User directly entered something without pressing Enter first
+                        self.input_queue.put((user_input, "console"))
+                        if self.logger:
+                            self.logger.critical(f"{user_input}")
             except EOFError:
                 continue
             except KeyboardInterrupt:
+                muter.unmute()
                 if self.in_console_mode:
                     self.in_console_mode = False
-                    self.logger.info("Exiting console mode...")
+                    if self.logger:
+                        self.logger.info("Exiting console mode...")
                 else:
                     self.is_running = False
                 break
