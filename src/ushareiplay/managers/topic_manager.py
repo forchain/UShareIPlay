@@ -82,8 +82,8 @@ class TopicManager(Singleton):
         
         self.logger.info("Switched to Soul app")
         
-        # 清理话题文本
-        new_topic = topic.split('|')[0].split('(')[0].strip()[:15]
+        # 清理话题文本: 支持半角和全角竖线及括号
+        new_topic = topic.split('|')[0].split('｜')[0].split('丨')[0].split('(')[0].split('（')[0].strip()[:15]
         current_time = datetime.now()
         
         # 设置下一个话题
