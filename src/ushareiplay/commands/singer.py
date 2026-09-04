@@ -22,7 +22,7 @@ class SingerCommand(BaseCommand):
             return protection_error
 
         self.soul_handler.ensure_mic_active()
-        info_manager.player_name = message_info.nickname
+        self.info_manager.player_name = message_info.nickname
         info = self.play_singer(query)
         return info
 

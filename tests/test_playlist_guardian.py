@@ -240,3 +240,54 @@ async def test_singer_command_blocked_when_other_user_playing(clean_info_manager
     msg = MessageInfo(content="/singer 周杰伦", nickname="Timer")
     res = await command.do_process(msg, ["周杰伦"])
     assert res == {"error": "不约儿童🐏🐏 正在播放歌单，请等待"}
+
+
+@pytest.mark.asyncio
+async def test_singer_command_allowed_sets_player_name(clean_info_manager):
+    info_manager = clean_info_manager
+    info_manager.player_name = None
+
+    mock_controller = MagicMock()
+    mock_controller.soul_handler = MagicMock()
+    mock_controller.music_handler = MagicMock()
+    command = SingerCommand(mock_controller)
+    command.play_singer = MagicMock(return_value={"playlist": "张天赋"})
+
+    msg = MessageInfo(content="/singer 张天赋", nickname="张三")
+    res = await command.do_process(msg, ["张天赋"])
+    assert res == {"playlist": "张天赋"}
+    assert info_manager.player_name == "张三"
+
+
+@pytest.mark.asyncio
+async def test_album_command_allowed_sets_player_name(clean_info_manager):
+    info_manager = clean_info_manager
+    info_manager.player_name = None
+
+    mock_controller = MagicMock()
+    mock_controller.soul_handler = MagicMock()
+    mock_controller.music_handler = MagicMock()
+    command = AlbumCommand(mock_controller)
+    command.play_album = MagicMock(return_value={"playlist": "范特西"})
+
+    msg = MessageInfo(content="/album 范特西", nickname="张三")
+    res = await command.do_process(msg, ["范特西"])
+    assert res == {"playlist": "范特西"}
+    assert info_manager.player_name == "张三"
+
+
+@pytest.mark.asyncio
+async def test_playlist_command_allowed_sets_player_name(clean_info_manager):
+    info_manager = clean_info_manager
+    info_manager.player_name = None
+
+    mock_controller = MagicMock()
+    mock_controller.soul_handler = MagicMock()
+    mock_controller.music_handler = MagicMock()
+    command = PlaylistCommand(mock_controller)
+    command.play_playlist = MagicMock(return_value={"playlist": "流行歌单"})
+
+    msg = MessageInfo(content="/playlist 流行歌单", nickname="张三")
+    res = await command.do_process(msg, ["流行歌单"])
+    assert res == {"playlist": "流行歌单"}
+    assert info_manager.player_name == "张三"
