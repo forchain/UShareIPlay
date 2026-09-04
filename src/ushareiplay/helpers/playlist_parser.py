@@ -2,12 +2,12 @@ class PlaylistParser:
     def __init__(self):
         # Define separators in order of priority
         self.separators = [
-            '丨', '|',  # Vertical bars (full-width and half-width)
+            '｜', '丨', '|',  # Vertical bars (full-width U+FF5C, CJK radical U+4E28, half-width U+007C)
             '【', '】',  # Full-width square brackets
             '[', ']',   # Half-width square brackets
             '（', '）',  # Full-width parentheses
             '(', ')',   # Half-width parentheses
-            '-', '—',   # Dashes (half-width and full-width)
+            '-', '—', '－', '–',  # Dashes (hyphen, em dash, fullwidth hyphen, en dash)
             '•', '·', '・',   # Middle dot
             '/',        # Forward slash
             '、',       # Ideographic comma
@@ -30,10 +30,10 @@ class PlaylistParser:
             '[', ']',   # Half-width square brackets
             '（', '）',  # Full-width parentheses
             '(', ')',   # Half-width parentheses
-            '"', '"',   # Full-width quotation marks
-            '"', '"',   # Half-width quotation marks
-            ''', ''',   # Full-width single quotes
-            "'", "'",   # Half-width single quotes
+            '“', '”',   # Full-width double quotation marks
+            '"',        # Half-width double quotation marks
+            '‘', '’',   # Full-width single quotes
+            "'",        # Half-width single quotes
             '…',        # Ellipsis
             '～',       # Full-width tilde
             '~',        # Half-width tilde

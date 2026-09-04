@@ -70,6 +70,16 @@ def test_set_next_title_sanitizes_and_queues_title():
     manager._handler.ui_actions.switch_and_click.assert_not_called()
 
 
+def test_set_next_title_sanitizes_fullwidth_pipe_and_parentheses():
+    manager = _manager_with_fake_handler()
+
+    result = manager.set_next_title("方力申（合唱版）｜extra")
+
+    assert manager.get_next_title() == "方力申"
+    assert "Title will update" in result["title"]
+    manager._handler.ui_actions.switch_and_click.assert_not_called()
+
+
 def test_set_next_title_with_theme_updates_theme_too():
     manager = _manager_with_fake_handler()
 

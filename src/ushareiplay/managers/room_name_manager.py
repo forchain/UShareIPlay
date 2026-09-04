@@ -229,7 +229,8 @@ class RoomNameManager(Singleton):
             if 'error' in theme_result:
                 return theme_result
 
-        new_title = title.split('|')[0].split('(')[0].strip()[:12]
+        # Clean title text: support half-width and full-width vertical bars and parentheses
+        new_title = title.split('|')[0].split('｜')[0].split('丨')[0].split('(')[0].split('（')[0].strip()[:12]
         self.next_title = new_title
 
         if not self.can_update_now():
