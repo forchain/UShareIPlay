@@ -185,6 +185,84 @@ class InfoManager(Singleton):
         """
         return self._presence_tracker.get_online_users()
 
+    async def is_user_or_avatar_online(self, username: str) -> bool:
+        """
+        检查指定用户或其任意分身是否在线。
+        """
+        if not username:
+            return False
+        if self.is_user_online(username):
+            return True
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            all_avatars = await UserDAO.get_all_avatar_usernames(username)
+            online_users = self.get_online_users()
+            return bool(all_avatars & online_users)
+        except Exception:
+            return self.is_user_online(username)
+
+    SYSTEM_AND_ADMIN_USERS = {"Joyer", "Timer", "Outlier", "Chainer", "Console", "Agent"}
+
+    async def check_playlist_protection(
+        self, caller_nickname: str, config: Optional[dict] = None
+    ) -> Optional[dict]:
+        """
+        检查当前歌单是否处于守护状态。
+        如果当前播放者不是系统管理员，且播放者（或其分身）仍在房间中，且调用者不是该播放者自身（或其分身），
+        则返回 {'error': f'{player_name} 正在播放歌单，请等待'}。
+        否则返回 None（允许播放）。
+        """
+        player_name = self.player_name
+        if not player_name:
+            return None
+
+        # 排除系统管理员用户（Joyer、Timer、Outlier、Chainer 等）
+        admin_users = set(self.SYSTEM_AND_ADMIN_USERS)
+        try:
+            cfg = config
+            if cfg is None:
+                if self._handler is not None and hasattr(self._handler, "config"):
+                    cfg = self._handler.config
+                else:
+                    from ushareiplay.handlers.soul_handler import SoulHandler
+                    if SoulHandler.is_initialized():
+                        cfg = SoulHandler.instance().config
+
+            if isinstance(cfg, dict):
+                admin_users.update(cfg.get("system_users", []))
+                if cfg.get("room_owner"):
+                    admin_users.add(cfg["room_owner"])
+                soul_cfg = cfg.get("soul", {})
+                if isinstance(soul_cfg, dict):
+                    admin_users.update(soul_cfg.get("system_users", []))
+                    if soul_cfg.get("room_owner"):
+                        admin_users.add(soul_cfg["room_owner"])
+        except Exception:
+            pass
+
+        if player_name in admin_users:
+            return None
+
+        # 如果调用者与当前播放者是同一人（同名），允许切换
+        if caller_nickname == player_name:
+            return None
+
+        # 检查调用者是否为当前播放者的分身，或者当前播放者（及分身）是否仍在房间
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            player_avatars = await UserDAO.get_all_avatar_usernames(player_name)
+            if caller_nickname in player_avatars:
+                return None
+            online_users = self.get_online_users()
+            is_online = bool(player_avatars & online_users)
+        except Exception:
+            is_online = self.is_user_online(player_name)
+
+        if is_online:
+            return {'error': f'{player_name} 正在播放歌单，请等待'}
+
+        return None
+
     # ------------------------------------------------------------------
     # 房间状态（委托给 RoomState）
     # ------------------------------------------------------------------

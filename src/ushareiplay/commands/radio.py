@@ -13,18 +13,19 @@ class RadioCommand(BaseCommand):
         self.song_release_lookup = QQMusicSongReleaseLookup()
 
     async def do_process(self, message_info, parameters):
+        # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
+        config = getattr(self.controller, "config", None)
+        protection_error = await self.info_manager.check_playlist_protection(
+            message_info.nickname, config=config
+        )
+        if protection_error:
+            self.music_handler.logger.info(
+                f"{message_info.nickname} 尝试播放电台，但 {self.info_manager.player_name} 正在播放"
+            )
+            return protection_error
+
         if not parameters:
             return self._handle_collection(message_info)
-
-        # 添加播放器保护逻辑
-        player_name = self.info_manager.player_name
-        # 排除系统用户 Joyer 和 Timer
-        if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer", "Outlier",
-                                                                                        "Chainer"]:
-            # 检查之前的播放者是否还在线
-            if self.info_manager.is_user_online(player_name):
-                self.music_handler.logger.info(f"{message_info.nickname} 尝试播放电台，但 {player_name} 正在播放")
-                return {'error': f'{player_name} 正在播放歌单，请等待'}
 
         keyword = parameters[0].lower()
         try:

@@ -15,16 +15,16 @@ class PlaylistCommand(BaseCommand):
         if len(parameters) == 0:
             playing_info = self.handler.get_playlist_info()
         else:
-            # 检查是否有其他用户正在播放列表
-            info_manager = self.info_manager
-            player_name = info_manager.player_name
-            # 排除系统用户 Joyer 和 Timer
-            if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer",
-                                                                                            "Outlier", "Chainer"]:
-                # 检查之前的播放者是否还在线
-                if info_manager.is_user_online(player_name):
-                    self.handler.logger.info(f"{message_info.nickname} 尝试播放歌单，但 {player_name} 正在播放")
-                    return {'error': f'{player_name} 正在播放歌单，请等待'}
+            # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
+            config = getattr(self.controller, "config", None)
+            protection_error = await self.info_manager.check_playlist_protection(
+                message_info.nickname, config=config
+            )
+            if protection_error:
+                self.handler.logger.info(
+                    f"{message_info.nickname} 尝试播放歌单，但 {self.info_manager.player_name} 正在播放"
+                )
+                return protection_error
 
             info_manager.player_name = message_info.nickname
             self.soul_handler.ensure_mic_active()
