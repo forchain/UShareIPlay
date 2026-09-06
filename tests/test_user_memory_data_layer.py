@@ -145,3 +145,77 @@ async def test_keyword_manager_dispatch_mention_logs_chat(monkeypatch):
 
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_user_memory_immutable_directives_stored_as_utf8_json():
+    from tortoise import Tortoise
+
+    db = DatabaseManager(db_url="sqlite://:memory:")
+    await db.init()
+    try:
+        user = await UserDAO.get_or_create("diana")
+        await UserMemoryDAO.update_memory(
+            user.id,
+            directives=["称谓: 浩哥", "硬性偏好: 喜好周杰伦"],
+            profile_summary="喜欢流行音乐和周杰伦",
+        )
+
+        conn = Tortoise.get_connection("default")
+        rows = await conn.execute_query_dict(
+            "SELECT immutable_directives, profile_summary FROM user_memories WHERE user_id = ?",
+            [user.id],
+        )
+        assert len(rows) == 1
+        raw_directives = rows[0]["immutable_directives"]
+
+        # Verify directives are stored as literal UTF-8 JSON and not escaped \uXXXX
+        assert raw_directives == '["称谓: 浩哥","硬性偏好: 喜好周杰伦"]'
+        assert "\\u" not in raw_directives
+
+        # Verify reading back through DAO
+        memory = await UserMemoryDAO.get_by_user_id(user.id)
+        assert memory is not None
+        assert memory.immutable_directives == ["称谓: 浩哥", "硬性偏好: 喜好周杰伦"]
+        assert memory.profile_summary == "喜欢流行音乐和周杰伦"
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_user_memory_legacy_escaped_unicode_backward_compatibility():
+    from tortoise import Tortoise
+
+    db = DatabaseManager(db_url="sqlite://:memory:")
+    await db.init()
+    try:
+        user = await UserDAO.get_or_create("edward")
+        conn = Tortoise.get_connection("default")
+
+        # Simulate legacy record stored with escaped unicode
+        legacy_raw = '["\\u79f0\\u8c13: \\u6d69\\u54e5"]'
+        await conn.execute_query(
+            "INSERT INTO user_memories (user_id, immutable_directives, profile_summary, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+            [user.id, legacy_raw, "旧画像"],
+        )
+
+        # Verify legacy record is transparently loaded
+        memory = await UserMemoryDAO.get_by_user_id(user.id)
+        assert memory is not None
+        assert memory.immutable_directives == ["称谓: 浩哥"]
+        assert memory.profile_summary == "旧画像"
+
+        # Update memory and verify it is rewritten as unescaped UTF-8 JSON
+        await UserMemoryDAO.update_memory(
+            user.id,
+            directives=["称谓: 浩哥", "新规: 禁点慢歌"],
+        )
+        rows = await conn.execute_query_dict(
+            "SELECT immutable_directives FROM user_memories WHERE user_id = ?",
+            [user.id],
+        )
+        assert rows[0]["immutable_directives"] == '["称谓: 浩哥","新规: 禁点慢歌"]'
+        assert "\\u" not in rows[0]["immutable_directives"]
+    finally:
+        await db.close()
+
