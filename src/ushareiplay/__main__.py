@@ -3,6 +3,7 @@ from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.db_manager import DatabaseManager
 from ushareiplay.core.singleton import Singleton
 import asyncio
+import sys
 
 
 async def init_db():
@@ -50,6 +51,11 @@ async def main():
 
 
 def run():
+    if hasattr(sys.stdin, "reconfigure"):
+        try:
+            sys.stdin.reconfigure(errors="replace")
+        except Exception:
+            pass
     asyncio.run(main())
 
 

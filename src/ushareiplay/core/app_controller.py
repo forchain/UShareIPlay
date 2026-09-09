@@ -1,6 +1,7 @@
 import asyncio
 import os
 import queue
+import sys
 import threading
 import time
 import traceback
@@ -291,6 +292,12 @@ class AppController(Singleton):
 
     def _console_input(self):
         """Background thread for console input"""
+        if hasattr(sys.stdin, "reconfigure"):
+            try:
+                sys.stdin.reconfigure(errors="replace")
+            except Exception:
+                pass
+
         muter = ConsoleLogMuter.get_instance()
 
         while self.is_running:
@@ -319,7 +326,13 @@ class AppController(Singleton):
                         self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
+            except UnicodeDecodeError as e:
+                muter.unmute()
+                if self.logger:
+                    self.logger.warning(f"Console input decode error: {e}")
+                continue
             except EOFError:
+                time.sleep(0.5)
                 continue
             except KeyboardInterrupt:
                 muter.unmute()
@@ -330,6 +343,12 @@ class AppController(Singleton):
                 else:
                     self.is_running = False
                 break
+            except Exception as e:
+                muter.unmute()
+                if self.logger:
+                    self.logger.error(f"Console input error: {e}")
+                time.sleep(0.5)
+                continue
 
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
