@@ -348,11 +348,11 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager):
     res_owner = await command.do_process(msg_owner, ["房主歌单"])
     assert res_owner == {"playlist": "管理员歌单"}
 
-    # 3. Console 切歌 -> 允许突破保护
+    # 3. 管理员 Chainer 切歌 -> 允许突破保护
     info_manager.player_name = "普通用户"
-    msg_console = MessageInfo(content="/playlist 控制台歌单", nickname="Console")
-    res_console = await command.do_process(msg_console, ["控制台歌单"])
-    assert res_console == {"playlist": "管理员歌单"}
+    msg_admin2 = MessageInfo(content="/playlist 管理员歌单2", nickname="Chainer")
+    res_admin2 = await command.do_process(msg_admin2, ["管理员歌单2"])
+    assert res_admin2 == {"playlist": "管理员歌单"}
 
 
 @pytest.mark.asyncio

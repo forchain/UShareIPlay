@@ -4,7 +4,6 @@ from typing import Any, Iterable, Optional, Set
 DEFAULT_ROOM_OWNER = "Joyer"
 DEFAULT_ADMIN_USERS = frozenset({"Outlier", "Chainer"})
 DEFAULT_SYSTEM_USERS = frozenset({"Timer", "Agent"})
-CONSOLE_USER = "console"
 
 
 def _normalize_set(values: Optional[Iterable[Any]]) -> Set[str]:
@@ -34,10 +33,10 @@ class RolePolicy:
     统一角色与权限判定策略。
     
     分类：
-    1. 房主 (Room Owner): 配置的 room_owner，同时合并 Console (Console 具备房主身份)。
-    2. 管理员 (Admin Users): 配置的 admin_users (含房主与 Console)。
+    1. 房主 (Room Owner): 配置的 room_owner (如 Joyer)。所有后台操作直接以房主身份执行，不再单独设立 Console 角色。
+    2. 管理员 (Admin Users): 配置的 admin_users (含房主)。
     3. 系统角色 (System Roles): 配置的 system_users (如 Timer, Agent)，自动化执行角色。
-    4. 人工操作者 (Human Operators): 具备主观判断能力的人工角色 (房主、Console、管理员)。
+    4. 人工操作者 (Human Operators): 具备主观判断能力的人工角色 (房主、管理员)。
     """
 
     def __init__(self, config: Optional[dict] = None):
@@ -82,18 +81,13 @@ class RolePolicy:
         return set(self._system_users)
 
     def is_room_owner(self, username: Optional[str]) -> bool:
-        """检查用户是否为房主。Console 与房主合并，Console 始终视为房主。"""
-        if not username:
+        """检查用户是否为房主。"""
+        if not username or not self._room_owner:
             return False
-        normalized = username.strip().lower()
-        if normalized == CONSOLE_USER:
-            return True
-        if self._room_owner and normalized == self._room_owner.lower():
-            return True
-        return False
+        return username.strip().lower() == self._room_owner.lower()
 
     def is_admin(self, username: Optional[str]) -> bool:
-        """检查用户是否为管理员（房主与 Console 均具备管理员身份）。"""
+        """检查用户是否为管理员（房主具备管理员身份）。"""
         if not username:
             return False
         if self.is_room_owner(username):
@@ -110,7 +104,7 @@ class RolePolicy:
 
     def is_human_operator(self, username: Optional[str]) -> bool:
         """
-        检查是否为人工操作者（房主、Console、管理员）。
+        检查是否为人工操作者（房主、管理员）。
         人工触发的操作具备人工判断能力，在保护策略上：
         1. 播放中无需保护（不锁定他人播放）。
         2. 能够突破保护（他人歌单守护、睡眠保护）。

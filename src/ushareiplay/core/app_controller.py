@@ -103,12 +103,18 @@ class AppController(Singleton):
             input_queue=self.input_queue,
             command_dir=self.agent_command_dir,
             obs=self.obs,
+            config=self.config,
         )
         self._status_reporter = StatusReporter(
             config=self.config,
             ui_lock=self.ui_lock,
             obs=self.obs,
         )
+
+    @property
+    def room_owner(self) -> str:
+        from ushareiplay.core.roles import RolePolicy
+        return RolePolicy(self.config).room_owner
 
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
@@ -551,16 +557,18 @@ class AppController(Singleton):
                 try:
                     while not self.input_queue.empty():
                         item = self.input_queue.get_nowait()
+                        owner = self.room_owner
                         if isinstance(item, dict):
                             message = item.get("content", "")
                             input_source = item.get("source", "console")
-                            nickname = item.get("nickname", "Console")
+                            raw_nick = item.get("nickname")
+                            nickname = str(owner if not raw_nick or raw_nick == "Console" else raw_nick)
                         elif isinstance(item, tuple):
                             message, input_source = item
-                            nickname = "Console"
+                            nickname = owner
                         else:
                             message, input_source = item, "console"
-                            nickname = "Console"
+                            nickname = owner
                         # Only send non-empty messages
                         if message.strip():
                             if message == '!stop':

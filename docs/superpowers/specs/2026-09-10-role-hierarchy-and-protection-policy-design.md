@@ -52,29 +52,30 @@ Currently, administrator names (`{"Joyer", "Timer", "Outlier", "Chainer", "Conso
 ## Implementation Decisions
 
 - **Role Taxonomy and Unification Contract**:
-  - Roles are defined via configuration: `room_owner` (string), `admin_users` (list of strings), and `system_users` (list of strings).
+  - Roles are defined via configuration: `room_owner` (string, default `"Joyer"`), `admin_users` (list of strings, default `["Outlier", "Chainer"]`), and `system_users` (list of strings, default `["Timer", "Agent"]`).
   - The static `SYSTEM_AND_ADMIN_USERS` set in `InfoManager` is removed.
+  - No separate "Console" role exists. Backend and console operations (CLI inputs, post-party automations, agent spool commands) execute directly under the identity of the configured `room_owner`.
   - A unified role query interface evaluates actor identity:
-    - `is_room_owner(user)`: Returns true if `user == "Console"` or matches configured `room_owner` (case-insensitive).
+    - `is_room_owner(user)`: Returns true if `user` matches configured `room_owner` (case-insensitive).
     - `is_admin(user)`: Returns true if `is_room_owner(user)` is true or `user` is in `admin_users`.
     - `is_system_user(user)`: Returns true if `user` is in `system_users`.
-    - `is_human_operator(user)`: Returns true if `is_admin(user)` is true.
+    - `is_human_operator(user)`: Returns true if `is_admin(user)` is true (Room Owner or Admins).
 - **Playlist Protection Behavior Matrix**:
   - In `InfoManager.check_playlist_protection(caller_nickname)`:
     - If current `player_name` is empty: Allow.
     - If current `player_name` is an administrator, room owner, or system user: Allow (their playback is unprotected).
-    - If `caller_nickname` is an administrator, room owner, or Console (`is_human_operator(caller)`): Allow (can override user protection).
+    - If `caller_nickname` is an administrator or room owner (`is_human_operator(caller)`): Allow (can override user protection).
     - If `caller_nickname` is the current player or an avatar of the current player: Allow.
     - If current player (or any avatar) is still online:
       - If `caller_nickname` is a system user (Timer, Agent) or normal user: Deny with protection error.
     - If current player and all avatars have left the room: Allow.
 - **Sleep Protection Behavior Matrix**:
   - In `CommandManager.process_command`:
-    - Command level bypass: Administrators, Room Owner, Console, and configured System Users bypass command level restrictions.
+    - Command level bypass: Administrators, Room Owner, and configured System Users bypass command level restrictions.
     - Sleep protection check:
-      - If `is_human_operator(message_info.nickname)` is true: Sleep check is bypassed (manual human operator override).
+      - If `is_human_operator(message_info.nickname)` is true: Sleep check is bypassed (manual human operator override: Room Owner and Admins).
       - If `message_info.sleep_exempt` is true: Sleep check is bypassed (manual @ mention resolution).
-      - Otherwise (including System Users like `Timer` / `Agent`, and normal attendees): If `SleepManager.is_blocked_command(prefix)` is true, execution is blocked with rest notice.
+      - Otherwise (including automated System Users like `Timer` / `Agent`, and normal attendees): If `SleepManager.is_blocked_command(prefix)` is true, execution is blocked with rest notice.
 - **Configuration Structure**:
   - Configurable under `soul.room_owner`, `soul.admin_users`, and `soul.system_users` (with fallback to top-level keys).
 

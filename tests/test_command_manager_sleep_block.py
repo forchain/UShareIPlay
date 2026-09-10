@@ -159,7 +159,7 @@ async def test_admin_and_owner_and_console_allowed_in_sleep_window(_patch_user_d
             },
         }
     )
-    for operator in ("Joyer", "Console", "Outlier"):
+    for operator in ("Joyer", "Outlier"):
         cmd = DummyCommand()
         msg = MessageInfoStub(operator, ":play")
         command_info = {
