@@ -194,3 +194,93 @@ def test_console_input_flow_cancel_with_empty_enter(monkeypatch):
     controller._console_input()
 
     assert muter.is_muted() is False
+
+
+def test_console_input_handles_unicode_decode_error_without_crashing(monkeypatch):
+    """
+    When input() raises UnicodeDecodeError, the loop catches it,
+    logs a warning, and continues running instead of crashing the thread.
+    """
+    muter = ConsoleLogMuter.get_instance()
+    muter.unmute()
+
+    controller = AppController.__new__(AppController)
+    controller.is_running = True
+    controller.in_console_mode = False
+    controller.input_queue = queue.Queue()
+    controller.logger = MagicMock()
+
+    call_count = 0
+
+    def fake_input(prompt=""):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise UnicodeDecodeError("utf-8", b"\xe5\xb0\xb1\xe4\xbd\xa0\xf0\x90 ", 6, 8, "invalid continuation byte")
+        elif call_count == 2:
+            return "recovered_message"
+        else:
+            controller.is_running = False
+            return ""
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    controller._console_input()
+
+    assert call_count >= 2
+    queued_items = []
+    while not controller.input_queue.empty():
+        queued_items.append(controller.input_queue.get())
+    assert ("recovered_message", "console") in queued_items
+    controller.logger.warning.assert_called()
+
+
+def test_console_input_handles_unicode_decode_error_in_command_prompt(monkeypatch):
+    """
+    When input('Command> ') raises UnicodeDecodeError, logs are unmuted,
+    a warning is logged, and the loop continues running.
+    """
+    muter = ConsoleLogMuter.get_instance()
+    muter.unmute()
+
+    controller = AppController.__new__(AppController)
+    controller.is_running = True
+    controller.in_console_mode = False
+    controller.input_queue = queue.Queue()
+    controller.logger = MagicMock()
+
+    calls = []
+
+    def fake_input(prompt=""):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return ""  # Trigger command prompt
+        elif len(calls) == 2:
+            raise UnicodeDecodeError("utf-8", b"\xe5\xb0\xb1\xe4\xbd\xa0\xf0\x90 ", 6, 8, "invalid continuation byte")
+        else:
+            controller.is_running = False
+            return ""
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    controller._console_input()
+
+    assert muter.is_muted() is False
+    controller.logger.warning.assert_called()
+
+
+def test_console_input_reconfigures_sys_stdin(monkeypatch):
+    """
+    _console_input reconfigures sys.stdin to use errors='replace' if supported.
+    """
+    controller = AppController.__new__(AppController)
+    controller.is_running = False
+    controller.in_console_mode = False
+    controller.input_queue = queue.Queue()
+    controller.logger = MagicMock()
+
+    mock_stdin = MagicMock()
+    monkeypatch.setattr("sys.stdin", mock_stdin)
+
+    controller._console_input()
+
+    mock_stdin.reconfigure.assert_called_once_with(errors="replace")
+
