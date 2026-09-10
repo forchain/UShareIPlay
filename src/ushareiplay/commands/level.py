@@ -7,18 +7,18 @@ from ushareiplay.dal.user_dao import UserDAO
 class LevelCommand(BaseCommand):
     error_message = '处理等级命令失败: {error}'
 
-    def _get_system_users(self) -> set[str]:
-        system_users = set()
-        if self.soul_handler and hasattr(self.soul_handler, 'config') and isinstance(self.soul_handler.config, dict):
-            system_users.update(self.soul_handler.config.get('system_users', []))
-        if hasattr(self.controller, 'config') and isinstance(self.controller.config, dict):
+    def _get_role_policy(self):
+        from ushareiplay.core.roles import RolePolicy
+        cfg = None
+        if hasattr(self, 'controller') and hasattr(self.controller, 'config') and isinstance(self.controller.config, dict):
             cfg = self.controller.config
-            system_users.update(cfg.get('system_users', []))
-            if isinstance(cfg.get('soul'), dict):
-                system_users.update(cfg['soul'].get('system_users', []))
-        if not system_users:
-            system_users.update(['Timer', 'Console', 'Agent'])
-        return system_users
+        elif self.soul_handler and hasattr(self.soul_handler, 'config') and isinstance(self.soul_handler.config, dict):
+            cfg = self.soul_handler.config
+        return RolePolicy(cfg)
+
+    def _get_system_users(self) -> set[str]:
+        """兼容旧接口"""
+        return self._get_role_policy().system_users
 
     async def do_process(self, message_info, parameters):
         """
@@ -66,12 +66,12 @@ class LevelCommand(BaseCommand):
             except ValueError:
                 return {'error': '等级必须为 0-9 的整数'}
 
-            system_users = self._get_system_users()
-            is_system_user = caller_nickname in system_users
+            policy = self._get_role_policy()
+            is_admin_or_owner = policy.is_human_operator(caller_nickname)
 
             target_user = await UserDAO.get_or_create(target_username)
 
-            if not is_system_user:
+            if not is_admin_or_owner:
                 if not caller_nickname:
                     return {'error': '权限不足：无法验证操作者身份'}
 
