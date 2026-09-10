@@ -9,8 +9,14 @@ from ushareiplay.models.message_info import MessageInfo
 class DummyController:
     def __init__(self, config=None):
         self.config = config or {
-            "system_users": ["Timer", "Console", "Agent"],
-            "soul": {"system_users": ["Timer", "Console", "Agent"]},
+            "room_owner": "Joyer",
+            "admin_users": ["Outlier", "Chainer"],
+            "system_users": ["Timer", "Agent"],
+            "soul": {
+                "room_owner": "Joyer",
+                "admin_users": ["Outlier", "Chainer"],
+                "system_users": ["Timer", "Agent"],
+            },
         }
         self.soul_handler = None
         self.music_handler = None
@@ -79,7 +85,7 @@ async def test_level_query_alias_resolves_to_canonical(setup_db):
 
 
 @pytest.mark.asyncio
-async def test_level_set_by_system_user(setup_db):
+async def test_level_set_by_room_owner_or_admin(setup_db):
     ctl = DummyController()
     cmd = LevelCommand(ctl)
 
@@ -87,8 +93,8 @@ async def test_level_set_by_system_user(setup_db):
     target.level = 1
     await target.save(update_fields=["level"])
 
-    # 系统用户 Console 将其设置为 L9
-    msg = MessageInfo(nickname="Console", content=":level TargetUser 9")
+    # 房主 Joyer 将其设置为 L9
+    msg = MessageInfo(nickname="Joyer", content=":level TargetUser 9")
     res = await cmd.process(msg, ["TargetUser", "9"])
 
     assert "message" in res
@@ -96,6 +102,28 @@ async def test_level_set_by_system_user(setup_db):
 
     updated = await UserDAO.get_or_create("TargetUser")
     assert updated.level == 9
+
+    # 管理员 Outlier 将其设置为 L8
+    msg_admin = MessageInfo(nickname="Outlier", content=":level TargetUser 8")
+    res_admin = await cmd.process(msg_admin, ["TargetUser", "8"])
+    assert "message" in res_admin
+    assert "已将用户 TargetUser 的等级设置为 L8" in res_admin["message"]
+
+
+@pytest.mark.asyncio
+async def test_level_set_by_automated_system_user_rejected(setup_db):
+    ctl = DummyController()
+    cmd = LevelCommand(ctl)
+
+    target = await UserDAO.get_or_create("TargetUser")
+    target.level = 1
+    await target.save(update_fields=["level"])
+
+    # 自动化系统角色 Timer 无权随意设置等级
+    msg = MessageInfo(nickname="Timer", content=":level TargetUser 9")
+    res = await cmd.process(msg, ["TargetUser", "9"])
+    assert "error" in res
+    assert "权限不足" in res["error"]
 
 
 @pytest.mark.asyncio
@@ -191,8 +219,8 @@ async def test_level_set_alias_updates_canonical(setup_db):
     alias_raw.canonical_user_id = canonical.id
     await alias_raw.save(update_fields=["canonical_user_id"])
 
-    # 系统用户通过 alias 设置等级
-    msg = MessageInfo(nickname="Console", content=":level AliasUser 2")
+    # 房主通过 alias 设置等级
+    msg = MessageInfo(nickname="Joyer", content=":level AliasUser 2")
     res = await cmd.process(msg, ["AliasUser", "2"])
 
     assert "message" in res
@@ -211,25 +239,25 @@ async def test_level_invalid_args_and_quotes(setup_db):
     cmd = LevelCommand(ctl)
 
     # 非法数字
-    msg = MessageInfo(nickname="Console", content=":level TargetUser abc")
+    msg = MessageInfo(nickname="Joyer", content=":level TargetUser abc")
     res = await cmd.process(msg, ["TargetUser", "abc"])
     assert "error" in res
     assert "0-9" in res["error"]
 
     # 超出范围 (如 10)
-    msg = MessageInfo(nickname="Console", content=":level TargetUser 10")
+    msg = MessageInfo(nickname="Joyer", content=":level TargetUser 10")
     res = await cmd.process(msg, ["TargetUser", "10"])
     assert "error" in res
     assert "0-9" in res["error"]
 
     # 参数过多
-    msg = MessageInfo(nickname="Console", content=":level TargetUser 1 extra")
+    msg = MessageInfo(nickname="Joyer", content=":level TargetUser 1 extra")
     res = await cmd.process(msg, ["TargetUser", "1", "extra"])
     assert "error" in res
     assert "参数过多" in res["error"]
 
     # 带空格引号昵称
-    msg = MessageInfo(nickname="Console", content=':level "User With Spaces" 2')
+    msg = MessageInfo(nickname="Joyer", content=':level "User With Spaces" 2')
     res = await cmd.process(msg, ['"User With Spaces"', '2'])
     assert "message" in res
     assert "已将用户 User With Spaces 的等级设置为 L2" in res["message"]

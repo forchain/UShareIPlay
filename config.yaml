@@ -13,10 +13,14 @@ soul:
   default_title: "听歌"
   broadcast_playing_info: false
 
-  # 系统用户列表，这些用户不受等级限制
+  # 管理员用户列表（人工管理员）
+  admin_users:
+    - "Outlier"
+    - "Chainer"
+
+  # 系统自动化用户列表
   system_users:
     - "Timer"
-    - "Console"
     - "Agent"
 
   # 系统默认notice列表，如果房间notice包含这些内容说明被系统重置了
