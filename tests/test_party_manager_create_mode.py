@@ -334,3 +334,70 @@ def test_party_create_flow_retries_and_succeeds_when_first_type_click_misses():
     assert create_party_btn.clicked is True
 
 
+def test_party_create_flow_default_skips_chat_type_and_clicks_create_party():
+    """新版 Soul UI 无需选择聊天类型，即使不存在 party_type_chat 也能直接点击创建房间"""
+    manager = PartyManager.instance()
+    create_entry = _Element()
+    new_entry = _Element()
+    create_party_btn = _Element()
+
+    elements = {
+        'party_state_entry': _Element(),
+        'party_type_chat': None,
+        'create_party_button': create_party_btn,
+    }
+    handler = _Handler(
+        config={},
+        any_results=[
+            ("create_party_entry", create_entry),
+            ("new_party_entry", new_entry),
+        ],
+        elements=elements,
+    )
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    ok = manager._create_party_flow()
+
+    assert ok is True
+    assert create_party_btn.clicked is True
+
+
+def test_party_create_flow_disables_recommendation_and_directly_creates_party():
+    """关闭推荐分发后直接点击创建房间，不依赖聊天类型按钮"""
+    from ushareiplay.state.room_state import RoomState
+    RoomState.initialize()
+    manager = PartyManager.instance()
+    create_entry = _Element()
+    new_entry = _Element()
+    party_state_entry = _Element()
+    close_party_notification = _Element()
+    create_party_btn = _Element()
+
+    elements = {
+        'party_state_entry': party_state_entry,
+        'close_party_notification': close_party_notification,
+        'party_type_chat': None,
+        'create_party_button': create_party_btn,
+    }
+    handler = _Handler(
+        config={"create_party_recommendation": False},
+        any_results=[
+            ("create_party_entry", create_entry),
+            ("new_party_entry", new_entry),
+        ],
+        elements=elements,
+    )
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    ok = manager._create_party_flow()
+
+    assert ok is True
+    assert party_state_entry.clicked is True
+    assert close_party_notification.clicked is True
+    assert RoomState.instance().recommendation_enabled is False
+    assert create_party_btn.clicked is True
+
+
+

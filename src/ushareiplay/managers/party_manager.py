@@ -610,7 +610,7 @@ class PartyManager(Singleton):
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = True
 
-        change_party_type = bool(self.handler.config.get('change_party_type', True))
+        change_party_type = bool(self.handler.config.get('change_party_type', False))
         if change_party_type:
             target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
             party_type_target = None
@@ -644,6 +644,8 @@ class PartyManager(Singleton):
             if not party_type_target:
                 self.logger.warning(f"未找到目标派对类型按钮: {target_type_key}")
                 return False
+        else:
+            self.logger.info("Skip changing party type during creation (change_party_type=False)")
 
         create_party_button = (
             self.handler.element_finder.wait_for_element_clickable('create_party_button', timeout=5)
