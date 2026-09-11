@@ -34,9 +34,9 @@ async def main():
     while run_count <= 9:
         try:
             res = await run_app()
-        except Exception:
+        except Exception as e:
             run_count += 1
-            print(f"[main]App crashed, restarting... {run_count}")
+            print(f"[main]App crashed ({e}), restarting... {run_count}")
             continue
         if res:
             break
