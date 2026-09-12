@@ -5,11 +5,15 @@ from ushareiplay.core.singleton import Singleton
 
 
 class OnlineListScraper(Singleton):
-    """从 Soul App 在线用户列表 UI 抓取当前在线用户。"""
+    """从 Soul App 在线用户列表 UI 抓取当前在线用户。
+
+    只通过 OnlineListUI 端口（见 online_list_ui.py）访问 UI，
+    不直接触碰 SoulHandler 内部。
+    """
 
     def __init__(self):
         self._logger = None
-        self._handler = None
+        self._ui = None
 
     @property
     def logger(self):
@@ -20,12 +24,12 @@ class OnlineListScraper(Singleton):
         return self._logger
 
     @property
-    def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
-        return self._handler
+    def ui(self):
+        """延迟获取 UISeen 端口适配器"""
+        if self._ui is None:
+            from ushareiplay.state.online_list_ui import SoulOnlineListUI
+            self._ui = SoulOnlineListUI()
+        return self._ui
 
     async def refresh_online_users(self):
         """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
@@ -37,13 +41,13 @@ class OnlineListScraper(Singleton):
             target_count = RoomState.instance().user_count
 
             # 打开在线用户列表
-            user_count_elem = self.handler.element_finder.try_find_element('user_count', log=False)
+            user_count_elem = self.ui.try_find_element('user_count', log=False)
             if not user_count_elem:
                 return
             user_count_elem.click()
             self.logger.info("Clicked user count element")
 
-            online_container = self.handler.element_finder.wait_for_element('online_users')
+            online_container = self.ui.wait_for_element('online_users')
             if not online_container:
                 self.logger.error("Online users container not found")
                 return
@@ -73,11 +77,11 @@ class OnlineListScraper(Singleton):
                 end_y = None
 
             for swipe_idx in range(max_swipes + 1):
-                visible_containers = self.handler.element_finder.find_child_elements(online_container, 'user_container')
+                visible_containers = self.ui.find_child_elements(online_container, 'user_container')
                 if visible_containers:
                     for container in visible_containers:
                         try:
-                            user_elem = self.handler.element_finder.find_child_element(container, 'online_user')
+                            user_elem = self.ui.find_child_element(container, 'online_user')
                             if not user_elem:
                                 continue
                             username = user_elem.text
@@ -89,7 +93,7 @@ class OnlineListScraper(Singleton):
                                 continue
                             all_online_user_names.add(username)
 
-                            follow_state_elem = self.handler.element_finder.find_child_element(container, 'follow_state')
+                            follow_state_elem = self.ui.find_child_element(container, 'follow_state')
                             follow_state = follow_state_elem.text if follow_state_elem else None
 
                             if follow_state:
@@ -106,7 +110,7 @@ class OnlineListScraper(Singleton):
 
                 # 停止条件 1：到底提示出现
                 try:
-                    no_more = self.handler.element_finder.try_find_element('no_more_data', log=False)
+                    no_more = self.ui.try_find_element('no_more_data', log=False)
                     if no_more and no_more.is_displayed():
                         self.logger.info("Detected no_more_data, stop scrolling online users.")
                         break
@@ -134,12 +138,12 @@ class OnlineListScraper(Singleton):
 
                 try:
                     if swipe_x is not None:
-                        ok = self.handler.gesture_handler.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
+                        ok = self.ui.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
                         if not ok:
                             self.logger.warning("Swipe failed, stop scrolling online users.")
                             break
                     else:
-                        self.handler.gesture_handler.swipe(500, 1500, 500, 800, 600)
+                        self.ui.swipe(500, 1500, 500, 800, 600)
                 except Exception as e:
                     self.logger.error(f"Error during swipe operation: {str(e)}")
                     break
@@ -151,9 +155,9 @@ class OnlineListScraper(Singleton):
 
             PresenceTracker.instance().update_online_users(list(all_online_user_names))
 
-            bottom_drawer = self.handler.element_finder.wait_for_element('bottom_drawer')
+            bottom_drawer = self.ui.wait_for_element('bottom_drawer')
             if bottom_drawer:
                 self.logger.info('Hide online users dialog')
-                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
+                self.ui.click_element_at(bottom_drawer, 0.5, -0.1)
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")
