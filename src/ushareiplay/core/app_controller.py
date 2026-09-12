@@ -45,6 +45,7 @@ class AppController(Singleton):
 
         # 先创建主driver（会自动启动Soul app）
         self.driver = None
+        self._network_bridge = None
         try:
             self.obs.emit("driver.init.start")
             self.driver = self._init_driver()
@@ -57,6 +58,11 @@ class AppController(Singleton):
             if self.driver:
                 try:
                     self.driver.quit()
+                except Exception:
+                    pass
+            if self._network_bridge:
+                try:
+                    self._network_bridge.stop()
                 except Exception:
                     pass
             raise
@@ -193,8 +199,28 @@ class AppController(Singleton):
         appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
 
-        server_url = f"http://{appium_host}:{appium_port}"
-        driver = webdriver.Remote(command_executor=server_url, options=options)
+        from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
+        try:
+            final_host, final_port, bridge = ensure_appium_endpoint(appium_host, int(appium_port))
+            if bridge:
+                self._network_bridge = bridge
+        except Exception as e:
+            if hasattr(self, "logger") and self.logger:
+                self.logger.error("Appium 连接检测失败:\n%s", str(e))
+            else:
+                print(f"Appium 连接检测失败:\n{str(e)}")
+            raise
+
+        server_url = f"http://{final_host}:{final_port}"
+        try:
+            driver = webdriver.Remote(command_executor=server_url, options=options)
+        except Exception as e:
+            diag = diagnose_connection_error(final_host, final_port, e)
+            if hasattr(self, "logger") and self.logger:
+                self.logger.error("初始化 Appium Remote Driver 失败:\n%s", diag)
+            else:
+                print(f"初始化 Appium Remote Driver 失败:\n{diag}")
+            raise
         driver.update_settings({
             "waitForIdleTimeout": 0,  # Don't wait for idle state
             "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
@@ -731,3 +757,10 @@ class AppController(Singleton):
             except Exception:
                 if self.logger:
                     self.logger.warning("Failed to close Appium driver during shutdown")
+
+        if hasattr(self, "_network_bridge") and self._network_bridge:
+            try:
+                self._network_bridge.stop()
+            except Exception:
+                pass
+            self._network_bridge = None
