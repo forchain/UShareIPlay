@@ -675,6 +675,29 @@ class PartyManager(Singleton):
             RoomState.instance().expected_party_id = None
             RoomState.instance().room_id = self.handler.party_id
             RoomState.instance().is_guest_room = False
+
+        # 建房流程记录的推荐状态只是配置假设（新房间默认"所有人"）或创建表单点击结果，
+        # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，
+        # 否则房间重启后 info 显示的推荐状态会与实际不一致（如实际"所有人"却记录为"关闭"）。
+        if RoomState.is_initialized():
+            from ushareiplay.managers.recommendation_manager import RecommendationManager
+            if RecommendationManager.is_initialized():
+                try:
+                    RoomState.instance().recommendation_enabled = None
+                    sync_res = RecommendationManager.instance().ensure_synced_on_return()
+                    refreshed = RoomState.instance().recommendation_enabled
+                    if isinstance(sync_res, dict) and 'error' in sync_res:
+                        self.logger.warning(
+                            f"Recommendation refresh after party creation failed: {sync_res['error']}; "
+                            f"state left as {refreshed}, will re-sync on next info/return"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Recommendation state refreshed from UI after party creation: {refreshed}"
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Error refreshing recommendation after party creation: {e}")
+
         self.logger.info("派对创建成功，准备设置默认notice")
 
         notice_manager = self.handler.controller.notice_manager
