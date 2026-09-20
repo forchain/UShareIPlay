@@ -73,6 +73,12 @@ gh pr create ...
 gh auth switch -h github.com -u <previous-active-username>
 ```
 
+### PR reuse rule in same worktree (NEVER create a new PR if one exists)
+
+**全局铁律**：如果当前 worktree 不变，且已有打开的 PR，**必须直接复用已有的 PR**（向该 PR 分支追加 commit 并 push），**严禁在已有 PR 的情况下创建新的 PR**。
+- 如果觉得当前 PR 的描述或分支名不合适，允许修正（如通过 `gh pr edit` 更新标题和描述），但绝不允许在已有 PR 的情况下创建新 PR，必须复用已有 PR。
+
+
 ## Agent skills
 
 ### Issue tracker
