@@ -37,7 +37,10 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.element_finder.wait_for_element_clickable('result_item')
+        song_element = self.handler.element_finder.wait_for_element_clickable('first_song')
+        if not song_element:
+            self.handler.logger.error("Failed to find first song")
+            return {'error': 'Failed to find first song'}
         song_element.click()
         self.handler.logger.info("Select first song")
 
