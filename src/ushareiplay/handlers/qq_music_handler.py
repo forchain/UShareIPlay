@@ -273,7 +273,7 @@ class QQMusicHandler(AppHandler, Singleton):
             ['play_all', 'play_all_playlist', 'play_all_compact', 'fav_entry'],
         )
         if key == 'home_nav':
-            search_entry = self.element_finder.wait_for_element('search_entry')
+            search_entry = self.element_finder.wait_for_element('search_entry', timeout=20)
             if not search_entry:
                 self.logger.info(f"Search entry not found")
                 return None
