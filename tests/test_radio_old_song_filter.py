@@ -329,7 +329,7 @@ def test_ensure_release_date_populates_song_info_without_skip_decision(monkeypat
 class _PlayMusicHandler:
     def __init__(self):
         self.logger = _Logger()
-        self.result_item = _Element("result")
+        self.first_song = _Element("first_song")
         self.quality_checked = []
         self.playing_info = {
             "song": "似是故人来",
@@ -342,8 +342,8 @@ class _PlayMusicHandler:
         return self.playing_info
 
     def wait_for_element_clickable(self, key):
-        assert key == "result_item"
-        return self.result_item
+        assert key == "first_song"
+        return self.first_song
 
     @property
     def element_finder(self):
@@ -381,5 +381,18 @@ def test_play_command_checks_song_quality_immediately_after_playback_starts(monk
     result = command.play_song("似是故人来 梅艳芳")
 
     assert result == music_handler.playing_info
-    assert music_handler.result_item.clicks == 1
+    assert music_handler.first_song.clicks == 1
     assert quality_checked == [music_handler.playing_info]
+
+
+def test_play_command_returns_error_when_first_song_not_found():
+    music_handler = _PlayMusicHandler()
+    music_handler.wait_for_element_clickable = lambda key: None
+    controller = SimpleNamespace(
+        music_handler=music_handler,
+        soul_handler=SimpleNamespace(),
+    )
+    command = PlayCommand(controller)
+
+    result = command.play_song("似是故人来 梅艳芳")
+    assert result == {"error": "Failed to find first song"}
