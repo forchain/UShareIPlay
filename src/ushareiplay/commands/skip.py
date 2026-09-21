@@ -3,5 +3,7 @@ from ushareiplay.managers.music_manager import MusicManager
 
 
 class SkipCommand(BaseCommand):
+    playback_muting = True
+
     async def do_process(self, message_info, parameters):
         return MusicManager.instance().skip_song()

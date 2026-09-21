@@ -2,7 +2,7 @@ from ushareiplay.core.base_command import BaseCommand
 
 
 class NextCommand(BaseCommand):
-    requires_mic = True
+    playback_muting = True
 
     async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)

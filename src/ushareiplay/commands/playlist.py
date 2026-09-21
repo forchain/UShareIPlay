@@ -7,6 +7,7 @@ from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.playlist_parser import PlaylistParser
 
 class PlaylistCommand(BaseCommand):
+    playback_muting = True
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):

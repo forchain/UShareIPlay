@@ -6,6 +6,7 @@ from ushareiplay.managers.music_manager import MusicManager
 
 
 class AlbumCommand(BaseCommand):
+    playback_muting = True
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):

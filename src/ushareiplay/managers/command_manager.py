@@ -3,6 +3,7 @@ import importlib
 import importlib.util
 import sys
 import traceback
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -184,6 +185,25 @@ class CommandManager(Singleton):
         """Get command by name"""
         module = self.load_command_module(command_name)
         return module.command if module else None
+
+    @contextmanager
+    def playback_muting_guard(self, command, command_info):
+        """播放类命令的静音保护上下文。
+
+        未声明 playback_muting 的命令不触碰麦克风；声明了则闭麦执行命令，
+        公屏通知发送完毕后等待底层播放就绪再开麦。
+        """
+        if not getattr(command, "playback_muting", False):
+            yield
+            return
+
+        from ushareiplay.managers.playback_muting import PlaybackMuting
+
+        parameters = command_info.get("parameters") or []
+        with PlaybackMuting.instance().guard(
+            expected_song=command.playback_expected_song(parameters)
+        ):
+            yield
 
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
@@ -466,11 +486,13 @@ class CommandManager(Singleton):
 
                     command = self.get_command(cmd)
                     if command:
-                        response = await self.process_command(command, message_info, command_info)
-                        if response:
-                            self.message_dispatch.send_for_message_info(
-                                message_info, response, silent=silent
-                            )
+                        # 播放静音保护：闭麦 -> 点歌/切歌 -> 公屏通知 -> 等待播放就绪 -> 开麦
+                        with self.playback_muting_guard(command, command_info):
+                            response = await self.process_command(command, message_info, command_info)
+                            if response:
+                                self.message_dispatch.send_for_message_info(
+                                    message_info, response, silent=silent
+                                )
                         success_count += 1
                     else:
                         self.logger.error(f"Unknown command: {cmd}")
