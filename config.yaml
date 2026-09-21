@@ -13,6 +13,13 @@ soul:
   default_title: "听歌"
   broadcast_playing_info: false
 
+  # 播放静音保护：点歌/切歌期间先闭麦，待底层播放就绪后再开麦，避免切歌杂音
+  playback_mute:
+    enabled: true            # 是否启用播放静音保护
+    guest_room_only: false   # 是否仅在他人房间（客房模式）生效
+    timeout: 5.0             # 等待播放就绪的最长秒数，超时后兜底开麦
+    settling_delay: 0.3      # 就绪后开麦前的声卡稳定延时（秒）
+
   # 管理员用户列表（人工管理员）
   admin_users:
     - "Outlier"
