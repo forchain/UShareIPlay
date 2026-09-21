@@ -182,6 +182,18 @@ def test_guard_restores_mic_and_skips_readiness_when_playback_raises():
     assert coordinator.music_manager.readiness_calls == []
 
 
+def test_guard_skips_readiness_wait_when_playback_reports_failure():
+    """Playback errors reported as results (not raised) must restore the mic at once."""
+    coordinator, events = _make_coordinator()
+
+    with coordinator.guard(expected_song="海阔天空"):
+        events.append("playback")
+        coordinator.report_failure()
+
+    assert events == ["mute:False", "playback", "restore"]
+    assert coordinator.music_manager.readiness_calls == []
+
+
 def test_guard_restores_mic_when_readiness_times_out():
     coordinator, events = _make_coordinator(ready=False)
 

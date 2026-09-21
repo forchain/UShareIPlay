@@ -186,6 +186,11 @@ class CommandManager(Singleton):
         module = self.load_command_module(command_name)
         return module.command if module else None
 
+    @staticmethod
+    def _playback_muting():
+        from ushareiplay.managers.playback_muting import PlaybackMuting
+        return PlaybackMuting.instance()
+
     @contextmanager
     def playback_muting_guard(self, command, command_info):
         """播放类命令的静音保护上下文。
@@ -197,13 +202,17 @@ class CommandManager(Singleton):
             yield
             return
 
-        from ushareiplay.managers.playback_muting import PlaybackMuting
-
         parameters = command_info.get("parameters") or []
-        with PlaybackMuting.instance().guard(
+        with self._playback_muting().guard(
             expected_song=command.playback_expected_song(parameters)
         ):
             yield
+
+    def _report_playback_failure(self, command):
+        """播放类命令以错误结果结束时，让静音保护跳过就绪等待并立即开麦。"""
+        if not getattr(command, "playback_muting", False):
+            return
+        self._playback_muting().report_failure()
 
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
@@ -334,6 +343,7 @@ class CommandManager(Singleton):
                         result = await command.process(message_info, parameters)
 
             if 'error' in result:
+                self._report_playback_failure(command)
                 # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染
                 format_kwargs = {'error': result['error'], 'user': message_info.nickname, **result}
                 res = command_info['error_template'].format(**format_kwargs)

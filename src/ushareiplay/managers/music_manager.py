@@ -15,6 +15,8 @@ class MusicManager(Singleton):
     MusicManager 访问音乐行为。
     """
 
+    PLAYBACK_POLL_INTERVAL = 0.3  # 播放就绪轮询间隔（秒）
+
     def __init__(self):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
         self.music_handler = QQMusicHandler.instance()
@@ -131,8 +133,7 @@ class MusicManager(Singleton):
 
     def wait_for_playback_ready(self, expected_song: Optional[str] = None,
                                 timeout: float = 5.0,
-                                settling_delay: float = 0.3,
-                                poll_interval: float = 0.3) -> bool:
+                                settling_delay: float = 0.3) -> bool:
         """等待底层播放就绪：state=Playing 且（可选）曲目已刷新，成功后附加声卡稳定延时。
 
         轮询 dumpsys media_session 直至 MediaSession PlaybackState 进入 Playing；
@@ -153,16 +154,25 @@ class MusicManager(Singleton):
                     f"song={info.get('song')}, expected={expected_song}"
                 )
                 return False
-            time.sleep(poll_interval)
+            time.sleep(self.PLAYBACK_POLL_INTERVAL)
 
     @staticmethod
     def _matches_expected_song(reported, expected_song) -> bool:
-        """兼容调用方传入完整点歌查询（歌名+歌手）与 MediaSession 上报歌名的差异。"""
+        """判断 MediaSession 上报的歌名是否已是本次点播的目标歌曲。
+
+        按空格切词比较而非子串匹配：点歌查询常为「歌名 歌手」，上报歌名常带
+        「(Live)」等后缀，两者都能命中；而子串匹配会让「:play 爱」被上一首
+        「真的爱你」的陈旧 metadata 满足，导致过早开麦。
+        """
         if not expected_song:
             return True
         reported = (reported or "").strip()
         expected = expected_song.strip()
-        return expected == reported or expected in reported or reported in expected
+        if not reported:
+            return False
+        if expected == reported:
+            return True
+        return bool(set(reported.split()) & set(expected.split()))
 
     @with_driver_recovery
     def get_volume_level(self) -> int:

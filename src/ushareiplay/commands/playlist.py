@@ -28,7 +28,6 @@ class PlaylistCommand(BaseCommand):
                 return protection_error
 
             self.info_manager.player_name = message_info.nickname
-            self.soul_handler.ensure_mic_active()
             playing_info = self.play_playlist(query)
 
         return playing_info

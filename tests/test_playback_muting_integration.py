@@ -9,6 +9,7 @@ mute -> playback -> chat notification -> media readiness -> unmute.
 import asyncio
 import importlib
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -123,6 +124,14 @@ class _PlaybackCommand:
         return " ".join(parameters)
 
 
+class _FailingPlaybackCommand(_PlaybackCommand):
+    """A playback command whose search came back empty or VIP-blocked."""
+
+    async def process(self, message_info, parameters):
+        self.events.append("playback")
+        return {"error": "Song not found"}
+
+
 class _PlainCommand:
     """Stands in for a non-playback command such as :info."""
 
@@ -189,6 +198,25 @@ def test_playback_command_mutes_notifies_waits_then_restores_mic(monkeypatch):
     ]
 
 
+def test_failed_playback_restores_mic_without_waiting_for_readiness(monkeypatch):
+    """User story 11: a not-found or VIP-blocked request returns the mic at once."""
+    coordinator = _make_coordinator([])
+    events = coordinator.soul_handler.events
+    manager = _make_manager(monkeypatch, _FailingPlaybackCommand(events), coordinator)
+
+    asyncio.run(
+        manager.execute_command_messages([MessageInfo(content=":play 不存在", nickname="Console")])
+    )
+
+    assert events == [
+        "screen",
+        "mute:False",
+        "playback",
+        "notify:Failed to play music, because Song not found",
+        "restore",
+    ]
+
+
 def test_non_playback_command_leaves_microphone_untouched(monkeypatch):
     coordinator = _make_coordinator([])
     events = coordinator.soul_handler.events
@@ -244,6 +272,22 @@ def test_playback_commands_declare_muting_participation(module_name, class_name)
 
     assert command_class.playback_muting is True
     assert not hasattr(command_class, "requires_mic")
+
+
+@pytest.mark.parametrize("module_name,class_name", PLAYBACK_COMMANDS)
+def test_playback_commands_leave_mic_activation_to_the_coordinator(module_name, class_name):
+    """An inline ensure_mic_active() re-opens the mic mid-playback, undoing the guard mute."""
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "ushareiplay"
+        / "commands"
+        / f"{module_name}.py"
+    )
+
+    source = module_path.read_text(encoding="utf-8")
+
+    assert "ensure_mic_active" not in source
 
 
 def test_play_command_reports_requested_song_for_readiness_check():

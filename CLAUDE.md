@@ -67,6 +67,7 @@ AppController
 ├── PartyManager      — Party/room lifecycle management
 ├── SeatManager       — Seat reservation, focus, validation sub-managers
 ├── MusicManager      — Playback control
+├── PlaybackMuting    — Mic mute/restore around song switching
 ├── MessageManager    — Async message queue and dispatch
 └── [KeywordManager, TitleManager, ThemeManager, TopicManager, NoticeManager, InfoManager, UserManager, AdminManager]
 ```

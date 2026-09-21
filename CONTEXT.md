@@ -69,5 +69,5 @@ The decoupled, low-priority background distillation pipeline triggered by room l
 _Avoid_: Memory sync, log summarizer, batch updater
 
 **Playback Muting**:
-The microphone lifecycle guard and state synchronizer that silences the Soul party room voice channel during active music playback and song-switching operations, waits for Android MediaSession playback readiness and post-playback room completion, and safely restores microphone activity.
+The microphone lifecycle guard that closes the bot's mic for the duration of a song-switching operation — from the start of a play/skip command until Android MediaSession confirms the new track is playing — and then safely restores microphone activity. It does not mute during steady-state playback.
 _Avoid_: Temporary mute, anti-noise hack, mic delay script

@@ -23,7 +23,6 @@ class AlbumCommand(BaseCommand):
             )
             return protection_error
 
-        self.soul_handler.ensure_mic_active()
         self.info_manager.player_name = message_info.nickname
         info = self.play_album(query)
         return info

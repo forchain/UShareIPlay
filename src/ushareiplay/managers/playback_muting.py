@@ -63,18 +63,30 @@ class PlaybackMuting(Singleton):
             yield False
             return
 
+        self._playback_failed = False
         muted = self._mute_if_active()
         try:
             yield muted
         except BaseException:
-            # 播放失败时立即恢复开麦，不再等待就绪
+            # 播放异常时立即恢复开麦，不再等待就绪
             self._restore_mic()
             raise
 
         try:
-            self._wait_until_ready(settings, expected_song)
+            if self._playback_failed:
+                self.logger.info("Playback failed, restoring microphone immediately")
+            else:
+                self._wait_until_ready(settings, expected_song)
         finally:
             self._restore_mic()
+
+    def report_failure(self):
+        """静音保护期间上报播放失败（如搜不到歌、VIP 限制）。
+
+        以结果而非异常上报的失败同样跳过就绪等待，立即恢复开麦，避免房间
+        在错误提示后仍长时间听不到机器人。
+        """
+        self._playback_failed = True
 
     def _is_guest_room(self) -> bool:
         if not RoomState.is_initialized():
@@ -106,7 +118,7 @@ class PlaybackMuting(Singleton):
         self.logger.info("Microphone muted before playback")
         return True
 
-    def _wait_until_ready(self, settings: dict, expected_song: Optional[str]) -> bool:
+    def _wait_until_ready(self, settings: dict, expected_song: Optional[str]):
         ready = self.music_manager.wait_for_playback_ready(
             expected_song=expected_song,
             timeout=settings["timeout"],
@@ -114,7 +126,6 @@ class PlaybackMuting(Singleton):
         )
         if not ready:
             self.logger.warning("Playback not ready within timeout, restoring microphone")
-        return ready
 
     def _restore_mic(self):
         """无条件恢复开麦，保证机器人不会停留在闭麦状态。"""

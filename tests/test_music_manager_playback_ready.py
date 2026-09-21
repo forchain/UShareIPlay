@@ -121,6 +121,31 @@ def test_wait_for_playback_ready_matches_search_query_against_reported_title(mon
     assert manager.driver.calls == 1
 
 
+def test_wait_for_playback_ready_rejects_stale_title_containing_the_request(monkeypatch):
+    # A short request must not be satisfied by the still-reported previous track.
+    manager, _clock = _make_manager(
+        [_dumpsys(song="真的爱你", singer="Beyond", state=3)],
+        monkeypatch,
+    )
+
+    ready = manager.wait_for_playback_ready(expected_song="爱", timeout=0.6)
+
+    assert ready is False
+
+
+def test_wait_for_playback_ready_matches_titles_with_decorations(monkeypatch):
+    # The reported title often carries suffixes the request does not.
+    manager, _clock = _make_manager(
+        [_dumpsys(song="海阔天空 (Live)", singer="Beyond", state=3)],
+        monkeypatch,
+    )
+
+    ready = manager.wait_for_playback_ready(expected_song="海阔天空")
+
+    assert ready is True
+    assert manager.driver.calls == 1
+
+
 def test_wait_for_playback_ready_keeps_polling_while_connecting(monkeypatch):
     manager, clock = _make_manager(
         [_dumpsys(song="海阔天空", state=8),   # Connecting
