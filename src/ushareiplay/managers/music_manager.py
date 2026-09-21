@@ -1,6 +1,7 @@
 import re
 import time
 import traceback
+from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
@@ -127,6 +128,41 @@ class MusicManager(Singleton):
     def get_playback_info(self) -> dict:
         """Public alias for get_current_song_info, used by commands and broadcaster."""
         return self.get_current_song_info()
+
+    def wait_for_playback_ready(self, expected_song: Optional[str] = None,
+                                timeout: float = 5.0,
+                                settling_delay: float = 0.3,
+                                poll_interval: float = 0.3) -> bool:
+        """等待底层播放就绪：state=Playing 且（可选）曲目已刷新，成功后附加声卡稳定延时。
+
+        轮询 dumpsys media_session 直至 MediaSession PlaybackState 进入 Playing；
+        提供 expected_song 时拒绝上一首歌的陈旧 metadata。超时不抛异常，记录
+        warning 后返回 False，由调用方兜底恢复开麦。
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            info = self.get_playback_info() or {}
+            if info.get('state') == 'Playing' and self._matches_expected_song(
+                    info.get('song'), expected_song):
+                time.sleep(settling_delay)
+                return True
+            if time.monotonic() >= deadline:
+                self.logger.warning(
+                    "wait_for_playback_ready timed out after "
+                    f"{timeout}s: state={info.get('state')}, "
+                    f"song={info.get('song')}, expected={expected_song}"
+                )
+                return False
+            time.sleep(poll_interval)
+
+    @staticmethod
+    def _matches_expected_song(reported, expected_song) -> bool:
+        """兼容调用方传入完整点歌查询（歌名+歌手）与 MediaSession 上报歌名的差异。"""
+        if not expected_song:
+            return True
+        reported = (reported or "").strip()
+        expected = expected_song.strip()
+        return expected == reported or expected in reported or reported in expected
 
     @with_driver_recovery
     def get_volume_level(self) -> int:
