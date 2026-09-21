@@ -5,8 +5,14 @@ from ushareiplay.managers.music_manager import MusicManager
 
 
 class PlayCommand(BaseCommand):
-    requires_mic = True
+    playback_muting = True
     handler_attr = 'music_handler'
+
+    def playback_expected_song(self, parameters):
+        query = ' '.join(parameters or [])
+        if not query or query == '?':
+            return None
+        return query
 
     async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)

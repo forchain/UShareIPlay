@@ -6,6 +6,7 @@ from ushareiplay.managers.music_manager import MusicManager
 
 
 class AlbumCommand(BaseCommand):
+    playback_muting = True
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
@@ -22,7 +23,6 @@ class AlbumCommand(BaseCommand):
             )
             return protection_error
 
-        self.soul_handler.ensure_mic_active()
         self.info_manager.player_name = message_info.nickname
         info = self.play_album(query)
         return info

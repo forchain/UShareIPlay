@@ -8,6 +8,8 @@ from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup, parse_rel
 
 
 class RadioCommand(BaseCommand):
+    playback_muting = True
+
     def __init__(self, controller):
         super().__init__(controller)
         self.song_release_lookup = QQMusicSongReleaseLookup()

@@ -1,6 +1,7 @@
 import re
 import time
 import traceback
+from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
@@ -13,6 +14,8 @@ class MusicManager(Singleton):
     质量过滤策略。QQMusicHandler 是具体的 UI adapter；命令与事件都通过
     MusicManager 访问音乐行为。
     """
+
+    PLAYBACK_POLL_INTERVAL = 0.3  # 播放就绪轮询间隔（秒）
 
     def __init__(self):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -127,6 +130,49 @@ class MusicManager(Singleton):
     def get_playback_info(self) -> dict:
         """Public alias for get_current_song_info, used by commands and broadcaster."""
         return self.get_current_song_info()
+
+    def wait_for_playback_ready(self, expected_song: Optional[str] = None,
+                                timeout: float = 5.0,
+                                settling_delay: float = 0.3) -> bool:
+        """等待底层播放就绪：state=Playing 且（可选）曲目已刷新，成功后附加声卡稳定延时。
+
+        轮询 dumpsys media_session 直至 MediaSession PlaybackState 进入 Playing；
+        提供 expected_song 时拒绝上一首歌的陈旧 metadata。超时不抛异常，记录
+        warning 后返回 False，由调用方兜底恢复开麦。
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            info = self.get_playback_info() or {}
+            if info.get('state') == 'Playing' and self._matches_expected_song(
+                    info.get('song'), expected_song):
+                time.sleep(settling_delay)
+                return True
+            if time.monotonic() >= deadline:
+                self.logger.warning(
+                    "wait_for_playback_ready timed out after "
+                    f"{timeout}s: state={info.get('state')}, "
+                    f"song={info.get('song')}, expected={expected_song}"
+                )
+                return False
+            time.sleep(self.PLAYBACK_POLL_INTERVAL)
+
+    @staticmethod
+    def _matches_expected_song(reported, expected_song) -> bool:
+        """判断 MediaSession 上报的歌名是否已是本次点播的目标歌曲。
+
+        按空格切词比较而非子串匹配：点歌查询常为「歌名 歌手」，上报歌名常带
+        「(Live)」等后缀，两者都能命中；而子串匹配会让「:play 爱」被上一首
+        「真的爱你」的陈旧 metadata 满足，导致过早开麦。
+        """
+        if not expected_song:
+            return True
+        reported = (reported or "").strip()
+        expected = expected_song.strip()
+        if not reported:
+            return False
+        if expected == reported:
+            return True
+        return bool(set(reported.split()) & set(expected.split()))
 
     @with_driver_recovery
     def get_volume_level(self) -> int:

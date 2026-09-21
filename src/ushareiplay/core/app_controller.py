@@ -435,6 +435,7 @@ class AppController(Singleton):
             from ushareiplay.managers.topic_manager import TopicManager
             from ushareiplay.managers.mic_manager import MicManager
             from ushareiplay.managers.music_manager import MusicManager
+            from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.managers.timer_manager import TimerManager
             from ushareiplay.managers.command_manager import CommandManager
@@ -471,6 +472,7 @@ class AppController(Singleton):
             self.mic_manager = MicManager.initialize()
             self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
+            self.playback_muting = PlaybackMuting.initialize()
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerManager.initialize()
             self.command_manager = CommandManager.initialize()

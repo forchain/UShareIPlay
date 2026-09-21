@@ -67,6 +67,7 @@ AppController
 ├── PartyManager      — Party/room lifecycle management
 ├── SeatManager       — Seat reservation, focus, validation sub-managers
 ├── MusicManager      — Playback control
+├── PlaybackMuting    — Mic mute/restore around song switching
 ├── MessageManager    — Async message queue and dispatch
 └── [KeywordManager, TitleManager, ThemeManager, TopicManager, NoticeManager, InfoManager, UserManager, AdminManager]
 ```
@@ -74,7 +75,7 @@ AppController
 ### Adding a New Command
 
 1. Create `src/ushareiplay/commands/<name>.py` with exactly one `BaseCommand` subclass
-2. Implement `do_process(self, message_info, parameters)` on that class — the concrete `BaseCommand.process()` wrapper owns the shell (mic prelude via `requires_mic`, handler alias via `handler_attr`, exception→`{'error': ...}` mapping via `error_message`)
+2. Implement `do_process(self, message_info, parameters)` on that class — the concrete `BaseCommand.process()` wrapper owns the shell (handler alias via `handler_attr`, exception→`{'error': ...}` mapping via `error_message`). Declare `playback_muting = True` on commands that switch songs so `CommandManager` runs them inside the `PlaybackMuting` mic lifecycle
 3. Do not add a `create_command()` factory or a module-level `command = None`
 4. Add command config entry in `config.yaml` under the commands section
 5. `CommandManager` auto-discovers commands via dynamic loading — no registration needed

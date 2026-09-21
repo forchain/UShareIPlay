@@ -5,6 +5,7 @@ from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
 
 class SingerCommand(BaseCommand):
+    playback_muting = True
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
@@ -21,7 +22,6 @@ class SingerCommand(BaseCommand):
             )
             return protection_error
 
-        self.soul_handler.ensure_mic_active()
         self.info_manager.player_name = message_info.nickname
         info = self.play_singer(query)
         return info
