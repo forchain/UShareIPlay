@@ -68,3 +68,6 @@ _Avoid_: Chat history cache, user notes, prompt memory
 The decoupled, low-priority background distillation pipeline triggered by room lifecycle events (room creation, room closure) and user presence events (user enter, user exit). It evaluates users against a minimum unsummarized message threshold, invokes an LLM to incrementally refine the user's Long-Term Memory without modifying Immutable Directives unless explicitly instructed by the user, and advances the consolidation timestamp cursor upon success.
 _Avoid_: Memory sync, log summarizer, batch updater
 
+**Playback Muting**:
+The microphone lifecycle guard and state synchronizer that silences the Soul party room voice channel during active music playback and song-switching operations, waits for Android MediaSession playback readiness and post-playback room completion, and safely restores microphone activity.
+_Avoid_: Temporary mute, anti-noise hack, mic delay script
