@@ -9,7 +9,12 @@ from collections import deque
 
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
+from ushareiplay.core.chat_intake import (
+    QUEUE_COMMAND_PREFIX_CHARS,
+    ChatIntakeKind,
+    classify_chat_line,
+    strip_quoted_segment,
+)
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
@@ -122,6 +127,10 @@ class MessageManager(Singleton):
         if not last_chat:
             return None
 
+        # Quoted Messages are composed onto the scanned line but never rendered
+        # in the sender's own bubble, so scroll/skip on the quote-free line.
+        anchor = strip_quoted_segment(last_chat) or last_chat
+
         # scroll back to the missing element
         self.handler.logger.critical(f"last_chat={last_chat}")
 
@@ -130,7 +139,7 @@ class MessageManager(Singleton):
             'message_list',
             'down',
             'content-desc|text',
-            last_chat,
+            anchor,
         )
 
         # send empty message to scroll to bottom instantly (always, even if
@@ -145,12 +154,16 @@ class MessageManager(Singleton):
 
         room_owner = self.get_room_owner()
         missed_chats = set[str]()
+        # Scanned lines carry no quote; compare on the quote-free form of what we
+        # already processed so a reply is not re-reported (and re-dispatched).
+        known_chats = {strip_quoted_segment(chat) for chat in self.recent_chats}
+        known_chats.update(strip_quoted_segment(chat) for chat in self.latest_chats)
         for chat in attribute_values:
-            if last_chat == chat:
+            if anchor == strip_quoted_segment(chat):
                 continue
 
             is_missed = False
-            if chat not in self.recent_chats and chat not in self.latest_chats and chat not in missed_chats:
+            if chat not in known_chats and chat not in missed_chats:
                 self.chat_logger.warning(chat)
                 missed_chats.add(chat)
                 is_missed = True

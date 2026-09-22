@@ -23,9 +23,25 @@ PRIVATE_REPLY_PREFIXES = ("$", "＄")
 QUEUE_COMMAND_PREFIXES = COMMAND_PREFIXES + PRIVATE_REPLY_PREFIXES
 QUEUE_COMMAND_PREFIX_CHARS = "".join(QUEUE_COMMAND_PREFIXES)
 
+# Quoted Message delimiters. CJK corner brackets are unambiguous for human
+# readers, naturally understood by LLMs, and practically absent from chat input.
+QUOTE_OPEN = "「"
+QUOTE_CLOSE = "」"
+
 # Raw chat-line patterns. Compiled once; no I/O, no mutable state.
 _CHAT_LINE_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*(.*)")
+# Same as above but keeps the wrapper (including its separator character) so a
+# composed Quoted Message can preserve the original line verbatim.
+_CHAT_LINE_HEAD_PATTERN = re.compile(r"(souler\[.+?\]说[:：])\s*(.*)")
 _COMMAND_PATTERN = re.compile(r"souler\[(.+?)\]说[:：]\s*([:：/／$＄])\s*(.+)")
+
+# A Quoted Message is always the segment sitting directly after the wrapper
+# (`souler[X]说：「...」 body`), or at the start of an unadorned line. Anchoring
+# it there keeps 「」 the sender typed into their own text untouched. Nested
+# brackets are not produced by the canonical formatter.
+_QUOTED_HEAD_PATTERN = re.compile(r"^(?:(?P<wrapper>souler\[.+?\]说[:：])\s*)?「(?P<quote>[^「」]*)」\s*")
+_BRACKET_CHARS_PATTERN = re.compile(r"[「」]")
+_WHITESPACE_RUN_PATTERN = re.compile(r"\s+")
 
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
@@ -115,6 +131,8 @@ class ChatIntakeResult:
         sleep_exempt: Inherited sleep-exemption flag (queue expansion only).
         raw: The original input string, preserved for debugging.
         heat_value: Heat value amount (only set for GIFT_RECEIVE Type 2).
+        quoted_text: The Quoted Message the sender replied to, without its
+                     `「...」` delimiters. Empty when the line carries no quote.
     """
 
     kind: ChatIntakeKind
@@ -127,7 +145,71 @@ class ChatIntakeResult:
     sleep_exempt: bool = False
     raw: str = ""
     heat_value: int = 0
+    quoted_text: str = ""
 
+    @property
+    def utterance(self) -> str:
+        """The sender's own utterance, enriched with Quoted Message context.
+
+        Command and mention matching always works on the sender's own text; this
+        property is for consumers that want the full conversational context
+        (chat-log persistence and Natural Language Command Resolution).
+        """
+        body = f"{self.text} {self.params}".strip() if self.params else (self.text or "").strip()
+        if not self.quoted_text:
+            return body
+        return f"{QUOTE_OPEN}{self.quoted_text}{QUOTE_CLOSE} {body}".strip()
+
+
+def _normalize_quote_text(quoted: str) -> str:
+    """Collapse a Quoted Message snippet to one line without any brackets."""
+    text = _BRACKET_CHARS_PATTERN.sub("", quoted or "")
+    return _WHITESPACE_RUN_PATTERN.sub(" ", text).strip()
+
+
+def split_quoted_message(line: str) -> tuple[str, str]:
+    """Split a chat line into ``(sender's own line, Quoted Message text)``.
+
+    A line without a quote is returned unchanged with an empty quote, so this is
+    safe to apply to arbitrary chat lines. The canonical formatter always emits
+    the quote immediately after the ``souler[...]说：`` wrapper, and that is the
+    only segment treated as a quote — brackets the sender typed into their own
+    text stay where they are.
+    """
+    line = line or ""
+    match = _QUOTED_HEAD_PATTERN.match(line)
+    if not match:
+        return line, ""
+    head = match.group("wrapper") or ""
+    return f"{head}{line[match.end():]}", _normalize_quote_text(match.group("quote"))
+
+
+def strip_quoted_segment(line: str) -> str:
+    """Return the chat line as the sender typed it, without any Quoted Message."""
+    return split_quoted_message(line)[0]
+
+
+def format_quoted_message(content: str, quoted: str) -> str:
+    """Compose the canonical Quoted Message representation of a chat line.
+
+    ``souler[Sender]说：「RepliedAuthor：RepliedContent」 SenderContent`` — or,
+    when the line carries no ``souler[...]`` wrapper, ``「...」 SenderContent``.
+    A line without a quote is returned unchanged.
+    """
+    quote = _normalize_quote_text(quoted)
+    content = content or ""
+    if not quote:
+        return content
+
+    head_match = _CHAT_LINE_HEAD_PATTERN.match(content)
+    if head_match:
+        head = f"{head_match.group(1)}{QUOTE_OPEN}{quote}{QUOTE_CLOSE}"
+        body = head_match.group(2).strip()
+    else:
+        head = f"{QUOTE_OPEN}{quote}{QUOTE_CLOSE}"
+        body = content.strip()
+
+    return f"{head} {body}" if body else head
 
 
 def _find_keyword_mention(
@@ -149,7 +231,8 @@ def _find_keyword_mention(
        the mention so a bare ``@owner`` (no surrounding text) is not matched.
 
     Args:
-        raw: Full raw chat line.
+        raw: The chat line to match against. Callers pass the sender's own text,
+             i.e. with any Quoted Message already removed.
         mention_re: Compiled regex fragment that matches the mention token
                     (e.g. ``@我`` or ``(?:@我|@Joyer)``).
 
@@ -183,21 +266,29 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
 
     Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
     The result is frozen; callers may convert it to a mutable MessageInfo if needed.
+
+    Quoted Message content is extracted into `quoted_text` and removed from the
+    line *before* any matching, so history quoted in a reply can never trigger a
+    command, a keyword mention, or a gift — only what the sender typed does.
     """
     raw = raw or ""
 
+    # Everything downstream matches against the sender's own text only.
+    line, quoted_text = split_quoted_message(raw)
+
     # User enter/return notifications are system-style lines without the souler
     # wrapper; check them first so they are not mistaken for plain chat.
-    entrant_name = parse_enter_return_username(raw)
+    entrant_name = parse_enter_return_username(line)
     if entrant_name:
         return ChatIntakeResult(
             kind=ChatIntakeKind.USER_RETURN,
             nickname=entrant_name,
             text=entrant_name,
             raw=raw,
+            quoted_text=quoted_text,
         )
 
-    gift1_match = _GIFT_TYPE1_PATTERN.search(raw)
+    gift1_match = _GIFT_TYPE1_PATTERN.search(line)
     if gift1_match:
         giver = gift1_match.group(1).strip()
         receiver = gift1_match.group(2).strip()
@@ -208,9 +299,10 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
                 text=giver,
                 raw=raw,
                 heat_value=0,
+                quoted_text=quoted_text,
             )
 
-    gift2_match = _GIFT_TYPE2_PATTERN.search(raw)
+    gift2_match = _GIFT_TYPE2_PATTERN.search(line)
     if gift2_match:
         giver = gift2_match.group(1).strip()
         heat_val = int(gift2_match.group(2))
@@ -220,6 +312,7 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
             text=giver,
             raw=raw,
             heat_value=heat_val,
+            quoted_text=quoted_text,
         )
 
     if room_owner and room_owner.strip() and room_owner.strip() != "我":
@@ -228,7 +321,7 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
     else:
         mention_re = "@我"
 
-    keyword_result = _find_keyword_mention(raw, mention_re)
+    keyword_result = _find_keyword_mention(line, mention_re)
 
     if keyword_result:
         nickname, keyword_text = keyword_result
@@ -242,9 +335,10 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
             text=keyword,
             params=params,
             raw=raw,
+            quoted_text=quoted_text,
         )
 
-    command_match = _COMMAND_PATTERN.match(raw)
+    command_match = _COMMAND_PATTERN.match(line)
     if command_match:
         nickname = command_match.group(1).strip()
         trigger = command_match.group(2)
@@ -258,23 +352,25 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
             silent=trigger in SILENT_COMMAND_PREFIXES,
             private_reply=trigger in PRIVATE_REPLY_PREFIXES,
             raw=raw,
+            quoted_text=quoted_text,
         )
 
     # Not a recognized structured line. Try to strip the souler wrapper so that
     # plain chat results carry the visible text; otherwise keep the whole raw line.
-    wrapper_match = _CHAT_LINE_PATTERN.match(raw)
+    wrapper_match = _CHAT_LINE_PATTERN.match(line)
     if wrapper_match:
         nickname = wrapper_match.group(1).strip()
         text = wrapper_match.group(2)
     else:
         nickname = ""
-        text = raw
+        text = line
 
     return ChatIntakeResult(
         kind=ChatIntakeKind.PLAIN_CHAT,
         nickname=nickname,
         text=text,
         raw=raw,
+        quoted_text=quoted_text,
     )
 
 

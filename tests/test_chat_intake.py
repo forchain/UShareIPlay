@@ -455,3 +455,219 @@ class TestMessageSourceFormatting:
         assert is_manual_operator("Alice", source="chat") is False
         assert is_manual_operator("Bob") is False
         assert is_manual_operator(None) is False
+
+
+class TestClassifyQuotedMessage:
+    def test_quote_is_extracted_and_stripped_from_the_sender_text(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：今天天气不错」 哈哈")
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.nickname == "Bob"
+        assert result.text == "哈哈"
+        assert result.quoted_text == "Alice：今天天气不错"
+        assert result.raw == "souler[Bob]说：「Alice：今天天气不错」 哈哈"
+
+    def test_message_without_quote_has_no_quoted_text(self):
+        result = classify_chat_line("souler[Bob]说：哈哈")
+
+        assert result.quoted_text == ""
+
+    def test_brackets_in_the_senders_own_text_are_left_alone(self):
+        result = classify_chat_line("souler[Bob]说：我发了个「笑脸」 哈哈")
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.text == "我发了个「笑脸」 哈哈"
+        assert result.quoted_text == ""
+        assert result.utterance == "我发了个「笑脸」 哈哈"
+
+    def test_quote_only_message_has_empty_text(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：今天天气不错」")
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.text == ""
+        assert result.quoted_text == "Alice：今天天气不错"
+
+    def test_command_inside_a_quote_does_not_execute(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：:play 晴天」 哈哈哈")
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.text == "哈哈哈"
+        assert result.quoted_text == "Alice：:play 晴天"
+
+    def test_mention_inside_a_quote_does_not_dispatch(self):
+        result = classify_chat_line(
+            "souler[Bob]说：「Alice：@群主 点歌」 哈哈哈", room_owner="群主"
+        )
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.text == "哈哈哈"
+        assert result.quoted_text == "Alice：@群主 点歌"
+
+    def test_gift_inside_a_quote_is_not_a_gift(self):
+        result = classify_chat_line(
+            "souler[Bob]说：「Alice：souler[Carol]送给 Joyer 【为你爆灯】」 谢谢",
+            room_owner="Joyer",
+        )
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.text == "谢谢"
+
+    def test_enter_notification_inside_a_quote_is_not_a_return(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：Chainer进入房间啦」 欢迎")
+
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_sender_command_after_a_quote_still_executes(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：哈哈」 :play 晴天")
+
+        assert result.kind == ChatIntakeKind.COMMAND
+        assert result.nickname == "Bob"
+        assert result.text == ":play 晴天"
+        assert result.trigger == ":"
+        assert result.quoted_text == "Alice：哈哈"
+
+    def test_sender_mention_after_a_quote_still_dispatches(self):
+        result = classify_chat_line(
+            "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天", room_owner="群主"
+        )
+
+        assert result.kind == ChatIntakeKind.KEYWORD_MENTION
+        assert result.nickname == "Bob"
+        assert result.text == "点歌"
+        assert result.params == "晴天"
+        assert result.quoted_text == "Alice：哈哈"
+
+    def test_utterance_carries_the_quote_context(self):
+        result = classify_chat_line(
+            "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天", room_owner="群主"
+        )
+
+        assert result.utterance == "「Alice：哈哈」 点歌 晴天"
+
+    def test_utterance_without_quote_is_the_plain_utterance(self):
+        result = classify_chat_line("souler[Bob]说：@我 点歌 晴天")
+
+        assert result.utterance == "点歌 晴天"
+
+    def test_utterance_of_plain_chat(self):
+        result = classify_chat_line("souler[Bob]说：「Alice：哈哈」 哈")
+
+        assert result.utterance == "「Alice：哈哈」 哈"
+
+
+class TestFormatQuotedMessage:
+    def test_wrapped_sender_line_keeps_its_wrapper(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert (
+            format_quoted_message("souler[Bob]说：哈哈", "Alice：今天天气不错")
+            == "souler[Bob]说：「Alice：今天天气不错」 哈哈"
+        )
+
+    def test_sender_line_separator_is_preserved(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert (
+            format_quoted_message("souler[Bob]说:哈哈", "Alice：好")
+            == "souler[Bob]说:「Alice：好」 哈哈"
+        )
+
+    def test_unadorned_sender_line_is_prefixed_with_the_quote(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert format_quoted_message("哈哈", "Alice：好") == "「Alice：好」 哈哈"
+
+    def test_empty_quote_returns_the_sender_line_unchanged(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert format_quoted_message("souler[Bob]说：哈哈", "") == "souler[Bob]说：哈哈"
+        assert format_quoted_message("souler[Bob]说：哈哈", "   ") == "souler[Bob]说：哈哈"
+
+    def test_empty_sender_body_has_no_trailing_space(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert format_quoted_message("souler[Bob]说：", "Alice：好") == "souler[Bob]说：「Alice：好」"
+
+    def test_brackets_inside_the_quote_are_stripped(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert (
+            format_quoted_message("souler[Bob]说：哈哈", "Alice：「嵌套」")
+            == "souler[Bob]说：「Alice：嵌套」 哈哈"
+        )
+
+    def test_quote_whitespace_is_collapsed(self):
+        from ushareiplay.core.chat_intake import format_quoted_message
+
+        assert (
+            format_quoted_message("souler[Bob]说：哈哈", "Alice：\n今天   天气")
+            == "souler[Bob]说：「Alice： 今天 天气」 哈哈"
+        )
+
+    def test_composed_message_round_trips_through_stripping(self):
+        from ushareiplay.core.chat_intake import (
+            format_quoted_message,
+            strip_quoted_segment,
+        )
+
+        for content in ("souler[Bob]说：哈哈", "souler[Bob]说:哈哈", "souler[Bob]说："):
+            composed = format_quoted_message(content, "Alice：今天天气不错")
+            assert strip_quoted_segment(composed) == content
+
+
+class TestSplitQuotedMessage:
+    def test_line_without_quote_is_returned_unchanged(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("souler[Bob]说：哈哈") == ("souler[Bob]说：哈哈", "")
+        assert split_quoted_message("souler[Bob]说：hello  world") == (
+            "souler[Bob]说：hello  world",
+            "",
+        )
+        assert split_quoted_message("") == ("", "")
+
+    def test_quote_after_the_wrapper_is_split_off_with_its_space(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("souler[Bob]说：「Alice：今天天气不错」 哈哈") == (
+            "souler[Bob]说：哈哈",
+            "Alice：今天天气不错",
+        )
+
+    def test_quote_only_line_leaves_the_wrapper(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("souler[Bob]说：「Alice：好」") == (
+            "souler[Bob]说：",
+            "Alice：好",
+        )
+
+    def test_unadorned_quote_is_split_off_too(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("「Alice：好」 哈哈") == ("哈哈", "Alice：好")
+
+    def test_brackets_in_the_senders_own_body_are_not_a_quote(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("souler[Bob]说：我发了个「笑脸」 哈哈") == (
+            "souler[Bob]说：我发了个「笑脸」 哈哈",
+            "",
+        )
+
+    def test_only_the_leading_segment_is_the_quote(self):
+        from ushareiplay.core.chat_intake import split_quoted_message
+
+        assert split_quoted_message("souler[Bob]说：「Alice：好」 他还说「Bob：坏」") == (
+            "souler[Bob]说：他还说「Bob：坏」",
+            "Alice：好",
+        )
+
+    def test_strip_quoted_segment_returns_the_senders_own_line(self):
+        from ushareiplay.core.chat_intake import strip_quoted_segment
+
+        assert (
+            strip_quoted_segment("souler[Bob]说：「Alice：今天天气不错」 哈哈")
+            == "souler[Bob]说：哈哈"
+        )
+        assert strip_quoted_segment("souler[Bob]说：哈哈") == "souler[Bob]说：哈哈"

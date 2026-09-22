@@ -451,7 +451,7 @@ class KeywordManager(Singleton):
         Returns True if resolved and dispatched, False if unhandled/fallback needed.
         """
         try:
-            user_text = f"{result.text} {result.params}".strip() if result.params else result.text
+            user_text = result.utterance
             if not user_text:
                 return False
 
@@ -531,8 +531,8 @@ class KeywordManager(Singleton):
 
     async def dispatch_mention(self, result, sleep_exempt: bool = True):
         """Handle a keyword-mention ChatIntakeResult by finding and executing the keyword."""
-        # 记录用户 @群主 的发言至 UserChatLog 供记忆系统使用
-        user_text = f"{result.text} {result.params}".strip() if result.params else (result.text or "").strip()
+        # 记录用户 @群主 的发言至 UserChatLog 供记忆系统使用（含引用上下文）
+        user_text = result.utterance
         if result.nickname and user_text:
             try:
                 from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
