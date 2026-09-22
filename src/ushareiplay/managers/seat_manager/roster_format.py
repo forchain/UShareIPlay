@@ -87,7 +87,7 @@ def format_seat_roster(
         _desk_segments(desk_index, desk_cells, cell_width, paint)
         for desk_index, desk_cells in enumerate(cells)
     ]
-    changes_segments = _change_segments(transitions, paint)
+    changes_segments = _change_segments(transitions)
     # The summary is widened into the frame rather than allowed to spill past it.
     inner_width = max(
         [_plain_width(body[0])] + [_plain_width(c) for c in changes_segments]
@@ -221,9 +221,8 @@ def _render_cell(cell: Cell, width: int, paint: _Painter) -> str:
     return rendered + " " * max(0, width - display_width(_plain(cell)))
 
 
-def _change_segments(changes, paint: _Painter) -> List[list]:
+def _change_segments(changes) -> List[list]:
     """One row per transition, with its kind, name and seat movement aligned."""
-    del paint  # the kind's own style is enough to tell the transitions apart
     if not changes:
         return []
 

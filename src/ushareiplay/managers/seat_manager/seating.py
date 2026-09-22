@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager.desks import (
     OWNER_LABEL,
@@ -7,9 +9,20 @@ from ushareiplay.managers.seat_manager.desks import (
     seat_number_of,
     side_of,
 )
-from ushareiplay.managers.seat_manager.roster import UNKNOWN_USERNAME, SeatRoster
+from ushareiplay.managers.seat_manager.roster import (
+    UNKNOWN_USERNAME,
+    SeatChange,
+    SeatOccupant,
+    SeatRoster,
+)
+from ushareiplay.managers.seat_manager.roster_format import format_seat_roster
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
+
+
+def _removed_username(removed: Optional[SeatOccupant]) -> str:
+    """The name to report for a seat that was just vacated."""
+    return UNKNOWN_USERNAME if removed is None else removed.username
 
 
 class SeatingManager:
@@ -357,13 +370,40 @@ class SeatingManager:
         if previous_seat is not None and previous_seat != seat_number:
             self.roster.clear_seat(previous_seat)
             self.roster.note_occupancy(previous_seat, False)
+            moved_from = previous_seat
+        else:
+            # Nothing to move off: we were either unseated or already here, and
+            # either way this reads as sitting down rather than as a move.
+            moved_from = None
         self.roster.set_occupant(seat_number, owner, is_owner=True, verified=True)
         self.roster.note_occupancy(seat_number, True)
+        self._log_roster(
+            SeatChange(
+                username=owner, previous_seat=moved_from, current_seat=seat_number
+            )
+        )
 
-    def _record_self_unseated(self, seat_number: int) -> None:
-        """Mirror a confirmed removal so the roster needs no follow-up probe."""
-        self.roster.clear_seat(seat_number)
+    def _record_self_unseated(self, seat_number: int, username: Optional[str] = None) -> None:
+        """Mirror a confirmed removal so the roster needs no follow-up probe.
+
+        ``username`` is the name the caller read for the occupant, which is the
+        truth of who was removed even when the cache never identified the seat.
+        """
+        removed = self.roster.clear_seat(seat_number)
         self.roster.note_occupancy(seat_number, False)
+        self._log_roster(
+            SeatChange(
+                username=username or _removed_username(removed),
+                previous_seat=seat_number,
+                current_seat=None,
+            )
+        )
+
+    def _log_roster(self, change: SeatChange) -> None:
+        """Log the updated layout, so seat movements are visible as they happen."""
+        if self.handler is None:
+            return
+        self.handler.logger.info(format_seat_roster(self.roster, changes=[change]))
 
     def _select_companion_candidate(self, desk_info):
         left = desk_info['left']
@@ -432,7 +472,7 @@ class SeatingManager:
 
             souler_name_text = souler_name.text
             seat_off.click()
-            self._record_self_unseated(seat_number)
+            self._record_self_unseated(seat_number, souler_name_text.strip())
             self.handler.logger.info(f"Successfully removed {souler_name_text} from seat {seat_number}")
             return {'success': f'Successfully removed {souler_name_text} from seat {seat_number}'}
 

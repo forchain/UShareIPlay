@@ -175,6 +175,18 @@ def test_snapshot_only_reports_identified_occupants():
     assert roster.snapshot() == {1: "Alice", 3: "Bob"}
 
 
+def test_snapshot_keeps_the_last_known_name_of_a_doubted_occupant():
+    """A doubted name is still a name: dropping it would read a seat that was
+    merely re-read as a fresh arrival rather than as the move it actually was."""
+    roster = _roster()
+    roster.set_occupant(3, "Alice")
+
+    roster.invalidate(3)
+
+    assert roster.occupant(3).verified is False
+    assert roster.snapshot() == {3: "Alice"}
+
+
 def test_diff_snapshots_reports_seated_unseated_and_shifted_users():
     before = {1: "Alice", 5: "Bob", 9: "Carol"}
     after = {1: "Alice", 5: "Carol", 7: "Dave"}

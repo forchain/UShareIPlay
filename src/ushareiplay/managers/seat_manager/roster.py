@@ -101,11 +101,17 @@ class SeatRoster:
         return None
 
     def snapshot(self) -> Dict[int, str]:
-        """Seat -> username for every occupant whose identity is known."""
+        """Seat -> last known username for every identified occupant.
+
+        A doubted name is still a name: ``verified`` only decides whether a seat
+        may be acted on without re-reading it. Dropping an invalidated occupant
+        here would make the next diff report their seat as a fresh arrival
+        instead of the move it actually was.
+        """
         return {
             seat_number: occupant.username
             for seat_number, occupant in self._seats.items()
-            if occupant is not None and occupant.verified and occupant.username != UNKNOWN_USERNAME
+            if occupant is not None and occupant.username != UNKNOWN_USERNAME
         }
 
     def set_occupant(
