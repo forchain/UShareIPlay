@@ -23,11 +23,13 @@ class SeatUIManager:
         self.probe = probe
         self.roster = probe.roster
 
-    async def _sync_roster(self, seat_desks, guard_seat=None):
+    async def _sync_roster(self, seat_desks, guard_seat=None, full_scan=False):
         """Opportunistically reconcile the Seat Roster with the expanded panel."""
         if self.probe is None:
             return None
-        return await self.probe.sync(seat_desks, guard_seat=guard_seat)
+        return await self.probe.sync(
+            seat_desks, guard_seat=guard_seat, full_scan=full_scan
+        )
 
     def check_seats_state(self):
         """检查座位的实际展开状态并更新 is_expanded 标志"""
@@ -122,7 +124,17 @@ class SeatUIManager:
         seat_desks = await self._expand_desks()
         if seat_desks is None:
             return None
-        await self._sync_roster(seat_desks, guard_seat=guard_seat)
+        focus_count = None
+        if self.probe is not None:
+            focus_count = self.probe._focus_count_provider()
+        is_dirty = (
+            (not self.roster.has_synced) or self.roster.is_stale(focus_count=focus_count)
+            if self.roster is not None
+            else False
+        )
+        await self._sync_roster(
+            seat_desks, guard_seat=guard_seat, full_scan=is_dirty
+        )
         return seat_desks
 
     async def probe_roster(self):
@@ -134,7 +146,7 @@ class SeatUIManager:
         seat_desks = await self._expand_desks()
         if seat_desks is None:
             return None
-        return await self._sync_roster(seat_desks)
+        return await self._sync_roster(seat_desks, full_scan=True)
 
     async def _expand_desks(self):
         if not await self.expand_seats():

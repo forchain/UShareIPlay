@@ -71,6 +71,7 @@ class SeatProbe:
         *,
         focus_count: Optional[int] = None,
         guard_seat: Optional[int] = None,
+        full_scan: bool = False,
     ) -> SyncResult:
         """Reconcile the roster against the currently readable desks.
 
@@ -86,6 +87,15 @@ class SeatProbe:
             focus_count = self._focus_count_provider()
 
         before = self._roster.snapshot()
+
+        if full_scan:
+            return await self._sync_full_scan(
+                seat_desks,
+                before=before,
+                focus_count=focus_count,
+                guard_seat=guard_seat,
+            )
+
         mask = self._read_occupancy_mask(seat_desks)
 
         result.cleared_seats = self._purge_empty_seats(mask)
@@ -100,6 +110,94 @@ class SeatProbe:
 
         self._roster.note_occupancy_mask(mask)
         self._roster.note_focus_count(focus_count)
+        self._roster.mark_synced()
+        result.changes = diff_snapshots(before, self._roster.snapshot())
+        if result.changes or result.cleared_seats:
+            log_seat_roster(
+                self._handler.logger,
+                self._roster,
+                self._reported_changes(result.changes, result.cleared_seats),
+            )
+        return result
+
+    async def _sync_full_scan(
+        self,
+        seat_desks,
+        *,
+        before: Dict[int, str],
+        focus_count: Optional[int],
+        guard_seat: Optional[int],
+    ) -> SyncResult:
+        result = SyncResult()
+        rows = [
+            (0, (0, 1)),
+            (1, (2, 3)),
+            (2, (4, 5)),
+        ]
+        settle = getattr(self._seat_ui, "EXPANSION_SETTLE_SECONDS", 0.0)
+
+        for row_index, desk_indices in rows:
+            first_desk = desk_indices[0]
+            if first_desk < len(seat_desks):
+                self._seat_ui.scroll_to_row(first_desk, seat_desks)
+                if settle > 0:
+                    await asyncio.sleep(settle)
+
+            for desk_index in desk_indices:
+                if desk_index >= len(seat_desks):
+                    continue
+                try:
+                    desk_info = read_desk(self._handler, seat_desks[desk_index])
+                except Exception:
+                    self._report(
+                        f"Failed to read desk {desk_index + 1} during full scan: {traceback.format_exc()}"
+                    )
+                    continue
+
+                for side in SIDES:
+                    seat_number = seat_number_of(desk_index, side)
+                    entry = desk_info.get(side) or {}
+                    occupied = bool(entry.get("occupied"))
+
+                    self._roster.note_occupancy(seat_number, occupied)
+
+                    if not occupied:
+                        if self._roster.is_occupied(seat_number):
+                            removed = self._roster.clear_seat(seat_number)
+                            if removed is not None:
+                                result.cleared_seats.append(seat_number)
+                                self._log_info(
+                                    f"Seat {seat_number} became empty; dropped {removed.username} from the roster"
+                                )
+                        continue
+
+                    # Seat is occupied
+                    if guard_seat is not None and seat_number == guard_seat:
+                        result.blocked_seat = guard_seat
+                        if not self._roster.is_occupied(seat_number):
+                            self._roster.set_occupant(
+                                seat_number,
+                                UNKNOWN_USERNAME,
+                                is_owner=bool(entry.get("is_owner")),
+                                verified=False,
+                            )
+                        continue
+
+                    occupant = self._roster.occupant(seat_number)
+                    if occupant is not None and occupant.verified:
+                        continue
+
+                    self.identify_seat(seat_number, entry)
+                    result.probed_seats.append(seat_number)
+
+        # Restore to Row 0 after full scan
+        if len(seat_desks) > 0:
+            self._seat_ui.scroll_to_row(0, seat_desks)
+            if settle > 0:
+                await asyncio.sleep(settle)
+
+        self._roster.note_focus_count(focus_count)
+        self._roster.mark_synced()
         result.changes = diff_snapshots(before, self._roster.snapshot())
         if result.changes or result.cleared_seats:
             log_seat_roster(
@@ -160,6 +258,7 @@ class SeatProbe:
     def _read_occupancy_mask(self, seat_desks) -> Tuple[bool, ...]:
         """Occupancy of every seat, from element presence alone."""
         mask = list(self._roster.occupancy_mask)
+        current_row = getattr(self._seat_ui, "current_row_index", None)
         for desk_index, desk in enumerate(seat_desks):
             if desk_index >= len(SEAT_NUMBERS) // len(SIDES):
                 break
@@ -181,7 +280,12 @@ class SeatProbe:
                         f"Failed to read occupancy of seat {seat_number}: {traceback.format_exc()}"
                     )
                     continue
-                mask[seat_number - 1] = state is not None
+
+                if state is not None:
+                    mask[seat_number - 1] = True
+                elif current_row is None or (desk_index // 2) == current_row:
+                    mask[seat_number - 1] = False
+                # If state is None and desk is offscreen, preserve existing mask state
         return tuple(mask)
 
     def _purge_empty_seats(self, mask) -> List[int]:

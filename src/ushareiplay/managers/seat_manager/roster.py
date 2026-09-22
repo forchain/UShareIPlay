@@ -67,6 +67,9 @@ def _seat_of(snapshot: Mapping[int, str], username: str) -> Optional[int]:
     return None
 
 
+_SENTINEL = object()
+
+
 class SeatRoster:
     """Cached occupancy of seats 1-12 plus the UI signals the cache came from."""
 
@@ -75,6 +78,14 @@ class SeatRoster:
         self._seats: Dict[int, Optional[SeatOccupant]] = {n: None for n in SEAT_NUMBERS}
         self._focus_count: Optional[int] = None
         self._occupancy_mask: Tuple[bool, ...] = (False,) * len(SEAT_NUMBERS)
+        self._has_synced: bool = False
+
+    @property
+    def has_synced(self) -> bool:
+        return self._has_synced
+
+    def mark_synced(self) -> None:
+        self._has_synced = True
 
     @property
     def focus_count(self) -> Optional[int]:
@@ -207,14 +218,22 @@ class SeatRoster:
             return
         self._occupancy_mask = mask
 
-    def is_stale(self, *, focus_count: Optional[int], occupancy_mask: Iterable[bool]) -> bool:
+    def is_stale(
+        self,
+        *,
+        focus_count: object = _SENTINEL,
+        occupancy_mask: object = _SENTINEL,
+    ) -> bool:
         """Whether the cached roster disagrees with the live seat panel.
 
         Drives the differential probe: a clean roster costs no profile popups.
         """
-        if focus_count != self._focus_count:
+        if focus_count is not _SENTINEL and focus_count != self._focus_count:
             return True
-        if tuple(bool(value) for value in occupancy_mask) != self._occupancy_mask:
+        if (
+            occupancy_mask is not _SENTINEL
+            and tuple(bool(value) for value in occupancy_mask) != self._occupancy_mask
+        ):
             return True
         return any(
             occupant is not None and not occupant.verified
@@ -240,3 +259,4 @@ class SeatRoster:
         self._seats = {n: None for n in SEAT_NUMBERS}
         self._focus_count = None
         self._occupancy_mask = (False,) * len(SEAT_NUMBERS)
+        self._has_synced = False

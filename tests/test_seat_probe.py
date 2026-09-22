@@ -461,5 +461,48 @@ def test_sync_preserves_occupancy_when_desk_scrolled_out_of_view():
     assert roster.occupant(11).username == "Joyer"
 
 
+def test_sync_full_scan_probes_all_rows_and_returns_to_row_zero():
+    panel, desks = make_panel({1: "Alice", 5: "Bob", 11: "Carol"})
+    probe, roster, _ui = _probe(panel)
+
+    result = asyncio.run(probe.sync(desks, focus_count=3, full_scan=True))
+
+    assert result.probed_seats == [1, 5, 11]
+    assert roster.find_seat_of("Alice") == 1
+    assert roster.find_seat_of("Bob") == 5
+    assert roster.find_seat_of("Carol") == 11
+    # Full scan sequentially visits Row 0 (desk 0), Row 1 (desk 2), Row 2 (desk 4),
+    # and restores back to Row 0 (desk 0).
+    assert panel.scrolls == [0, 2, 4, 0]
+
+
+def test_sync_full_scan_clears_departed_seats_across_rows():
+    panel, desks = make_panel({1: "Alice", 5: "Bob", 11: "Carol"})
+    probe, roster, _ui = _synced(panel, focus_count=3)
+
+    panel.clear_seat(5)
+    panel.clear_seat(11)
+
+    result = asyncio.run(probe.sync(desks, focus_count=1, full_scan=True))
+
+    assert sorted(result.cleared_seats) == [5, 11]
+    assert roster.occupant(5) is None
+    assert roster.occupant(11) is None
+    assert roster.find_seat_of("Alice") == 1
+    # Alice is already verified, departures cost zero popups
+    assert panel.popup_clicks == 0
+
+
+def test_sync_full_scan_respects_guard_seat():
+    panel, desks = make_panel({1: "Alice", 5: "Bob"})
+    probe, roster, _ui = _probe(panel)
+
+    result = asyncio.run(probe.sync(desks, focus_count=2, guard_seat=5, full_scan=True))
+
+    assert result.blocked_seat == 5
+    assert 5 not in result.probed_seats
+    assert result.probed_seats == [1]
+
+
 def _read_desk(panel, desk):
     return read_desk(panel.handler, desk)

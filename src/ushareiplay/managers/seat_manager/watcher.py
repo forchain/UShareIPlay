@@ -50,15 +50,12 @@ class SeatRosterWatcher:
     # --- passive signals -------------------------------------------------
 
     def note_focus_count(self, focus_count: Optional[int]) -> bool:
-        """Record focus count without arming a probe.
-
-        Focus count ("N人专注中") tracks room study attendance, not seat
-        occupancy. Room headcount movements must never trigger seat expansion.
-        """
+        """Arm a probe when "N人专注中" changes. Returns whether it armed one."""
         if focus_count == self._focus_count:
             return False
         self._focus_count = focus_count
-        return False
+        self._arm()
+        return True
 
     def note_occupancy_mask(self, occupancy_mask: Iterable[Optional[bool]]) -> bool:
         """Arm a probe when visible seat occupancy changes.

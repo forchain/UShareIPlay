@@ -81,25 +81,46 @@ def _trigger_probe(watcher):
     watcher.note_occupancy_mask([True] + [False] * 11)
 
 
-async def test_a_focus_count_change_does_not_arm_a_probe():
+async def test_a_focus_count_change_arms_one_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    assert watcher.note_focus_count(1) is False
+    assert watcher.note_focus_count(1) is True
     await watcher.drain()
 
-    assert panel.expand_clicks == 0
+    assert panel.expand_clicks == 1
 
 
 async def test_an_unchanged_focus_count_does_not_arm_a_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    assert watcher.note_focus_count(1) is False
+    assert watcher.note_focus_count(1) is True
     assert watcher.note_focus_count(1) is False
     await watcher.drain()
 
-    assert panel.expand_clicks == 0
+    assert panel.expand_clicks == 1
+
+
+async def test_probe_roster_full_scan_finds_offscreen_occupants():
+    # User reported: focus count was 5, but off-screen seats (desks 2-6) were missed.
+    # A full scan must check every row and identify off-screen occupants.
+    panel = FakeSeatPanel(
+        {1: "Chainer", 5: "User2", 7: "User3", 9: "User4", 11: "User5"}
+    )
+    _ui, _probe, roster, watcher, obs = _stack(panel)
+
+    assert watcher.note_focus_count(5) is True
+    await watcher.drain()
+
+    assert panel.expand_clicks == 1
+    assert panel.seats_expanded is False
+    assert roster.find_seat_of("Chainer") == 1
+    assert roster.find_seat_of("User2") == 5
+    assert roster.find_seat_of("User3") == 7
+    assert roster.find_seat_of("User4") == 9
+    assert roster.find_seat_of("User5") == 11
+    assert len(roster.occupants()) == 5
 
 
 async def test_an_occupancy_mask_change_arms_a_probe():
