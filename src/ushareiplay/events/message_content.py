@@ -11,6 +11,7 @@ import traceback
 
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
+from ushareiplay.core.element_wrapper import composed_message_text
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
@@ -47,7 +48,7 @@ class MessageContentEvent(BaseEvent):
                 return False
             content_list = []
             for wrapper in wrapper_list:
-                if content := wrapper.content:
+                if content := composed_message_text(wrapper):
                     content_list.append(content)
 
             # 获取 MessageManager 实例，使用其 recent_chats

@@ -8,6 +8,71 @@
 from typing import Optional, List
 from lxml import etree
 
+from ushareiplay.core.chat_intake import format_quoted_message
+
+# 引用回复视图的默认资源 id；可经 config.yaml 的 soul.elements 覆盖
+# （UI 选择器统一放在配置中，见 CLAUDE.md）
+DEFAULT_REPLY_VIEW_ID = "gReplyView"
+DEFAULT_REPLY_CONTENT_ID = "tvReplyContent"
+# 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器
+MAX_REPLY_ANCESTOR_LEVELS = 4
+
+
+def _visible_text(node) -> str:
+    """content-desc first, then text — the visible content of an XML node."""
+    content_desc = node.get("content-desc")
+    if content_desc and content_desc != "null":
+        return content_desc
+    return node.get("text") or ""
+
+
+def _matches_resource_id(node, resource_id: str) -> bool:
+    """True when *node* carries *resource_id*, bare or package-qualified."""
+    node_id = node.get("resource-id") or ""
+    if not node_id:
+        return False
+    return node_id == resource_id or node_id.endswith(f"/{resource_id}")
+
+
+def _find_node_with_resource_id(node, resource_id: str):
+    """First node (self or descendant) carrying *resource_id*, or None."""
+    for candidate in node.iter():
+        if _matches_resource_id(candidate, resource_id):
+            return candidate
+    return None
+
+
+def _is_the_only_one(node, resource_id: str) -> bool:
+    """True when exactly one node (self or descendant) carries *resource_id*.
+
+    Bails out at the second match, so scanning a wide container stays cheap.
+    """
+    matches = 0
+    for candidate in node.iter():
+        if _matches_resource_id(candidate, resource_id):
+            matches += 1
+            if matches > 1:
+                return False
+    return matches == 1
+
+
+def _reply_view_text(reply_view, reply_content_id: str) -> Optional[str]:
+    node = _find_node_with_resource_id(reply_view, reply_content_id)
+    if node is None:
+        # Tolerate a reply view that carries the quoted text on the view itself.
+        node = reply_view
+    return _visible_text(node).strip() or None
+
+
+def composed_message_text(wrapper) -> str:
+    """The message text an event should treat as this row's content.
+
+    Quoted Message context is composed in for an ElementWrapper carrying a reply
+    view; other wrappers (e.g. test doubles) contribute their plain ``content``.
+    """
+    quoted = wrapper.quoted_message() if isinstance(wrapper, ElementWrapper) else None
+    return format_quoted_message(wrapper.content or "", quoted)
+
 
 class ElementWrapper:
     """
@@ -38,13 +103,7 @@ class ElementWrapper:
     @property
     def content(self) -> str:
         """获取元素内容，优先使用 content-desc，如果没有则使用 text"""
-        content_desc = self._xml_element.get('content-desc', '')
-        if content_desc and content_desc != 'null':
-            return content_desc
-        text = self._xml_element.get('text', '')
-        if text:
-            return text
-        return ''
+        return _visible_text(self._xml_element)
 
     @property
     def tag(self) -> str:
@@ -155,6 +214,52 @@ class ElementWrapper:
         if clickable is not None:
             return clickable.lower() == 'true'
         return False
+
+    def _element_id(self, config_key: str, default: str) -> str:
+        """Resolve a UI resource id from config.yaml `soul.elements`."""
+        config = getattr(self._handler, "config", None)
+        if isinstance(config, dict):
+            soul = config.get("soul")
+            elements = soul.get("elements") if isinstance(soul, dict) else None
+            selector = elements.get(config_key) if isinstance(elements, dict) else None
+            if isinstance(selector, str) and selector.strip():
+                return selector.strip()
+        return default
+
+    def quoted_message(self) -> Optional[str]:
+        """Return the Quoted Message this element replies to, or None.
+
+        The message content anchor points at the sender's own TextView; the
+        referenced snippet lives in a sibling reply view inside the same message
+        row. The row is found by walking up until an ancestor holds exactly one
+        node like this one — anything wider is the chat list, where reply views
+        belong to other rows and must not leak into this one.
+        """
+        own_id = self.get_attribute("resource-id")
+        if not own_id:
+            return None
+
+        reply_view_id = self._element_id("message_reply_view", DEFAULT_REPLY_VIEW_ID)
+        reply_content_id = self._element_id("message_reply_content", DEFAULT_REPLY_CONTENT_ID)
+        try:
+            node = self._xml_element
+            for _ in range(MAX_REPLY_ANCESTOR_LEVELS):
+                container = node.getparent()
+                if container is None:
+                    return None
+                node = container
+                if not _is_the_only_one(container, own_id):
+                    # Ancestors only get wider, so no level above can be a row.
+                    return None
+                reply_view = _find_node_with_resource_id(container, reply_view_id)
+                if reply_view is None:
+                    continue
+                reply_text = _reply_view_text(reply_view, reply_content_id)
+                if reply_text:
+                    return reply_text
+            return None
+        except Exception:
+            return None
 
     def context_text(self, *, ancestor_levels: int = 3) -> str:
         """Return nearby snapshot text for events that need dialog context."""
