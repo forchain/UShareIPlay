@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from ushareiplay.managers.seat_manager.roster import (
+    UNKNOWN_USERNAME,
     SeatChange,
     SeatOccupant,
     SeatRoster,
@@ -62,6 +63,30 @@ def test_find_seat_of_returns_cached_seat_for_known_username():
 
     assert roster.find_seat_of("Alice") == 7
     assert roster.find_seat_of("Bob") is None
+
+
+def test_set_occupant_releases_the_same_user_from_the_seat_they_left():
+    roster = _roster()
+    roster.set_occupant(3, "Alice")
+    roster.note_occupancy(3, True)
+
+    roster.set_occupant(5, "Alice")
+
+    assert roster.find_seat_of("Alice") == 5
+    assert roster.occupant(3) is None
+    assert roster.snapshot() == {5: "Alice"}
+    # Seat 3 is still somebody's seat in the room, just not an identified one:
+    # the occupancy mask belongs to the panel, not to the identity map.
+    assert roster.occupancy_mask[2] is True
+
+
+def test_set_occupant_leaves_unidentified_placeholders_on_several_seats():
+    roster = _roster()
+    roster.set_occupant(1, UNKNOWN_USERNAME, verified=False)
+    roster.set_occupant(2, UNKNOWN_USERNAME, verified=False)
+
+    assert roster.is_occupied(1) is True
+    assert roster.is_occupied(2) is True
 
 
 def test_find_seat_of_skips_unverified_occupants_that_were_never_identified():

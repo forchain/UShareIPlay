@@ -98,12 +98,21 @@ class SeatCheckManager:
         await self._handle_occupied_seat(username, seat_desks, seat_number)
 
     def _sense_desk(self, desk_index: int, seat_desks) -> None:
-        """Fold the row just scrolled into view into the Seat Roster, for free."""
+        """Fold the row just scrolled into view into the Seat Roster, for free.
+
+        Sensing is opportunistic: a failed read must not take the reservation
+        check it rode in on down with it.
+        """
         if self.probe is None or desk_index >= len(seat_desks):
             return
-        self.probe.observe_desk(
-            desk_index, read_desk(self.handler, seat_desks[desk_index])
-        )
+        try:
+            desk_info = read_desk(self.handler, seat_desks[desk_index])
+        except Exception:
+            self.handler.log_error(
+                f"Failed to sense desk {desk_index + 1}: {traceback.format_exc()}"
+            )
+            return
+        self.probe.observe_desk(desk_index, desk_info)
 
     async def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int):
         """Handle an occupied seat by removing the occupant"""

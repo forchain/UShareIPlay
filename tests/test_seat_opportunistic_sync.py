@@ -225,6 +225,33 @@ def test_user_entry_seat_check_senses_the_row_it_scrolls_to(_host_room):
     assert observed == [4]
 
 
+def test_a_failed_row_sense_never_aborts_the_reservation_check(_host_room, monkeypatch):
+    """Sensing is opportunistic: it must never take the check down with it."""
+    from ushareiplay.managers.seat_manager import seat_check as seat_check_module
+    from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
+
+    panel, _desks = make_panel({1: "Alice"})
+    ui, probe, _roster, _seating = _primed(panel)
+
+    def exploding_read(handler, desk):
+        raise RuntimeError("stale element reference")
+
+    monkeypatch.setattr(seat_check_module, "read_desk", exploding_read)
+
+    checked = []
+
+    async def record(username, seat_desks, seat_number):
+        checked.append(seat_number)
+
+    checker = SeatCheckManager(panel.handler, ui, probe=probe)
+    checker._handle_occupied_seat = record
+
+    asyncio.run(checker.check_user_specific_seat("Alice", 9))
+
+    assert panel.handler.errors != []
+    assert checked == [9]
+
+
 def test_user_entry_seat_check_reads_no_extra_elements_without_a_probe():
     from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 

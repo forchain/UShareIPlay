@@ -117,12 +117,22 @@ class SeatRoster:
         verified: bool = True,
         now: Optional[datetime] = None,
     ) -> SeatOccupant:
-        """Record the occupant of a seat, keeping ``seated_at`` across reconfirmations."""
+        """Record the occupant of a seat, keeping ``seated_at`` across reconfirmations.
+
+        One identified user holds at most one seat: recording them somewhere new
+        frees where they were. Without that, a move onto a seat whose old occupant
+        was replaced would leave the mover on two seats at once, and the seat
+        they really left would never be re-read. ``UNKNOWN_USERNAME`` is a
+        placeholder rather than an identity, so it may sit on several seats.
+        """
         previous = self._seats.get(seat_number)
         if previous is not None and previous.username == username:
             seated_at = previous.seated_at
         else:
             seated_at = now or self._clock()
+
+        if username != UNKNOWN_USERNAME:
+            self._release_other_seats(username, seat_number)
 
         occupant = SeatOccupant(
             username=username,
@@ -133,6 +143,14 @@ class SeatRoster:
         )
         self._seats[seat_number] = occupant
         return occupant
+
+    def _release_other_seats(self, username: str, keep_seat: int) -> None:
+        """Drop the same user from every seat but ``keep_seat``."""
+        for seat_number, occupant in self._seats.items():
+            if seat_number == keep_seat or occupant is None:
+                continue
+            if occupant.username == username:
+                self._seats[seat_number] = None
 
     def clear_seat(self, seat_number: int) -> Optional[SeatOccupant]:
         """Drop a seat's occupant, returning whoever was there."""

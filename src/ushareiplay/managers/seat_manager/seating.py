@@ -362,9 +362,8 @@ class SeatingManager:
 
     def _record_self_unseated(self, seat_number: int) -> None:
         """Mirror a confirmed removal so the roster needs no follow-up probe."""
-        seat = self.roster.clear_seat(seat_number)
-        if seat is not None:
-            self.roster.note_occupancy(seat_number, False)
+        self.roster.clear_seat(seat_number)
+        self.roster.note_occupancy(seat_number, False)
 
     def _select_companion_candidate(self, desk_info):
         left = desk_info['left']

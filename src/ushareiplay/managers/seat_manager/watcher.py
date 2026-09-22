@@ -13,6 +13,7 @@ resulting transitions are published as domain events.
 
 import asyncio
 import traceback
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Callable, Iterable, Optional
 
@@ -106,16 +107,21 @@ class SeatRosterWatcher:
             return
 
     async def close(self) -> None:
-        """Stop watching: cancel any probe that has not fired yet."""
+        """Stop watching: cancel any probe that has not fired yet.
+
+        Cancelling the task itself rather than only bumping the generation keeps
+        shutdown from waiting out the debounce window.
+        """
         self._generation += 1
         task = self._task
         self._task = None
-        self._cancel_pending()
-        if task is not None:
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     # --- the probe itself ------------------------------------------------
 
@@ -123,23 +129,44 @@ class SeatRosterWatcher:
         """Run one differential probe and publish whatever transitions it found.
 
         Yields to music and chat commands, never touches a guest room, and always
-        leaves the seat panel collapsed so chat scanning is not obstructed.
+        leaves the seat panel collapsed so chat scanning is not obstructed. Once
+        it runs it holds the UI lock: the panel is open and profile popups are
+        being read, so the screen belongs to the probe until it is done.
         """
         if self._probe is None or self._is_busy() or is_guest_room():
             return None
 
-        try:
-            result = await self._seat_ui.probe_roster()
-            self._publish(result)
-            return result
-        finally:
-            await self._seat_ui.collapse_seats()
+        async with _ui_session(self._handler):
+            try:
+                result = await self._seat_ui.probe_roster()
+            finally:
+                await self._seat_ui.collapse_seats()
+        self._publish(result)
+        return result
 
     def _publish(self, result) -> None:
         if result is None:
             return
         for change in result.changes:
             _publish_to_runtime(self._handler, seat_change_event(change))
+
+
+@asynccontextmanager
+async def _ui_session(handler):
+    """Hold the UI lock for a whole probe.
+
+    Expanding the panel and reading profile popups rewrites the screen, and
+    EventManager's fallback ``press_back`` respects this same lock — so a probe
+    that does not hold it can have its popups dismissed from under it. A handler
+    without a controller lock (tests, one-off wiring) simply runs unlocked.
+    """
+    controller = getattr(handler, "controller", None)
+    session = getattr(controller, "ui_session", None)
+    if not callable(session):
+        yield
+        return
+    async with session("seat_roster_probe"):
+        yield
 
 
 def _publish_to_runtime(handler, event) -> None:

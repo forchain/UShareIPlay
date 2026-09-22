@@ -170,6 +170,26 @@ def test_sync_records_unknown_when_the_profile_popup_never_renders_a_name():
     assert panel.press_backs == 1
 
 
+def test_sync_presses_no_back_when_the_popup_click_never_landed():
+    panel, desks = make_panel({1: "Alice"})
+    probe, roster, _ui = _probe(panel)
+
+    def exploding_click():
+        raise RuntimeError("stale element reference")
+
+    # A click that raises opens no profile, so a Back press here would land on
+    # the room itself — which the app may read as "leave the party".
+    panel.desks[0].left_state.click = exploding_click
+
+    result = asyncio.run(probe.sync(desks, focus_count=1))
+
+    assert panel.handler.errors != []
+    assert panel.popup_clicks == 0
+    assert panel.press_backs == 0
+    assert result.probed_seats == [1]
+    assert roster.occupant(1).username == UNKNOWN_USERNAME
+
+
 def test_sync_keeps_probing_after_one_popup_fails():
     panel, desks = make_panel({1: "Alice", 3: "Bob"}, popup_failures=[1])
     probe, roster, _ui = _probe(panel)
@@ -267,6 +287,27 @@ def test_sync_reports_a_user_moving_between_seats():
         SeatChange(username="Alice", previous_seat=3, current_seat=9)
     ]
     assert roster.find_seat_of("Alice") == 9
+
+
+def test_sync_reports_a_move_onto_a_seat_whose_previous_occupant_changed():
+    panel, desks = make_panel({3: "Alice"})
+    probe, roster, _ui = _synced(panel, focus_count=1)
+
+    # Alice moves to 5 while Bob takes the seat she left. Neither seat went
+    # empty, so only a popup read can tell the two of them apart.
+    panel.clear_seat(3)
+    panel.set_occupant(3, "Bob")
+    panel.set_occupant(5, "Alice")
+
+    result = asyncio.run(probe.sync(desks, focus_count=2))
+
+    assert result.changes == [
+        SeatChange(username="Alice", previous_seat=3, current_seat=5)
+    ]
+    assert roster.find_seat_of("Alice") == 5
+    # Bob's seat is left unrecorded rather than mislabelled, so the next probe
+    # reads it again instead of reporting Alice twice.
+    assert roster.occupant(3) is None
 
 
 def test_sync_reports_a_departure_as_an_unseating_change():

@@ -237,8 +237,12 @@ class SeatProbe:
         if state_element is None:
             return UNKNOWN_USERNAME
 
+        # Only dismiss what actually opened: a Back press on the room itself can
+        # be read as "leave the party", and a failed click opens no popup.
+        popup_opened = False
         try:
             state_element.click()
+            popup_opened = True
             _key, name_element = self._handler.element_finder.wait_for_any_element(
                 list(NAME_ELEMENT_KEYS)
             )
@@ -251,7 +255,8 @@ class SeatProbe:
             )
             return UNKNOWN_USERNAME
         finally:
-            self._close_popup()
+            if popup_opened:
+                self._close_popup()
 
     def _close_popup(self) -> None:
         try:

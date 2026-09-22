@@ -119,7 +119,7 @@ def test_cold_roster_is_probed_before_sitting_down():
 
 def test_a_changed_seat_triggers_the_differential_probe():
     panel, desks = make_panel({3: "Alice"})
-    _ui, _probe, roster, seating = _primed(panel)
+    _ui, probe, roster, seating = _primed(panel)
 
     panel.clear_seat(3)
     panel.set_occupant(3, "Carol")
@@ -128,10 +128,21 @@ def test_a_changed_seat_triggers_the_differential_probe():
     result = asyncio.run(seating.accompany_user("Alice"))
 
     assert result == {"success": "Successfully took a seat"}
-    assert roster.find_seat_of("Carol") == 3
     assert roster.find_seat_of("Alice") == 9
     assert roster.find_seat_of(DEFAULT_ROOM_OWNER) == 10
     assert desks[4].right_seat.clicked == 1
+
+    # Carol took the seat Alice left, so that seat is occupied but unidentified:
+    # the roster must not keep calling it Alice, nor hand it to Carol unread.
+    assert roster.occupant(3) is None
+    assert roster.occupancy_mask[2] is True
+
+    # Being unidentified is a visible state, not a permanent one: the next sync
+    # reads the seat again and finds Carol.
+    asyncio.run(probe.sync(desks))
+
+    assert roster.find_seat_of("Carol") == 3
+    assert roster.find_seat_of("Alice") == 9
 
 
 def test_a_seat_taken_over_without_an_occupancy_change_is_re_probed():
@@ -170,7 +181,7 @@ def test_a_target_without_an_empty_neighbour_is_rejected():
     assert roster.find_seat_of(DEFAULT_ROOM_OWNER) is None
 
 
-def test_target_seated_directly_beside_the_host_is_still_reachable():
+def test_a_target_without_an_empty_neighbour_is_rejected_on_any_desk():
     panel, _desks = make_panel({5: "Alice", 6: "Bob"})
     _ui, _probe, _roster, seating = _primed(panel)
 

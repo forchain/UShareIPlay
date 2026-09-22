@@ -1,6 +1,8 @@
 """Ticket #307: passive detection, debounce and seat change domain events."""
 
 import asyncio
+import contextlib
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -170,6 +172,35 @@ async def test_probing_yields_while_a_command_owns_the_screen():
     assert panel.expand_clicks == 0
 
 
+async def test_probing_holds_the_ui_lock_while_the_panel_is_open():
+    panel = FakeSeatPanel({1: "Alice"})
+    ui_lock = asyncio.Lock()
+
+    @contextlib.asynccontextmanager
+    async def ui_session(reason):
+        async with ui_lock:
+            yield
+
+    _ui, _probe, _roster, watcher, _obs = _stack(panel)
+    panel.handler.controller.ui_session = ui_session
+
+    lock_held_while_reading = []
+    find_elements = panel.handler.element_finder.find_elements
+
+    def record_lock(key):
+        lock_held_while_reading.append(ui_lock.locked())
+        return find_elements(key)
+
+    panel.handler.element_finder.find_elements = record_lock
+
+    watcher.note_focus_count(1)
+    await watcher.drain()
+
+    # The panel read happens inside the session, and the probe lets it go again.
+    assert lock_held_while_reading == [True]
+    assert ui_lock.locked() is False
+
+
 async def test_the_seat_panel_is_collapsed_once_probing_finishes():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
@@ -289,6 +320,20 @@ async def test_close_cancels_a_probe_that_is_still_debouncing():
     await watcher.close()
     await asyncio.sleep(DEBOUNCE * 1.5)
 
+    assert panel.expand_clicks == 0
+
+
+async def test_close_returns_without_waiting_out_the_debounce_window():
+    panel = FakeSeatPanel({1: "Alice"})
+    _ui, _probe, _roster, watcher, _obs = _stack(panel, debounce=5.0)
+
+    watcher.note_focus_count(1)
+    started = time.monotonic()
+    await watcher.close()
+    elapsed = time.monotonic() - started
+
+    # Shutdown must not sit through the window the signal opened.
+    assert elapsed < 1.0
     assert panel.expand_clicks == 0
 
 
