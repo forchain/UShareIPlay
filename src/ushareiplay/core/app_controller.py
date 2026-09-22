@@ -413,6 +413,13 @@ class AppController(Singleton):
                         self.logger.info(
                             f"Startup room verified: {clean_id}, is_guest_room={room_state.is_guest_room}"
                         )
+
+            # 开服检测座位状态：若处于展开状态，主动收起避免遮挡聊天列表
+            if hasattr(self, 'seat_manager') and self.seat_manager:
+                try:
+                    await self.seat_manager.prepare_for_chat_scan()
+                except Exception as e:
+                    self.logger.debug(f"Initial seat collapse skipped: {e}")
         except Exception as e:
             if self.logger:
                 self.logger.debug(f"Initial room detection skipped: {e}")

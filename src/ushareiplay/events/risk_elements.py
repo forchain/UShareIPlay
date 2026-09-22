@@ -5,7 +5,7 @@
 - claim_reward_button: 领取奖励按钮
 - new_message_tip: 新消息提示
 - close_button: 关闭按钮
-- collapse_seats: 收起座位
+- collapse_seats: 空闲时收起座位（避免遮挡聊天列表，UI 忙碌时跳过）
 
 当检测到这些元素时，自动点击处理，避免界面不稳定。
 
@@ -55,6 +55,19 @@ class RiskElementsEvent(BaseEvent):
         Returns:
             bool: 如果点击成功返回 True，否则 False
         """
+        if self.is_ui_busy():
+            self.logger.debug(f"RiskElementsEvent skipped for {key}: UI is busy")
+            return False
+
+        if key == 'collapse_seats':
+            try:
+                from ushareiplay.managers.seat_manager import SeatManager
+
+                if SeatManager.is_initialized():
+                    return await SeatManager.get_instance()._ui.collapse_seats()
+            except Exception as e:
+                self.logger.error(f"Error collapsing seats via seat manager: {e}")
+
         try:
             # 使用 wait_for 获取可点击的元素（因为 page_source 中已确认存在）
             element = self.handler.element_finder.wait_for_element_clickable(key)
