@@ -23,6 +23,7 @@ from ushareiplay.managers.seat_manager.roster import (
     SEAT_NUMBERS,
     UNKNOWN_USERNAME,
     SeatChange,
+    SeatOccupant,
     SeatRoster,
 )
 
@@ -54,12 +55,26 @@ Style = Optional[str]
 Cell = List[Tuple[str, Style]]
 
 
+def strip_ansi(text: str) -> str:
+    """``text`` without its ANSI escape sequences."""
+    return _ANSI.sub("", text)
+
+
 def display_width(text: str) -> int:
     """Width of ``text`` in terminal cells, ignoring ANSI escape sequences."""
     return sum(
         2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
-        for char in _ANSI.sub("", text)
+        for char in strip_ansi(text)
     )
+
+
+def log_seat_roster(logger, roster: SeatRoster, changes=None) -> None:
+    """Log the roster table, with its transition summary, at info level.
+
+    The one place that knows how a roster change reaches the log, so the probe
+    and the seating workflows cannot drift into logging it differently.
+    """
+    logger.info(roster.format_status(changes))
 
 
 def format_seat_roster(
@@ -173,31 +188,40 @@ def _occupied_count(roster: SeatRoster) -> int:
     return sum(
         1
         for seat_number in SEAT_NUMBERS
-        if roster.occupant(seat_number) is not None
-        or _occupied_in_mask(roster, seat_number)
+        if _seat_occupant(roster, seat_number) is not None
     )
 
 
-def _occupied_in_mask(roster: SeatRoster, seat_number: int) -> bool:
-    """Fallback occupancy for a seat whose occupant the roster has not recorded."""
+def _seat_occupant(roster: SeatRoster, seat_number: int) -> Optional[SeatOccupant]:
+    """Who the roster has for a seat, or a nameless stand-in.
+
+    A seat whose occupant the roster never recorded — the occupancy read saw
+    somebody there, but no probe named them — still holds a person, so it must
+    render as occupied rather than as free.
+    """
+    occupant = roster.occupant(seat_number)
+    if occupant is not None:
+        return occupant
     mask = roster.occupancy_mask
-    return bool(mask[seat_number - 1]) if len(mask) >= seat_number else False
+    if len(mask) >= seat_number and mask[seat_number - 1]:
+        return SeatOccupant(username=UNKNOWN_USERNAME, seat_number=seat_number)
+    return None
 
 
 def _seat_cell(roster: SeatRoster, seat_number: int) -> Cell:
     """One seat: its number, then its occupant, owner badge or empty marker."""
     number = _pad_start(str(seat_number), 2) + " "
-    occupant = roster.occupant(seat_number)
+    occupant = _seat_occupant(roster, seat_number)
 
-    if occupant is None and not _occupied_in_mask(roster, seat_number):
+    if occupant is None:
         return [(number, None), (EMPTY_LABEL, DIM)]
 
-    if occupant is None or occupant.username == UNKNOWN_USERNAME:
+    if occupant.username == UNKNOWN_USERNAME:
         cell: Cell = [(number, None), (UNIDENTIFIED_LABEL, YELLOW)]
     else:
         cell = [(number, None), (_fit(occupant.username), GREEN)]
 
-    if occupant is not None and occupant.is_owner:
+    if occupant.is_owner:
         cell.append((" ", None))
         cell.append((f"[{OWNER_LABEL}]", YELLOW))
     return cell
@@ -255,7 +279,11 @@ def _transition_of(change: SeatChange) -> Tuple[str, Style]:
 
 
 def _display_name(change: SeatChange) -> str:
-    return _fit(change.username or UNIDENTIFIED_LABEL)
+    """The name to print for a transition: a real nickname, or the placeholder
+    that the table itself uses for somebody the roster never identified."""
+    if not change.username or change.username == UNKNOWN_USERNAME:
+        return UNIDENTIFIED_LABEL
+    return _fit(change.username)
 
 
 def _seat_text(seat_number: Optional[int]) -> str:

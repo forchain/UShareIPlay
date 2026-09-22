@@ -2,7 +2,11 @@
 
 The roster is intentionally free of UI concerns. It only holds state and answers
 questions about it; the differential probing that keeps it honest lives in
-:mod:`ushareiplay.managers.seat_manager.probe`.
+:mod:`ushareiplay.managers.seat_manager.probe`, and the rendering of that state
+for a reader lives in :mod:`ushareiplay.managers.seat_manager.roster_format`.
+``format_status`` is the one method here that delegates into the latter: the
+roster is the thing callers hold, so asking it to describe itself is the natural
+entry point, and the rendering itself stays out of this module.
 """
 
 from dataclasses import dataclass, field, replace
@@ -89,12 +93,23 @@ class SeatRoster:
     def is_occupied(self, seat_number: int) -> bool:
         return self._seats.get(seat_number) is not None
 
-    def find_seat_of(self, username: str) -> Optional[int]:
-        """Return the cached seat of an identified user, if any."""
+    def find_seat_of(
+        self, username: str, *, include_doubted: bool = False
+    ) -> Optional[int]:
+        """Return the cached seat of an identified user, if any.
+
+        ``include_doubted`` also answers with a seat whose identity is suspect.
+        Callers that are about to *act* leave it off, because a doubted seat has
+        to be re-read first; callers reasoning about where somebody already was
+        — our own seat, before we move off it — turn it on, since a doubted name
+        is still better evidence than assuming they were not seated at all.
+        """
         if not username or username == UNKNOWN_USERNAME:
             return None
         for seat_number, occupant in self._seats.items():
-            if occupant is None or not occupant.verified:
+            if occupant is None:
+                continue
+            if not occupant.verified and not include_doubted:
                 continue
             if occupant.username == username:
                 return seat_number

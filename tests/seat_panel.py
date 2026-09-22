@@ -6,11 +6,18 @@ button, and the user profile popup opened by clicking a seat state element.
 
 Popup clicks are counted separately from seat clicks because the differential
 probe's cost is measured in profile popups, not swipes.
+
+Also carries the helpers the seat tests share for reading a logged Seat Roster.
 """
 
 from types import SimpleNamespace
 
 OWNER_LABEL = "群主"
+
+
+def change_rows(message):
+    """The transition summary of one logged Seat Roster, as token lists."""
+    return [line.strip("│ ").split() for line in message.splitlines() if "➔" in line]
 
 
 class FakeElement:

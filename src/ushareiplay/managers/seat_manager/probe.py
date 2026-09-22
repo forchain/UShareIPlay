@@ -29,7 +29,7 @@ from ushareiplay.managers.seat_manager.roster import (
     SeatRoster,
     diff_snapshots,
 )
-from ushareiplay.managers.seat_manager.roster_format import format_seat_roster
+from ushareiplay.managers.seat_manager.roster_format import log_seat_roster
 from ushareiplay.state.room_state import is_guest_room
 
 #: Element keys that may render the nickname inside the profile popup.
@@ -102,8 +102,26 @@ class SeatProbe:
         self._roster.note_focus_count(focus_count)
         result.changes = diff_snapshots(before, self._roster.snapshot())
         if result.changes or result.cleared_seats:
-            self._log_roster(result.changes)
+            log_seat_roster(
+                self._handler.logger,
+                self._roster,
+                self._reported_changes(result.changes, result.cleared_seats),
+            )
         return result
+
+    def _reported_changes(self, changes, cleared_seats) -> List[SeatChange]:
+        """Everything the log should explain, departures included.
+
+        A seat freed of somebody we never identified leaves no trace in the
+        identity diff, so the reader would otherwise watch a seat go empty in
+        the table with nothing in the summary to account for it.
+        """
+        released = {change.previous_seat for change in changes}
+        return list(changes) + [
+            SeatChange(username=UNKNOWN_USERNAME, previous_seat=seat, current_seat=None)
+            for seat in cleared_seats
+            if seat not in released
+        ]
 
     def observe_desk(self, desk_index: int, desk_info) -> List[int]:
         """Fold a freshly read desk row into the roster without opening any popup.
@@ -272,14 +290,6 @@ class SeatProbe:
 
     def _log_info(self, message: str) -> None:
         self._handler.logger.info(message)
-
-    def _log_roster(self, changes) -> None:
-        """Surface the updated layout whenever a sync actually moved somebody.
-
-        Staying quiet on an unchanged probe is deliberate: the table earns a
-        reader's attention by having something new to say, not by being correct.
-        """
-        self._log_info(format_seat_roster(self._roster, changes=changes))
 
 
 def _room_focus_count() -> Optional[int]:

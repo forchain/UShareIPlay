@@ -65,6 +65,16 @@ def test_find_seat_of_returns_cached_seat_for_known_username():
     assert roster.find_seat_of("Bob") is None
 
 
+def test_find_seat_of_can_include_a_doubted_occupant():
+    """Our own seat may be doubted and still be where we are sitting."""
+    roster = _roster()
+    roster.set_occupant(7, "Alice")
+    roster.invalidate(7)
+
+    assert roster.find_seat_of("Alice") is None
+    assert roster.find_seat_of("Alice", include_doubted=True) == 7
+
+
 def test_set_occupant_releases_the_same_user_from_the_seat_they_left():
     roster = _roster()
     roster.set_occupant(3, "Alice")

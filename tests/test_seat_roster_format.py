@@ -1,5 +1,7 @@
 """Ticket #309: Seat Roster status rendering and seat-change summaries."""
 
+from tests.seat_panel import change_rows
+
 from ushareiplay.managers.seat_manager.roster import (
     UNKNOWN_USERNAME,
     SeatChange,
@@ -8,6 +10,7 @@ from ushareiplay.managers.seat_manager.roster import (
 from ushareiplay.managers.seat_manager.roster_format import (
     display_width,
     format_seat_roster,
+    strip_ansi,
 )
 
 
@@ -28,11 +31,6 @@ def _desk_cells(text, desk_number):
         line for line in text.splitlines() if line.startswith(f"│ Desk {desk_number} │")
     )
     return [cell.strip() for cell in row.split("│")][2:4]
-
-
-def _change_rows(text):
-    """Change summary rows as their whitespace-separated tokens."""
-    return [line.strip("│ ").split() for line in text.splitlines() if "➔" in line]
 
 
 def _line_widths(text):
@@ -132,9 +130,23 @@ def test_changes_block_names_moves_arrivals_and_departures_distinctly():
 
     text = format_seat_roster(roster, changes=changes, color=False)
 
-    assert ["换位", "Bob", "5", "➔", "9"] in _change_rows(text)
-    assert ["入座", "Dave", "空", "➔", "7"] in _change_rows(text)
-    assert ["离座", "Carol", "4", "➔", "空"] in _change_rows(text)
+    assert ["换位", "Bob", "5", "➔", "9"] in change_rows(text)
+    assert ["入座", "Dave", "空", "➔", "7"] in change_rows(text)
+    assert ["离座", "Carol", "4", "➔", "空"] in change_rows(text)
+
+
+def test_changes_block_names_an_unidentified_departure():
+    changes = [
+        SeatChange(username=UNKNOWN_USERNAME, previous_seat=5, current_seat=None)
+    ]
+
+    text = format_seat_roster(SeatRoster(), changes=changes, color=False)
+
+    assert ["离座", "未知", "5", "➔", "空"] in change_rows(text)
+
+
+def test_strip_ansi_removes_the_highlighting():
+    assert strip_ansi("\033[32mAlice\033[0m") == "Alice"
 
 
 def test_changes_block_lists_several_concurrent_arrivals_and_departures():
@@ -147,7 +159,7 @@ def test_changes_block_lists_several_concurrent_arrivals_and_departures():
 
     text = format_seat_roster(SeatRoster(), changes=changes, color=False)
 
-    rows = _change_rows(text)
+    rows = change_rows(text)
     assert [row[0] for row in rows] == ["入座", "入座", "离座", "离座"]
     assert [row[1] for row in rows] == ["Alice", "Bob", "Carol", "Dave"]
 

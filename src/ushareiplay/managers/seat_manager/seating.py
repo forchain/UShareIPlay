@@ -15,7 +15,7 @@ from ushareiplay.managers.seat_manager.roster import (
     SeatOccupant,
     SeatRoster,
 )
-from ushareiplay.managers.seat_manager.roster_format import format_seat_roster
+from ushareiplay.managers.seat_manager.roster_format import log_seat_roster
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
 
@@ -366,7 +366,9 @@ class SeatingManager:
     def _record_self_seated(self, seat_number: int) -> None:
         """Our own confirmed action tells us exactly where we are; no probe needed."""
         owner = self.room_owner
-        previous_seat = self.roster.find_seat_of(owner)
+        # Including a doubted seat: we are moving off wherever we already sat,
+        # so a suspect cached identity is still the seat we are leaving.
+        previous_seat = self.roster.find_seat_of(owner, include_doubted=True)
         if previous_seat is not None and previous_seat != seat_number:
             self.roster.clear_seat(previous_seat)
             self.roster.note_occupancy(previous_seat, False)
@@ -377,13 +379,19 @@ class SeatingManager:
             moved_from = None
         self.roster.set_occupant(seat_number, owner, is_owner=True, verified=True)
         self.roster.note_occupancy(seat_number, True)
-        self._log_roster(
-            SeatChange(
-                username=owner, previous_seat=moved_from, current_seat=seat_number
-            )
+        log_seat_roster(
+            self.handler.logger,
+            self.roster,
+            [
+                SeatChange(
+                    username=owner, previous_seat=moved_from, current_seat=seat_number
+                )
+            ],
         )
 
-    def _record_self_unseated(self, seat_number: int, username: Optional[str] = None) -> None:
+    def _record_self_unseated(
+        self, seat_number: int, username: Optional[str] = None
+    ) -> None:
         """Mirror a confirmed removal so the roster needs no follow-up probe.
 
         ``username`` is the name the caller read for the occupant, which is the
@@ -391,19 +399,17 @@ class SeatingManager:
         """
         removed = self.roster.clear_seat(seat_number)
         self.roster.note_occupancy(seat_number, False)
-        self._log_roster(
-            SeatChange(
-                username=username or _removed_username(removed),
-                previous_seat=seat_number,
-                current_seat=None,
-            )
+        log_seat_roster(
+            self.handler.logger,
+            self.roster,
+            [
+                SeatChange(
+                    username=username or _removed_username(removed),
+                    previous_seat=seat_number,
+                    current_seat=None,
+                )
+            ],
         )
-
-    def _log_roster(self, change: SeatChange) -> None:
-        """Log the updated layout, so seat movements are visible as they happen."""
-        if self.handler is None:
-            return
-        self.handler.logger.info(format_seat_roster(self.roster, changes=[change]))
 
     def _select_companion_candidate(self, desk_info):
         left = desk_info['left']

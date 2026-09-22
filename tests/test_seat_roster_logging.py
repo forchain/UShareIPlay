@@ -1,21 +1,19 @@
 """Ticket #310: highlighted Seat Roster logs on probing updates and self-actions."""
 
 import asyncio
-import re
 from types import SimpleNamespace
 
 import pytest
 
-from tests.seat_panel import make_panel
+from tests.seat_panel import change_rows, make_panel
 
 from ushareiplay.core.roles import DEFAULT_ROOM_OWNER
 from ushareiplay.managers.seat_manager.probe import SeatProbe
 from ushareiplay.managers.seat_manager.roster import SeatRoster
+from ushareiplay.managers.seat_manager.roster_format import strip_ansi
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.state.room_state import RoomState
-
-_ANSI = re.compile(r"\033\[[0-9;]*m")
 
 
 @pytest.fixture(autouse=True)
@@ -36,11 +34,6 @@ def _host_room():
     yield room_state
 
 
-def _plain(message):
-    """A log record without its highlighting, so its text can be asserted on."""
-    return _ANSI.sub("", message)
-
-
 def _roster_logs(panel):
     """Log records that rendered a roster table, oldest first."""
     return [
@@ -50,14 +43,12 @@ def _roster_logs(panel):
     ]
 
 
-def _change_rows(message):
-    """The transition summary of one logged roster, as token lists."""
-    return [line.strip("│ ").split() for line in message.splitlines() if "➔" in line]
-
-
 def _all_change_rows(panel):
+    """Every transition summary logged so far, as token lists."""
     return [
-        row for message in _roster_logs(panel) for row in _change_rows(_plain(message))
+        row
+        for message in _roster_logs(panel)
+        for row in change_rows(strip_ansi(message))
     ]
 
 
@@ -97,8 +88,8 @@ def test_probe_sync_logs_the_roster_when_an_occupant_arrives():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["入座", "Bob", "空", "➔", "5"] in _change_rows(_plain(logs[0]))
-    assert "5 Bob" in _plain(logs[0])
+    assert ["入座", "Bob", "空", "➔", "5"] in change_rows(strip_ansi(logs[0]))
+    assert "5 Bob" in strip_ansi(logs[0])
 
 
 def test_probe_sync_logs_the_roster_when_an_occupant_departs():
@@ -110,7 +101,7 @@ def test_probe_sync_logs_the_roster_when_an_occupant_departs():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["离座", "Bob", "5", "➔", "空"] in _change_rows(_plain(logs[0]))
+    assert ["离座", "Bob", "5", "➔", "空"] in change_rows(strip_ansi(logs[0]))
 
 
 def test_probe_sync_logs_when_an_unidentified_occupant_leaves():
@@ -123,6 +114,20 @@ def test_probe_sync_logs_when_an_unidentified_occupant_leaves():
     assert result.cleared_seats == [1]
     assert result.changes == []
     assert len(_roster_logs(panel)) == 1
+
+
+def test_the_logged_summary_names_a_departure_the_diff_cannot_see():
+    """An unidentified occupant leaves no trace in the identity diff, so the
+    freed seat would otherwise appear in the table with nothing to explain it."""
+    panel, _desks = make_panel({1: "Alice"}, popup_failures={1})
+    probe, _roster = _synced(panel, focus_count=1)
+
+    panel.clear_seat(1)
+    asyncio.run(probe.sync(panel.desks, focus_count=0))
+
+    assert ["离座", "未知", "1", "➔", "空"] in change_rows(
+        strip_ansi(_roster_logs(panel)[0])
+    )
 
 
 def test_probe_sync_logs_nothing_when_no_seat_moved():
@@ -146,8 +151,8 @@ def test_probe_sync_logs_a_swap_as_two_movements():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["换位", "Alice", "1", "➔", "2"] in _change_rows(_plain(logs[0]))
-    assert ["换位", "Bob", "2", "➔", "1"] in _change_rows(_plain(logs[0]))
+    assert ["换位", "Alice", "1", "➔", "2"] in change_rows(strip_ansi(logs[0]))
+    assert ["换位", "Bob", "2", "➔", "1"] in change_rows(strip_ansi(logs[0]))
 
 
 def test_the_logged_roster_is_highlighted():
@@ -180,7 +185,9 @@ def test_taking_a_seat_logs_the_self_seated_movement():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["入座", DEFAULT_ROOM_OWNER, "空", "➔", "3"] in _change_rows(_plain(logs[0]))
+    assert ["入座", DEFAULT_ROOM_OWNER, "空", "➔", "3"] in change_rows(
+        strip_ansi(logs[0])
+    )
 
 
 def test_moving_to_another_seat_logs_the_self_move():
@@ -191,7 +198,24 @@ def test_moving_to_another_seat_logs_the_self_move():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["换位", DEFAULT_ROOM_OWNER, "1", "➔", "6"] in _change_rows(_plain(logs[0]))
+    assert ["换位", DEFAULT_ROOM_OWNER, "1", "➔", "6"] in change_rows(
+        strip_ansi(logs[0])
+    )
+
+
+def test_self_seating_off_a_doubted_seat_still_logs_a_move():
+    """Our own doubted seat is still the seat we are moving off, so the summary
+    must read as a move rather than as sitting down somewhere new."""
+    panel, _desks = make_panel({})
+    _ui, _probe, roster, seating = _stack(panel)
+    roster.set_occupant(1, DEFAULT_ROOM_OWNER, is_owner=True)
+    roster.invalidate(1)
+
+    seating._record_self_seated(6)
+
+    assert ["换位", DEFAULT_ROOM_OWNER, "1", "➔", "6"] in change_rows(
+        strip_ansi(_roster_logs(panel)[0])
+    )
 
 
 def test_removing_an_occupant_logs_the_unseated_occupant():
@@ -202,5 +226,5 @@ def test_removing_an_occupant_logs_the_unseated_occupant():
 
     logs = _roster_logs(panel)
     assert len(logs) == 1
-    assert ["离座", "Bob", "5", "➔", "空"] in _change_rows(_plain(logs[0]))
-    assert "5 空" in _plain(logs[0])
+    assert ["离座", "Bob", "5", "➔", "空"] in change_rows(strip_ansi(logs[0]))
+    assert "5 空" in strip_ansi(logs[0])
