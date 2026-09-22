@@ -141,11 +141,14 @@ class MessageContentEvent(BaseEvent):
                     if presence_tracker.should_trigger_return(result.nickname):
                         presence_tracker.record_return(result.nickname)
                         self.logger.critical(f"User returned: {result.nickname}")
+                        chat_logger.critical(content)
                         await self._notify_user_return(result.nickname)
                     else:
                         self.logger.info(
                             f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
                         )
+                        chat_logger.info(content)
+                    continue
 
                 if result.kind == ChatIntakeKind.GIFT_RECEIVE:
                     chat_logger.critical(content)
