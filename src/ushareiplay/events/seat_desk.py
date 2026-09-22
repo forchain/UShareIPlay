@@ -23,11 +23,15 @@ class SeatDeskEvent(BaseEvent):
 
     async def handle(self, key: str, element_wrapper):
         try:
+            if not element_wrapper:
+                return False
             containers = (
                 element_wrapper
                 if isinstance(element_wrapper, list)
                 else [element_wrapper]
             )
+            if not containers or not any(containers):
+                return False
             watcher = _seat_roster_watcher(self.handler)
             if watcher is None:
                 return False
@@ -41,17 +45,19 @@ class SeatDeskEvent(BaseEvent):
 
 
 def _occupancy_mask(handler, containers) -> tuple:
-    """十二个席位的占位布尔值，按容器顺序推导；看不见的席位记为未占用。
+    """十二个席位的占位值，按容器顺序推导；看不见的席位记为 None。
 
-    掩码只用于变化检测，不参与花名册的更新——折叠时看不见的席位记为未占用，
-    不会导致探测引擎误判为空位。
+    只描述当前视口中可见座位的真实状态（True/False），视口外未展示的席位记为 None，
+    避免折叠时被误判为空位而触发误报或反复探测。
     """
-    mask = [False] * len(SEAT_NUMBERS)
+    mask = [None] * len(SEAT_NUMBERS)
     selectors = {
         side: _selector(handler, f"{side}_state") for side in SIDES
     }
 
     for desk_index, container in enumerate(containers):
+        if container is None:
+            continue
         for side in SIDES:
             seat_number = seat_number_of(desk_index, side)
             if seat_number not in SEAT_NUMBERS:

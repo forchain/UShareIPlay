@@ -55,7 +55,7 @@ class FocusCountEvent(BaseEvent):
 
 
 def _signal_seat_watcher(handler, focus_count: int) -> None:
-    """专注人数变化意味着可能有人上下麦，交给座位探测器防抖后差量抽检。"""
+    """专注人数变化同步给座位管理器记录，不触发座位展开探测。"""
     try:
         from ushareiplay.managers.seat_manager import SeatManager
 

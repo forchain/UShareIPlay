@@ -92,7 +92,13 @@ def _desks(handler, *desk_states):
     ]
 
 
-def _mask(*occupied_seats):
+def _mask(*occupied_seats, desks_count=None):
+    if desks_count is not None:
+        visible_limit = desks_count * 2
+        return tuple(
+            (seat in occupied_seats) if seat <= visible_limit else None
+            for seat in range(1, 13)
+        )
     return tuple(seat in occupied_seats for seat in range(1, 13))
 
 
@@ -107,7 +113,7 @@ async def test_the_seat_desk_event_reports_the_visible_occupancy_mask(monkeypatc
         "seat_desk", _desks(handler, (True, False), (False, True))
     )
 
-    assert watcher.masks == [_mask(1, 4)]
+    assert watcher.masks == [_mask(1, 4, desks_count=2)]
 
 
 async def test_the_seat_desk_event_reports_an_empty_panel(monkeypatch):
@@ -116,7 +122,7 @@ async def test_the_seat_desk_event_reports_an_empty_panel(monkeypatch):
 
     await SeatDeskEvent(handler).handle("seat_desk", _desks(handler, (False, False)))
 
-    assert watcher.masks == [_mask()]
+    assert watcher.masks == [_mask(desks_count=1)]
 
 
 async def test_the_seat_desk_event_accepts_a_single_container(monkeypatch):
@@ -126,7 +132,7 @@ async def test_the_seat_desk_event_accepts_a_single_container(monkeypatch):
 
     await SeatDeskEvent(handler).handle("seat_desk", desks[0])
 
-    assert watcher.masks == [_mask(2)]
+    assert watcher.masks == [_mask(2, desks_count=1)]
 
 
 async def test_the_seat_desk_event_reads_seats_behind_the_six_container_limit(monkeypatch):
@@ -138,7 +144,16 @@ async def test_the_seat_desk_event_reads_seats_behind_the_six_container_limit(mo
     )
 
     # A seventh container would be seat 13, which does not exist.
-    assert watcher.masks == [_mask()]
+    assert watcher.masks == [_mask(desks_count=6)]
+
+
+async def test_the_seat_desk_event_ignores_empty_containers(monkeypatch):
+    handler = _handler()
+    watcher = _install_watcher(monkeypatch, RecordingWatcher())
+
+    assert await SeatDeskEvent(handler).handle("seat_desk", []) is False
+    assert await SeatDeskEvent(handler).handle("seat_desk", None) is False
+    assert watcher.masks == []
 
 
 async def test_the_seat_desk_event_is_harmless_without_a_watcher(monkeypatch):
@@ -171,7 +186,7 @@ async def test_the_seat_desk_event_survives_a_malformed_container(monkeypatch):
     result = await SeatDeskEvent(handler).handle("seat_desk", [broken])
 
     assert result is False
-    assert watcher.masks == [_mask()]
+    assert watcher.masks == [_mask(desks_count=1)]
 
 
 async def test_the_seat_desk_event_is_harmless_when_the_seat_manager_is_unavailable(

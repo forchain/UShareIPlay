@@ -50,19 +50,44 @@ class SeatRosterWatcher:
     # --- passive signals -------------------------------------------------
 
     def note_focus_count(self, focus_count: Optional[int]) -> bool:
-        """Arm a probe when "N人专注中" changes. Returns whether it armed one."""
+        """Record focus count without arming a probe.
+
+        Focus count ("N人专注中") tracks room study attendance, not seat
+        occupancy. Room headcount movements must never trigger seat expansion.
+        """
         if focus_count == self._focus_count:
             return False
         self._focus_count = focus_count
-        self._arm()
-        return True
+        return False
 
-    def note_occupancy_mask(self, occupancy_mask: Iterable[bool]) -> bool:
-        """Arm a probe when the visible seats' occupancy changes."""
-        mask = tuple(bool(value) for value in occupancy_mask)
-        if mask == self._occupancy_mask:
+    def note_occupancy_mask(self, occupancy_mask: Iterable[Optional[bool]]) -> bool:
+        """Arm a probe when visible seat occupancy changes.
+
+        Invisible seats (marked None) are ignored and preserve their last-known
+        state, so collapsed viewports and transient element coverage never
+        trigger false-alarm probes or infinite expansion loops.
+
+        The first observation sets the baseline without expanding seats.
+        """
+        mask = tuple(occupancy_mask)
+        if self._occupancy_mask is None:
+            self._occupancy_mask = mask
             return False
-        self._occupancy_mask = mask
+
+        has_change = False
+        new_mask = list(self._occupancy_mask)
+        for i, val in enumerate(mask):
+            if val is None:
+                continue
+            prev_val = self._occupancy_mask[i]
+            if prev_val is not None and prev_val != val:
+                has_change = True
+            new_mask[i] = val
+
+        self._occupancy_mask = tuple(new_mask)
+        if not has_change:
+            return False
+
         self._arm()
         return True
 
@@ -141,6 +166,8 @@ class SeatRosterWatcher:
                 result = await self._seat_ui.probe_roster()
             finally:
                 await self._seat_ui.collapse_seats()
+        if result is not None and self._probe is not None:
+            self._occupancy_mask = self._probe.roster.occupancy_mask
         self._publish(result)
         return result
 

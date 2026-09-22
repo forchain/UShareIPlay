@@ -76,32 +76,37 @@ def _stack(panel, *, busy=None, debounce=DEBOUNCE):
     return ui, probe, roster, watcher, obs
 
 
-async def test_a_focus_count_change_arms_one_probe():
+def _trigger_probe(watcher):
+    watcher.note_occupancy_mask([False] * 12)
+    watcher.note_occupancy_mask([True] + [False] * 11)
+
+
+async def test_a_focus_count_change_does_not_arm_a_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    assert watcher.note_focus_count(1) is True
+    assert watcher.note_focus_count(1) is False
     await watcher.drain()
 
-    assert panel.expand_clicks == 1
+    assert panel.expand_clicks == 0
 
 
 async def test_an_unchanged_focus_count_does_not_arm_a_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    assert watcher.note_focus_count(1) is True
+    assert watcher.note_focus_count(1) is False
     assert watcher.note_focus_count(1) is False
     await watcher.drain()
 
-    assert panel.expand_clicks == 1
+    assert panel.expand_clicks == 0
 
 
 async def test_an_occupancy_mask_change_arms_a_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    assert watcher.note_occupancy_mask([False] * 12) is True
+    assert watcher.note_occupancy_mask([False] * 12) is False
     assert watcher.note_occupancy_mask([True] + [False] * 11) is True
     await watcher.drain()
 
@@ -117,17 +122,15 @@ async def test_a_repeated_occupancy_mask_does_not_arm_a_probe():
     assert watcher.note_occupancy_mask([False] * 12) is False
 
 
-async def test_rapid_focus_count_changes_debounce_into_a_single_probe():
+async def test_rapid_occupancy_mask_changes_debounce_into_a_single_probe():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel, debounce=DEBOUNCE_TIMING)
 
-    watcher.note_focus_count(1)
+    watcher.note_occupancy_mask([False] * 12)
+    watcher.note_occupancy_mask([True] + [False] * 11)
     await asyncio.sleep(DEBOUNCE_TIMING * 0.6)
-    # A second change inside the window restarts it rather than probing now.
-    watcher.note_focus_count(2)
+    watcher.note_occupancy_mask([True, True] + [False] * 10)
     await asyncio.sleep(DEBOUNCE_TIMING * 0.6)
-    # Past the deadline the first signal set, but not the deadline it was
-    # pushed back to.
     still_suppressed = panel.expand_clicks == 0
 
     await watcher.drain()
@@ -141,7 +144,7 @@ async def test_probing_is_skipped_in_a_guest_room(_host_room):
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
     _host_room.is_guest_room = True
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.expand_clicks == 0
@@ -151,7 +154,7 @@ async def test_probing_is_skipped_while_chat_commands_are_queued():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel, busy=True)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.expand_clicks == 0
@@ -166,7 +169,7 @@ async def test_probing_yields_while_a_command_owns_the_screen():
         is_ui_busy=ui_lock.locked
     )
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.expand_clicks == 0
@@ -193,7 +196,7 @@ async def test_probing_holds_the_ui_lock_while_the_panel_is_open():
 
     panel.handler.element_finder.find_elements = record_lock
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     # The panel read happens inside the session, and the probe lets it go again.
@@ -205,7 +208,7 @@ async def test_the_seat_panel_is_collapsed_once_probing_finishes():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.seats_expanded is False
@@ -217,7 +220,7 @@ async def test_the_panel_is_collapsed_even_when_expansion_yields_no_desks():
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
     panel.handler.element_finder.find_elements = lambda _key: []
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.collapse_clicks == 1
@@ -227,7 +230,7 @@ async def test_a_new_occupant_emits_a_seated_event():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, obs = _stack(panel)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert obs.events == [
@@ -239,12 +242,13 @@ async def test_a_departure_emits_an_unseated_event():
     panel = FakeSeatPanel({1: "Alice", 3: "Bob"})
     _ui, _probe, _roster, watcher, obs = _stack(panel)
 
-    watcher.note_focus_count(2)
+    watcher.note_occupancy_mask([False] * 12)
+    watcher.note_occupancy_mask(_mask({1, 3}))
     await watcher.drain()
     obs.events.clear()
 
     panel.clear_seat(3)
-    watcher.note_focus_count(1)
+    watcher.note_occupancy_mask(_mask({1}))
     await watcher.drain()
 
     assert obs.events == [
@@ -258,6 +262,7 @@ async def test_a_move_emits_a_seat_changed_event():
 
     # A seat swap keeps the room's head count identical, so the visible
     # occupancy mask is what has to give it away.
+    watcher.note_occupancy_mask([False] * 12)
     watcher.note_occupancy_mask(_mask({3}))
     await watcher.drain()
     obs.events.clear()
@@ -276,6 +281,7 @@ async def test_no_events_are_emitted_when_a_signal_was_a_false_alarm():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, obs = _stack(panel)
 
+    watcher.note_occupancy_mask([False] * 12)
     watcher.note_occupancy_mask(_mask({1}))
     await watcher.drain()
     obs.events.clear()
@@ -291,7 +297,7 @@ async def test_an_unknown_identity_is_not_reported_as_a_seat_change():
     panel = FakeSeatPanel({1: "Alice"}, popup_failures=[1])
     _ui, _probe, _roster, watcher, obs = _stack(panel)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert obs.events == []
@@ -301,7 +307,7 @@ async def test_the_published_event_name_matches_the_domain_event_type():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, obs = _stack(panel)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     # The published name and payload must be enough to rebuild the event, so a
@@ -316,7 +322,7 @@ async def test_close_cancels_a_probe_that_is_still_debouncing():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.close()
     await asyncio.sleep(DEBOUNCE * 1.5)
 
@@ -327,7 +333,7 @@ async def test_close_returns_without_waiting_out_the_debounce_window():
     panel = FakeSeatPanel({1: "Alice"})
     _ui, _probe, _roster, watcher, _obs = _stack(panel, debounce=5.0)
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     started = time.monotonic()
     await watcher.close()
     elapsed = time.monotonic() - started
@@ -346,7 +352,64 @@ async def test_a_failing_probe_never_escapes_the_background_task():
 
     watcher.probe_now = boom
 
-    watcher.note_focus_count(1)
+    _trigger_probe(watcher)
     await watcher.drain()
 
     assert panel.handler.errors != []
+
+
+async def test_collapsed_seats_seamless_monitoring_without_expansion():
+    """Collapsed viewport (e.g. double-row / 上下排) monitors seats without expanding."""
+    panel = FakeSeatPanel({1: "Alice"})
+    _ui, _probe, _roster, watcher, _obs = _stack(panel)
+
+    collapsed_mask = (True, False, False, False) + (None,) * 8
+    # Initial baseline sets state without expanding
+    assert watcher.note_occupancy_mask(collapsed_mask) is False
+    await watcher.drain()
+    assert panel.expand_clicks == 0
+
+    # Repeated identical readings remain completely seamless (无感)
+    for _ in range(5):
+        assert watcher.note_occupancy_mask(collapsed_mask) is False
+    await watcher.drain()
+    assert panel.expand_clicks == 0
+
+
+async def test_collapsed_seats_occupancy_change_arms_probe():
+    """In collapsed view, detecting a change in seat occupancy arms a probe."""
+    panel = FakeSeatPanel({1: "Alice"})
+    _ui, _probe, _roster, watcher, _obs = _stack(panel)
+
+    collapsed_mask = (True, False, False, False) + (None,) * 8
+    watcher.note_occupancy_mask(collapsed_mask)
+
+    # Bob sits on seat 2 (index 1)
+    panel.set_occupant(2, "Bob")
+    new_mask = (True, True, False, False) + (None,) * 8
+    assert watcher.note_occupancy_mask(new_mask) is True
+    await watcher.drain()
+
+    assert panel.expand_clicks == 1
+    assert panel.seats_expanded is False  # collapsed after probe
+
+
+async def test_post_probe_collapse_does_not_loop():
+    """After a probe completes and collapses, collapsed viewport does not re-arm."""
+    panel = FakeSeatPanel({1: "Alice", 2: "Bob", 5: "Charlie"})
+    _ui, _probe, _roster, watcher, _obs = _stack(panel)
+
+    # Baseline
+    watcher.note_occupancy_mask((True, False, False, False) + (None,) * 8)
+
+    # Seat 2 taken -> probe fires, discovers Charlie on seat 5 too
+    assert watcher.note_occupancy_mask((True, True, False, False) + (None,) * 8) is True
+    await watcher.drain()
+    assert panel.expand_clicks == 1
+    assert panel.seats_expanded is False
+
+    # Back in collapsed state, only seats 1-4 are visible again (seat 5 is None)
+    # Must NOT treat seat 5 being None as a departure or change!
+    assert watcher.note_occupancy_mask((True, True, False, False) + (None,) * 8) is False
+    await watcher.drain()
+    assert panel.expand_clicks == 1  # Still 1, did not loop!
