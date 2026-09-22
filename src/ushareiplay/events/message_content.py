@@ -136,8 +136,16 @@ class MessageContentEvent(BaseEvent):
 
                 is_return = result.kind == ChatIntakeKind.USER_RETURN
                 if is_return:
-                    self.logger.critical(f"User returned: {result.nickname}")
-                    await self._notify_user_return(result.nickname)
+                    from ushareiplay.state.presence_tracker import PresenceTracker
+                    presence_tracker = PresenceTracker.instance()
+                    if presence_tracker.should_trigger_return(result.nickname):
+                        presence_tracker.record_return(result.nickname)
+                        self.logger.critical(f"User returned: {result.nickname}")
+                        await self._notify_user_return(result.nickname)
+                    else:
+                        self.logger.info(
+                            f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
+                        )
 
                 if result.kind == ChatIntakeKind.GIFT_RECEIVE:
                     chat_logger.critical(content)

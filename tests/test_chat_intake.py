@@ -94,6 +94,48 @@ class TestClassifyChatLine:
         assert result.nickname == "Alice"
         assert result.text == "Alice"
 
+    def test_user_return_with_follower_banner_wording(self):
+        result = classify_chat_line("你关注的Chainer进入房间啦，打个招呼吧～")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "Chainer"
+        assert result.text == "Chainer"
+
+    def test_user_return_with_relation_brother_wording(self):
+        result = classify_chat_line("你的兄弟 Outlier进来啦～")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "Outlier"
+
+    def test_user_return_with_relation_close_friend_wording(self):
+        result = classify_chat_line("你的密友Chainer正在房间里，打个招呼吧～")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "Chainer"
+
+    def test_user_return_with_relation_brackets_wording(self):
+        result = classify_chat_line("[Joyer]的兄弟[Outlier]进来了.[Chainer]的知己[Outlier]进来了.")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "Outlier"
+
+    def test_user_return_with_reminder_suffix(self):
+        result = classify_chat_line("Outlier进来陪你聊天啦 来自派对提醒")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "Outlier"
+
+    def test_user_return_with_generic_enter(self):
+        result = classify_chat_line("张三进入房间啦")
+        assert result.kind == ChatIntakeKind.USER_RETURN
+        assert result.nickname == "张三"
+
+        result2 = classify_chat_line("李四进来了")
+        assert result2.kind == ChatIntakeKind.USER_RETURN
+        assert result2.nickname == "李四"
+
+    def test_user_return_excludes_system_prompts(self):
+        result = classify_chat_line("进来好久了，邀请我上麦吧")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+        result2 = classify_chat_line("进入Soul星游乐场>>")
+        assert result2.kind == ChatIntakeKind.PLAIN_CHAT
+
     def test_plain_chat_with_wrapper(self):
         result = classify_chat_line("souler[Alice]说：hello world")
         assert result == ChatIntakeResult(
