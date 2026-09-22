@@ -16,6 +16,7 @@ class SeatUIManager:
         #: and the seating workflows use keeps one mapping, not several.
         self.roster = roster if roster is not None else SeatRoster()
         self.probe = None
+        self.current_row_index = None
 
     def bind_probe(self, probe):
         """Attach the differential probe that keeps the Seat Roster in sync."""
@@ -57,6 +58,7 @@ class SeatUIManager:
             if self.is_expanded:
                 self.handler.logger.info("检测到座位已收起，但状态标记为已展开，更新状态")
                 self.is_expanded = False
+                self.current_row_index = None
         else:
             self.handler.logger.warning(f"座位按钮文本 '{actual_text}' 无法判断展开状态")
 
@@ -138,7 +140,13 @@ class SeatUIManager:
         if not await self.expand_seats():
             return None
         await asyncio.sleep(self.EXPANSION_SETTLE_SECONDS)
-        return self.find_desks()
+        seat_desks = self.find_desks()
+        if not seat_desks:
+            return None
+        if self.current_row_index != 0:
+            self.scroll_to_row(0, seat_desks)
+            await asyncio.sleep(self.EXPANSION_SETTLE_SECONDS)
+        return seat_desks
 
     def find_desks(self):
         """Return the six desk containers, or None when expansion is incomplete."""
@@ -154,29 +162,60 @@ class SeatUIManager:
         return seat_desks
 
     def scroll_to_row(self, desk_index, seat_desks, duration=100):
-        """Scroll the requested desk row into view when it is outside the middle row."""
-        if not seat_desks or len(seat_desks) < 3:
+        """Scroll the requested desk row into view."""
+        if not seat_desks or len(seat_desks) < 3 or self.handler is None:
             return
 
-        row_index = desk_index // 2
-        if row_index == 1:
+        target_row = desk_index // 2
+        if self.current_row_index is not None and self.current_row_index == target_row:
             return
 
-        reference_desk = seat_desks[2]
+        gesture_handler = getattr(self.handler, 'gesture_handler', None)
+        if gesture_handler is None:
+            return
+
+        reference_desk = seat_desks[min(len(seat_desks) - 1, 2)]
         center_x = reference_desk.location['x'] + reference_desk.size['width'] // 2
         center_y = reference_desk.location['y'] + reference_desk.size['height'] // 2
         desk_height = reference_desk.size['height']
 
-        if row_index == 0:
-            self.handler.gesture_handler.swipe(
-                center_x, center_y, center_x, center_y + desk_height, duration
-            )
-            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
-        elif row_index == 2:
-            self.handler.gesture_handler.swipe(
-                center_x, center_y, center_x, center_y - desk_height, duration
-            )
-            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
+        logger = getattr(self.handler, 'logger', None)
+
+        if self.current_row_index is None:
+            if target_row == 0:
+                gesture_handler.swipe(
+                    center_x, center_y, center_x, center_y + 2 * desk_height, duration
+                )
+                if logger:
+                    logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
+            elif target_row == 2:
+                gesture_handler.swipe(
+                    center_x, center_y, center_x, center_y - 2 * desk_height, duration
+                )
+                if logger:
+                    logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
+            elif target_row == 1:
+                pass
+        else:
+            delta = target_row - self.current_row_index
+            if delta < 0:
+                gesture_handler.swipe(
+                    center_x, center_y, center_x, center_y + abs(delta) * desk_height, duration
+                )
+                if logger:
+                    logger.info(
+                        f"Scrolled up from row {self.current_row_index} to row {target_row} for desk {desk_index + 1}"
+                    )
+            elif delta > 0:
+                gesture_handler.swipe(
+                    center_x, center_y, center_x, center_y - delta * desk_height, duration
+                )
+                if logger:
+                    logger.info(
+                        f"Scrolled down from row {self.current_row_index} to row {target_row} for desk {desk_index + 1}"
+                    )
+
+        self.current_row_index = target_row
 
     async def collapse_seats(self):
         """Collapse seats if expanded"""
@@ -204,6 +243,7 @@ class SeatUIManager:
                     expand_seats.click()
                     self.handler.logger.info('Collapsed seats')
                     self.is_expanded = False
+                    self.current_row_index = None
                     await asyncio.sleep(self.COLLAPSE_SETTLE_SECONDS)  # Give time for animation
                     return True
 

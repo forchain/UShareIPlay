@@ -291,3 +291,60 @@ def test_seat_manager_exposes_the_shared_roster():
     finally:
         SeatManager._instance = None
         SeatManager._initialized = False
+
+
+def test_expand_desks_scrolls_to_first_row_and_tracks_row_index():
+    panel, _desks = make_panel({1: "Alice"})
+    ui = SeatUIManager(panel.handler)
+
+    assert ui.current_row_index is None
+    asyncio.run(ui.expand_and_find_desks())
+
+    assert ui.current_row_index == 0
+    assert panel.swipes != []
+    start_x, start_y, end_x, end_y, _duration = panel.swipes[0]
+    assert start_x == end_x
+    assert end_y > start_y
+
+
+def test_scroll_to_row_delta_movements():
+    panel, desks = make_panel()
+    ui = SeatUIManager(panel.handler)
+    ui.current_row_index = 0
+
+    panel.swipes.clear()
+    ui.scroll_to_row(0, desks)
+    assert panel.swipes == []
+
+    ui.scroll_to_row(2, desks)
+    assert len(panel.swipes) == 1
+    assert ui.current_row_index == 1
+    _sx, sy1, _ex, ey1, _ = panel.swipes[0]
+    assert ey1 < sy1
+    delta_1 = sy1 - ey1
+
+    panel.swipes.clear()
+    ui.scroll_to_row(4, desks)
+    assert len(panel.swipes) == 1
+    assert ui.current_row_index == 2
+
+    panel.swipes.clear()
+    ui.scroll_to_row(0, desks)
+    assert len(panel.swipes) == 1
+    assert ui.current_row_index == 0
+    _sx, sy0, _ex, ey0, _ = panel.swipes[0]
+    assert ey0 > sy0
+    assert (ey0 - sy0) == 2 * delta_1
+
+
+def test_collapse_seats_resets_current_row_index():
+    panel, _desks = make_panel({1: "Alice"})
+    ui = SeatUIManager(panel.handler)
+
+    asyncio.run(ui.expand_and_find_desks())
+    assert ui.is_expanded is True
+    assert ui.current_row_index == 0
+
+    asyncio.run(ui.collapse_seats())
+    assert ui.is_expanded is False
+    assert ui.current_row_index is None

@@ -441,5 +441,25 @@ def test_observe_desk_updates_both_sides_of_the_desk():
     assert list(roster.occupancy_mask)[:2] == [False, False]
 
 
+def test_sync_preserves_occupancy_when_desk_scrolled_out_of_view():
+    panel, desks = make_panel({1: "Alice", 11: "Joyer"})
+    probe, roster, _ui = _synced(panel, focus_count=2)
+
+    original_find_child = panel.handler.element_finder.find_child_element
+
+    def find_child_with_desk_5_offscreen(desk, key, log_failure=True):
+        if desk.index == 5:
+            return None
+        return original_find_child(desk, key, log_failure=log_failure)
+
+    panel.handler.element_finder.find_child_element = find_child_with_desk_5_offscreen
+
+    result = asyncio.run(probe.sync(desks, focus_count=2))
+
+    assert 11 not in result.cleared_seats
+    assert roster.occupant(11) is not None
+    assert roster.occupant(11).username == "Joyer"
+
+
 def _read_desk(panel, desk):
     return read_desk(panel.handler, desk)

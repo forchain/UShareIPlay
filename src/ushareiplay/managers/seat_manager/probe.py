@@ -166,6 +166,13 @@ class SeatProbe:
             for side in SIDES:
                 seat_number = seat_number_of(desk_index, side)
                 try:
+                    seat_element = self._handler.element_finder.find_child_element(
+                        desk, f"{side}_seat", log_failure=False
+                    )
+                    if seat_element is None:
+                        # The desk is scrolled out of the visible viewport.
+                        # Preserve existing occupancy state for this seat.
+                        continue
                     state = self._handler.element_finder.find_child_element(
                         desk, f"{side}_state", log_failure=False
                     )
