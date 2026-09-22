@@ -21,8 +21,12 @@ All behavior that describes and reacts to the current app screen, including page
 _Avoid_: Event loop, page-source helper, fallback navigation
 
 **Chat Intake**:
-The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
+The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat with optional Quoted Message context) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake isolates Quoted Message content from command prefixes and mention triggers so that historical references do not cause accidental execution. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
 _Avoid_: Message parser, chat classifier, command matcher
+
+**Quoted Message**:
+The referenced message snippet (author and content) attached to a chat line when a user replies to an earlier room message. It enriches downstream conversational context and log history while remaining strictly isolated from command and trigger dispatching.
+_Avoid_: Reply view, quote text, referenced bubble
 
 **E2E Session**:
 One owned run of UShareIPlay validation, including the service and every helper process that can contend for its Android/Appium target.
