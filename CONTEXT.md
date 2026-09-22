@@ -8,6 +8,14 @@ UShareIPlay controls Soul App party rooms and QQ Music playback through chat-dri
 All behavior around Soul App party seats, including reservation policy, occupancy checks, automatic seating on entry, taking seats, removing occupants, and preparing seat UI state when another workflow depends on the seat panel.
 _Avoid_: Seat command, seating helper, seat UI layer
 
+**Seat Roster**:
+The in-memory identity mapping of party room seats (1-12) to their current occupants. Maintained through opportunistic synchronization and probing, and consumed by seat commands and seat change events.
+_Avoid_: Seat table, seat list, occupant cache
+
+**Opportunistic Seat Sync**:
+The inspection and synchronization pattern where seat-expanding workflows (taking seats, removing occupants, verifying reservations, or accompanying users) inspect on-screen seat occupancy against cached state, refreshing the Seat Roster before executing their primary action when discrepancies are detected.
+_Avoid_: Lazy seat refresh, seat hook, auto-refresh
+
 **Room Name**:
 The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.
 _Avoid_: ThemeManager, TitleManager (legacy adapters)
