@@ -200,6 +200,20 @@ class SeatRoster:
             for occupant in self._seats.values()
         )
 
+    def format_status(
+        self, changes: Optional[List[SeatChange]] = None, *, color: bool = True
+    ) -> str:
+        """Render the cached layout, and any ``changes``, as a highlighted table.
+
+        Imported here rather than at module scope: the renderer reads this
+        module's seat constants, and this module stays state-only.
+        """
+        from ushareiplay.managers.seat_manager.roster_format import (
+            format_seat_roster,
+        )
+
+        return format_seat_roster(self, changes=changes, color=color)
+
     def reset(self) -> None:
         """Forget everything: seat identities belong to one party room."""
         self._seats = {n: None for n in SEAT_NUMBERS}
