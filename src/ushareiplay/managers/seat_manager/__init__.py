@@ -1,8 +1,12 @@
 from ushareiplay.managers.seat_manager.base import SeatManagerBase
+from ushareiplay.managers.seat_manager.probe import SeatProbe
 from ushareiplay.managers.seat_manager.reservation import ReservationManager
+from ushareiplay.managers.seat_manager.roster import SeatRoster
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.watcher import SeatRosterWatcher
+from ushareiplay.state.room_state import is_guest_room
 import logging
 
 class SeatManager(SeatManagerBase):
@@ -22,10 +26,16 @@ class SeatManager(SeatManagerBase):
             super().__init__(handler)
             # Initialize component managers
             # FocusManager 已迁移到事件系统，不再需要
-            self._ui = SeatUIManager(handler)
-            self._check = SeatCheckManager(handler, self._ui)
+            self._roster = SeatRoster()
+            self._ui = SeatUIManager(handler, roster=self._roster)
+            self._probe = SeatProbe(handler, self._ui, self._roster)
+            self._ui.bind_probe(self._probe)
+            self._check = SeatCheckManager(handler, self._ui, probe=self._probe)
             self._reservation = ReservationManager(handler, self._ui, self._check)
-            self._seating = SeatingManager(handler, self._ui)
+            self._seating = SeatingManager(
+                handler, self._ui, probe=self._probe, roster=self._roster
+            )
+            self._watcher = SeatRosterWatcher(handler, self._ui, self._probe)
             self.initialized = True
             logging.getLogger('seat_manager').info("SeatManager 初始化完成")
         elif handler and not self.handler:
@@ -37,13 +47,19 @@ class SeatManager(SeatManagerBase):
             self._check._message_dispatch = None
             self._ui.handler = handler
             self._seating.handler = handler
+            self._probe._handler = handler
+            self._watcher._handler = handler
+
+    def get_roster(self) -> SeatRoster:
+        """The in-memory Seat Roster maintained by opportunistic sync."""
+        return self._roster
+
+    def get_watcher(self) -> SeatRosterWatcher:
+        """The passive detector that turns room signals into background probes."""
+        return self._watcher
 
     def _is_guest_room(self) -> bool:
-        try:
-            from ushareiplay.state.room_state import RoomState
-            return RoomState.instance().is_guest_room
-        except Exception:
-            return False
+        return is_guest_room()
 
     async def prepare_for_chat_scan(self) -> bool:
         """Prepare seat UI state before chat history scanning."""

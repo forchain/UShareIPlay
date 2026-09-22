@@ -45,9 +45,25 @@ class FocusCountEvent(BaseEvent):
 
             await CommandManager.instance().notify_focus_count_change(before, current_focus_count)
 
+            _signal_seat_watcher(self.handler, current_focus_count)
+
             return False
 
         except Exception as e:
             self.logger.error(f"Error processing focus count event: {str(e)}")
             return False
+
+
+def _signal_seat_watcher(handler, focus_count: int) -> None:
+    """专注人数变化意味着可能有人上下麦，交给座位探测器防抖后差量抽检。"""
+    try:
+        from ushareiplay.managers.seat_manager import SeatManager
+
+        watcher = SeatManager.get_instance().get_watcher()
+        if watcher is not None:
+            watcher.note_focus_count(focus_count)
+    except Exception as e:
+        logger = getattr(handler, "logger", None)
+        if logger is not None:
+            logger.error(f"Error signalling seat watcher: {str(e)}")
 

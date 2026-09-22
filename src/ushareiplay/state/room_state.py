@@ -186,3 +186,13 @@ class RoomState(Singleton):
         self._is_guest_room = None
         self.logger.info("Cleared room state")
 
+
+def is_guest_room() -> bool:
+    """是否处于他人房间；状态未就绪时按主房间处理，绝不误判为客房。"""
+    try:
+        if not RoomState.is_initialized():
+            return False
+        return bool(RoomState.instance().is_guest_room)
+    except Exception:
+        return False
+

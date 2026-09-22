@@ -1,11 +1,32 @@
 import asyncio
 import logging
 
+from ushareiplay.managers.seat_manager.roster import SeatRoster
+
 
 class SeatUIManager:
-    def __init__(self, handler=None):
+    #: Pauses that let the seat panel animation settle before it is read.
+    EXPANSION_SETTLE_SECONDS = 0.5
+    COLLAPSE_SETTLE_SECONDS = 0.5
+
+    def __init__(self, handler=None, roster=None):
         self.handler = handler
         self.is_expanded = False
+        #: The Seat Roster to keep in sync. Injecting the same instance the probe
+        #: and the seating workflows use keeps one mapping, not several.
+        self.roster = roster if roster is not None else SeatRoster()
+        self.probe = None
+
+    def bind_probe(self, probe):
+        """Attach the differential probe that keeps the Seat Roster in sync."""
+        self.probe = probe
+        self.roster = probe.roster
+
+    async def _sync_roster(self, seat_desks, guard_seat=None):
+        """Opportunistically reconcile the Seat Roster with the expanded panel."""
+        if self.probe is None:
+            return None
+        return await self.probe.sync(seat_desks, guard_seat=guard_seat)
 
     def check_seats_state(self):
         """检查座位的实际展开状态并更新 is_expanded 标志"""
@@ -85,12 +106,42 @@ class SeatUIManager:
             self.handler.logger.error(f"展开座位时出错: {str(e)}")
             return False
 
-    async def expand_and_find_desks(self):
-        """Expand the seat UI and return the six desk containers."""
+    async def expand_and_find_desks(self, guard_seat=None):
+        """Expand the seat UI and return the six desk containers.
+
+        This is the universal interception point for *Opportunistic Seat Sync*:
+        every workflow that puts the seat panel on screen reconciles the Seat
+        Roster against what is actually visible before acting on it.
+
+        ``guard_seat`` names the seat the caller is about to take. When that seat
+        is occupied, the sync stops at the occupancy read and opens no profile
+        popups, so the caller can reject the action immediately.
+        """
+        seat_desks = await self._expand_desks()
+        if seat_desks is None:
+            return None
+        await self._sync_roster(seat_desks, guard_seat=guard_seat)
+        return seat_desks
+
+    async def probe_roster(self):
+        """Expand, reconcile the roster, and return the sync result.
+
+        The passive detector's entry point: it needs the transitions the sync
+        discovered, not the desk elements. The caller owns collapsing the panel.
+        """
+        seat_desks = await self._expand_desks()
+        if seat_desks is None:
+            return None
+        return await self._sync_roster(seat_desks)
+
+    async def _expand_desks(self):
         if not await self.expand_seats():
             return None
+        await asyncio.sleep(self.EXPANSION_SETTLE_SECONDS)
+        return self.find_desks()
 
-        await asyncio.sleep(0.5)
+    def find_desks(self):
+        """Return the six desk containers, or None when expansion is incomplete."""
         seat_desks = self.handler.element_finder.find_elements('seat_desk')
         if not seat_desks:
             self.handler.logger.error("Failed to find seat desks")
@@ -153,7 +204,7 @@ class SeatUIManager:
                     expand_seats.click()
                     self.handler.logger.info('Collapsed seats')
                     self.is_expanded = False
-                    await asyncio.sleep(0.5)  # Give time for animation
+                    await asyncio.sleep(self.COLLAPSE_SETTLE_SECONDS)  # Give time for animation
                     return True
 
                 self.handler.logger.warning(f"座位按钮文本不匹配预期，无法收起: '{actual_text}'")

@@ -9,12 +9,24 @@ All behavior around Soul App party seats, including reservation policy, occupanc
 _Avoid_: Seat command, seating helper, seat UI layer
 
 **Seat Roster**:
-The in-memory identity mapping of party room seats (1-12) to their current occupants. Maintained through opportunistic synchronization and probing, and consumed by seat commands and seat change events.
+The in-memory identity mapping of party room seats (1-12) to their current occupants. Maintained through opportunistic synchronization and probing, and consumed by seat commands and seat change events. It is scoped to one party room — moving rooms discards it.
 _Avoid_: Seat table, seat list, occupant cache
 
 **Opportunistic Seat Sync**:
 The inspection and synchronization pattern where seat-expanding workflows (taking seats, removing occupants, verifying reservations, or accompanying users) inspect on-screen seat occupancy against cached state, refreshing the Seat Roster before executing their primary action when discrepancies are detected.
 _Avoid_: Lazy seat refresh, seat hook, auto-refresh
+
+**Passive Seat Signal**:
+A cheap room-wide observation that seats may have changed — the focus count ("N人专注中") or the occupancy of the seats currently visible in the collapsed viewport. Signals never identify anybody; they only arm the Seat Roster Watcher.
+_Avoid_: Seat trigger, seat poll, focus watcher
+
+**Seat Roster Watcher**:
+The debounced detector that turns Passive Seat Signals into at most one background differential probe once the signals go quiet, yielding to queued commands and to whatever already owns the screen, and never probing a guest room. Owned by `SeatManager`.
+_Avoid_: Seat poller, background seat scan
+
+**Seat Change Event**:
+A confirmed identity-level transition of the Seat Roster — `UserSeatedEvent`, `UserUnseatedEvent`, or `UserSeatChangedEvent`. Published by the Seat Roster Watcher and distinct from roster state: events describe movement, the roster describes position.
+_Avoid_: Seat update, roster notification
 
 **Room Name**:
 The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.

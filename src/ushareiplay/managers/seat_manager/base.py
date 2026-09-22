@@ -23,6 +23,11 @@ class SeatManagerBase:
         return f"{self.__class__.__name__}(handler={handler_id}, initialized={self._initialized})"
 
     @classmethod
+    def is_initialized(cls) -> bool:
+        """Whether a handler has been wired up yet, without creating one."""
+        return cls._instance is not None
+
+    @classmethod
     def get_instance(cls, handler=None, *args, **kwargs):
         if cls._instance is None:
             cls._instance = cls(handler, *args, **kwargs)

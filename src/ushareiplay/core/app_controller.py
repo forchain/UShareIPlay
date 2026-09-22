@@ -746,6 +746,9 @@ class AppController(Singleton):
             except asyncio.CancelledError:
                 pass
 
+        if self.seat_manager is not None:
+            await self.seat_manager.get_watcher().close()
+
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
 

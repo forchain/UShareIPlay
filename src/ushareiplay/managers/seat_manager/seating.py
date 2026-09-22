@@ -1,15 +1,35 @@
-import asyncio
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.seat_manager.desks import (
+    OWNER_LABEL,
+    adjacent_seat_number,
+    desk_index_of,
+    read_desk,
+    seat_number_of,
+    side_of,
+)
+from ushareiplay.managers.seat_manager.roster import UNKNOWN_USERNAME, SeatRoster
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
 
 
 class SeatingManager:
-    def __init__(self, handler=None, seat_ui=None):
+    def __init__(self, handler=None, seat_ui=None, probe=None, roster=None):
         self.handler = handler
         self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.probe = probe
+        # Fall back to the probe's roster so both share one mapping by default.
+        self.roster = roster or (probe.roster if probe is not None else SeatRoster())
         self.current_desk_index = 0
         self.current_side = None
+
+    @property
+    def room_owner(self) -> str:
+        try:
+            from ushareiplay.core.roles import RolePolicy
+
+            return RolePolicy(getattr(self.handler, "config", None)).room_owner
+        except Exception:
+            return UNKNOWN_USERNAME
 
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12)"""
@@ -17,12 +37,13 @@ class SeatingManager:
             return {'error': 'Handler not initialized'}
 
         try:
-            # Convert seat number to desk index and side
             # Odd numbers = left seat, Even numbers = right seat
-            desk_index = (seat_number - 1) // 2
-            side = 'left' if seat_number % 2 == 1 else 'right'
+            desk_index = desk_index_of(seat_number)
+            side = side_of(seat_number)
 
-            seat_desks = await self.seat_ui.expand_and_find_desks()
+            # The guard seat lets the sync reject an occupied target without
+            # opening a single profile popup.
+            seat_desks = await self.seat_ui.expand_and_find_desks(guard_seat=seat_number)
             if not seat_desks:
                 return {'error': 'Failed to find seat desks'}
 
@@ -32,16 +53,15 @@ class SeatingManager:
             # Ensure the target row is visible
             self.seat_ui.scroll_to_row(desk_index, seat_desks)
 
-            # Get the specific desk and collect its info
             desk = seat_desks[desk_index]
             desk_info = self._collect_desk_info(desk)
+            self._sense_desk(desk_index, desk_info)
 
-            # Get the target seat info
             target_seat = desk_info[side]
 
-            # Check if the target seat is occupied
             if target_seat['occupied']:
-                return {'error': f'Seat {seat_number} is already occupied by {target_seat["label"]}'}
+                occupant = self._occupant_name(seat_number, target_seat)
+                return {'error': f'Seat {seat_number} is already occupied by {occupant}'}
 
             # Take the seat
             self.handler.logger.info(f"Sitting at seat {seat_number} (desk {desk_index + 1}, {side} side)")
@@ -87,6 +107,7 @@ class SeatingManager:
                 self.seat_ui.scroll_to_row(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
+                self._sense_desk(desk_index, desk_info)
                 # self.handler.logger.debug(f"desk_info: {desk_info}" )
 
                 companion_candidate = self._select_companion_candidate(desk_info)
@@ -113,6 +134,7 @@ class SeatingManager:
                     # Re-collect desk info to get fresh element references after scrolling
                     desk = seat_desks[first_empty_candidate['desk_index']]
                     desk_info = self._collect_desk_info(desk)
+                    self._sense_desk(first_empty_candidate['desk_index'], desk_info)
                     # Update the seat element reference to ensure it's still valid
                     side = first_empty_candidate['seat']['side']
                     if side in desk_info and desk_info[side].get('element'):
@@ -133,12 +155,17 @@ class SeatingManager:
             return {'error': f'Failed to find seat: {str(e)}'}
 
     async def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
-        """Find a specific user on seats and sit next to them"""
+        """Sit next to a specific user.
+
+        Expanding the panel already reconciled the Seat Roster with the on-screen
+        occupancy, so the cached answer is normally correct and only needs one
+        popup read to confirm the identity before taking the neighbouring seat.
+        A failed confirmation re-probes every desk before reporting failure.
+        """
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
         try:
-            # Step 1: Check if the target user is online
             # Skip online check if sender is the target (they are obviously online)
             if sender_username != target_username:
                 info_manager = InfoManager.instance()
@@ -149,94 +176,72 @@ class SeatingManager:
             if not seat_desks:
                 return {'error': 'Failed to find seat desks'}
 
-            # Step 3: Iterate through all desks.
-            # Optimization: only check desks with exactly one occupant, because
-            # if both seats are occupied, we can't sit next to the target anyway.
-            for desk_index in range(len(seat_desks)):
-                self.seat_ui.scroll_to_row(desk_index, seat_desks)
-                desk = seat_desks[desk_index]
-                desk_info = self._collect_desk_info(desk)
+            seat_number = await self._locate_target_seat(seat_desks, target_username)
+            if seat_number is None:
+                return {'error': f'User {target_username} not found on any seat'}
 
-                left = desk_info['left']
-                right = desk_info['right']
-                occupied_sides = []
-                if left.get('occupied'):
-                    occupied_sides.append('left')
-                if right.get('occupied'):
-                    occupied_sides.append('right')
+            neighbour = adjacent_seat_number(seat_number)
+            if self.roster.is_occupied(neighbour):
+                return {'error': f'User {target_username} has no empty adjacent seat'}
 
-                # Only proceed when exactly one seat is occupied on this desk
-                if len(occupied_sides) != 1:
-                    continue
+            desk_index = desk_index_of(neighbour)
+            self.seat_ui.scroll_to_row(desk_index, seat_desks)
+            desk_info = self._collect_desk_info(seat_desks[desk_index])
+            self._sense_desk(desk_index, desk_info)
 
-                side = occupied_sides[0]
-                other_side = 'right' if side == 'left' else 'left'
-                seat = desk_info[side]
-                other_seat = desk_info[other_side]
+            # Re-check against the fresh read: somebody may have taken the seat
+            # while we were reading the target's profile.
+            neighbour_seat = desk_info[side_of(neighbour)]
+            if neighbour_seat['occupied']:
+                return {'error': f'User {target_username} has no empty adjacent seat'}
 
-                # Skip owner seat
-                if seat.get('is_owner'):
-                    continue
-
-                # Click the state element to open user profile popup
-                state_key = f'{side}_state'
-                state_element = self.handler.element_finder.find_child_element(
-                    desk, state_key, log_failure=False
-                )
-                if not state_element:
-                    continue
-
-                state_element.click()
-                self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
-
-                # Read the user name from the popup
-                found_key, name_element = self.handler.element_finder.wait_for_any_element(
-                    ['souler_name', 'user_name']
-                )
-                if not name_element:
-                    self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
-                    self.handler.key_actions.press_back()
-                    continue
-
-                actual_username = name_element.text
-                self.handler.logger.info(
-                    f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
-                )
-
-                if actual_username != target_username:
-                    # Not the target user, close popup and continue
-                    self.handler.key_actions.press_back()
-                    await asyncio.sleep(0.3)
-                    continue
-
-                # Found the target user! Close the popup first
-                self.handler.key_actions.press_back()
-                await asyncio.sleep(0.3)
-
-                # Check if the adjacent seat is available
-                if other_seat['occupied']:
-                    return {'error': f'User {target_username} has no empty adjacent seat'}
-
-                # Sit next to the target user
-                self.handler.logger.info(
-                    f"Sitting next to {target_username} at desk {desk_index + 1}, {other_seat['side']} side"
-                )
-
-                # Re-collect desk info to get fresh element references after popup interaction
-                desk_info = self._collect_desk_info(desk)
-                fresh_other_seat = desk_info[other_side]
-
-                return self._take_seat(
-                    desk_index,
-                    fresh_other_seat,
-                    neighbor_label=target_username
-                )
-
-            return {'error': f'User {target_username} not found on any seat'}
+            self.handler.logger.info(
+                f"Sitting next to {target_username} at desk {desk_index + 1}, "
+                f"{side_of(neighbour)} side"
+            )
+            return self._take_seat(
+                desk_index,
+                neighbour_seat,
+                neighbor_label=target_username
+            )
 
         except Exception as e:
             self.handler.log_error(f"Error accompanying user: {traceback.format_exc()}")
             return {'error': f'Failed to accompany user {target_username}: {str(e)}'}
+
+    async def _locate_target_seat(self, seat_desks, target_username):
+        """Resolve the target's seat, confirming a cached answer with one popup."""
+        cached_seat = self.roster.find_seat_of(target_username)
+        if cached_seat is not None:
+            if await self._confirm_seat_occupant(seat_desks, cached_seat, target_username):
+                return cached_seat
+            # The popup contradicted the cache: force a full differential probe
+            # before concluding the target is not seated at all.
+            self.roster.invalidate(cached_seat)
+
+        await self._resync_roster(seat_desks)
+        return self.roster.find_seat_of(target_username)
+
+    async def _confirm_seat_occupant(self, seat_desks, seat_number, expected_username) -> bool:
+        """Check one seat's occupant identity, at the cost of a single popup."""
+        if self.probe is None:
+            return False
+
+        desk_index = desk_index_of(seat_number)
+        self.seat_ui.scroll_to_row(desk_index, seat_desks)
+        desk_info = self._collect_desk_info(seat_desks[desk_index])
+        self._sense_desk(desk_index, desk_info)
+
+        entry = desk_info[side_of(seat_number)]
+        if not entry.get('occupied'):
+            return False
+        return self.probe.identify_seat(seat_number, entry) == expected_username
+
+    async def _resync_roster(self, seat_desks) -> None:
+        """Force the differential probe to reconcile every readable desk."""
+        if self.probe is None:
+            return
+        await self.probe.sync(seat_desks)
 
     async def seat_off_owner(self) -> dict:
         """Remove the owner from their current seat."""
@@ -252,10 +257,11 @@ class SeatingManager:
                 self.seat_ui.scroll_to_row(desk_index, seat_desks)
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
+                self._sense_desk(desk_index, desk_info)
 
                 for seat in (desk_info['left'], desk_info['right']):
                     if seat.get('is_owner') and seat.get('occupied'):
-                        seat_number = desk_index * 2 + (1 if seat['side'] == 'left' else 2)
+                        seat_number = seat_number_of(desk_index, seat['side'])
                         return self._seat_off(seat_number, seat)
 
             self.handler.logger.warning("Owner is not on any seat")
@@ -271,8 +277,8 @@ class SeatingManager:
             return {'error': 'Handler not initialized'}
 
         try:
-            desk_index = (seat_number - 1) // 2
-            side = 'left' if seat_number % 2 == 1 else 'right'
+            desk_index = desk_index_of(seat_number)
+            side = side_of(seat_number)
 
             seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
@@ -284,6 +290,7 @@ class SeatingManager:
             self.seat_ui.scroll_to_row(desk_index, seat_desks)
             desk = seat_desks[desk_index]
             desk_info = self._collect_desk_info(desk)
+            self._sense_desk(desk_index, desk_info)
             target_seat = desk_info[side]
 
             if not target_seat.get('occupied'):
@@ -322,32 +329,42 @@ class SeatingManager:
         return None
 
     def _collect_desk_info(self, desk):
-        left_seat = self.handler.element_finder.find_child_element(desk, 'left_seat', log_failure=False)
-        right_seat = self.handler.element_finder.find_child_element(desk, 'right_seat', log_failure=False)
-        left_state = self.handler.element_finder.find_child_element(desk, 'left_state', log_failure=False)
-        right_state = self.handler.element_finder.find_child_element(desk, 'right_state', log_failure=False)
-        left_label_element = self.handler.element_finder.find_child_element(desk, 'left_label', log_failure=False)
-        right_label_element = self.handler.element_finder.find_child_element(desk, 'right_label', log_failure=False)
+        return read_desk(self.handler, desk)
 
-        left_label = left_label_element.text if left_label_element else ''
-        right_label = right_label_element.text if right_label_element else ''
+    def _sense_desk(self, desk_index: int, desk_info) -> None:
+        """Fold a just-scrolled row into the roster.
 
-        return {
-            'left': {
-                'element': left_seat,
-                'occupied': bool(left_state),
-                'label': left_label,
-                'is_owner': left_label == '群主',
-                'side': 'left'
-            },
-            'right': {
-                'element': right_seat,
-                'occupied': bool(right_state),
-                'label': right_label,
-                'is_owner': right_label == '群主',
-                'side': 'right'
-            }
-        }
+        Reading a row we already scrolled to is free, so seats passing through
+        the viewport are cleared or flagged without any extra UI pass.
+        """
+        if self.probe is None:
+            return
+        self.probe.observe_desk(desk_index, desk_info)
+
+    def _occupant_name(self, seat_number: int, seat_info) -> str:
+        """Best name we can give for an occupied seat, without opening a popup."""
+        occupant = self.roster.occupant(seat_number)
+        if occupant is not None and occupant.verified and occupant.username != UNKNOWN_USERNAME:
+            return occupant.username
+        if seat_info.get('is_owner'):
+            return OWNER_LABEL
+        return UNKNOWN_USERNAME
+
+    def _record_self_seated(self, seat_number: int) -> None:
+        """Our own confirmed action tells us exactly where we are; no probe needed."""
+        owner = self.room_owner
+        previous_seat = self.roster.find_seat_of(owner)
+        if previous_seat is not None and previous_seat != seat_number:
+            self.roster.clear_seat(previous_seat)
+            self.roster.note_occupancy(previous_seat, False)
+        self.roster.set_occupant(seat_number, owner, is_owner=True, verified=True)
+        self.roster.note_occupancy(seat_number, True)
+
+    def _record_self_unseated(self, seat_number: int) -> None:
+        """Mirror a confirmed removal so the roster needs no follow-up probe."""
+        seat = self.roster.clear_seat(seat_number)
+        if seat is not None:
+            self.roster.note_occupancy(seat_number, False)
 
     def _select_companion_candidate(self, desk_info):
         left = desk_info['left']
@@ -389,6 +406,7 @@ class SeatingManager:
             if result.get('success'):
                 self.current_desk_index = desk_index
                 self.current_side = seat_info['side']
+                self._record_self_seated(seat_number_of(desk_index, seat_info['side']))
             return result
 
         except Exception:
@@ -415,6 +433,7 @@ class SeatingManager:
 
             souler_name_text = souler_name.text
             seat_off.click()
+            self._record_self_unseated(seat_number)
             self.handler.logger.info(f"Successfully removed {souler_name_text} from seat {seat_number}")
             return {'success': f'Successfully removed {souler_name_text} from seat {seat_number}'}
 

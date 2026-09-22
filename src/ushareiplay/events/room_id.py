@@ -45,13 +45,29 @@ class RoomIdEvent(BaseEvent):
                     return True
 
             # 更新 RoomState 中的房间ID
+            previous_room_id = room_state.room_id
             room_state.room_id = clean_room_id
             if self.handler:
                 self.handler.party_id = clean_room_id
+
+            if previous_room_id is not None and previous_room_id != clean_room_id:
+                _drop_seat_roster()
 
             return False
 
         except Exception as e:
             self.logger.error(f"Error processing room ID event: {str(e)}")
             return False
+
+
+def _drop_seat_roster() -> None:
+    """座位身份只属于一个房间；换房后旧花名册全部作废，避免张冠李戴。"""
+    try:
+        from ushareiplay.managers.seat_manager import SeatManager
+
+        if not SeatManager.is_initialized():
+            return
+        SeatManager.get_instance().get_roster().reset()
+    except Exception:
+        pass
 

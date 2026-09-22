@@ -2,13 +2,15 @@ import asyncio
 import traceback
 from datetime import datetime, timedelta
 from ushareiplay.dal import SeatReservationDAO, UserDAO
+from ushareiplay.managers.seat_manager.desks import desk_index_of, read_desk
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 
 
 class SeatCheckManager:
-    def __init__(self, handler=None, seat_ui=None):
+    def __init__(self, handler=None, seat_ui=None, probe=None):
         self.handler = handler
         self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.probe = probe
         self._message_dispatch = None
 
     @property
@@ -86,12 +88,22 @@ class SeatCheckManager:
         # check and handle the user's specific seat
         self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
 
-        desk_index = (seat_number - 1) // 2
+        desk_index = desk_index_of(seat_number)
         self.seat_ui.scroll_to_row(desk_index, seat_desks, duration=1000)
         if desk_index // 2 in (0, 2):
             await asyncio.sleep(0.5)
 
+        self._sense_desk(desk_index, seat_desks)
+
         await self._handle_occupied_seat(username, seat_desks, seat_number)
+
+    def _sense_desk(self, desk_index: int, seat_desks) -> None:
+        """Fold the row just scrolled into view into the Seat Roster, for free."""
+        if self.probe is None or desk_index >= len(seat_desks):
+            return
+        self.probe.observe_desk(
+            desk_index, read_desk(self.handler, seat_desks[desk_index])
+        )
 
     async def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
