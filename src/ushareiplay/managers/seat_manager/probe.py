@@ -11,6 +11,7 @@ The engine never decides *when* to run — callers (the opportunistic sync hook 
 debounce detector, the accompany fallback) own that policy.
 """
 
+import asyncio
 import traceback
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple

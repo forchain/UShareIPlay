@@ -504,5 +504,16 @@ def test_sync_full_scan_respects_guard_seat():
     assert result.probed_seats == [1]
 
 
+def test_sync_full_scan_with_positive_settle_delay():
+    panel, desks = make_panel({1: "Alice"})
+    probe, roster, ui = _probe(panel)
+    ui.EXPANSION_SETTLE_SECONDS = 0.0001
+
+    result = asyncio.run(probe.sync(desks, focus_count=1, full_scan=True))
+
+    assert result.probed_seats == [1]
+
+
+
 def _read_desk(panel, desk):
     return read_desk(panel.handler, desk)
