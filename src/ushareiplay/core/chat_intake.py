@@ -31,6 +31,60 @@ _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来�
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
 _GIFT_TYPE2_PATTERN = re.compile(r"恭喜\s*(.+?)\s*在此房间贡献出\s*(\d+)\s*热力值")
 
+_ENTER_RELATIONS = r"(?:兄弟|密友|挚友|死党|闺蜜|基友|搭子|特别关注|好友|心动|同城|星人|萌友|CP|关注)"
+_ENTER_ACTION = r"(?:进入房间|进来|正在房间|在房间|来到了房间)"
+
+_ENTER_RETURN_PATTERNS = [
+    # 格式1: 你关注的XXX... (包含横幅和聊天室通知)
+    re.compile(r"^你关注的(.+?)" + _ENTER_ACTION + r".*?$"),
+    # 格式2: [A]的兄弟[B]进来了. (多段或单段，取最后被引入的用户)
+    re.compile(r"^.*\[[^\]]+\]的\S+?\[([^\]]+)\]进来了\.?.*?$"),
+    # 格式3: 你的<已知关系词> XXX... (无论是否有空格)
+    re.compile(r"^你的" + _ENTER_RELATIONS + r"\s*(.+?)" + _ENTER_ACTION + r".*?$"),
+    # 格式4: 你的<关系词> XXX... (带空格分隔的任意关系词)
+    re.compile(r"^你的\S{1,6}\s+(.+?)" + _ENTER_ACTION + r".*?$"),
+    # 格式5: 坐着...来啦 / 进来陪你聊天啦
+    re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$"),
+    # 格式6: 通用进入: XXX进入房间啦 / XXX进来了 / XXX来到了房间
+    re.compile(r"^(.+?)(?:进入房间啦|进入房间|来到了房间|进来了|进来啦).*?$"),
+]
+
+_ENTER_EXCLUDE_SUBSTRINGS = (
+    "邀请我上麦吧",
+    ">>",
+    "为派对点赞了",
+    "系统公告",
+    "抽中",
+    "恭喜",
+    "更名为",
+    "开启自助上麦",
+    "创建群组",
+    "活动火热进行中",
+    "发射站",
+    "通行证",
+    "成为了管理员",
+    "成为管理员",
+)
+
+
+def parse_enter_return_username(raw: str) -> str | None:
+    """Parse entrant username from enter/return notifications in chat or banner text.
+
+    Returns the extracted nickname on success, or None if the line does not match.
+    """
+    raw = (raw or "").strip()
+    if not raw or raw.startswith("souler["):
+        return None
+    if any(k in raw for k in _ENTER_EXCLUDE_SUBSTRINGS):
+        return None
+    for pattern in _ENTER_RETURN_PATTERNS:
+        m = pattern.match(raw)
+        if m:
+            name = m.group(1).strip()
+            if name and not name.startswith("你的") and not name.startswith("你关注的"):
+                return name
+    return None
+
 
 class ChatIntakeKind(Enum):
     """Taxonomy of a single raw chat line or queue part."""
@@ -134,17 +188,12 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
 
     # User enter/return notifications are system-style lines without the souler
     # wrapper; check them first so they are not mistaken for plain chat.
-    enter_match = _ENTER_RETURN_PATTERN.match(raw)
-    if enter_match:
-        username = enter_match.group(1).strip()
-        # Soul uses the same wording for "user entered" and "user returned" chat
-        # lines. The existing code treats both as return events to avoid double
-        # firing with InfoManager's online-user diff, which is the real source of
-        # user-enter notifications. Preserve that behavior.
+    entrant_name = parse_enter_return_username(raw)
+    if entrant_name:
         return ChatIntakeResult(
             kind=ChatIntakeKind.USER_RETURN,
-            nickname=username,
-            text=username,
+            nickname=entrant_name,
+            text=entrant_name,
             raw=raw,
         )
 

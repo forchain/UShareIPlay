@@ -117,11 +117,28 @@ class FollowerMessageEvent(BaseEvent):
             if not is_join:
                 return True # 已处理，拦截后续（因为文本已记录且用户已创建）
 
+            # 触发用户返回事件（若符合 return 条件）
+            try:
+                from ushareiplay.state.presence_tracker import PresenceTracker
+                from ushareiplay.managers.command_manager import CommandManager
+
+                presence_tracker = PresenceTracker.instance()
+                if presence_tracker.should_trigger_return(nickname):
+                    presence_tracker.record_return(nickname)
+                    self.logger.critical(f"User returned: {nickname}")
+                    await CommandManager.instance().notify_user_return(nickname)
+                else:
+                    self.logger.info(
+                        f"Follower banner for {nickname} skipped return event (not online or recently entered/returned)"
+                    )
+            except Exception as e:
+                self.logger.error(f"Error notifying user return in follower message: {str(e)}")
+
             # 等待并点击打招呼按钮
             greet_follower = self.handler.element_finder.try_find_element('greet_follower')
             if not greet_follower:
                 self.logger.warning("Failed to find greet button")
-                return False
+                return True
 
             greet_follower.click()
             self.logger.info("Clicked greet button")
@@ -131,7 +148,7 @@ class FollowerMessageEvent(BaseEvent):
             if not send_button:
                 self.logger.warning("Failed to find send button, pressing back")
                 self.handler.key_actions.press_back()
-                return False
+                return True
 
             send_button.click()
             self.logger.info("Sent greeting message")
