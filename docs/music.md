@@ -1,6 +1,6 @@
 ---
 covers: [QQMusicHandler, MusicManager, PlayCommand, FavCommand, SkipCommand, NextCommand, PauseCommand, VolCommand, ModeCommand, AccCommand, LyricsCommand, SingerCommand, AlbumCommand, PlaylistCommand, RadioCommand, InfoCommand]
-last-synced: 2026-03-24
+last-synced: 2026-09-23
 ---
 
 ## Overview
@@ -27,6 +27,10 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 **Lyrics**: `LyricsCommand` fetches the current song's lyrics from QQ Music and posts them to Soul App chat in segments.
 
 **Accompaniment mode**: Toggles the QQ Music K-song (伴唱) mode via a settings menu; state is read from the button content-desc.
+
+**Song quality policy**: `MusicManager` skips low-quality tracks (old releases per `old_song_filter`, DJ/Remix titles, singer-mode heuristics) both right after `:play` and whenever `PlaybackBroadcaster` sees a new song. An explicit `:play <song>` / `:next <song>` request is treated as on-demand intent (`MusicManager.mark_on_demand`): the requested song is exempt from the old-song filter while it plays, then the exemption expires so radio and auto-playlist playback keep the filter.
+
+**Mic protection**: commands that interrupt the audio stream (`play`, `skip`, `fav`, `album`, `playlist`, `singer`, `radio`) declare `playback_muting = True`, so `CommandManager` runs them inside `PlaybackMuting` (mute → play → wait for MediaSession readiness → unmute). `:next` only queues the song, so it does not participate.
 
 ## Commands
 
