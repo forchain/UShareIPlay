@@ -57,6 +57,23 @@ class MusicManager(Singleton):
     def no_skip(self, value):
         self.music_handler.no_skip = value
 
+    def select_tab(
+        self,
+        tab_name: str,
+        container_key: str = "music_tabs",
+        direction: str = "left",
+        max_swipes: Optional[int] = None,
+    ) -> bool:
+        """Select a category tab via QQMusicHandler."""
+        if not self.music_handler:
+            return False
+        return self.music_handler.select_tab(
+            tab_name,
+            container_key=container_key,
+            direction=direction,
+            max_swipes=max_swipes,
+        )
+
     @staticmethod
     def _song_key(song_info) -> str:
         """歌曲名归一化：忽略空白与大小写，并去掉版本后缀，便于比对同一首歌。"""

@@ -230,6 +230,7 @@ soul:
 qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
+  tab_max_swipes: 10
   elements:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"
@@ -262,6 +263,7 @@ qq_music:
     singer_tab: '//android.widget.RelativeLayout[@content-desc="歌手 按钮"]'
     song_tab: '//android.widget.RelativeLayout[@content-desc="歌曲 按钮"]'
     album_tab: '//android.widget.RelativeLayout[@content-desc="专辑 按钮"]'
+    radio_tab: '//android.widget.RelativeLayout[@content-desc="电台 按钮"]'
     album_result: "//android.widget.ListView/android.view.ViewGroup//android.widget.TextView"
     lyrics_text: '//android.widget.LinearLayout[@resource-id="com.tencent.qqmusic:id/item_layout"]/android.widget.TextView'
     playlist_result: "//android.widget.ListView/android.widget.RelativeLayout//android.widget.TextView"
