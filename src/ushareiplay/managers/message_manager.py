@@ -1,13 +1,5 @@
 """
-MessageManager -- chat transport adapter.
-
-Cursor state (recent_chats / latest_chats), dedupe / anchor matching,
-Chat Intake classification, command routing, and missed-history recovery
-are unified on the Command Execution seam (CommandManager). This module
-maintains transport-layer responsibilities: chat-logger setup,
-the seat-manager handle for collapsing the seat panel, and the
-``party_id`` lookup, while preserving cursor and recovery methods for
-compatibility.
+消息获取与补漏（MessageManager）
 """
 
 from collections import deque
@@ -45,17 +37,14 @@ def get_chat_logger(config=None):
 
 
 class MessageManager(Singleton):
-    """Chat transport adapter with compatibility affordances.
-
-    Maintains transport-layer responsibilities (chat logger, seat manager,
-    party id) along with compatibility shims for message processing and
-    missed-history recovery.
-    """
-
     def __init__(self):
+        """Initialize MessageManager with handler, previous messages, recent messages"""
+        # 延迟初始化 handler，避免循环依赖
         self._handler = None
         self._chat_logger = None
-        self.recent_chats = deque(maxlen=3)
+
+        self.previous_messages = {}
+        self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
         self.latest_chats = deque(maxlen=3)
 
     @property
@@ -203,12 +192,9 @@ class MessageManager(Singleton):
         return command_set
 
     async def process_new_messages(self):
-        """Compatibility shim.
+        if not self.handler.key_actions.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
+            return None
 
-        Delegates to ``CommandManager`` so legacy callers (and the
-        Soul-handler lookup) continue to work; new code should call
-        ``CommandManager.process_live_batch(rows)`` directly.
-        """
         from ushareiplay.managers.command_manager import CommandManager
-
         return await CommandManager.instance().execute_chat_scan(self.latest_chats)
