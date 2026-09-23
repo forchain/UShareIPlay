@@ -364,8 +364,19 @@ class QQMusicHandler(AppHandler, Singleton):
                 # One-time allowlist for singer-mode low-quality filters (Live / suspicious / multi-artist).
                 # This preserves "play" as a temporary override without changing list_mode.
                 self.no_skip += 1
+        # 本方法只由显式点歌（:play / :next）调用：登记单点意图，使其不被老歌过滤跳过
+        self._record_on_demand_request(playing_info)
         self.logger.info(f"Found playing info: {playing_info}")
         return playing_info
+
+    def _record_on_demand_request(self, playing_info) -> None:
+        """登记单点意图；登记失败不应影响播放本身。"""
+        try:
+            from ushareiplay.managers.music_manager import MusicManager
+
+            MusicManager.instance().mark_on_demand(playing_info)
+        except Exception as e:
+            self.logger.warning(f"Failed to record on-demand request: {e}")
 
     def select_song_tab(self):
         """Select the 'Songs' tab in search results"""

@@ -400,6 +400,16 @@ class AppController(Singleton):
                         room_state = RoomState.instance()
                         expected_id = room_state.get_expected_party_id()
                         if expected_id and clean_id != expected_id:
+                            # 群主转让：房间 ID 变为配置中的主房间 ID，机器人已成为房主，
+                            # 启动时应恢复宿主模式，而不是退房重建。
+                            if room_state.adopt_host_room(clean_id):
+                                self.logger.info(
+                                    f"Owner transfer detected at startup: adopted room {clean_id} "
+                                    f"as own host room"
+                                )
+                                self.soul_handler.party_id = clean_id
+                                return
+
                             self.logger.warning(
                                 f"Startup room ID mismatch: current={clean_id}, expected={expected_id}. "
                                 f"Exiting unauthorized room to recreate default party..."

@@ -6,6 +6,9 @@ from ushareiplay.core.singleton import Singleton
 
 
 class SoulHandler(AppHandler, Singleton):
+    # 抢麦后就座动画/界面刷新的等待上限（秒）
+    SEAT_SETTLE_TIMEOUT = 3.0
+
     def __init__(self, driver, config, controller):
         logging.getLogger('SoulHandler').debug("SoulHandler.__init__ 开始")
         super().__init__(driver, config, controller)
@@ -87,14 +90,37 @@ class SoulHandler(AppHandler, Singleton):
         except Exception as e:
             self.logger.error(f"Error grabbing mic: {str(e)}")
 
+    def is_on_seat(self) -> bool:
+        """是否已在麦位：界面出现上麦/抢麦入口即表示尚未就座。"""
+        return self.element_finder.try_find_element('grab_mic', log=False) is None
+
+    def ensure_on_seat(self) -> bool:
+        """确保账号已在麦位；未上麦时先抢麦并等待就座。
+
+        开麦前必须先就座：不在麦位时界面只提供抢麦入口，直接点击开麦按钮
+        会失败或抛错。
+
+        Returns:
+            bool: True 表示当前已在麦位（含本次抢麦成功），False 表示未能就座
+        """
+        if self.is_on_seat():
+            return True
+
+        self.logger.info("Not on seat, grabbing mic to take a seat")
+        self.grab_mic_and_confirm()
+        seated = self.element_finder.wait_for_element_disappear(
+            'grab_mic', timeout=self.SEAT_SETTLE_TIMEOUT
+        )
+        if not seated:
+            self.logger.error("Failed to grab mic: still not seated")
+        return seated
+
     def ensure_mic_active(self):
         """Ensure the microphone is active"""
         try:
             self.key_actions.switch_to_app()
-            # Check if the grab mic button is present
-            grab_mic_button = self.element_finder.try_find_element('grab_mic', log=False)
 
-            if grab_mic_button:
+            if not self.is_on_seat():
                 self.logger.info("Grab mic button found, grabbing mic...")
                 self.grab_mic_and_confirm()
             else:

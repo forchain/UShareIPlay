@@ -255,7 +255,6 @@ def test_playback_command_without_expected_song_still_guards_microphone(monkeypa
 
 PLAYBACK_COMMANDS = [
     ("play", "PlayCommand"),
-    ("next", "NextCommand"),
     ("skip", "SkipCommand"),
     ("playlist", "PlaylistCommand"),
     ("album", "AlbumCommand"),
@@ -271,6 +270,18 @@ def test_playback_commands_declare_muting_participation(module_name, class_name)
     command_class = getattr(module, class_name)
 
     assert command_class.playback_muting is True
+    assert not hasattr(command_class, "requires_mic")
+
+
+def test_next_command_does_not_participate_in_muting():
+    """Ticket #319: :next only queues the song behind the current one.
+
+    Nothing interrupts the audio stream, so the mic must stay untouched.
+    """
+    module = importlib.import_module("ushareiplay.commands.next")
+    command_class = module.NextCommand
+
+    assert command_class.playback_muting is False
     assert not hasattr(command_class, "requires_mic")
 
 
@@ -305,3 +316,33 @@ def test_base_command_does_not_participate_in_muting_by_default():
 
     assert BaseCommand.playback_muting is False
     assert not hasattr(BaseCommand, "requires_mic")
+
+
+class _NextMusicHandler:
+    """Stands in for QQMusicHandler on the :next path."""
+
+    def __init__(self, events):
+        self.events = events
+
+    def play_next(self, query):
+        self.events.append(f"queue:{query}")
+        return {"song": "海阔天空", "singer": "Beyond", "album": "乐与怒"}
+
+
+def test_next_command_leaves_microphone_untouched(monkeypatch):
+    """Ticket #319: driving the real NextCommand never mutes or restores the mic."""
+    from ushareiplay.commands.next import NextCommand
+
+    coordinator = _make_coordinator([])
+    events = coordinator.soul_handler.events
+    controller = SimpleNamespace(
+        soul_handler=coordinator.soul_handler,
+        music_handler=_NextMusicHandler(events),
+    )
+    manager = _make_manager(monkeypatch, NextCommand(controller), coordinator)
+
+    asyncio.run(
+        manager.execute_command_messages([MessageInfo(content=":next 海阔天空", nickname="Console")])
+    )
+
+    assert events == ["screen", "queue:海阔天空", "notify:海阔天空 - Beyond @Console"]

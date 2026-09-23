@@ -170,6 +170,35 @@ class RoomState(Singleton):
         """是否处于主房间（宿主模式）"""
         return not self.is_guest_room
 
+    def adopt_host_room(self, room_id: Optional[str]) -> bool:
+        """房间 ID 若就是配置中的主房间（群主转让给机器人）则恢复宿主模式。
+
+        群主转让后房间 ID 会变为配置中指定的主房间 ID；此时应认作机器人自有房间，
+        而不是把它当作非预期房间退房重建。
+
+        Returns:
+            bool: True 表示已识别为机器人自有房间，房间状态切换为宿主模式
+        """
+        requested_id = (room_id or "").strip()
+        configured_id = (self._get_default_party_id() or "").strip()
+        if not requested_id or requested_id != configured_id:
+            return False
+        self.promote_to_host_room(requested_id)
+        return True
+
+    def promote_to_host_room(self, room_id: Optional[str] = None) -> None:
+        """把当前房间认作机器人自有房间并恢复宿主模式。
+
+        用于建房成功与群主转让：清空残留的客房目标 ID、接受新的房间 ID（未知时
+        保持原值），并解除客房模式下的全部管理限制（座位、标题/主题、公告、
+        推荐、房间信息审计等）。
+        """
+        self.logger.info(f"Promoting room {room_id or self.room_id} to host mode")
+        self.expected_party_id = None
+        if room_id:
+            self.room_id = room_id
+        self.is_guest_room = False
+
     def is_command_allowed_in_guest_room(self, prefix: str) -> bool:
         """检查命令在他人房间（客房模式）下是否允许执行"""
         if not prefix:
