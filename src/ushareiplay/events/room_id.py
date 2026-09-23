@@ -35,6 +35,16 @@ class RoomIdEvent(BaseEvent):
             # 校验当前房间是否与预期房间一致（防止被系统自动调入随机房间）
             expected_id = room_state.get_expected_party_id()
             if expected_id and clean_room_id != expected_id:
+                # 群主转让：房间 ID 变为配置中的主房间 ID，机器人已成为房主。
+                # 这不是「被调入随机房间」，应恢复宿主模式而不是退房重建。
+                if room_state.adopt_host_room(clean_room_id):
+                    self.logger.info(
+                        f"Owner transfer detected: adopted room {clean_room_id} as own host room"
+                    )
+                    if self.handler:
+                        self.handler.party_id = clean_room_id
+                    return False
+
                 self.logger.warning(
                     f"Room ID mismatch detected: current={clean_room_id}, expected={expected_id}. "
                     f"Possible unauthorized auto-redirect by system. Exiting room and recreating party..."

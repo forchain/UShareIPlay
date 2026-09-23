@@ -672,9 +672,8 @@ class PartyManager(Singleton):
         self.reset_party_time()
         from ushareiplay.state.room_state import RoomState
         if RoomState.is_initialized():
-            RoomState.instance().expected_party_id = None
-            RoomState.instance().room_id = self.handler.party_id
-            RoomState.instance().is_guest_room = False
+            # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
+            RoomState.instance().promote_to_host_room(self.handler.party_id)
 
         # 建房流程记录的推荐状态只是配置假设（新房间默认"所有人"）或创建表单点击结果，
         # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，

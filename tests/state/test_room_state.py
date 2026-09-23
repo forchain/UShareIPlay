@@ -68,6 +68,74 @@ def test_explicit_is_guest_room_setter_overrides_comparison(room_state, monkeypa
     assert room_state.is_host_room is True
 
 
+def test_is_configured_host_room_id_recognizes_default_room(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    assert room_state.is_configured_host_room_id("FM123456") is True
+
+
+def test_is_configured_host_room_id_rejects_other_rooms(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    assert room_state.is_configured_host_room_id("FM999999") is False
+    assert room_state.is_configured_host_room_id(None) is False
+    assert room_state.is_configured_host_room_id("") is False
+
+
+def test_is_configured_host_room_id_without_configured_default(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: None)
+    assert room_state.is_configured_host_room_id("FM123456") is False
+
+
+def test_promote_to_host_room_clears_guest_mode(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    room_state.expected_party_id = "FM18633292"
+    room_state.room_id = "FM18633292"
+    room_state.is_guest_room = True
+
+    room_state.promote_to_host_room("FM123456")
+
+    assert room_state.expected_party_id is None
+    assert room_state.room_id == "FM123456"
+    assert room_state.is_guest_room is False
+    assert room_state.is_host_room is True
+    assert room_state.get_expected_party_id() == "FM123456"
+
+
+def test_adopt_host_room_promotes_when_the_id_is_the_configured_room(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    room_state.expected_party_id = "FM18633292"
+    room_state.is_guest_room = True
+
+    assert room_state.adopt_host_room("FM123456") is True
+    assert room_state.is_guest_room is False
+    assert room_state.room_id == "FM123456"
+    assert room_state.expected_party_id is None
+
+
+def test_adopt_host_room_leaves_guest_state_for_other_rooms(room_state, monkeypatch):
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    room_state.expected_party_id = "FM18633292"
+    room_state.room_id = "FM18633292"
+    room_state.is_guest_room = True
+
+    assert room_state.adopt_host_room("FM999999") is False
+    assert room_state.is_guest_room is True
+    assert room_state.room_id == "FM18633292"
+    assert room_state.expected_party_id == "FM18633292"
+
+
+def test_promote_to_host_room_keeps_unknown_room_id(room_state, monkeypatch):
+    """Creating a party may not have resolved the room ID yet: host mode still wins."""
+    monkeypatch.setattr(room_state, "_get_default_party_id", lambda: "FM123456")
+    room_state.room_id = "FM18633292"
+    room_state.is_guest_room = True
+
+    room_state.promote_to_host_room()
+
+    assert room_state.room_id == "FM18633292"
+    assert room_state.expected_party_id is None
+    assert room_state.is_guest_room is False
+
+
 def test_is_command_allowed_in_guest_room(room_state):
     allowed = ["play", "next", "fav", "skip", "pause", "vol", "mode", "acc", "lyrics", "singer", "album", "playlist", "radio", "info", "help", "room", "mic", "say", "end"]
     for cmd in allowed:
