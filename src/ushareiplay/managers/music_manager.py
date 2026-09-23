@@ -1,6 +1,7 @@
 import re
 import time
 import traceback
+from collections import deque
 from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
@@ -20,9 +21,11 @@ class MusicManager(Singleton):
     # 歌曲版本后缀（如「(Live)」「（伴奏）」），比对点播目标时忽略
     _SONG_VERSION_SUFFIX_PATTERN = re.compile(r"[（(\[][^）)\]]*[）)\]]")
 
-    # 单点（:play / :next）点播意图：目标歌曲，以及该目标是否已播放命中过
-    _on_demand_song: Optional[dict] = None
-    _on_demand_matched: bool = False
+    # 单点（:play / :next）点播意图：待播放的点播请求队列，条目形如
+    # {"song": 歌曲信息, "played": 该点播是否已播放命中过}。连续点歌时逐条排队，
+    # 后一次点播不会顶掉尚未播放的前一次点播。
+    _ON_DEMAND_REQUESTS_MAX = 20
+    _on_demand_requests: Optional[deque] = None
 
     def __init__(self):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -91,29 +94,41 @@ class MusicManager(Singleton):
         """记录用户单点（:play / :next）意图，使该歌曲豁免老歌过滤。
 
         由 QQMusicHandler 的显式点歌入口登记；电台与自动歌单不经过那里。
+        连续点歌时逐条登记，每首点播各自保留豁免资格。
         """
-        self._on_demand_song = dict(song_info) if isinstance(song_info, dict) else None
-        self._on_demand_matched = False
+        if not isinstance(song_info, dict):
+            return
+        if self._on_demand_requests is None:
+            self._on_demand_requests = deque(maxlen=self._ON_DEMAND_REQUESTS_MAX)
+        self._on_demand_requests.append({"song": dict(song_info), "played": False})
 
     def is_on_demand_playback(self, song_info) -> bool:
         """该歌曲是否为用户单点请求的目标。
 
-        豁免只覆盖这次点播的那首歌：一旦点播歌曲播放过、房间又切到了别的歌，
-        豁免即失效，电台/自动歌单播放同一首歌时重新受老歌过滤约束。
+        豁免只覆盖点播的那首歌：一旦该点播的歌曲播放过、房间又切到了别的歌，
+        这条豁免即失效，电台/自动歌单播放同一首歌时重新受老歌过滤约束。
 
-        副作用：命中时记录该点播已播放，必要时让过期的豁免失效，因此调用方
-        只需在判定“这首老歌是否该跳过”时问一次。
+        副作用：命中时记录该点播已播放，并清理已失效的条目，因此调用方只需在
+        判定“这首老歌是否该跳过”时问一次。
         """
-        requested = self._on_demand_song
-        if not requested:
+        requests = self._on_demand_requests
+        if not requests:
             return False
-        if self._is_same_song(requested, song_info):
-            self._on_demand_matched = True
-            return True
-        if self._on_demand_matched:
-            self._on_demand_song = None
-            self._on_demand_matched = False
-        return False
+
+        matched = False
+        active = []
+        for entry in requests:
+            if not self._is_same_song(entry.get("song"), song_info):
+                # 已播放过的点播在房间换歌后作废，未播放的（含下一首点播）继续等待
+                if not entry.get("played"):
+                    active.append(entry)
+                continue
+            entry["played"] = True
+            active.append(entry)
+            matched = True
+
+        self._on_demand_requests = deque(active, maxlen=self._ON_DEMAND_REQUESTS_MAX)
+        return matched
 
     @property
     def song_release_lookup(self):

@@ -51,8 +51,7 @@ def _make_music_manager(handler=None):
     manager._song_release_lookup = SimpleNamespace(
         get_release_date=lambda _query: handler.release_date
     )
-    manager._on_demand_song = None
-    manager._on_demand_matched = False
+    manager._on_demand_requests = None
     manager.skipped = []
     manager.skip_song = lambda: manager.skipped.append(True) or {}
     return manager
@@ -180,6 +179,25 @@ def test_on_demand_does_not_exempt_other_quality_rules():
     )
 
     assert should_skip is True
+
+
+def test_each_pending_request_keeps_its_own_exemption():
+    """Two :next requests before either plays must both be honoured.
+
+    A single-slot record let the second request overwrite the first, so the
+    song the user asked for first came back from the queue and got skipped.
+    """
+    manager = _make_music_manager()
+    manager.mark_on_demand(dict(OLD_SONG))
+    manager.mark_on_demand(dict(OTHER_OLD_SONG))
+
+    # First request plays: still exempt, the second request is queued behind it.
+    assert manager.should_skip_low_quality_song(dict(OLD_SONG)) is False
+    # Second request plays: exempt too.
+    assert manager.should_skip_low_quality_song(dict(OTHER_OLD_SONG)) is False
+    # Both consumed: the filter applies again from here on.
+    assert manager.should_skip_low_quality_song(dict(OLD_SONG)) is True
+    assert manager.skipped == []
 
 
 def test_late_quality_check_after_play_still_exempts_the_requested_song():
