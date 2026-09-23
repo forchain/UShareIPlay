@@ -1,11 +1,11 @@
 ---
-covers: [PartyManager, SoulHandler, RoomNameManager, TopicManager, NoticeManager, SeatManager, MicManager, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand]
+covers: [PartyManager, SoulHandler, RoomNameManager, TopicManager, NoticeManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
 last-synced: 2026-09-23
 ---
 
 ## Overview
 
-Room management covers the Soul App party room lifecycle: creation, restart, UI customisation (theme, title, topic, notice), seat management, and microphone control. `SoulHandler` owns all Soul App UI automation; the various managers hold state and cooldowns.
+Room management covers the Soul App party room lifecycle: room creation, auto-restart, UI customisation (theme, title, topic, notice), seat management, recommendation distribution, Sleep Guardian, and microphone control. `SoulHandler` owns low-level Soul App UI automation; managers hold domain state and cooldowns.
 
 ## Components
 
@@ -13,25 +13,39 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 |---|---|
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
-| `RoomNameManager` | Room name invariant: theme, title, shared cooldown, UI write, notice restore |
+| `RoomNameManager` | Room name invariant: `{theme}｜{title}`, shared cooldown, single UI write, notice restore |
 | `TopicManager` | Study-room topic display |
 | `NoticeManager` | Room announcement text |
-| `SeatManager` | Seat reservation + seating sub-managers (see users.md) |
-| `MicManager` | Microphone on/off automation |
+| `SeatManager` | Seat reservation + seating sub-managers |
+| `MicManager` | Microphone on/off automation and off-seat preparation |
+| `RecommendationManager` | Room recommendation state tracking, drawer automation, and toggle (:recommend) |
+| `SleepManager` | Sleep Guardian: blocks unprivileged automated commands during night hours (23:00 - 06:00) |
+| `RoomInfoAuditor` | Periodic background auditor validating room information and title state |
 
 ## How It Works
 
-**Room name** = `{theme}｜{title}` — `RoomNameManager` owns the combined value, the shared cooldown, pending state, and the single UI write.
+### Room Name & Cooldowns
+**Room name** = `{theme}｜{title}` — `RoomNameManager` owns the combined value, the shared cooldown, pending state, and the single UI write. legacy `ThemeManager` and `TitleManager` adapters have been consolidated into `RoomNameManager`.
 
-**Auto-restart**: `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
+### Auto-Restart
+`PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
 
-**Seat flow**: A user requests a seat → `SeatManager` validates level + reservation → `SeatManager` performs UI actions to put the user on the specified seat number.
+### Seat & Mic Flow
+- **Seat**: `:seat 1 <n>` reserves seat `n`; `:seat 2 <n>` seats user immediately; `:seat 4 [n]` vacates the occupant.
+- **Mic**: `:mic 1` (or `:mic` when off-seat) automatically calls `SoulHandler.ensure_on_seat()` to claim a seat before unmuting. `:mic 0` mutes without leaving the seat.
 
-**Mic flow**: `:mic 1` (or a bare `:mic` while the bot is off-seat) asks `SoulHandler.ensure_on_seat()` first — the grab-mic entry is clicked and confirmed, then the mic toggle is pressed once seated. `:mic 0` never touches the seat.
+### Recommendation Distribution
+Soul App periodically surfaces party recommendation popups or toggles in room settings. `RecommendationManager` controls the recommendation state, handles the drawer UI safely, and allows operators to toggle distribution via `:recommend on` / `:recommend off`.
 
-**Guest mode / ownership**: the room is a guest room while its ID differs from `soul.default_party_id`, and guest rooms only allow the `RoomState.GUEST_ALLOWED_COMMANDS` subset plus disable seat/title/notice/recommendation/audit managers. If a 群主 transfer hands the room to the bot, its ID becomes the configured one: `RoomState.adopt_host_room()` switches to host mode (clearing the guest target ID and the explicit guest flag) instead of treating the room change as an unauthorized room and leaving/recreating the party.
+### Sleep Guardian
+`SleepManager` prevents automated command floods during rest hours (default 23:00 to 06:00).
+- Unprivileged users and background timers are blocked.
+- Human operators (Owner, Console, Admin) and explicit `@我` conversational interactions bypass sleep restrictions.
+- Can be controlled via `:sleep on`, `:sleep off`, or `:sleep status`.
 
-**Pack opening**: `:pack` is auto-triggered when the online user count reaches ≥ 5; can also be called manually. It opens the backpack UI and uses the first available luck pack.
+### Guest Mode & Host Adoption
+- When the current party ID differs from `soul.default_party_id`, the bot enters guest room mode (`RoomState.is_guest_room`), restricting commands strictly to music playback and disabling all administrative/seat/title commands.
+- If room ownership is transferred to the bot, `RoomState.adopt_host_room()` safely switches to host mode without closing or leaving the party.
 
 ## Commands
 
@@ -41,11 +55,13 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 | `title` | 3 | `<text>` | Set room title |
 | `topic` | 1 | `<text>` | Set study-room topic |
 | `notice` | 1 | `<message>` | Set room announcement |
-| `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove owner/specific seat occupant (4) |
-| `mic` | 2 | `0/1` | Turn microphone off (0) or on (1); opening the mic seats the bot first when it is off-seat |
-| `pack` | 1 | — | Open luck pack from backpack |
-| `end` | 4 | — | Close the party (requires owner's friend present) |
-| `room` | 4 | `<party_id>` | Switch to a different party room (pre-checks target room availability before switching; restores current party if target is not open) |
+| `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove seat occupant (4) |
+| `mic` | 2 | `0/1` | Turn microphone off (0) or on (1); seats bot first if off-seat |
+| `pack` | 1 | — | Open luck pack from backpack (auto-triggered at ≥ 5 online users) |
+| `recommend`| 1 | `[on/off]` | Turn room recommendation distribution on or off |
+| `sleep` | 4 | `on/off/status` | Manage Sleep Guardian night rest mode (overrides 23:00 - 06:00 window) |
+| `end` | 4 | — | Close party (requires owner's friend present) |
+| `room` | 4 | `<party_id>` | Switch to a different party room (verifies target room is open before switching) |
 
 ## Data Model
 
@@ -55,6 +71,6 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 
 ## Extension Points
 
-- **New room UI action**: Add method to `SoulHandler`, call from appropriate manager or command.
-- **Change restart threshold**: Update `soul.party_restart_minutes` in `config.yaml` (or `config.local.yaml`).
-- **New seat rule**: Extend the `SeatManager` facade; if the rule requires seat-panel inspection, implement it as an internal component used by the facade.
+- **New room UI action**: Add method to `SoulHandler`, expose through the appropriate domain manager.
+- **Sleep schedule customization**: Adjust sleep window or exempted commands in `config.yaml` under `sleep`.
+- **Auditor rules**: Register new room sanity checks in `RoomInfoAuditor`.
