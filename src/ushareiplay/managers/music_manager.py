@@ -90,7 +90,7 @@ class MusicManager(Singleton):
     def mark_on_demand(self, song_info) -> None:
         """记录用户单点（:play / :next）意图，使该歌曲豁免老歌过滤。
 
-        由命令层在确认点播目标后调用；电台与自动歌单不经过这里。
+        由 QQMusicHandler 的显式点歌入口登记；电台与自动歌单不经过那里。
         """
         self._on_demand_song = dict(song_info) if isinstance(song_info, dict) else None
         self._on_demand_matched = False
@@ -100,6 +100,9 @@ class MusicManager(Singleton):
 
         豁免只覆盖这次点播的那首歌：一旦点播歌曲播放过、房间又切到了别的歌，
         豁免即失效，电台/自动歌单播放同一首歌时重新受老歌过滤约束。
+
+        副作用：命中时记录该点播已播放，必要时让过期的豁免失效，因此调用方
+        只需在判定“这首老歌是否该跳过”时问一次。
         """
         requested = self._on_demand_song
         if not requested:

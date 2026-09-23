@@ -113,7 +113,7 @@ class SoulHandler(AppHandler, Singleton):
         )
         if not seated:
             self.logger.error("Failed to grab mic: still not seated")
-        return bool(seated)
+        return seated
 
     def ensure_mic_active(self):
         """Ensure the microphone is active"""
