@@ -11,6 +11,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ushareiplay.core.chat_intake import format_ai_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,8 +68,9 @@ class NaturalLanguageResolver:
         commands_config: list[dict],
         playback_info: Optional[dict] = None,
         room_info: Optional[dict] = None,
+        memory_context: Optional[dict] = None,
     ) -> str:
-        """Construct the system prompt with command schemas, user context, playback state, and room state."""
+        """Construct the system prompt with command schemas, user context, playback state, room state, and memory."""
         cmd_lines = []
         for cmd in commands_config or []:
             prefix = cmd.get("prefix", "")
@@ -136,6 +139,30 @@ class NaturalLanguageResolver:
 
         room_desc = "\n".join(room_desc_lines)
 
+        memory_section = ""
+        if memory_context:
+            mem_lines = []
+            directives = memory_context.get("directives") or []
+            profile = (memory_context.get("profile") or "").strip()
+            short_term = memory_context.get("short_term_chats") or []
+
+            if directives or profile:
+                mem_lines.append("【用户长期记忆与核心设定 (铁律区 - 必须严格遵守)】")
+                if directives:
+                    mem_lines.append("- 核心称谓与铁律指令 (不可违背):")
+                    for d in directives:
+                        mem_lines.append(f"  * {d}")
+                if profile:
+                    mem_lines.append(f"- 用户画像与偏好特点:\n  {profile}")
+
+            if short_term:
+                mem_lines.append("【近期临时对话记录（短期记忆）】")
+                for msg in short_term:
+                    mem_lines.append(f"- 用户发言: {msg}")
+
+            if mem_lines:
+                memory_section = "\n\n" + "\n".join(mem_lines)
+
         custom_section = ""
         if self.custom_prompt:
             custom_section = f"\n\n【用户自定义行为指令 / 补充设定】\n{self.custom_prompt}"
@@ -146,7 +173,7 @@ class NaturalLanguageResolver:
 - 发言用户: {user_name}
 - 用户权限等级: L{user_level}
 {playback_section}
-{room_desc}
+{room_desc}{memory_section}
 
 【可用系统命令列表】
 {cmd_table}
@@ -168,10 +195,12 @@ class NaturalLanguageResolver:
 7. 如果用户只是日常打招呼、闲聊、调侃或提问（非命令）:
    - 输出 {{"type": "reply", "content": "<简短友好的中文回复>"}}。
 8. 如果用户意图完全无法理解或无法匹配任何操作:
-   - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。{custom_section}
+   - 输出 {{"type": "reply", "content": "未能理解你的指令，你可以直接发送 :play 歌名 点歌哦~"}}。
+9. 若存在【用户长期记忆与核心设定】，回复中必须严格遵守铁律区中的用户称谓与偏好设定；结合近期临时对话记录保持多轮对话连贯自然。{custom_section}
 """
 
-    def _extract_json(self, raw_content: str) -> Optional[dict]:
+
+    def _extract_json(self, raw_content: str, required_keys: Optional[list[str]] = None) -> Optional[dict]:
         """Extract and parse JSON object from raw LLM output text."""
         if not raw_content:
             return None
@@ -191,18 +220,25 @@ class NaturalLanguageResolver:
             else:
                 json_str = raw
 
+        def _matches_schema(parsed_dict: Any) -> bool:
+            if not isinstance(parsed_dict, dict):
+                return False
+            if required_keys:
+                return all(key in parsed_dict for key in required_keys)
+            return True
+
         try:
             data = json.loads(json_str)
-            if isinstance(data, dict) and "type" in data and "content" in data:
+            if _matches_schema(data):
                 return data
         except Exception:
             pass
 
-        # Fallback: search for any standalone valid JSON object matching our schema
+        # Fallback: search for any standalone valid JSON object
         for chunk in re.findall(r"\{[^{}]*\}", raw):
             try:
                 data = json.loads(chunk)
-                if isinstance(data, dict) and "type" in data and "content" in data:
+                if _matches_schema(data):
                     return data
             except Exception:
                 continue
@@ -210,7 +246,8 @@ class NaturalLanguageResolver:
         logger.debug(f"Failed to parse JSON from LLM output: {raw_content}")
         return None
 
-    def _sync_http_call(self, payload: dict) -> str:
+    def _sync_http_call(self, payload: dict, timeout: Optional[float] = None) -> str:
+
         """Synchronous HTTP call to OpenAI-compatible endpoint."""
         base = self.base_url.rstrip("/")
         if base.endswith("/chat/completions"):
@@ -224,12 +261,13 @@ class NaturalLanguageResolver:
         data_bytes = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
 
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        effective_timeout = float(timeout) if timeout is not None else self.timeout
+        with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
             return resp.read().decode("utf-8")
 
-    async def _call_api(self, payload: dict) -> str:
+    async def _call_api(self, payload: dict, timeout: Optional[float] = None) -> str:
         """Asynchronous wrapper for API call."""
-        return await asyncio.to_thread(self._sync_http_call, payload)
+        return await asyncio.to_thread(self._sync_http_call, payload, timeout=timeout)
 
     async def resolve(
         self,
@@ -239,6 +277,7 @@ class NaturalLanguageResolver:
         commands_config: Optional[list[dict]] = None,
         playback_info: Optional[dict] = None,
         room_info: Optional[dict] = None,
+        memory_context: Optional[dict] = None,
     ) -> Optional[NaturalLanguageResult]:
         """Resolve a natural language user utterance into a command or reply.
 
@@ -249,6 +288,7 @@ class NaturalLanguageResolver:
             commands_config: List of command configurations
             playback_info: Active playback information dictionary
             room_info: Active room information dictionary
+            memory_context: Optional user memory dictionary with directives, profile, short_term_chats
 
         Returns:
             NaturalLanguageResult if successfully resolved, or None if disabled/error/timeout.
@@ -262,7 +302,9 @@ class NaturalLanguageResolver:
             commands_config=commands_config or [],
             playback_info=playback_info,
             room_info=room_info,
+            memory_context=memory_context,
         )
+
 
         payload = {
             "model": self.model,
@@ -281,13 +323,16 @@ class NaturalLanguageResolver:
                 return None
 
             content = choices[0].get("message", {}).get("content", "")
-            parsed = self._extract_json(content)
+            parsed = self._extract_json(content, required_keys=["type", "content"])
             if not parsed:
                 return None
+
 
             result_type = str(parsed.get("type", "")).strip().lower()
             result_content = str(parsed.get("content", "")).strip()
             if result_type in ("command", "reply") and result_content:
+                if result_type == "reply":
+                    result_content = format_ai_message(result_content)
                 return NaturalLanguageResult(type=result_type, content=result_content)
         except Exception as e:
             logger.warning(f"NaturalLanguageResolver error during resolution: {e}")

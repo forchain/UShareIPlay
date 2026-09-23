@@ -9,7 +9,12 @@ from collections import deque
 
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
+from ushareiplay.core.chat_intake import (
+    QUEUE_COMMAND_PREFIX_CHARS,
+    ChatIntakeKind,
+    classify_chat_line,
+    strip_quoted_segment,
+)
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
@@ -122,6 +127,10 @@ class MessageManager(Singleton):
         if not last_chat:
             return None
 
+        # Quoted Messages are composed onto the scanned line but never rendered
+        # in the sender's own bubble, so scroll/skip on the quote-free line.
+        anchor = strip_quoted_segment(last_chat) or last_chat
+
         # scroll back to the missing element
         self.handler.logger.critical(f"last_chat={last_chat}")
 
@@ -130,7 +139,7 @@ class MessageManager(Singleton):
             'message_list',
             'down',
             'content-desc|text',
-            last_chat,
+            anchor,
         )
 
         # send empty message to scroll to bottom instantly (always, even if
@@ -145,12 +154,16 @@ class MessageManager(Singleton):
 
         room_owner = self.get_room_owner()
         missed_chats = set[str]()
+        # Scanned lines carry no quote; compare on the quote-free form of what we
+        # already processed so a reply is not re-reported (and re-dispatched).
+        known_chats = {strip_quoted_segment(chat) for chat in self.recent_chats}
+        known_chats.update(strip_quoted_segment(chat) for chat in self.latest_chats)
         for chat in attribute_values:
-            if last_chat == chat:
+            if anchor == strip_quoted_segment(chat):
                 continue
 
             is_missed = False
-            if chat not in self.recent_chats and chat not in self.latest_chats and chat not in missed_chats:
+            if chat not in known_chats and chat not in missed_chats:
                 self.chat_logger.warning(chat)
                 missed_chats.add(chat)
                 is_missed = True
@@ -161,6 +174,34 @@ class MessageManager(Singleton):
                 from ushareiplay.managers.keyword_manager import KeywordManager
                 await KeywordManager.instance().dispatch_mention(result, sleep_exempt=True)
 
+                continue
+
+            if result.kind == ChatIntakeKind.GIFT_RECEIVE and is_missed:
+                from ushareiplay.dal.user_dao import UserDAO
+                from ushareiplay.managers.command_manager import CommandManager
+
+                username = result.nickname
+                heat_val = getattr(result, "heat_value", 0)
+                if heat_val > 0:
+                    user = await UserDAO.record_heat_contribution(username, heat_val)
+                    if user:
+                        self.handler.logger.info(
+                            f"Missed heat contribution processed for user '{user.username}': level=L{user.level}, cumulative_heat={user.heat_value}"
+                        )
+                else:
+                    user = await UserDAO.record_owner_gift(username)
+                    if user:
+                        self.handler.logger.info(
+                            f"Missed gift processed for user '{user.username}': level=L{user.level}"
+                        )
+
+                thank_msg = MessageInfo(
+                    content=f"@{username} 谢谢",
+                    nickname=username,
+                )
+                await MessageQueue.instance().put_message(thank_msg)
+                self.handler.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
+                await CommandManager.instance().notify_gift_receive(username)
                 continue
 
             if result.kind == ChatIntakeKind.COMMAND:

@@ -85,18 +85,144 @@ preflight_checks() {
   fi
 
   # 2. Appium Service check
+  local appium_host="${APPIUM_HOST:-}"
+  local appium_port="${APPIUM_PORT:-}"
+
+  if [[ -z "${appium_host}" || -z "${appium_port}" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      local cfg_host="" cfg_port=""
+      read -r cfg_host cfg_port < <(uv run python -c "
+try:
+    from ushareiplay.core.config_loader import ConfigLoader
+    cfg = ConfigLoader.load_config('${ROOT_DIR}/config.yaml')
+    print(cfg.get('appium', {}).get('host', '127.0.0.1'), cfg.get('appium', {}).get('port', 4723))
+except Exception:
+    print('127.0.0.1 4723')
+" 2>/dev/null || echo "127.0.0.1 4723")
+      appium_host="${appium_host:-$cfg_host}"
+      appium_port="${appium_port:-$cfg_port}"
+    fi
+  fi
+
+  appium_host="${appium_host:-127.0.0.1}"
+  appium_port="${appium_port:-4723}"
+
+  local is_local=0
+  if [[ "${appium_host}" == "127.0.0.1" || "${appium_host}" == "localhost" ]]; then
+    is_local=1
+  fi
+
   if command -v curl >/dev/null 2>&1; then
-    if ! curl -s -m 2 http://127.0.0.1:4723/status >/dev/null 2>&1; then
-      log "Appium 服务未就绪，尝试唤起系统服务..."
-      if command -v systemctl >/dev/null 2>&1; then
-        sudo systemctl start ushareiplay-appium 2>/dev/null || systemctl --user start ushareiplay-appium 2>/dev/null || true
+    local appium_url="http://${appium_host}:${appium_port}/status"
+    if ! curl -s -L -k -m 3 "${appium_url}" >/dev/null 2>&1; then
+      if [[ "${is_local}" -eq 1 ]]; then
+        log "本地 Appium 服务 (${appium_url}) 未就绪，尝试唤起系统服务..."
+        if command -v systemctl >/dev/null 2>&1; then
+          sudo systemctl start ushareiplay-appium 2>/dev/null || systemctl --user start ushareiplay-appium 2>/dev/null || true
+        fi
+        sleep 2
+        if ! curl -s -L -k -m 3 "${appium_url}" >/dev/null 2>&1; then
+          log "提示: 本地 Appium (${appium_url}) 仍在启动中或未安装为服务。"
+        fi
+      else
+        log "警告: 远程 Appium 服务 (${appium_url}) 当前无法连通，请检查网络或远程服务状态。"
       fi
-      sleep 2
-      if ! curl -s -m 2 http://127.0.0.1:4723/status >/dev/null 2>&1; then
-        log "提示: Appium (http://127.0.0.1:4723) 仍在启动中或未安装为服务。"
+    else
+      log "Appium 服务健康 (${appium_url})。"
+    fi
+  fi
+
+  # 2.1 Python runtime reachability & macOS Local Network Privacy bridge
+  if command -v uv >/dev/null 2>&1; then
+    local py_status=0
+    uv run python -c "
+import sys
+from ushareiplay.core.network_bridge import check_socket_connectivity, is_macos_local_network_error
+ok, err = check_socket_connectivity('${appium_host}', int('${appium_port}'), timeout=2.0)
+if not ok:
+    if is_macos_local_network_error(err):
+        sys.exit(65)
+    sys.exit(1)
+" 2>/dev/null || py_status=$?
+
+    if [[ "${py_status}" -eq 65 ]]; then
+      if [[ "$(uname -s)" == "Darwin" && -x "/usr/bin/python3" ]]; then
+        log "[macOS 本地网络策略兼容] 检测到系统限制 Python 访问局域网 (Errno 65)，启动原生透明代理桥接..."
+        local bridge_fifo
+        bridge_fifo="$(mktemp -u /tmp/ushareiplay_bridge.XXXXXX)"
+        mkfifo "${bridge_fifo}"
+        /usr/bin/python3 -c "
+import socket, threading, sys, signal
+
+target_host = '${appium_host}'
+target_port = int('${appium_port}')
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('127.0.0.1', 0))
+port = server.getsockname()[1]
+server.listen(64)
+with open('${bridge_fifo}', 'w') as f:
+    f.write(f'{port}\n')
+
+def forward(src, dst):
+    try:
+        while True:
+            data = src.recv(8192)
+            if not data: break
+            dst.sendall(data)
+    except Exception: pass
+    finally:
+        try: src.close()
+        except: pass
+        try: dst.close()
+        except: pass
+
+def accept_loop():
+    while True:
+        try:
+            client, _ = server.accept()
+            remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            remote.connect((target_host, target_port))
+            threading.Thread(target=forward, args=(client, remote), daemon=True).start()
+            threading.Thread(target=forward, args=(remote, client), daemon=True).start()
+        except Exception:
+            break
+
+threading.Thread(target=accept_loop, daemon=True).start()
+
+def sig_handler(signum, frame):
+    try: server.close()
+    except: pass
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, sig_handler)
+signal.signal(signal.SIGTERM, sig_handler)
+
+try:
+    signal.pause()
+except Exception:
+    import time
+    while True: time.sleep(1)
+" &
+        local bridge_pid=$!
+        local allocated_port=""
+        read -r allocated_port < "${bridge_fifo}" || true
+        rm -f "${bridge_fifo}"
+
+        if [[ -n "${allocated_port}" ]]; then
+          export APPIUM_HOST="127.0.0.1"
+          export APPIUM_PORT="${allocated_port}"
+          export USHAREIPLAY_BRIDGE_PID="${bridge_pid}"
+          trap 'if [[ -n "${USHAREIPLAY_BRIDGE_PID:-}" ]]; then kill "${USHAREIPLAY_BRIDGE_PID}" 2>/dev/null || true; fi' EXIT INT TERM
+          log "已启用系统原生桥接: 127.0.0.1:${allocated_port} -> ${appium_host}:${appium_port} (PID: ${bridge_pid})。"
+        else
+          log "警告: 系统桥接启动超时，将依赖应用内自愈机制。"
+        fi
       fi
     fi
   fi
+
 
   # 3. ADB connectivity check
   if command -v adb >/dev/null 2>&1; then
@@ -130,7 +256,9 @@ main() {
   preflight_checks
 
   mkdir -p "${ROOT_DIR}/logs"
-  exec uv run ushareiplay "$@"
+  uv run ushareiplay "$@"
+  local exit_code=$?
+  exit ${exit_code}
 }
 
 main "$@"

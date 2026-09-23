@@ -11,6 +11,7 @@ import traceback
 
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
+from ushareiplay.core.element_wrapper import composed_message_text
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
@@ -47,7 +48,7 @@ class MessageContentEvent(BaseEvent):
                 return False
             content_list = []
             for wrapper in wrapper_list:
-                if content := wrapper.content:
+                if content := composed_message_text(wrapper):
                     content_list.append(content)
 
             # 获取 MessageManager 实例，使用其 recent_chats
@@ -136,8 +137,19 @@ class MessageContentEvent(BaseEvent):
 
                 is_return = result.kind == ChatIntakeKind.USER_RETURN
                 if is_return:
-                    self.logger.critical(f"User returned: {result.nickname}")
-                    await self._notify_user_return(result.nickname)
+                    from ushareiplay.state.presence_tracker import PresenceTracker
+                    presence_tracker = PresenceTracker.instance()
+                    if presence_tracker.should_trigger_return(result.nickname):
+                        presence_tracker.record_return(result.nickname)
+                        self.logger.critical(f"User returned: {result.nickname}")
+                        chat_logger.critical(content)
+                        await self._notify_user_return(result.nickname)
+                    else:
+                        self.logger.info(
+                            f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
+                        )
+                        chat_logger.info(content)
+                    continue
 
                 if result.kind == ChatIntakeKind.GIFT_RECEIVE:
                     chat_logger.critical(content)

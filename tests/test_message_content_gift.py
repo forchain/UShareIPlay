@@ -183,3 +183,110 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
     queue_msgs = await MessageQueue.instance().get_all_messages()
     assert len(queue_msgs) == 0
 
+
+@pytest.mark.asyncio
+async def test_process_missed_messages_heat_contribution(db_init, monkeypatch):
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.dal.user_dao import UserDAO
+    from ushareiplay.managers.message_manager import MessageManager
+
+    try:
+        MessageQueue.initialize()
+    except Exception:
+        pass
+    await MessageQueue.instance().clear_queue()
+
+    manager = object.__new__(MessageManager)
+    manager.recent_chats = ["old_anchor"]
+    manager.latest_chats = []
+    manager._chat_logger = MagicMock()
+
+    handler_mock = MagicMock()
+    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
+    handler_mock.key_actions.switch_to_app.return_value = True
+    handler_mock.gesture_handler.scroll_container_until_element.return_value = (
+        "message_list",
+        MagicMock(),
+        ["old_anchor", "恭喜 dio🤐 在此房间贡献出 11667热力值"],
+    )
+    handler_mock.element_finder.try_find_element.return_value = None
+    manager._handler = handler_mock
+
+    # Mock seat manager
+    monkeypatch.setattr(manager, "_get_seat_manager", lambda: None)
+
+    notify_mock = AsyncMock()
+    monkeypatch.setattr(
+        "ushareiplay.managers.command_manager.CommandManager.notify_gift_receive",
+        notify_mock,
+        raising=False,
+    )
+
+    await manager.process_missed_messages()
+
+    # Verify user heat was recorded in database
+    user = await UserDAO.get_by_username("dio🤐")
+    assert user is not None
+    assert user.heat_value == 11667
+    assert user.level == 6
+
+    # Verify thank you message was queued
+    queue_msgs = await MessageQueue.instance().get_all_messages()
+    assert any(m.content == "@dio🤐 谢谢" for m in queue_msgs.values())
+
+    # Verify notify_gift_receive called
+    notify_mock.assert_called_once_with("dio🤐")
+
+
+@pytest.mark.asyncio
+async def test_process_missed_messages_owner_gift(db_init, monkeypatch):
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.dal.user_dao import UserDAO
+    from ushareiplay.managers.message_manager import MessageManager
+
+    try:
+        MessageQueue.initialize()
+    except Exception:
+        pass
+    await MessageQueue.instance().clear_queue()
+
+    manager = object.__new__(MessageManager)
+    manager.recent_chats = ["old_anchor"]
+    manager.latest_chats = []
+    manager._chat_logger = MagicMock()
+
+    handler_mock = MagicMock()
+    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
+    handler_mock.key_actions.switch_to_app.return_value = True
+    handler_mock.gesture_handler.scroll_container_until_element.return_value = (
+        "message_list",
+        MagicMock(),
+        ["old_anchor", "souler[GiftSender]送给Joyer"],
+    )
+    handler_mock.element_finder.try_find_element.return_value = None
+    manager._handler = handler_mock
+
+    monkeypatch.setattr(manager, "_get_seat_manager", lambda: None)
+
+    notify_mock = AsyncMock()
+    monkeypatch.setattr(
+        "ushareiplay.managers.command_manager.CommandManager.notify_gift_receive",
+        notify_mock,
+        raising=False,
+    )
+
+    await manager.process_missed_messages()
+
+    # Verify user level upgraded to 4
+    user = await UserDAO.get_by_username("GiftSender")
+    assert user is not None
+    assert user.level == 4
+
+    # Verify thank you message was queued
+    queue_msgs = await MessageQueue.instance().get_all_messages()
+    assert any(m.content == "@GiftSender 谢谢" for m in queue_msgs.values())
+
+    # Verify notify_gift_receive called
+    notify_mock.assert_called_once_with("GiftSender")
+
+

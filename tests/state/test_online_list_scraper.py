@@ -69,8 +69,9 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
     }.get(key)
 
     with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()):
-        await scraper.refresh_online_users()
+        result = await scraper.refresh_online_users()
 
+    assert result is True
     assert "alice" in presence_tracker.get_online_users()
     assert presence_tracker.get_online_users() == {"alice"}
 
@@ -81,5 +82,7 @@ def test_refresh_online_users_no_op_when_user_count_element_missing(scraper):
     scraper._handler.element_finder.try_find_element.return_value = None
     # Should return early without raising
     import asyncio
-    asyncio.run(scraper.refresh_online_users())
+    result = asyncio.run(scraper.refresh_online_users())
+    assert result is False
     scraper._handler.element_finder.try_find_element.assert_called_once_with("user_count", log=False)
+

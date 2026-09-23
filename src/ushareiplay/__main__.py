@@ -3,6 +3,7 @@ from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.db_manager import DatabaseManager
 from ushareiplay.core.singleton import Singleton
 import asyncio
+import sys
 
 
 async def init_db():
@@ -33,9 +34,9 @@ async def main():
     while run_count <= 9:
         try:
             res = await run_app()
-        except Exception:
+        except Exception as e:
             run_count += 1
-            print(f"[main]App crashed, restarting... {run_count}")
+            print(f"[main]App crashed ({e}), restarting... {run_count}")
             continue
         if res:
             break
@@ -50,6 +51,11 @@ async def main():
 
 
 def run():
+    if hasattr(sys.stdin, "reconfigure"):
+        try:
+            sys.stdin.reconfigure(errors="replace")
+        except Exception:
+            pass
     asyncio.run(main())
 
 

@@ -164,7 +164,16 @@ class PartyManager(Singleton):
                 RoomState.instance().clear()
             self.handler.party_id = None
 
+            # Trigger background memory consolidation sweep on party end
+            try:
+                from ushareiplay.managers.memory_manager import MemoryManager
+                if MemoryManager.is_initialized():
+                    MemoryManager.instance().schedule_consolidation_all()
+            except Exception:
+                self.logger.warning("Failed to schedule memory consolidation on end_party")
+
             return {'success': 'Party ended'}
+
         except Exception as e:
             self.logger.error(f"Error processing end command: {traceback.format_exc()}")
             return {'error': 'Failed to end party'}
@@ -590,6 +599,8 @@ class PartyManager(Singleton):
                 return False
             close_party_notification.click()
             self.logger.info("Clicked close party notification")
+            if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                self.handler.element_finder.wait_for_element_disappear('close_party_notification', timeout=2.0)
             from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = False
@@ -599,24 +610,50 @@ class PartyManager(Singleton):
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = True
 
-        change_party_type = bool(self.handler.config.get('change_party_type', True))
+        change_party_type = bool(self.handler.config.get('change_party_type', False))
         if change_party_type:
-            party_type_chat = self.handler.element_finder.wait_for_element('party_type_chat')
-            if not party_type_chat:
-                self.logger.warning("未找到闲聊唠嗑派对类型按钮")
-                return False
-            party_type_chat.click()
-            self.logger.info("Clicked party type chat entry (闲聊唠嗑)")
-
             target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
-            party_type_target = self.handler.element_finder.wait_for_element(target_type_key)
+            party_type_target = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                party_type_chat = (
+                    self.handler.element_finder.wait_for_element_clickable('party_type_chat', timeout=3)
+                    if hasattr(self.handler.element_finder, 'wait_for_element_clickable')
+                    else None
+                )
+                if not party_type_chat:
+                    party_type_chat = self.handler.element_finder.wait_for_element('party_type_chat')
+
+                if not party_type_chat:
+                    self.logger.warning("未找到闲聊唠嗑派对类型按钮")
+                    return False
+
+                party_type_chat.click()
+                self.logger.info(f"Clicked party type chat entry (闲聊唠嗑) (attempt {attempt + 1})")
+
+                party_type_target = self.handler.element_finder.wait_for_element(target_type_key, timeout=3)
+                if party_type_target:
+                    party_type_target.click()
+                    self.logger.info(f"Clicked target party type entry ({target_type_key})")
+                    if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                        self.handler.element_finder.wait_for_element_disappear(target_type_key, timeout=2.0)
+                    break
+                else:
+                    self.logger.warning(f"未在弹窗中找到目标派对类型按钮 ({target_type_key})，准备重试点击类型入口...")
+
             if not party_type_target:
                 self.logger.warning(f"未找到目标派对类型按钮: {target_type_key}")
                 return False
-            party_type_target.click()
-            self.logger.info(f"Clicked target party type entry ({target_type_key})")
+        else:
+            self.logger.info("Skip changing party type during creation (change_party_type=False)")
 
-        create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
+        create_party_button = (
+            self.handler.element_finder.wait_for_element_clickable('create_party_button', timeout=5)
+            if hasattr(self.handler.element_finder, 'wait_for_element_clickable')
+            else None
+        )
+        if not create_party_button:
+            create_party_button = self.handler.element_finder.wait_for_element('create_party_button')
         if not create_party_button:
             self.logger.warning("未找到创建房间按钮")
             return False
@@ -635,9 +672,31 @@ class PartyManager(Singleton):
         self.reset_party_time()
         from ushareiplay.state.room_state import RoomState
         if RoomState.is_initialized():
-            RoomState.instance().expected_party_id = None
-            RoomState.instance().room_id = self.handler.party_id
-            RoomState.instance().is_guest_room = False
+            # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
+            RoomState.instance().promote_to_host_room(self.handler.party_id)
+
+        # 建房流程记录的推荐状态只是配置假设（新房间默认"所有人"）或创建表单点击结果，
+        # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，
+        # 否则房间重启后 info 显示的推荐状态会与实际不一致（如实际"所有人"却记录为"关闭"）。
+        if RoomState.is_initialized():
+            from ushareiplay.managers.recommendation_manager import RecommendationManager
+            if RecommendationManager.is_initialized():
+                try:
+                    RoomState.instance().recommendation_enabled = None
+                    sync_res = RecommendationManager.instance().ensure_synced_on_return()
+                    refreshed = RoomState.instance().recommendation_enabled
+                    if isinstance(sync_res, dict) and 'error' in sync_res:
+                        self.logger.warning(
+                            f"Recommendation refresh after party creation failed: {sync_res['error']}; "
+                            f"state left as {refreshed}, will re-sync on next info/return"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Recommendation state refreshed from UI after party creation: {refreshed}"
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Error refreshing recommendation after party creation: {e}")
+
         self.logger.info("派对创建成功，准备设置默认notice")
 
         notice_manager = self.handler.controller.notice_manager
@@ -660,6 +719,15 @@ class PartyManager(Singleton):
             await automation.on_party_created_new()
         else:
             self.logger.warning("post_party_create_automation not initialized; skip auto commands")
+
+        # Trigger background memory consolidation sweep on party create/restart
+        try:
+            from ushareiplay.managers.memory_manager import MemoryManager
+            if MemoryManager.is_initialized():
+                MemoryManager.instance().schedule_consolidation_all()
+        except Exception:
+            self.logger.warning("Failed to schedule memory consolidation on _after_party_created")
+
 
     def ensure_room_info_window_closed(self) -> None:
         """

@@ -43,5 +43,13 @@ soul:
 #   # system_prompt: |
 #   #   - 回复风格：热情活泼，多使用可爱的 emoji 和语气词。
 #   #   - 点歌成功时请鼓励听众互动。
+#   # 记忆系统配置
+#   # memory:
+#   #   enabled: true
+#   #   min_messages: 10
+#   #   min_level_for_long_term: 20
+#   #   worker_delay_seconds: 1.0
+#   #   timeout: 30.0
+
 
 

@@ -21,8 +21,12 @@ All behavior that describes and reacts to the current app screen, including page
 _Avoid_: Event loop, page-source helper, fallback navigation
 
 **Chat Intake**:
-The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
+The pure classification and normalization boundary for raw chat text and runtime queue grammar. It turns a single raw chat line into a frozen, typed result (user enter/return, keyword mention, command, or plain chat with optional Quoted Message context) and expands `;`-separated queue text with `{user_name}` substitution, silent-prefix detection, and private-reply detection. Chat Intake isolates Quoted Message content from command prefixes and mention triggers so that historical references do not cause accidental execution. Chat Intake has no side effects and owns the regex families so that CommandManager, MessageManager, MessageContentEvent, and KeywordManager do not duplicate them.
 _Avoid_: Message parser, chat classifier, command matcher
+
+**Quoted Message**:
+The referenced message snippet (author and content) attached to a chat line when a user replies to an earlier room message. It enriches downstream conversational context and log history while remaining strictly isolated from command and trigger dispatching.
+_Avoid_: Reply view, quote text, referenced bubble
 
 **E2E Session**:
 One owned run of UShareIPlay validation, including the service and every helper process that can contend for its Android/Appium target.
@@ -99,3 +103,15 @@ _Avoid_: Setup helper, install script, deploy tool
 **Persistent ADB Port Forward**:
 The host-level NAT DNAT/FORWARD routing mechanism and lifecycle supervisor that maps incoming host ADB traffic (port 5555) to the internal Virtual Audio Device container across container IP renewals, service restarts, and host reboots.
 _Avoid_: Adb tunnel, port map helper, adb forwarder
+
+**User Memory System**:
+The dual-layer personalized memory architecture comprising per-user `@群主` Chat Logs, Short-Term Memory (unconsolidated messages since the last update cursor), and Long-Term Memory (structured JSON containing Immutable Directives such as user honorifics/hard preferences and an Evolving Profile). It injects relevant memory into Natural Language Command Resolution during active conversations.
+_Avoid_: Chat history cache, user notes, prompt memory
+
+**Memory Consolidation**:
+The decoupled, low-priority background distillation pipeline triggered by room lifecycle events (room creation, room closure) and user presence events (user enter, user exit). It evaluates users against a minimum unsummarized message threshold, invokes an LLM to incrementally refine the user's Long-Term Memory without modifying Immutable Directives unless explicitly instructed by the user, and advances the consolidation timestamp cursor upon success.
+_Avoid_: Memory sync, log summarizer, batch updater
+
+**Playback Muting**:
+The microphone lifecycle guard that closes the bot's mic for the duration of a song-switching operation — from the start of a play/skip command until Android MediaSession confirms the new track is playing — and then safely restores microphone activity. It does not mute during steady-state playback.
+_Avoid_: Temporary mute, anti-noise hack, mic delay script
