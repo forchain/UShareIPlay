@@ -7,7 +7,7 @@
 ## Goals / Non-Goals
 
 **Goals:**
-- 选择路径 A：将 `InfoManager` 显式声明为 facade，写 ADR-0003
+- 选择路径 A：将 `InfoManager` 显式声明为 facade，写 ADR-0004
 - 从生产代码移除测试基础设施：`__setattr__` 钩子、`_propagate_injected_handler_logger`、`_online_users` / `_playback_info_cache` 兼容属性
 - 迁移依赖这些钩子的测试，改为直接向目标状态模块注入测试替身
 
@@ -57,6 +57,6 @@
 
 ## Out of Scope
 
-- 解散 facade、迁移业务调用方（已明确拒绝，理由记录于 ADR-0003）
+- 解散 facade、迁移业务调用方（已明确拒绝，理由记录于 ADR-0004）
 - 统一状态模块的 logger 注入方式（如改为构造注入）
 - `InfoManager.clear()` 直接操作子模块私有字段的问题（facade 内部的局部问题，不影响调用方）

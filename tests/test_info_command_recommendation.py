@@ -54,7 +54,8 @@ def info_cmd_setup():
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     info_manager = InfoManager.initialize()
     info_manager._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager._online_users = set()
+    # 直接注入目标状态模块（见 ADR-0004）
+    PresenceTracker.instance()._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
     rec_manager = RecommendationManager.initialize()
     rec_manager._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None)

@@ -41,7 +41,7 @@ def _patch_common_info_dependencies(monkeypatch, info_manager):
         "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
         lambda: _MusicHandler(),
     )
-    # 直接注入目标状态模块（见 ADR-0002）
+    # 直接注入目标状态模块（见 ADR-0004）
     PresenceTracker.instance()._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
 

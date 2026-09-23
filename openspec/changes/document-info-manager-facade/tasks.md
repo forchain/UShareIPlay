@@ -9,7 +9,7 @@
 - [x] 2.1 删除 `InfoManager.__setattr__` 钩子与 `_propagate_injected_handler_logger`
 - [x] 2.2 删除 5 个惰性子模块 property 中的传播调用
 - [x] 2.3 删除 `_online_users` / `_playback_info_cache` 兼容属性（含 setter）
-- [x] 2.4 更新类 docstring：显式声明 facade 并指向 ADR-0003
+- [x] 2.4 更新类 docstring：显式声明 facade 并指向 ADR-0004
 
 ## 3. 迁移依赖注入钩子的测试
 
@@ -19,5 +19,5 @@
 
 ## 4. ADR 与验证
 
-- [x] 4.1 写 `docs/adr/0003-info-manager-facade.md`：记录 facade 决策、拒绝解散路径的理由、测试注入新约定
+- [x] 4.1 写 `docs/adr/0004-info-manager-facade.md`：记录 facade 决策、拒绝解散路径的理由、测试注入新约定
 - [x] 4.2 全量测试 339/339 通过

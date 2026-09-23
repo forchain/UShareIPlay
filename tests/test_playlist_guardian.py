@@ -42,17 +42,21 @@ def clean_info_manager():
         OnlineListScraper,
     ):
         cls.reset_instance()
-    RoomState.initialize()
-    PresenceTracker.initialize()
-    PlaylistState.initialize()
-    PlaybackBroadcaster.initialize()
-    OnlineListScraper.initialize()
-    manager = InfoManager.initialize()
-    manager._logger = SimpleNamespace(
+    fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
+    for cls in (
+        RoomState,
+        PresenceTracker,
+        PlaylistState,
+        PlaybackBroadcaster,
+        OnlineListScraper,
+    ):
+        cls.initialize()._logger = fake_logger
+    manager = InfoManager.initialize()
+    manager._logger = fake_logger
     return manager
 
 

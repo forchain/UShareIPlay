@@ -6,7 +6,7 @@ from ushareiplay.core.singleton import Singleton
 
 class InfoManager(Singleton):
     """
-    信息管理器（显式门面，见 docs/adr/0002-info-manager-facade.md）
+    信息管理器（显式门面，见 docs/adr/0004-info-manager-facade.md）
 
     原 InfoManager 是一个 kitchen sink，混合了房间状态、在线用户、播放缓存、
     UI 抓取等多个职责。现在这些职责已拆分到 ushareiplay.state 下的专门模块，
@@ -277,9 +277,8 @@ class InfoManager(Singleton):
 
     def clear(self):
         """清空在线用户列表与房间状态"""
-        self._presence_tracker._online_users.clear()
+        self._presence_tracker.clear()
         self._room_state.clear()
-        self.logger.info("Cleared online users list")
 
     # ------------------------------------------------------------------
     # 派对时长 / 歌单信息

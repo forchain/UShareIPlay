@@ -41,7 +41,7 @@ def _music_manager_mock():
 
 
 def _inject_broadcaster(mock_handler, mock_logger, cache):
-    """直接向 PlaybackBroadcaster 注入测试替身（见 ADR-0002）。"""
+    """直接向 PlaybackBroadcaster 注入测试替身（见 ADR-0004）。"""
     broadcaster = PlaybackBroadcaster.instance()
     broadcaster._soul_handler = mock_handler
     broadcaster._logger = mock_logger

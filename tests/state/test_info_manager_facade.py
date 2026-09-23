@@ -26,7 +26,7 @@ def info_manager():
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    # 状态模块各自持有 logger；测试直接注入目标模块（见 ADR-0002）
+    # 状态模块各自持有 logger；测试直接注入目标模块（见 ADR-0004）
     for cls in (
         RoomState,
         PresenceTracker,
