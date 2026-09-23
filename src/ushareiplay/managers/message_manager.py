@@ -1,13 +1,10 @@
 """
 消息获取与补漏（MessageManager）
-
 """
-import logging
-import os
-import traceback
-from collections import deque
 
-from selenium.common.exceptions import StaleElementReferenceException
+from collections import deque
+import logging
+import traceback
 
 from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
@@ -18,7 +15,6 @@ from ushareiplay.core.chat_intake import (
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -27,37 +23,16 @@ chat_logger = None
 
 
 def get_chat_logger(config=None):
-    """Get or create chat logger with configurable directory"""
+    """Get or create chat logger.
+
+    Delegates to the RuntimeLogging module so the chat log inherits the
+    same path / archive / handler / reset invariants as the app log.
+    """
     global chat_logger
     if chat_logger is None:
-        from ushareiplay.core.log_rotation import archive_active_log_on_startup
-        from ushareiplay.core.paths import ensure_dir, resolve_log_directory
+        from ushareiplay.core.runtime_logging import get_runtime_logging
 
-        cfg = config
-        if not ((cfg or {}).get("logging", {}) or {}).get("directory", None):
-            from ushareiplay.core.config_loader import ConfigLoader
-            loaded = ConfigLoader.load_config()
-            if loaded:
-                cfg = loaded
-        configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
-        log_dir_path = resolve_log_directory(configured, default_rel="logs")
-        ensure_dir(log_dir_path)
-        # Create chat logger
-        chat_logger = logging.getLogger('chat')
-        chat_logger.setLevel(logging.INFO)
-        # Clear any existing handlers
-        if chat_logger.hasHandlers():
-            chat_logger.handlers.clear()
-        log_file = archive_active_log_on_startup(log_dir_path, "chat.log")
-        handler = logging.FileHandler(log_file, encoding='utf-8')
-        # Use ColoredFormatter without colors for file logging
-        formatter = ColoredFormatter(
-            fmt='%(asctime)s [%(levelname)s] %(message)s',
-            datefmt='%m-%d %H:%M:%S',
-            use_colors=False
-        )
-        handler.setFormatter(formatter)
-        chat_logger.addHandler(handler)
+        chat_logger = get_runtime_logging().attach_chat_logger(config)
     return chat_logger
 
 
@@ -67,7 +42,6 @@ class MessageManager(Singleton):
         # 延迟初始化 handler，避免循环依赖
         self._handler = None
         self._chat_logger = None
-        self._recovery_manager = RecoveryManager.instance()
 
         self.previous_messages = {}
         self.recent_chats = deque(maxlen=3)  # Keep track of recent messages to avoid duplicates
@@ -75,22 +49,21 @@ class MessageManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
         if self._handler is None:
             from ushareiplay.handlers.soul_handler import SoulHandler
+
             self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def chat_logger(self):
-        """延迟获取 chat_logger 实例"""
         if self._chat_logger is None:
             self._chat_logger = get_chat_logger(self.handler.config)
         return self._chat_logger
 
     def _get_seat_manager(self):
-        """Get the seat_manager lazily to avoid circular import issues"""
         from ushareiplay.managers.seat_manager import SeatManager
+
         return SeatManager.get_instance()
 
     def get_room_owner(self) -> str | None:
@@ -110,7 +83,6 @@ class MessageManager(Singleton):
         return party_id
 
     async def process_missed_messages(self):
-
         if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
             return None
@@ -225,5 +197,4 @@ class MessageManager(Singleton):
             return None
 
         from ushareiplay.managers.command_manager import CommandManager
-        command_manager = CommandManager.instance()
-        return await command_manager.execute_chat_scan(self.latest_chats)
+        return await CommandManager.instance().execute_chat_scan(self.latest_chats)
