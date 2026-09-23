@@ -69,7 +69,7 @@ AppController
 ├── MusicManager      — Playback control
 ├── PlaybackMuting    — Mic mute/restore around song switching
 ├── MessageManager    — Async message queue and dispatch
-└── [KeywordManager, TitleManager, ThemeManager, TopicManager, NoticeManager, InfoManager, UserManager, AdminManager]
+└── [KeywordManager, RoomNameManager, TopicManager, NoticeManager, InfoManager, UserManager, AdminManager]
 ```
 
 ### Adding a New Command

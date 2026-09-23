@@ -455,8 +455,6 @@ class AppController(Singleton):
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.managers.sleep_manager import SleepManager
-            from ushareiplay.managers.theme_manager import ThemeManager
-            from ushareiplay.managers.title_manager import TitleManager
             from ushareiplay.managers.recommendation_manager import RecommendationManager
             from ushareiplay.managers.room_name_manager import RoomNameManager
             from ushareiplay.managers.user_manager import UserManager
@@ -500,8 +498,6 @@ class AppController(Singleton):
             RoomNameManager.initialize()
             from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
             RoomInfoWindowAuditor.initialize()
-            ThemeManager.initialize()
-            TitleManager.initialize()
             AdminManager.initialize()
             KeywordManager.initialize()
             from ushareiplay.managers.memory_manager import MemoryManager

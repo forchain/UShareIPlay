@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from ushareiplay.commands.playlist import PlaylistCommand
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.title_manager import TitleManager
+from ushareiplay.managers.room_name_manager import RoomNameManager
 from ushareiplay.managers.topic_manager import TopicManager
 
 
@@ -61,7 +61,7 @@ class _MusicHandler:
         return self
 
 
-class _TitleManager:
+class _RoomNameManager:
     def __init__(self):
         self.titles = []
 
@@ -84,10 +84,10 @@ class _InfoManager:
 
 def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     music_handler = _MusicHandler()
-    title_manager = _TitleManager()
+    title_manager = _RoomNameManager()
     topic_manager = _TopicManager()
     info_manager = _InfoManager()
-    monkeypatch.setattr(TitleManager, "instance", lambda: title_manager)
+    monkeypatch.setattr(RoomNameManager, "instance", lambda: title_manager)
     monkeypatch.setattr(TopicManager, "instance", lambda: topic_manager)
     monkeypatch.setattr(InfoManager, "instance", lambda: info_manager)
 

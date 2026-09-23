@@ -182,8 +182,8 @@ class FavCommand(BaseCommand):
         self.handler.logger.info("fav 播放全部收藏后已回到 QQ 音乐首页，准备设置标题和话题")
 
         self.handler.list_mode = 'favorites'
-        # 使用 title_manager 和 topic_manager 管理标题和话题
-        self.title_manager.set_next_title("O Station")
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
+        self.room_name_manager.set_next_title("O Station")
         self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
         return {'playlist': playlist_text}
@@ -236,14 +236,14 @@ class FavCommand(BaseCommand):
         self.handler.logger.info("fav 按语言筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
 
         self.handler.list_mode = 'favorites'
-        # 使用 title_manager 和 topic_manager 管理标题和话题
+        # 使用 room_name_manager 和 topic_manager 管理标题和话题
         title = keyword if keyword else 'O Station'
         if keyword == '粤语':
             title = '粤音'
         elif keyword == '英语':
             title = '英乐'
 
-        self.title_manager.set_next_title(title)
+        self.room_name_manager.set_next_title(title)
         self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
 
         result = {'playlist': playlist_text, 'type': keyword}
@@ -323,7 +323,7 @@ class FavCommand(BaseCommand):
         self.handler.list_mode = 'favorites'
 
         # 5) 标题设置为关键字；话题设置为搜索到的第一首歌
-        self.title_manager.set_next_title(keyword if keyword else "O Station")
+        self.room_name_manager.set_next_title(keyword if keyword else "O Station")
         self.topic_manager.change_topic(first_song or keyword)
         # 由 InfoManager.current_playlist_name + InfoCommand 实现“回到 Soul 后广播这个列表”
         self.info_manager.current_playlist_name = keyword

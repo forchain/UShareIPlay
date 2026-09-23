@@ -36,11 +36,11 @@ class PartyNameViolationLaterEvent(BaseEvent):
             if RoomState.is_initialized() and RoomState.instance().is_guest_room:
                 return True
 
-            from ushareiplay.managers.title_manager import TitleManager
+            from ushareiplay.managers.room_name_manager import RoomNameManager
 
-            title_manager = TitleManager.instance()
-            default_title = getattr(title_manager, "get_default_title", lambda: "听歌")()
-            title_manager.set_next_title(default_title)
+            room_name_manager = RoomNameManager.instance()
+            default_title = getattr(room_name_manager, "get_default_title", lambda: "听歌")()
+            room_name_manager.set_next_title(default_title)
             return True
         except Exception as e:
             self.logger.error(f"PartyNameViolationLaterEvent: {e}")
