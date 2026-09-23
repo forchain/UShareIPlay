@@ -114,18 +114,16 @@ def emulator_launch_command(
         spec.name,
         "-port",
         str(port),
-        "-no-snapshot-save",
     ]
     if host_audio:
-        command.insert(-1, "-allow-host-audio")
+        command.append("-allow-host-audio")
     if writable_system:
-        command.insert(-1, "-writable-system")
+        command.append("-writable-system")
     if camera_front is not None:
-        command.insert(-1, "-camera-front")
-        command.insert(-1, camera_front)
+        command.extend(["-camera-front", camera_front])
     if camera_back is not None:
-        command.insert(-1, "-camera-back")
-        command.insert(-1, camera_back)
+        command.extend(["-camera-back", camera_back])
+    command.append("-no-snapshot-save")
     return command
 
 

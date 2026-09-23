@@ -207,10 +207,12 @@ def run_probe(
         raise RuntimeError("verifier process did not start")
 
     frida_process = None
+    frida_log_file = None
     if frida_script is not None:
+        frida_log_file = (evidence_dir / "frida.log").open("w", encoding="utf-8")
         frida_process = process_factory(
             frida_injection_command(host=frida_host, pid=int(pid.split()[0]), script=frida_script),
-            stdout=(evidence_dir / "frida.log").open("w", encoding="utf-8"),
+            stdout=frida_log_file,
             stderr=subprocess.STDOUT,
             text=True,
         )
@@ -220,6 +222,8 @@ def run_probe(
         if frida_process is not None:
             frida_process.terminate()
             frida_process.wait(timeout=10)
+        if frida_log_file is not None:
+            frida_log_file.close()
 
     pulled: dict[str, str] = {}
     remote_root = "/sdcard/Android/data/io.ushareiplay.loopback/files/Music"
@@ -310,9 +314,10 @@ def run_soul_hook(
             log.write(json.dumps({"command": command, "returncode": result.returncode}) + "\n")
 
     frida_log = evidence_dir / "frida.log"
+    frida_log_file = frida_log.open("w", encoding="utf-8")
     frida_process = process_factory(
         frida_spawn_command(host=frida_host, package=package, script=frida_script),
-        stdout=frida_log.open("w", encoding="utf-8"),
+        stdout=frida_log_file,
         stderr=subprocess.STDOUT,
         text=True,
     )
@@ -328,6 +333,7 @@ def run_soul_hook(
     finally:
         frida_process.terminate()
         frida_process.wait(timeout=10)
+        frida_log_file.close()
 
     current = runner(
         [str(adb), "-s", serial, "shell", "pidof", package],

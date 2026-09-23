@@ -16,15 +16,15 @@ let sourceOffset = 0;
 
 function findSymbol(name) {
   const module = Process.getModuleByName(targetLibrary);
+  const symbols = module.enumerateSymbols();
+  for (const symbol of symbols) {
+    if (symbol.name === name) return symbol.address;
+  }
   const knownAndroid30Offsets = {
     "_ZN7android11AudioRecord12obtainBufferEPNS0_6BufferEPK8timespecPS3_Pm": 0x553ec,
   };
   if (knownAndroid30Offsets[name] !== undefined) {
     return module.base.add(knownAndroid30Offsets[name]);
-  }
-  const symbols = module.enumerateSymbols();
-  for (const symbol of symbols) {
-    if (symbol.name === name) return symbol.address;
   }
   throw new Error("symbol not found: " + name);
 }
@@ -35,7 +35,7 @@ function copySource(destination, size) {
   while (remaining > 0) {
     const available = source.byteLength - sourceOffset;
     const count = Math.min(remaining, available);
-    destination.writeByteArray(source.slice(sourceOffset, sourceOffset + count));
+    destination.writeByteArray(source.subarray(sourceOffset, sourceOffset + count));
     destination = destination.add(count);
     remaining -= count;
     sourceOffset = (sourceOffset + count) % source.byteLength;
