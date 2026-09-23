@@ -286,3 +286,54 @@ def test_handle_message_commands_private_reply_error_routes_private(monkeypatch)
     assert dispatch.screen_messages[0][0].endswith("play ... @Console")
     assert dispatch.screen_messages[0][1] is False
     assert dispatch.command_outputs == [("Console", "error boom @Console", False)]
+
+
+def test_execute_runtime_queue_messages_console_plain_chat_adds_manual_tag():
+    manager, _runtime, _controller = make_manager(Path("."))
+    sent = []
+
+    def _fake_send_screen_message(msg):
+        sent.append(msg)
+
+    asyncio.run(
+        manager.execute_runtime_queue_messages(
+            [MessageInfo(content="大家晚上好", nickname="Console")],
+            send_screen_message=_fake_send_screen_message,
+        )
+    )
+
+    assert sent == ["[人工] 大家晚上好"]
+
+
+def test_execute_runtime_queue_messages_non_console_plain_chat_untagged():
+    manager, _runtime, _controller = make_manager(Path("."))
+    sent = []
+
+    def _fake_send_screen_message(msg):
+        sent.append(msg)
+
+    asyncio.run(
+        manager.execute_runtime_queue_messages(
+            [MessageInfo(content="大家好", nickname="Alice")],
+            send_screen_message=_fake_send_screen_message,
+        )
+    )
+
+    assert sent == ["大家好"]
+
+
+def test_execute_runtime_queue_messages_spool_source_plain_chat_adds_manual_tag():
+    manager, _runtime, _controller = make_manager(Path("."))
+    sent = []
+
+    def _fake_send_screen_message(msg):
+        sent.append(msg)
+
+    asyncio.run(
+        manager.execute_runtime_queue_messages(
+            [MessageInfo(content="后台通知", nickname="Operator", source="agent_spool")],
+            send_screen_message=_fake_send_screen_message,
+        )
+    )
+
+    assert sent == ["[人工] 后台通知"]

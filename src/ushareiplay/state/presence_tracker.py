@@ -1,6 +1,7 @@
 import asyncio
+import time
 import traceback
-from typing import List, Set
+from typing import Dict, List, Set
 
 from ushareiplay.core.singleton import Singleton
 
@@ -11,6 +12,8 @@ class PresenceTracker(Singleton):
     def __init__(self):
         self._logger = None
         self._online_users: Set[str] = set()
+        self._recent_enters: Dict[str, float] = {}
+        self._recent_returns: Dict[str, float] = {}
 
     @property
     def logger(self):
@@ -81,11 +84,48 @@ class PresenceTracker(Singleton):
             username: Username of the user who entered
         """
         try:
+            self._recent_enters[username] = time.time()
             from ushareiplay.managers.command_manager import CommandManager
             command_manager = CommandManager.instance()
             asyncio.create_task(command_manager.notify_user_enter(username))
         except Exception:
             self.logger.error(f"Error notifying user enter: {traceback.format_exc()}")
+
+    def was_recently_entered(self, username: str, window_seconds: float = 30.0) -> bool:
+        """检查用户是否在最近 window_seconds 秒内刚进入房间（防止新进入房间时附带的入场消息误触发 return）"""
+        now = time.time()
+        for name, ts in list(self._recent_enters.items()):
+            if now - ts > window_seconds:
+                self._recent_enters.pop(name, None)
+            elif name == username or name.strip() == username.strip():
+                return True
+        return False
+
+    def should_trigger_return(self, username: str, debounce_seconds: float = 10.0) -> bool:
+        """
+        判断是否应该触发 return 事件：
+        - 若在线用户列表已初始化且非空，而该用户不在其中，说明该用户此前不在房间内（属于全新进入房间，由在线人数变更及 UserCountEvent 触发 enter），不应触发 return。
+        - 若该用户刚触发过 enter（如 30 秒内进入房间），其入场消息对应的是 enter 事件，不重复触发 return。
+        - 若 10 秒内已触发过该用户的 return（如 follower 横幅与聊天室消息并发出现），进行防抖忽略。
+        """
+        if self._online_users and not self.is_user_online(username):
+            return False
+
+        if self.was_recently_entered(username):
+            return False
+
+        now = time.time()
+        for name, ts in list(self._recent_returns.items()):
+            if now - ts > debounce_seconds:
+                self._recent_returns.pop(name, None)
+            elif name == username or name.strip() == username.strip():
+                return False
+
+        return True
+
+    def record_return(self, username: str):
+        """记录用户返回时间，用于防抖"""
+        self._recent_returns[username] = time.time()
 
     def is_user_online(self, username: str) -> bool:
         """
@@ -97,7 +137,13 @@ class PresenceTracker(Singleton):
         Returns:
             bool: True 表示用户在线，False 表示不在线
         """
-        return username in self._online_users
+        if username in self._online_users:
+            return True
+        clean_name = username.strip()
+        for u in self._online_users:
+            if clean_name == u.strip():
+                return True
+        return False
 
     def get_online_users(self) -> Set[str]:
         """
@@ -111,4 +157,6 @@ class PresenceTracker(Singleton):
     def clear(self):
         """清空在线用户列表"""
         self._online_users.clear()
+        self._recent_enters.clear()
+        self._recent_returns.clear()
         self.logger.info("Cleared online users list")

@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -97,8 +98,9 @@ async def test_refresh_online_users_parses_and_updates_presence(scraper, reset_s
     }
 
     with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()):
-        await scraper.refresh_online_users()
+        result = await scraper.refresh_online_users()
 
+    assert result is True
     assert "alice" in presence_tracker.get_online_users()
     assert presence_tracker.get_online_users() == {"alice"}
 
@@ -107,7 +109,39 @@ def test_refresh_online_users_no_op_when_user_count_element_missing(scraper):
     RoomState.initialize()
     PresenceTracker.initialize()
     # Should return early without raising
-    import asyncio
-    asyncio.run(scraper.refresh_online_users())
+    result = asyncio.run(scraper.refresh_online_users())
+    assert result is False
     assert scraper._ui.swipes == []
     assert scraper._ui.clicks == []
+
+
+@pytest.mark.asyncio
+async def test_online_list_ui_session_default_noop():
+    ui = FakeOnlineListUI()
+    entered = False
+    async with ui.ui_session("test"):
+        entered = True
+    assert entered is True
+
+
+@pytest.mark.asyncio
+async def test_soul_online_list_ui_session_delegates_to_controller():
+    from ushareiplay.state.online_list_ui import SoulOnlineListUI
+
+    mock_controller = MagicMock()
+    mock_session = AsyncMock()
+    mock_session.__aenter__.return_value = None
+    mock_session.__aexit__.return_value = None
+    mock_controller.ui_session.return_value = mock_session
+
+    mock_handler = MagicMock()
+    mock_handler.controller = mock_controller
+
+    ui = SoulOnlineListUI(handler=mock_handler)
+    async with ui.ui_session("event:refresh_online_users"):
+        pass
+
+    mock_controller.ui_session.assert_called_once_with("event:refresh_online_users")
+    mock_session.__aenter__.assert_called_once()
+    mock_session.__aexit__.assert_called_once()
+

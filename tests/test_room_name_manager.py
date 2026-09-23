@@ -70,6 +70,16 @@ def test_set_next_title_sanitizes_and_queues_title():
     manager._handler.ui_actions.switch_and_click.assert_not_called()
 
 
+def test_set_next_title_sanitizes_fullwidth_pipe_and_parentheses():
+    manager = _manager_with_fake_handler()
+
+    result = manager.set_next_title("方力申（合唱版）｜extra")
+
+    assert manager.get_next_title() == "方力申"
+    assert "Title will update" in result["title"]
+    manager._handler.ui_actions.switch_and_click.assert_not_called()
+
+
 def test_set_next_title_with_theme_updates_theme_too():
     manager = _manager_with_fake_handler()
 
@@ -156,3 +166,54 @@ def test_initialize_from_ui_falls_back_when_no_separator():
 
     assert manager.get_current_title() == "JustATitle"
     assert manager.is_initialized is True
+
+
+def test_get_default_theme_and_title_from_config(monkeypatch):
+    from ushareiplay.core.config_loader import ConfigLoader
+    monkeypatch.setattr(
+        ConfigLoader,
+        "load_config",
+        lambda *args, **kwargs: {"soul": {"default_theme": "测试", "default_title": "自定义"}}
+    )
+    manager = _manager_with_fake_handler()
+
+    assert manager.get_default_theme() == "测试"
+    assert manager.get_default_title() == "自定义"
+
+
+def test_reset_theme_uses_default_theme_from_config(monkeypatch):
+    from ushareiplay.core.config_loader import ConfigLoader
+    monkeypatch.setattr(
+        ConfigLoader,
+        "load_config",
+        lambda *args, **kwargs: {"soul": {"default_theme": "电音"}}
+    )
+    manager = _manager_with_fake_handler()
+    manager.current_theme = "旧"
+    manager.reset_theme()
+
+    assert manager.get_current_theme() == "电音"
+    assert manager.has_pending_ui_update() is True
+
+
+def test_process_pending_update_preserves_theme_when_uninitialized():
+    manager = _manager_with_fake_handler()
+    assert manager.is_initialized is False
+
+    manager.set_theme("三福")
+    assert manager.get_current_theme() == "三福"
+    assert manager.has_pending_ui_update() is True
+
+    fake_element = MagicMock()
+    manager._handler.element_finder.try_find_element.return_value = fake_element
+    manager._handler.element_finder.get_element_text.return_value = "回家｜Lofi Girl"
+    manager._handler.element_finder.wait_for_element_clickable.return_value = fake_element
+    manager._handler.gesture_handler.click_element_at.return_value = True
+    manager._handler.element_finder.wait_for_any_element.return_value = ("title_edit_entry", fake_element)
+
+    result = manager.process_pending_update()
+
+    assert result["ui_updated"] is True
+    fake_element.send_keys.assert_called_once_with("三福｜Lofi Girl")
+    assert manager.get_current_theme() == "三福"
+

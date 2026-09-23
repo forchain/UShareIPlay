@@ -5,8 +5,14 @@ from ushareiplay.managers.music_manager import MusicManager
 
 
 class PlayCommand(BaseCommand):
-    requires_mic = True
+    playback_muting = True
     handler_attr = 'music_handler'
+
+    def playback_expected_song(self, parameters):
+        query = ' '.join(parameters or [])
+        if not query or query == '?':
+            return None
+        return query
 
     async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)
@@ -37,7 +43,10 @@ class PlayCommand(BaseCommand):
             self.handler.logger.error(f'Failed to play music {music_query}')
             return playing_info
 
-        song_element = self.handler.element_finder.wait_for_element_clickable('result_item')
+        song_element = self.handler.element_finder.wait_for_element_clickable('first_song')
+        if not song_element:
+            self.handler.logger.error("Failed to find first song")
+            return {'error': 'Failed to find first song'}
         song_element.click()
         self.handler.logger.info("Select first song")
 

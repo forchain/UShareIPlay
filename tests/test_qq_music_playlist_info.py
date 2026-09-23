@@ -158,3 +158,43 @@ def test_get_playlist_info_scrolls_and_updates_playlist_when_current_title_visib
     assert handler.playlist_current_queries == 1
     assert handler.driver.swipes == [(50, 320, 50, 0, 1000)]
     assert handler.element_finder.find_elements_calls == 2
+
+
+def test_query_music_waits_for_search_entry_with_20s_timeout():
+    handler = QQMusicHandler.__new__(QQMusicHandler)
+    handler.logger = _Logger()
+    handler.key_actions = SimpleNamespace(
+        switch_to_app=lambda: True,
+        set_clipboard_text=lambda text: None,
+        paste_text=lambda: None,
+    )
+    handler.navigator = SimpleNamespace(
+        navigate_to_element=lambda target, stops: ("home_nav", None)
+    )
+
+    wait_calls = []
+    search_entry_elem = _Element("search_entry")
+    search_box_elem = _Element("search_box")
+
+    def wait_for_element(key, timeout=10):
+        wait_calls.append((key, timeout))
+        if key == "search_entry":
+            return search_entry_elem
+        return None
+
+    def wait_for_element_clickable(key, timeout=10):
+        if key == "search_box":
+            return search_box_elem
+        return None
+
+    handler.element_finder = SimpleNamespace(
+        wait_for_element=wait_for_element,
+        wait_for_element_clickable=wait_for_element_clickable,
+    )
+
+    res = handler.query_music("周杰伦")
+
+    assert res == "home_nav"
+    assert ("search_entry", 20) in wait_calls
+    assert search_entry_elem.clicks == 1
+    assert search_box_elem.clicks == 1

@@ -1,5 +1,6 @@
 import asyncio
 import traceback
+from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
 
@@ -28,29 +29,45 @@ class OnlineListScraper(Singleton):
         """延迟获取 UISeen 端口适配器"""
         if self._ui is None:
             from ushareiplay.state.online_list_ui import SoulOnlineListUI
-            self._ui = SoulOnlineListUI()
+            self._ui = SoulOnlineListUI(handler=getattr(self, "_handler", None))
         return self._ui
 
-    async def refresh_online_users(self):
+    async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
+        if hasattr(self.ui, "ui_session"):
+            session = self.ui.ui_session("event:refresh_online_users")
+            if hasattr(session, "__aenter__"):
+                async with session:
+                    return await self._do_refresh_online_users(target_count)
+        return await self._do_refresh_online_users(target_count)
+
+    async def _do_refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         try:
             from ushareiplay.state.room_state import RoomState
             from ushareiplay.state.presence_tracker import PresenceTracker
             from ushareiplay.dal.user_dao import UserDAO
 
-            target_count = RoomState.instance().user_count
+            if target_count is None:
+                target_count = RoomState.instance().user_count
 
             # 打开在线用户列表
             user_count_elem = self.ui.try_find_element('user_count', log=False)
             if not user_count_elem:
-                return
-            user_count_elem.click()
+                self.logger.warning("user_count element not found, cannot refresh online users")
+                return False
+
+            try:
+                user_count_elem.click()
+            except Exception as e:
+                self.logger.warning(f"Failed to click user_count element: {str(e)}")
+                return False
+
             self.logger.info("Clicked user count element")
 
             online_container = self.ui.wait_for_element('online_users')
             if not online_container:
                 self.logger.error("Online users container not found")
-                return
+                return False
 
             all_online_user_names = set()
             prev_size = 0
@@ -159,5 +176,8 @@ class OnlineListScraper(Singleton):
             if bottom_drawer:
                 self.logger.info('Hide online users dialog')
                 self.ui.click_element_at(bottom_drawer, 0.5, -0.1)
+
+            return True
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")
+            return False

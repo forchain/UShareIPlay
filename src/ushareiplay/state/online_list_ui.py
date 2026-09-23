@@ -32,6 +32,16 @@ class OnlineListUI(ABC):
     def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
         """按位置比例点击元素，返回是否成功。"""
 
+    def ui_session(self, reason: str = ""):
+        """UI 会话上下文管理器。默认无锁空操作。"""
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _noop():
+            yield
+
+        return _noop()
+
 
 class SoulOnlineListUI(OnlineListUI):
     """生产适配器：用 SoulHandler 的 element_finder / gesture_handler 实现端口。"""
@@ -64,3 +74,10 @@ class SoulOnlineListUI(OnlineListUI):
 
     def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5):
         return self.handler.gesture_handler.click_element_at(element, x_ratio, y_ratio)
+
+    def ui_session(self, reason: str = ""):
+        controller = getattr(self.handler, "controller", None)
+        if controller and hasattr(controller, "ui_session"):
+            return controller.ui_session(reason)
+        return super().ui_session(reason)
+

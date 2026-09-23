@@ -1,6 +1,6 @@
 ---
 covers: [PartyManager, SoulHandler, ThemeManager, TitleManager, TopicManager, NoticeManager, SeatManager, MicManager, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand]
-last-synced: 2026-03-23
+last-synced: 2026-09-23
 ---
 
 ## Overview
@@ -27,6 +27,10 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 
 **Seat flow**: A user requests a seat → `SeatManager` validates level + reservation → `SeatManager` performs UI actions to put the user on the specified seat number.
 
+**Mic flow**: `:mic 1` (or a bare `:mic` while the bot is off-seat) asks `SoulHandler.ensure_on_seat()` first — the grab-mic entry is clicked and confirmed, then the mic toggle is pressed once seated. `:mic 0` never touches the seat.
+
+**Guest mode / ownership**: the room is a guest room while its ID differs from `soul.default_party_id`, and guest rooms only allow the `RoomState.GUEST_ALLOWED_COMMANDS` subset plus disable seat/title/notice/recommendation/audit managers. If a 群主 transfer hands the room to the bot, its ID becomes the configured one: `RoomState.adopt_host_room()` switches to host mode (clearing the guest target ID and the explicit guest flag) instead of treating the room change as an unauthorized room and leaving/recreating the party.
+
 **Pack opening**: `:pack` is auto-triggered when the online user count reaches ≥ 5; can also be called manually. It opens the backpack UI and uses the first available luck pack.
 
 ## Commands
@@ -38,10 +42,10 @@ Room management covers the Soul App party room lifecycle: creation, restart, UI 
 | `topic` | 1 | `<text>` | Set study-room topic |
 | `notice` | 1 | `<message>` | Set room announcement |
 | `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove owner/specific seat occupant (4) |
-| `mic` | 2 | `0/1` | Turn microphone off (0) or on (1) |
+| `mic` | 2 | `0/1` | Turn microphone off (0) or on (1); opening the mic seats the bot first when it is off-seat |
 | `pack` | 1 | — | Open luck pack from backpack |
 | `end` | 4 | — | Close the party (requires owner's friend present) |
-| `room` | 4 | `<party_id>` | Switch to a different party room |
+| `room` | 4 | `<party_id>` | Switch to a different party room (pre-checks target room availability before switching; restores current party if target is not open) |
 
 ## Data Model
 

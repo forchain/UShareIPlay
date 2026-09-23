@@ -43,8 +43,15 @@ class _MockHandler:
     def try_find_element(self, key, log=True):
         return self.elements.get(key)
 
-    def wait_for_element_clickable(self, key):
+    def wait_for_element_clickable(self, key, timeout=10):
         return self.elements.get(key)
+
+    def wait_for_any_element(self, keys, timeout=10):
+        for k in keys:
+            elem = self.elements.get(k)
+            if elem:
+                return k, elem
+        return None, None
 
     @property
     def element_finder(self):
@@ -95,8 +102,60 @@ def test_end_party_fallback_success():
 
     res = manager.end_party()
 
+    assert more_menu_btn.clicked is True
+    assert end_party_btn.clicked is True
+    assert confirm_btn.clicked is True
+
+
+def test_exit_guest_party_with_confirm_end():
+    manager = PartyManager.instance()
+
+    more_menu_btn = _Element("more_menu")
+    end_party_btn = _Element("end_party")
+    confirm_end_btn = _Element("confirm_end")
+
+    handler = _MockHandler(elements={
+        "more_menu": more_menu_btn,
+        "end_party": end_party_btn,
+        "confirm_end": confirm_end_btn,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.end_party()
+
     assert res == {'success': 'Party ended'}
     assert handler.switched is True
     assert more_menu_btn.clicked is True
     assert end_party_btn.clicked is True
-    assert confirm_btn.clicked is True
+    assert confirm_end_btn.clicked is True
+
+
+def test_exit_guest_party_without_confirm_dialog():
+    manager = PartyManager.instance()
+
+    more_menu_btn = _Element("more_menu")
+    end_party_btn = _Element("end_party")
+
+    handler = _MockHandler(elements={
+        "more_menu": more_menu_btn,
+        "end_party": end_party_btn,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = manager.end_party()
+
+    assert res == {'success': 'Party ended'}
+    assert handler.switched is True
+    assert more_menu_btn.clicked is True
+    assert end_party_btn.clicked is True
+
+
+
+
+
+
+
