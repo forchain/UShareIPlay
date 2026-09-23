@@ -33,8 +33,8 @@ class _EchoCommand(BaseCommand):
         return {'message': ' '.join(parameters)}
 
 
-class _MicCommand(BaseCommand):
-    requires_mic = True
+class _PlaybackCommand(BaseCommand):
+    playback_muting = True
 
     async def do_process(self, message_info, parameters):
         return {'message': 'ok'}
@@ -63,17 +63,19 @@ def test_process_calls_do_process_and_returns_result():
     assert result == {'message': 'a b'}
 
 
-def test_process_runs_mic_prelude_only_when_required():
+def test_process_leaves_microphone_to_playback_muting():
+    """The shell owns no mic prelude: CommandManager runs playback commands
+    inside PlaybackMuting, whose contract covers mute and restore."""
     plain_controller = _make_controller()
     plain = _EchoCommand(plain_controller)
     asyncio.run(plain.process(None, []))
     assert plain_controller.soul_handler.mic_ensured == 0
 
-    mic_controller = _make_controller()
-    mic = _MicCommand(mic_controller)
-    result = asyncio.run(mic.process(None, []))
+    playback_controller = _make_controller()
+    playback = _PlaybackCommand(playback_controller)
+    result = asyncio.run(playback.process(None, []))
     assert result == {'message': 'ok'}
-    assert mic_controller.soul_handler.mic_ensured == 1
+    assert playback_controller.soul_handler.mic_ensured == 0
 
 
 def test_process_maps_exception_to_error_message_and_logs_traceback():

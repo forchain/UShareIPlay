@@ -27,6 +27,12 @@ class TitleManager(Singleton):
             self._theme_manager = ThemeManager.instance()
         return self._theme_manager
 
+    def get_default_title(self):
+        return self._room_name.get_default_title()
+
+    def get_default_theme(self):
+        return self._room_name.get_default_theme()
+
     def get_current_title(self):
         return self._room_name.get_current_title()
 

@@ -6,6 +6,7 @@
 """
 
 import importlib
+import importlib.util
 import re
 import sys
 import time

@@ -35,6 +35,7 @@ def test_post_party_create_latch_party_then_ready_fires_once():
     _run(auto.on_command_ready())
     msgs = _run(q.get_all_messages())
     assert [m.content for m in msgs.values()] == [":radio", ":seat"]
+    assert [m.nickname for m in msgs.values()] == ["Joyer", "Joyer"]
 
     # Repeated ready should not fire again
     _run(auto.on_command_ready())
@@ -71,4 +72,5 @@ def test_post_party_create_latch_ready_then_party_fires_once():
     _run(auto.on_party_created_new())
     msgs = _run(q.get_all_messages())
     assert [m.content for m in msgs.values()] == [":radio"]
+    assert [m.nickname for m in msgs.values()] == ["Joyer"]
 

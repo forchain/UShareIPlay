@@ -39,12 +39,16 @@ class InitGraph:
         from ushareiplay.managers.command_manager import CommandManager
         from ushareiplay.managers.info_manager import InfoManager
         from ushareiplay.managers.keyword_manager import KeywordManager
+        from ushareiplay.managers.memory_manager import MemoryManager
         from ushareiplay.managers.message_manager import MessageManager
         from ushareiplay.managers.mic_manager import MicManager
         from ushareiplay.managers.music_manager import MusicManager
         from ushareiplay.managers.notice_manager import NoticeManager
         from ushareiplay.managers.party_manager import PartyManager
+        from ushareiplay.managers.playback_muting import PlaybackMuting
+        from ushareiplay.managers.recommendation_manager import RecommendationManager
         from ushareiplay.managers.recovery_manager import RecoveryManager
+        from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
         from ushareiplay.managers.room_name_manager import RoomNameManager
         from ushareiplay.managers.seat_manager import SeatManager
         from ushareiplay.managers.sleep_manager import SleepManager
@@ -75,6 +79,7 @@ class InitGraph:
         c.mic_manager = MicManager.initialize()
         c.music_manager = MusicManager.initialize()
         c.register_driver_subscriber(c.music_manager)
+        c.playback_muting = PlaybackMuting.initialize()
         c.recovery_manager = RecoveryManager.instance()
         c.timer_manager = TimerManager.initialize()
         c.command_manager = CommandManager.initialize()
@@ -88,11 +93,15 @@ class InitGraph:
         c.info_manager = InfoManager.initialize()
         c.party_manager = PartyManager.initialize()
         c.notice_manager = NoticeManager.initialize()
+        RecommendationManager.initialize()
         RoomNameManager.initialize()
+        RoomInfoWindowAuditor.initialize()
         ThemeManager.initialize()
         TitleManager.initialize()
         AdminManager.initialize()
         KeywordManager.initialize()
+        c.memory_manager = MemoryManager.initialize()
+        c.memory_manager.configure(c.config)
         c.post_party_create_automation = PostPartyCreateAutomation(c)
         c._runtime_queue_drainer = RuntimeQueueDrainer(
             handler=c.soul_handler,

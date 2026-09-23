@@ -1,6 +1,7 @@
 import asyncio
 import os
 import queue
+import sys
 import threading
 import time
 import traceback
@@ -11,6 +12,7 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import (
     AgentCommandSpool,
@@ -35,6 +37,7 @@ class AppController(Singleton):
 
         # 先创建主driver（会自动启动Soul app）
         self.driver = None
+        self._network_bridge = None
         try:
             self.obs.emit("driver.init.start")
             self.driver = self._init_driver()
@@ -47,6 +50,11 @@ class AppController(Singleton):
             if self.driver:
                 try:
                     self.driver.quit()
+                except Exception:
+                    pass
+            if self._network_bridge:
+                try:
+                    self._network_bridge.stop()
                 except Exception:
                     pass
             raise
@@ -68,7 +76,9 @@ class AppController(Singleton):
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
+        self.memory_manager = None
         self.post_party_create_automation = None
+
 
         # Non-UI operations task
         self._non_ui_task = None
@@ -91,12 +101,18 @@ class AppController(Singleton):
             input_queue=self.input_queue,
             command_dir=self.agent_command_dir,
             obs=self.obs,
+            config=self.config,
         )
         self._status_reporter = StatusReporter(
             config=self.config,
             ui_lock=self.ui_lock,
             obs=self.obs,
         )
+
+    @property
+    def room_owner(self) -> str:
+        from ushareiplay.core.roles import RolePolicy
+        return RolePolicy(self.config).room_owner
 
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
@@ -175,8 +191,28 @@ class AppController(Singleton):
         appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
         appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
 
-        server_url = f"http://{appium_host}:{appium_port}"
-        driver = webdriver.Remote(command_executor=server_url, options=options)
+        from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
+        try:
+            final_host, final_port, bridge = ensure_appium_endpoint(appium_host, int(appium_port))
+            if bridge:
+                self._network_bridge = bridge
+        except Exception as e:
+            if hasattr(self, "logger") and self.logger:
+                self.logger.error("Appium 连接检测失败:\n%s", str(e))
+            else:
+                print(f"Appium 连接检测失败:\n{str(e)}")
+            raise
+
+        server_url = f"http://{final_host}:{final_port}"
+        try:
+            driver = webdriver.Remote(command_executor=server_url, options=options)
+        except Exception as e:
+            diag = diagnose_connection_error(final_host, final_port, e)
+            if hasattr(self, "logger") and self.logger:
+                self.logger.error("初始化 Appium Remote Driver 失败:\n%s", diag)
+            else:
+                print(f"初始化 Appium Remote Driver 失败:\n{diag}")
+            raise
         driver.update_settings({
             "waitForIdleTimeout": 0,  # Don't wait for idle state
             "waitForSelectorTimeout": 2000,  # Wait up to 2 seconds for elements
@@ -280,24 +316,108 @@ class AppController(Singleton):
 
     def _console_input(self):
         """Background thread for console input"""
+        if hasattr(sys.stdin, "reconfigure"):
+            try:
+                sys.stdin.reconfigure(errors="replace")
+            except Exception:
+                pass
+
+        muter = ConsoleLogMuter.get_instance()
+
         while self.is_running:
             try:
-                user_input = input("Console> " if self.in_console_mode else "")
-                # Process all input, including empty strings (just pressing Enter)
-                self.input_queue.put((user_input, "console"))
-                self.logger.critical(f"{user_input}")
+                if self.in_console_mode:
+                    user_input = input("Console> ")
+                    if user_input.strip():
+                        self.input_queue.put((user_input, "console"))
+                        if self.logger:
+                            self.logger.critical(f"{user_input}")
+                else:
+                    user_input = input("")
+                    if not user_input.strip():
+                        # First Enter received: mute console log output and prompt for command
+                        muter.mute()
+                        try:
+                            command = input("Command> ")
+                            if command.strip():
+                                self.input_queue.put((command, "console"))
+                                if self.logger:
+                                    self.logger.critical(f"{command}")
+                        finally:
+                            muter.unmute()
+                    else:
+                        # User directly entered something without pressing Enter first
+                        self.input_queue.put((user_input, "console"))
+                        if self.logger:
+                            self.logger.critical(f"{user_input}")
+            except UnicodeDecodeError as e:
+                muter.unmute()
+                if self.logger:
+                    self.logger.warning(f"Console input decode error: {e}")
+                continue
             except EOFError:
+                time.sleep(0.5)
                 continue
             except KeyboardInterrupt:
+                muter.unmute()
                 if self.in_console_mode:
                     self.in_console_mode = False
-                    self.logger.info("Exiting console mode...")
+                    if self.logger:
+                        self.logger.info("Exiting console mode...")
                 else:
                     self.is_running = False
                 break
+            except Exception as e:
+                muter.unmute()
+                if self.logger:
+                    self.logger.error(f"Console input error: {e}")
+                time.sleep(0.5)
+                continue
 
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
+
+    async def _detect_initial_room_state(self):
+        """开服启动时检测当前是否已在房间中，并核对 RoomState (主房/客房/未知房间核验)"""
+        try:
+            if not self.soul_handler or not hasattr(self.soul_handler, 'element_finder'):
+                return
+            room_id_elem = self.soul_handler.element_finder.try_find_element('room_id', log=False)
+            if room_id_elem:
+                room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
+                if room_id_text and isinstance(room_id_text, str):
+                    clean_id = room_id_text.strip()
+                    from ushareiplay.state.room_state import RoomState
+                    if RoomState.is_initialized():
+                        room_state = RoomState.instance()
+                        expected_id = room_state.get_expected_party_id()
+                        if expected_id and clean_id != expected_id:
+                            # 群主转让：房间 ID 变为配置中的主房间 ID，机器人已成为房主，
+                            # 启动时应恢复宿主模式，而不是退房重建。
+                            if room_state.adopt_host_room(clean_id):
+                                self.logger.info(
+                                    f"Owner transfer detected at startup: adopted room {clean_id} "
+                                    f"as own host room"
+                                )
+                                self.soul_handler.party_id = clean_id
+                                return
+
+                            self.logger.warning(
+                                f"Startup room ID mismatch: current={clean_id}, expected={expected_id}. "
+                                f"Exiting unauthorized room to recreate default party..."
+                            )
+                            if hasattr(self, 'party_manager') and self.party_manager:
+                                await self.party_manager.leave_and_recreate_party()
+                                return
+
+                        self.soul_handler.party_id = clean_id
+                        room_state.room_id = clean_id
+                        self.logger.info(
+                            f"Startup room verified: {clean_id}, is_guest_room={room_state.is_guest_room}"
+                        )
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"Initial room detection skipped: {e}")
 
     def _init_handlers(self):
         """Initialize handlers after driver is ready.
@@ -341,12 +461,24 @@ class AppController(Singleton):
         await self.timer_manager.start()
         self.logger.info("定时器管理器初始化完成")
 
+        # Start async memory manager worker
+        if getattr(self, "memory_manager", None):
+            self.logger.info("初始化记忆管理器...")
+            await self.memory_manager.start()
+            self.logger.info("记忆管理器初始化完成")
+
+
+
+
         # Start console input thread
         self.logger.info("启动控制台输入线程...")
         input_thread = threading.Thread(target=self._console_input)
         input_thread.daemon = True
         input_thread.start()
         self.logger.info("控制台输入线程已启动")
+
+        # Detect initial room state on startup
+        await self._detect_initial_room_state()
 
         self.logger.info("开始主监控循环...")
 
@@ -360,16 +492,18 @@ class AppController(Singleton):
                 try:
                     while not self.input_queue.empty():
                         item = self.input_queue.get_nowait()
+                        owner = self.room_owner
                         if isinstance(item, dict):
                             message = item.get("content", "")
                             input_source = item.get("source", "console")
-                            nickname = item.get("nickname", "Console")
+                            raw_nick = item.get("nickname")
+                            nickname = str(owner if not raw_nick or raw_nick == "Console" else raw_nick)
                         elif isinstance(item, tuple):
                             message, input_source = item
-                            nickname = "Console"
+                            nickname = owner
                         else:
                             message, input_source = item, "console"
-                            nickname = "Console"
+                            nickname = owner
                         # Only send non-empty messages
                         if message.strip():
                             if message == '!stop':
@@ -392,7 +526,12 @@ class AppController(Singleton):
                                         ctx={"error": traceback.format_exc(), "reason": input_source},
                                     )
                             else:
-                                from ushareiplay.core.chat_intake import ChatIntakeKind, expand_queue_text
+                                from ushareiplay.core.chat_intake import (
+                                    ChatIntakeKind,
+                                    expand_queue_text,
+                                    format_manual_message,
+                                    is_manual_operator,
+                                )
                                 from ushareiplay.models.message_info import MessageInfo
 
                                 for result in expand_queue_text(message, nickname):
@@ -403,6 +542,7 @@ class AppController(Singleton):
                                             silent=result.silent,
                                             private_reply=result.private_reply,
                                             sleep_exempt=result.sleep_exempt,
+                                            source=input_source,
                                         )
                                         await MessageQueue.instance().put_message(message_info)
                                         self.obs.emit(
@@ -411,7 +551,12 @@ class AppController(Singleton):
                                         )
                                         self.logger.info(f"{input_source} message added to queue: {message_info.content}")
                                     elif result.kind == ChatIntakeKind.PLAIN_CHAT and not result.silent:
-                                        self.message_dispatch.send_screen_message(result.text)
+                                        screen_text = (
+                                            format_manual_message(result.text)
+                                            if is_manual_operator(nickname, input_source)
+                                            else result.text
+                                        )
+                                        self.message_dispatch.send_screen_message(screen_text)
                                     elif result.kind == ChatIntakeKind.PLAIN_CHAT and result.silent:
                                         self.logger.info(f"Silent queued message suppressed: {result.text}")
 
@@ -493,6 +638,8 @@ class AppController(Singleton):
 
         # Stop async timer manager
         await self.timer_manager.stop()
+        if hasattr(self, 'memory_manager') and self.memory_manager:
+            await self.memory_manager.stop()
         self.logger.info("Application stopped")
 
     async def shutdown(self):
@@ -509,9 +656,20 @@ class AppController(Singleton):
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
 
+        if hasattr(self, 'memory_manager') and self.memory_manager:
+            await self.memory_manager.stop()
+
+
         if self.driver:
             try:
                 self.driver.quit()
             except Exception:
                 if self.logger:
                     self.logger.warning("Failed to close Appium driver during shutdown")
+
+        if hasattr(self, "_network_bridge") and self._network_bridge:
+            try:
+                self._network_bridge.stop()
+            except Exception:
+                pass
+            self._network_bridge = None

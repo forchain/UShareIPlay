@@ -8,12 +8,13 @@ class BaseCommand(ABC):
 
     Subclasses implement do_process() with only their decision logic.
     The concrete process() wrapper provides, driven by class attributes:
-      - requires_mic: run soul_handler.ensure_mic_active() before do_process
+      - playback_muting: declare the command as a song-switching operation so
+        CommandManager runs it inside PlaybackMuting's mute/readiness lifecycle
       - handler_attr: 'soul_handler' | 'music_handler', exposed as self.handler
       - error_message: template (may contain {error}) returned when do_process raises
     """
 
-    requires_mic = False
+    playback_muting = False
     handler_attr = None
     error_message = 'Failed to process command: {error}'
 
@@ -31,7 +32,10 @@ class BaseCommand(ABC):
         self._message_dispatch = None
 
     async def process(self, message_info, parameters):
-        """Command shell: mic prelude -> do_process -> exception-to-error mapping.
+        """Command shell: do_process -> exception-to-error mapping.
+
+        Microphone lifecycle for playback commands is owned by PlaybackMuting,
+        which CommandManager applies around command execution.
 
         Args:
             message_info: MessageInfo object containing message details
@@ -40,8 +44,6 @@ class BaseCommand(ABC):
             dict: result from do_process, or {'error': ...} on failure
         """
         try:
-            if self.requires_mic:
-                self.soul_handler.ensure_mic_active()
             return await self.do_process(message_info, parameters)
         except Exception as e:
             self.soul_handler.log_error(
@@ -49,6 +51,13 @@ class BaseCommand(ABC):
             error_result = {'error': self.error_message.format(error=e)}
             error_result.update(self.error_context(message_info, parameters))
             return error_result
+
+    def playback_expected_song(self, parameters):
+        """播放静音保护期间用于校验播放就绪的目标歌曲。
+
+        返回 None 表示只校验底层播放状态，不校验曲目元数据。
+        """
+        return None
 
     def error_context(self, message_info, parameters):
         """Extra fields merged into the error result when do_process raises.

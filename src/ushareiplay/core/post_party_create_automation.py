@@ -102,9 +102,11 @@ class PostPartyCreateAutomation:
             self._log_info(
                 f"[post_party_create] firing ({trigger}), commands={len(cmds)}, wait_for_ready={self._wait_for_ready()}"
             )
+            from ushareiplay.core.roles import RolePolicy
+            owner = RolePolicy(getattr(self.controller, "config", None)).room_owner
             queue = MessageQueue.instance()
             for cmd in cmds:
-                await queue.put_message(MessageInfo(content=cmd, nickname="Console"))
+                await queue.put_message(MessageInfo(content=cmd, nickname=owner))
             self._fired = True
             obs = getattr(self.controller, "obs", None)
             if obs:

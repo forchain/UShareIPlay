@@ -130,3 +130,25 @@ def test_chat_room_title_does_not_overwrite_pending_business_title(monkeypatch):
 
     assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
     assert queued_titles == []
+
+
+def test_chat_room_title_queues_configured_default_title(monkeypatch):
+    runtime = FakeRuntime(busy=False)
+    queued_titles = []
+
+    class FakeTitleManager:
+        next_title = None
+        theme_manager = None
+
+        def get_default_title(self):
+            return "自定义日推"
+
+        def set_next_title(self, title):
+            queued_titles.append(title)
+
+    monkeypatch.setattr(TitleManager, "instance", lambda: FakeTitleManager())
+    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+    wrapper = type("Wrapper", (), {"content": "旧无分隔符房名"})()
+
+    assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
+    assert queued_titles == ["自定义日推"]
