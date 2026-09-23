@@ -1,6 +1,7 @@
 import re
 import time
 import traceback
+from typing import Optional
 
 import langdetect
 from appium.webdriver.common.appiumby import AppiumBy
@@ -377,6 +378,100 @@ class QQMusicHandler(AppHandler, Singleton):
             MusicManager.instance().mark_on_demand(playing_info)
         except Exception as e:
             self.logger.warning(f"Failed to record on-demand request: {e}")
+
+    TAB_ALIASES = {
+        "singer": "singer_tab",
+        "album": "album_tab",
+        "playlist": "playlist_tab",
+        "song": "song_tab",
+        "songs": "song_tab",
+        "lyrics": "lyrics_tab",
+        "radio": "radio_tab",
+        "歌手": "singer_tab",
+        "专辑": "album_tab",
+        "歌单": "playlist_tab",
+        "歌曲": "song_tab",
+        "单曲": "song_tab",
+        "歌词": "lyrics_tab",
+        "电台": "radio_tab",
+    }
+
+    def select_tab(
+        self,
+        tab_name: str,
+        container_key: str = "music_tabs",
+        direction: str = "left",
+        max_swipes: Optional[int] = None,
+    ) -> bool:
+        """
+        Select a category tab in QQ Music search interface.
+
+        Finds, scrolls (if needed), and clicks the requested category tab
+        (such as singer, album, playlist, song, radio, lyrics).
+
+        Args:
+            tab_name: Name of the tab (e.g., 'singer', 'album', 'playlist', 'song', 'radio',
+                      or element key like 'singer_tab').
+            container_key: Configuration element key of the scrollable container (default: 'music_tabs').
+            direction: Swipe direction if scrolling is needed (default: 'left').
+            max_swipes: Maximum number of swipe attempts. If None, reads from config or defaults to 10.
+
+        Returns:
+            bool: True if the tab was found and clicked successfully, False otherwise.
+        """
+        try:
+            elements = (getattr(self, "config", {}) or {}).get("elements", {})
+            if tab_name in elements:
+                element_key = tab_name
+            elif tab_name in self.TAB_ALIASES:
+                element_key = self.TAB_ALIASES[tab_name]
+            elif tab_name.endswith("_tab"):
+                element_key = tab_name
+            else:
+                element_key = f"{tab_name}_tab"
+
+            if max_swipes is None:
+                max_swipes = (
+                    (getattr(self, "config", {}) or {}).get("qq_music", {}).get("tab_max_swipes")
+                    or (getattr(self, "config", {}) or {}).get("tab_max_swipes")
+                    or 10
+                )
+
+            # Fast path: tab already visible on screen
+            tab_element = self.element_finder.try_find_element(element_key)
+            if not tab_element:
+                self.logger.info(
+                    f"Tab '{tab_name}' ({element_key}) not visible, scrolling container '{container_key}' ({direction})"
+                )
+                _, tab_element, _ = self.gesture_handler.scroll_container_until_element(
+                    element_key,
+                    container_key,
+                    direction,
+                    max_swipes=max_swipes,
+                )
+                if not tab_element:
+                    tab_element = self.element_finder.try_find_element(element_key)
+
+            if not tab_element:
+                self.logger.error(
+                    f"Failed to find tab '{tab_name}' ({element_key}) after scrolling up to {max_swipes} times"
+                )
+                return False
+
+            try:
+                tab_element.click()
+            except StaleElementReferenceException:
+                refreshed = self.element_finder.try_find_element(element_key)
+                if refreshed:
+                    refreshed.click()
+                else:
+                    raise
+
+            self.logger.info(f"Selected {tab_name} tab ({element_key})")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error selecting {tab_name} tab: {traceback.format_exc()}")
+            return False
 
     def select_song_tab(self):
         """Select the 'Songs' tab in search results"""
