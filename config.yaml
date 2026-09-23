@@ -327,201 +327,206 @@ lyrics:
 commands:
   - prefix: "play"
     level: 1
-    description: "播放指定歌曲。参数: <歌名> [歌手名]，例如 :play 晴天 周杰伦"
+    description: "立即搜索并播放指定歌曲。参数: <歌名> [歌手名]，例如 :play 晴天 周杰伦（播放期间受麦克风静音保护，且享有老歌过滤豁免）"
     retry: true
     response_template: "{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 1
-    description: "从收藏歌单播放。参数: [0 语言]，无参数表示随机播放收藏夹，例如 :fav 或 :fav 0 粤语"
+    description: "从我的收藏播放歌曲。参数: [0/type <分类> | 2/search <关键词>]，无参数播放全部收藏，例如 :fav、:fav 0 粤语、:fav type 摇滚、:fav 2 晴天"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 1
-    description: "跳过当前正在播放的歌曲。无参数，例如 :skip"
+    description: "跳过当前正在播放的歌曲切到下一首。无参数，例如 :skip"
     retry: true
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
     level: 0
-    description: "切歌或将歌曲加入待播列表。参数: [歌名] [歌手名]，无参数表示切下一首，例如 :next 或 :next 稻香"
+    description: "切下一首歌或添加歌曲到待播队列。参数: [歌名] [歌手名]，无参数表示立即切下一首，有参数加入待播列表，例如 :next 或 :next 稻香 周杰伦"
     retry: true
     response_template: "Added {song} by {singer} in {album} • {release_date} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     level: 1
-    description: "暂停或恢复播放。参数: [0/1]，0=恢复, 1=暂停，无参数表示切换，例如 :pause"
+    description: "暂停或恢复音乐播放。参数: [0/1]，0=恢复播放, 1=暂停播放，无参数在播放与暂停间切换，例如 :pause、:pause 1、:pause 0"
     retry: true
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
     level: 1
-    description: "调节音量。参数: [0-15]，无参数表示查看当前音量，例如 :vol 10"
+    description: "查看或调节系统音量。参数: [0-15]，无参数查看当前音量，有参数设置目标音量(0-15)，例如 :vol、:vol 10"
     response_template: "{message}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     level: 2
-    description: "伴唱/伴奏模式开关。参数: [0/1]，0=关, 1=开，无参数表示切换，例如 :acc"
+    description: "QQ音乐K歌伴唱/伴奏模式开关。参数: [0/1]，0=关闭伴唱(原唱), 1=开启伴唱(伴奏)，无参数切换当前模式，例如 :acc、:acc 1、:acc 0"
     retry: true
     response_template: "Accompaniment mode {enabled}"
     error_template: "Failed to toggle accompaniment mode, because {error}"
   - prefix: "lyrics"
     level: 1
-    description: "查看当前播放歌曲的歌词。无参数，例如 :lyrics"
+    description: "抓取当前播放歌曲的歌词并分段发送到公屏。无参数，例如 :lyrics"
     retry: true
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "help"
     level: 0
-    description: "查看帮助信息。无参数，例如 :help"
+    description: "查看机器人常用指令帮助与使用说明。无参数，例如 :help"
     response_template: "{help}"
 
   - prefix: "room"
     level: 4
-    description: "切换或邀请进入指定派对房间。参数: <party_id>，例如 :room FM123456"
+    description: "邀请机器人切换进入指定的派对房间。参数: <party_id>，切换前会自动预检目标房间可用性，例如 :room FM123456"
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
   - prefix: "admin"
     level: 9
-    description: "设置或取消管理员。参数: <add/del> <用户名>，例如 :admin add 张三"
+    description: "设置或取消派对房间管理员身份。参数: <1/0> [昵称]，1=设为房管, 0=取消房管，未指定昵称默认操作发送者自己，昵称含空格用引号包裹，例如 :admin 1、:admin 0 \"张三\""
     response_template: "{action} {user} as administrator"
     error_template: "{error}"
   - prefix: "alias"
     level: 9
-    description: "设置别名绑定。参数: <add/del/list> [用户名]，例如 :alias add 分身"
+    description: "绑定用户别名到原始用户ID（防止用户改名丢失权限与自动化配置）。参数: \"<别名>\" \"<原始名>\"，带空格的昵称需用引号包裹，例如 :alias \"小号\" \"大号\""
     response_template: "{message}"
     error_template: "别名绑定失败: {error}"
   - prefix: "level"
     level: 0
-    description: "查看或设置用户等级。参数: [用户名] [等级]，例如 :level、:level 张三、:level 张三 3"
+    description: "查看或设置用户权限等级(0-9)。参数: [用户名] [0-9]，无参查看自身等级，1个参数查看目标用户等级，2个参数设置目标用户等级(需操作员权限)，例如 :level、:level 张三、:level 张三 3"
     response_template: "{message}"
     error_template: "{error}"
   - prefix: "info"
     level: 0
-    description: "查看房间当前播放信息、在线用户与定时器。无参数，例如 :info"
+    description: "查看房间当前播放歌曲、播放循环模式、待播歌单、在线用户、时长与定时器状态。无参数，例如 :info"
     response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 1
-    description: "播放指定歌手的热门歌曲。参数: <歌手名>，例如 :singer 周杰伦"
+    description: "搜索并播放指定歌手的热门歌曲列表。参数: <歌手名>，例如 :singer 周杰伦"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
-    description: "播放指定歌单。参数: <歌单名>，例如 :playlist 欧美流行"
+    description: "搜索并播放指定歌单。参数: <歌单名>，无参数播放默认推荐歌单，例如 :playlist 欧美流行、:playlist"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "radio"
     level: 2
-    description: "播放推荐电台。参数: <guess/daily/collection/sleep>，例如 :radio daily"
+    description: "播放推荐电台。参数: [guess/daily/collection/sleep/radar]，支持中文(猜你喜欢/每日30首/收藏/助眠/雷达)，无参默认收藏电台，例如 :radio daily、:radio 猜你喜欢、:radio"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
     level: 2
-    description: "切换播放模式。参数: <0/1/-1>，0=顺序, 1=单曲循环, -1=随机，例如 :mode 1"
+    description: "切换播放循环模式。参数: [0/1/-1]，0=顺序播放, 1=单曲循环, -1=随机播放，无参数查看当前模式，例如 :mode、:mode 1、:mode -1"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
     level: 1
-    description: "设置派对房间话题。参数: <话题文字>，例如 :topic 音乐分享"
+    description: "查看或设置自习室房间话题。参数: [话题内容]，无参数返回当前话题状态，有参数安排话题更新，例如 :topic、:topic 听歌自习中"
     response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
 
   - prefix: "notice"
     level: 1
-    description: "设置房间公告。参数: <公告内容>，例如 :notice 严禁骂人"
+    description: "设置派对房间公屏公告。参数: <公告内容>，例如 :notice 欢迎来到音乐派对，请保持友善交流"
     response_template: "Change notice to {notice}"
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
     level: 2
-    description: "播放整张专辑。参数: <专辑名>，例如 :album 范特西"
+    description: "搜索并播放整张指定专辑。参数: <专辑名>，例如 :album 范特西"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
     level: 1
-    description: "派对麦位管理。参数: <1/2/4> [座位号]，1=预约, 2=上麦, 4=抱下麦，例如 :seat 2 1"
+    description: "派对麦位管理。参数: [0 | 1 <麦位> | 2 <麦位> | 3 [昵称] | 4 [麦位]]，无参自动为房主寻找可用麦位并落座，0=取消自身麦位预约，1=预约指定麦位(1-12)，2=直接落座指定麦位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下麦(无参抱房主，带麦位抱该位)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2"
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
     level: 3
-    description: "设置派对标题。参数: <标题文字>，例如 :title 欢迎光临"
+    description: "设置派对房间标题（受冷却时间保护）。参数: <标题文字> [主题文字]，支持同时指定标题与主题，参数含空格请用引号包裹，例如 :title 欢迎光临、:title \"晚安音乐会\" \"助眠\""
     response_template: "{title}"
     error_template: "Failed to change title, because {error}"
   - prefix: "theme"
     level: 3
-    description: "设置派对主题。参数: <主题文字>，例如 :theme 听歌"
+    description: "设置派对房间主题（通常≤2个字符，与标题组合为「主题｜标题」展示）。参数: <主题文字>，例如 :theme 听歌、:theme 聊天"
     response_template: "{theme}"
     error_template: "Failed to change theme, because {error}"
   - prefix: "end"
     level: 4
-    description: "结束并关闭派对。无参数，例如 :end"
+    description: "结束并解散当前派对房间（需房主好友在场且非他人客房）。无参数，例如 :end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
   - prefix: "mic"
     level: 2
-    description: "开麦或闭麦。参数: <0/1>，0=闭麦, 1=开麦，例如 :mic 1"
+    description: "麦克风开关控制。参数: [0/1]，0=闭麦, 1=开麦(若机器人未在麦位上会自动先上麦再开麦)，无参数时在开闭麦间切换，例如 :mic、:mic 1、:mic 0"
     response_template: "Microphone set to {state}"
     error_template: "Failed to set microphone: {error}"
   - prefix: "pack"
     level: 1
-    description: "打开背包中的幸运礼包。无参数，例如 :pack"
+    description: "打开背包中的幸运礼包（在线人数≥5时系统也会自动触发开启）。无参数，例如 :pack"
     response_template: "Successfully opened luck pack {item}"
     error_template: "Failed to open luck pack: {error}"
   - prefix: "timer"
     level: 9
-    description: "定时器管理。参数: <add/del/list> [参数]，例如 :timer add 提醒 10m :say 时间到了"
+    description: "定时任务管理。参数: <add/remove/list/enable/disable/start/stop/reset/reload> [参数]，例如 :timer add 10 \":say 时间到\"(延时10秒单次任务)、:timer add morning 08:00 \":play 早安\" true(每日8点重复任务)、:timer remove morning、:timer list、:timer disable morning"
     response_template: "{timer}"
     error_template: "{error}"
   - prefix: "keyword"
     level: 1
-    description: "自定义关键字管理。参数: <add/del/list/public/private> [参数]，例如 :keyword add 晚安 :play 晚安"
+    description: "自定义触发词自动回复管理。参数: <add/del/update/exec/grant/revoke> [参数]，例如 :keyword add 晚安 \":play 晚安\" 1(添加公开关键字)、:keyword update 晚安 0(设为私有关键字)、:keyword grant 晚安 张三(授权私有关键字给指定用户)、:keyword exec 晚安(立即测试执行)、:keyword del 晚安"
     response_template: "{message}"
     error_template: "关键字操作失败: {error}"
   - prefix: "enter"
     level: 1
-    description: "设置用户进房自动执行命令。参数: <add/del/list> [参数]"
+    description: "设置当前用户进入房间时自动执行的联动命令。参数: <add/del/list/clear> [参数]，命令须以:/：或//／开头，例如 :enter add \":play 晴天\"、:enter list、:enter del 1、:enter clear"
     response_template: "{message}"
     error_template: "进入命令操作失败: {error}"
   - prefix: "return"
     level: 1
-    description: "设置用户返回房间自动执行命令。参数: <add/del/list> [参数]"
+    description: "设置当前用户返回房间时自动执行的联动命令。参数: <add/del/list/clear> [参数]，命令须以:/：或//／开头，例如 :return add \":say 我回来了\"、:return list、:return del 1、:return clear"
     response_template: "{message}"
     error_template: "返回命令操作失败: {error}"
   - prefix: "exit"
     level: 1
-    description: "离开/退出当前房间。无参数，例如 :exit"
+    description: "设置当前用户离开房间时自动执行的联动命令。参数: <add/del/list/clear> [参数]，命令须以:/：或//／开头，例如 :exit add \":say 拜拜\"、:exit list、:exit del 1、:exit clear"
     response_template: "{message}"
     error_template: "离开命令操作失败: {error}"
   - prefix: "focus"
     level: 1
-    description: "专注人数监控管理。参数: <add/del/list> [参数]"
+    description: "设置自习室专注人数变更时的联动命令。参数: <add/del/list/clear> [参数]，命令须以:/：或//／开头，例如 :focus add \":say 专注人数更新啦\"、:focus list、:focus del 1、:focus clear"
     response_template: "{message}"
     error_template: "专注人数命令操作失败: {error}"
   - prefix: "say"
     level: 1
-    description: "发送指定公屏消息。参数: <文本内容>，例如 :say 大家好"
+    description: "向派对公屏发送指定文本消息。参数: <消息文本>，例如 :say 大家好呀"
     response_template: "{message}"
     error_template: "发送消息失败: {error}"
   - prefix: "gift"
     level: 5
-    description: "送礼物管理。参数: <add/del/list> [参数]"
+    description: "向指定用户赠送礼物（优先赠送背包内礼物，背包为空时自动使用小黄鸭）。参数: [目标昵称]，未指定昵称默认送给发送者自己，例如 :gift、:gift 张三"
     response_template: "{success}"
     error_template: "送礼失败: {error}"
+  - prefix: "receive"
+    level: 1
+    description: "设置收到礼物或热力贡献时的自动联动命令。参数: <add/del/list/clear> [参数]，命令须以:/：或//／开头，例如 :receive add \":say 感谢老板的礼物\"、:receive list、:receive del 1、:receive clear"
+    response_template: "{message}"
+    error_template: "收礼物命令操作失败: {error}"
 
   - prefix: "sleep"
     level: 4
-    description: "睡眠模式管理。参数: <on/off/status>"
+    description: "睡眠守卫夜间免打扰管理（默认23:00-06:00拦截非特权指令）。参数: [on/off/status]，on=强制进入睡眠模式, off=强制退出睡眠模式, status=查看当前睡眠状态，例如 :sleep status、:sleep on、:sleep off"
     response_template: "{message}"
     error_template: "{error}"
 
   - prefix: "recommend"
     level: 1
-    description: "开启或关闭派对推荐。参数: <on/off>，例如 :recommend on"
+    description: "开启或关闭派对公域推荐分发。参数: [on/off]，无参数切换当前推荐状态，例如 :recommend、:recommend on、:recommend off"
     response_template: "派对推荐已设置为: {status}"
     error_template: "设置派对推荐失败: {error}"
 
