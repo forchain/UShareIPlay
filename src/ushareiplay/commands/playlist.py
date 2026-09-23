@@ -7,6 +7,7 @@ from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.playlist_parser import PlaylistParser
 
 class PlaylistCommand(BaseCommand):
+    playback_muting = True
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
@@ -15,51 +16,42 @@ class PlaylistCommand(BaseCommand):
         if len(parameters) == 0:
             playing_info = self.handler.get_playlist_info()
         else:
-            # 检查是否有其他用户正在播放列表
-            info_manager = self.info_manager
-            player_name = info_manager.player_name
-            # 排除系统用户 Joyer 和 Timer
-            if player_name and player_name != message_info.nickname and player_name not in ["Joyer", "Timer",
-                                                                                            "Outlier", "Chainer"]:
-                # 检查之前的播放者是否还在线
-                if info_manager.is_user_online(player_name):
-                    self.handler.logger.info(f"{message_info.nickname} 尝试播放歌单，但 {player_name} 正在播放")
-                    return {'error': f'{player_name} 正在播放歌单，请等待'}
+            # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
+            config = getattr(self.controller, "config", None)
+            protection_error = await self.info_manager.check_playlist_protection(
+                message_info.nickname, config=config
+            )
+            if protection_error:
+                self.handler.logger.info(
+                    f"{message_info.nickname} 尝试播放歌单，但 {self.info_manager.player_name} 正在播放"
+                )
+                return protection_error
 
-            info_manager.player_name = message_info.nickname
-            self.soul_handler.ensure_mic_active()
+            self.info_manager.player_name = message_info.nickname
             playing_info = self.play_playlist(query)
 
         return playing_info
 
     def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results by scrolling to the leftmost position"""
+        """Select the 'Playlist' tab in search results"""
         try:
-            # Try to find playlist tab first
+            # Try to find playlist tab first or music tabs container
             key, element = self.handler.element_finder.wait_for_any_element(['playlist_tab', 'music_tabs'])
 
             if key == 'playlist_tab':
                 playlist_tab = element
             elif key == 'music_tabs':
-                # Get size and location for scrolling
-                music_tabs = element
-                size = music_tabs.size
-                location = music_tabs.location
-
-                # Scroll to left (opposite direction of singer tab)
-                self.handler.gesture_handler.swipe(
-                    location['x'] + 200,  # Start from left
-                    location['y'] + size['height'] // 2,
-                    location['x'] + size['width'] - 10,  # End at right
-                    location['y'] + size['height'] // 2,
-                    1000
+                _, playlist_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
+                    'playlist_tab',
+                    'music_tabs',
+                    'left',
+                    max_swipes=10,
                 )
-
-                # Try to find playlist tab again
-                playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
                 if not playlist_tab:
-                    self.handler.logger.error("Failed to find playlist tab after scrolling")
-                    return False
+                    playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
+                    if not playlist_tab:
+                        self.handler.logger.error("Failed to find playlist tab after scrolling")
+                        return False
             else:
                 self.handler.logger.error("Failed to find music tabs or playlist tab")
                 return False

@@ -20,7 +20,7 @@ class RoomNameManager(Singleton):
         self._notice_manager = None
 
         # Theme state
-        self.current_theme = "享乐"
+        self.current_theme = self.get_default_theme()
         self.last_update_time = None
         self.cooldown_minutes = 10
         self.pending_ui_update = False
@@ -55,6 +55,16 @@ class RoomNameManager(Singleton):
             self._notice_manager = NoticeManager.instance()
         return self._notice_manager
 
+    def get_default_theme(self) -> str:
+        from ushareiplay.core.config_loader import ConfigLoader
+        config = ConfigLoader.load_config()
+        return config.get('soul', {}).get('default_theme', '听歌')
+
+    def get_default_title(self) -> str:
+        from ushareiplay.core.config_loader import ConfigLoader
+        config = ConfigLoader.load_config()
+        return config.get('soul', {}).get('default_title', '听歌')
+
     # ------------------------------------------------------------------
     # Theme API
     # ------------------------------------------------------------------
@@ -63,6 +73,10 @@ class RoomNameManager(Singleton):
         return self.current_theme
 
     def set_theme(self, theme: str):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'error': '他人房间模式下不可修改房间主题'}
+
         if len(theme) > 2:
             return {'error': '主题最多两个字符'}
 
@@ -119,11 +133,12 @@ class RoomNameManager(Singleton):
             parts = room_title_text.split('｜', 1)
             if len(parts) == 2:
                 theme_part = parts[0].strip()
-                self.current_theme = theme_part
+                if not self.pending_ui_update:
+                    self.current_theme = theme_part
                 self.current_title = parts[1].strip()
                 self.is_initialized = True
-                self.logger.info(f'Initialized room name from UI: theme={theme_part}, title={self.current_title}')
-                return {'success': True, 'theme': theme_part, 'title': self.current_title, 'initialized': True}
+                self.logger.info(f'Initialized room name from UI: theme={self.current_theme}, title={self.current_title}')
+                return {'success': True, 'theme': self.current_theme, 'title': self.current_title, 'initialized': True}
 
         self.current_title = room_title_text
         self.is_initialized = True
@@ -138,7 +153,7 @@ class RoomNameManager(Singleton):
         return {'error': f'Theme verification failed: expected {expected_theme}, got {self.current_theme}'}
 
     def reset_theme(self):
-        return self.set_theme("享乐")
+        return self.set_theme(self.get_default_theme())
 
     # ------------------------------------------------------------------
     # Title API
@@ -165,10 +180,13 @@ class RoomNameManager(Singleton):
             return None
 
         self.logger.info(f"Found room title in UI: {room_title_text}")
-        if '｜' in room_title_text:
-            parts = room_title_text.split('｜', 1)
+        sep = '｜' if '｜' in room_title_text else ('|' if '|' in room_title_text else None)
+        if sep:
+            parts = room_title_text.split(sep, 1)
             if len(parts) == 2:
-                self.current_theme = parts[0].strip()
+                theme_part = parts[0].strip()
+                if not self.pending_ui_update:
+                    self.current_theme = theme_part
                 self.current_title = parts[1].strip()
                 self.is_initialized = True
                 self.logger.info(f"Initialized room name from UI: theme={self.current_theme}, title={self.current_title}")
@@ -181,21 +199,37 @@ class RoomNameManager(Singleton):
 
     def get_room_title_text_from_ui(self):
         try:
+            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
+            dialog_element = self.handler.element_finder.wait_for_element('room_name_in_dialog', timeout=2)
+            if dialog_element:
+                text = self.handler.element_finder.get_element_text(dialog_element)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+
+            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
             room_title_element = self.handler.element_finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None
             text = self.handler.element_finder.get_element_text(room_title_element)
-            return (text or "").strip() or None
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+            return None
         except Exception:
             return None
 
     def set_next_title(self, title: str, theme: str = None):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping set_next_title in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         if theme:
             theme_result = self.set_theme(theme)
             if 'error' in theme_result:
                 return theme_result
 
-        new_title = title.split('|')[0].split('(')[0].strip()[:12]
+        # Clean title text: support half-width and full-width vertical bars and parentheses
+        new_title = title.split('|')[0].split('｜')[0].split('丨')[0].split('(')[0].split('（')[0].strip()[:12]
         self.next_title = new_title
 
         if not self.can_update_now():
@@ -221,6 +255,10 @@ class RoomNameManager(Singleton):
             - 'skipped': True if nothing was pending
             - 'current_title': the title after a successful update
         """
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': True, 'reason': 'guest_room'}
+
         # Do not inspect the UI just to discover that there is no work queued.
         # The monitoring loop calls this method every cycle; UI reads belong
         # only to an actual pending title/theme update.
@@ -244,12 +282,31 @@ class RoomNameManager(Singleton):
 
     def _update_title_ui(self, title: str):
         """Single attempt to write the room name to the Soul UI."""
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            self.logger.info("Skipping room title UI update in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
         try:
             result = self.handler.ui_actions.switch_and_click(
                 'chat_room_title', error_message='Failed to find room title'
             )
             if 'error' in result:
                 return result
+
+            from ushareiplay.managers.recommendation_manager import RecommendationManager
+            if RecommendationManager.is_initialized():
+                try:
+                    RecommendationManager.instance().sync_ui_status_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive recommendation sync skipped: {e}")
+
+            from ushareiplay.managers.party_manager import PartyManager
+            if PartyManager.is_initialized():
+                try:
+                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+                except Exception as e:
+                    self.logger.warning(f"Passive room type sync skipped: {e}")
 
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
@@ -294,10 +351,11 @@ class RoomNameManager(Singleton):
 
                 room_title_text = self.get_room_title_text_from_ui()
                 if room_title_text and '｜' not in room_title_text:
-                    if not (self.next_title == '日推' and not self.can_update_now()):
-                        self.next_title = '日推'
+                    default_title = self.get_default_title()
+                    if not (self.next_title == default_title and not self.can_update_now()):
+                        self.next_title = default_title
                         self.logger.info(
-                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 日推'
+                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 {default_title}'
                         )
 
                 self._restore_notice_if_needed()
@@ -329,6 +387,10 @@ class RoomNameManager(Singleton):
     # ------------------------------------------------------------------
 
     def _check_notice_reset(self):
+        from ushareiplay.state.room_state import RoomState
+        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            return {'skipped': 'guest_room'}
+
         try:
             notice_element = self.handler.element_finder.wait_for_element('chat_room_notice')
             if not notice_element:

@@ -1,6 +1,8 @@
 import re
 import time
 import traceback
+from collections import deque
+from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
@@ -13,6 +15,17 @@ class MusicManager(Singleton):
     质量过滤策略。QQMusicHandler 是具体的 UI adapter；命令与事件都通过
     MusicManager 访问音乐行为。
     """
+
+    PLAYBACK_POLL_INTERVAL = 0.3  # 播放就绪轮询间隔（秒）
+
+    # 歌曲版本后缀（如「(Live)」「（伴奏）」），比对点播目标时忽略
+    _SONG_VERSION_SUFFIX_PATTERN = re.compile(r"[（(\[][^）)\]]*[）)\]]")
+
+    # 单点（:play / :next）点播意图：待播放的点播请求队列，条目形如
+    # {"song": 歌曲信息, "played": 该点播是否已播放命中过}。连续点歌时逐条排队，
+    # 后一次点播不会顶掉尚未播放的前一次点播。
+    _ON_DEMAND_REQUESTS_MAX = 20
+    _on_demand_requests: Optional[deque] = None
 
     def __init__(self):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
@@ -43,6 +56,79 @@ class MusicManager(Singleton):
     @no_skip.setter
     def no_skip(self, value):
         self.music_handler.no_skip = value
+
+    @staticmethod
+    def _song_key(song_info) -> str:
+        """歌曲名归一化：忽略空白与大小写，并去掉版本后缀，便于比对同一首歌。"""
+        if not isinstance(song_info, dict):
+            return ""
+        song = re.sub(r"\s+", "", str(song_info.get("song") or "")).casefold()
+        return MusicManager._SONG_VERSION_SUFFIX_PATTERN.sub("", song)
+
+    @staticmethod
+    def _singer_keys(song_info) -> set:
+        """歌手名集合：按 '/' 拆分后归一化，Unknown 视为未知（空集）。"""
+        if not isinstance(song_info, dict):
+            return set()
+        singer = str(song_info.get("singer") or "")
+        artists = (part.strip().casefold() for part in singer.split("/"))
+        return {artist for artist in artists if artist and artist != "unknown"}
+
+    @classmethod
+    def _is_same_song(cls, requested, current) -> bool:
+        """是否为同一首歌：歌名归一化后相等，且歌手不冲突。
+
+        只用歌名会让同名翻唱/重制版顶替掉点播豁免（老歌里同名曲很常见）；
+        歌手任一侧未知时不据歌手否决，避免元数据缺失反而让点播的歌被跳过。
+        """
+        requested_song = cls._song_key(requested)
+        if not requested_song or requested_song != cls._song_key(current):
+            return False
+        requested_singers = cls._singer_keys(requested)
+        current_singers = cls._singer_keys(current)
+        if not requested_singers or not current_singers:
+            return True
+        return bool(requested_singers & current_singers)
+
+    def mark_on_demand(self, song_info) -> None:
+        """记录用户单点（:play / :next）意图，使该歌曲豁免老歌过滤。
+
+        由 QQMusicHandler 的显式点歌入口登记；电台与自动歌单不经过那里。
+        连续点歌时逐条登记，每首点播各自保留豁免资格。
+        """
+        if not isinstance(song_info, dict):
+            return
+        if self._on_demand_requests is None:
+            self._on_demand_requests = deque(maxlen=self._ON_DEMAND_REQUESTS_MAX)
+        self._on_demand_requests.append({"song": dict(song_info), "played": False})
+
+    def is_on_demand_playback(self, song_info) -> bool:
+        """该歌曲是否为用户单点请求的目标。
+
+        豁免只覆盖点播的那首歌：一旦该点播的歌曲播放过、房间又切到了别的歌，
+        这条豁免即失效，电台/自动歌单播放同一首歌时重新受老歌过滤约束。
+
+        副作用：命中时记录该点播已播放，并清理已失效的条目，因此调用方只需在
+        判定“这首老歌是否该跳过”时问一次。
+        """
+        requests = self._on_demand_requests
+        if not requests:
+            return False
+
+        matched = False
+        active = []
+        for entry in requests:
+            if not self._is_same_song(entry.get("song"), song_info):
+                # 已播放过的点播在房间换歌后作废，未播放的（含下一首点播）继续等待
+                if not entry.get("played"):
+                    active.append(entry)
+                continue
+            entry["played"] = True
+            active.append(entry)
+            matched = True
+
+        self._on_demand_requests = deque(active, maxlen=self._ON_DEMAND_REQUESTS_MAX)
+        return matched
 
     @property
     def song_release_lookup(self):
@@ -127,6 +213,49 @@ class MusicManager(Singleton):
     def get_playback_info(self) -> dict:
         """Public alias for get_current_song_info, used by commands and broadcaster."""
         return self.get_current_song_info()
+
+    def wait_for_playback_ready(self, expected_song: Optional[str] = None,
+                                timeout: float = 5.0,
+                                settling_delay: float = 0.3) -> bool:
+        """等待底层播放就绪：state=Playing 且（可选）曲目已刷新，成功后附加声卡稳定延时。
+
+        轮询 dumpsys media_session 直至 MediaSession PlaybackState 进入 Playing；
+        提供 expected_song 时拒绝上一首歌的陈旧 metadata。超时不抛异常，记录
+        warning 后返回 False，由调用方兜底恢复开麦。
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            info = self.get_playback_info() or {}
+            if info.get('state') == 'Playing' and self._matches_expected_song(
+                    info.get('song'), expected_song):
+                time.sleep(settling_delay)
+                return True
+            if time.monotonic() >= deadline:
+                self.logger.warning(
+                    "wait_for_playback_ready timed out after "
+                    f"{timeout}s: state={info.get('state')}, "
+                    f"song={info.get('song')}, expected={expected_song}"
+                )
+                return False
+            time.sleep(self.PLAYBACK_POLL_INTERVAL)
+
+    @staticmethod
+    def _matches_expected_song(reported, expected_song) -> bool:
+        """判断 MediaSession 上报的歌名是否已是本次点播的目标歌曲。
+
+        按空格切词比较而非子串匹配：点歌查询常为「歌名 歌手」，上报歌名常带
+        「(Live)」等后缀，两者都能命中；而子串匹配会让「:play 爱」被上一首
+        「真的爱你」的陈旧 metadata 满足，导致过早开麦。
+        """
+        if not expected_song:
+            return True
+        reported = (reported or "").strip()
+        expected = expected_song.strip()
+        if not reported:
+            return False
+        if expected == reported:
+            return True
+        return bool(set(reported.split()) & set(expected.split()))
 
     @with_driver_recovery
     def get_volume_level(self) -> int:
@@ -246,6 +375,11 @@ class MusicManager(Singleton):
             return False
 
         if release_date < cutoff:
+            # 用户单点（:play / :next）为强意图：点名要听的老歌不被老歌过滤跳过。
+            # 电台与自动歌单播放的其他歌曲仍然遵循该规则。
+            if self.is_on_demand_playback(song_info):
+                self.logger.info(f"Accepting on-demand old song ({release_date} < {cutoff}): {query}")
+                return False
             self.logger.info(f"Skipping old song ({release_date} < {cutoff}): {query}")
             return True
         return False

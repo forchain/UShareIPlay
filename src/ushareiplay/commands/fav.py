@@ -11,7 +11,7 @@ import time
 
 
 class FavCommand(BaseCommand):
-    requires_mic = True
+    playback_muting = True
     handler_attr = 'music_handler'
 
     def _xpath_textview_text_equals(self, text_value: str) -> str:

@@ -14,6 +14,10 @@ from ushareiplay.state.online_list_scraper import OnlineListScraper
 class UserCountEvent(BaseEvent):
     """在线人数事件处理器"""
 
+    def __init__(self, handler, runtime=None):
+        super().__init__(handler, runtime)
+        self._consecutive_refresh_failures = 0
+
     async def handle(self, key: str, element_wrapper):
         """
         处理在线人数事件
@@ -48,9 +52,33 @@ class UserCountEvent(BaseEvent):
 
             # 更新 RoomState 中的在线人数
             room_state = RoomState.instance()
-            if user_count != room_state.user_count:
+            if user_count == room_state.user_count:
+                return False
+
+            if self.is_ui_busy():
+                self.logger.debug(
+                    f"UI is busy, deferring online users refresh for user_count={user_count}"
+                )
+                return False
+
+            success = await OnlineListScraper.instance().refresh_online_users(target_count=user_count)
+            if success:
+                self._consecutive_refresh_failures = 0
                 room_state.user_count = user_count
-                await OnlineListScraper.instance().refresh_online_users()
+            else:
+                self._consecutive_refresh_failures += 1
+                if self._consecutive_refresh_failures >= 10:
+                    self.logger.warning(
+                        f"Online users refresh failed {self._consecutive_refresh_failures} times, "
+                        f"falling back to updating room_state.user_count={user_count}"
+                    )
+                    room_state.user_count = user_count
+                    self._consecutive_refresh_failures = 0
+                else:
+                    self.logger.debug(
+                        f"Online users refresh failed ({self._consecutive_refresh_failures}/10), "
+                        f"will retry on next tick"
+                    )
 
             return False
 

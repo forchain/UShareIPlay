@@ -1,5 +1,6 @@
 import logging
 
+from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
 
@@ -63,6 +64,7 @@ class AppHandler:
         # Create console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
+        console_handler.addFilter(ConsoleLogMuter.get_instance())
 
         # Create formatters with timestamp and short level names
         # File formatter without colors
