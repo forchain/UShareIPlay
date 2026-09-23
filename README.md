@@ -1,6 +1,16 @@
 # U Share I Play
 
-Android automation framework that controls the **Soul App** party room and **QQ Music** via Appium. Receives chat commands from room members, plays music, manages seats and timers, and handles room administration — all through a command-driven architecture running on macOS.
+<div align="center">
+
+https://github.com/user-attachments/assets/50d9822d-3c32-471e-91fb-8e50892290de
+
+*Demo: Soul App party room automation with QQ Music control via chat commands*
+
+</div>
+
+---
+
+Android automation framework that controls the **Soul App** party room and **QQ Music** via Appium. Receives chat commands (including natural language `@我` mentions via LLM) from room members, plays music, manages seats and timers, and handles room administration — all through a command-driven architecture running on macOS.
 
 ## Quick Start
 
@@ -23,9 +33,34 @@ cp config.local.yaml.example config.local.yaml
 
 > Per-machine settings go in `config.local.yaml` (gitignored). See [docs/config.md](docs/config.md).
 
+## Natural Language Interaction (大模型自然语言交互)
+
+In addition to standard prefix commands, users can interact naturally by typing `@我 <自然语言>` in the chat without memorizing specific command syntax:
+
+* **Song Playback**: `@我 帮我放一首周杰伦的晴天` ➔ Automatically resolves to `:play 周杰伦 晴天`
+* **Volume Control**: `@我 声音太小了调到10` ➔ Automatically resolves to `:vol 10`
+* **Playback Control**: `@我 换一首歌` / `@我 切歌` ➔ Automatically resolves to `:next`
+* **Context Awareness**: `@我 再放一遍这首歌` ➔ Uses live playback context to replay current song
+* **Conversational / Guidance**: `@我 你好呀` ➔ Natural language greeting reply; unprivileged commands receive polite upgrade guidance
+
+**Precedence & Fallback**:
+1. Exact registered keywords (`KeywordManager`) take first priority with zero latency.
+2. Unmatched mentions are resolved via the configured OpenAI-compatible LLM.
+3. On timeouts or errors, the bot gracefully falls back to `:help`.
+
+To enable LLM in `config.local.yaml`:
+```yaml
+llm:
+  enabled: true
+  base_url: "https://api.deepseek.com/v1" # or OpenAI, Qwen, Ollama, etc.
+  api_key: "sk-your-api-key"
+  model: "deepseek-chat"
+  timeout: 4.0
+```
+
 ## Command Reference
 
-Commands are sent in Soul App room chat as `:prefix [params]`. Access level required is shown (0 = anyone, 9 = owner only).
+Commands are sent in Soul App room chat as `:prefix [params]` or via `@我 <自然语言>`. Access level required is shown (0 = anyone, 9 = owner only).
 
 ### Music
 
@@ -104,6 +139,7 @@ Detailed reference for the AI agent and contributors:
 | [docs/timers.md](docs/timers.md) | Timer system, DB model, scheduling logic |
 | [docs/config.md](docs/config.md) | Config loading, local overrides, structure reference |
 | [docs/system.md](docs/system.md) | Architecture, startup flow, singleton pattern, crash recovery |
+| [docs/waydroid-virtual-audio.md](docs/waydroid-virtual-audio.md) | Parallels/Ubuntu Waydroid deployment, PipeWire routing, manual flow, and objective acceptance |
 
 ## Project Structure
 

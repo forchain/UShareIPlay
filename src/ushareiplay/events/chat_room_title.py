@@ -1,7 +1,7 @@
 """
 房名实时校验：
-- 若房名不包含「｜」，认为审核未通过/系统随机命名，排队重设为「日推」
-- 若已排队为「日推」且仍在冷却期，则忽略
+- 若房名不包含「｜」，认为审核未通过/系统随机命名，排队重设为「听歌」
+- 若已排队为「听歌」且仍在冷却期，则忽略
 """
 
 __elements__ = ["chat_room_title"]
@@ -41,6 +41,10 @@ class ChatRoomTitleEvent(BaseEvent):
             if not room_title_text:
                 return False
 
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+                return False
+
             if "｜" in room_title_text:
                 return False
 
@@ -50,7 +54,8 @@ class ChatRoomTitleEvent(BaseEvent):
             if title_manager.next_title:
                 return False
 
-            title_manager.set_next_title("日推")
+            default_title = getattr(title_manager, "get_default_title", lambda: "听歌")()
+            title_manager.set_next_title(default_title)
             return False
         except Exception as e:
             self.logger.debug(f"ChatRoomTitleEvent skipped: {e}")

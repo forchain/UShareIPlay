@@ -185,6 +185,76 @@ class InfoManager(Singleton):
         """
         return self._presence_tracker.get_online_users()
 
+    async def is_user_or_avatar_online(self, username: str) -> bool:
+        """
+        检查指定用户或其任意分身是否在线。
+        """
+        if not username:
+            return False
+        if self.is_user_online(username):
+            return True
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            all_avatars = await UserDAO.get_all_avatar_usernames(username)
+            online_users = self.get_online_users()
+            return bool(all_avatars & online_users)
+        except Exception:
+            return self.is_user_online(username)
+
+    async def check_playlist_protection(
+        self, caller_nickname: str, config: Optional[dict] = None
+    ) -> Optional[dict]:
+        """
+        检查当前歌单是否处于守护状态。
+        - 房主、管理员、系统角色播放时无需保护，允许切歌。
+        - 普通用户播放且在线时受保护；但房主、管理员、Console 可突破保护切歌。
+        - 系统角色（Timer、Agent）与普通用户不得打断在场普通用户的歌单。
+        """
+        player_name = self.player_name
+        if not player_name:
+            return None
+
+        from ushareiplay.core.roles import RolePolicy
+
+        cfg = config
+        if cfg is None:
+            if self._handler is not None and hasattr(self._handler, "config"):
+                cfg = self._handler.config
+            else:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                if SoulHandler.is_initialized():
+                    cfg = SoulHandler.instance().config
+
+        role_policy = RolePolicy(cfg if isinstance(cfg, dict) else None)
+
+        # 1. 若当前播放者为人工角色（房主、管理员、Console）或系统自动化角色，其播放无需保护，允许切歌
+        if role_policy.is_privileged(player_name):
+            return None
+
+        # 2. 若调用者为人工操作者（房主、管理员、Console），允许突破在场普通用户的歌单守护
+        if role_policy.is_human_operator(caller_nickname):
+            return None
+
+        # 3. 如果调用者与当前播放者是同一人（同名），允许切换
+        if caller_nickname == player_name:
+            return None
+
+        # 4. 检查调用者是否为当前播放者的分身，或者当前播放者（及分身）是否仍在房间
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            player_avatars = await UserDAO.get_all_avatar_usernames(player_name)
+            if caller_nickname in player_avatars:
+                return None
+            online_users = self.get_online_users()
+            is_online = bool(player_avatars & online_users)
+        except Exception:
+            is_online = self.is_user_online(player_name)
+
+        if is_online:
+            return {'error': f'{player_name} 正在播放歌单，请等待'}
+
+        return None
+
     # ------------------------------------------------------------------
     # 房间状态（委托给 RoomState）
     # ------------------------------------------------------------------
@@ -245,12 +315,20 @@ class InfoManager(Singleton):
         """
         self._room_state.room_id = value
 
+    @property
+    def recommendation_enabled(self) -> Optional[bool]:
+        """获取房间推荐状态"""
+        return self._room_state.recommendation_enabled
+
+    @recommendation_enabled.setter
+    def recommendation_enabled(self, value: Optional[bool]):
+        """设置房间推荐状态"""
+        self._room_state.recommendation_enabled = value
+
     def clear(self):
         """清空在线用户列表与房间状态"""
         self._presence_tracker._online_users.clear()
-        self._room_state._user_count = None
-        self._room_state._focus_count = None
-        self._room_state._room_id = None
+        self._room_state.clear()
         self.logger.info("Cleared online users list")
 
     # ------------------------------------------------------------------

@@ -76,4 +76,21 @@ def test_confirmed_party_name_violation_queues_daily_title(monkeypatch):
 
     assert handled is True
     assert element.clicked is True
-    assert queued_titles == ["日推"]
+    assert queued_titles == ["听歌"]
+
+
+def test_confirmed_party_name_violation_queues_configured_default_title(monkeypatch):
+    element = _Element()
+    queued_titles = []
+    fake_title_mgr = type("Title", (), {
+        "set_next_title": lambda self, title: queued_titles.append(title),
+        "get_default_title": lambda self: "默认歌单"
+    })()
+    monkeypatch.setattr(TitleManager, "instance", lambda: fake_title_mgr)
+    event = PartyNameViolationLaterEvent(_Handler(element))
+
+    handled = asyncio.run(event.handle("party_name_violation_later", _Snapshot("派对名称涉嫌违规，请修改后重试\n稍后再说")))
+
+    assert handled is True
+    assert element.clicked is True
+    assert queued_titles == ["默认歌单"]

@@ -38,13 +38,16 @@ class RuntimeQueueDrainer:
 
 
 class AgentCommandSpool:
-    def __init__(self, *, input_queue, command_dir: Path, obs=None):
+    def __init__(self, *, input_queue, command_dir: Path, obs=None, config=None):
         self.input_queue = input_queue
         self.command_dir = command_dir
         self.obs = obs
+        self.config = config
 
     def drain(self) -> None:
         try:
+            from ushareiplay.core.roles import RolePolicy
+            owner = RolePolicy(self.config).room_owner
             self.command_dir.mkdir(parents=True, exist_ok=True)
             for path in sorted(self.command_dir.glob("*.cmd")):
                 try:
@@ -68,13 +71,15 @@ class AgentCommandSpool:
                     parsed = None
 
                 if isinstance(parsed, dict) and parsed.get("content"):
+                    raw_nick = parsed.get("nickname")
+                    nickname = str(owner if not raw_nick or raw_nick == "Console" else raw_nick)
                     payload = {
                         "content": str(parsed.get("content")),
                         "source": "agent_spool",
-                        "nickname": str(parsed.get("nickname") or "Console"),
+                        "nickname": nickname,
                     }
                 else:
-                    payload = {"content": raw, "source": "agent_spool", "nickname": "Console"}
+                    payload = {"content": raw, "source": "agent_spool", "nickname": owner}
 
                 self.input_queue.put(payload)
                 if self.obs:

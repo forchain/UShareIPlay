@@ -1,5 +1,6 @@
 import logging
 
+from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.log_formatter import ColoredFormatter
 from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
 

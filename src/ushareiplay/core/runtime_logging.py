@@ -130,6 +130,8 @@ class RuntimeLogging:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(level)
             console_handler.setFormatter(console_formatter)
+            from ushareiplay.core.console_log_muter import ConsoleLogMuter
+            console_handler.addFilter(ConsoleLogMuter.get_instance())
             self._console_handlers[name] = console_handler
 
         logger = logging.getLogger(name)

@@ -1,0 +1,12 @@
+[Unit]
+Description=UShareIPlay Persistent ADB Port Forwarding (5555 -> Waydroid)
+After=network-online.target waydroid-container.service
+Wants=network-online.target waydroid-container.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/ushareiplay-adb-forward.sh
+
+[Install]
+WantedBy=multi-user.target

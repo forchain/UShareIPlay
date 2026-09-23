@@ -114,7 +114,8 @@ async def test_normal_user_all_day_window_blocked_play_is_intercepted(_patch_use
 
 
 @pytest.mark.asyncio
-async def test_timer_user_is_allowed_even_when_blocked(_patch_user_dao):
+async def test_timer_user_is_blocked_in_sleep_window(_patch_user_dao):
+    """系统自动化角色（Timer）在睡眠时段内触发被阻断命令，必须被拦截。"""
     cm = _make_command_manager(
         {
             "system_users": ["Timer"],
@@ -138,8 +139,39 @@ async def test_timer_user_is_allowed_even_when_blocked(_patch_user_dao):
 
     res = await cm.process_command(cmd, msg, command_info)
 
-    assert cmd.called is True
-    assert "OK @Timer" == res
+    assert cmd.called is False
+    assert "休息中（11pm-6am）" in (res or "")
+
+
+@pytest.mark.asyncio
+async def test_admin_and_owner_and_console_allowed_in_sleep_window(_patch_user_dao):
+    """房主（Joyer）、Console 及管理员（Outlier）作为人工操作者，在睡眠时段可突破保护执行命令。"""
+    cm = _make_command_manager(
+        {
+            "room_owner": "Joyer",
+            "admin_users": ["Outlier"],
+            "system_users": ["Timer", "Agent"],
+            "sleep": {
+                "enabled": True,
+                "start": "00:00",
+                "end": "00:00",  # all day
+                "blocked_commands": ["play"],
+            },
+        }
+    )
+    for operator in ("Joyer", "Outlier"):
+        cmd = DummyCommand()
+        msg = MessageInfoStub(operator, ":play")
+        command_info = {
+            "prefix": "play",
+            "parameters": [],
+            "level": 1,
+            "error_template": "{error}",
+            "response_template": "{message}",
+        }
+        res = await cm.process_command(cmd, msg, command_info)
+        assert cmd.called is True
+        assert f"OK @{operator}" == res
 
 
 @pytest.mark.asyncio
