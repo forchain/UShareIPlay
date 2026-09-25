@@ -6,6 +6,7 @@ from typing import Any, Optional
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models import MessageInfo
 from ushareiplay.core.singleton import Singleton
+from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
 
 
 class PartyManager(Singleton):
@@ -448,12 +449,46 @@ class PartyManager(Singleton):
 
         return await self.join_party()
 
+    def _click_element_safe(self, element, key: str = None) -> bool:
+        """
+        安全点击元素，若遇到 StaleElementReferenceException 则尝试重新定位可点击元素并点击
+        """
+        try:
+            if element:
+                element.click()
+                return True
+        except (StaleElementReferenceException, WebDriverException) as e:
+            self.logger.warning(
+                f"Element {key} click stale or failed, retrying with wait_for_element_clickable: {e}"
+            )
+            if key and hasattr(self.handler, 'element_finder'):
+                retry_elem = self.handler.element_finder.wait_for_element_clickable(key, timeout=3)
+                if retry_elem:
+                    try:
+                        retry_elem.click()
+                        return True
+                    except Exception as retry_e:
+                        self.logger.warning(f"Retry click failed for {key}: {retry_e}")
+        except Exception as e:
+            self.logger.warning(f"Failed to click element {key}: {e}")
+        return False
+
     async def join_party(self) -> bool:
         """
         处理其他可能的异常情况
         返回True表示执行了操作，False表示没有找到需要处理的情况
         """
         try:
+            # 优先检查当前屏幕是否已存在返回房间弹窗 (party_back / cn.soulapp.android:id/tv_look)
+            party_back_elem = self.handler.element_finder.try_find_element('party_back', log=False)
+            if party_back_elem:
+                if self._click_element_safe(party_back_elem, 'party_back'):
+                    self.logger.info("Clicked back to party (dialog was already visible)")
+                    from ushareiplay.managers.recommendation_manager import RecommendationManager
+                    if RecommendationManager.is_initialized():
+                        RecommendationManager.instance().ensure_synced_on_return()
+                    return True
+
             if not self._enter_party_hall_from_home():
                 return False
 
@@ -501,15 +536,23 @@ class PartyManager(Singleton):
             return False
 
         if key == 'party_back':
-            element.click()
-            self.logger.info("Clicked back to party")
-            return True
+            if self._click_element_safe(element, 'party_back'):
+                self.logger.info("Clicked back to party")
+                return True
+            return False
 
         search_entry = element
-        search_entry.click()
+        if not self._click_element_safe(search_entry, 'search_entry'):
+            self.logger.warning("点击搜索入口失败")
+            return False
         self.logger.info("Clicked search entry")
         search_box = self.handler.element_finder.wait_for_element('search_box')
         if not search_box:
+            # 防御性处理：点击 search_entry 后若未出现搜索框，检查是否被返回房间弹窗打断
+            party_back = self.handler.element_finder.try_find_element('party_back', log=False)
+            if party_back and self._click_element_safe(party_back, 'party_back'):
+                self.logger.info("Clicked back to party (found party_back after search entry)")
+                return True
             self.logger.warning("未找到搜索框")
             return False
 
@@ -558,11 +601,22 @@ class PartyManager(Singleton):
         self.handler.key_actions.press_back()
 
     def _create_party_flow(self) -> bool:
+        party_back = self.handler.element_finder.try_find_element('party_back', log=False)
+        if party_back and self._click_element_safe(party_back, 'party_back'):
+            self.logger.info("Clicked back to party in create_party_flow")
+            return True
+
         key, element = self.handler.element_finder.wait_for_any_element(['create_party_entry', 'create_room_entry'])
         if not element:
+            party_back = self.handler.element_finder.try_find_element('party_back', log=False)
+            if party_back and self._click_element_safe(party_back, 'party_back'):
+                self.logger.info("Clicked back to party (found party_back after create party timeout)")
+                return True
             self.logger.warning("未找到派对入口")
             return False
-        element.click()
+        if not self._click_element_safe(element, key):
+            self.logger.warning(f"点击派对创建入口 {key} 失败")
+            return False
         self.logger.info("Clicked create party entry")
 
         mode = self._party_create_mode()
