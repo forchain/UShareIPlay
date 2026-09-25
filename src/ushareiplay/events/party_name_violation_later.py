@@ -33,7 +33,7 @@ class PartyNameViolationLaterEvent(BaseEvent):
                 return True
 
             from ushareiplay.state.room_state import RoomState
-            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            if RoomState.in_guest_room():
                 return True
 
             from ushareiplay.managers.room_name_manager import RoomNameManager

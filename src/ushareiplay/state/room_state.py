@@ -165,6 +165,18 @@ class RoomState(Singleton):
             self.logger.info(f"Guest room status updated: {self._is_guest_room} -> {value}")
         self._is_guest_room = value
 
+    @classmethod
+    def in_guest_room(cls) -> bool:
+        """当前是否处于他人房间；RoomState 尚未初始化时为 False。
+
+        「未初始化也算不在客房」这个判断原先在 13 处各写了一遍
+        （`RoomState.is_initialized() and RoomState.instance().is_guest_room`），
+        每处都要重复同一个短路顺序。
+        """
+        if not cls.is_initialized():
+            return False
+        return bool(cls.instance().is_guest_room)
+
     @property
     def is_host_room(self) -> bool:
         """是否处于主房间（宿主模式）"""

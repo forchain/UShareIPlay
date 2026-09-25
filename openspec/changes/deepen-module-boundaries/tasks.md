@@ -94,11 +94,16 @@
 
 ## 7. PendingWrite 内核 (候选 7 · Worth exploring)
 
-- [ ] 7.1 定义参数化 `PendingWrite(cooldown_min, apply)`：`submit` / `due?` / `mark_attempted` / `remaining`
-- [ ] 7.2 `RoomNameManager` 改为持有该内核（框架为私有内核，遵守 ADR-0001）
-- [ ] 7.3 `NoticeManager` / `TopicManager` 迁移到同一内核，统一"时钟何时推进"语义
-- [ ] 7.4 收敛四份命令侧 flush 映射与重复的 `split('|')` 文本清洗
-- [ ] 7.5 用假时钟为内核写一份测试套件
+- [x] 7.1 新建 `PendingWrite(cooldown_minutes, label)`：`submit` / `has_pending` / `can_apply_now` / `remaining_minutes` / `mark_attempted` / `clear`
+- [x] 7.2 `RoomNameManager` 持有该内核，作为 `self._write`：`next_title` / `last_update_time` / `cooldown_minutes` 变成委托属性，`can_update_now` / `get_remaining_cooldown_minutes` / `_advance_cooldown` 委托调用（对外名字不变，遵守 ADR-0001：这是 RoomNameManager 之下的私有内核，不是对房间名不变量的重拆）
+- [x] 7.3 `NoticeManager`（15 分钟）与 `TopicManager`（5 分钟）迁移到同一内核；话题那份原先把算术内联在 `get_status()` / `change_topic()` 里，现在也补上 `can_update_now` / `get_remaining_cooldown_minutes`，三个 manager 的冷却接缝因此一致
+- [x] 7.4 收敛重复的文本清洗：新增 `helpers/room_banner.py::clean_banner_text()`（房间名 12 字 / 话题 15 字）
+- [x] 7.5 顺带收敛客房守卫：`RoomState.in_guest_room()` 取代 13 处逐字重复的 `is_initialized() and ...is_guest_room`
+- [x] 7.6 用假时钟为内核写一份测试套件（`tests/test_room_banner_text.py`），并断言三个 manager 的冷却时长与时钟语义
+
+**结果**：863 通过；`last_update_time` 的推进与剩余分钟数各只剩一处实现。
+
+**未处理（记录理由）**：四份命令侧「内部 key → 聊天文案」的映射（`title` / `theme` / `notice` / `topic` 命令的 `update()` 与响应拼装）没有合并：它们的返回文案各不相同、直接面向用户，合并会改变聊天气泡里的原文。这属于「文案规整」而非「计时机制」，与候选 7 的接口不同。
 
 ## 8. RuntimeInputPipeline (候选 8 · Worth exploring)
 

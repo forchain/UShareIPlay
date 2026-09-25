@@ -42,7 +42,7 @@ class ChatRoomTitleEvent(BaseEvent):
                 return False
 
             from ushareiplay.state.room_state import RoomState
-            if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+            if RoomState.in_guest_room():
                 return False
 
             if "｜" in room_title_text:

@@ -224,7 +224,7 @@ class RoomInfoWindow(Singleton):
         `pending_audit_retry`，供 `process_pending_retry()` 补救。
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'skipped': True, 'reason': 'guest_room'}
 
         results: Dict = {}
@@ -275,7 +275,7 @@ class RoomInfoWindow(Singleton):
         单独决定。
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 
         if not self.pending_audit_retry:
