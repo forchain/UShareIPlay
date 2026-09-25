@@ -217,7 +217,8 @@ class PartyManager(Singleton):
                 self.logger.info(
                     f"Owner transfer detected at {source}: adopted room {room_id} as own host room"
                 )
-                self.handler.party_id = room_id
+                if self.handler:
+                    self.handler.party_id = room_id
                 return False
 
             self.logger.warning(
@@ -227,9 +228,14 @@ class PartyManager(Singleton):
             await self.leave_and_recreate_party()
             return True
 
+        is_new_room = (room_state.room_id != room_id)
         room_state.room_id = room_id
-        self.handler.party_id = room_id
-        self.logger.info(f"Room verified at {source}: {room_id}")
+        if self.handler:
+            self.handler.party_id = room_id
+        if source == "startup" or is_new_room:
+            self.logger.info(f"Room verified at {source}: {room_id}")
+        else:
+            self.logger.debug(f"Room verified at {source}: {room_id}")
         return False
 
     def get_party_user_count(self) -> int:

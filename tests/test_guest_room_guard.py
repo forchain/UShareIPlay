@@ -441,6 +441,37 @@ async def test_room_id_event_match_updates_state(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monkeypatch):
+    from unittest.mock import MagicMock
+    from ushareiplay.events.room_id import RoomIdEvent
+
+    room_state = RoomState.instance()
+    room_state.expected_party_id = "FM18633292"
+
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    info_mock = MagicMock()
+    party_manager._logger = SimpleNamespace(
+        info=info_mock,
+        warning=lambda *a, **k: None,
+        debug=lambda *a, **k: None,
+        error=lambda *a, **k: None,
+    )
+
+    evt = RoomIdEvent(handler)
+    wrapper = SimpleNamespace(text="FM18633292", content="FM18633292")
+
+    # 第一次扫描：房间首次核验，记录一次 info 日志
+    await evt.handle("room_id", wrapper)
+    assert info_mock.call_count == 1
+    assert "Room verified at room_id_event: FM18633292" in info_mock.call_args[0][0]
+
+    # 后续扫描（房间未变且无需告警）：不应重复记录 info 日志刷屏
+    await evt.handle("room_id", wrapper)
+    await evt.handle("room_id", wrapper)
+    assert info_mock.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
     from unittest.mock import AsyncMock
     from ushareiplay.core.app_controller import AppController
