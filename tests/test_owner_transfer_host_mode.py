@@ -95,12 +95,22 @@ def _guest_room_state(monkeypatch, explicit_guest_flag=True):
     return state
 
 
-def _room_id_event(party_manager):
+def _party_manager_with_stub_handler(monkeypatch, handler=None):
+    """真实的 PartyManager + stub handler：房间核对判定现在归它所有。"""
+    from ushareiplay.managers.party_manager import PartyManager
+
+    manager = PartyManager.instance()
+    handler = handler or _HandlerStub(config={})
+    manager._handler = handler
+    manager._logger = handler.logger
+    monkeypatch.setattr(manager, "leave_and_recreate_party", AsyncMock(return_value=True))
+    return manager, handler
+
+
+def _room_id_event(handler):
     from ushareiplay.events.room_id import RoomIdEvent
 
-    handler = _HandlerStub(config={})
-    handler.controller = SimpleNamespace(party_manager=party_manager)
-    return RoomIdEvent(handler), handler
+    return RoomIdEvent(handler)
 
 
 def _wrapper(room_id):
@@ -110,8 +120,8 @@ def _wrapper(room_id):
 @pytest.mark.asyncio
 async def test_room_id_becoming_configured_id_promotes_to_host_mode(monkeypatch):
     state = _guest_room_state(monkeypatch)
-    party_manager = SimpleNamespace(leave_and_recreate_party=AsyncMock(return_value=True))
-    event, handler = _room_id_event(party_manager)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    event = _room_id_event(handler)
 
     result = await event.handle("room_id", _wrapper(HOST_ROOM_ID))
 
@@ -131,8 +141,8 @@ async def test_room_id_becoming_configured_id_promotes_from_derived_guest_mode(m
     """Guest mode derived from the room ID (no explicit flag) is promoted too."""
     state = _guest_room_state(monkeypatch, explicit_guest_flag=False)
     assert state.is_guest_room is True
-    party_manager = SimpleNamespace(leave_and_recreate_party=AsyncMock(return_value=True))
-    event, _handler = _room_id_event(party_manager)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    event = _room_id_event(handler)
 
     await event.handle("room_id", _wrapper(HOST_ROOM_ID))
 
@@ -143,8 +153,8 @@ async def test_room_id_becoming_configured_id_promotes_from_derived_guest_mode(m
 @pytest.mark.asyncio
 async def test_unrelated_room_id_still_triggers_leave_and_recreate(monkeypatch):
     state = _guest_room_state(monkeypatch)
-    party_manager = SimpleNamespace(leave_and_recreate_party=AsyncMock(return_value=True))
-    event, _handler = _room_id_event(party_manager)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    event = _room_id_event(handler)
 
     result = await event.handle("room_id", _wrapper(RANDOM_ROOM_ID))
 
@@ -158,16 +168,19 @@ async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
     from ushareiplay.core.app_controller import AppController
 
     state = _guest_room_state(monkeypatch)
-    party_manager = SimpleNamespace(leave_and_recreate_party=AsyncMock(return_value=True))
 
     element_finder = SimpleNamespace(
         try_find_element=lambda key, log=False: object(),
         get_element_text=lambda _element: HOST_ROOM_ID,
     )
-    soul_handler = SimpleNamespace(element_finder=element_finder, party_id=None)
+    # 生产中 PartyManager.handler 就是 SoulHandler 单例，这里让 stub handler 与
+    # 启动路径读到的 soul_handler 是同一个对象
+    soul_handler = _HandlerStub(config={})
+    soul_handler.element_finder = element_finder
+    soul_handler.party_id = None
+    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch, soul_handler)
     controller = SimpleNamespace(
         soul_handler=soul_handler,
-        party_manager=party_manager,
         logger=_Logger(),
     )
 
@@ -206,8 +219,8 @@ async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     assert dummy_command.called is False
     assert "当前处于他人房间" in blocked
 
-    party_manager = SimpleNamespace(leave_and_recreate_party=AsyncMock(return_value=True))
-    event, _handler = _room_id_event(party_manager)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    event = _room_id_event(handler)
     await event.handle("room_id", _wrapper(HOST_ROOM_ID))
 
     dummy_command = _DummyCommand()

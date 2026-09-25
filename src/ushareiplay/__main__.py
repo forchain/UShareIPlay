@@ -22,6 +22,8 @@ async def run_app():
     controller = None
     try:
         controller = AppController.initialize(config)
+        # 设备 I/O 不在构造函数里：显式启动驱动与应用，失败交给外层重试循环
+        controller.start_up()
         return await controller.start_monitoring()
     finally:
         if controller is not None:

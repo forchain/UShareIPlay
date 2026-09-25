@@ -107,8 +107,12 @@
 
 ## 8. RuntimeInputPipeline (候选 8 · Worth exploring)
 
-- [ ] 8.1 抽出 `RuntimeInputPipeline.drain()`：console/agent 归一化、queue 文法、静默/私聊路由、meta-commands
-- [ ] 8.2 合并 `_detect_initial_room_state` 与 `RoomIdEvent` 为 `verify_current_room()`
-- [ ] 8.3 构造函数中的设备 I/O 移入 `DriverLifecycle` 模式
-- [ ] 8.4 删除循环内的第二份 queue 文法（`CommandManager:402` 已是唯一 applier）
-- [ ] 8.5 让循环体收缩到两次调用，并为 pipeline 补不依赖 `__new__` 的测试
+- [x] 8.1 抽出 `RuntimeInputPipeline.drain()`（`core/runtime_services.py`，与 `RuntimeQueueDrainer` / `AgentCommandSpool` 同一处）：dict/tuple/裸字符串归一化、房主昵称默认、`!stop`/`!timer`/`!dump` 三个 meta 命令、queue 文法路由
+- [x] 8.2 合并 `_detect_initial_room_state` 与 `RoomIdEvent` 为 `PartyManager.verify_current_room(room_id, source=...)`（群主转让 / 退房重建 / 记录房间 ID 的唯一判定）
+- [x] 8.3 构造函数的设备 I/O 移入 `AppController.start_up()`，由 `__main__` 在 `initialize()` 之后调用 —— `AppController(config)` 现在无副作用
+- [x] 8.4 queue 文法只剩一个 applier：新增 `route_queue_text()`，监控循环与 `CommandManager.execute_runtime_queue_messages` 共用
+- [x] 8.5 循环体收缩到两次调用（`runtime_input.drain()` + `event_manager.process_current_screen()`）；新增 `tests/test_runtime_input_pipeline.py`（15 例），直接构造管线，不再需要 `AppController.__new__`
+
+**结果**：878 通过；监控循环的输入处理从 ~75 行内联降为一个 `drain()`。
+
+**一处判定收紧**：`route_queue_text()` 采用「只有触发符、没有内容不算命令」的判定（与 `execute_chat_scan` / `process_missed_messages` 一致）。原先循环用的是仅去空白的 `result.text.strip()`，因此裸 `:` 会被当成命令入队；现在会作为普通发言记日志。`CommandManager` 那条路径原先完全不判定，现在同样收紧。

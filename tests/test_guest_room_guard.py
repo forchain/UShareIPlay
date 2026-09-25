@@ -387,6 +387,17 @@ async def test_guest_room_blocks_events_and_window_audit():
     assert res.get("skipped") == "guest_room"
 
 
+def _party_manager_with_stub_handler(monkeypatch):
+    """真实的 PartyManager + stub handler：房间核对判定现在归它所有。"""
+    from ushareiplay.managers.party_manager import PartyManager
+
+    handler = HandlerStub(config={})
+    manager = PartyManager.instance()
+    manager._handler = handler
+    manager._logger = handler.logger
+    return manager, handler
+
+
 @pytest.mark.asyncio
 async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
@@ -395,14 +406,8 @@ async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monk
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    mock_party_manager = type('_MockPM', (), {
-        'leave_and_recreate_party': AsyncMock(return_value=True)
-    })()
-
-    handler = HandlerStub(config={})
-    handler.controller = type('_MockController', (), {
-        'party_manager': mock_party_manager
-    })()
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     evt = RoomIdEvent(handler)
     # 模拟系统自动调入随机房间 FM99999999
@@ -410,25 +415,19 @@ async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monk
     res = await evt.handle("room_id", wrapper)
 
     assert res is True
-    mock_party_manager.leave_and_recreate_party.assert_awaited_once()
+    party_manager.leave_and_recreate_party.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_room_id_event_match_updates_state():
+async def test_room_id_event_match_updates_state(monkeypatch):
     from unittest.mock import AsyncMock
     from ushareiplay.events.room_id import RoomIdEvent
 
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    mock_party_manager = type('_MockPM', (), {
-        'leave_and_recreate_party': AsyncMock(return_value=True)
-    })()
-
-    handler = HandlerStub(config={})
-    handler.controller = type('_MockController', (), {
-        'party_manager': mock_party_manager
-    })()
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     evt = RoomIdEvent(handler)
     # 模拟在预期的客房 FM18633292
@@ -438,7 +437,7 @@ async def test_room_id_event_match_updates_state():
     assert res is False
     assert room_state.room_id == "FM18633292"
     assert handler.party_id == "FM18633292"
-    mock_party_manager.leave_and_recreate_party.assert_not_awaited()
+    party_manager.leave_and_recreate_party.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -449,9 +448,8 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    mock_party_manager = type('_MockPM', (), {
-        'leave_and_recreate_party': AsyncMock(return_value=True)
-    })()
+    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch)
+    monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     element_finder = type('_EF', (), {
         'try_find_element': lambda self, key, log=False: object(),
@@ -465,12 +463,11 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
 
     controller = SimpleNamespace(
         soul_handler=soul_handler,
-        party_manager=mock_party_manager,
         logger=type('_L', (), {'warning': lambda *a: None, 'info': lambda *a: None, 'debug': lambda *a: None})(),
     )
 
     await AppController._detect_initial_room_state(controller)
-    mock_party_manager.leave_and_recreate_party.assert_awaited_once()
+    party_manager.leave_and_recreate_party.assert_awaited_once()
 
 
 

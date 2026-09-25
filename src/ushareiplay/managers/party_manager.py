@@ -188,6 +188,50 @@ class PartyManager(Singleton):
             self.logger.error(f"Error processing end command: {traceback.format_exc()}")
             return {'error': 'Failed to end party'}
 
+    async def verify_current_room(self, room_id: str, *, source: str = "runtime") -> bool:
+        """核对当前所在房间是否与预期一致；不一致则退房重建。
+
+        启动时的 `_detect_initial_room_state` 与运行期的 `RoomIdEvent` 原先各写
+        一份同样的判定（群主转让 → 认作自有房；ID 不符 → 退房重建；否则记录），
+        现在只有这一处。
+
+        Args:
+            room_id: 当前界面上的房间 ID
+            source: 触发方（startup / event / ...），只用于日志
+
+        Returns:
+            True 表示已经退房并重建（调用方应中断当前这轮屏幕处理）
+        """
+        from ushareiplay.state.room_state import RoomState
+
+        if not room_id or not RoomState.is_initialized():
+            return False
+
+        room_state = RoomState.instance()
+        expected_id = room_state.get_expected_party_id()
+
+        if expected_id and room_id != expected_id:
+            # 群主转让：房间 ID 变为配置中的主房间 ID，机器人已成为房主，
+            # 应恢复宿主模式，而不是退房重建。
+            if room_state.adopt_host_room(room_id):
+                self.logger.info(
+                    f"Owner transfer detected at {source}: adopted room {room_id} as own host room"
+                )
+                self.handler.party_id = room_id
+                return False
+
+            self.logger.warning(
+                f"Room ID mismatch detected at {source}: current={room_id}, expected={expected_id}. "
+                f"Exiting room and recreating party..."
+            )
+            await self.leave_and_recreate_party()
+            return True
+
+        room_state.room_id = room_id
+        self.handler.party_id = room_id
+        self.logger.info(f"Room verified at {source}: {room_id}")
+        return False
+
     def get_party_user_count(self) -> int:
         """
         获取当前派对人数

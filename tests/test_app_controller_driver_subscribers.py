@@ -95,7 +95,8 @@ def controller_without_init(driver=None):
     return controller
 
 
-def test_controller_init_closes_driver_when_starting_apps_fails(monkeypatch):
+def test_start_up_closes_driver_when_starting_apps_fails(monkeypatch):
+    """启动期设备 I/O 在 start_up() 里：失败必须关掉驱动再抛出。"""
     driver = FakeDriver("startup-driver")
     controller = object.__new__(AppController)
     monkeypatch.setattr(AppController, "_init_driver", lambda _self: driver)
@@ -105,8 +106,11 @@ def test_controller_init_closes_driver_when_starting_apps_fails(monkeypatch):
 
     monkeypatch.setattr(AppController, "_start_apps", fail_to_start_apps)
 
+    # 构造本身不做设备 I/O
+    AppController.__init__(controller, {})
+
     with pytest.raises(RuntimeError, match="startup failed"):
-        AppController.__init__(controller, {})
+        controller.start_up()
 
     assert driver.quit_called is True
 

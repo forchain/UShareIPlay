@@ -18,6 +18,7 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 from ushareiplay.core.runtime_services import (
+    RuntimeInputPipeline,
     AgentCommandSpool,
     RuntimeQueueDrainer,
     StatusReporter,
@@ -59,18 +60,11 @@ class AppController(Singleton):
             obs=self.obs,
         )
         self._network_bridge = None
-        try:
-            self.driver_lifecycle.initialize()
-            # 使用主driver启动其他应用
-            self._start_apps()
-        except Exception:
-            self.driver_lifecycle.shutdown()
-            if self._network_bridge:
-                try:
-                    self._network_bridge.stop()
-                except Exception:
-                    pass
-            raise
+        # 构造不做设备 I/O：驱动与应用启动在 start_up() 里，由入口在
+        # initialize() 之后显式调用。否则任何测试只要构造控制器就会去连设备，
+        # 只能靠 `AppController.__new__` 手工拼字段来绕开。
+        self._driver_started = False
+
         self.input_queue = queue.Queue()
         self.agent_command_dir = Path(".agent") / "commands"
         self.is_running = True
@@ -119,6 +113,30 @@ class AppController(Singleton):
             ui_lock=self.ui_lock,
             obs=self.obs,
         )
+        # 运行时输入管线在 start_monitoring 里构造：它需要 handler 与 timer_manager
+        self.runtime_input = None
+
+    def start_up(self) -> None:
+        """建立 Appium 驱动并拉起目标应用（唯一一处设备 I/O）。
+
+        与 `DriverLifecycle` 配合：失败时关闭驱动与网络桥，把异常交回入口的
+        重试循环，而不是把控制器留在半启动状态。
+        """
+        if self._driver_started:
+            return
+        try:
+            self.driver_lifecycle.initialize()
+            # 使用主driver启动其他应用
+            self._start_apps()
+        except Exception:
+            self.driver_lifecycle.shutdown()
+            if self._network_bridge:
+                try:
+                    self._network_bridge.stop()
+                except Exception:
+                    pass
+            raise
+        self._driver_started = True
 
     @property
     def room_owner(self) -> str:
@@ -351,43 +369,27 @@ class AppController(Singleton):
         self._agent_command_spool.drain()
 
     async def _detect_initial_room_state(self):
-        """开服启动时检测当前是否已在房间中，并核对 RoomState (主房/客房/未知房间核验)"""
+        """启动时：找到房间 ID 并交给 PartyManager 核对（与运行期同一判定）。
+
+        这里只做「找到元素并取文本」；主房/客房/群主转让的判定与退房重建都在
+        `PartyManager.verify_current_room()`。
+        """
         try:
             if not self.soul_handler or not hasattr(self.soul_handler, 'element_finder'):
                 return
             room_id_elem = self.soul_handler.element_finder.try_find_element('room_id', log=False)
-            if room_id_elem:
-                room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
-                if room_id_text and isinstance(room_id_text, str):
-                    clean_id = room_id_text.strip()
-                    from ushareiplay.state.room_state import RoomState
-                    if RoomState.is_initialized():
-                        room_state = RoomState.instance()
-                        expected_id = room_state.get_expected_party_id()
-                        if expected_id and clean_id != expected_id:
-                            # 群主转让：房间 ID 变为配置中的主房间 ID，机器人已成为房主，
-                            # 启动时应恢复宿主模式，而不是退房重建。
-                            if room_state.adopt_host_room(clean_id):
-                                self.logger.info(
-                                    f"Owner transfer detected at startup: adopted room {clean_id} "
-                                    f"as own host room"
-                                )
-                                self.soul_handler.party_id = clean_id
-                                return
+            if not room_id_elem:
+                return
+            room_id_text = self.soul_handler.element_finder.get_element_text(room_id_elem)
+            if not room_id_text or not isinstance(room_id_text, str):
+                return
 
-                            self.logger.warning(
-                                f"Startup room ID mismatch: current={clean_id}, expected={expected_id}. "
-                                f"Exiting unauthorized room to recreate default party..."
-                            )
-                            if hasattr(self, 'party_manager') and self.party_manager:
-                                await self.party_manager.leave_and_recreate_party()
-                                return
-
-                        self.soul_handler.party_id = clean_id
-                        room_state.room_id = clean_id
-                        self.logger.info(
-                            f"Startup room verified: {clean_id}, is_guest_room={room_state.is_guest_room}"
-                        )
+            from ushareiplay.managers.party_manager import PartyManager
+            if not PartyManager.is_initialized():
+                return
+            await PartyManager.instance().verify_current_room(
+                room_id_text.strip(), source="startup"
+            )
         except Exception as e:
             if self.logger:
                 self.logger.debug(f"Initial room detection skipped: {e}")
@@ -544,90 +546,27 @@ class AppController(Singleton):
         # Detect initial room state on startup
         await self._detect_initial_room_state()
 
+        self.runtime_input = RuntimeInputPipeline(
+            input_queue=self.input_queue,
+            room_owner_provider=lambda: self.room_owner,
+            logger=self.logger,
+            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
+            timer_manager=self.timer_manager,
+            obs=self.obs,
+            dump_artifacts=self._dump_readonly_artifacts,
+        )
+
         self.logger.info("开始主监控循环...")
 
-        paused = False
         while self.is_running:
             try:
                 self._drain_agent_command_spool()
                 if self._runtime_queue_drainer:
                     await self._runtime_queue_drainer.drain()
                 # Check for console input (高优先级，在事件管理器前处理)
-                try:
-                    while not self.input_queue.empty():
-                        item = self.input_queue.get_nowait()
-                        owner = self.room_owner
-                        if isinstance(item, dict):
-                            message = item.get("content", "")
-                            input_source = item.get("source", "console")
-                            raw_nick = item.get("nickname")
-                            nickname = str(owner if not raw_nick or raw_nick == "Console" else raw_nick)
-                        elif isinstance(item, tuple):
-                            message, input_source = item
-                            nickname = owner
-                        else:
-                            message, input_source = item, "console"
-                            nickname = owner
-                        # Only send non-empty messages
-                        if message.strip():
-                            if message == '!stop':
-                                paused = not paused
-                                self.soul_handler.logger.critical(f'paused: {paused}')
-                            elif message == '!timer':
-                                if self.timer_manager.is_running():
-                                    await self.timer_manager.stop()
-                                else:
-                                    await self.timer_manager.start()
-                                self.soul_handler.logger.critical(f'is_running:{self.timer_manager.is_running()}')
-                            elif message == '!dump':
-                                # read-only dump of artifacts using existing session
-                                try:
-                                    await self._dump_readonly_artifacts(reason=input_source)
-                                except Exception:
-                                    self.obs.emit(
-                                        "artifact.dump.error",
-                                        level="ERROR",
-                                        ctx={"error": traceback.format_exc(), "reason": input_source},
-                                    )
-                            else:
-                                from ushareiplay.core.chat_intake import (
-                                    ChatIntakeKind,
-                                    expand_queue_text,
-                                    format_manual_message,
-                                    is_manual_operator,
-                                )
-                                from ushareiplay.models.message_info import MessageInfo
+                await self.runtime_input.drain()
 
-                                for result in expand_queue_text(message, nickname):
-                                    if result.kind == ChatIntakeKind.COMMAND and result.text.strip():
-                                        message_info = MessageInfo(
-                                            content=result.text,
-                                            nickname=nickname,
-                                            silent=result.silent,
-                                            private_reply=result.private_reply,
-                                            sleep_exempt=result.sleep_exempt,
-                                            source=input_source,
-                                        )
-                                        await MessageQueue.instance().put_message(message_info)
-                                        self.obs.emit(
-                                            "queue.enqueue",
-                                            ctx={"source": input_source, "content": message_info.content, "nickname": message_info.nickname},
-                                        )
-                                        self.logger.info(f"{input_source} message added to queue: {message_info.content}")
-                                    elif result.kind == ChatIntakeKind.PLAIN_CHAT and not result.silent:
-                                        screen_text = (
-                                            format_manual_message(result.text)
-                                            if is_manual_operator(nickname, input_source)
-                                            else result.text
-                                        )
-                                        self.message_dispatch.send_screen_message(screen_text)
-                                    elif result.kind == ChatIntakeKind.PLAIN_CHAT and result.silent:
-                                        self.logger.info(f"Silent queued message suppressed: {result.text}")
-
-                except queue.Empty:
-                    pass
-
-                if paused:
+                if self.runtime_input.paused:
                     continue
 
                 outcome = await self.event_manager.process_current_screen()
