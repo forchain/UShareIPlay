@@ -468,8 +468,10 @@ class AppController(Singleton):
             AdminManager.initialize()
             KeywordManager.initialize()
             from ushareiplay.managers.memory_manager import MemoryManager
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
+            SeatObservationManager.initialize(self.soul_handler)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(

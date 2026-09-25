@@ -3,6 +3,7 @@ from ushareiplay.managers.seat_manager.reservation import ReservationManager
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 import logging
 
 class SeatManager(SeatManagerBase):
@@ -26,6 +27,10 @@ class SeatManager(SeatManagerBase):
             self._check = SeatCheckManager(handler, self._ui)
             self._reservation = ReservationManager(handler, self._ui, self._check)
             self._seating = SeatingManager(handler, self._ui)
+            if not SeatObservationManager.is_initialized():
+                self._observation = SeatObservationManager.initialize(handler)
+            else:
+                self._observation = SeatObservationManager.instance().bind_handler(handler)
             self.initialized = True
             logging.getLogger('seat_manager').info("SeatManager 初始化完成")
         elif handler and not self.handler:
@@ -37,6 +42,8 @@ class SeatManager(SeatManagerBase):
             self._check._message_dispatch = None
             self._ui.handler = handler
             self._seating.handler = handler
+            if hasattr(self, '_observation') and self._observation:
+                self._observation.handler = handler
 
     def _is_guest_room(self) -> bool:
         try:

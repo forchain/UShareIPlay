@@ -225,5 +225,11 @@ class RoomState(Singleton):
         self._room_id = None
         self._recommendation_enabled = None
         self._is_guest_room = None
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+            if SeatObservationManager.is_initialized():
+                SeatObservationManager.instance().clear()
+        except Exception:
+            pass
         self.logger.info("Cleared room state")
 

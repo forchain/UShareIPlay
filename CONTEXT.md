@@ -5,8 +5,16 @@ UShareIPlay controls Soul App party rooms and QQ Music playback through chat-dri
 ## Language
 
 **Seat Management**:
-All behavior around Soul App party seats, including reservation policy, occupancy checks, automatic seating on entry, taking seats, removing occupants, and preparing seat UI state when another workflow depends on the seat panel.
+All behavior around Soul App party seats, including reservation policy, occupancy checks, automatic seating on entry, taking seats, removing occupants, passive seat observation, seat change detection, user-specific seat event triggers, and preparing seat UI state when another workflow depends on the seat panel.
 _Avoid_: Seat command, seating helper, seat UI layer
+
+**Seat Observation**:
+The passive detection of party room seat occupancy and focus changes across visible desks, incremental profile inspection on state changes, conditional full expansion when room focus count diverges from visible seats, and maintenance of the complete room seat snapshot.
+_Avoid_: Seat poller, desk scraper, seat clicker
+
+**Seat Event Hooks**:
+User-configured commands that automatically execute via `:focus add` when a specific user's seat/focus state changes (taking a seat, leaving a seat, or relocating to another seat). Triggers are isolated to the specific user whose occupancy changed and never fire for unrelated occupants.
+_Avoid_: Seat trigger, seat callback script
 
 **Room Name**:
 The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.
