@@ -1,8 +1,9 @@
 """Chat Intake — pure classification/normalization boundary for raw chat text.
 
 This module is side-effect-free and singleton-free. It owns the regex families
-that recognize user-enter/return notifications, keyword mentions (@我 or @owner,
-anywhere in the message body), chat-room
+that recognize user-enter/return notifications (in chat lines *and* in party
+banners — see `classify_banner_line`), 点赞 banners, keyword mentions (@我 or
+@owner, anywhere in the message body), chat-room
 commands, and plain chat lines, plus the queue grammar used by timer/runtime
 messages (`;` split, `{user_name}` expansion, silent/private prefix detection).
 
@@ -44,6 +45,8 @@ _BRACKET_CHARS_PATTERN = re.compile(r"[「」]")
 _WHITESPACE_RUN_PATTERN = re.compile(r"\s+")
 
 _ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
+# 点赞横幅：「荒草 为派对点赞了」。它属于同一族房间横幅文案，因此归 Chat Intake 所有。
+_PARTY_LIKE_PATTERN = re.compile(r"^(.+?)\s*为派对点赞了")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
 _GIFT_TYPE2_PATTERN = re.compile(r"恭喜\s*(.+?)\s*在此房间贡献出\s*(\d+)\s*热力值")
 
@@ -102,11 +105,24 @@ def parse_enter_return_username(raw: str) -> str | None:
     return None
 
 
+def parse_party_like_username(raw: str) -> str | None:
+    """Parse the liker's nickname from a 点赞 banner, or None if it is not one."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    m = _PARTY_LIKE_PATTERN.match(raw)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    return name or None
+
+
 class ChatIntakeKind(Enum):
     """Taxonomy of a single raw chat line or queue part."""
 
     USER_ENTER = "user_enter"
     USER_RETURN = "user_return"
+    PARTY_LIKE = "party_like"
     KEYWORD_MENTION = "keyword_mention"
     COMMAND = "command"
     PLAIN_CHAT = "plain_chat"
@@ -372,6 +388,43 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
         raw=raw,
         quoted_text=quoted_text,
     )
+
+
+def classify_banner_line(raw: str) -> ChatIntakeResult:
+    """Classify a Soul party *banner* line (the follower banner element).
+
+    Banners announce room events rather than carry a speaker, so they use the
+    same enter/return grammar as chat lines but need no speaker extraction and
+    no command/mention interpretation:
+
+    - ``USER_RETURN``: someone entered the room. The banner says "entered"; whether
+      this counts as a *return* (vs. a fresh enter) is `PresenceTracker`'s decision,
+      which is why `classify_chat_line` uses the same kind for the same text.
+    - ``PARTY_LIKE``: someone liked the party (``荒草 为派对点赞了``). Recorded, not greeted.
+    - ``PLAIN_CHAT`` with an empty nickname: unrecognized banner text.
+
+    Callers that only react to entrances should test
+    ``result.kind == ChatIntakeKind.USER_RETURN``; ``result.nickname`` is the person.
+    """
+    raw = raw or ""
+    if not raw.strip():
+        return ChatIntakeResult(kind=ChatIntakeKind.PLAIN_CHAT, nickname="", text="", raw=raw)
+
+    # 点赞 first: the enter/return parser deliberately excludes 点赞 lines, but a
+    # liker is still a real person worth recording.
+    liker = parse_party_like_username(raw)
+    if liker:
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.PARTY_LIKE, nickname=liker, text=liker, raw=raw
+        )
+
+    entrant = parse_enter_return_username(raw)
+    if entrant:
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.USER_RETURN, nickname=entrant, text=entrant, raw=raw
+        )
+
+    return ChatIntakeResult(kind=ChatIntakeKind.PLAIN_CHAT, nickname="", text=raw, raw=raw)
 
 
 def _detect_command_prefix(text: str) -> str | None:

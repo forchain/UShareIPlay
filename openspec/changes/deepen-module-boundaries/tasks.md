@@ -38,10 +38,14 @@
 
 ## 3. 聊天 intake 收回 enter/return 横幅文法 (候选 3 · Strong · ports & adapters)
 
-- [ ] 3.1 `core/chat_intake.py` 增加 `classify_banner_line()`，吸收 `follower_message.py` 的 enter/return 家族与 点赞 家族
-- [ ] 3.2 删除 `events/follower_message.py:40-68` 的 `_parse_message` 正则副本，事件只保留打招呼点击等 UI 动作
-- [ ] 3.3 统一 return-vs-enter 语义（两份副本当前不一致），并补一张纯函数表驱动测试
-- [ ] 3.4 迁移 `tests/test_follower_message.py` 到 intake 的纯函数表
+- [x] 3.1 `core/chat_intake.py` 增加 `classify_banner_line()`（新增 `ChatIntakeKind.PARTY_LIKE`）与 `parse_party_like_username()`，吸收 `follower_message.py` 的 enter/return 家族与 点赞 家族
+- [x] 3.2 删除 `events/follower_message.py` 的 `_parse_message` 正则副本（含未使用的 `re`/`asyncio`/`Tuple` 导入），事件只保留打招呼点击等 UI 动作
+- [x] 3.3 统一 return-vs-enter 语义：横幅与聊天行现在都产出 `USER_RETURN`，「是否算作 return」由 `PresenceTracker` 判定（与 `classify_chat_line` 一致）
+- [x] 3.4 把解析表迁到 `tests/test_chat_intake.py::TestClassifyBannerLine`（含 点赞 不被当成进入的回归断言），`test_follower_message.py` 只留 UI 动作与 return 触发
+
+**结果**：818 通过；横幅解析从 12 个内联正则/副本降为 1 个入口。
+
+**遗留发现（未在本候选处理，避免扩大范围）**：`follower_message.handle` 与 `message_content` 里的「`should_trigger_return` → `record_return` → `notify_user_return`」仪式仍是两份（差别只在聊天日志写法）。这是同一个协议的第三份副本，可提为 `PresenceTracker` 上的一个方法；本候选按评审范围只做解析器合并。
 
 ## 4. RoomInfoWindow 真模块 (候选 4 · Strong · ports & adapters)
 
