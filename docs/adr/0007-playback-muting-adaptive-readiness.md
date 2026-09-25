@@ -3,6 +3,23 @@
 ## Status
 Accepted
 
+### Status note (2026-09-25)
+The microphone side of this ADR is provided by `MicManager`, whose seam is
+`state()` / `set_active(bool)` / `ensure_active()`:
+
+- `state()` returns `True` open / `False` muted / `None` unreadable, reading the
+  mic toggle's `content-desc` ("闭麦按钮" = open).
+- `set_active()` owns the seat invariant: opening the mic first ensures the bot
+  holds a seat, because the room only offers a grab-mic entry while off-seat.
+- `ensure_active()` is the guaranteed restore this guard's step 5 uses.
+
+Before this, `PlaybackMuting` declared mic UI state to be "provided by
+SoulHandler" — true only for its own copy of the reader. The same `content-desc`
+read and the same seat pre-check existed in three diverging implementations
+(`PlaybackMuting`, `:mic`, `SoulHandler.ensure_mic_active`); this note makes the
+seam universal rather than contradicting the decision above. Steps 1 and 5 below
+are implemented as `MicManager.set_active(False)` and `MicManager.ensure_active()`.
+
 ## Date
 2026-09-21
 
@@ -18,11 +35,11 @@ Implement `PlaybackMuting` as a command execution guard with **adaptive MediaSes
 
 2. **Scoped Lifecycle Guard**:
    - `CommandManager.playback_muting_guard()` wraps the target command execution:
-     1. Mute the Soul party microphone (`SoulHandler.mute_mic()`).
+     1. Mute the Soul party microphone (`MicManager.set_active(False)`; see the status note below).
      2. Execute the track change operation in QQ Music.
      3. Post command confirmation / song announcement to Soul chat.
      4. Query Android MediaSession state (`dumpsys media_session`) adaptively until playback state reports `STATE_PLAYING` (with song title matching expected song or fallback timeout).
-     5. Unmute microphone (`SoulHandler.unmute_mic()`).
+     5. Unmute microphone (`MicManager.ensure_active()`).
 
 3. **Failure Short-Circuiting**:
    - If a command fails during execution (e.g. song not found), `_report_playback_failure()` immediately cancels the readiness wait and restores microphone state without delay.

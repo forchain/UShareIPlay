@@ -64,12 +64,17 @@
 
 ## 5. 单一 mic 深模块 (候选 5 · Strong)
 
-- [ ] 5.1 定义 mic 模块接口：`state()` / `set_active(bool)` / `ensure_active()`
-- [ ] 5.2 折叠三份 content-desc 读取（`playback_muting` / `commands/mic.py` / `soul_handler.ensure_mic_active`）
-- [ ] 5.3 把"开麦前须先上麦"从注释变为强制不变量
-- [ ] 5.4 `playback_muting` / `:mic` / `pause` / `ui_actions` 全部改走新接口
-- [ ] 5.5 处理 `MicManager` 的浅模块问题：删除或使其成为新模块的 adapter（其 `get_mic_status` 当前会 NameError）
-- [ ] 5.6 合并三份测试为一个行为测试面
+- [x] 5.1 `MicManager` 接口定为 `state()` / `set_active(enable, *, report_noop=False)` / `ensure_active()`，并改成依赖可注入（延迟解析 + `_soul_handler`），可进 conftest
+- [x] 5.2 折叠三份 content-desc 读取：`playback_muting._mic_state` 删除、`commands/mic.py` 的内联读取删除、`SoulHandler.ensure_mic_active` 删除
+- [x] 5.3 「开麦前须先上麦」成为 `set_active(True)` 的强制前置（原先只有 `:mic` 有、`ensure_mic_active` 另有分支、`PlaybackMuting` 完全没有）
+- [x] 5.4 `playback_muting`（`state()`/`set_active(False)`/`ensure_active()`）、`:mic`、`:pause` 全部改走模块；`ui_actions.toggle_mic`（盲点击）删除
+- [x] 5.5 删除 `MicManager.get_mic_status()`（其 `traceback` 未导入，命中即 NameError）与盲点击的 `toggle_mic()`，本模块成为深模块
+- [x] 5.6 测试合并为 `tests/test_mic_manager.py`（含从 `test_soul_handler_seat_take.py` 迁来的三例）；`:mic` 只留「决定目标状态并委托」的测试
+- [x] 5.7 更新 ADR-0007：状态注记记录 mic 接缝为 `MicManager`，并把第 1/5 步的 `SoulHandler.mute_mic()/unmute_mic()`（早已不存在的名字）改为实际调用
+
+**结果**：843 通过；`content-desc` 麦克风读取全仓只剩 `mic_manager.py` 一处。
+
+**有意收紧的一处**：`ensure_active()` 在不在麦位时改走 `ensure_on_seat()`（抢麦并等待座位稳定），原先 `SoulHandler.ensure_mic_active` 只调 `grab_mic_and_confirm()` 不等落座。兜底恢复因此可验证「确实坐上麦了」；代价是失败时会多一次等待与一条 error 日志（不再静默）。
 
 ## 6. MessageManager 观察接口 (候选 6 · Strong)
 

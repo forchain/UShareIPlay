@@ -115,28 +115,6 @@ class SoulHandler(AppHandler, Singleton):
             self.logger.error("Failed to grab mic: still not seated")
         return seated
 
-    def ensure_mic_active(self):
-        """Ensure the microphone is active"""
-        try:
-            self.key_actions.switch_to_app()
-
-            if not self.is_on_seat():
-                self.logger.info("Grab mic button found, grabbing mic...")
-                self.grab_mic_and_confirm()
-            else:
-                self.logger.info("Already on mic, checking toggle mic status...")
-                # Check the toggle mic button
-                toggle_mic_button = self.element_finder.wait_for_element_clickable('toggle_mic')
-
-                if not toggle_mic_button:
-                    self.logger.error("Toggle mic button not found")
-                    return
-
-                desc = self.element_finder.try_get_attribute(toggle_mic_button, 'content-desc')
-                if desc == "开麦按钮":  # If we see "开麦按钮", mic is currently off
-                    self.logger.info("Mic is off, turning it on...")
-                    toggle_mic_button.click()
-                    self.logger.info("Clicked toggle mic button to turn on mic")
-
-        except Exception as e:
-            self.logger.error(f"Error ensuring mic is active: {str(e)}")
+    # 麦克风状态与开关不在本类：见 MicManager.state()/set_active()/ensure_active()
+    # （ADR-0007 的接缝）。本类只保留麦位 UI 动作：is_on_seat / ensure_on_seat /
+    # grab_mic_and_confirm。

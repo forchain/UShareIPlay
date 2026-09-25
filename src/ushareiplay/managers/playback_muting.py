@@ -11,11 +11,10 @@ class PlaybackMuting(Singleton):
 
     生命周期：配置判定 -> 若开麦则先闭麦 -> 执行播放动作与公屏消息
     -> 等待底层播放就绪 -> 无条件恢复开麦（异常与超时同样兜底）。
-    就绪检测由 MusicManager 提供，麦克风 UI 状态与恢复由 SoulHandler 提供。
+    就绪检测由 MusicManager 提供，麦克风状态与恢复由 MicManager 提供
+    （见 ADR-0007：接缝是 MicManager.state()/set_active()/ensure_active()）。
     """
 
-    MIC_ACTIVE_DESC = "闭麦按钮"    # 内容描述为「闭麦按钮」表示当前开麦
-    MIC_INACTIVE_DESC = "开麦按钮"  # 内容描述为「开麦按钮」表示当前闭麦
     DEFAULT_SETTINGS = {
         "enabled": True,
         "guest_room_only": False,
@@ -93,25 +92,11 @@ class PlaybackMuting(Singleton):
             return False
         return bool(RoomState.instance().is_guest_room)
 
-    def _mic_state(self) -> Optional[bool]:
-        """麦克风是否开麦：True 开麦、False 闭麦、None 无法判定。"""
-        if not self.soul_handler.key_actions.switch_to_app():
-            return None
-        element = self.soul_handler.element_finder.try_find_element("toggle_mic", log=False)
-        if not element:
-            return None
-        desc = self.soul_handler.element_finder.try_get_attribute(element, "content-desc")
-        if desc == self.MIC_ACTIVE_DESC:
-            return True
-        if desc == self.MIC_INACTIVE_DESC:
-            return False
-        return None
-
     def _mute_if_active(self) -> bool:
         """开麦时点击闭麦；本就闭麦或无法判定时不产生多余的 UI 点击。"""
-        if self._mic_state() is not True:
+        if self.mic_manager.state() is not True:
             return False
-        result = self.mic_manager.toggle_mic(False)
+        result = self.mic_manager.set_active(False)
         if isinstance(result, dict) and result.get("error"):
             self.logger.warning(f"Failed to mute microphone before playback: {result['error']}")
             return False
@@ -130,6 +115,8 @@ class PlaybackMuting(Singleton):
     def _restore_mic(self):
         """无条件恢复开麦，保证机器人不会停留在闭麦状态。"""
         try:
-            self.soul_handler.ensure_mic_active()
+            result = self.mic_manager.ensure_active()
+            if isinstance(result, dict) and result.get("error"):
+                self.logger.error(f"Failed to restore microphone after playback: {result['error']}")
         except Exception as exc:
             self.logger.error(f"Failed to restore microphone after playback: {exc}")

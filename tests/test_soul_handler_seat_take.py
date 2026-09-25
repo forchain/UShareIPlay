@@ -1,12 +1,12 @@
-"""Ticket #317: SoulHandler owns the seat-presence pre-check and grab flow.
+"""Ticket #317: SoulHandler owns the seat *UI mechanics*.
 
-`:mic 1` asks for a seat before opening the microphone, so the UI mechanics —
-detecting the grab-mic entry, confirming it, and waiting for the seat to settle
-— live on SoulHandler (docs/room.md: "New room UI action: Add method to
-SoulHandler").
+Detecting the grab-mic entry, confirming it, and waiting for the seat to settle
+are room UI actions, so they live on SoulHandler (docs/room.md: "New room UI
+action: Add method to SoulHandler").
+
+Who *asks* for a seat is `MicManager` — the seat pre-check before opening the
+microphone is part of its interface, tested in tests/test_mic_manager.py.
 """
-
-from types import SimpleNamespace
 
 from ushareiplay.handlers.soul_handler import SoulHandler
 
@@ -117,31 +117,5 @@ def test_ensure_on_seat_reports_failure_when_the_grab_entry_stays():
     assert events == ["click:grab_mic", "click:confirm_mic"]
 
 
-def test_ensure_mic_active_grabs_the_mic_when_off_seat():
-    events = []
-    handler = _make_handler(events, on_seat=False)
-    handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-
-    handler.ensure_mic_active()
-
-    assert events == ["click:grab_mic", "click:confirm_mic"]
-
-
-def test_ensure_mic_active_turns_on_a_muted_mic_when_seated():
-    events = []
-    handler = _make_handler(events, on_seat=True, mic_desc="开麦按钮")
-    handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-
-    handler.ensure_mic_active()
-
-    assert events == ["click:toggle_mic"]
-
-
-def test_ensure_mic_active_leaves_an_open_mic_alone():
-    events = []
-    handler = _make_handler(events, on_seat=True, mic_desc="闭麦按钮")
-    handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-
-    handler.ensure_mic_active()
-
-    assert events == []
+# 「确保开麦」的三例（抢麦 / 点开 / 已开不点）已迁到 tests/test_mic_manager.py：
+# 麦克风状态与开关归 MicManager，本文件只留 SoulHandler 自己的麦位 UI 动作。
