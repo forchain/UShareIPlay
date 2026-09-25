@@ -133,6 +133,7 @@ soul:
     claim_reward: "cn.soulapp.android:id/tvCheckReward" # 立即领取/已领取
     room_topic: "cn.soulapp.android:id/tvStudyRoomTitle"
     edit_topic_entry: "cn.soulapp.android:id/tvCustomTopic"
+    edit_topic_bg_entry: "cn.soulapp.android:id/bgCustomTopic"
     edit_topic_input: "cn.soulapp.android:id/et_input_message"
     edit_topic_confirm: "cn.soulapp.android:id/tvConfim"
     little_assistant: "cn.soulapp.android:id/ivLittleAssistant"

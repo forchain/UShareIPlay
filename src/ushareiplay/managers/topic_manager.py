@@ -139,21 +139,32 @@ class TopicManager(Singleton):
             dict: 操作结果
         """
         try:
-            # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
-            open_error = RoomInfoWindow.instance().ensure_open()
-            if open_error:
-                return open_error
+            from ushareiplay.state.room_state import RoomState
+            if RoomState.in_guest_room():
+                self.logger.info("In guest room, skip topic UI update")
+                return {'skipped': 'guest_room'}
 
-            # Click edit entry
-            edit_entry = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_entry')
+            # Click room topic on blackboard
+            room_topic = self.soul_handler.element_finder.wait_for_element_clickable('room_topic')
+            if not room_topic:
+                return {'error': 'Failed to find room topic'}
+            room_topic.click()
+
+            # Click edit entry (support edit_topic_entry or fallback edit_topic_bg_entry)
+            key, edit_entry = self.soul_handler.element_finder.wait_for_any_element(
+                ['edit_topic_entry', 'edit_topic_bg_entry'],
+                timeout=5,
+            )
             if not edit_entry:
+                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find edit topic entry'}
             edit_entry.click()
 
             # Input new topic
             topic_input = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_input')
             if not topic_input:
+                self.soul_handler.key_actions.press_back()
+                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find topic input'}
             topic_input.clear()
             topic_input.send_keys(topic)
@@ -161,6 +172,8 @@ class TopicManager(Singleton):
             # Click confirm
             confirm = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_confirm')
             if not confirm:
+                self.soul_handler.key_actions.press_back()
+                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
 
@@ -180,6 +193,8 @@ class TopicManager(Singleton):
                 self.logger.info(f'Topic updated successfully to: {topic}')
             else:
                 self.logger.warning(f'Unknown key: {key}')
+                self.soul_handler.key_actions.press_back()
+                self.soul_handler.key_actions.press_back()
 
             return {'success': True, 'topic': topic}
 
