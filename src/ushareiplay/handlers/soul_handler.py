@@ -1,4 +1,5 @@
 import logging
+import time
 
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.core.app_handler import AppHandler
@@ -96,6 +97,49 @@ class SoulHandler(AppHandler, Singleton):
             self.logger.error("Failed to close chat window after click and press_back attempts")
         return closed
 
+    def _verify_input_box_content(
+        self, input_box, message: str, timeout: float = 0.5, poll_frequency: float = 0.05
+    ) -> bool:
+        """检查输入框中是否已成功输入待发送的消息内容。
+
+        如果输入框内容为空、仅为默认占位提示（如'输入新消息'）、
+        或未包含待发送消息，则判定为输入失败。
+        """
+        target = message.strip()
+        if not target:
+            return True
+
+        placeholder = "输入新消息"
+        end_time = time.time() + timeout
+
+        while True:
+            text = ""
+            try:
+                if hasattr(self.element_finder, "get_element_text"):
+                    text = self.element_finder.get_element_text(input_box) or ""
+                if not text and hasattr(input_box, "text"):
+                    text = getattr(input_box, "text", "") or ""
+                if not text and hasattr(self.element_finder, "try_get_attribute"):
+                    text = self.element_finder.try_get_attribute(input_box, "text") or ""
+                elif not text and hasattr(input_box, "get_attribute"):
+                    text = input_box.get_attribute("text") or ""
+            except Exception:
+                refetched = self.element_finder.try_find_element('input_box', log=False)
+                if refetched:
+                    input_box = refetched
+
+            text = text.strip()
+            # 排除空文本与默认占位符提示（除非发送的原本就是占位符）
+            if text and (target == placeholder or text != placeholder):
+                if target in text:
+                    return True
+
+            if time.time() >= end_time:
+                break
+            time.sleep(poll_frequency)
+
+        return False
+
     def send_message(self, message):
         """Send a room message through the low-level Soul UI primitive.
 
@@ -134,11 +178,46 @@ class SoulHandler(AppHandler, Singleton):
 
         try:
             if len(message) > 0:
-                input_box.send_keys(message)
-                self.logger.info(f"Entered message: {message}")
+                max_input_attempts = 2
+                input_success = False
+
+                for attempt in range(max_input_attempts):
+                    if attempt > 0:
+                        self.logger.warning(
+                            f"Retrying message input (attempt {attempt + 1}/{max_input_attempts}): {message}"
+                        )
+                        try:
+                            input_box.click()
+                        except Exception:
+                            refetched = self.element_finder.try_find_element('input_box', log=False)
+                            if refetched:
+                                input_box = refetched
+                        try:
+                            input_box.clear()
+                        except Exception:
+                            pass
+
+                    try:
+                        input_box.send_keys(message)
+                        self.logger.info(f"Entered message (attempt {attempt + 1}): {message}")
+                    except Exception as e:
+                        self.logger.warning(f"Error sending keys on attempt {attempt + 1}: {e}")
+
+                    if self._verify_input_box_content(input_box, message):
+                        input_success = True
+                        break
+
+                if not input_success:
+                    self.logger.error(
+                        f"Failed to enter message into input box after {max_input_attempts} attempts. Closing input window immediately."
+                    )
+                    self.ensure_chat_window_closed(input_element=input_box)
+                    return {
+                        'error': 'Failed to input message into input box',
+                    }
 
                 # click send button
-                send_button = self.element_finder.wait_for_element_clickable('button_send')
+                send_button = self.element_finder.wait_for_element_clickable('button_send', timeout=3)
                 if not send_button:
                     self.logger.error(f'cannot find send button')
                     return {

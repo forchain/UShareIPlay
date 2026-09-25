@@ -29,15 +29,30 @@ class _FakeElement:
         self._displayed = displayed
         self.size = {"width": 200, "height": 80}
         self.location = {"x": 50, "y": 600}
+        self.text = ""
+        self.fail_send_keys_count = 0
 
     def click(self):
         self.events.append(f"click:{self.name}")
 
+    def clear(self):
+        self.events.append(f"clear:{self.name}")
+        self.text = ""
+
     def send_keys(self, text):
         self.events.append(f"send_keys:{self.name}:{text}")
+        if self.fail_send_keys_count > 0:
+            self.fail_send_keys_count -= 1
+        else:
+            self.text = text
 
     def is_displayed(self):
         return self._displayed
+
+    def get_attribute(self, attr):
+        if attr == "text":
+            return self.text
+        return None
 
 
 class _FakeElementFinder:
@@ -52,6 +67,9 @@ class _FakeElementFinder:
         self._input_box = _FakeElement(events, "input_box")
         self._button_send = _FakeElement(events, "button_send")
         self.missing_send_button = False
+
+    def get_element_text(self, element):
+        return getattr(element, "text", "")
 
     def try_find_element(self, key, log=False, clickable=False):
         if key == "input_box" and self.chat_open:
@@ -204,3 +222,50 @@ def test_send_message_closes_pre_existing_open_chat_window():
     result = handler.send_message("clean slate")
     assert result is None or not (isinstance(result, dict) and "error" in result)
     assert handler.is_chat_window_open() is False
+
+
+def test_send_message_retries_when_input_fails_then_succeeds():
+    events = []
+    handler, finder = _make_handler(events, chat_open=False, disappear_on_click=True)
+    # First send_keys fails to set text, second send_keys succeeds
+    finder._input_box.fail_send_keys_count = 1
+
+    result = handler.send_message("retry success")
+    assert result is None or not (isinstance(result, dict) and "error" in result)
+    # Verifies retry happened: two send_keys calls
+    send_keys_events = [ev for ev in events if "send_keys:input_box:retry success" in ev]
+    assert len(send_keys_events) == 2
+    assert "clear:input_box" in events
+    assert "click:button_send" in events
+    assert handler.is_chat_window_open() is False
+
+
+def test_send_message_closes_immediately_when_input_fails_after_retries():
+    events = []
+    handler, finder = _make_handler(events, chat_open=False, disappear_on_click=True)
+    # All send_keys attempts fail to set text
+    finder._input_box.fail_send_keys_count = 2
+
+    result = handler.send_message("will fail")
+    assert isinstance(result, dict) and "error" in result
+    assert "Failed to input message" in result["error"]
+    # Send button must NOT be clicked
+    assert "click:button_send" not in events
+    # Chat window must be closed immediately
+    assert handler.is_chat_window_open() is False
+    assert any("click_element_at:input_box" in ev for ev in events)
+
+
+def test_send_message_placeholder_treated_as_unentered():
+    events = []
+    handler, finder = _make_handler(events, chat_open=False, disappear_on_click=True)
+    # Simulating the UI always returning placeholder text
+    finder._input_box.text = "输入新消息"
+    finder._input_box.fail_send_keys_count = 5  # text never gets updated away from placeholder
+
+    result = handler.send_message("hello")
+    assert isinstance(result, dict) and "error" in result
+    assert "Failed to input message" in result["error"]
+    assert "click:button_send" not in events
+    assert handler.is_chat_window_open() is False
+
