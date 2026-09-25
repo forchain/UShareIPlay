@@ -687,6 +687,59 @@ async def test_join_party_when_party_back_already_visible():
     assert party_back.clicked is True
 
 
+@pytest.mark.asyncio
+async def test_join_party_recovers_from_stale_element_on_party_back():
+    """
+    当点击 party_back 时抛出 StaleElementReferenceException（例如窗口正在动画过渡），
+    应当通过 wait_for_element_clickable 重新定位并完成点击，而不是报错中断。
+    """
+    from selenium.common.exceptions import StaleElementReferenceException
+    from ushareiplay.state.room_state import RoomState
+    RoomState.reset_instance()
+    RoomState.initialize()
+
+    manager = PartyManager.instance()
+
+    planet_tab = _Element("planet_tab")
+    party_hall_entry = _Element("party_hall_entry")
+    stale_party_back = _Element("party_back_stale")
+    fresh_party_back = _Element("party_back_fresh")
+
+    def stale_click():
+        raise StaleElementReferenceException("androidx.test.uiautomator.StaleObjectException")
+
+    stale_party_back.click = stale_click
+
+    handler = _MockHandler(elements={
+        "planet_tab": planet_tab,
+        "party_hall_entry": party_hall_entry,
+    })
+
+    def on_hall_click():
+        party_hall_entry.clicked = True
+        handler.elements["party_back"] = stale_party_back
+
+    party_hall_entry.click = on_hall_click
+
+    # 当重试调用 wait_for_element_clickable('party_back') 时，返回 fresh_party_back
+    def mock_wait_for_clickable(key, timeout=None):
+        if key == "party_back":
+            return fresh_party_back
+        return handler.elements.get(key)
+
+    handler.wait_for_element_clickable = mock_wait_for_clickable
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = await manager.join_party()
+    assert res is True
+    assert planet_tab.clicked is True
+    assert party_hall_entry.clicked is True
+    assert fresh_party_back.clicked is True
+
+
+
 
 
 

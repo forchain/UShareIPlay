@@ -365,6 +365,8 @@ class ElementFinder:
                 try:
                     element = driver.find_element(*locator)
                     if element:
+                        if hasattr(element, "is_displayed") and not element.is_displayed():
+                            continue
                         return key, element
                 except Exception:
                     continue
