@@ -202,9 +202,13 @@ class AppController(Singleton):
 
         from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
         try:
-            final_host, final_port, bridge = ensure_appium_endpoint(appium_host, int(appium_port))
-            if bridge:
-                self._network_bridge = bridge
+            if hasattr(self, "_network_bridge") and self._network_bridge and self._network_bridge.is_running:
+                final_host = self._network_bridge.bridge_host
+                final_port = self._network_bridge.bridge_port
+            else:
+                final_host, final_port, bridge = ensure_appium_endpoint(appium_host, int(appium_port))
+                if bridge:
+                    self._network_bridge = bridge
         except Exception as e:
             if hasattr(self, "logger") and self.logger:
                 self.logger.error("Appium 连接检测失败:\n%s", str(e))
