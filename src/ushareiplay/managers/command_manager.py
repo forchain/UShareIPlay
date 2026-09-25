@@ -638,11 +638,8 @@ class CommandManager(Singleton):
         for module in self.get_command_modules().values():
             try:
                 if hasattr(module.command, "focus_count_change"):
-                    try:
-                        await module.command.focus_count_change(
-                            before, after, changed_users=changed_users, seat_info=seat_info
-                        )
-                    except TypeError:
-                        await module.command.focus_count_change(before, after)
+                    await module.command.focus_count_change(
+                        before, after, changed_users=changed_users, seat_info=seat_info
+                    )
             except Exception:
                 self.logger.error(f"Error in command focus_count_change: {traceback.format_exc()}")

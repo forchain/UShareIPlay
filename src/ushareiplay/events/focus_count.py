@@ -13,7 +13,10 @@ from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.state.room_state import RoomState
 
-__elements__ = ["focus_count", "seat_desk"]
+# 顺序即 EventManager 的同轮分发顺序（见 _process_events_once）：必须先被动观测
+# 本页可见麦位，再判人数背离。反过来的话每一次可视上座都会拿旧快照去比，被误判
+# 成背离而白展开一次面板。
+__elements__ = ["seat_desk", "focus_count"]
 __multiple__ = True
 
 

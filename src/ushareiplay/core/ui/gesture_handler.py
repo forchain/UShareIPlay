@@ -93,6 +93,18 @@ class GestureHandler:
 
         return False
 
+    def click_at(self, x: int, y: int) -> bool:
+        """Tap absolute screen coordinates.
+
+        For callers that only know where a target is (e.g. a seat avatar whose
+        bounds come from a page_source snapshot) and hold no WebElement to click.
+        """
+        try:
+            return bool(self._perform_click_at(x, y))
+        except Exception:
+            self.logger.error(f"Error clicking at ({x}, {y}): {traceback.format_exc()}")
+            return False
+
     @with_driver_recovery(retry=False, op="write")
     def click_element_at(
             self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0

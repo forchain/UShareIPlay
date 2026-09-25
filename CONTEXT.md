@@ -10,10 +10,11 @@ _Avoid_: Seat command, seating helper, seat UI layer
 
 **Seat Observation**:
 The passive detection of party room seat occupancy and focus changes across visible desks, incremental profile inspection on state changes, conditional full expansion when room focus count diverges from visible seats, and maintenance of the complete room seat snapshot.
+Occupancy and nicknames are read from the seat label — the room shows a nickname (or 群主/管理) on an occupied seat and the seat number on an empty one — so desk index anchoring trusts only pure-number labels that pair as a desk (left odd, right = left + 1). When no such label is visible (a fully occupied viewport), desks are mapped by coordinates, which assumes the visible desks start at desk 0.
 _Avoid_: Seat poller, desk scraper, seat clicker
 
 **Seat Event Hooks**:
-User-configured commands that automatically execute via `:focus add` when a specific user's seat/focus state changes (taking a seat, leaving a seat, or relocating to another seat). Triggers are isolated to the specific user whose occupancy changed and never fire for unrelated occupants.
+User-configured commands that automatically execute via `:focus add` when a specific user's seat/focus state changes (taking a seat, leaving a seat, or relocating to another seat). Triggers are isolated to the specific user whose occupancy changed and never fire for unrelated occupants. Hook commands substitute `{username}`, `{seat}` (the new seat, for a relocation) and `{action}` — one of `sit_down`, `leave_seat`, `move_seat`.
 _Avoid_: Seat trigger, seat callback script
 
 **Room Name**:

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import logging
-import re
 import traceback
-from typing import Dict, List, Optional, Set, Tuple
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
+from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
 
 
@@ -85,21 +86,77 @@ class SeatObservationManager(Singleton):
         self._last_focus_count = None
         self.logger.info("Cleared seat observation snapshot")
 
-    async def acquire_ui_lock(self, reason: str = "seat_observation"):
-        ctrl = self.controller
-        if ctrl and hasattr(ctrl, "acquire_ui_lock"):
-            try:
-                await ctrl.acquire_ui_lock(reason)
-            except Exception as e:
-                self.logger.debug(f"acquire_ui_lock failed: {e}")
+    @asynccontextmanager
+    async def _ui_session(self, reason: str):
+        """独占 UI 执行权，契约与 AppController.ui_session 一致。
 
-    def release_ui_lock(self, reason: str = "seat_observation"):
+        EventManager 的兜底 press_back 只看 AppController.ui_lock 是否被持有
+        （见 runtime_context.is_ui_busy），所以点头像读昵称、展开/收起座位面板
+        都必须走真实的 ui_session；否则命令任务与自动 back 会把资料弹窗当成
+        未知页面处理，读到的昵称随之丢失。
+
+        controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
+        契约时直接抛错，而不是静默裸奔。
+        """
         ctrl = self.controller
-        if ctrl and hasattr(ctrl, "release_ui_lock"):
+        if ctrl is None:
+            yield
+            return
+        async with ctrl.ui_session(reason):
+            yield
+
+    def _element_selector(self, element_key: str) -> Optional[str]:
+        """从 config.yaml 里取元素选择器。
+
+        生产上 handler.config 是 soul 段（AppController 用 self.config["soul"]
+        构造 SoulHandler），所以 elements 通常在顶层；兼容传根的 config，与
+        ElementFinder._get_locator / EventManager._screen_elements 的取法一致。
+        """
+        config = getattr(self.handler, "config", None)
+        if not isinstance(config, dict):
+            return None
+
+        elements = config.get("elements")
+        if not isinstance(elements, dict):
+            soul = config.get("soul")
+            elements = soul.get("elements") if isinstance(soul, dict) else None
+
+        selector = elements.get(element_key) if isinstance(elements, dict) else None
+        if isinstance(selector, str) and selector.strip():
+            return selector.strip()
+        return None
+
+    def _find_child_element(self, desk, element_key: str):
+        """按 config.yaml 的元素 key 在 desk 下查找子元素。
+
+        desk 在生产里有两种形状，必须都按 *元素 key* 解析选择器：
+        - 事件轮询给的 ElementWrapper：只有 lxml 快照，在本节点内按相对 XPath 查；
+        - 展开重扫时 element_finder.find_elements 给的 raw WebElement。
+        元素 key（如 left_state）是 resource-id 而不是 XPath，直接丢给
+        ElementWrapper.find_child_element 会静默返回 None。
+        """
+        if desk is None:
+            return None
+
+        selector = self._element_selector(element_key)
+        if selector is None:
+            self.logger.debug(f"No configured selector for seat element '{element_key}'")
+            return None
+
+        if isinstance(desk, ElementWrapper):
+            xpath = f".//*[@resource-id='{selector}']"
             try:
-                ctrl.release_ui_lock(reason)
-            except Exception as e:
-                self.logger.debug(f"release_ui_lock failed: {e}")
+                return desk.find_child_element(xpath)
+            except Exception:
+                return None
+
+        finder = getattr(self.handler, "element_finder", None)
+        if finder is None:
+            return None
+        return finder.find_child_element(desk, element_key, log_failure=False)
+
+    def _is_seat_occupied(self, desk, side: str) -> bool:
+        return self._find_child_element(desk, f"{side}_state") is not None
 
     def format_3row_layout(self, trigger_source: str = "可视区域变更") -> str:
         """
@@ -129,6 +186,11 @@ class SeatObservationManager(Singleton):
         - Row 0 (第一排): desk 0 (seats 1,2), desk 1 (seats 3,4)
         - Row 1 (第二排): desk 2 (seats 5,6), desk 3 (seats 7,8)
         - Row 2 (第三排): desk 4 (seats 9,10), desk 5 (seats 11,12)
+
+        优先用空座位上的麦位编号锚定；读不到编号（例如可视桌位全满）时退回坐标
+        聚类，此时**假设可视桌位从 desk 0 起连续可见** —— 面板被滚动、只露出
+        中后排时坐标兜底会把桌位错配。被动观测不滚动面板，因此该兜底只在
+        视口对齐默认位置时可信。
         """
         result = []
         unresolved = []
@@ -170,49 +232,58 @@ class SeatObservationManager(Singleton):
             return (row_y, x)
         return (0, 0)
 
-    def _detect_desk_index_from_labels(self, desk) -> Optional[int]:
-        # 显式 desk_index 属性（用于测试及桩对象）
-        if hasattr(desk, "desk_index") and isinstance(desk.desk_index, int):
-            return desk.desk_index
+    # 麦位编号的左右奇偶约定（config.yaml 中 left_label/right_label 注释：
+    # 左侧 1,3,5,7,9,11；右侧 2,4,6,8,10,12）
+    _SIDE_SEAT_PARITY: ClassVar[Dict[str, int]] = {"left": 1, "right": 0}
 
-        for side in ("left", "right"):
-            label_text = self._get_label_text(desk, side)
-            if label_text:
-                match = re.search(r"\b([1-9]|1[0-2])\b", label_text)
-                if match:
-                    seat_num = int(match.group(1))
-                    return (seat_num - 1) // 2
-        return None
+    def _label_seat_number(self, desk, side: str) -> Optional[int]:
+        """label 整段是 1~12 的纯数字时返回该数字，否则 None。
+
+        房间里只有空座位显示编号，占座后 label 换成昵称/群主/管理，所以带数字的
+        昵称（「小明7」）不算；纯数字昵称的误读由下面的奇偶/配对校验兜住。
+        """
+        label_text = self._get_label_text(desk, side).strip()
+        if not label_text.isdigit():
+            return None
+        seat_num = int(label_text)
+        if not 1 <= seat_num <= 12:
+            return None
+        return seat_num
+
+    def _seat_number_from_label(self, desk, side: str) -> Optional[int]:
+        """单侧读到的编号，需符合左右奇偶约定。"""
+        seat_num = self._label_seat_number(desk, side)
+        if seat_num is None or seat_num % 2 != self._SIDE_SEAT_PARITY[side]:
+            return None
+        return seat_num
+
+    def _detect_desk_index_from_labels(self, desk) -> Optional[int]:
+        left_raw = self._label_seat_number(desk, "left")
+        right_raw = self._label_seat_number(desk, "right")
+
+        if left_raw is not None and right_raw is not None:
+            # 两侧都是编号时必须构成一张桌子（左奇 + 右=左+1），
+            # 否则说明其中一个是纯数字昵称，整张桌子都不锚定。
+            if left_raw % 2 == 0 or right_raw != left_raw + 1:
+                return None
+            return (left_raw - 1) // 2
+
+        seat_num = self._seat_number_from_label(desk, "left")
+        if seat_num is None:
+            seat_num = self._seat_number_from_label(desk, "right")
+        if seat_num is None:
+            return None
+        return (seat_num - 1) // 2
 
     def _get_label_text(self, desk, side: str) -> str:
-        key = f"{side}_label"
-        if hasattr(desk, "find_child_element"):
-            elem = desk.find_child_element(key)
-            if elem and hasattr(elem, "text"):
-                return elem.text or ""
-        elif hasattr(self.handler, "element_finder"):
-            elem = self.handler.element_finder.find_child_element(desk, key, log_failure=False)
-            if elem and hasattr(elem, "text"):
-                return elem.text or ""
+        elem = self._find_child_element(desk, f"{side}_label")
+        if elem and hasattr(elem, "text"):
+            return elem.text or ""
         return ""
 
-    def _extract_seat_info(self, desk, side: str, seat_number: int) -> dict:
-        state_key = f"{side}_state"
-        label_key = f"{side}_label"
-
-        occupied = False
-        label = ""
-
-        if hasattr(desk, "find_child_element"):
-            state_elem = desk.find_child_element(state_key)
-            label_elem = desk.find_child_element(label_key)
-            occupied = bool(state_elem)
-            label = getattr(label_elem, "text", "") or ""
-        elif hasattr(self.handler, "element_finder"):
-            state_elem = self.handler.element_finder.find_child_element(desk, state_key, log_failure=False)
-            label_elem = self.handler.element_finder.find_child_element(desk, label_key, log_failure=False)
-            occupied = bool(state_elem)
-            label = getattr(label_elem, "text", "") or ""
+    def _extract_seat_info(self, desk, side: str) -> dict:
+        occupied = self._is_seat_occupied(desk, side)
+        label = self._get_label_text(desk, side)
 
         is_owner = (label == "群主")
         username = None
@@ -228,6 +299,48 @@ class SeatObservationManager(Singleton):
             "username": username,
         }
 
+    def _desk_bounds(self, desk) -> Optional[dict]:
+        """desk 的屏幕坐标（ElementWrapper 给 bounds，raw WebElement 给 location/size）。"""
+        bounds = getattr(desk, "bounds", None)
+        if isinstance(bounds, dict):
+            return bounds
+        location = getattr(desk, "location", None)
+        size = getattr(desk, "size", None)
+        if isinstance(location, dict) and isinstance(size, dict):
+            return {
+                "x": location.get("x", 0),
+                "y": location.get("y", 0),
+                "width": size.get("width", 0),
+                "height": size.get("height", 0),
+            }
+        return None
+
+    def _click_seat_avatar(self, desk, side: str, target_element) -> bool:
+        """点开麦位头像弹窗。
+
+        raw WebElement 直接点；ElementWrapper 的 click() 取不到真实元素（子元素
+        wrapper 没有 element key，get_web_element() 返回 None 且静默 False），
+        所以退回按 bounds 坐标点击。
+        """
+        if target_element is not None and not isinstance(target_element, ElementWrapper):
+            try:
+                target_element.click()
+                return True
+            except Exception:
+                pass
+
+        bounds = self._desk_bounds(desk)
+        if not bounds or not bounds.get("width") or not bounds.get("height"):
+            return False
+        w, h = bounds["width"], bounds["height"]
+        x = bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
+        y = bounds["y"] + h // 2
+
+        gesture = getattr(self.handler, "gesture_handler", None)
+        if gesture is None or not hasattr(gesture, "click_at"):
+            return False
+        return bool(gesture.click_at(x, y))
+
     async def inspect_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
         """点击麦位弹窗读取用户昵称并立即 press_back 关闭弹窗"""
         if not self.handler:
@@ -235,31 +348,16 @@ class SeatObservationManager(Singleton):
 
         self.logger.info(f"Inspecting occupant on seat {seat_number} ({side} side)")
         try:
-            target_element = None
-            if hasattr(desk, "find_child_element"):
-                target_element = desk.find_child_element(f"{side}_state") or desk.find_child_element(f"{side}_seat")
-            elif hasattr(self.handler, "element_finder"):
-                target_element = self.handler.element_finder.find_child_element(desk, f"{side}_state", log_failure=False)
-                if not target_element:
-                    target_element = self.handler.element_finder.find_child_element(desk, f"{side}_seat", log_failure=False)
-
-            if target_element:
-                if hasattr(target_element, "click"):
-                    target_element.click()
-            elif hasattr(desk, "bounds") and desk.bounds:
-                bounds = desk.bounds
-                w = bounds["width"]
-                h = bounds["height"]
-                x = bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
-                y = bounds["y"] + h // 2
-                if hasattr(self.handler, "gesture_handler") and hasattr(self.handler.gesture_handler, "_perform_click_at"):
-                    self.handler.gesture_handler._perform_click_at(x, y)
+            target_element = self._find_child_element(desk, f"{side}_state")
+            if target_element is None:
+                target_element = self._find_child_element(desk, f"{side}_seat")
+            self._click_seat_avatar(desk, side, target_element)
 
             await asyncio.sleep(0.3)
 
             username = None
             if hasattr(self.handler, "element_finder"):
-                found_key, name_elem = self.handler.element_finder.wait_for_any_element(
+                _found_key, name_elem = self.handler.element_finder.wait_for_any_element(
                     ["souler_name", "user_name"], timeout=1.5
                 )
                 if name_elem and hasattr(name_elem, "text") and name_elem.text:
@@ -284,9 +382,16 @@ class SeatObservationManager(Singleton):
         new_slots: Dict[int, SeatSlot],
         observed_seat_numbers: Set[int],
     ) -> Tuple[bool, List[str], Dict[str, dict]]:
+        """比对观测到的麦位，产出变更用户与 seat_info（{action} 宏的来源）。
+
+        {action} 取值：sit_down / leave_seat / move_seat。同一次观测里既离开
+        旧位又坐到新位的用户合并为一条 move_seat（seat_number 为新位）。
+        """
         changed_users = []
         seat_info = {}
         has_changes = False
+        left_users: Set[str] = set()
+        sat_seats: Dict[str, int] = {}
 
         for num in observed_seat_numbers:
             old = old_slots.get(num)
@@ -301,6 +406,7 @@ class SeatObservationManager(Singleton):
             if not old.occupied and new.occupied and new.username:
                 if new.username not in changed_users:
                     changed_users.append(new.username)
+                sat_seats[new.username] = num
                 seat_info[new.username] = {
                     "seat_number": num,
                     "action": "sit_down",
@@ -309,21 +415,115 @@ class SeatObservationManager(Singleton):
             elif old.occupied and not new.occupied and old.username:
                 if old.username not in changed_users:
                     changed_users.append(old.username)
+                left_users.add(old.username)
                 seat_info[old.username] = {
                     "seat_number": num,
-                    "action": "leave",
+                    "action": "leave_seat",
                 }
             # 检测换人
             elif old.occupied and new.occupied and old.username and new.username and old.username != new.username:
                 if old.username not in changed_users:
                     changed_users.append(old.username)
-                seat_info[old.username] = {"seat_number": num, "action": "leave"}
+                seat_info[old.username] = {"seat_number": num, "action": "leave_seat"}
 
                 if new.username not in changed_users:
                     changed_users.append(new.username)
                 seat_info[new.username] = {"seat_number": num, "action": "sit_down"}
 
+        # 同一次观测里离开又落座 = 换座位，合并成一条 move_seat
+        for username in left_users:
+            new_seat = sat_seats.get(username)
+            if new_seat is not None:
+                seat_info[username] = {"seat_number": new_seat, "action": "move_seat"}
+
         return has_changes, changed_users, seat_info
+
+    def _read_visible_seats(self, desk_wrappers: list) -> Dict[int, Tuple[any, str, dict]]:
+        """把可见桌位读成 {seat_number: (desk, side, info)}。"""
+        observed: Dict[int, Tuple[any, str, dict]] = {}
+        for desk_idx, desk in self.map_desks_to_indices(desk_wrappers):
+            for side, offset in (("left", 1), ("right", 2)):
+                seat_num = desk_idx * 2 + offset
+                observed[seat_num] = (desk, side, self._extract_seat_info(desk, side))
+        return observed
+
+    async def _resolve_usernames(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
+        """补齐占用麦位的昵称：先沿用快照里已知的占位者，读不到再点头像弹窗。
+
+        只在本轮确实没读到昵称时才沿用旧值 —— 无条件沿用会让座位上换人
+        （label 里就是新昵称）永远 diff 不出来。
+        """
+        pending = []
+        for seat_num, (desk, side, info) in observed.items():
+            if not info["occupied"] or info.get("username"):
+                continue
+            old_slot = self.seats[seat_num]
+            if old_slot.occupied and old_slot.username:
+                info["username"] = old_slot.username
+                continue
+            pending.append((seat_num, desk, side))
+
+        for seat_num, desk, side in pending:
+            username = await self.inspect_occupant(desk, side, seat_num)
+            if username:
+                observed[seat_num][2]["username"] = username
+
+    def _apply_snapshot(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
+        for seat_num, (desk, side, info) in observed.items():
+            slot = self.seats[seat_num]
+            slot.occupied = info["occupied"]
+            slot.username = info.get("username")
+            slot.label = info.get("label", "")
+            slot.is_owner = info.get("is_owner", False)
+
+    async def _sync_desks(
+        self,
+        desk_wrappers: list,
+        trigger_source: str,
+        focus_count: Optional[int],
+        *,
+        caller_holds_ui_session: bool = False,
+        notify_after: Optional[int] = None,
+    ) -> bool:
+        """映射 -> 读麦位 -> 补昵称 -> 落快照 -> diff -> 通知。
+
+        被动观测与背离重扫共用这一段；区别只在触发源文案、是否自己拿 ui_session
+        （重扫已在外层持有，asyncio.Lock 不可重入）以及通知里的人数取值。
+        """
+        observed = self._read_visible_seats(desk_wrappers)
+        if not observed:
+            return False
+
+        old_slots = {k: v.copy() for k, v in self.seats.items()}
+
+        if caller_holds_ui_session:
+            await self._resolve_usernames(observed)
+        else:
+            async with self._ui_session("seat_inspect"):
+                await self._resolve_usernames(observed)
+
+        self._apply_snapshot(observed)
+
+        has_changes, changed_users, seat_info = self._compute_diff(
+            old_slots, self.seats, set(observed.keys())
+        )
+
+        if has_changes:
+            self.logger.info(self.format_3row_layout(trigger_source=trigger_source))
+
+            if changed_users:
+                from ushareiplay.managers.command_manager import CommandManager
+                if notify_after is None:
+                    # 被动观测没有新的人数，用最新在座数作为 after
+                    notify_after = sum(1 for s in self.seats.values() if s.occupied)
+                await CommandManager.instance().notify_focus_count_change(
+                    self._last_focus_count, notify_after, changed_users=changed_users, seat_info=seat_info
+                )
+
+        if focus_count is not None:
+            self._last_focus_count = focus_count
+
+        return has_changes
 
     async def observe_visible_desks(
         self, desk_wrappers: list, current_focus_count: Optional[int] = None
@@ -333,66 +533,12 @@ class SeatObservationManager(Singleton):
             return False
 
         async with self._lock:
-            desk_mappings = self.map_desks_to_indices(desk_wrappers)
-            old_slots = {k: v.copy() for k, v in self.seats.items()}
-            pending_inspections = []
-            observed_seats_data = {}
-
-            for desk_idx, desk in desk_mappings:
-                left_seat_num = desk_idx * 2 + 1
-                right_seat_num = desk_idx * 2 + 2
-
-                left_info = self._extract_seat_info(desk, "left", left_seat_num)
-                right_info = self._extract_seat_info(desk, "right", right_seat_num)
-
-                observed_seats_data[left_seat_num] = (desk, "left", left_info)
-                observed_seats_data[right_seat_num] = (desk, "right", right_info)
-
-            for seat_num, (desk, side, info) in observed_seats_data.items():
-                old_slot = self.seats[seat_num]
-                if info["occupied"]:
-                    if old_slot.occupied and old_slot.username:
-                        info["username"] = old_slot.username
-                    elif not info.get("username"):
-                        pending_inspections.append((seat_num, desk, side))
-
-            if pending_inspections:
-                await self.acquire_ui_lock("seat_inspect")
-                try:
-                    for seat_num, desk, side in pending_inspections:
-                        username = await self.inspect_occupant(desk, side, seat_num)
-                        if username:
-                            desk, side, info = observed_seats_data[seat_num]
-                            info["username"] = username
-                finally:
-                    self.release_ui_lock("seat_inspect")
-
-            for seat_num, (desk, side, info) in observed_seats_data.items():
-                slot = self.seats[seat_num]
-                slot.occupied = info["occupied"]
-                slot.username = info.get("username")
-                slot.label = info.get("label", "")
-                slot.is_owner = info.get("is_owner", False)
-
-            has_changes, changed_users, seat_info = self._compute_diff(
-                old_slots, self.seats, set(observed_seats_data.keys())
+            return await self._sync_desks(
+                desk_wrappers,
+                "可视区域变更",
+                current_focus_count,
+                caller_holds_ui_session=False,
             )
-
-            if has_changes:
-                log_msg = self.format_3row_layout(trigger_source="可视区域变更")
-                self.logger.info(log_msg)
-
-                if changed_users:
-                    from ushareiplay.managers.command_manager import CommandManager
-                    total_seated = sum(1 for s in self.seats.values() if s.occupied)
-                    await CommandManager.instance().notify_focus_count_change(
-                        self._last_focus_count, total_seated, changed_users=changed_users, seat_info=seat_info
-                    )
-
-            if current_focus_count is not None:
-                self._last_focus_count = current_focus_count
-
-            return has_changes
 
     async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
         """专注人数发生变化时调用。如果人数与当前在座人数背离，打破被动规则主动展开全量扫描。"""
@@ -416,78 +562,23 @@ class SeatObservationManager(Singleton):
         if not self.handler:
             return False
 
-        async with self._lock:
-            await self.acquire_ui_lock("seat_expansion")
+        async with self._lock, self._ui_session("seat_expansion"):
             try:
-                expanded = await self.seat_ui.expand_seats()
-                if not expanded:
+                # 用规范 helper：展开失败或桌位不足 6 张都返回 None，避免半截快照
+                seat_desks = await self.seat_ui.expand_and_find_desks()
+                if not seat_desks:
                     self.logger.warning("Failed to expand seats for full rescan")
                     return False
 
-                await asyncio.sleep(0.5)
-
-                seat_desks = []
-                if hasattr(self.handler, "element_finder"):
-                    seat_desks = self.handler.element_finder.find_elements("seat_desk")
-
-                if not seat_desks:
-                    self.logger.warning("No seat desks found after expansion")
-                    return False
-
-                old_slots = {k: v.copy() for k, v in self.seats.items()}
-                desk_mappings = self.map_desks_to_indices(seat_desks)
-                pending_inspections = []
-                observed_seats_data = {}
-
-                for desk_idx, desk in desk_mappings:
-                    left_seat_num = desk_idx * 2 + 1
-                    right_seat_num = desk_idx * 2 + 2
-
-                    left_info = self._extract_seat_info(desk, "left", left_seat_num)
-                    right_info = self._extract_seat_info(desk, "right", right_seat_num)
-
-                    observed_seats_data[left_seat_num] = (desk, "left", left_info)
-                    observed_seats_data[right_seat_num] = (desk, "right", right_info)
-
-                for seat_num, (desk, side, info) in observed_seats_data.items():
-                    old_slot = self.seats[seat_num]
-                    if info["occupied"]:
-                        if old_slot.occupied and old_slot.username:
-                            info["username"] = old_slot.username
-                        elif not info.get("username"):
-                            pending_inspections.append((seat_num, desk, side))
-
-                for seat_num, desk, side in pending_inspections:
-                    username = await self.inspect_occupant(desk, side, seat_num)
-                    if username:
-                        desk, side, info = observed_seats_data[seat_num]
-                        info["username"] = username
-
-                for seat_num, (desk, side, info) in observed_seats_data.items():
-                    slot = self.seats[seat_num]
-                    slot.occupied = info["occupied"]
-                    slot.username = info.get("username")
-                    slot.label = info.get("label", "")
-                    slot.is_owner = info.get("is_owner", False)
-
-                has_changes, changed_users, seat_info = self._compute_diff(
-                    old_slots, self.seats, set(observed_seats_data.keys())
+                return await self._sync_desks(
+                    seat_desks,
+                    "专注人数背离展开重扫",
+                    target_focus_count,
+                    caller_holds_ui_session=True,
+                    notify_after=target_focus_count,
                 )
 
-                if has_changes:
-                    log_msg = self.format_3row_layout(trigger_source="专注人数背离展开重扫")
-                    self.logger.info(log_msg)
-
-                    if changed_users:
-                        from ushareiplay.managers.command_manager import CommandManager
-                        await CommandManager.instance().notify_focus_count_change(
-                            self._last_focus_count, target_focus_count, changed_users=changed_users, seat_info=seat_info
-                        )
-
-                self._last_focus_count = target_focus_count
-                return has_changes
-
-            except Exception as e:
+            except Exception:
                 self.logger.error(f"Error during expand_rescan_and_collapse: {traceback.format_exc()}")
                 return False
             finally:
@@ -495,4 +586,3 @@ class SeatObservationManager(Singleton):
                     await self.seat_ui.collapse_seats()
                 except Exception as e:
                     self.logger.error(f"Failed to collapse seats after rescan: {e}")
-                self.release_ui_lock("seat_expansion")

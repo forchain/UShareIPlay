@@ -229,7 +229,8 @@ class RoomState(Singleton):
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             if SeatObservationManager.is_initialized():
                 SeatObservationManager.instance().clear()
-        except Exception:
-            pass
+        except Exception as e:
+            # 换房后麦位快照没清掉会拿上一间房的数据做 diff，不能静默吞掉
+            self.logger.error(f"Failed to clear seat observation on room clear: {e}")
         self.logger.info("Cleared room state")
 

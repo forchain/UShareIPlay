@@ -1,47 +1,28 @@
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+"""座位被动观测的测试。
+
+替身定义在 tests/seat_fixtures.py —— 刻意与生产协作者同形（见 PR #339 review 的
+C1/C2）：desk 是真 ElementWrapper，raw WebElement 路径走 find_element 契约，
+controller 用真实的 ui_session 异步上下文管理器。
+"""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from tests.seat_fixtures import (
+    ClickableNode,
+    FakeController,
+    FakeSeatUI,
+    RawSeatDesk,
+    build_desk_wrapper,
+    make_handler,
+    soul_elements,
+)
 from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
     SeatSlot,
 )
-
-
-class DummyNode:
-    def __init__(self, text="", bounds=None):
-        self.text = text
-        self.bounds = bounds or {"x": 0, "y": 0, "width": 100, "height": 100}
-        self.clicked = False
-
-    def click(self):
-        self.clicked = True
-
-
-class DummyDesk:
-    def __init__(
-        self,
-        left_label="",
-        left_occupied=False,
-        right_label="",
-        right_occupied=False,
-        bounds=None,
-        desk_index=None,
-    ):
-        self.children = {
-            "left_seat": DummyNode(),
-            "right_seat": DummyNode(),
-            "left_state": DummyNode() if left_occupied else None,
-            "right_state": DummyNode() if right_occupied else None,
-            "left_label": DummyNode(left_label) if left_label else None,
-            "right_label": DummyNode(right_label) if right_label else None,
-        }
-        self.bounds = bounds or {"x": 0, "y": 0, "width": 200, "height": 100}
-        if desk_index is not None:
-            self.desk_index = desk_index
-
-    def find_child_element(self, key):
-        return self.children.get(key)
 
 
 @pytest.fixture(autouse=True)
@@ -69,131 +50,300 @@ def test_format_3row_layout_visual_representation():
 
 
 def test_map_desks_to_indices_by_number_labels():
-    manager = SeatObservationManager.initialize(None)
-    desk_row0_left = DummyDesk(left_label="1", right_label="2")
-    desk_row1_right = DummyDesk(left_label="7", right_label="8")
-    desk_row2_left = DummyDesk(left_label="9", right_label="10")
+    manager = SeatObservationManager.initialize(make_handler())
+    desk_row0_left = build_desk_wrapper(manager.handler, left="1", right="2", y=100)
+    desk_row1_right = build_desk_wrapper(manager.handler, left="7", right="8", y=300)
+    desk_row2_left = build_desk_wrapper(manager.handler, left="9", right="10", y=500)
 
-    desks = [desk_row1_right, desk_row0_left, desk_row2_left]
-    mapped = manager.map_desks_to_indices(desks)
+    mapped = manager.map_desks_to_indices([desk_row1_right, desk_row0_left, desk_row2_left])
 
-    indices = [idx for idx, d in mapped]
-    assert indices == [0, 3, 4]
+    assert [idx for idx, _ in mapped] == [0, 3, 4]
 
 
 def test_map_desks_to_indices_fallback_by_coordinates():
-    manager = SeatObservationManager.initialize(None)
-    # 假设所有 label 都是占座者昵称，无数字，靠坐标聚类
-    desk0 = DummyDesk(left_label="群主", right_label="A", bounds={"x": 50, "y": 100, "width": 100, "height": 50})
-    desk1 = DummyDesk(left_label="B", right_label="C", bounds={"x": 200, "y": 100, "width": 100, "height": 50})
-    desk2 = DummyDesk(left_label="D", right_label="E", bounds={"x": 50, "y": 200, "width": 100, "height": 50})
-    desk3 = DummyDesk(left_label="F", right_label="G", bounds={"x": 200, "y": 200, "width": 100, "height": 50})
+    # 昵称占满可视桌位，读不到座位号，只能靠坐标聚类
+    manager = SeatObservationManager.initialize(make_handler())
+    desks = [
+        build_desk_wrapper(manager.handler, left="群主", right="A", y=500),
+        build_desk_wrapper(manager.handler, left="B", right="C", y=100),
+        build_desk_wrapper(manager.handler, left="D", right="E", y=300),
+        build_desk_wrapper(manager.handler, left="F", right="G", y=200),
+    ]
 
-    desks = [desk3, desk0, desk2, desk1]
     mapped = manager.map_desks_to_indices(desks)
 
-    indices = [idx for idx, d in mapped]
-    assert indices == [0, 1, 2, 3]
+    assert [idx for idx, _ in mapped] == [0, 1, 2, 3]
+
+
+def test_nickname_digits_do_not_anchor_seat_number():
+    manager = SeatObservationManager.initialize(make_handler())
+
+    # 昵称里带数字不算编号
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="小明7")
+    ) is None
+    # 左位只可能是奇数号，读到 8 判为昵称
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="8")
+    ) is None
+    # 两侧都是数字时必须构成一张桌子：7 配 9、7 配 4 都不成立
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="7", right="9")
+    ) is None
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="7", right="4")
+    ) is None
+    # 配对一致才锚定
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="7", right="8")
+    ) == 3
+    # 另一侧是昵称时，单侧读到编号也锚定
+    assert manager._detect_desk_index_from_labels(
+        build_desk_wrapper(manager.handler, left="1", right="小明")
+    ) == 0
 
 
 @pytest.mark.asyncio
-async def test_observe_visible_desks_detects_changes_and_diff():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    mock_handler.controller = MagicMock()
-    mock_handler.controller.acquire_ui_lock = AsyncMock()
-    mock_handler.controller.release_ui_lock = MagicMock()
-    mock_handler.element_finder = MagicMock()
+async def test_observe_visible_desks_reads_occupancy_from_page_source():
+    """C1 回归：desk 是 ElementWrapper 时也必须读到真实占用状态。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
 
-    manager = SeatObservationManager.initialize(mock_handler)
+    desks = [
+        build_desk_wrapper(handler, left="群主", right="2", left_occupied=True, y=100),
+        build_desk_wrapper(handler, left="3", right="4", y=300),
+    ]
 
-    desk0 = DummyDesk(left_label="群主", left_occupied=True, right_label="2", right_occupied=False, desk_index=0)
-    desk1 = DummyDesk(left_label="3", left_occupied=False, right_label="4", right_occupied=False, desk_index=1)
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.observe_visible_desks(desks, current_focus_count=1)
 
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd_mgr:
-        notify_mock = AsyncMock()
-        mock_cmd_mgr.return_value.notify_focus_count_change = notify_mock
+    assert changed is True
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].is_owner is True
+    assert manager.seats[1].username == "群主"
+    assert manager.seats[2].occupied is False
+    assert manager.seats[3].occupied is False and manager.seats[4].occupied is False
 
-        # First observation: 群主 seated at seat 1
-        changed = await manager.observe_visible_desks([desk0, desk1])
-        assert changed is True
-        assert manager.seats[1].occupied is True
-        assert manager.seats[1].is_owner is True
-        assert manager.seats[2].occupied is False
-
-        # Verify notify was called with 群主 sit_down
-        notify_mock.assert_awaited_once()
-        args, kwargs = notify_mock.call_args
-        assert kwargs["changed_users"] == ["群主"]
-        assert kwargs["seat_info"]["群主"]["seat_number"] == 1
-        assert kwargs["seat_info"]["群主"]["action"] == "sit_down"
-
-
-@pytest.mark.asyncio
-async def test_observe_visible_desks_inspects_new_occupant():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    mock_handler.controller = MagicMock()
-    mock_handler.controller.acquire_ui_lock = AsyncMock()
-    mock_handler.controller.release_ui_lock = MagicMock()
-    mock_handler.key_actions = MagicMock()
-    mock_handler.element_finder = MagicMock()
-    # Mock popup returns "Bob"
-    mock_handler.element_finder.wait_for_any_element.return_value = ("souler_name", DummyNode("Bob"))
-
-    manager = SeatObservationManager.initialize(mock_handler)
-
-    # Desk 0: seat 1 is occupied without username text (label is "管理")
-    desk0 = DummyDesk(left_label="管理", left_occupied=True, right_label="2", right_occupied=False, desk_index=0)
-
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd_mgr:
-        mock_cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
-        changed = await manager.observe_visible_desks([desk0])
-        assert changed is True
-        assert manager.seats[1].occupied is True
-        assert manager.seats[1].username == "Bob"
-        # Confirm popup inspection clicked and pressed back
-        assert mock_handler.key_actions.press_back.called
+    # 昵称/群主直接可读，不需要点头像弹窗
+    manager.inspect_occupant.assert_not_awaited()
+    notify.assert_awaited_once()
+    kwargs = notify.call_args.kwargs
+    assert kwargs["changed_users"] == ["群主"]
+    assert kwargs["seat_info"]["群主"] == {"seat_number": 1, "action": "sit_down"}
 
 
 @pytest.mark.asyncio
-async def test_focus_divergence_triggers_active_expansion():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    mock_handler.controller = MagicMock()
-    mock_handler.controller.acquire_ui_lock = AsyncMock()
-    mock_handler.controller.release_ui_lock = MagicMock()
-    mock_handler.key_actions = MagicMock()
-    mock_handler.element_finder = MagicMock()
+async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session():
+    controller = FakeController()
+    handler = make_handler(popup_name="Bob", controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+    lock_states = []
+    handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
 
-    mock_seat_ui = MagicMock()
-    mock_seat_ui.expand_seats = AsyncMock(return_value=True)
-    mock_seat_ui.collapse_seats = AsyncMock(return_value=True)
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
 
-    manager = SeatObservationManager.initialize(mock_handler)
-    manager._seat_ui = mock_seat_ui
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.observe_visible_desks([desk])
 
-    # Visible desks currently have 1 person (seat 1)
+    assert manager.seats[1].username == "Bob"
+    # 点头像读弹窗必须持有 ui_session，否则命令任务与兜底 press_back 会踩进来
+    assert lock_states and all(lock_states)
+    assert controller.sessions == ["seat_inspect"]
+    assert controller.ui_lock.locked() is False
+    # ElementWrapper 的子元素没有 element key，click() 拿不到真实元素 -> 按坐标点
+    assert handler.gesture_handler.click_at.call_args.args == (130, 180)
+    handler.key_actions.press_back.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_observe_visible_desks_reuses_known_occupant_without_reinspection():
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
+
+    # 占位者仍是 张三，但这一轮 label 只给到 "管理"（读不到昵称）
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        await manager.observe_visible_desks([desk])
+
+    assert manager.seats[1].username == "张三"
+    manager.inspect_occupant.assert_not_awaited()
+    notify.assert_not_awaited()  # 无变化，不发通知
+
+
+@pytest.mark.asyncio
+async def test_occupant_swap_is_detected():
+    """R2 回归：座位上换人不能被旧昵称覆盖掉。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三", label="张三")
+
+    desk = build_desk_wrapper(handler, left="李四", right="2", left_occupied=True)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.observe_visible_desks([desk])
+
+    assert changed is True
+    assert manager.seats[1].username == "李四"
+    kwargs = notify.call_args.kwargs
+    assert set(kwargs["changed_users"]) == {"张三", "李四"}
+    assert kwargs["seat_info"]["张三"] == {"seat_number": 1, "action": "leave_seat"}
+    assert kwargs["seat_info"]["李四"] == {"seat_number": 1, "action": "sit_down"}
+
+
+@pytest.mark.asyncio
+async def test_relocating_user_reports_move_seat():
+    """R3：同一次观测里离开又落座 = move_seat（PR 文档承诺的三个动作之一）。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三", label="张三")
+
+    desks = [
+        # desk 0（1/2 号位）已空
+        build_desk_wrapper(handler, left="1", right="2", y=100),
+        # desk 1（3/4 号位）坐着 张三
+        build_desk_wrapper(handler, left="张三", right="4", left_occupied=True, y=300),
+    ]
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        await manager.observe_visible_desks(desks)
+
+    kwargs = notify.call_args.kwargs
+    assert kwargs["changed_users"] == ["张三"]
+    assert kwargs["seat_info"]["张三"] == {"seat_number": 3, "action": "move_seat"}
+
+
+def _raw_desk(left_label, right_label, y):
+    """展开重扫路径的 desk（raw WebElement）：占用由 left_state 是否存在决定。"""
+    elements = soul_elements()
+    children = {
+        elements["left_label"]: SimpleNamespace(text=left_label),
+        elements["right_label"]: SimpleNamespace(text=right_label),
+    }
+    if left_label:
+        children[elements["left_state"]] = SimpleNamespace(text="")
+    return RawSeatDesk(children, location={"x": 40, "y": y})
+
+
+@pytest.mark.asyncio
+async def test_focus_divergence_triggers_active_expansion_and_collapse():
+    raw_desks = [_raw_desk("Alice", "2", 100), _raw_desk("David", "8", 300)]
+    handler = make_handler(desks=raw_desks)
+    manager = SeatObservationManager.initialize(handler)
+    seat_ui = FakeSeatUI(desks=raw_desks)
+    manager._seat_ui = seat_ui
+
+    # 可视区只有 seat 1 有人
     manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
 
-    # Expanded desks mock: shows Alice on seat 1, and David on seat 7 (row 1 right desk)
-    desk0 = DummyDesk(left_label="Alice", left_occupied=True, right_label="2", desk_index=0)
-    desk3 = DummyDesk(left_label="David", left_occupied=True, right_label="8", desk_index=3)
-    mock_handler.element_finder.find_elements.return_value = [desk0, desk3]
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
 
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd_mgr:
-        notify_mock = AsyncMock()
-        mock_cmd_mgr.return_value.notify_focus_count_change = notify_mock
-
-        # When focus_count changes to 2 (diverges from known seated count = 1)
         diverged = await manager.on_focus_count(before=1, current_focus_count=2)
 
-        assert diverged is True
-        # Verify expand and collapse were both called!
-        mock_seat_ui.expand_seats.assert_awaited_once()
-        mock_seat_ui.collapse_seats.assert_awaited_once()
-        # Verify seat 7 is now recognized as occupied by David
-        assert manager.seats[7].occupied is True
-        assert manager.seats[7].username == "David"
-        # Verify David's sit_down triggered notification
-        assert "David" in notify_mock.call_args[1]["changed_users"]
+    assert diverged is True
+    assert seat_ui.collapsed is True  # 展开后必须收起，恢复聊天视口
+    assert manager.seats[7].occupied is True
+    assert manager.seats[7].username == "David"
+    assert "David" in notify.call_args.kwargs["changed_users"]
+
+
+@pytest.mark.asyncio
+async def test_expansion_inspection_clicks_raw_web_element():
+    """展开重扫拿到 raw WebElement 时直接点元素，不走坐标兜底。"""
+    elements = soul_elements()
+    state_node = ClickableNode()
+    raw_desk = RawSeatDesk(
+        {
+            elements["left_state"]: state_node,
+            elements["left_label"]: SimpleNamespace(text="管理"),
+            elements["right_label"]: SimpleNamespace(text="2"),
+        },
+        location={"x": 40, "y": 100},
+    )
+    handler = make_handler(desks=[raw_desk], popup_name="Bob")
+    manager = SeatObservationManager.initialize(handler)
+    manager._seat_ui = FakeSeatUI(desks=[raw_desk])
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.expand_rescan_and_collapse(1)
+
+    assert state_node.clicked is True
+    assert manager.seats[1].username == "Bob"
+    handler.gesture_handler.click_at.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expansion_without_six_desks_keeps_snapshot():
+    """expand_and_find_desks 半截返回（None）时不得写入残缺快照，但仍要收起。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    seat_ui = FakeSeatUI(desks=None)
+    manager._seat_ui = seat_ui
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.expand_rescan_and_collapse(2)
+
+    assert changed is False
+    assert seat_ui.collapsed is True
+    assert manager.seats[1].username == "Alice"  # 快照未被推平
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_inspection_holds_the_real_app_controller_ui_lock():
+    """契约：观测层用的是 AppController 真实的 ui_session，不是自造锁 API。"""
+    import asyncio
+
+    from ushareiplay.core.app_controller import AppController
+
+    controller = AppController.__new__(AppController)
+    controller.ui_lock = asyncio.Lock()
+    controller.logger = None  # ui_session 只在有 logger 时打日志
+
+    handler = make_handler(popup_name="Bob", controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+    lock_states = []
+    handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
+
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.observe_visible_desks([desk])
+
+    assert lock_states == [True]
+    assert controller.ui_lock.locked() is False
+
+
+@pytest.mark.asyncio
+async def test_controller_without_ui_session_api_fails_loudly():
+    """曾经的 hasattr 守卫会让加锁静默失效；接口不符契约时必须炸出来。"""
+    from types import SimpleNamespace as _SimpleNamespace
+
+    handler = make_handler(controller=_SimpleNamespace())
+    manager = SeatObservationManager.initialize(handler)
+
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
+
+    with pytest.raises(AttributeError):
+        await manager.observe_visible_desks([desk])
