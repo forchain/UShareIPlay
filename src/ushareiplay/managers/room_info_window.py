@@ -176,13 +176,19 @@ class RoomInfoWindow(Singleton):
     # 窗口内的顺序：先纠偏，再编辑
     # ------------------------------------------------------------------
 
-    def _sync_recommendation(self) -> Dict:
-        """读取真实推荐分发状态并纠正 RoomState 中的记录。"""
+    def _sync_recommendation(self, wait: bool = False) -> Dict:
+        """读取真实推荐分发状态并纠正 RoomState 中的记录。
+
+        Args:
+            wait: 是否等状态字段渲染出来。只有「窗口刚被自己打开、紧接着就要
+                一次性改完所有字段」的全量审计才等；标题更新等被动路径沿用
+                原来的非阻塞读 —— 布局里没有该字段时，等待会白等满整个超时。
+        """
         from ushareiplay.managers.recommendation_manager import RecommendationManager
         if not RecommendationManager.is_initialized():
             return {'skipped': True, 'reason': 'not_initialized'}
         rec_mgr = RecommendationManager.instance()
-        ui_status = rec_mgr.inspect_current_ui_status(wait=True)
+        ui_status = rec_mgr.inspect_current_ui_status(wait=wait)
         if ui_status is not None:
             rec_mgr.room_state.recommendation_enabled = ui_status
         return {'success': True, 'status': ui_status}
@@ -194,17 +200,21 @@ class RoomInfoWindow(Singleton):
             return {'skipped': True, 'reason': 'not_initialized'}
         return PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
 
-    def sync_while_open(self) -> Dict:
+    def sync_while_open(self, wait: bool = False) -> Dict:
         """窗口已打开时的「先纠偏再编辑」顺序。
 
         推荐分发状态与派对类型必须在任何字段编辑之前同步：编辑层（标题/话题/
         公告）会改变抽屉内容，之后再读这两个状态已经不反映进入窗口时的真实值。
         这个顺序原先只写在 `RoomNameManager._update_title_ui` 的方法体里，
         现在由本模块拥有，`audit_and_repair()` 复用同一步骤。
+
+        Args:
+            wait: 是否等推荐状态字段渲染出来。被动路径（标题更新时窗口已开着）
+                保持原来的非阻塞读；`audit_and_repair()` 自己刚打开窗口，传 True。
         """
         results: Dict = {}
         for key, step in (
-            ('recommendation', self._sync_recommendation),
+            ('recommendation', lambda: self._sync_recommendation(wait)),
             ('room_type', self._sync_room_type),
         ):
             try:
@@ -234,8 +244,9 @@ class RoomInfoWindow(Singleton):
                 self.last_audit_results = {'open': open_error}
                 return {'open': open_error}
 
-            # 1-2. 先纠偏（推荐分发状态、派对类型），顺序由 sync_while_open 拥有
-            results.update(self.sync_while_open())
+            # 1-2. 先纠偏（推荐分发状态、派对类型），顺序由 sync_while_open 拥有。
+            # 窗口是这里刚打开的，字段可能还没渲染 —— 全量审计等它出现。
+            results.update(self.sync_while_open(wait=True))
 
             # 3. 房间标题/主题检查与同步
             try:

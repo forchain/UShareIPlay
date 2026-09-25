@@ -567,6 +567,8 @@ class AppController(Singleton):
                 await self.runtime_input.drain()
 
                 if self.runtime_input.paused:
+                    # 暂停时这里会连着下一圈：让出时间片，否则空转烧满一颗核
+                    await asyncio.sleep(0)
                     continue
 
                 outcome = await self.event_manager.process_current_screen()

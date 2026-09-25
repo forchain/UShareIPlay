@@ -243,9 +243,13 @@ def _stub_managers(monkeypatch, recorder):
         monkeypatch.setattr(cls, "_instance", stub, raising=False)
         monkeypatch.setattr(cls, "_singleton_initialized", True, raising=False)
 
+    def _inspect_current_ui_status(wait=True):
+        recorder['recommendation_wait'] = wait
+        return recorder.setdefault('recommendation', True) and True
+
     _install(
         RecommendationManager,
-        inspect_current_ui_status=lambda wait=True: recorder.setdefault('recommendation', True) and True,
+        inspect_current_ui_status=_inspect_current_ui_status,
         room_state=SimpleNamespace(recommendation_enabled=None),
     )
     _install(
@@ -268,12 +272,15 @@ def _stub_managers(monkeypatch, recorder):
 def test_audit_and_repair_runs_the_four_steps_and_closes(monkeypatch):
     handler = _handler()
     window = _window(handler)
-    _stub_managers(monkeypatch, {})
+    recorder = {}
+    _stub_managers(monkeypatch, recorder)
 
     results = window.audit_and_repair()
 
     assert set(results) == {'recommendation', 'room_type', 'room_name', 'notice'}
     assert window.pending_audit_retry is False
+    # 窗口是它自己刚打开的，字段可能还没渲染 -> 等
+    assert recorder['recommendation_wait'] is True
     # 窗口是它打开的 -> 结束后关窗
     assert handler.key_actions.back_presses == 1
 
@@ -311,11 +318,18 @@ def test_sync_while_open_corrects_recommendation_status_before_editing(monkeypat
     window = _window(handler)
 
     room_state = SimpleNamespace(recommendation_enabled=None)
+    seen_wait = []
+
+    def _inspect_current_ui_status(wait=True):
+        seen_wait.append(wait)
+        return False
 
     from ushareiplay.managers.recommendation_manager import RecommendationManager
     monkeypatch.setattr(
         RecommendationManager, "_instance",
-        SimpleNamespace(inspect_current_ui_status=lambda wait=True: False, room_state=room_state),
+        SimpleNamespace(
+            inspect_current_ui_status=_inspect_current_ui_status, room_state=room_state
+        ),
         raising=False,
     )
     monkeypatch.setattr(RecommendationManager, "_singleton_initialized", True, raising=False)
@@ -324,3 +338,6 @@ def test_sync_while_open_corrects_recommendation_status_before_editing(monkeypat
 
     assert results['recommendation'] == {'success': True, 'status': False}
     assert room_state.recommendation_enabled is False
+    # 被动路径（标题更新时窗口已经开着）读状态不等：布局里没有该字段时，
+    # 等待会白等满整个超时，把每次改标题都拖住。
+    assert seen_wait == [False]

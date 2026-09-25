@@ -116,3 +116,28 @@
 **结果**：878 通过；监控循环的输入处理从 ~75 行内联降为一个 `drain()`。
 
 **一处判定收紧**：`route_queue_text()` 采用「只有触发符、没有内容不算命令」的判定（与 `execute_chat_scan` / `process_missed_messages` 一致）。原先循环用的是仅去空白的 `result.text.strip()`，因此裸 `:` 会被当成命令入队；现在会作为普通发言记日志。`CommandManager` 那条路径原先完全不判定，现在同样收紧。
+
+## 9. PR #330 评审跟进（Request changes 的处置）
+
+### 已修（含回归测试）
+
+- **`e0cf184` Critical：`observe()` 提交的是增量而不是窗口。** 静屏时增量是空的，窗口被设成增量就等于被清空 → 下一次观察看不到锚点、整屏被当成新增重新派发（礼物重复道谢、热力值重复写库、命令重复执行）。窗口改为只做追加。回归测试：`test_a_static_screen_is_never_reported_as_new_again`（连观察同屏 4 次不得再报新行）、`test_an_unreadable_screen_does_not_forget_the_window`（屏幕读空也不清窗口）；两条在旧语义下均变红。
+- **`e0cf184` Required：补漏去重集缩水。** 旧实现是 `recent_chats ∪ latest_chats`，重构后只剩当前窗口，回溯滚过上一屏的行会被重复派发。新增 `MessageManager._known`（观察前的窗口 ∪ 本次增量），`process_missed_messages` 用它去重。回归测试：`test_process_missed_messages_does_not_re_dispatch_a_previous_screen_line`（旧实现下重复道谢，`2 != 1`）。
+  - 未按评审建议把集合放进 `ChatDelta.known`：窗口状态是模块私有（本候选的目标之一就是不让事件解释 manager 的实现细节），去重集是窗口状态的一部分，因此留在模块内。`ChatDelta` 的字段不变。
+- **`e0cf184` Required：`RolePolicy` 的默认值短路了库回落。** `RolePolicy.room_owner` 在配置缺省时给出 `DEFAULT_ROOM_OWNER`，用它判断「有没有配」会让 `User.filter(level=9)` 永远走不到。新增 `RolePolicy.configured_room_owner`（没配就是 `None`），`resolve_room_owner` 改读它；`room_owner` 的默认值对其它调用方不变。测试：`test_resolve_room_owner_falls_back_to_the_level_9_user_in_db`。
+- **`3a9b0d1` Required：标题刷新路径变成阻塞读。** `_sync_recommendation` 原先无条件 `inspect_current_ui_status(wait=True)`，而旧标题路径用的是非阻塞读；布局里没有 `party_recommendation_status` 时每次改标题都白等满超时。改为 `wait` 参数：被动路径（标题更新）不等待，`audit_and_repair()`（自己刚打开窗口）传 True —— 后者与旧 `room_info_auditor` 的等待语义一致。测试：`test_sync_while_open_corrects_recommendation_status_before_editing` 与 `test_audit_and_repair_...` 各钉一个方向。
+- **`2113510` Required：`:mic` 丢掉等待。** 旧 `:mic` 与 `ensure_mic_active` 在读取 content-desc 前会 `wait_for_element_clickable`（默认 10s），重构后 `MicManager.state()` 是即时读，刚就座/刚进房按钮未渲染时立刻报「找不到按钮」；`set_active` 里存活的那个 wait 在读态失败后已提前返回，够不到。`state(*, wait=False)` 加参数：`set_active()` 与裸 `:mic` 传 True（要动手改麦克风就得等），静音保护读态保持非阻塞（旧实现也不等）。测试：`test_set_active_waits_for_the_button_instead_of_failing_fast`、`test_set_active_waits_after_taking_a_seat`、`test_state_reads_without_waiting_unless_asked`。
+- **`190c3a7` Required：三个死 import。** `command_manager.py` 的 `expand_queue_text` / `format_manual_message` / `is_manual_operator` 已删除（确认本文件无使用；`runtime_services.py` 与 `say.py` 的真实使用不变）。
+- **`190c3a7` Required：pipeline 组装零覆盖。** 新增循环级测试 `test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause`：钉住监控循环确实组装了 pipeline、每圈 `drain()`、`paused` 的圈不碰 `process_current_screen()`。
+- **`dddc222` Consider：内核 docstring 与话题的 mark 顺序不符。** 内核说「每次尝试之后 mark」，但 `TopicManager.update()` 是**先**推进再调用 —— 保留了原有的分裂语义（UI 调用可能抛出时，先推进才不会因异常跳过整个冷却周期）。docstring 已如实描述两种合法顺序，并写明「别顺手统一」。
+- **`190c3a7` Consider：paused 空转。** 暂停分支在 `continue` 前 `await asyncio.sleep(0)`，不再空转烧满一颗核（旧行为原样保留到现在，既然循环级测试已覆盖该分支，顺手修掉）。
+- **`dd9f300` Required：横幅解析不再容忍前缀 → 会把前缀当昵称。** 已实测：`classify_banner_line("打个招呼：你关注的Outlier进入房间啦")` 得出昵称 `"打个招呼：你关注的Outlier"`（旧横幅解析用的是非锚定 `re.search`，会正确取到 `Outlier`）；`"任务进度：小红来到了房间"` 得出 `"任务进度：小红"`。两条都会建垃圾 User 行并替它问候。**修法**：通用家族（格式5/6，group 可从行首任意位置起算）的候选名加护栏 —— 含结构标点 `：:，。,.;；` 或超过 24 字即不算昵称；名字紧跟字面量的家族（格式1-4）不加护栏，避免误伤昵称本身含标点的用户。真机横幅不带前缀（已确认），因此不恢复旧的非锚定搜索。测试：`TestClassifyBannerLine` 两条前缀用例 + `test_a_prefixed_banner_yields_no_nickname_at_all`（护栏关闭时三条均变红）。顺带删除 `_ENTER_RETURN_PATTERN`（格式5 的重复副本，已无引用）。
+
+### 记录未修（理由）
+
+- **`e0cf184`：`observe()` 先提交后派发 → 崩溃即丢行。** 旧契约是 at-least-once（旧事件在派发**之后**才 append 窗口），现在窗口在派发前提交。建议的 `commit()` 回调会改变 `ChatDelta` 的形状，本候选的接缝目标是不外露窗口状态；留待单独讨论。
+- **`2113510`：`:mic` 报错文案变化（本次核对发现，评审未提）。** 已就座但按钮缺失时，旧代码报 `Microphone button not found`，现在裸 `:mic` 报 `Failed to get mic status`（`state()` 把「按钮不在」和「desc 读不出」都收敛成 None）。当前测试 `test_bare_mic_when_seated_and_status_unreadable_reports_error` 钉的是新文案。判定为文案级差异、不阻塞，但若要恢复旧文案，需要让 `MicManager` 暴露「读不到状态时的文案」而不是在命令里探元素。
+- **`2113510`：`set_active` 读态→点击之间 TOCTOU 变宽；裸 `:mic` 读两次状态非原子。** 既有并发面，非本次引入。
+- **`dd9f300`：`slide_drawer` 折叠态若仍在层级里，`ensure_open` 的 `is_open()` 探测会误判「已开」。** 需真机验证（`DIALOG_KEYS` 命中任一项即算开着）。
+- **`833eb1e`：album 话题名过 `primary_topic()` 会被 `" - "` 截断**（专辑名含 `" - "` 即出错）；**`adopt()` 标题失败现在抑制话题写入**，而 5 个原调用点里有 4 个不是这个语义。两处均为行为发散，未定案。
+- **`dddc222`：mark 顺序差异未加钉住测试。** 两处 UI 调用都把异常收敛成 error dict，因此「先 mark / 后 mark」在当前代码里不可观测 —— 加测试等于钉一个不可达路径。docstring 已写明差异与理由；若将来真的要让 UI 调用直接抛异常，届时必须同时补测试。

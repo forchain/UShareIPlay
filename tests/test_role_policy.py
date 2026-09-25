@@ -128,3 +128,17 @@ def test_agent_command_spool_attributes_to_room_owner(tmp_path):
     item4 = input_q.get_nowait()
     assert item4["content"] == ":play test4"
     assert item4["nickname"] == "CustomUser"
+
+
+def test_configured_room_owner_distinguishes_absent_from_defaulted():
+    """没配 room_owner 时 configured_room_owner 必须是 None，不是 "Joyer"。
+
+    这是「配置优先、否则回落到库里房主」的调用方能看见差别的唯一入口。
+    """
+    assert RolePolicy({}).room_owner == "Joyer"
+    assert RolePolicy({}).configured_room_owner is None
+
+    assert RolePolicy({"soul": {"room_owner": "Alice"}}).configured_room_owner == "Alice"
+    assert RolePolicy({"room_owner": "Dave"}).configured_room_owner == "Dave"
+    # 显式写空 = 没配（旧语义：此时走 DB 回落），不是「房主叫空字符串」
+    assert RolePolicy({"soul": {"room_owner": ""}}).configured_room_owner is None

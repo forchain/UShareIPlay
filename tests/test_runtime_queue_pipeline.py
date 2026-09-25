@@ -456,6 +456,37 @@ def test_observe_returns_only_the_lines_after_the_anchor():
     assert delta.new_lines == ("msg_D",)
 
 
+def test_a_static_screen_is_never_reported_as_new_again():
+    """同屏反复观察都不得再报新行。
+
+    窗口提交的是增量而不是整屏：静屏（增量空）时窗口若被增量覆盖就等于被清空，
+    下一次观察看不到锚点，整屏会被当成新增重新派发 —— 礼物重复道谢、热力值
+    重复写库、命令重复执行。旧的 diff 算法 append 的是整屏，窗口跨静屏保留。
+    """
+    from ushareiplay.managers.message_manager import MessageManager
+
+    manager = MessageManager.instance()
+    screen = ["souler[A]说: 你好", "souler[A]送给Joyer", "souler[B]说: :play 稻香"]
+
+    assert manager.observe(screen).new_lines == tuple(screen)
+    for _ in range(3):
+        delta = manager.observe(list(screen))
+        assert delta.new_lines == ()
+        assert delta.missed is False
+
+
+def test_an_unreadable_screen_does_not_forget_the_window():
+    """屏幕上什么都读不到（元素缺失/界面切换）时，窗口不能被清空。"""
+    from ushareiplay.managers.message_manager import MessageManager
+
+    manager = MessageManager.instance()
+    manager.observe(["msg_A", "msg_B", "msg_C"])
+    manager.observe([])
+
+    # 只是多了一行，不该把整屏当成新增
+    assert manager.observe(["msg_A", "msg_B", "msg_C", "msg_D"]).new_lines == ("msg_D",)
+
+
 def test_message_content_update_logic_does_not_drain_runtime_queue():
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.events.message_content import MessageContentEvent

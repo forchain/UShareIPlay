@@ -54,6 +54,7 @@ class _ElementFinder:
         self.disappear_after_grab = disappear_after_grab
         self.missing_toggle = False
         self.disappear_calls = []
+        self.waited_for = []
         self._grab_mic = _Element(events, "grab_mic")
         self._confirm_mic = _Element(events, "confirm_mic")
         self._toggle_mic = _Element(events, "toggle_mic")
@@ -64,6 +65,11 @@ class _ElementFinder:
         if key == "toggle_mic":
             return None if self.missing_toggle else self._toggle_mic
         return None
+
+    def wait_for_element(self, key, timeout=None):
+        """等按钮出现：假件不真的等，只记下「这里等了」。"""
+        self.waited_for.append(key)
+        return self.try_find_element(key)
 
     def wait_for_element_clickable(self, key, timeout=None):
         if key == "grab_mic":
@@ -152,6 +158,14 @@ def test_state_is_unknown_when_the_button_is_absent():
     assert manager.state() is None
 
 
+def test_state_reads_without_waiting_unless_asked():
+    """静音保护读态是非阻塞的：读不到就跳过，不该在这里等。"""
+    manager, handler, _events = _make_manager(mic_desc="闭麦按钮")
+
+    assert manager.state() is True
+    assert handler.element_finder.waited_for == []
+
+
 # --------------------------------------------------------------------------
 # set_active()：开麦前必须先上麦
 # --------------------------------------------------------------------------
@@ -185,6 +199,26 @@ def test_set_active_reports_error_and_leaves_mic_untouched_when_seating_fails():
     assert events == ["ensure_on_seat"]
     assert "error" in result
     assert "grab" in result["error"].lower()
+
+
+def test_set_active_waits_for_the_button_instead_of_failing_fast():
+    """要动手改麦克风就得等按钮出现：刚就座/刚进房时它可能还没渲染。
+
+    即时读（try_find_element）会立刻判定「找不到按钮」并放弃，`:mic` 就变成了
+    一次进房第一次按必然失败。
+    """
+    manager, handler, _events = _make_manager(on_seat=True, mic_desc="开麦按钮")
+
+    assert manager.set_active(True) == {"state": "1"}
+    assert handler.element_finder.waited_for == ["toggle_mic"]
+
+
+def test_set_active_waits_after_taking_a_seat():
+    """抢麦就座之后按钮才挂上界面 —— 这条读态同样要等。"""
+    manager, handler, _events = _make_manager(on_seat=False, mic_on_after_seat=True)
+
+    assert manager.set_active(True) == {"state": "1"}
+    assert handler.element_finder.waited_for == ["toggle_mic"]
 
 
 def test_set_active_reports_missing_toggle_button():

@@ -44,7 +44,6 @@ _QUOTED_HEAD_PATTERN = re.compile(r"^(?:(?P<wrapper>souler\[.+?\]说[:：])\s*)?
 _BRACKET_CHARS_PATTERN = re.compile(r"[「」]")
 _WHITESPACE_RUN_PATTERN = re.compile(r"\s+")
 
-_ENTER_RETURN_PATTERN = re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$")
 # 点赞横幅：「荒草 为派对点赞了」。它属于同一族房间横幅文案，因此归 Chat Intake 所有。
 _PARTY_LIKE_PATTERN = re.compile(r"^(.+?)\s*为派对点赞了")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
@@ -62,11 +61,21 @@ _ENTER_RETURN_PATTERNS = [
     re.compile(r"^你的" + _ENTER_RELATIONS + r"\s*(.+?)" + _ENTER_ACTION + r".*?$"),
     # 格式4: 你的<关系词> XXX... (带空格分隔的任意关系词)
     re.compile(r"^你的\S{1,6}\s+(.+?)" + _ENTER_ACTION + r".*?$"),
-    # 格式5: 坐着...来啦 / 进来陪你聊天啦
+]
+
+# 通用进入: 格式5 坐着...来啦 / 进来陪你聊天啦，格式6 XXX进入房间啦 / 进来了。
+# 这两个家族的 group 可以从行首任意位置起算，因此未识别的前缀会被一起吞进
+# 名字里：`打个招呼：你关注的Outlier进入房间啦` 会得出 `打个招呼：你关注的Outlier`，
+# 于是建出一条垃圾 User 记录并发消息替它问候。候选名在这里必须真的像个昵称。
+_ENTER_RETURN_GENERIC_PATTERNS = [
     re.compile(r"^(.+?)(?:进来陪你聊天啦|坐着.+来啦).*?$"),
-    # 格式6: 通用进入: XXX进入房间啦 / XXX进来了 / XXX来到了房间
     re.compile(r"^(.+?)(?:进入房间啦|进入房间|来到了房间|进来了|进来啦).*?$"),
 ]
+
+# 昵称护栏（启发式）：结构标点说明这个名字是从一整句横幅文案里截出来的；
+# 长度上限挡住「整句被当成名字」。真实昵称不会命中这两条。
+_NICKNAME_REJECT_PUNCTUATION = "：:，。,.;；"
+_NICKNAME_MAX_LENGTH = 24
 
 _ENTER_EXCLUDE_SUBSTRINGS = (
     "邀请我上麦吧",
@@ -86,6 +95,24 @@ _ENTER_EXCLUDE_SUBSTRINGS = (
 )
 
 
+def _looks_like_a_nickname(name: str) -> bool:
+    """通用家族候选名的合法性：像昵称，而不是从横幅文案里截下来的一段话。"""
+    if len(name) > _NICKNAME_MAX_LENGTH:
+        return False
+    return not any(ch in name for ch in _NICKNAME_REJECT_PUNCTUATION)
+
+
+def _match_name(pattern, raw: str) -> str | None:
+    """按家族取候选名；空名字与「名字又是前缀」的自匹配都算没匹配上。"""
+    m = pattern.match(raw)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    if not name or name.startswith("你的") or name.startswith("你关注的"):
+        return None
+    return name
+
+
 def parse_enter_return_username(raw: str) -> str | None:
     """Parse entrant username from enter/return notifications in chat or banner text.
 
@@ -96,12 +123,19 @@ def parse_enter_return_username(raw: str) -> str | None:
         return None
     if any(k in raw for k in _ENTER_EXCLUDE_SUBSTRINGS):
         return None
+
+    # 名字紧跟字面量（你关注的 / 你的<关系词>）的家族：候选名从字面量之后开始，
+    # 直接采用。
     for pattern in _ENTER_RETURN_PATTERNS:
-        m = pattern.match(raw)
-        if m:
-            name = m.group(1).strip()
-            if name and not name.startswith("你的") and not name.startswith("你关注的"):
-                return name
+        name = _match_name(pattern, raw)
+        if name:
+            return name
+
+    # 通用家族：候选名可能连着前缀，必须过一遍昵称护栏。
+    for pattern in _ENTER_RETURN_GENERIC_PATTERNS:
+        name = _match_name(pattern, raw)
+        if name and _looks_like_a_nickname(name):
+            return name
     return None
 
 

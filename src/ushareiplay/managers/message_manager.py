@@ -72,6 +72,10 @@ class MessageManager(Singleton):
 
         self.previous_messages = {}
         self._recent = deque(maxlen=self.RECENT_MAXLEN)
+        # 去重集：本次观察前的窗口 ∪ 本次增量。补漏回溯会滚过上一次屏幕上的行，
+        # 那些行已经派发过了，必须仍留在去重集里（旧实现用的是
+        # `recent_chats ∪ latest_chats`，就是这个集合）。
+        self._known: tuple[str, ...] = ()
 
     @property
     def handler(self):
@@ -97,11 +101,15 @@ class MessageManager(Singleton):
 
         配置读取原先在两个地方各写一份（本模块与 MessageContentEvent，后者还有
         第三个回落），现在只有这一个入口。
+
+        读 `configured_room_owner` 而不是 `room_owner`：后者在配置没写时会给出
+        `DEFAULT_ROOM_OWNER`，会让库回落永远走不到（配置没写 room_owner 的部署
+        就检测不到「送给房主」的礼物）。
         """
         from ushareiplay.core.roles import RolePolicy
 
         config = getattr(self.handler, "config", None)
-        owner = RolePolicy(config if isinstance(config, dict) else None).room_owner
+        owner = RolePolicy(config if isinstance(config, dict) else None).configured_room_owner
         if owner:
             return owner
 
@@ -124,6 +132,10 @@ class MessageManager(Singleton):
         diff 算法原先住在 `MessageContentEvent.handle` 里，直接操作两个公有
         deque；它和 `maxlen` 的相互作用（前向对齐、窗口比 maxlen 宽时的兜底）
         因此只存在于事件里。现在它和 `_recent` 一起留在本模块。
+
+        窗口提交的是**增量**而不是整屏：静屏时增量是空的，窗口若被设成增量就
+        等于被清空，下一次观察看不到锚点，会把整屏当成新增重新派发 —— 礼物
+        重复道谢、热力值重复写库、命令重复执行。因此窗口只做「追加」。
         """
         contents = [c for c in (content_list or []) if c]
         previous = self._recent
@@ -137,7 +149,10 @@ class MessageManager(Singleton):
             if missed and anchor is not None:
                 new_lines, missed = self._apply_anchor_fallback(contents, anchor, new_lines)
 
-        self._recent = deque(new_lines, maxlen=self.RECENT_MAXLEN)
+        # 去重集要在追加之前取：含观察前的窗口，补漏回溯滚过它时不会再派发一次。
+        self._known = tuple(previous) + new_lines
+        for line in new_lines:
+            self._recent.append(line)
         return ChatDelta(new_lines=new_lines, anchor=anchor, missed=missed)
 
     @staticmethod
@@ -367,7 +382,9 @@ class MessageManager(Singleton):
 
         # Scanned lines carry no quote; compare on the quote-free form of what we
         # already processed so a reply is not re-reported (and re-dispatched).
-        known_chats = {strip_quoted_segment(chat) for chat in self._recent}
+        # 用 `_known`（观察前的窗口 ∪ 本次增量）而不是只比 `_recent`：回溯会滚过
+        # 上一次屏幕上的行，它们已派发过，不在这里就会被重复派发。
+        known_chats = {strip_quoted_segment(chat) for chat in self._known}
         missed_lines: list[str] = []
         for chat in attribute_values:
             if scroll_anchor == strip_quoted_segment(chat):

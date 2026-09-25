@@ -18,7 +18,7 @@ class MicCommand(BaseCommand):
                     # 而不是刚就座就把麦克风关掉。
                     target_state = True
                 else:
-                    current = self.mic_manager.state()
+                    current = self.mic_manager.state(wait=True)
                     if current is None:
                         self.handler.logger.error('failed to get mic status')
                         return {'error': 'Failed to get mic status'}

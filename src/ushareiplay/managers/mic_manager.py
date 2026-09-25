@@ -66,15 +66,24 @@ class MicManager(Singleton):
             return False
         return None
 
-    def state(self) -> Optional[bool]:
+    def state(self, *, wait: bool = False) -> Optional[bool]:
         """麦克风是否开麦：True 开麦、False 闭麦、None 无法判定。
 
         会先切到 Soul App：调用方（静音保护、:mic、:pause）都是在 Soul 侧做
         麦克风决策，而此刻前台可能是 QQ 音乐。
+
+        Args:
+            wait: 按钮还没渲染出来时是否等它（最长 10 秒）。要动手改麦克风的
+                路径都该等 —— 刚就座、刚进房时按钮可能还没出现，即时读会立刻
+                报「找不到按钮」。静音保护读态保持非阻塞：它只是决定要不要闭麦，
+                等不到就应该直接跳过。
         """
         if not self.soul_handler.key_actions.switch_to_app():
             return None
-        element = self.soul_handler.element_finder.try_find_element('toggle_mic', log=False)
+        if wait:
+            element = self.soul_handler.element_finder.wait_for_element('toggle_mic')
+        else:
+            element = self.soul_handler.element_finder.try_find_element('toggle_mic', log=False)
         if not element:
             return None
         desc = self.soul_handler.element_finder.try_get_attribute(element, 'content-desc')
@@ -104,7 +113,7 @@ class MicManager(Singleton):
                 return {'error': 'Failed to grab mic, not seated yet'}
             just_seated = True
 
-        current = self.state()
+        current = self.state(wait=True)
         if current is None:
             # 两种「读不到状态」的原因对应两条既有报错文案，保持它们不变：
             # 按钮本身不在（例如不在派对房）比 desc 异常更值得单独提示。

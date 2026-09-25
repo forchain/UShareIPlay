@@ -38,8 +38,10 @@ class _MicManager:
     def __init__(self, state=False):
         self.state_value = state
         self.calls = []
+        self.state_calls = []
 
-    def state(self):
+    def state(self, *, wait=False):
+        self.state_calls.append(wait)
         return self.state_value
 
     def set_active(self, enable, *, report_noop=False):
@@ -100,6 +102,8 @@ def test_bare_mic_when_seated_flips_the_current_state():
 
     assert mic_manager.calls == [(False, True)]
     assert result == {"state": "0"}
+    # 刚进房/刚就座时按钮可能还没出现，裸 :mic 读态要等它
+    assert mic_manager.state_calls == [True]
 
 
 def test_bare_mic_when_seated_and_status_unreadable_reports_error():

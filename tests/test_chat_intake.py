@@ -702,12 +702,24 @@ class TestClassifyBannerLine:
             # 无法解析的非法格式
             ("系统公告：欢迎使用派对功能", "", ChatIntakeKind.PLAIN_CHAT),
             ("", "", ChatIntakeKind.PLAIN_CHAT),
+            # 带前缀的横幅：未识别的前缀不得被当成昵称的一部分
+            # （否则会建垃圾 User 行、并发消息替「打个招呼：你关注的Outlier」问候）
+            ("打个招呼：你关注的Outlier进入房间啦", "", ChatIntakeKind.PLAIN_CHAT),
+            ("任务进度：小红来到了房间", "", ChatIntakeKind.PLAIN_CHAT),
         ],
     )
     def test_classify_banner_line(self, banner_text, expected_nickname, expected_kind):
         result = classify_banner_line(banner_text)
         assert result.kind == expected_kind
         assert result.nickname == expected_nickname
+
+    def test_a_prefixed_banner_yields_no_nickname_at_all(self):
+        """护栏拦下的是整条候选名，而不是把前缀截掉 —— 不许出现半截昵称。"""
+        result = classify_banner_line("打个招呼：你关注的Outlier进入房间啦")
+
+        assert result.nickname == ""
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert "打个招呼" not in result.nickname
 
     def test_party_like_is_not_reported_as_an_entrance(self):
         """点赞横幅不得被当成进入房间 —— 否则会替点赞的人打招呼。"""
