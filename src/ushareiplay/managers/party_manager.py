@@ -234,8 +234,6 @@ class PartyManager(Singleton):
             self.handler.party_id = room_id
         if source == "startup" or is_new_room:
             self.logger.info(f"Room verified at {source}: {room_id}")
-        else:
-            self.logger.debug(f"Room verified at {source}: {room_id}")
         return False
 
     def get_party_user_count(self) -> int:
