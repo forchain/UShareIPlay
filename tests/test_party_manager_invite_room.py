@@ -621,5 +621,72 @@ async def test_join_party_recreates_room_after_guest_room_closed():
     assert room_state.is_guest_room is False
 
 
+@pytest.mark.asyncio
+async def test_join_party_prioritizes_party_back_when_dialog_appears():
+    """
+    点击进入派对大厅后，如果直接弹出返回房间的窗口 (party_back / cn.soulapp.android:id/tv_look)，
+    应当优先点击返回房间，恢复房间状态。
+    """
+    from ushareiplay.state.room_state import RoomState
+    RoomState.reset_instance()
+    room_state = RoomState.initialize()
+    room_state._logger = type('_L', (), {'info': lambda s, *a: None})()
+
+    manager = PartyManager.instance()
+
+    planet_tab = _Element("planet_tab")
+    party_hall_entry = _Element("party_hall_entry")
+    party_back = _Element("party_back")
+    search_entry = _Element("search_entry")
+
+    handler = _MockHandler(elements={
+        "planet_tab": planet_tab,
+        "party_hall_entry": party_hall_entry,
+        "search_entry": search_entry,
+    })
+
+    # party_back appears only AFTER clicking party_hall_entry
+    def on_hall_click():
+        party_hall_entry.clicked = True
+        handler.elements["party_back"] = party_back
+
+    party_hall_entry.click = on_hall_click
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = await manager.join_party()
+    assert res is True
+    assert planet_tab.clicked is True
+    assert party_hall_entry.clicked is True
+    assert party_back.clicked is True
+    assert search_entry.clicked is False
+
+
+@pytest.mark.asyncio
+async def test_join_party_when_party_back_already_visible():
+    """
+    如果进入 join_party 时屏幕上已经有返回房间弹窗，应当直接优先点击返回。
+    """
+    from ushareiplay.state.room_state import RoomState
+    RoomState.reset_instance()
+    RoomState.initialize()
+
+    manager = PartyManager.instance()
+
+    party_back = _Element("party_back")
+    handler = _MockHandler(elements={
+        "party_back": party_back,
+    })
+
+    manager._handler = handler
+    manager._logger = handler.logger
+
+    res = await manager.join_party()
+    assert res is True
+    assert party_back.clicked is True
+
+
+
 
 

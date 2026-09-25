@@ -349,39 +349,37 @@ class ElementFinder:
             (None, None): 超时或未找到时返回
         """
         locators = []
-        key_map = {}
         for key in element_keys:
             if key not in self.config["elements"]:
                 continue
             value = self.config["elements"][key]
             locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
-            locators.append((locator_type, value))
-            key_map[(locator_type, value)] = key
+            locators.append((key, (locator_type, value)))
 
         if not locators:
             self.logger.warning("wait_for_any_element: 没有有效的元素key")
             return None, None
 
-        try:
-            # Selenium 4.8+ 支持 EC.any_of
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.any_of(
-                    *[EC.presence_of_element_located(locator) for locator in locators]
-                )
-            )
-            # 找到是哪个key
-            for locator, key in key_map.items():
+        def _condition(driver):
+            for key, locator in locators:
                 try:
-                    found = self.driver.find_element(*locator)
-                    if found and found.id == element.id:
+                    element = driver.find_element(*locator)
+                    if element:
                         return key, element
                 except Exception:
                     continue
-            self.logger.warning("wait_for_any_element: 找不到对应的key")
+            return False
+
+        try:
+            return WebDriverWait(self.driver, timeout).until(_condition)
+        except TimeoutException as e:
+            self.logger.error(
+                f"wait_for_any_element: {element_keys} 超时未找到任何元素: {str(e)}"
+            )
             return None, None
         except Exception as e:
             self.logger.error(
-                f"wait_for_any_element: {element_keys} 超时未找到任何元素: {str(e)}"
+                f"wait_for_any_element: {element_keys} 发生异常: {str(e)}"
             )
             return None, None
 
