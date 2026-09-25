@@ -60,6 +60,18 @@ ensure_config() {
   fi
 }
 
+stop_bridge() {
+  local bridge_pid="${1:-${USHAREIPLAY_BRIDGE_PID:-}}"
+  if [[ -z "${bridge_pid}" ]]; then
+    return 0
+  fi
+  # The perl runner forks one child per connection; those children outlive a
+  # signal aimed at the parent alone, so take them down first.
+  pkill -P "${bridge_pid}" 2>/dev/null || true
+  kill "${bridge_pid}" 2>/dev/null || true
+  return 0
+}
+
 ensure_environment() {
   if [[ ! -e "${TARGET_VENV}" ]]; then
     if ! link_main_branch_venv; then
@@ -156,7 +168,9 @@ if not ok:
           bridge_runner="python"
         fi
 
-        if [[ -n "${bridge_runner}" ]]; then
+        if [[ -z "${bridge_runner}" ]]; then
+          log "警告: 未找到可用的系统桥接运行时 (/usr/bin/ruby、/usr/bin/perl、/usr/bin/python3 均不可用)，跳过桥接，将依赖应用内自愈机制。"
+        else
           log "[macOS 本地网络策略兼容] 检测到系统限制 Python 访问局域网 (Errno 65)，启动原生透明代理桥接 (${bridge_runner})..."
           local bridge_fifo
           bridge_fifo="$(mktemp -u /tmp/ushareiplay_bridge.XXXXXX)"
@@ -168,8 +182,8 @@ require 'socket'
 Signal.trap('TERM') { exit 0 }
 Signal.trap('INT') { exit 0 }
 
-target_host = '${appium_host}'
-target_port = ${appium_port}
+target_host = ARGV[0]
+target_port = Integer(ARGV[1])
 
 server = TCPServer.new('127.0.0.1', 0)
 File.open('${bridge_fifo}', 'w') { |f| f.puts(server.addr[1]) }
@@ -188,7 +202,7 @@ loop do
   client = server.accept
   Thread.new(client) do |c|
     begin
-      remote = TCPSocket.new(target_host, target_port)
+      remote = Socket.tcp(target_host, target_port, connect_timeout: 5)
       t1 = Thread.new { forward(c, remote) }
       t2 = Thread.new { forward(remote, c) }
       t1.join
@@ -199,7 +213,7 @@ loop do
     end
   end
 end
-" &
+" "${appium_host}" "${appium_port}" &
           elif [[ "${bridge_runner}" == "perl" ]]; then
             /usr/bin/perl -e "
 use strict;
@@ -207,8 +221,8 @@ use warnings;
 use IO::Socket::INET;
 use IO::Select;
 
-my \$target_host = '${appium_host}';
-my \$target_port = ${appium_port};
+my \$target_host = \$ARGV[0];
+my \$target_port = int(\$ARGV[1]);
 
 my \$server = IO::Socket::INET->new(
     LocalAddr => '127.0.0.1',
@@ -254,13 +268,13 @@ while (my \$client = \$server->accept()) {
         close \$client;
     }
 }
-" &
+" "${appium_host}" "${appium_port}" &
           else
             /usr/bin/python3 -c "
 import socket, threading, sys, signal
 
-target_host = '${appium_host}'
-target_port = int('${appium_port}')
+target_host = sys.argv[1]
+target_port = int(sys.argv[2])
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -320,11 +334,18 @@ try:
 except Exception:
     import time
     while True: time.sleep(1)
-" &
+" "${appium_host}" "${appium_port}" &
           fi
           local bridge_pid=$!
           local allocated_port=""
-          read -r allocated_port < "${bridge_fifo}" || true
+          # Open the FIFO read-write before reading: a read-only open blocks until
+          # the runner opens its end, so a runner that dies first (/usr/bin/ruby is
+          # a Command Line Tools shim that exits without touching the FIFO) would
+          # hang the launcher forever. `read -t` bounds the read, not that open.
+          if exec 9<> "${bridge_fifo}"; then
+            read -r -t 5 -u 9 allocated_port || true
+            exec 9>&-
+          fi
           rm -f "${bridge_fifo}"
 
           if [[ -n "${allocated_port}" ]]; then
@@ -332,14 +353,15 @@ except Exception:
               export APPIUM_HOST="127.0.0.1"
               export APPIUM_PORT="${allocated_port}"
               export USHAREIPLAY_BRIDGE_PID="${bridge_pid}"
-              trap 'if [[ -n "${USHAREIPLAY_BRIDGE_PID:-}" ]]; then kill "${USHAREIPLAY_BRIDGE_PID}" 2>/dev/null || true; fi' EXIT INT TERM
+              trap 'stop_bridge' EXIT INT TERM
               log "已启用系统原生桥接 (${bridge_runner}): 127.0.0.1:${allocated_port} -> ${appium_host}:${appium_port} (PID: ${bridge_pid})。"
             else
-              kill "${bridge_pid}" 2>/dev/null || true
+              stop_bridge "${bridge_pid}"
               log "警告: 系统桥接连通性验证失败，将依赖应用内自愈机制。"
             fi
           else
-            log "警告: 系统桥接启动超时，将依赖应用内自愈机制。"
+            stop_bridge "${bridge_pid}"
+            log "警告: 系统桥接未能在超时前上报端口或已退出，将依赖应用内自愈机制。"
           fi
         fi
       fi
