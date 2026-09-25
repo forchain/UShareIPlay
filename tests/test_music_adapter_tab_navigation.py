@@ -97,8 +97,8 @@ def test_select_tab_scrolls_container_when_not_immediately_visible():
     handler = _create_handler()
     tab_elem = _Element("album_tab")
 
-    # try_find_element returns None initially, then scroll finds it
-    handler.element_finder.try_find_element = MagicMock(return_value=None)
+    # Not visible before the swipe, located again after it
+    handler.element_finder.try_find_element = MagicMock(side_effect=[None, tab_elem])
     handler.gesture_handler.scroll_container_until_element = MagicMock(
         return_value=("album_tab", tab_elem, [])
     )
@@ -115,6 +115,22 @@ def test_select_tab_scrolls_container_when_not_immediately_visible():
     )
 
 
+def test_select_tab_clicks_relocated_tab_when_scroll_helper_returns_the_container():
+    """滚动助手对绝对 XPath 的解析可能返回容器；此时必须点重新定位到的 tab，而不是容器。"""
+    handler = _create_handler()
+    container_marker = _Element("container_marker")
+    tab_elem = _Element("lyrics_tab")
+
+    handler.element_finder.try_find_element = MagicMock(side_effect=[None, tab_elem])
+    handler.gesture_handler.scroll_container_until_element = MagicMock(
+        return_value=("lyrics_tab", container_marker, [])
+    )
+
+    assert handler.select_tab("lyrics") is True
+    assert tab_elem.clicks == 1
+    assert container_marker.clicks == 0
+
+
 def test_select_tab_fallback_find_element_after_scroll_returns_element_none():
     handler = _create_handler()
     tab_elem = _Element("playlist_tab")
@@ -128,6 +144,20 @@ def test_select_tab_fallback_find_element_after_scroll_returns_element_none():
     result = handler.select_tab("playlist")
 
     assert result is True
+    assert tab_elem.clicks == 1
+
+
+def test_select_tab_falls_back_to_scroll_helper_element_when_relocation_fails():
+    """重新定位失败时仍点助手返回的元素，不比旧行为更差。"""
+    handler = _create_handler()
+    tab_elem = _Element("radio_tab")
+
+    handler.element_finder.try_find_element = MagicMock(side_effect=[None, None])
+    handler.gesture_handler.scroll_container_until_element = MagicMock(
+        return_value=("radio_tab", tab_elem, [])
+    )
+
+    assert handler.select_tab("radio") is True
     assert tab_elem.clicks == 1
 
 
@@ -176,6 +206,47 @@ def test_select_tab_custom_container_and_swipes():
         "custom_strip",
         "left",
         max_swipes=5,
+    )
+
+
+def test_select_tab_song_tab_swipes_back_to_the_start_of_the_strip():
+    """单曲 tab 靠前，搜索页停在别的分类时要向回滚（right），这是原 select_song_tab 的唯一特例。"""
+    handler = _create_handler()
+    tab_elem = _Element("song_tab")
+
+    handler.element_finder.try_find_element = MagicMock(return_value=None)
+    handler.gesture_handler.scroll_container_until_element = MagicMock(
+        return_value=("song_tab", tab_elem, [])
+    )
+
+    result = handler.select_tab("song", direction="right")
+
+    assert result is True
+    assert tab_elem.clicks == 1
+    handler.gesture_handler.scroll_container_until_element.assert_called_once_with(
+        "song_tab",
+        "music_tabs",
+        "right",
+        max_swipes=10,
+    )
+
+
+def test_select_tab_falls_back_to_builtin_swipe_limit_when_config_is_absent():
+    handler = _create_handler()
+    del handler.config["qq_music"]["tab_max_swipes"]
+    tab_elem = _Element("album_tab")
+
+    handler.element_finder.try_find_element = MagicMock(return_value=None)
+    handler.gesture_handler.scroll_container_until_element = MagicMock(
+        return_value=("album_tab", tab_elem, [])
+    )
+
+    assert handler.select_tab("album") is True
+    handler.gesture_handler.scroll_container_until_element.assert_called_once_with(
+        "album_tab",
+        "music_tabs",
+        "left",
+        max_swipes=10,
     )
 
 

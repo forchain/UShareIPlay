@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from ushareiplay.commands.playlist import PlaylistCommand
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.room_name_manager import RoomNameManager
 from ushareiplay.managers.topic_manager import TopicManager
 
@@ -29,6 +30,15 @@ class _Element:
         self.clicks += 1
 
 
+class _MusicManager:
+    def __init__(self):
+        self.selected_tabs = []
+
+    def select_tab(self, tab_name, **kwargs):
+        self.selected_tabs.append(tab_name)
+        return True
+
+
 class _MusicHandler:
     def __init__(self):
         self.logger = _Logger()
@@ -40,8 +50,6 @@ class _MusicHandler:
         return query == "study"
 
     def wait_for_any_element(self, keys):
-        if keys == ["playlist_tab", "music_tabs"]:
-            return "playlist_tab", _Element("playlist tab")
         if keys == ["playlist_result", "not_found"]:
             return "playlist_result", self.playlist_result
         if keys == ["play_all", "play_all_playlist", "play_all_compact"]:
@@ -84,9 +92,11 @@ class _InfoManager:
 
 def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     music_handler = _MusicHandler()
+    music_manager = _MusicManager()
     title_manager = _RoomNameManager()
     topic_manager = _TopicManager()
     info_manager = _InfoManager()
+    monkeypatch.setattr(MusicManager, "instance", lambda: music_manager)
     monkeypatch.setattr(RoomNameManager, "instance", lambda: title_manager)
     monkeypatch.setattr(TopicManager, "instance", lambda: topic_manager)
     monkeypatch.setattr(InfoManager, "instance", lambda: info_manager)
@@ -101,6 +111,7 @@ def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     result = command.play_playlist("study")
 
     assert "error" not in result
+    assert music_manager.selected_tabs == ["playlist"]
     assert result["playlist"] == "学习|英语"
     assert music_handler.play_button.clicks == 1
     assert music_handler.list_mode == "playlist"

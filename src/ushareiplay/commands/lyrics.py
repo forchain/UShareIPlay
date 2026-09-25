@@ -1,4 +1,3 @@
-import traceback
 from ushareiplay.core.base_command import BaseCommand
 from datetime import datetime, timedelta
 import time
@@ -45,43 +44,6 @@ def wrap_line_at_spaces(line: str, max_width: int) -> str:
 class LyricsCommand(BaseCommand):
     handler_attr = 'soul_handler'
 
-    def select_lyrics_tab(self):
-        """Select lyrics tab in music player"""
-        try:
-            # Make sure we're in the music app
-            if not self.music_handler.key_actions.switch_to_app():
-                self.handler.logger.error("Failed to switch to music app")
-                return False
-                
-            # Try to find lyrics tab first (fast path)
-            lyrics_tab = self.music_handler.element_finder.try_find_element("lyrics_tab")
-            if not lyrics_tab:
-                # 标签靠后时，单次滑动距离不够：改用通用容器滚动（参考 radio sleep）
-                _, lyrics_tab, _ = self.music_handler.gesture_handler.scroll_container_until_element(
-                    "lyrics_tab",
-                    "music_tabs",
-                    "left",
-                    max_swipes=20,
-                )
-                if not lyrics_tab:
-                    return False
-
-                # The scroll helper confirms the target from page source but
-                # returns the scrolled container to avoid idle element reads.
-                # Locate the actual tab only now, after the swipe operation.
-                lyrics_tab = self.music_handler.element_finder.try_find_element("lyrics_tab")
-                if not lyrics_tab:
-                    return False
-
-            lyrics_tab.click()
-            time.sleep(0.2)
-            
-            return True
-            
-        except Exception as e:
-            self.handler.log_error(f"Error selecting lyrics tab: {traceback.format_exc()}")
-            return False
-
     def query_lyrics(self, query, group_num=0):
         """Query lyrics for current song
         Args:
@@ -111,8 +73,10 @@ class LyricsCommand(BaseCommand):
             return {'error': f'Failed to find song matching "{query}"'}
         
         # Select lyrics tab after finding the song
-        if not self.select_lyrics_tab():
+        if not self.music_manager.select_tab("lyrics"):
             return {'error': 'Failed to select lyrics tab'}
+        # 切 tab 后页面要重排，等分类结果稳定再读歌词
+        time.sleep(0.2)
             
         # Get lyrics text
         key, element = self.music_handler.element_finder.wait_for_any_element(['lyrics_text', 'not_found'])

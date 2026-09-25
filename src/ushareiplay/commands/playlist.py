@@ -1,5 +1,3 @@
-import traceback
-
 from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
@@ -32,38 +30,6 @@ class PlaylistCommand(BaseCommand):
 
         return playing_info
 
-    def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        try:
-            # Try to find playlist tab first or music tabs container
-            key, element = self.handler.element_finder.wait_for_any_element(['playlist_tab', 'music_tabs'])
-
-            if key == 'playlist_tab':
-                playlist_tab = element
-            elif key == 'music_tabs':
-                _, playlist_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
-                    'playlist_tab',
-                    'music_tabs',
-                    'left',
-                    max_swipes=10,
-                )
-                if not playlist_tab:
-                    playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
-                    if not playlist_tab:
-                        self.handler.logger.error("Failed to find playlist tab after scrolling")
-                        return False
-            else:
-                self.handler.logger.error("Failed to find music tabs or playlist tab")
-                return False
-
-            playlist_tab.click()
-            self.handler.logger.info("Selected playlist tab")
-            return True
-
-        except Exception as e:
-            self.handler.logger.error(f"Error selecting playlist tab: {traceback.format_exc()}")
-            return False
-
     def play_playlist(self, query: str):
         if not self.handler.query_music(query):
             self.handler.logger.error('Failed to query music in playlist')
@@ -71,7 +37,7 @@ class PlaylistCommand(BaseCommand):
                 'error': 'Failed to query music playlist',
             }
 
-        if not self.select_playlist_tab():
+        if not self.music_manager.select_tab('playlist'):
             self.handler.logger.error('Failed to find playlist tab')
             return {
                 'error': 'Failed to find playlist tab',

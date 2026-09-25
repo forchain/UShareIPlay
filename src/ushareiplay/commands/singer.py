@@ -1,5 +1,3 @@
-import traceback
-
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 
@@ -25,37 +23,6 @@ class SingerCommand(BaseCommand):
         self.info_manager.player_name = message_info.nickname
         info = self.play_singer(query)
         return info
-
-    def select_singer_tab(self):
-        """Select the 'Singer' tab in search results"""
-        try:
-            # Try to find singer tab first
-            singer_tab = self.handler.element_finder.try_find_element("singer_tab")
-            if not singer_tab:
-                # If not found, scroll music_tabs to find it
-                _, singer_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
-                    "singer_tab",
-                    "music_tabs",
-                    "left",
-                    max_swipes=10,
-                )
-                if not singer_tab:
-                    singer_tab = self.handler.element_finder.try_find_element("singer_tab")
-                    if not singer_tab:
-                        self.handler.logger.error(
-                            "Failed to find singer tab after scrolling"
-                        )
-                        return False
-
-            singer_tab.click()
-            self.handler.logger.info("Selected singer tab")
-            return True
-
-        except Exception as e:
-            self.handler.logger.error(
-                f"Error selecting singer tab: {traceback.format_exc()}"
-            )
-            return False
 
     def play_singer(self, query: str):
         from_key = self.handler.query_music(query)
@@ -83,7 +50,7 @@ class SingerCommand(BaseCommand):
             play_singer.click()
             self.handler.logger.info("Selected singer play")
         else:
-            if not self.select_singer_tab():
+            if not self.music_manager.select_tab("singer"):
                 self.handler.logger.error(f"Failed to select singer tab with query {query}")
                 return {
                     'error': f'not found singer with query {query}',
