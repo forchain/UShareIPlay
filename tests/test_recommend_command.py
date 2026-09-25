@@ -74,6 +74,13 @@ def recommend_cmd_setup():
         logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None),
     )
     rec_manager._handler = soul_handler
+
+    # 窗口的打开/关闭归 RoomInfoWindow：同一替身也注入给它
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
+    window = RoomInfoWindow.instance()
+    window._handler = soul_handler
+    window._logger = soul_handler.logger
+
     cmd = RecommendCommand(
         SimpleNamespace(soul_handler=soul_handler, music_handler=SimpleNamespace())
     )

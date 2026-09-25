@@ -17,6 +17,7 @@ class PartyManager(Singleton):
         self._handler = None
         self._logger = None
         self._message_dispatch = None
+        self._room_info_window = None
 
         # 派对重启相关状态
         self.init_time = None  # 初始化时间
@@ -37,6 +38,14 @@ class PartyManager(Singleton):
         if self._logger is None:
             self._logger = self.handler.logger
         return self._logger
+
+    @property
+    def room_info_window(self):
+        """延迟获取 RoomInfoWindow——窗口的打开/检测/关闭归它所有。"""
+        if self._room_info_window is None:
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            self._room_info_window = RoomInfoWindow.instance()
+        return self._room_info_window
 
     @property
     def message_dispatch(self):
@@ -783,42 +792,12 @@ class PartyManager(Singleton):
             self.logger.warning("Failed to schedule memory consolidation on _after_party_created")
 
 
-    def ensure_room_info_window_closed(self) -> None:
-        """
-        检查并确保房间信息窗口/分类弹窗已被关闭，恢复至主房间界面。
-        优先使用 UI 正规关窗操作 (RecoveryManager.close_drawer('slide_drawer'))；
-        仅在抽屉关窗未成功且弹窗标志依然存留时，才使用 press_back() 作为最后的保底防御，
-        防止因过快盲按 press_back() 导致误退出派对房间的风险。
-        """
-        try:
-            is_dialog_open = False
-            for key in ['party_room_type_option', 'party_recommendation_status', 'edit_topic_entry', 'edit_notice_entry', 'slide_drawer']:
-                if self.handler.element_finder.try_find_element(key, log=False):
-                    is_dialog_open = True
-                    break
-
-            if not is_dialog_open:
-                return
-
-            self.logger.info("Room info window is open, attempting to close via close_drawer UI action")
-            from ushareiplay.managers.recovery_manager import RecoveryManager
-            if RecoveryManager.is_initialized():
-                closed = RecoveryManager.instance().close_drawer('slide_drawer')
-                if closed:
-                    self.logger.info("Successfully closed room info window via close_drawer")
-                    return
-
-            self.logger.warning("close_drawer did not close room info window, falling back to press_back")
-            self.handler.key_actions.press_back()
-        except Exception as e:
-            self.logger.warning(f"Error ensuring room info window closed: {e}")
-
     def check_and_correct_room_type(self, auto_close: bool = True) -> dict:
         """
         在派对房间内检查并校正房间类型。
-        点击房间标题打开房间信息窗口，读取 tv_type 文本；
-        如文本为“闲聊唠嗑”，自动点击进入二级弹窗切为“唱歌听歌”（选择后自动返回）。
-        完成或退出时通过 ensure_room_info_window_closed 保证窗口彻底关闭。
+        读取窗口内 tv_type 文本；如文本为“闲聊唠嗑”，自动点击进入二级弹窗
+        切为“唱歌听歌”（选择后自动返回）。
+        窗口的打开与关闭由 RoomInfoWindow 拥有。
 
         Args:
             auto_close: 是否在完成后自动关闭房间信息窗口 (默认 True)
@@ -826,11 +805,12 @@ class PartyManager(Singleton):
         try:
             type_elem = self.handler.element_finder.try_find_element('party_room_type_option', log=False)
             if not type_elem:
-                room_topic = self.handler.element_finder.wait_for_element_clickable('room_topic')
-                if not room_topic:
-                    return {'error': 'Failed to find room topic entry'}
-                room_topic.click()
-                self.logger.info("Clicked room_topic to open room info window")
+                # 打开 ritual 归 RoomInfoWindow（原先这里是第四份手写副本）
+                open_error = self.room_info_window.ensure_open(
+                    error_message='Failed to find room topic entry'
+                )
+                if open_error:
+                    return open_error
                 type_elem = self.handler.element_finder.wait_for_element('party_room_type_option')
 
             if not type_elem:
@@ -861,7 +841,7 @@ class PartyManager(Singleton):
             return {'error': str(e)}
         finally:
             if auto_close:
-                self.ensure_room_info_window_closed()
+                self.room_info_window.ensure_closed()
 
     def sync_and_correct_room_type_if_dialog_open(self) -> dict:
         """

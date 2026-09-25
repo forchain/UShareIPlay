@@ -49,12 +49,18 @@
 
 ## 4. RoomInfoWindow 真模块 (候选 4 · Strong · ports & adapters)
 
-- [ ] 4.1 定义 `RoomInfoWindow`：`with_window_open()` 拥有打开 ritual 与对话框检测，`audit_and_repair()` 拥有审计/修复
-- [ ] 4.2 关闭兜底从 `PartyManager.ensure_room_info_window_closed()` 的 `finally` 迁入模块
-- [ ] 4.3 四个打开 ritual（`room_name_manager` / `notice_manager` / `topic_manager` / `room_info_auditor`）改为模块调用
-- [ ] 4.4 `_update_title_ui` 中途对 `RecommendationManager` / `PartyManager` 的伸手改为模块内的顺序约束
-- [ ] 4.5 `room_info_auditor` 的 `hasattr(PartyManager.handler)` 探测改为经模块
-- [ ] 4.6 用一份对话框状态 fake 覆盖该 seam，替换现有分散测试
+- [x] 4.1 新建 `RoomInfoWindow`：`is_open()` / `ensure_open()` / `ensure_closed()` / `with_window_open()` / `close_with_back()` / `sync_while_open()` / `audit_and_repair()` / `process_pending_retry()`
+- [x] 4.2 关闭兜底从 `PartyManager.ensure_room_info_window_closed()` 迁入模块并删除该方法；`topic_manager` 直连 `RecoveryManager.close_drawer` 的那次也改走模块
+- [x] 4.3 五处打开 ritual 收敛为一处：`room_name_manager`、`notice_manager`、`topic_manager`、`party_manager`（`room_topic` 分支）、`commands/recommend.py`
+- [x] 4.4 `_update_title_ui` 中途对 `RecommendationManager` / `PartyManager` 的伸手改为 `sync_while_open()` —— 「先纠偏（推荐状态/派对类型）再编辑」的顺序现在由模块拥有，审计复用同一步骤
+- [x] 4.5 删除 `RoomInfoWindowAuditor`：审计序列并入 `audit_and_repair()`（自带开窗/关窗），`hasattr` 探测随模块消失
+- [x] 4.6 新增 `tests/test_room_info_window.py`（17 例：检测/打开兜底/关窗优先序/「只关自己开的那一次」/审计顺序/待重试标记），替换 `test_room_info_auditor.py`；`test_party_manager_room_type_in_room.py` 里重复的两个关窗用例删除
+
+**结果**：831 通过；窗口的打开/检测/关闭/审计各只有一处实现。
+
+**有意保留的边界**（记录理由，便于后续在有真机时收尾）：
+- `topic_manager._update_topic_ui` 与 `room_name_manager._update_title_ui` 的**退出**路径没有改走 `with_window_open()`：两者的收尾与紧随其后的 UI 读取/补救纠缠（topic 的「更新过于频繁」要连按三次返回；title 要按返回、回读房名文本、必要时恢复公告）。这些退出序列无法在本机验证，因此只统一了打开与关窗实现，没有改动它们的退出语义。
+- `process_pending_retry()` 在生产代码中**没有任何调用点**（原先注释里写的「定时器/循环自动重试」从未接线）。已随模块保留并加注说明，接线与否需单独决定。
 
 ## 5. 单一 mic 深模块 (候选 5 · Strong)
 

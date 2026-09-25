@@ -3,7 +3,6 @@ import traceback
 from typing import Dict
 from datetime import datetime
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.recovery_manager import RecoveryManager
 
 
 class NoticeManager(Singleton):
@@ -115,58 +114,54 @@ class NoticeManager(Singleton):
         try:
             self.logger.info(f"准备设置notice: {notice}")
 
-            # 点击小助手
-            chat_room_title = self.handler.element_finder.wait_for_element_clickable('chat_room_title')
-            if not chat_room_title:
-                return {'error': 'Failed to find room title'}
-            chat_room_title.click()
-            self.logger.info("点击了标题")
+            # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            window = RoomInfoWindow.instance()
+            with window.with_window_open() as open_error:
+                if open_error:
+                    return open_error
 
-            # 点击编辑notice入口
-            edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit notice entry'}
-            edit_entry.click()
-            self.logger.info("点击了编辑notice入口")
+                # 点击编辑notice入口
+                edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
+                if not edit_entry:
+                    return {'error': 'Failed to find edit notice entry'}
+                edit_entry.click()
+                self.logger.info("点击了编辑notice入口")
 
-            # 检查是否有关闭按钮
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
-            if not close_notice:
-                return {'error': 'Close notice not found'}
+                # 检查是否有关闭按钮
+                close_notice = self.handler.element_finder.wait_for_element('close_notice')
+                if not close_notice:
+                    return {'error': 'Close notice not found'}
 
-            # 点击自定义按钮
-            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
-            if not customize:
-                close_notice.click()
-                self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
-                return {'error': 'Failed to find customize notice button'}
-            customize.click()
-            self.logger.info(f"点击了自定义按钮 {key}")
+                # 点击自定义按钮
+                key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
+                if not customize:
+                    close_notice.click()
+                    self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
+                    return {'error': 'Failed to find customize notice button'}
+                customize.click()
+                self.logger.info(f"点击了自定义按钮 {key}")
 
-            # 输入新的notice
-            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
-            if not notice_input:
-                return {'error': 'Failed to find notice input'}
-            notice_input.clear()
-            notice_input.send_keys(notice)
-            self.logger.info(f"输入了notice内容: {notice}")
+                # 输入新的notice
+                notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
+                if not notice_input:
+                    return {'error': 'Failed to find notice input'}
+                notice_input.clear()
+                notice_input.send_keys(notice)
+                self.logger.info(f"输入了notice内容: {notice}")
 
-            # 点击确认
-            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
-            if not confirm:
-                return {'error': 'Failed to find confirm button'}
-            confirm.click()
-            self.logger.info("点击了确认按钮")
+                # 点击确认
+                confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
+                if not confirm:
+                    return {'error': 'Failed to find confirm button'}
+                confirm.click()
+                self.logger.info("点击了确认按钮")
 
-            # 关闭notice设置对话框
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
-            if close_notice:
-                self.logger.info("隐藏notice设置对话框")
-                close_notice.click()
-
-            # 关闭party info设置对话框
-            RecoveryManager.instance().close_drawer('slide_drawer')
-            self.logger.info("隐藏party info 对话框")
+                # 关闭notice设置对话框（抽屉本身由 with_window_open 收尾）
+                close_notice = self.handler.element_finder.wait_for_element('close_notice')
+                if close_notice:
+                    self.logger.info("隐藏notice设置对话框")
+                    close_notice.click()
 
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}

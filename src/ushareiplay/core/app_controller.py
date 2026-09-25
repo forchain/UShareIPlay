@@ -35,6 +35,7 @@ from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
 class AppController(Singleton):
@@ -461,8 +462,7 @@ class AppController(Singleton):
             PlaylistAdoption.initialize()
             RecommendationManager.initialize()
             RoomNameManager.initialize()
-            from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
-            RoomInfoWindowAuditor.initialize()
+            RoomInfoWindow.initialize()
             AdminManager.initialize()
             KeywordManager.initialize()
             from ushareiplay.managers.memory_manager import MemoryManager

@@ -358,10 +358,10 @@ async def test_guest_room_blocks_recommendation_sync():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_events_and_auditor():
+async def test_guest_room_blocks_events_and_window_audit():
     from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
     from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
-    from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -374,21 +374,17 @@ async def test_guest_room_blocks_events_and_auditor():
     res = await evt.handle("chat_room_title", fake_wrapper)
     assert res is False
 
-    # RoomInfoWindowAuditor in guest room
-    RoomInfoWindowAuditor.reset_instance()
-    auditor = RoomInfoWindowAuditor.initialize()
-    auditor._handler = handler
-    auditor._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    # RoomInfoWindow audit in guest room
+    window = RoomInfoWindow.instance()
+    window._handler = handler
+    window._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
-    try:
-        res = auditor.audit_all_in_open_window()
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
+    res = window.audit_and_repair()
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
-        res = auditor.process_pending_retry()
-        assert res.get("skipped") == "guest_room"
-    finally:
-        RoomInfoWindowAuditor.reset_instance()
+    res = window.process_pending_retry()
+    assert res.get("skipped") == "guest_room"
 
 
 @pytest.mark.asyncio

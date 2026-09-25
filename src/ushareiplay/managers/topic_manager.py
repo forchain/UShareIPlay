@@ -119,11 +119,11 @@ class TopicManager(Singleton):
             dict: 操作结果
         """
         try:
-            # Click room topic
-            room_topic = self.soul_handler.element_finder.wait_for_element_clickable('room_topic')
-            if not room_topic:
-                return {'error': 'Failed to find room topic'}
-            room_topic.click()
+            # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            open_error = RoomInfoWindow.instance().ensure_open()
+            if open_error:
+                return open_error
 
             # Click edit entry
             edit_entry = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_entry')

@@ -288,25 +288,16 @@ class RoomNameManager(Singleton):
             return {'skipped': True, 'reason': 'guest_room'}
 
         try:
-            result = self.handler.ui_actions.switch_and_click(
-                'chat_room_title', error_message='Failed to find room title'
+            # 打开窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            open_error = RoomInfoWindow.instance().ensure_open(
+                error_message='Failed to find room title'
             )
-            if 'error' in result:
-                return result
+            if open_error:
+                return open_error
 
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
-            if RecommendationManager.is_initialized():
-                try:
-                    RecommendationManager.instance().sync_ui_status_if_dialog_open()
-                except Exception as e:
-                    self.logger.warning(f"Passive recommendation sync skipped: {e}")
-
-            from ushareiplay.managers.party_manager import PartyManager
-            if PartyManager.is_initialized():
-                try:
-                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
-                except Exception as e:
-                    self.logger.warning(f"Passive room type sync skipped: {e}")
+            # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑标题
+            RoomInfoWindow.instance().sync_while_open()
 
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from ushareiplay.state.room_state import RoomState
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.recommendation_manager import RecommendationManager
-from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
+from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
 class _Logger:
@@ -67,10 +67,10 @@ class _RecFinder:
 
 @pytest.fixture
 def create_sync_setup(monkeypatch, tmp_path):
-    """RoomState + RecommendationManager + RoomInfoWindowAuditor + PartyManager,
-    mirroring the production composition (auditor initialized)."""
+    """RoomState + RecommendationManager + RoomInfoWindow + PartyManager,
+    mirroring the production composition (window module initialized)."""
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RecommendationManager, RoomInfoWindowAuditor, PartyManager):
+    for cls in (RoomState, RecommendationManager, RoomInfoWindow, PartyManager):
         cls.reset_instance()
 
     room_state = RoomState.initialize()
@@ -79,7 +79,14 @@ def create_sync_setup(monkeypatch, tmp_path):
     rec_manager = RecommendationManager.initialize()
     rec_manager._logger = _Logger()
 
-    RoomInfoWindowAuditor.initialize()
+    window = RoomInfoWindow.initialize()
+    window._handler = SimpleNamespace(
+        logger=_Logger(),
+        element_finder=_PartyFinder(),  # no dialog marker is ever visible
+        key_actions=SimpleNamespace(press_back=lambda: None),
+        ui_actions=SimpleNamespace(switch_and_click=lambda key, **kwargs: {"success": True}),
+    )
+    window._logger = _Logger()
 
     calls = {"notice": 0, "seat": 0}
 
