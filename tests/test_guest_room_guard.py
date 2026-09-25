@@ -450,10 +450,11 @@ async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monk
 
     party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
     info_mock = MagicMock()
+    debug_mock = MagicMock()
     party_manager._logger = SimpleNamespace(
         info=info_mock,
         warning=lambda *a, **k: None,
-        debug=lambda *a, **k: None,
+        debug=debug_mock,
         error=lambda *a, **k: None,
     )
 
@@ -465,10 +466,11 @@ async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monk
     assert info_mock.call_count == 1
     assert "Room verified at room_id_event: FM18633292" in info_mock.call_args[0][0]
 
-    # 后续扫描（房间未变且无需告警）：不应重复记录 info 日志刷屏
+    # 后续扫描（房间未变且无需告警）：高频检测类日志不允许输出，即便 debug 也不允许
     await evt.handle("room_id", wrapper)
     await evt.handle("room_id", wrapper)
     assert info_mock.call_count == 1
+    debug_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
