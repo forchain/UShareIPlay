@@ -34,6 +34,7 @@ from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
 class AppController(Singleton):
@@ -457,6 +458,7 @@ class AppController(Singleton):
             self.info_manager = InfoManager.initialize()
             self.party_manager = PartyManager.initialize()
             self.notice_manager = NoticeManager.initialize()
+            PlaylistAdoption.initialize()
             RecommendationManager.initialize()
             RoomNameManager.initialize()
             from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor

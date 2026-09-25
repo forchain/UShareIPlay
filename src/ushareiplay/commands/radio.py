@@ -17,7 +17,7 @@ class RadioCommand(BaseCommand):
     async def do_process(self, message_info, parameters):
         # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
         config = getattr(self.controller, "config", None)
-        protection_error = await self.info_manager.check_playlist_protection(
+        protection_error = await self.playlist_adoption.guard_switch(
             message_info.nickname, config=config
         )
         if protection_error:
@@ -62,16 +62,22 @@ class RadioCommand(BaseCommand):
             return self._report_error("Failed to switch back to Soul app")
         return None
 
-    def _set_room_context(self, room_name: str, topic_text: Optional[str] = None):
-        title_result = self.room_name_manager.set_next_title(room_name)
-        if "error" in title_result:
-            return self._report_error(title_result["error"])
-        if topic_value := topic_text.strip() if topic_text else None:
-            if '-' in topic_value:
-                topic_value = topic_value.split("-")[0].strip()
-            topic_result = self.topic_manager.change_topic(topic_value)
-            if "error" in topic_result:
-                return self._report_error(topic_result["error"])
+    def _adopt_radio(self, requester, room_name: str, topic_text: Optional[str] = None,
+                     playlist: Optional[str] = None):
+        """把一次电台播放同步到房间上下文；返回错误 dict 或 None。
+
+        写序（播放者 → 类型 → 歌单名 → 标题 → 话题）由 PlaylistAdoption 拥有，
+        这里只负责把失败转成对房间可见的报错。
+        """
+        error = self.playlist_adoption.adopt(
+            requester=requester,
+            mode='radio',
+            title=room_name,
+            topic=topic_text,
+            playlist=playlist,
+        )
+        if error:
+            return self._report_error(error["error"])
         return None
 
     def _extract_primary_topic(self, raw_topic: Optional[str]) -> Optional[str]:
@@ -166,14 +172,12 @@ class RadioCommand(BaseCommand):
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(guess_title_text, guess_topic_text)
+        error = self._adopt_radio(
+            message_info.nickname, guess_title_text, guess_topic_text,
+            playlist=guess_title_text,
+        )
         if error:
             return error
-        # 更新播放器名称
-        self.info_manager.player_name = message_info.nickname
-        # 设置歌单类型和名称
-        self.music_handler.list_mode = 'radio'
-        self.info_manager.current_playlist_name = guess_title_text
         return {"playlist": playlist_text}
 
     def _handle_daily_30(self, message_info):
@@ -205,14 +209,12 @@ class RadioCommand(BaseCommand):
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(daily_title_text, topic_text)
+        error = self._adopt_radio(
+            message_info.nickname, daily_title_text, topic_text,
+            playlist=daily_title_text,
+        )
         if error:
             return error
-        # 更新播放器名称
-        self.info_manager.player_name = message_info.nickname
-        # 设置歌单类型和名称
-        self.music_handler.list_mode = 'radio'
-        self.info_manager.current_playlist_name = daily_title_text
         return {"playlist": playlist_text or daily_title_text}
 
     def _handle_collection(self, message_info):
@@ -292,14 +294,12 @@ class RadioCommand(BaseCommand):
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(room_title_text, collection_title_text)
+        error = self._adopt_radio(
+            message_info.nickname, room_title_text, collection_title_text,
+            playlist=collection_title_text,
+        )
         if error:
             return error
-        # 更新播放器名称
-        self.info_manager.player_name = message_info.nickname
-        # 设置歌单类型和名称
-        self.music_handler.list_mode = 'radio'
-        self.info_manager.current_playlist_name = collection_title_text
         return {"playlist": playlist_text}
 
     def _handle_sleep_healing(self, message_info):
@@ -336,14 +336,12 @@ class RadioCommand(BaseCommand):
         error = self._switch_back_to_soul()
         if error:
             return error
-        error = self._set_room_context(healing_room_name, first_song or None)
+        error = self._adopt_radio(
+            message_info.nickname, healing_room_name, first_song or None,
+            playlist=healing_room_name,
+        )
         if error:
             return error
-        # 更新播放器名称
-        self.info_manager.player_name = message_info.nickname
-        # 设置歌单类型和名称
-        self.music_handler.list_mode = 'radio'
-        self.info_manager.current_playlist_name = healing_room_name
         return {"playlist": playlist_text}
 
     def _handle_radar(self, message_info):
@@ -380,16 +378,13 @@ class RadioCommand(BaseCommand):
         if error:
             return error
 
-        # 设置房间标题和话题
-        error = self._set_room_context("O Radio", song_text)
+        # 设置播放者、歌单类型/名称、房间标题和话题
+        error = self._adopt_radio(
+            message_info.nickname, "O Radio", song_text,
+            playlist="O Radio",
+        )
         if error:
             return error
-
-        # 更新播放器名称
-        self.info_manager.player_name = message_info.nickname
-        # 设置歌单类型和名称
-        self.music_handler.list_mode = 'radio'
-        self.info_manager.current_playlist_name = "O Radio"
 
         return {
             "playlist": playlist_text,

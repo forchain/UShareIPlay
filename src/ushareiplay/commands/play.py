@@ -18,12 +18,10 @@ class PlayCommand(BaseCommand):
         query = ' '.join(parameters)
 
         if query == '':
-            playing_info = self.play_favorites()
-            self.info_manager.player_name = message_info.nickname
+            playing_info = self.play_favorites(message_info.nickname)
             return playing_info
         elif query == '?':
-            playing_info = self.play_radar()
-            self.info_manager.player_name = message_info.nickname
+            playing_info = self.play_radar(message_info.nickname)
             return playing_info
         else:
             playing_info = self.play_song(query)
@@ -56,7 +54,7 @@ class PlayCommand(BaseCommand):
 
         return playing_info
 
-    def play_favorites(self):
+    def play_favorites(self, requester=None):
         """Navigate to favorites and play all"""
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
@@ -81,14 +79,16 @@ class PlayCommand(BaseCommand):
         play_fav.click()
         self.handler.logger.info("Clicked play all button")
 
-        self.handler.list_mode = 'favorites'
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.room_name_manager.set_next_title("O Station")
-        self.topic_manager.change_topic(song_text)
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='favorites',
+            title="O Station",
+            topic=song_text,
+        )
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}
 
-    def play_radar(self):
+    def play_radar(self, requester=None):
         """Navigate to favorites and play all"""
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
@@ -103,16 +103,17 @@ class PlayCommand(BaseCommand):
         radar_nav.click()
         self.handler.logger.info("Clicked radar navigation button")
 
-        self.handler.list_mode = 'radar'
-
         # Click on play all button
         song = self.handler.element_finder.wait_for_element_clickable('radar_song')
         song_text = song.text if song else "Unknown"
         singer = self.handler.element_finder.wait_for_element_clickable('radar_singer')
         singer_text = singer.text if singer else "Unknown"
 
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.room_name_manager.set_next_title("O Radio")
-        self.topic_manager.change_topic(song_text)
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='radar',
+            title="O Radio",
+            topic=song_text,
+        )
 
         return {'song': song_text, 'singer': singer_text, 'album': ''}

@@ -9,6 +9,18 @@ from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 import re
 import time
 
+# 收藏筛选关键字 → 房间标题。粤语/英语用简称，房间名更短。
+# 标题与 current_playlist_name 同源，因此只在这里映射一次。
+_FAVOURITE_FILTER_TITLES = {
+    '粤语': '粤音',
+    '英语': '英乐',
+}
+
+
+def favourite_filter_title(keyword: str) -> str:
+    """收藏筛选关键字 → 房间标题（也是该歌单的广播名）。"""
+    return _FAVOURITE_FILTER_TITLES.get(keyword, keyword or "O Station")
+
 
 class FavCommand(BaseCommand):
     playback_muting = True
@@ -105,13 +117,7 @@ class FavCommand(BaseCommand):
         """
         if len(parameters) == 0:
             # 无参数，直接播放所有收藏
-            playing_info = self.play_favorites_all()
-            if 'error' in playing_info:
-                return playing_info
-
-            self.info_manager.player_name = message_info.nickname
-            self.info_manager.current_playlist_name = "O Station"
-            return playing_info
+            return self.play_favorites_all(message_info.nickname)
 
         # 有参数：第一个参数为子命令，其余为参数内容（允许带空格）
         subcmd = str(parameters[0]).lower()
@@ -120,34 +126,14 @@ class FavCommand(BaseCommand):
             return {'error': '参数错误，使用方式: :fav 或 :fav type 关键字 或 :fav 2 关键字'}
 
         if subcmd in ['0', 'type']:
-            keyword = arg
-            playing_info = self.play_favorites_by_type(keyword)
-            if 'error' in playing_info:
-                return playing_info
-
-            self.info_manager.player_name = message_info.nickname
-            # 与 play_favorites_by_type 内的 title 规则保持一致
-            playlist_name = keyword
-            if keyword == '粤语':
-                playlist_name = '粤音'
-            elif keyword == '英语':
-                playlist_name = '英乐'
-            self.info_manager.current_playlist_name = playlist_name
-            return playing_info
+            return self.play_favorites_by_type(arg, message_info.nickname)
 
         if subcmd in ['2', 'search']:
-            keyword = arg
-            playing_info = self.play_favorites_by_search(keyword)
-            if 'error' in playing_info:
-                return playing_info
-
-            self.info_manager.player_name = message_info.nickname
-            self.info_manager.current_playlist_name = keyword
-            return playing_info
+            return self.play_favorites_by_search(arg, message_info.nickname)
 
         return {'error': f'第一个参数必须是 0/type 或 2/search，当前为: {parameters[0]}'}
 
-    def play_favorites_all(self):
+    def play_favorites_all(self, requester=None):
         """导航到收藏并播放所有"""
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Cannot switch to qq music'}
@@ -181,14 +167,17 @@ class FavCommand(BaseCommand):
         self.handler.navigate_to_home()
         self.handler.logger.info("fav 播放全部收藏后已回到 QQ 音乐首页，准备设置标题和话题")
 
-        self.handler.list_mode = 'favorites'
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.room_name_manager.set_next_title("O Station")
-        self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='favorites',
+            title="O Station",
+            topic=first_song or song_text,
+            playlist="O Station",
+        )
 
         return {'playlist': playlist_text}
 
-    def play_favorites_by_type(self, keyword: str):
+    def play_favorites_by_type(self, keyword: str, requester=None):
         """导航到收藏，按关键字筛选，然后播放所有
 
         参数:
@@ -235,23 +224,21 @@ class FavCommand(BaseCommand):
         self.handler.navigate_to_home()
         self.handler.logger.info("fav 按语言筛选播放后已回到 QQ 音乐首页，准备设置标题和话题")
 
-        self.handler.list_mode = 'favorites'
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        title = keyword if keyword else 'O Station'
-        if keyword == '粤语':
-            title = '粤音'
-        elif keyword == '英语':
-            title = '英乐'
-
-        self.room_name_manager.set_next_title(title)
-        self.topic_manager.change_topic((first_song or song_text or "").split(" - ")[0].strip() or song_text)
+        title = favourite_filter_title(keyword)
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='favorites',
+            title=title,
+            topic=first_song or song_text,
+            playlist=title,
+        )
 
         result = {'playlist': playlist_text, 'type': keyword}
         if count is not None:
             result['count'] = count
         return result
 
-    def play_favorites_by_search(self, keyword: str):
+    def play_favorites_by_search(self, keyword: str, requester=None):
         """导航到收藏，显示收藏内搜索框，搜索关键字后播放搜索结果列表
 
         流程（与需求一致）：
@@ -320,13 +307,15 @@ class FavCommand(BaseCommand):
         self.handler.navigate_to_home()
         self.handler.logger.info("fav 收藏内搜索播放后已回到 QQ 音乐首页，准备设置标题和话题")
 
-        self.handler.list_mode = 'favorites'
-
         # 5) 标题设置为关键字；话题设置为搜索到的第一首歌
-        self.room_name_manager.set_next_title(keyword if keyword else "O Station")
-        self.topic_manager.change_topic(first_song or keyword)
-        # 由 InfoManager.current_playlist_name + InfoCommand 实现“回到 Soul 后广播这个列表”
-        self.info_manager.current_playlist_name = keyword
+        # （adopt 会写入 current_playlist_name，供 InfoCommand 回到 Soul 后广播这个列表）
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='favorites',
+            title=keyword or "O Station",
+            topic=first_song or keyword,
+            playlist=keyword,
+        )
 
         # 返回整个歌单文本，供上层在 Soul 中广播
         # 同时补充 song/singer 字段，以兼容默认的 response_template

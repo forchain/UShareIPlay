@@ -28,6 +28,7 @@ class BaseCommand(ABC):
         self._topic_manager = None
         self._room_name_manager = None
         self._music_manager = None
+        self._playlist_adoption = None
         self._message_dispatch = None
 
     async def process(self, message_info, parameters):
@@ -114,6 +115,13 @@ class BaseCommand(ABC):
             from ushareiplay.managers.music_manager import MusicManager
             self._music_manager = MusicManager.instance()
         return self._music_manager
+
+    @property
+    def playlist_adoption(self):
+        if self._playlist_adoption is None:
+            from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+            self._playlist_adoption = PlaylistAdoption.instance()
+        return self._playlist_adoption
 
     @property
     def message_dispatch(self):

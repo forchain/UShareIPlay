@@ -12,7 +12,7 @@ class AlbumCommand(BaseCommand):
 
         # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
         config = getattr(self.controller, "config", None)
-        protection_error = await self.info_manager.check_playlist_protection(
+        protection_error = await self.playlist_adoption.guard_switch(
             message_info.nickname, config=config
         )
         if protection_error:
@@ -21,11 +21,10 @@ class AlbumCommand(BaseCommand):
             )
             return protection_error
 
-        self.info_manager.player_name = message_info.nickname
-        info = self.play_album(query)
+        info = self.play_album(query, message_info.nickname)
         return info
 
-    def play_album(self, query):
+    def play_album(self, query, requester=None):
         if query == "":
             info = MusicManager.instance().get_playback_info()
             if not info:
@@ -79,16 +78,13 @@ class AlbumCommand(BaseCommand):
 
         self.handler.key_actions.press_back()
 
-        self.handler.list_mode = 'album'
-
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.topic_manager.change_topic(topic)
-        self.handler.logger.info(f"changing album topic to {topic}")
-        self.room_name_manager.set_next_title(title)
-        self.handler.logger.info(f"changing album title  to {title}")
-
-        # 存储完整的歌单名称到 InfoManager
-        self.info_manager.current_playlist_name = f"{title} - {topic}"
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='album',
+            title=title,
+            topic=topic,
+            playlist=f"{title} - {topic}",
+        )
 
         return {
             'playlist': playlist_text

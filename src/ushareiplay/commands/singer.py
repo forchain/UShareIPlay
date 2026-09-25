@@ -11,7 +11,7 @@ class SingerCommand(BaseCommand):
 
         # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
         config = getattr(self.controller, "config", None)
-        protection_error = await self.info_manager.check_playlist_protection(
+        protection_error = await self.playlist_adoption.guard_switch(
             message_info.nickname, config=config
         )
         if protection_error:
@@ -20,11 +20,10 @@ class SingerCommand(BaseCommand):
             )
             return protection_error
 
-        self.info_manager.player_name = message_info.nickname
-        info = self.play_singer(query)
+        info = self.play_singer(query, message_info.nickname)
         return info
 
-    def play_singer(self, query: str):
+    def play_singer(self, query: str, requester=None):
         from_key = self.handler.query_music(query)
         if not from_key:
             return {
@@ -83,16 +82,13 @@ class SingerCommand(BaseCommand):
             playlist_text = singer_name
             first_song = None
 
-        first_song_title = first_song.split(" - ")[0].strip() if first_song else ""
-        topic = first_song_title or singer_name
-
-        self.handler.list_mode = "singer"
-
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.room_name_manager.set_next_title(singer_name)
-        self.topic_manager.change_topic(topic)
-
-        # 存储完整的歌单名称到 InfoManager
-        self.info_manager.current_playlist_name = singer_name
+        # 播放队列首行是「歌名 - 歌手」，话题归一化交给 PlaylistAdoption
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode="singer",
+            title=singer_name,
+            topic=first_song or singer_name,
+            playlist=singer_name,
+        )
 
         return {"playlist": playlist_text}

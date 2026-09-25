@@ -21,14 +21,20 @@
 
 目标：13 个五连写块 → `guard_switch()` + `adopt()`；`list_mode` 不再是公有可变状态。
 
-- [ ] 2.1 定义 `PlaylistAdoption` 接口：`guard_switch(requester) → error?`、`adopt(mode, title, topic, playlist)`；把六个命令文件里的写序（guard → player_name → list_mode → set_next_title → change_topic）固化为实现
-- [ ] 2.2 归一化三种 `topic.split("-")` 规则为一条明确语义，并在接口文档里写明
-- [ ] 2.3 迁移 `play.py`（3 处）到 `guard_switch` + `adopt`
-- [ ] 2.4 迁移 `album.py` / `singer.py` / `playlist.py` / `fav.py`（各 1 / 1 / 1 / 6 处）
-- [ ] 2.5 迁移 `radio.py`（5 处），保留其注释所记录的顺序语义
-- [ ] 2.6 `list_mode` 收进 `PlaylistAdoption`/`MusicManager`，移除 `QQMusicHandler` 上的公有可写状态
-- [ ] 2.7 用一个接口级测试替换 `test_playlist_guardian.py` / `test_singer_command.py` 里的 mock 链/`side_effect` 脚本
-- [ ] 2.8 复核 ADR-0004：`InfoManager` 仍为委托 facade，`adopt()` 成为其调用者
+- [x] 2.1 定义 `PlaylistAdoption` 接口：`guard_switch(requester) → error?`、`adopt(requester, mode, title, topic, playlist)`；把六个命令文件里的写序固化为实现（状态 → 标题 → 话题）
+- [x] 2.2 归一化话题切分：`primary_topic()` 成为「歌曲文案 → 话题」的唯一规则（按 `" - "`，不做裸连字符切分），并在接口文档写明；QQ 音乐电台副标题的裸连字符约定保留为 radio 自己的 `_extract_primary_topic`（两类文本约定不同，混用会解析错）
+- [x] 2.3 迁移 `play.py`（`play_favorites` / `play_radar` 两处；`play_song` 是单曲点播，不做房间同步）
+- [x] 2.4 迁移 `album.py` / `singer.py` / `playlist.py` / `fav.py`（各 1 / 1 / 1 / 3 处），并把 fav 里重复的筛选关键字→标题映射收敛为 `favourite_filter_title()`
+- [x] 2.5 迁移 `radio.py`（5 处）：`_set_room_context` → `_adopt_radio`，写序由模块拥有
+- [x] 2.6 `list_mode` 改经 `MusicManager.list_mode` 写入；命令不再直接写在 `QQMusicHandler` 适配器上
+- [x] 2.7 新增 `tests/test_playlist_adoption.py`（模块接口级，含纯函数表与写序断言）；`test_playlist_guardian.py` 中三个重复的 "sets player_name" 测试收敛为一个参数化测试
+- [x] 2.8 复核 ADR-0004：`InfoManager` 仍为委托 facade，`adopt()` 成为其调用者；测试替身按 ADR-0004 的约定注入到 `PlaylistAdoption`（新增可注入的延迟依赖字段）
+
+**结果**：13 个五连写块归零；`src/` 命令层不再出现任何 `list_mode=` / `player_name=` / `current_playlist_name=` / `set_next_title` / `change_topic`（`:topic` / `:title` 两个专用命令除外，它们不是歌单切换）。815 通过。
+
+**两处有意的行为修正**（记录在提案 Non-Goals 的例外里）：
+1. `player_name` 现在只在**切换成功**后写入。原先 album/singer/playlist 在尝试前就写，导致失败的命令也会把房间的「当前播放者」改成请求者，从而替一个并没有播放的人加锁。
+2. 电台话题不再做裸 `-` 切分：`_set_room_context` 原来的裸切分对已切分过的文本会二次截断（如 `Lo-Fi 混音` → `Lo`）。
 
 ## 3. 聊天 intake 收回 enter/return 横幅文法 (候选 3 · Strong · ports & adapters)
 

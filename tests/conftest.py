@@ -6,6 +6,7 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.managers.timer_manager import TimerManager
 
 
@@ -19,6 +20,7 @@ def initialized_test_singletons():
         CommandManager,
         EventManager,
         PartyManager,
+        PlaylistAdoption,
         TimerManager,
     ):
         singleton_class.initialize()

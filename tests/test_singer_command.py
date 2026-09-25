@@ -9,6 +9,7 @@ def test_play_singer_falls_back_to_singer_tab_when_first_song_not_found():
     command._room_name_manager = MagicMock()
     command._topic_manager = MagicMock()
     command._music_manager = MagicMock()
+    command._playlist_adoption = MagicMock()
 
     command.handler.query_music.return_value = "home_nav"
     # When home_nav is returned, wait_for_any_element for first_song returns (None, None)
@@ -41,6 +42,7 @@ def test_singer_tab_selection_goes_through_music_manager_only():
     command._room_name_manager = MagicMock()
     command._topic_manager = MagicMock()
     command._music_manager = MagicMock()
+    command._playlist_adoption = MagicMock()
 
     command.handler.query_music.return_value = "home_nav"
     command.handler.element_finder.try_find_element.return_value = None

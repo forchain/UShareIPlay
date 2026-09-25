@@ -15,7 +15,10 @@ Each candidate below is justified by the **deletion test**: delete the duplicate
 - Convert white-box tests that assert on mocked call arguments into interface-level tests
 
 **Non-Goals:**
-- Do not change observable bot behavior (chat responses, playback, room state) — these are structural refactors
+- Do not change observable bot behavior (chat responses, playback, room state) — these are structural refactors. **Recorded exceptions** (each one is a drift the candidate had to resolve, called out in its commit message and in `tasks.md`):
+  - 候选 2：`player_name` 只在切换成功后写入（原先 album/singer/playlist 在尝试前写，失败的命令会替一个并未播放的人加锁）
+  - 候选 2：电台/歌曲话题统一按 `" - "` 切分（`_set_room_context` 原来的裸 `-` 切分会对已切分的文本二次截断）
+  - 候选 1：`select_tab` 以滚动后重新定位的 tab 为准（合并 lyrics 副本独有的保证），且 swipe 预算由 10 提到 20
 - Do not invent new seams where the review did not identify one
 - Do not redesign module interfaces that callers already use correctly
 - Do not batch candidates into one commit; each must be independently revertible

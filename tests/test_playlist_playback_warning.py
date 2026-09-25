@@ -31,8 +31,11 @@ class _Element:
 
 
 class _MusicManager:
+    """记录 tab 选择与 list_mode 写入（list_mode 现在归 MusicManager 所有）。"""
+
     def __init__(self):
         self.selected_tabs = []
+        self.list_mode = None
 
     def select_tab(self, tab_name, **kwargs):
         self.selected_tabs.append(tab_name)
@@ -114,7 +117,7 @@ def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     assert music_manager.selected_tabs == ["playlist"]
     assert result["playlist"] == "学习|英语"
     assert music_handler.play_button.clicks == 1
-    assert music_handler.list_mode == "playlist"
+    assert music_manager.list_mode == "playlist"
     assert title_manager.titles == ["学习"]
     assert topic_manager.topics == ["英语"]
     assert info_manager.current_playlist_name == "学习|英语"
