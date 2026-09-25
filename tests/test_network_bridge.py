@@ -1,4 +1,5 @@
 import errno
+import os
 import socket
 import sys
 import threading
@@ -11,7 +12,70 @@ from ushareiplay.core.network_bridge import (
     diagnose_connection_error,
     LocalNetworkBridge,
     ensure_appium_endpoint,
+    select_bridge_runner,
+    verify_bridge_endpoint,
 )
+
+
+class EchoTarget:
+    """Stands in for Appium: every accepted connection echoes what it receives."""
+
+    def __init__(self):
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen(5)
+        self.port = self._server.getsockname()[1]
+        self.received = []
+        threading.Thread(target=self._accept_loop, daemon=True).start()
+
+    def _accept_loop(self):
+        while True:
+            try:
+                conn, _ = self._server.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._echo, args=(conn,), daemon=True).start()
+
+    def _echo(self, conn):
+        try:
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    return
+                self.received.append(data)
+                conn.sendall(data)
+        except OSError:
+            pass
+
+    def close(self):
+        try:
+            self._server.close()
+        except OSError:
+            pass
+
+
+def _runner_params():
+    """Concrete runner invocations, skipping runners that are not installed."""
+    return [
+        pytest.param("python", sys.executable, id="python"),
+        pytest.param(
+            "ruby",
+            "/usr/bin/ruby",
+            id="ruby",
+            marks=pytest.mark.skipif(
+                not os.path.exists("/usr/bin/ruby"), reason="system ruby not available"
+            ),
+        ),
+        pytest.param(
+            "perl",
+            "/usr/bin/perl",
+            id="perl",
+            marks=pytest.mark.skipif(
+                not os.path.exists("/usr/bin/perl"), reason="system perl not available"
+            ),
+        ),
+    ]
 
 
 def test_is_macos_local_network_error_with_oserror():
@@ -101,9 +165,151 @@ def test_ensure_appium_endpoint_auto_bridge_on_errno_65():
             (False, OSError(65, "No route to host")),
             (True, None),
         ]
-        with patch.object(LocalNetworkBridge, "start") as mock_start:
-            host, port, bridge = ensure_appium_endpoint("192.168.8.103", 4723)
-            assert host == "127.0.0.1"
-            assert bridge is not None
-            mock_start.assert_called_once()
-            bridge.stop()
+        with patch.object(LocalNetworkBridge, "start", return_value=54321) as mock_start:
+            with patch(
+                "ushareiplay.core.network_bridge.verify_bridge_endpoint",
+                return_value=(True, None),
+            ) as mock_verify:
+                host, port, bridge = ensure_appium_endpoint("192.168.8.103", 4723)
+                assert host == "127.0.0.1"
+                assert port == 54321
+                assert bridge is not None
+                mock_start.assert_called_once()
+                # The bridge only counts as usable once traffic has been proven
+                # to reach the target through it.
+                mock_verify.assert_called_once()
+                bridge.stop()
+
+
+def test_select_bridge_runner_on_darwin():
+    with patch("platform.system", return_value="Darwin"):
+        with patch("os.path.exists") as mock_exists:
+            # Case 1: ruby exists
+            mock_exists.side_effect = lambda p: p == "/usr/bin/ruby"
+            r_type, r_path = select_bridge_runner("192.168.8.103")
+            assert r_type == "ruby"
+            assert r_path == "/usr/bin/ruby"
+
+            # Case 2: ruby absent, perl exists
+            mock_exists.side_effect = lambda p: p == "/usr/bin/perl"
+            r_type, r_path = select_bridge_runner("192.168.8.103")
+            assert r_type == "perl"
+            assert r_path == "/usr/bin/perl"
+
+            # Case 3: loopback target always uses python
+            r_type, r_path = select_bridge_runner("127.0.0.1")
+            assert r_type == "python"
+
+
+def test_verify_bridge_endpoint_success():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    server.listen(1)
+
+    def worker():
+        conn, _ = server.accept()
+        _ = conn.recv(1024)
+        conn.sendall(b"HTTP/1.1 200 OK\r\n\r\n{\"value\":{\"ready\":true}}")
+        conn.close()
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    ok, err = verify_bridge_endpoint("127.0.0.1", port, "192.168.8.103", timeout=2.0)
+    server.close()
+    assert ok is True
+    assert err is None
+
+
+def test_verify_bridge_endpoint_immediate_close_fails():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    server.listen(1)
+
+    def worker():
+        conn, _ = server.accept()
+        conn.close()
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    ok, err = verify_bridge_endpoint("127.0.0.1", port, "192.168.8.103", timeout=2.0)
+    server.close()
+    assert ok is False
+    assert err is not None
+
+
+def test_ensure_appium_endpoint_stops_bridge_when_verification_fails():
+    with patch("ushareiplay.core.network_bridge.check_socket_connectivity") as mock_conn:
+        mock_conn.side_effect = [
+            (False, OSError(65, "No route to host")),
+            (True, None),
+        ]
+        with patch.object(LocalNetworkBridge, "start", return_value=12345):
+            with patch.object(LocalNetworkBridge, "stop") as mock_stop:
+                with patch("ushareiplay.core.network_bridge.verify_bridge_endpoint", return_value=(False, ConnectionError("Probe failed"))):
+                    with pytest.raises(ConnectionError) as exc_info:
+                        ensure_appium_endpoint("192.168.8.103", 4723)
+                    assert "无法连接到 Appium 服务器" in str(exc_info.value)
+                    mock_stop.assert_called()
+
+
+@pytest.mark.parametrize("runner_type,runner_path", _runner_params())
+def test_local_network_bridge_forwarding_per_runner(runner_type, runner_path):
+    """Each generated runner script must actually forward traffic end to end."""
+    target = EchoTarget()
+    bridge = LocalNetworkBridge(
+        "127.0.0.1", target.port, runner_type=runner_type, runner_path=runner_path
+    )
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.settimeout(3.0)
+    try:
+        bridge.start(timeout=5.0)
+        assert bridge.is_running
+
+        client.connect((bridge.bridge_host, bridge.bridge_port))
+        client.sendall(b"PING")
+        assert client.recv(1024) == b"PING"
+        assert target.received == [b"PING"]
+    finally:
+        client.close()
+        bridge.stop()
+        target.close()
+
+
+@pytest.mark.parametrize("runner_type,runner_path", _runner_params())
+def test_bridge_stop_tears_down_established_tunnels(runner_type, runner_path):
+    """stop() must kill the whole process tree, not just the runner parent.
+
+    The perl runner forks one child per accepted connection; killing only the
+    parent leaves those children forwarding on already-established tunnels.
+    """
+    target = EchoTarget()
+    bridge = LocalNetworkBridge(
+        "127.0.0.1", target.port, runner_type=runner_type, runner_path=runner_path
+    )
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.settimeout(3.0)
+    try:
+        bridge.start(timeout=5.0)
+        client.connect((bridge.bridge_host, bridge.bridge_port))
+        client.sendall(b"before")
+        assert client.recv(1024) == b"before"
+
+        bridge.stop()
+
+        try:
+            client.sendall(b"after")
+            leaked = client.recv(1024)
+        except OSError:
+            leaked = b""
+        assert leaked == b"", f"{runner_type} bridge kept forwarding after stop()"
+    finally:
+        client.close()
+        bridge.stop()
+        target.close()
+

@@ -202,9 +202,25 @@ class AppController(Singleton):
 
         from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
         try:
-            final_host, final_port, bridge = ensure_appium_endpoint(appium_host, int(appium_port))
-            if bridge:
-                self._network_bridge = bridge
+            target_port = int(appium_port)
+            bridge = getattr(self, "_network_bridge", None)
+            if (
+                bridge
+                and bridge.is_running
+                and bridge.target_host == appium_host
+                and bridge.target_port == target_port
+            ):
+                final_host = bridge.bridge_host
+                final_port = bridge.bridge_port
+            else:
+                if bridge:
+                    # A bridge pointed at some other Appium endpoint would send
+                    # the driver to the wrong host; drop it instead of reusing it.
+                    bridge.stop()
+                    self._network_bridge = None
+                final_host, final_port, new_bridge = ensure_appium_endpoint(appium_host, target_port)
+                if new_bridge:
+                    self._network_bridge = new_bridge
         except Exception as e:
             if hasattr(self, "logger") and self.logger:
                 self.logger.error("Appium 连接检测失败:\n%s", str(e))

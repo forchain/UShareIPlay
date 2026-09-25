@@ -1,11 +1,17 @@
 import errno
 import os
 import platform
+import signal
 import socket
 import subprocess
 import sys
 import time
 from typing import Optional, Tuple
+
+# How long a generated runner waits for its connection to the real target.
+# Probe timeouts downstream must be at least this long, otherwise a
+# slow-but-working target is indistinguishable from a blocked one.
+REMOTE_CONNECT_TIMEOUT = 5.0
 
 
 def is_macos_local_network_error(exc: Optional[Exception]) -> bool:
@@ -80,12 +86,24 @@ def diagnose_connection_error(host: str, port: int, exc: Exception) -> str:
 
 
 class LocalNetworkBridge:
-    """Transparent TCP forwarder running via system Python to bypass macOS Local Network Privacy restrictions."""
+    """Transparent TCP forwarder running via system-signed runners (Ruby, Perl, Python) to bypass macOS Local Network Privacy restrictions."""
 
-    def __init__(self, target_host: str, target_port: int, system_python: str = "/usr/bin/python3"):
+    def __init__(
+        self,
+        target_host: str,
+        target_port: int,
+        runner_type: Optional[str] = None,
+        runner_path: Optional[str] = None,
+    ):
         self.target_host = target_host
         self.target_port = int(target_port)
-        self.system_python = system_python
+
+        if runner_type and runner_path:
+            self.runner_type = runner_type
+            self.runner_path = runner_path
+        else:
+            self.runner_type, self.runner_path = select_bridge_runner(target_host)
+
         self.bridge_host = "127.0.0.1"
         self.bridge_port = 0
         self._process: Optional[subprocess.Popen] = None
@@ -94,30 +112,136 @@ class LocalNetworkBridge:
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
-    def start(self, timeout: float = 5.0) -> int:
-        if self.is_running:
-            return self.bridge_port
+    def _build_command(self) -> list:
+        # Host and port travel as argv so that config-derived values never have
+        # to be escaped into another language's string literal.
+        if self.runner_type == "ruby":
+            ruby_code = f"""
+require "socket"
+Signal.trap("TERM") {{ exit 0 }}
+Signal.trap("INT") {{ exit 0 }}
 
-        if not os.path.exists(self.system_python):
-            raise RuntimeError(f"System Python not found at {self.system_python}, cannot start bridge.")
+target_host = ARGV[0]
+target_port = Integer(ARGV[1])
 
-        bridge_code = f"""
+server = TCPServer.new("127.0.0.1", 0)
+$stdout.puts "PORT:#{{server.addr[1]}}"
+$stdout.flush
+
+def forward(src, dst)
+  while (data = src.readpartial(16384))
+    dst.write(data)
+  end
+rescue
+ensure
+  src.close rescue nil
+  dst.close rescue nil
+end
+
+loop do
+  client = server.accept
+  Thread.new(client) do |c|
+    begin
+      remote = Socket.tcp(target_host, target_port, connect_timeout: {REMOTE_CONNECT_TIMEOUT})
+      t1 = Thread.new {{ forward(c, remote) }}
+      t2 = Thread.new {{ forward(remote, c) }}
+      t1.join
+      t2.join
+    rescue
+    ensure
+      c.close rescue nil
+    end
+  end
+end
+"""
+            return [
+                self.runner_path,
+                "-e",
+                ruby_code,
+                self.target_host,
+                str(self.target_port),
+            ]
+
+        if self.runner_type == "perl":
+            perl_code = f"""
+use strict;
+use warnings;
+use IO::Socket::INET;
+use IO::Select;
+
+my $target_host = $ARGV[0];
+my $target_port = int($ARGV[1]);
+
+my $server = IO::Socket::INET->new(
+    LocalAddr => "127.0.0.1",
+    LocalPort => 0,
+    Proto => "tcp",
+    Listen => 128,
+    ReuseAddr => 1
+) or die "Cannot bind: $!\\n";
+
+my $port = $server->sockport();
+$| = 1;
+print "PORT:$port\\n";
+
+$SIG{{TERM}} = sub {{ exit 0; }};
+$SIG{{INT}}  = sub {{ exit 0; }};
+$SIG{{CHLD}} = "IGNORE";
+
+while (my $client = $server->accept()) {{
+    my $pid = fork();
+    if (!defined $pid) {{ close $client; next; }}
+    if ($pid == 0) {{
+        close $server;
+        my $remote = IO::Socket::INET->new(
+            PeerAddr => $target_host,
+            PeerPort => $target_port,
+            Proto => "tcp",
+            Timeout => {REMOTE_CONNECT_TIMEOUT}
+        );
+        if (!$remote) {{ close $client; exit 1; }}
+        my $sel = IO::Select->new($client, $remote);
+        while (my @ready = $sel->can_read()) {{
+            foreach my $s (@ready) {{
+                my $buf;
+                my $n = sysread($s, $buf, 16384);
+                if (!defined $n || $n == 0) {{ exit 0; }}
+                my $dst = ($s == $client) ? $remote : $client;
+                syswrite($dst, $buf);
+            }}
+        }}
+        exit 0;
+    }} else {{
+        close $client;
+    }}
+}}
+"""
+            return [
+                self.runner_path,
+                "-e",
+                perl_code,
+                self.target_host,
+                str(self.target_port),
+            ]
+
+        # Python runner
+        python_code = f"""
 import socket, threading, sys, signal
 
-target_host = {self.target_host!r}
-target_port = {self.target_port}
+target_host = sys.argv[1]
+target_port = int(sys.argv[2])
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(('127.0.0.1', 0))
 port = server.getsockname()[1]
-server.listen(64)
+server.listen(128)
 print(f'PORT:{{port}}', flush=True)
 
 def forward(src, dst):
     try:
         while True:
-            data = src.recv(8192)
+            data = src.recv(16384)
             if not data:
                 break
             dst.sendall(data)
@@ -125,18 +249,33 @@ def forward(src, dst):
         pass
     finally:
         try: src.close()
-        except: pass
+        except Exception: pass
         try: dst.close()
-        except: pass
+        except Exception: pass
+
+def handle_client(client):
+    try:
+        remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        remote.settimeout({REMOTE_CONNECT_TIMEOUT})
+        remote.connect((target_host, target_port))
+        remote.settimeout(None)
+        t1 = threading.Thread(target=forward, args=(client, remote), daemon=True)
+        t2 = threading.Thread(target=forward, args=(remote, client), daemon=True)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+    except Exception:
+        pass
+    finally:
+        try: client.close()
+        except Exception: pass
 
 def accept_loop():
     while True:
         try:
             client, _ = server.accept()
-            remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote.connect((target_host, target_port))
-            threading.Thread(target=forward, args=(client, remote), daemon=True).start()
-            threading.Thread(target=forward, args=(remote, client), daemon=True).start()
+            threading.Thread(target=handle_client, args=(client,), daemon=True).start()
         except Exception:
             break
 
@@ -144,7 +283,7 @@ threading.Thread(target=accept_loop, daemon=True).start()
 
 def sig_handler(signum, frame):
     try: server.close()
-    except: pass
+    except Exception: pass
     sys.exit(0)
 
 signal.signal(signal.SIGINT, sig_handler)
@@ -152,17 +291,36 @@ signal.signal(signal.SIGTERM, sig_handler)
 
 try:
     signal.pause()
-except (AttributeError, Exception):
+except Exception:
     import time
-    while True:
-        time.sleep(1)
+    while True: time.sleep(1)
 """
+        return [
+            self.runner_path,
+            "-c",
+            python_code,
+            self.target_host,
+            str(self.target_port),
+        ]
+
+    def start(self, timeout: float = 5.0) -> int:
+        if self.is_running:
+            return self.bridge_port
+
+        if not os.path.exists(self.runner_path):
+            raise RuntimeError(f"Runner not found at {self.runner_path}, cannot start bridge.")
+
+        cmd = self._build_command()
         self._process = subprocess.Popen(
-            [self.system_python, "-c", bridge_code],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            # Own process group, so stop() can take down the whole tree: the perl
+            # runner forks one child per connection and those children outlive
+            # their parent.
+            start_new_session=True,
         )
 
         start_time = time.time()
@@ -171,7 +329,7 @@ except (AttributeError, Exception):
         while time.time() - start_time < timeout:
             if self._process.poll() is not None:
                 stderr = self._process.stderr.read() if self._process.stderr else ""
-                raise RuntimeError(f"Bridge process terminated unexpectedly: {stderr}")
+                raise RuntimeError(f"Bridge process ({self.runner_type}) terminated unexpectedly: {stderr}")
 
             line = self._process.stdout.readline()
             if line.startswith("PORT:"):
@@ -187,21 +345,84 @@ except (AttributeError, Exception):
         return self.bridge_port
 
     def stop(self) -> None:
-        if self._process is not None:
+        if self._process is None:
+            return
+
+        process = self._process
+        self._process = None
+        self.bridge_port = 0
+
+        # Already exited and reaped: its pid may have been reused, so signalling
+        # the process group could hit an unrelated one. Popen.terminate() drew
+        # the same line.
+        if process.returncode is not None:
+            return
+
+        try:
+            self._signal_tree(process, signal.SIGTERM)
+            process.wait(timeout=1.0)
+        except Exception:
             try:
-                self._process.terminate()
-                self._process.wait(timeout=1.0)
+                self._signal_tree(process, signal.SIGKILL)
             except Exception:
-                try:
-                    self._process.kill()
-                except Exception:
-                    pass
-            finally:
-                self._process = None
-                self.bridge_port = 0
+                pass
+
+    @staticmethod
+    def _signal_tree(process: subprocess.Popen, sig: int) -> None:
+        """Signal the runner's entire process group, falling back to the parent."""
+        if hasattr(os, "killpg"):
+            try:
+                os.killpg(os.getpgid(process.pid), sig)
+                return
+            except OSError:
+                pass
+        process.send_signal(sig)
 
     def __del__(self):
         self.stop()
+
+
+def select_bridge_runner(target_host: str) -> Tuple[str, str]:
+    """
+    Select an available runner executable for the transparent network bridge.
+    On macOS (Darwin), prioritize Apple platform signed binaries (/usr/bin/ruby, /usr/bin/perl)
+    which bypass Local Network Privacy restrictions (Errno 65).
+    """
+    if platform.system() == "Darwin" and target_host not in ("127.0.0.1", "localhost", "::1"):
+        if os.path.exists("/usr/bin/ruby"):
+            return "ruby", "/usr/bin/ruby"
+        if os.path.exists("/usr/bin/perl"):
+            return "perl", "/usr/bin/perl"
+        if os.path.exists("/usr/bin/python3"):
+            return "python", "/usr/bin/python3"
+
+    return "python", sys.executable
+
+
+def verify_bridge_endpoint(
+    bridge_host: str,
+    bridge_port: int,
+    target_host: str,
+    timeout: float = 2.0,
+) -> Tuple[bool, Optional[Exception]]:
+    """Verify that traffic sent to the bridge actually reaches the remote service and gets a response or socket connection."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect((bridge_host, bridge_port))
+        probe = f"GET /status HTTP/1.1\r\nHost: {target_host}\r\nUser-Agent: ushareiplay-probe\r\nConnection: close\r\n\r\n".encode()
+        s.sendall(probe)
+        resp = s.recv(256)
+        if not resp:
+            return False, ConnectionError("Bridge connection to target closed immediately (target unreachable or blocked).")
+        return True, None
+    except Exception as e:
+        return False, e
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
 
 
 def ensure_appium_endpoint(
@@ -216,23 +437,32 @@ def ensure_appium_endpoint(
         return host, int(port), None
 
     if allow_bridge and platform.system() == "Darwin" and is_macos_local_network_error(err):
-        sys_py = "/usr/bin/python3"
-        if os.path.exists(sys_py):
-            bridge = LocalNetworkBridge(target_host=host, target_port=port, system_python=sys_py)
-            try:
-                b_port = bridge.start(timeout=5.0)
-                # Verify local bridge reachability
-                b_ok, b_err = check_socket_connectivity(bridge.bridge_host, b_port, timeout=2.0)
-                if b_ok:
-                    print(
-                        f"[LocalNetworkBridge] 检测到 macOS 本地网络限制 (Errno 65)，已自动启用系统代理桥接: "
-                        f"127.0.0.1:{b_port} -> {host}:{port}"
-                    )
-                    return bridge.bridge_host, b_port, bridge
-                else:
+        bridge = LocalNetworkBridge(target_host=host, target_port=port)
+        try:
+            b_port = bridge.start(timeout=5.0)
+            # Verify local bridge reachability
+            b_ok, b_err = check_socket_connectivity(bridge.bridge_host, b_port, timeout=timeout)
+            if b_ok:
+                # Outlast the bridge's own connect attempt, or a slow-but-working
+                # target looks the same as a blocked one.
+                probe_timeout = max(timeout, REMOTE_CONNECT_TIMEOUT)
+                v_ok, v_err = verify_bridge_endpoint(bridge.bridge_host, b_port, target_host=host, timeout=probe_timeout)
+                if not v_ok:
                     bridge.stop()
-            except Exception:
+                    diag = diagnose_connection_error(host, port, v_err or Exception("Bridge verification failed"))
+                    raise ConnectionError(diag)
+
+                print(
+                    f"[LocalNetworkBridge] 检测到 macOS 本地网络限制 (Errno 65)，已自动启用系统代理桥接 ({bridge.runner_type}): "
+                    f"127.0.0.1:{b_port} -> {host}:{port}"
+                )
+                return bridge.bridge_host, b_port, bridge
+            else:
                 bridge.stop()
+        except Exception as e:
+            bridge.stop()
+            if isinstance(e, ConnectionError):
+                raise
 
     diag = diagnose_connection_error(host, port, err if err is not None else Exception("Connection failed"))
     raise ConnectionError(diag)
