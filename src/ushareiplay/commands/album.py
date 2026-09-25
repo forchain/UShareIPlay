@@ -1,5 +1,3 @@
-import traceback
-
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.managers.music_manager import MusicManager
@@ -14,7 +12,7 @@ class AlbumCommand(BaseCommand):
 
         # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
         config = getattr(self.controller, "config", None)
-        protection_error = await self.info_manager.check_playlist_protection(
+        protection_error = await self.playlist_adoption.guard_switch(
             message_info.nickname, config=config
         )
         if protection_error:
@@ -23,38 +21,10 @@ class AlbumCommand(BaseCommand):
             )
             return protection_error
 
-        self.info_manager.player_name = message_info.nickname
-        info = self.play_album(query)
+        info = self.play_album(query, message_info.nickname)
         return info
 
-    def select_album_tab(self):
-        """Select the 'Album' tab in search results"""
-        try:
-            # Try to find album tab first
-            album_tab = self.handler.element_finder.try_find_element('album_tab')
-            if not album_tab:
-                # If not found, scroll music_tabs to find it
-                _, album_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
-                    'album_tab',
-                    'music_tabs',
-                    'left',
-                    max_swipes=10,
-                )
-                if not album_tab:
-                    album_tab = self.handler.element_finder.try_find_element('album_tab')
-                    if not album_tab:
-                        self.handler.logger.error("Failed to find album tab after scrolling")
-                        return False
-
-            album_tab.click()
-            self.handler.logger.info("Selected album tab")
-            return True
-
-        except Exception as e:
-            self.handler.logger.error(f"Error selecting album tab: {traceback.format_exc()}")
-            return False
-
-    def play_album(self, query):
+    def play_album(self, query, requester=None):
         if query == "":
             info = MusicManager.instance().get_playback_info()
             if not info:
@@ -66,7 +36,7 @@ class AlbumCommand(BaseCommand):
             return {
                 'error': 'Failed to query album',
             }
-        if not self.select_album_tab():
+        if not self.music_manager.select_tab('album'):
             self.handler.logger.error(f"Failed to select album tab with query {query}")
             return {
                 'error': 'Failed to select album tab',
@@ -108,16 +78,13 @@ class AlbumCommand(BaseCommand):
 
         self.handler.key_actions.press_back()
 
-        self.handler.list_mode = 'album'
-
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.topic_manager.change_topic(topic)
-        self.handler.logger.info(f"changing album topic to {topic}")
-        self.room_name_manager.set_next_title(title)
-        self.handler.logger.info(f"changing album title  to {title}")
-
-        # 存储完整的歌单名称到 InfoManager
-        self.info_manager.current_playlist_name = f"{title} - {topic}"
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='album',
+            title=title,
+            topic=topic,
+            playlist=f"{title} - {topic}",
+        )
 
         return {
             'playlist': playlist_text

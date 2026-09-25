@@ -67,24 +67,13 @@ class _DispatchStub:
         return cls.recorder
 
 
-class _ElementFinder:
-    def try_find_element(self, _key, log=True):
-        return object()
-
-    def try_get_attribute(self, _element, _attribute):
-        return "闭麦按钮"
-
-
 class _SoulHandler:
+    """PlaybackMuting 只从 SoulHandler 取 logger 与 playback_mute 配置。"""
+
     def __init__(self, events):
         self.events = events
         self.logger = _Logger()
         self.config = {}
-        self.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-        self.element_finder = _ElementFinder()
-
-    def ensure_mic_active(self):
-        self.events.append("restore")
 
 
 class _MusicManager:
@@ -100,9 +89,16 @@ class _MicManager:
     def __init__(self, events):
         self.events = events
 
-    def toggle_mic(self, enable):
+    def state(self):
+        return True
+
+    def set_active(self, enable):
         self.events.append(f"mute:{enable}")
-        return {"state": "关闭"}
+        return {"state": "0" if not enable else "1"}
+
+    def ensure_active(self):
+        self.events.append("restore")
+        return {"state": "1"}
 
 
 class _PlaybackCommand:
@@ -287,7 +283,8 @@ def test_next_command_does_not_participate_in_muting():
 
 @pytest.mark.parametrize("module_name,class_name", PLAYBACK_COMMANDS)
 def test_playback_commands_leave_mic_activation_to_the_coordinator(module_name, class_name):
-    """An inline ensure_mic_active() re-opens the mic mid-playback, undoing the guard mute."""
+    """Mic work declared inline in a playback command re-opens the mic mid-playback,
+    undoing the guard mute — the microphone belongs to PlaybackMuting + MicManager."""
     module_path = (
         Path(__file__).resolve().parents[1]
         / "src"
@@ -298,7 +295,8 @@ def test_playback_commands_leave_mic_activation_to_the_coordinator(module_name, 
 
     source = module_path.read_text(encoding="utf-8")
 
-    assert "ensure_mic_active" not in source
+    for mic_api in ("ensure_mic_active", "ensure_active", "set_active", "toggle_mic"):
+        assert mic_api not in source
 
 
 def test_play_command_reports_requested_song_for_readiness_check():

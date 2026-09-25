@@ -263,36 +263,20 @@ class TestMessageTextFallback:
 
 
 @pytest.mark.asyncio
-async def test_message_content_event_logs_the_composed_quoted_message():
-    handler = MagicMock()
-    handler.logger = MagicMock()
-    handler.config = {"soul": {"room_owner": "Joyer"}}
-    event = MessageContentEvent(handler)
-
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    chat_logger = MagicMock()
+async def test_message_content_event_logs_the_composed_quoted_message(chat_window):
+    chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
+    event = MessageContentEvent(chat_window.handler)
 
     wrappers = _content_wrappers(_MIXED_ROWS_XML)
-    with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
-        patch("ushareiplay.managers.command_manager.CommandManager.instance"),
-    ):
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance"):
         await event.handle("message_content", wrappers)
 
-    assert [call.args[0] for call in chat_logger.info.call_args_list] == list(
-        message_manager.recent_chats
-    )
-    assert list(message_manager.recent_chats) == [
+    expected = [
         "souler[Bob]说：「Alice：今天天气不错」 哈哈",
         "souler[Carol]说：在的",
         "souler[Erin]说：「Dave：晚安」 拜拜",
     ]
+    # 三行都按 compose 后的完整文本记了普通聊天日志
+    assert [call.args[0] for call in chat_window.logger.info.call_args_list] == expected
+    # 也都进了窗口：再观察一次这几行不会有"新行"
+    assert chat_window.manager.observe(expected).new_lines == ()

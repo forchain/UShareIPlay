@@ -267,54 +267,38 @@ async def test_singer_command_blocked_when_other_user_playing(clean_info_manager
 
 
 @pytest.mark.asyncio
-async def test_singer_command_allowed_sets_player_name(clean_info_manager):
+@pytest.mark.parametrize(
+    ("command_class", "play_method", "content", "parameters", "result"),
+    [
+        (SingerCommand, "play_singer", "/singer 张天赋", ["张天赋"], {"playlist": "张天赋"}),
+        (AlbumCommand, "play_album", "/album 范特西", ["范特西"], {"playlist": "范特西"}),
+        (PlaylistCommand, "play_playlist", "/playlist 流行歌单", ["流行歌单"], {"playlist": "流行歌单"}),
+    ],
+)
+async def test_allowed_commands_hand_the_requester_to_the_play_step(
+    clean_info_manager, command_class, play_method, content, parameters, result
+):
+    """守护放行后，请求者被交给播放方法 —— 播放在成功时把它交给 PlaylistAdoption 记录。
+
+    命令不再自己写 player_name（那次写入现在归 PlaylistAdoption.adopt），
+    因此这里断言的是「请求者被正确传下去」，播放者写入本身由
+    tests/test_playlist_adoption.py 在模块接口层覆盖。
+    """
     info_manager = clean_info_manager
     info_manager.player_name = None
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    command = SingerCommand(mock_controller)
-    command.play_singer = MagicMock(return_value={"playlist": "张天赋"})
+    command = command_class(mock_controller)
+    play = MagicMock(return_value=result)
+    setattr(command, play_method, play)
 
-    msg = MessageInfo(content="/singer 张天赋", nickname="张三")
-    res = await command.do_process(msg, ["张天赋"])
-    assert res == {"playlist": "张天赋"}
-    assert info_manager.player_name == "张三"
+    msg = MessageInfo(content=content, nickname="张三")
+    res = await command.do_process(msg, parameters)
 
-
-@pytest.mark.asyncio
-async def test_album_command_allowed_sets_player_name(clean_info_manager):
-    info_manager = clean_info_manager
-    info_manager.player_name = None
-
-    mock_controller = MagicMock()
-    mock_controller.soul_handler = MagicMock()
-    mock_controller.music_handler = MagicMock()
-    command = AlbumCommand(mock_controller)
-    command.play_album = MagicMock(return_value={"playlist": "范特西"})
-
-    msg = MessageInfo(content="/album 范特西", nickname="张三")
-    res = await command.do_process(msg, ["范特西"])
-    assert res == {"playlist": "范特西"}
-    assert info_manager.player_name == "张三"
-
-
-@pytest.mark.asyncio
-async def test_playlist_command_allowed_sets_player_name(clean_info_manager):
-    info_manager = clean_info_manager
-    info_manager.player_name = None
-
-    mock_controller = MagicMock()
-    mock_controller.soul_handler = MagicMock()
-    mock_controller.music_handler = MagicMock()
-    command = PlaylistCommand(mock_controller)
-    command.play_playlist = MagicMock(return_value={"playlist": "流行歌单"})
-
-    msg = MessageInfo(content="/playlist 流行歌单", nickname="张三")
-    res = await command.do_process(msg, ["流行歌单"])
-    assert res == {"playlist": "流行歌单"}
-    assert info_manager.player_name == "张三"
+    assert res == result
+    play.assert_called_once_with(parameters[0], "张三")
 
 
 @pytest.mark.asyncio

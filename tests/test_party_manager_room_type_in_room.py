@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from ushareiplay.managers.party_manager import PartyManager
 
 
@@ -129,69 +131,34 @@ def test_check_and_correct_room_type_opens_dialog_if_not_initially_visible():
     manager._handler = handler
     manager._logger = handler.logger
 
+    # 打开窗口这一步由 RoomInfoWindow 执行，因此替身注入到该模块；
+    # 成功点击入口后 party_room_type_option 才可见。
+    opened = {'by_window': False}
+
+    def window_switch_and_click(key, **_kwargs):
+        opened['by_window'] = True
+        state['opened'] = True  # 点击入口之后房间类型选项才可见
+        return {'success': True}
+
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
+    window = RoomInfoWindow.instance()
+    window._handler = SimpleNamespace(
+        element_finder=handler,
+        ui_actions=SimpleNamespace(switch_and_click=window_switch_and_click),
+        key_actions=handler.key_actions,
+        logger=handler.logger,
+    )
+    window._logger = handler.logger
+
     res = manager.check_and_correct_room_type(auto_close=True)
 
     assert res.get('success') is True
-    assert room_topic.clicked is True
+    assert opened['by_window'] is True
     assert singing_option.clicked is True
 
 
-def test_ensure_room_info_window_closed_uses_close_drawer_when_available():
-    manager = PartyManager.instance()
-
-    class _DynamicHandler(_Handler):
-        def try_find_element(self, key, log=False):
-            if key == 'party_room_type_option':
-                return _Element()
-            return None
-
-    handler = _DynamicHandler()
-    manager._handler = handler
-    manager._logger = handler.logger
-
-    from ushareiplay.managers.recovery_manager import RecoveryManager
-    drawer_closed = {'called': False}
-
-    class _MockRecoveryManager:
-        def close_drawer(self, drawer_key, **_kw):
-            drawer_closed['called'] = True
-            return True
-
-    RecoveryManager._instance = _MockRecoveryManager()
-    RecoveryManager._singleton_initialized = True
-
-    manager.ensure_room_info_window_closed()
-
-    assert drawer_closed['called'] is True
-    assert handler.key_actions.back_presses == 0
-
-
-def test_ensure_room_info_window_closed_falls_back_to_press_back_when_close_drawer_fails():
-    manager = PartyManager.instance()
-
-    class _DynamicHandler(_Handler):
-        def try_find_element(self, key, log=False):
-            if key == 'party_room_type_option':
-                return _Element()
-            return None
-
-    handler = _DynamicHandler()
-    manager._handler = handler
-    manager._logger = handler.logger
-
-    from ushareiplay.managers.recovery_manager import RecoveryManager
-
-    class _MockRecoveryManager:
-        def close_drawer(self, drawer_key, **_kw):
-            return False
-
-    RecoveryManager._instance = _MockRecoveryManager()
-    RecoveryManager._singleton_initialized = True
-
-    manager.ensure_room_info_window_closed()
-
-    assert handler.key_actions.back_presses == 1
-
+# 关窗行为的两个用例（优先 close_drawer / 兜底 press_back）已迁到
+# tests/test_room_info_window.py —— 关窗归 RoomInfoWindow 所有，闸门测试只留一处。
 
 
 def test_sync_and_correct_room_type_if_dialog_open_when_open():

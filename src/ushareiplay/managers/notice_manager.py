@@ -1,18 +1,46 @@
 import asyncio
 import traceback
 from typing import Dict
-from datetime import datetime
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.recovery_manager import RecoveryManager
+from ushareiplay.managers.pending_write import PendingWrite
 
 
 class NoticeManager(Singleton):
     """Notice管理器，统一处理notice的设置操作"""
 
+    #: 公告冷却时长（分钟）
+    COOLDOWN_MINUTES = 15
+
     def __init__(self):
-        self.last_update_time = None
-        self.cooldown_minutes = 15  # 15分钟冷却时间
-        self.pending_notice = None  # 待设置的notice
+        # 冷却时钟与待写入公告：计时机制由 PendingWrite 拥有
+        self._write = PendingWrite(cooldown_minutes=self.COOLDOWN_MINUTES, label="notice")
+
+    @property
+    def pending_notice(self):
+        return self._write.pending
+
+    @pending_notice.setter
+    def pending_notice(self, value):
+        if value is None:
+            self._write.clear()
+        else:
+            self._write.submit(value)
+
+    @property
+    def last_update_time(self):
+        return self._write.last_attempt_at
+
+    @last_update_time.setter
+    def last_update_time(self, value):
+        self._write.last_attempt_at = value
+
+    @property
+    def cooldown_minutes(self):
+        return self._write.cooldown_minutes
+
+    @cooldown_minutes.setter
+    def cooldown_minutes(self, value):
+        self._write.cooldown_minutes = value
 
     @property
     def handler(self):
@@ -35,29 +63,12 @@ class NoticeManager(Singleton):
         return self._logger
 
     def can_update_now(self) -> bool:
-        """检查是否可以立即更新notice
-        Returns:
-            bool: True如果可以更新，False如果在冷却中
-        """
-        if not self.last_update_time:
-            return True
-
-        current_time = datetime.now()
-        time_diff = current_time - self.last_update_time
-        return time_diff.total_seconds() >= self.cooldown_minutes * 60
+        """检查是否可以立即更新notice"""
+        return self._write.can_apply_now()
 
     def get_remaining_cooldown_minutes(self) -> int:
-        """获取剩余冷却时间（分钟）
-        Returns:
-            int: 剩余冷却时间（分钟）
-        """
-        if not self.last_update_time:
-            return 0
-
-        current_time = datetime.now()
-        time_diff = current_time - self.last_update_time
-        remaining_seconds = (self.cooldown_minutes * 60) - time_diff.total_seconds()
-        return max(0, int(remaining_seconds / 60))
+        """获取剩余冷却时间（分钟）"""
+        return self._write.remaining_minutes()
 
     def set_notice_with_cooldown(self, notice: str) -> Dict:
         """带冷却时间检查的设置notice方法
@@ -67,7 +78,7 @@ class NoticeManager(Singleton):
             dict: 包含成功、错误或冷却信息的结果
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -86,8 +97,8 @@ class NoticeManager(Singleton):
         # 可以立即更新
         result = self._set_notice_immediate(notice)
 
-        # 无论成功还是失败，都更新冷却时间，避免重复尝试
-        self.last_update_time = datetime.now()
+        # 无论成功还是失败，都推进冷却时钟，避免重复尝试
+        self._write.mark_attempted()
 
         if 'success' in result:
             self.pending_notice = None
@@ -108,65 +119,61 @@ class NoticeManager(Singleton):
             dict: 包含成功或错误信息的结果
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
         try:
             self.logger.info(f"准备设置notice: {notice}")
 
-            # 点击小助手
-            chat_room_title = self.handler.element_finder.wait_for_element_clickable('chat_room_title')
-            if not chat_room_title:
-                return {'error': 'Failed to find room title'}
-            chat_room_title.click()
-            self.logger.info("点击了标题")
+            # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            window = RoomInfoWindow.instance()
+            with window.with_window_open() as open_error:
+                if open_error:
+                    return open_error
 
-            # 点击编辑notice入口
-            edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit notice entry'}
-            edit_entry.click()
-            self.logger.info("点击了编辑notice入口")
+                # 点击编辑notice入口
+                edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
+                if not edit_entry:
+                    return {'error': 'Failed to find edit notice entry'}
+                edit_entry.click()
+                self.logger.info("点击了编辑notice入口")
 
-            # 检查是否有关闭按钮
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
-            if not close_notice:
-                return {'error': 'Close notice not found'}
+                # 检查是否有关闭按钮
+                close_notice = self.handler.element_finder.wait_for_element('close_notice')
+                if not close_notice:
+                    return {'error': 'Close notice not found'}
 
-            # 点击自定义按钮
-            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
-            if not customize:
-                close_notice.click()
-                self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
-                return {'error': 'Failed to find customize notice button'}
-            customize.click()
-            self.logger.info(f"点击了自定义按钮 {key}")
+                # 点击自定义按钮
+                key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
+                if not customize:
+                    close_notice.click()
+                    self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
+                    return {'error': 'Failed to find customize notice button'}
+                customize.click()
+                self.logger.info(f"点击了自定义按钮 {key}")
 
-            # 输入新的notice
-            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
-            if not notice_input:
-                return {'error': 'Failed to find notice input'}
-            notice_input.clear()
-            notice_input.send_keys(notice)
-            self.logger.info(f"输入了notice内容: {notice}")
+                # 输入新的notice
+                notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
+                if not notice_input:
+                    return {'error': 'Failed to find notice input'}
+                notice_input.clear()
+                notice_input.send_keys(notice)
+                self.logger.info(f"输入了notice内容: {notice}")
 
-            # 点击确认
-            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
-            if not confirm:
-                return {'error': 'Failed to find confirm button'}
-            confirm.click()
-            self.logger.info("点击了确认按钮")
+                # 点击确认
+                confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
+                if not confirm:
+                    return {'error': 'Failed to find confirm button'}
+                confirm.click()
+                self.logger.info("点击了确认按钮")
 
-            # 关闭notice设置对话框
-            close_notice = self.handler.element_finder.wait_for_element('close_notice')
-            if close_notice:
-                self.logger.info("隐藏notice设置对话框")
-                close_notice.click()
-
-            # 关闭party info设置对话框
-            RecoveryManager.instance().close_drawer('slide_drawer')
-            self.logger.info("隐藏party info 对话框")
+                # 关闭notice设置对话框（抽屉本身由 with_window_open 收尾）
+                close_notice = self.handler.element_finder.wait_for_element('close_notice')
+                if close_notice:
+                    self.logger.info("隐藏notice设置对话框")
+                    close_notice.click()
 
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}
@@ -191,7 +198,7 @@ class NoticeManager(Singleton):
             dict: 处理结果
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 
         if not self.pending_notice:
@@ -205,8 +212,8 @@ class NoticeManager(Singleton):
         notice = self.pending_notice
         result = self._set_notice_immediate(notice)
 
-        # 无论成功还是失败，都更新冷却时间
-        self.last_update_time = datetime.now()
+        # 无论成功还是失败，都推进冷却时钟
+        self._write.mark_attempted()
 
         if 'success' in result:
             self.pending_notice = None
@@ -379,7 +386,7 @@ class NoticeManager(Singleton):
             if close_notice:
                 close_notice.click()
 
-            self.last_update_time = datetime.now()
+            self._write.mark_attempted()
             self.pending_notice = None
             self.logger.info(f"Successfully restored notice in room info window to: {default_notice}")
             return {'success': True, 'restored_notice': default_notice}

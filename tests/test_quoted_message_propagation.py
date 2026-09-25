@@ -18,64 +18,36 @@ class _FakeWrapper:
         self.content = text
 
 
-def _event(room_owner: str = "群主"):
-    handler = MagicMock()
-    handler.logger = MagicMock()
-    handler.config = {"soul": {"room_owner": room_owner}}
-    return MessageContentEvent(handler)
+def _event(chat_window):
+    return MessageContentEvent(chat_window.handler)
 
 
 @pytest.mark.asyncio
-async def test_quoted_message_is_logged_and_kept_for_deduplication():
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    message_manager.process_new_messages = AsyncMock()
-    message_manager.process_missed_messages = AsyncMock()
-    chat_logger = MagicMock()
-
-    event = _event()
+async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.process_new_messages = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
     first = "souler[Bob]说：「Alice：今天天气不错」 哈哈"
     second = "souler[Bob]说：「Dave：晚安」 哈哈"
 
     with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
         patch("ushareiplay.managers.command_manager.CommandManager.instance"),
     ):
         await event.handle("message_content", [_FakeWrapper(first)])
         await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
 
     # Same utterance, different quote → the second must not be dropped as a duplicate.
-    assert list(message_manager.recent_chats) == [first, second]
-    assert [call.args[0] for call in chat_logger.info.call_args_list] == [first, second]
+    # 再观察一次这两行：两条都已在窗口里，因此没有新行。
+    assert chat_window.manager.observe([first, second]).new_lines == ()
+    assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [first, second]
 
 
 @pytest.mark.asyncio
-async def test_command_inside_a_quote_does_not_trigger_command_processing():
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    message_manager.process_new_messages = AsyncMock()
-    message_manager.process_missed_messages = AsyncMock()
-    chat_logger = MagicMock()
-
-    event = _event()
+async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.process_new_messages = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
     with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
         patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
     ):
         await event.handle(
@@ -84,59 +56,33 @@ async def test_command_inside_a_quote_does_not_trigger_command_processing():
         )
 
     mock_cmd.return_value.notify_user_return.assert_not_called()
-    message_manager.process_new_messages.assert_not_called()
-    assert [call.args[0] for call in chat_logger.info.call_args_list] == [
+    chat_window.manager.process_new_messages.assert_not_called()
+    assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：:play 晴天」 哈哈哈"
     ]
 
 
 @pytest.mark.asyncio
-async def test_sender_command_after_a_quote_reaches_command_processing():
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    message_manager.process_new_messages = AsyncMock()
-    message_manager.process_missed_messages = AsyncMock()
-    chat_logger = MagicMock()
-
-    event = _event()
+async def test_sender_command_after_a_quote_reaches_command_processing(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.process_new_messages = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 :play 晴天"
     with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
         patch("ushareiplay.managers.command_manager.CommandManager.instance"),
     ):
         await event.handle("message_content", [_FakeWrapper(composed)])
 
-    message_manager.process_new_messages.assert_awaited_once()
-    assert [call.args[0] for call in chat_logger.critical.call_args_list] == [composed]
+    chat_window.manager.process_new_messages.assert_awaited_once()
+    assert [call.args[0] for call in chat_window.logger.critical.call_args_list] == [composed]
 
 
 @pytest.mark.asyncio
-async def test_mention_inside_a_quote_is_not_dispatched():
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    message_manager.process_new_messages = AsyncMock()
-    message_manager.process_missed_messages = AsyncMock()
-    chat_logger = MagicMock()
-
-    event = _event()
+async def test_mention_inside_a_quote_is_not_dispatched(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.process_new_messages = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
     with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
         patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
     ):
         mock_keyword.return_value.dispatch_mention = AsyncMock()
@@ -146,31 +92,18 @@ async def test_mention_inside_a_quote_is_not_dispatched():
         )
 
     mock_keyword.return_value.dispatch_mention.assert_not_called()
-    assert [call.args[0] for call in chat_logger.info.call_args_list] == [
+    assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：@群主 点歌」 哈哈哈"
     ]
 
 
 @pytest.mark.asyncio
-async def test_sender_mention_after_a_quote_is_dispatched_with_its_quote():
-    message_manager = MagicMock()
-    message_manager.latest_chats = deque(maxlen=3)
-    message_manager.recent_chats = deque(maxlen=3)
-    message_manager.process_new_messages = AsyncMock()
-    message_manager.process_missed_messages = AsyncMock()
-    chat_logger = MagicMock()
-
-    event = _event()
+async def test_sender_mention_after_a_quote_is_dispatched_with_its_quote(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.process_new_messages = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天"
     with (
-        patch(
-            "ushareiplay.managers.message_manager.MessageManager.instance",
-            return_value=message_manager,
-        ),
-        patch(
-            "ushareiplay.managers.message_manager.get_chat_logger",
-            return_value=chat_logger,
-        ),
         patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
     ):
         mock_keyword.return_value.dispatch_mention = AsyncMock()
@@ -184,36 +117,34 @@ async def test_sender_mention_after_a_quote_is_dispatched_with_its_quote():
 
 
 @pytest.mark.asyncio
-async def test_missed_message_scan_anchors_on_the_quote_free_line(monkeypatch):
-    from ushareiplay.managers.message_manager import MessageManager
-
-    manager = object.__new__(MessageManager)
-    manager.recent_chats = ["souler[Bob]说：「Alice：今天天气不错」 哈哈"]
-    manager.latest_chats = []
-    manager._chat_logger = MagicMock()
-
-    handler_mock = MagicMock()
-    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
-    handler_mock.key_actions.switch_to_app.return_value = True
-    handler_mock.gesture_handler.scroll_container_until_element.return_value = (
+async def test_missed_message_scan_anchors_on_the_quote_free_line(chat_window, monkeypatch):
+    manager = chat_window.manager
+    handler = chat_window.handler
+    handler.config = {"soul": {"room_owner": "Joyer"}}
+    handler.key_actions = MagicMock()
+    handler.key_actions.switch_to_app.return_value = True
+    handler.gesture_handler = MagicMock()
+    handler.gesture_handler.scroll_container_until_element.return_value = (
         "message_list",
         MagicMock(),
         ["souler[Bob]说：哈哈", "souler[Carol]说：新消息"],
     )
-    handler_mock.element_finder.try_find_element.return_value = None
-    manager._handler = handler_mock
+    handler.send_message = MagicMock()
     monkeypatch.setattr(manager, "_get_seat_manager", lambda: None)
+
+    # 通过接口播种窗口：上一轮看到的是带引用的完整行
+    manager.observe(["souler[Bob]说：「Alice：今天天气不错」 哈哈"])
 
     await manager.process_missed_messages()
 
     # The UI renders only the sender's own text for a reply bubble, so the
     # scroll anchor has to be the quote-free line.
     assert (
-        handler_mock.gesture_handler.scroll_container_until_element.call_args.args[-1]
+        handler.gesture_handler.scroll_container_until_element.call_args.args[-1]
         == "souler[Bob]说：哈哈"
     )
     # ... which also keeps the anchor row itself out of the "missed" report.
-    assert [call.args[0] for call in manager._chat_logger.warning.call_args_list] == [
+    assert [call.args[0] for call in chat_window.logger.warning.call_args_list] == [
         "souler[Carol]说：新消息"
     ]
 

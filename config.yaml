@@ -230,7 +230,10 @@ soul:
 qq_music:
   package_name: "com.tencent.qqmusic"
   search_activity: ".activity.AppStarterActivity"
-  tab_max_swipes: 10
+  # tab 横滑查找的上限。取最靠右的 tab（歌词）在生产上所需的次数；
+  # 靠前的 tab 由 scroll_container_until_element 的"页面无变化即到边界"提前退出保护，
+  # 更高的上限不会带来额外滑动。
+  tab_max_swipes: 20
   elements:
     search_entry: "com.tencent.qqmusic:id/sub_edit_text"
     search_box: "com.tencent.qqmusic:id/searchItem"

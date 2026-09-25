@@ -1,14 +1,12 @@
 """
 关注者消息事件 - 监控关注者进入房间的消息
 
-当检测到关注者进入房间的消息时，记录到聊天日志并点击打招呼按钮。
+横幅文案的解析归 Chat Intake（`classify_banner_line`）；本事件只保留它独有的
+UI 动作：写聊天日志、建用户记录、触发 return、点打招呼并发送。
 """
 
-import re
-import asyncio
-from typing import Tuple, Optional
-
 from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.core.chat_intake import ChatIntakeKind, classify_banner_line
 
 
 class FollowerMessageEvent(BaseEvent):
@@ -16,56 +14,6 @@ class FollowerMessageEvent(BaseEvent):
 
     # 类变量，维护上一次的 follower_message，避免重复处理
     last_follower_message = None
-
-    def _parse_message(self, message_text: str) -> Tuple[Optional[str], bool]:
-        """
-        从 follower_message 文本中解析用户名和消息类型
-        
-        支持多种格式：
-        1. "你关注的Outlier进入房间啦，打个招呼吧～" - 进入房间
-        2. "你的兄弟 Outlier进来啦～" - 进入房间
-        3. "你的兄弟 Outlier正在房间玩～" - 正在房间
-        4. "你的密友Chainer正在房间里，打个招呼吧～" - 正在房间
-        5. "荒草 为派对点赞了" - 点赞
-        
-        Args:
-            message_text: follower_message 文本
-            
-        Returns:
-            tuple: (nickname, is_join)
-            nickname: 解析出的用户名，如果解析失败返回 None
-            is_join: 是否是进入房间/在房间消息（需打招呼）
-        """
-        # 格式: XXX 为派对点赞了
-        match = re.search(r'(.+?) 为派对点赞了', message_text)
-        if match:
-            return match.group(1).strip(), False
-
-        # 进入房间 / 在房间 消息动作关键字
-        action_pattern = r'(?:进入房间|进来|正在房间|在房间|来到了房间)'
-
-        # 格式1: 你关注的XXX...
-        match = re.search(r'你关注的(.+?)' + action_pattern, message_text)
-        if match:
-            return match.group(1).strip(), True
-
-        # 格式2: 你的<已知关系词> XXX... (无论是否有空格)
-        relations = r'(?:兄弟|密友|挚友|死党|闺蜜|基友|搭子|特别关注|好友|心动|同城|星人|萌友|CP|关注)'
-        match = re.search(r'你的' + relations + r'\s*(.+?)' + action_pattern, message_text)
-        if match:
-            return match.group(1).strip(), True
-
-        # 格式3: 你的<关系词> XXX... (带空格分隔的任意关系词)
-        match = re.search(r'你的\S{1,6}\s+(.+?)' + action_pattern, message_text)
-        if match:
-            return match.group(1).strip(), True
-
-        # 格式4: 备选通用兜底：你的XXX...
-        match = re.search(r'你的(.+?)' + action_pattern, message_text)
-        if match:
-            return match.group(1).strip(), True
-
-        return None, False
 
     async def handle(self, key: str, element_wrapper):
         """
@@ -98,8 +46,10 @@ class FollowerMessageEvent(BaseEvent):
             chat_logger = get_chat_logger(self.handler.config)
             chat_logger.critical(message_text)
 
-            # 解析消息
-            nickname, is_join = self._parse_message(message_text)
+            # 解析消息（横幅文法归 Chat Intake）
+            banner = classify_banner_line(message_text)
+            nickname = banner.nickname
+            is_join = banner.kind == ChatIntakeKind.USER_RETURN
             if nickname:
                 # 创建用户记录（异步操作）
                 try:

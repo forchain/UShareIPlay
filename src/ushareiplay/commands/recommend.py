@@ -24,14 +24,15 @@ class RecommendCommand(BaseCommand):
             else:
                 return {'error': f'未知参数 "{parameters[0]}", 请使用 on/off 或 开启/关闭'}
 
-        click_res = self.handler.ui_actions.switch_and_click(
-            'chat_room_title', error_message='Failed to find room title'
-        )
-        if isinstance(click_res, dict) and 'error' in click_res:
-            return click_res
+        # 打开/关闭窗口归 RoomInfoWindow（原先这里是第五份手写打开副本）
+        from ushareiplay.managers.room_info_window import RoomInfoWindow
+        window = RoomInfoWindow.instance()
+        open_error = window.ensure_open(error_message='Failed to find room title')
+        if open_error:
+            return open_error
 
         update_res = rec_manager.update_recommendation_ui(target_state)
-        rec_manager.close_title_dialog()
+        window.close_with_back()
 
         if 'error' in update_res:
             return update_res

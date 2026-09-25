@@ -1,6 +1,7 @@
 import traceback
-from datetime import datetime
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, clean_banner_text
+from ushareiplay.managers.pending_write import PendingWrite
 
 
 class TopicManager(Singleton):
@@ -15,11 +16,47 @@ class TopicManager(Singleton):
         self._logger = None
         self._message_dispatch = None
         
-        # 话题状态管理
-        self.last_update_time = None
+        # 冷却时钟与待写入话题：计时机制由 PendingWrite 拥有
+        self._write = PendingWrite(cooldown_minutes=self.COOLDOWN_MINUTES, label="topic")
         self.current_topic = None
-        self.next_topic = None
-        self.cooldown_minutes = 5
+
+    #: 话题冷却时长（分钟）
+    COOLDOWN_MINUTES = 5
+
+    @property
+    def next_topic(self):
+        return self._write.pending
+
+    @next_topic.setter
+    def next_topic(self, value):
+        if value is None:
+            self._write.clear()
+        else:
+            self._write.submit(value)
+
+    @property
+    def last_update_time(self):
+        return self._write.last_attempt_at
+
+    @last_update_time.setter
+    def last_update_time(self, value):
+        self._write.last_attempt_at = value
+
+    @property
+    def cooldown_minutes(self):
+        return self._write.cooldown_minutes
+
+    @cooldown_minutes.setter
+    def cooldown_minutes(self, value):
+        self._write.cooldown_minutes = value
+
+    def can_update_now(self) -> bool:
+        """是否可以立即写入话题（原先这份算术内联在 get_status/change_topic 里）。"""
+        return self._write.can_apply_now()
+
+    def get_remaining_cooldown_minutes(self) -> int:
+        """距离可写入还有多少分钟。"""
+        return self._write.remaining_minutes()
     
     @property
     def soul_handler(self):
@@ -56,16 +93,8 @@ class TopicManager(Singleton):
             'remaining_time': None
         }
         
-        if self.next_topic and self.last_update_time:
-            current_time = datetime.now()
-            time_diff = current_time - self.last_update_time
-            remaining_minutes = self.cooldown_minutes - (time_diff.total_seconds() / 60)
-            if remaining_minutes > 0:
-                result['remaining_time'] = int(remaining_minutes)
-            else:
-                result['remaining_time'] = 0
-        elif self.next_topic:
-            result['remaining_time'] = 0
+        if self.next_topic:
+            result['remaining_time'] = self._write.remaining_minutes()
         
         return result
     
@@ -83,31 +112,22 @@ class TopicManager(Singleton):
         self.logger.info("Switched to Soul app")
         
         # 清理话题文本: 支持半角和全角竖线及括号
-        new_topic = topic.split('|')[0].split('｜')[0].split('丨')[0].split('(')[0].split('（')[0].strip()[:15]
-        current_time = datetime.now()
-        
+        new_topic = clean_banner_text(topic, TOPIC_MAX_LENGTH)
+
         # 设置下一个话题
         self.next_topic = new_topic
-        
+
         # 检查是否可以立即更新
-        if not self.last_update_time:
+        if self._write.can_apply_now():
             self.logger.info(f'Topic will be updated to {new_topic} soon')
             return {
                 'topic': f'{new_topic}. Topic will update soon'
             }
-        
-        time_diff = current_time - self.last_update_time
-        remaining_minutes = self.cooldown_minutes - (time_diff.total_seconds() / 60)
-        
-        if remaining_minutes < 0:
-            self.logger.info(f'Topic will be updated to {new_topic} soon')
-            return {
-                'topic': f'{new_topic}. Topic will update soon'
-            }
-        
+
+        remaining_minutes = self._write.remaining_minutes()
         self.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
         return {
-            'topic': f'{new_topic}. Topic will update in {int(remaining_minutes)} minutes'
+            'topic': f'{new_topic}. Topic will update in {remaining_minutes} minutes'
         }
     
     def _update_topic_ui(self, topic: str) -> dict:
@@ -119,11 +139,11 @@ class TopicManager(Singleton):
             dict: 操作结果
         """
         try:
-            # Click room topic
-            room_topic = self.soul_handler.element_finder.wait_for_element_clickable('room_topic')
-            if not room_topic:
-                return {'error': 'Failed to find room topic'}
-            room_topic.click()
+            # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            open_error = RoomInfoWindow.instance().ensure_open()
+            if open_error:
+                return open_error
 
             # Click edit entry
             edit_entry = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_entry')
@@ -172,20 +192,16 @@ class TopicManager(Singleton):
         try:
             if not self.next_topic:
                 return
-            
-            current_time = datetime.now()
-            
+
             # 检查是否到达更新时间
-            if self.last_update_time:
-                time_diff = current_time - self.last_update_time
-                if time_diff.total_seconds() < self.cooldown_minutes * 60:
-                    return  # 冷却时间未到，等待
-            
+            if not self._write.can_apply_now():
+                return  # 冷却时间未到，等待
+
             # 记录尝试时间
             self.logger.info(f'Attempting to update topic to {self.next_topic}')
-            
-            # 无论成功失败，都更新 last_update_time，避免反复重试
-            self.last_update_time = current_time
+
+            # 无论成功失败，都推进冷却时钟，避免反复重试
+            self._write.mark_attempted()
             
             # 执行 UI 更新
             result = self._update_topic_ui(self.next_topic)

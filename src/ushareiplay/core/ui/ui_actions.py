@@ -28,22 +28,5 @@ class UIActions:
 
         return {"success": True}
 
-    def toggle_mic(self, enable: bool) -> dict:
-        """Toggle the microphone while retaining MicManager's result contract."""
-        try:
-            if not self.owner.key_actions.switch_to_app():
-                return {"error": "Failed to switch to app"}
-
-            mic_button = self.owner.element_finder.try_find_element("toggle_mic")
-            if not mic_button:
-                return {"error": "Microphone button not found"}
-
-            if not self.owner.gesture_handler.click_element_at(mic_button):
-                return {"error": "Failed to click microphone button"}
-
-            state = "开启" if enable else "关闭"
-            self.logger.info("Clicked microphone button to %s", state)
-            return {"state": state}
-        except Exception as error:
-            self.logger.error("Error toggling microphone: %s", error)
-            return {"error": str(error)}
+    # 麦克风开关不在这里：MicManager 拥有 content-desc 状态读取与麦位前置检查，
+    # 盲点击的 ui_actions.toggle_mic 已删除（见 managers/mic_manager.py）。

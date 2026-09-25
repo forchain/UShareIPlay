@@ -95,7 +95,8 @@ def controller_without_init(driver=None):
     return controller
 
 
-def test_controller_init_closes_driver_when_starting_apps_fails(monkeypatch):
+def test_start_up_closes_driver_when_starting_apps_fails(monkeypatch):
+    """启动期设备 I/O 在 start_up() 里：失败必须关掉驱动再抛出。"""
     driver = FakeDriver("startup-driver")
     controller = object.__new__(AppController)
     monkeypatch.setattr(AppController, "_init_driver", lambda _self: driver)
@@ -105,8 +106,11 @@ def test_controller_init_closes_driver_when_starting_apps_fails(monkeypatch):
 
     monkeypatch.setattr(AppController, "_start_apps", fail_to_start_apps)
 
+    # 构造本身不做设备 I/O
+    AppController.__init__(controller, {})
+
     with pytest.raises(RuntimeError, match="startup failed"):
-        AppController.__init__(controller, {})
+        controller.start_up()
 
     assert driver.quit_called is True
 
@@ -352,3 +356,93 @@ def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(m
     asyncio.run(controller.start_monitoring())
 
     assert calls == ["processed", "status"]
+
+
+def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch):
+    """监控循环自己组装 RuntimeInputPipeline，每圈 drain 它，paused 时跳过屏幕处理。
+
+    pipeline 的接口测试（tests/test_runtime_input_pipeline.py）全都在直接构造它，
+    因此「循环有没有把 drain() 接上、paused 到底有没有短路事件处理」只有循环级
+    测试能钉住。
+    """
+    controller = controller_without_init()
+    controller.config = {"commands": []}
+    controller.input_queue = Queue()
+    controller.soul_handler = SimpleNamespace(
+        error_count=0,
+        log_error=lambda *_args, **_kwargs: None,
+        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
+    )
+    controller.logger = FakeLogger()
+    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+
+    async def _start_timer():
+        return None
+
+    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
+    controller._runtime_queue_drainer = None
+    controller._drain_agent_command_spool = lambda: None
+    controller.is_running = True
+    controller.in_console_mode = False
+
+    built = []
+    passes = []
+
+    class _SpyPipeline:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.paused = False
+            self.drains = 0
+            built.append(self)
+
+        async def drain(self):
+            self.drains += 1
+            passes.append((self.drains, self.paused))
+            if self.drains == 3:
+                controller.is_running = False
+
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.RuntimeInputPipeline", _SpyPipeline
+    )
+    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    monkeypatch.setattr(
+        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
+        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
+    )
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.threading.Thread",
+        lambda target: SimpleNamespace(daemon=False, start=lambda: None),
+    )
+
+    async def noop_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+
+    processed = []
+
+    async def fake_process_current_screen():
+        processed.append(True)
+        built[0].paused = True  # 处理完这一屏之后进入 paused
+        return {"page_source": "", "screen": {}, "triggered_count": 0}
+
+    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+
+    asyncio.run(controller.start_monitoring())
+
+    # 循环真的把 pipeline 接上了自己的协作者
+    assert len(built) == 1
+    assert set(built[0].kwargs) == {
+        "input_queue",
+        "room_owner_provider",
+        "logger",
+        "send_screen_message",
+        "timer_manager",
+        "obs",
+        "dump_artifacts",
+    }
+    assert built[0].kwargs["input_queue"] is controller.input_queue
+    # 每圈都 drain，paused 的圈不处理屏幕
+    assert built[0].drains == 3
+    assert passes == [(1, False), (2, True), (3, True)]
+    assert processed == [True]

@@ -103,6 +103,16 @@ def test_ensure_synced_on_return_skips_when_already_saved(recommendation_setup):
     assert result.get("reason") == "already_saved"
 
 
+def _inject_window_handler(handler):
+    """窗口的打开/检测/关闭归 RoomInfoWindow：把替身注入到该模块。"""
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
+
+    window = RoomInfoWindow.instance()
+    window._handler = handler
+    window._logger = handler.logger
+    return window
+
+
 def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendation_setup):
     rec_manager, room_state = recommendation_setup
     room_state.recommendation_enabled = None
@@ -116,7 +126,35 @@ def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendatio
         nonlocal back_count
         back_count += 1
 
-    handler = SimpleNamespace(
+    class _WindowFinder(MockElementFinder):
+        """抽屉在成功点击入口之后才出现，因此关窗时确实需要一次返回。"""
+
+        def __init__(self):
+            super().__init__()
+            self.open = False
+
+        def try_find_element(self, key, log=True):
+            if key == "slide_drawer" and self.open:
+                return MockElement()
+            return None
+
+    window_finder = _WindowFinder()
+
+    def switch_and_click(key, **_kwargs):
+        if key == "chat_room_title":
+            window_finder.open = True
+        return {'success': True}
+
+    _inject_window_handler(
+        SimpleNamespace(
+            element_finder=window_finder,
+            ui_actions=SimpleNamespace(switch_and_click=switch_and_click),
+            key_actions=SimpleNamespace(press_back=press_back),
+            logger=SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None),
+        )
+    )
+
+    rec_manager._handler = SimpleNamespace(
         element_finder=MockElementFinder(
             elements={
                 "chat_room_title": chat_title,
@@ -128,7 +166,6 @@ def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendatio
         key_actions=SimpleNamespace(press_back=press_back),
         config={"create_party_recommendation": True},
     )
-    rec_manager._handler = handler
 
     result = rec_manager.ensure_synced_on_return()
 
@@ -158,6 +195,7 @@ def test_close_title_dialog_presses_back_twice_if_window_still_open(recommendati
         logger=SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None),
     )
     rec_manager._handler = handler
+    _inject_window_handler(handler)
 
     rec_manager.close_title_dialog()
     assert back_count == 2

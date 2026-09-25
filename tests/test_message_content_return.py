@@ -9,21 +9,16 @@ class _FakeWrapper:
         self.content = text
 
 
+def _event(handler):
+    return MessageContentEvent(handler)
+
+
 @pytest.mark.asyncio
-async def test_message_content_event_triggers_return_when_should_trigger():
-    handler_mock = MagicMock()
-    handler_mock.logger = MagicMock()
-    handler_mock.config = {}
-    event = MessageContentEvent(handler_mock)
+async def test_message_content_event_triggers_return_when_should_trigger(chat_window):
+    """入场横幅经 MessageManager.dispatch 触发「用户返回」。"""
+    event = _event(chat_window.handler)
 
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["不约儿童🐏🐏坐着魔毯来啦"]
-    mock_msg_manager.recent_chats = []
-
-    mock_chat_logger = MagicMock()
     with (
-        patch("ushareiplay.managers.message_manager.MessageManager.instance", return_value=mock_msg_manager),
-        patch("ushareiplay.managers.message_manager.get_chat_logger", return_value=mock_chat_logger),
         patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
         patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
     ):
@@ -36,25 +31,15 @@ async def test_message_content_event_triggers_return_when_should_trigger():
         mock_presence.return_value.should_trigger_return.assert_called_once_with("不约儿童🐏🐏")
         mock_presence.return_value.record_return.assert_called_once_with("不约儿童🐏🐏")
         mock_cmd.return_value.notify_user_return.assert_called_once_with("不约儿童🐏🐏")
-        mock_chat_logger.critical.assert_called_once_with("不约儿童🐏🐏坐着魔毯来啦")
-        mock_chat_logger.info.assert_not_called()
+        chat_window.logger.critical.assert_called_once_with("不约儿童🐏🐏坐着魔毯来啦")
+        chat_window.logger.info.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_message_content_event_skips_return_when_not_eligible():
-    handler_mock = MagicMock()
-    handler_mock.logger = MagicMock()
-    handler_mock.config = {}
-    event = MessageContentEvent(handler_mock)
+async def test_message_content_event_skips_return_when_not_eligible(chat_window):
+    event = _event(chat_window.handler)
 
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["[Joyer]的兄弟[Outlier]进来了."]
-    mock_msg_manager.recent_chats = []
-
-    mock_chat_logger = MagicMock()
     with (
-        patch("ushareiplay.managers.message_manager.MessageManager.instance", return_value=mock_msg_manager),
-        patch("ushareiplay.managers.message_manager.get_chat_logger", return_value=mock_chat_logger),
         patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
         patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
     ):
@@ -68,5 +53,4 @@ async def test_message_content_event_skips_return_when_not_eligible():
         mock_presence.return_value.should_trigger_return.assert_called_once_with("Outlier")
         mock_presence.return_value.record_return.assert_not_called()
         mock_cmd.return_value.notify_user_return.assert_not_called()
-        mock_chat_logger.critical.assert_not_called()
-        mock_chat_logger.info.assert_called_once_with("[Joyer]的兄弟[Outlier]进来了.")
+        chat_window.logger.info.assert_called_once_with("[Joyer]的兄弟[Outlier]进来了.")

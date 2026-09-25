@@ -24,8 +24,16 @@ class _FakeHandler:
 
 
 def _manager_with_fake_handler():
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
+
     manager = RoomNameManager.initialize()
-    manager._handler = _FakeHandler()
+    handler = _FakeHandler()
+    manager._handler = handler
+    # 窗口的打开/关闭归 RoomInfoWindow 所有：同一个 fake handler 同时注入给它，
+    # 这样「打开窗口」这一步仍然可以在同一个替身上被断言。
+    window = RoomInfoWindow.instance()
+    window._handler = handler
+    window._logger = handler.logger
     return manager
 
 

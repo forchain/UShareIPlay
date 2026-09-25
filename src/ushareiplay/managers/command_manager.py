@@ -11,9 +11,6 @@ from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
     classify_chat_line,
-    expand_queue_text,
-    format_manual_message,
-    is_manual_operator,
     is_private_reply_prefix,
     is_silent_prefix,
     normalize_command_text,
@@ -400,35 +397,26 @@ class CommandManager(Singleton):
         return is_silent_prefix(raw)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
+        from ushareiplay.core.runtime_services import route_queue_text
+
         command_messages = []
         for message_info in queue_messages:
-            results = expand_queue_text(
+            routing = route_queue_text(
                 message_info.content,
                 message_info.nickname,
+                source=getattr(message_info, "source", None),
                 silent=bool(getattr(message_info, "silent", False)),
                 sleep_exempt=bool(getattr(message_info, "sleep_exempt", False)),
             )
-            for result in results:
-                if result.kind == ChatIntakeKind.COMMAND:
-                    command_messages.append(
-                        MessageInfo(
-                            content=result.text,
-                            nickname=result.nickname,
-                            silent=result.silent,
-                            private_reply=result.private_reply,
-                            sleep_exempt=result.sleep_exempt,
-                        )
-                    )
-                elif not result.silent:
-                    screen_text = (
-                        format_manual_message(result.text)
-                        if is_manual_operator(result.nickname, getattr(message_info, "source", None))
-                        else result.text
-                    )
-                    if send_screen_message is not None:
-                        send_screen_message(screen_text)
-                elif self._logger is not None:
-                    self._logger.info(f"Silent command suppressed queued message: {result.text}")
+            command_messages.extend(routing.commands)
+
+            for screen_text in routing.screen_texts:
+                if send_screen_message is not None:
+                    send_screen_message(screen_text)
+
+            if self._logger is not None:
+                for suppressed in routing.suppressed:
+                    self._logger.info(f"Silent command suppressed queued message: {suppressed}")
 
         if not command_messages:
             return 0

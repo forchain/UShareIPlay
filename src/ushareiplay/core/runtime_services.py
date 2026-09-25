@@ -1,8 +1,80 @@
+import queue
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 import json
 
+from ushareiplay.core.chat_intake import (
+    QUEUE_COMMAND_PREFIX_CHARS,
+    ChatIntakeKind,
+    expand_queue_text,
+    format_manual_message,
+    is_manual_operator,
+)
 from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.models.message_info import MessageInfo
+
+
+@dataclass(frozen=True)
+class QueueRouting:
+    """一条运行时文本展开后的去向。
+
+    Attributes:
+        commands: 需要执行或入队的命令消息
+        screen_texts: 要发到公屏的普通发言（已按来源加好 [人工] 标记）
+        suppressed: 被静默前缀吞掉的发言，仅用于日志
+    """
+
+    commands: tuple[MessageInfo, ...] = ()
+    screen_texts: tuple[str, ...] = ()
+    suppressed: tuple[str, ...] = ()
+
+
+def route_queue_text(
+    text: str,
+    nickname: str,
+    *,
+    source: str | None = None,
+    silent: bool = False,
+    sleep_exempt: bool = False,
+) -> QueueRouting:
+    """展开 queue 文法，并把每条结果路由到「命令 / 公屏 / 静默抑制」。
+
+    监控循环内联过一份这样的路由，`CommandManager.execute_runtime_queue_messages`
+    里还有一份；两份对「什么算命令」和「公屏文案怎么加标记」必须一致，因此只剩
+    这一个实现 —— 两类调用方只在拿到命令之后分道扬镳（一个执行、一个入队）。
+    """
+    commands: list[MessageInfo] = []
+    screen_texts: list[str] = []
+    suppressed: list[str] = []
+
+    for result in expand_queue_text(
+        text, nickname, silent=silent, sleep_exempt=sleep_exempt
+    ):
+        if result.kind == ChatIntakeKind.COMMAND:
+            # 只有触发符、没有内容的不算命令（与 execute_chat_scan 的判定一致）
+            if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                continue
+            commands.append(
+                MessageInfo(
+                    content=result.text,
+                    nickname=result.nickname,
+                    silent=result.silent,
+                    private_reply=result.private_reply,
+                    sleep_exempt=result.sleep_exempt,
+                    source=source,
+                )
+            )
+        elif result.silent:
+            suppressed.append(result.text)
+        else:
+            screen_texts.append(
+                format_manual_message(result.text)
+                if is_manual_operator(nickname, source)
+                else result.text
+            )
+
+    return QueueRouting(tuple(commands), tuple(screen_texts), tuple(suppressed))
 
 
 class RuntimeQueueDrainer:
@@ -35,6 +107,131 @@ class RuntimeQueueDrainer:
             )
 
         return len(queue_messages), command_count
+
+
+class RuntimeInputPipeline:
+    """运行时输入管线：把 console / agent 队列里的条目变成命令与公屏消息。
+
+    监控循环原先内联了这段逻辑（约 75 行）：三种条目形状（dict / tuple / 裸
+    字符串）的归一化、房主昵称默认、queue 文法展开、`!stop` / `!timer` /
+    `!dump` 三个 meta 命令，以及静默抑制与 [人工] 标记。循环因此既要驱动事件
+    循环，又要在自己身体里维护一套小型状态机。
+
+    管线只做输入侧的事：把队列排空、把文本路由到 `MessageQueue` 或公屏。
+    命令的执行仍然由 `RuntimeQueueDrainer` + `CommandManager` 负责。
+    """
+
+    def __init__(
+        self,
+        *,
+        input_queue,
+        room_owner_provider,
+        logger,
+        send_screen_message,
+        timer_manager=None,
+        obs=None,
+        dump_artifacts=None,
+    ):
+        self.input_queue = input_queue
+        self.room_owner_provider = room_owner_provider
+        self.logger = logger
+        self.send_screen_message = send_screen_message
+        self.timer_manager = timer_manager
+        self.obs = obs
+        self._dump_artifacts = dump_artifacts
+        self.paused = False
+
+    async def drain(self) -> None:
+        """排空队列中的条目（非阻塞；空队列立即返回）。"""
+        while True:
+            try:
+                item = self.input_queue.get_nowait()
+            except queue.Empty:
+                return
+            await self._handle_item(item)
+
+    def _normalize(self, item) -> tuple[str, str, str]:
+        """dict / tuple / 裸字符串 → (message, source, nickname)。
+
+        未署名或署名为 `Console` 的条目按房主身份处理。
+        """
+        owner = self.room_owner_provider()
+        if isinstance(item, dict):
+            message = item.get("content", "")
+            source = item.get("source", "console")
+            raw_nick = item.get("nickname")
+            nickname = str(owner if not raw_nick or raw_nick == "Console" else raw_nick)
+        elif isinstance(item, tuple):
+            message, source = item
+            nickname = owner
+        else:
+            message, source = item, "console"
+            nickname = owner
+        return message, source, nickname
+
+    async def _handle_item(self, item) -> None:
+        message, source, nickname = self._normalize(item)
+        if not message.strip():
+            return
+        if await self._handle_meta_command(message, source):
+            return
+        await self._route_text(message, source, nickname)
+
+    async def _handle_meta_command(self, message: str, source: str) -> bool:
+        """处理 `!stop` / `!timer` / `!dump`；返回 True 表示已被消费。"""
+        if message == '!stop':
+            self.paused = not self.paused
+            self.logger.critical(f'paused: {self.paused}')
+            return True
+
+        if message == '!timer':
+            if self.timer_manager is None:
+                return True
+            if self.timer_manager.is_running():
+                await self.timer_manager.stop()
+            else:
+                await self.timer_manager.start()
+            self.logger.critical(f'is_running:{self.timer_manager.is_running()}')
+            return True
+
+        if message == '!dump':
+            if self._dump_artifacts is None:
+                return True
+            try:
+                await self._dump_artifacts(reason=source)
+            except Exception:
+                if self.obs:
+                    self.obs.emit(
+                        "artifact.dump.error",
+                        level="ERROR",
+                        ctx={"error": traceback.format_exc(), "reason": source},
+                    )
+            return True
+
+        return False
+
+    async def _route_text(self, message: str, source: str, nickname: str) -> None:
+        routing = route_queue_text(message, nickname, source=source)
+
+        queue = MessageQueue.instance()
+        for message_info in routing.commands:
+            await queue.put_message(message_info)
+            if self.obs:
+                self.obs.emit(
+                    "queue.enqueue",
+                    ctx={
+                        "source": source,
+                        "content": message_info.content,
+                        "nickname": message_info.nickname,
+                    },
+                )
+            self.logger.info(f"{source} message added to queue: {message_info.content}")
+
+        for screen_text in routing.screen_texts:
+            self.send_screen_message(screen_text)
+
+        for suppressed in routing.suppressed:
+            self.logger.info(f"Silent queued message suppressed: {suppressed}")
 
 
 class AgentCommandSpool:

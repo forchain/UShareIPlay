@@ -78,6 +78,12 @@ def info_cmd_setup():
     )
     rec_manager._handler = soul_handler
 
+    # 窗口的打开/检测/关闭归 RoomInfoWindow：同一替身也注入给它
+    from ushareiplay.managers.room_info_window import RoomInfoWindow
+    window = RoomInfoWindow.instance()
+    window._handler = soul_handler
+    window._logger = soul_handler.logger
+
     music_handler = SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知")
     controller = SimpleNamespace(soul_handler=soul_handler, music_handler=music_handler)
     cmd = InfoCommand(controller)

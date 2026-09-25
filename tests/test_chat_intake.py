@@ -4,6 +4,7 @@ from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
     ChatIntakeResult,
+    classify_banner_line,
     classify_chat_line,
     expand_queue_text,
 )
@@ -671,3 +672,61 @@ class TestSplitQuotedMessage:
             == "souler[Bob]说：哈哈"
         )
         assert strip_quoted_segment("souler[Bob]说：哈哈") == "souler[Bob]说：哈哈"
+
+
+class TestClassifyBannerLine:
+    """关注者横幅（follower_message 元素）的文案分类。
+
+    这张表原先住在 FollowerMessageEvent._parse_message 里，是同一套 enter/return
+    文法的第二份副本；现在横幅与聊天行走同一个入口。
+    """
+
+    @pytest.mark.parametrize(
+        "banner_text, expected_nickname, expected_kind",
+        [
+            # 基础进入房间消息
+            ("你关注的Outlier进入房间啦，打个招呼吧～", "Outlier", ChatIntakeKind.USER_RETURN),
+            ("你的兄弟 Outlier进来啦～", "Outlier", ChatIntakeKind.USER_RETURN),
+            # 用户日志中出现的 Warning 消息格式
+            ("你的兄弟 Outlier正在房间玩～", "Outlier", ChatIntakeKind.USER_RETURN),
+            ("你的密友Chainer正在房间里，打个招呼吧～", "Chainer", ChatIntakeKind.USER_RETURN),
+            # 扩展场景：带空格/无空格、各种关系与动作
+            ("你的死党 张三 正在房间里，打个招呼吧～", "张三", ChatIntakeKind.USER_RETURN),
+            ("你的特别关注李四 正在房间里", "李四", ChatIntakeKind.USER_RETURN),
+            ("你的好友 王五 进来啦～", "王五", ChatIntakeKind.USER_RETURN),
+            ("你的挚友小红进入房间啦", "小红", ChatIntakeKind.USER_RETURN),
+            ("你的神秘嘉宾 Alex 来到了房间", "Alex", ChatIntakeKind.USER_RETURN),
+            # 点赞消息：记人不打招呼
+            ("荒草 为派对点赞了", "荒草", ChatIntakeKind.PARTY_LIKE),
+            ("荒草为派对点赞了", "荒草", ChatIntakeKind.PARTY_LIKE),
+            # 无法解析的非法格式
+            ("系统公告：欢迎使用派对功能", "", ChatIntakeKind.PLAIN_CHAT),
+            ("", "", ChatIntakeKind.PLAIN_CHAT),
+            # 带前缀的横幅：未识别的前缀不得被当成昵称的一部分
+            # （否则会建垃圾 User 行、并发消息替「打个招呼：你关注的Outlier」问候）
+            ("打个招呼：你关注的Outlier进入房间啦", "", ChatIntakeKind.PLAIN_CHAT),
+            ("任务进度：小红来到了房间", "", ChatIntakeKind.PLAIN_CHAT),
+        ],
+    )
+    def test_classify_banner_line(self, banner_text, expected_nickname, expected_kind):
+        result = classify_banner_line(banner_text)
+        assert result.kind == expected_kind
+        assert result.nickname == expected_nickname
+
+    def test_a_prefixed_banner_yields_no_nickname_at_all(self):
+        """护栏拦下的是整条候选名，而不是把前缀截掉 —— 不许出现半截昵称。"""
+        result = classify_banner_line("打个招呼：你关注的Outlier进入房间啦")
+
+        assert result.nickname == ""
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert "打个招呼" not in result.nickname
+
+    def test_party_like_is_not_reported_as_an_entrance(self):
+        """点赞横幅不得被当成进入房间 —— 否则会替点赞的人打招呼。"""
+        result = classify_banner_line("荒草 为派对点赞了")
+        assert result.kind != ChatIntakeKind.USER_RETURN
+
+    def test_enter_banner_carries_the_entrant_as_the_text(self):
+        result = classify_banner_line("你关注的Outlier进入房间啦，打个招呼吧～")
+        assert result.text == "Outlier"
+        assert result.raw == "你关注的Outlier进入房间啦，打个招呼吧～"

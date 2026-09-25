@@ -1,9 +1,9 @@
-import logging
 import time
 import traceback
-from datetime import datetime
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.helpers.room_banner import TITLE_MAX_LENGTH, clean_banner_text
+from ushareiplay.managers.pending_write import PendingWrite
 
 
 class RoomNameManager(Singleton):
@@ -14,26 +14,60 @@ class RoomNameManager(Singleton):
     events are seams around it.
     """
 
+    #: 房间名共享冷却时长（分钟）
+    COOLDOWN_MINUTES = 10
+
     def __init__(self):
         self._handler = None
         self._logger = None
         self._notice_manager = None
 
+        # 冷却时钟与待写入标题：计时机制由 PendingWrite 拥有
+        self._write = PendingWrite(cooldown_minutes=self.COOLDOWN_MINUTES, label="room name")
+
         # Theme state
         self.current_theme = self.get_default_theme()
-        self.last_update_time = None
-        self.cooldown_minutes = 10
         self.pending_ui_update = False
 
         # Title state
         self.current_title = None
-        self.next_title = None
         self.is_initialized = False
         self._ui_initialized = False
 
         # Notice restore state
         self.pending_notice_restore = False
         self.restore_notice_content = None
+
+    # ------------------------------------------------------------------
+    # 冷却时钟与待写入标题（委托给 PendingWrite 内核）
+    # ------------------------------------------------------------------
+
+    @property
+    def next_title(self):
+        return self._write.pending
+
+    @next_title.setter
+    def next_title(self, value):
+        if value is None:
+            self._write.clear()
+        else:
+            self._write.submit(value)
+
+    @property
+    def last_update_time(self):
+        return self._write.last_attempt_at
+
+    @last_update_time.setter
+    def last_update_time(self, value):
+        self._write.last_attempt_at = value
+
+    @property
+    def cooldown_minutes(self):
+        return self._write.cooldown_minutes
+
+    @cooldown_minutes.setter
+    def cooldown_minutes(self, value):
+        self._write.cooldown_minutes = value
 
     @property
     def handler(self):
@@ -74,7 +108,7 @@ class RoomNameManager(Singleton):
 
     def set_theme(self, theme: str):
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'error': '他人房间模式下不可修改房间主题'}
 
         if len(theme) > 2:
@@ -99,19 +133,14 @@ class RoomNameManager(Singleton):
         }
 
     def can_update_now(self):
-        if not self.last_update_time:
-            return True
-        return (datetime.now() - self.last_update_time).total_seconds() >= self.cooldown_minutes * 60
+        return self._write.can_apply_now()
 
     def get_remaining_cooldown_minutes(self):
-        if not self.last_update_time:
-            return 0
-        remaining_seconds = self.cooldown_minutes * 60 - (datetime.now() - self.last_update_time).total_seconds()
-        return max(0, int(remaining_seconds / 60))
+        return self._write.remaining_minutes()
 
     def _advance_cooldown(self):
-        self.last_update_time = datetime.now()
-        self.logger.info(f'Updated room-name cooldown time to {self.last_update_time}')
+        self._write.mark_attempted()
+        self.logger.info(f'Updated room-name cooldown time to {self._write.last_attempt_at}')
 
     def has_pending_ui_update(self):
         return self.pending_ui_update
@@ -219,7 +248,7 @@ class RoomNameManager(Singleton):
 
     def set_next_title(self, title: str, theme: str = None):
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             self.logger.info("Skipping set_next_title in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -229,7 +258,7 @@ class RoomNameManager(Singleton):
                 return theme_result
 
         # Clean title text: support half-width and full-width vertical bars and parentheses
-        new_title = title.split('|')[0].split('｜')[0].split('丨')[0].split('(')[0].split('（')[0].strip()[:12]
+        new_title = clean_banner_text(title, TITLE_MAX_LENGTH)
         self.next_title = new_title
 
         if not self.can_update_now():
@@ -256,7 +285,7 @@ class RoomNameManager(Singleton):
             - 'current_title': the title after a successful update
         """
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'skipped': True, 'reason': 'guest_room'}
 
         # Do not inspect the UI just to discover that there is no work queued.
@@ -283,30 +312,21 @@ class RoomNameManager(Singleton):
     def _update_title_ui(self, title: str):
         """Single attempt to write the room name to the Soul UI."""
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             self.logger.info("Skipping room title UI update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
         try:
-            result = self.handler.ui_actions.switch_and_click(
-                'chat_room_title', error_message='Failed to find room title'
+            # 打开窗口（打开 ritual 归 RoomInfoWindow）
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            open_error = RoomInfoWindow.instance().ensure_open(
+                error_message='Failed to find room title'
             )
-            if 'error' in result:
-                return result
+            if open_error:
+                return open_error
 
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
-            if RecommendationManager.is_initialized():
-                try:
-                    RecommendationManager.instance().sync_ui_status_if_dialog_open()
-                except Exception as e:
-                    self.logger.warning(f"Passive recommendation sync skipped: {e}")
-
-            from ushareiplay.managers.party_manager import PartyManager
-            if PartyManager.is_initialized():
-                try:
-                    PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
-                except Exception as e:
-                    self.logger.warning(f"Passive room type sync skipped: {e}")
+            # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑标题
+            RoomInfoWindow.instance().sync_while_open()
 
             current_theme = self.current_theme
             self.logger.info(f"Updating room title: {current_theme}｜{title}")
@@ -388,7 +408,7 @@ class RoomNameManager(Singleton):
 
     def _check_notice_reset(self):
         from ushareiplay.state.room_state import RoomState
-        if RoomState.is_initialized() and RoomState.instance().is_guest_room:
+        if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 
         try:

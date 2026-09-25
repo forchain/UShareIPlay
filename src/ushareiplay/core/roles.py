@@ -47,8 +47,10 @@ class RolePolicy:
 
         # 1. 房主 (Room Owner)
         owner_raw = _find_config_value(soul_cfg, self._raw_config, ["room_owner", "owner_username"])
+        self._configured_room_owner: Optional[str] = None
         if isinstance(owner_raw, str) and owner_raw.strip():
-            self._room_owner = owner_raw.strip()
+            self._configured_room_owner = owner_raw.strip()
+            self._room_owner = self._configured_room_owner
         elif config is not None and ("room_owner" in soul_cfg or "room_owner" in self._raw_config):
             self._room_owner = ""
         else:
@@ -71,6 +73,17 @@ class RolePolicy:
     @property
     def room_owner(self) -> str:
         return self._room_owner
+
+    @property
+    def configured_room_owner(self) -> Optional[str]:
+        """配置里显式写明的房主名；没写（或写空）就是 None。
+
+        `room_owner` 会用 `DEFAULT_ROOM_OWNER` 兜底，因此它无法区分「配置说是
+        Joyer」和「配置根本没提」。需要回落到别处（例如库里的 level=9 用户）的
+        调用方必须用这个属性：拿 `room_owner` 去判断「有没有配」会让回落永远
+        走不到。
+        """
+        return self._configured_room_owner
 
     @property
     def admin_users(self) -> Set[str]:

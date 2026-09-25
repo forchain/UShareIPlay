@@ -15,10 +15,11 @@ class _Logger:
 class _SoulHandler:
     def __init__(self):
         self.logger = _Logger()
-        self.mic_ensured = 0
+        self.mic_restores = 0
 
-    def ensure_mic_active(self):
-        self.mic_ensured += 1
+    def ensure_active(self):
+        # 命令壳子不得自行碰麦克风：该动作归 PlaybackMuting + MicManager
+        self.mic_restores += 1
 
     def log_error(self, message):
         self.logger.error(message)
@@ -69,13 +70,13 @@ def test_process_leaves_microphone_to_playback_muting():
     plain_controller = _make_controller()
     plain = _EchoCommand(plain_controller)
     asyncio.run(plain.process(None, []))
-    assert plain_controller.soul_handler.mic_ensured == 0
+    assert plain_controller.soul_handler.mic_restores == 0
 
     playback_controller = _make_controller()
     playback = _PlaybackCommand(playback_controller)
     result = asyncio.run(playback.process(None, []))
     assert result == {'message': 'ok'}
-    assert playback_controller.soul_handler.mic_ensured == 0
+    assert playback_controller.soul_handler.mic_restores == 0
 
 
 def test_process_maps_exception_to_error_message_and_logs_traceback():

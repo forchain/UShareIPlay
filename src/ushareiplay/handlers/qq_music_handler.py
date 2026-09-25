@@ -314,7 +314,8 @@ class QQMusicHandler(AppHandler, Singleton):
                     need_select_tab = False
 
         if need_select_tab:
-            self.select_song_tab()
+            # 搜索页可能停在别的分类上；单曲 tab 靠前，向回滚（direction="right"）才能落到它
+            self.select_tab("song", direction="right")
 
         key, element = self.element_finder.wait_for_any_element(['first_song', 'not_found'])
         if not key or key == 'not_found':
@@ -443,14 +444,17 @@ class QQMusicHandler(AppHandler, Singleton):
                 self.logger.info(
                     f"Tab '{tab_name}' ({element_key}) not visible, scrolling container '{container_key}' ({direction})"
                 )
-                _, tab_element, _ = self.gesture_handler.scroll_container_until_element(
+                _, scrolled_element, _ = self.gesture_handler.scroll_container_until_element(
                     element_key,
                     container_key,
                     direction,
                     max_swipes=max_swipes,
                 )
-                if not tab_element:
-                    tab_element = self.element_finder.try_find_element(element_key)
+                # 滚动助手用绝对 XPath 在容器内查找，可能把容器本身当作目标返回
+                # （历史注释见 lyrics）。因此以滚动后重新定位到的真实 tab 为准，
+                # 助手返回值只在重新定位失败时兜底 —— 从不让容器顶替 tab。
+                relocated = self.element_finder.try_find_element(element_key)
+                tab_element = relocated or scrolled_element
 
             if not tab_element:
                 self.logger.error(
@@ -471,45 +475,6 @@ class QQMusicHandler(AppHandler, Singleton):
             return True
         except Exception as e:
             self.logger.error(f"Error selecting {tab_name} tab: {traceback.format_exc()}")
-            return False
-
-    def select_song_tab(self):
-        """Select the 'Songs' tab in search results"""
-        try:
-            # Try to find song tab first
-            song_tab = self.element_finder.try_find_element('song_tab')
-            if not song_tab:
-                # If not found, scroll music_tabs to left
-                music_tabs = self.element_finder.try_find_element('music_tabs')
-                if not music_tabs:
-                    self.logger.error("Failed to find music tabs")
-                    return False
-
-                # Get size and location for scrolling
-                size = music_tabs.size
-                location = music_tabs.location
-
-                # Scroll to left
-                self.gesture_handler.swipe(
-                    location['x'] + 200,  # Start from left
-                    location['y'] + size['height'] // 2,
-                    location['x'] + size['width'] - 10,  # End at right
-                    location['y'] + size['height'] // 2,
-                    1000
-                )
-
-                # Try to find song tab again
-                song_tab = self.element_finder.try_find_element('song_tab')
-                if not song_tab:
-                    self.logger.error("Failed to find song tab after scrolling")
-                    return False
-
-            song_tab.click()
-            self.logger.info("Selected songs tab")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error selecting song tab: {traceback.format_exc()}")
             return False
 
     def play_next(self, music_query):

@@ -6,6 +6,7 @@ from ushareiplay.commands.play import PlayCommand
 from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup
+from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
 class _Logger:
@@ -160,6 +161,7 @@ class _InfoManager:
 def _make_command(monkeypatch, music_handler):
     title_manager = _RoomNameManager()
     topic_manager = _TopicManager()
+    info_manager = _InfoManager()
 
     controller = SimpleNamespace(
         music_handler=music_handler,
@@ -175,7 +177,14 @@ def _make_command(monkeypatch, music_handler):
     command = RadioCommand(controller)
     command._room_name_manager = title_manager
     command._topic_manager = topic_manager
-    command._info_manager = _InfoManager()
+    command._info_manager = info_manager
+
+    # 房间同步由 PlaylistAdoption 拥有，替身注入到该模块（而非命令）
+    adoption = PlaylistAdoption.instance()
+    adoption._info = info_manager
+    adoption._room_name = title_manager
+    adoption._topic = topic_manager
+    adoption._music = music_handler
     return command, title_manager, topic_manager
 
 

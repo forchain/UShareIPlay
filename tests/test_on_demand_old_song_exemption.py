@@ -278,7 +278,7 @@ def _make_qq_handler(playing_info):
     handler.list_mode = "unknown"
     handler.no_skip = 0
     handler.query_music = lambda _query: "search_entry"
-    handler.select_song_tab = lambda: True
+    handler.select_tab = lambda *args, **kwargs: True
     handler.get_playing_info = lambda: playing_info
     handler.element_finder = _FakeElementFinder(
         {"first_song": SimpleNamespace(text="老歌"), "next_button": SimpleNamespace(click=lambda: None)}

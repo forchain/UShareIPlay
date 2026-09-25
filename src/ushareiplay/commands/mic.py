@@ -12,47 +12,21 @@ class MicCommand(BaseCommand):
             dict: Result with success or error
         """
         try:
-            just_seated = False
-            if target_state is not False and not self.handler.is_on_seat():
-                # 开麦前先确认已在麦位：不在麦位时界面只提供抢麦入口，
-                # 直接点击开麦按钮会失败或抛错。
-                if not self.handler.ensure_on_seat():
-                    return {'error': 'Failed to grab mic, not seated yet'}
-                just_seated = True
-                # 抢麦前必然未开麦，因此裸 :mic 这一刻等同于开麦，
-                # 而不是把随座位自动打开的麦克风再关掉。
-                target_state = True
-
-            toggle_mic_button = self.handler.element_finder.wait_for_element_clickable('toggle_mic')
-
-            if not toggle_mic_button:
-                return {'error': 'Microphone button not found'}
-
-            desc = self.handler.element_finder.try_get_attribute(toggle_mic_button, 'content-desc')
-            if not desc:
-                self.handler.logger.error('failed to get mic status')
-                return {'error': 'Failed to get mic status'}
-
-            is_mic_on = desc == "闭麦按钮"  # If we see "闭麦按钮", mic is currently on
-
             if target_state is None:
-                # Toggle current state
-                toggle_mic_button.click()
-                new_state = "1" if not is_mic_on else "0"  # If mic was off, now it's on (1)
-                self.handler.logger.info(f"Toggled mic to {new_state}")
-                return {'state': new_state}
+                if not self.handler.is_on_seat():
+                    # 抢麦会随座位自动开麦，因此不在麦位时裸 :mic 等同于开麦，
+                    # 而不是刚就座就把麦克风关掉。
+                    target_state = True
+                else:
+                    current = self.mic_manager.state(wait=True)
+                    if current is None:
+                        self.handler.logger.error('failed to get mic status')
+                        return {'error': 'Failed to get mic status'}
+                    target_state = not current
 
-            # Only click if current state doesn't match target state
-            if is_mic_on != target_state:
-                toggle_mic_button.click()
-                self.handler.logger.info(f"Set mic to {1 if target_state else 0}")
-                return {'state': "1" if target_state else "0"}
-            elif just_seated:
-                # 抢麦就座后麦克风已随座位自动打开，目标状态已达成，不算“已开麦”报错
-                self.handler.logger.info("Mic already on after seating")
-                return {'state': "1"}
-            else:
-                return {'error': f'Microphone is already {"on" if target_state else "off"}'}
+            # 麦克风状态读取、麦位前置检查与点击都归 MicManager；
+            # report_noop 让「已开麦/已闭麦」仍然作为提示返回给聊天。
+            return self.mic_manager.set_active(target_state, report_noop=True)
 
         except Exception as e:
             self.handler.log_error(f"Error in mic command: {str(e)}")

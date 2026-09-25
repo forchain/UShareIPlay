@@ -143,12 +143,10 @@ def test_process_new_messages_uses_command_execution_chat_scan(monkeypatch):
 
     fake_command_manager = _FakeCommandManager()
     monkeypatch.setattr(CommandManager, "_instance", fake_command_manager, raising=False)
-    manager = object.__new__(MessageManager)
+    manager = MessageManager.instance()
     manager._handler = _FakeHandler()
     manager._chat_logger = logging.getLogger("test_chat_logger_scan")
-    manager.recent_chats = deque(maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
-    manager.latest_chats.append("souler[Alice]说：$play 123")
+    manager.observe(["souler[Alice]说：$play 123"])
 
     messages = _run(manager.process_new_messages())
 

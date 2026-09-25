@@ -27,33 +27,13 @@ class _Logger:
         self.errors.append(msg % args if args else msg)
 
 
-class _ElementFinder:
-    def __init__(self, desc, present):
-        self.desc = desc
-        self.present = present
-
-    def try_find_element(self, _key, log=True):
-        return object() if self.present else None
-
-    def try_get_attribute(self, _element, _attribute):
-        return self.desc
-
-
-class _KeyActions:
-    def switch_to_app(self):
-        return True
-
-
 class _SoulHandler:
-    def __init__(self, events, desc="闭麦按钮", mic_present=True, config=None):
+    """PlaybackMuting 只从 SoulHandler 取 logger 与 playback_mute 配置。"""
+
+    def __init__(self, events, config=None):
         self.events = events
         self.config = config if config is not None else {}
         self.logger = _Logger()
-        self.key_actions = _KeyActions()
-        self.element_finder = _ElementFinder(desc, mic_present)
-
-    def ensure_mic_active(self):
-        self.events.append("restore")
 
 
 class _MusicManager:
@@ -69,20 +49,30 @@ class _MusicManager:
 
 
 class _MicManager:
-    def __init__(self, events):
+    """MicManager 的替身：状态读取不算动作，因此不记录事件。"""
+
+    def __init__(self, events, state=True):
         self.events = events
+        self._state = state
 
-    def toggle_mic(self, enable):
+    def state(self):
+        return self._state
+
+    def set_active(self, enable):
         self.events.append(f"mute:{enable}")
-        return {"state": "关闭" if not enable else "开启"}
+        return {"state": "0" if not enable else "1"}
+
+    def ensure_active(self):
+        self.events.append("restore")
+        return {"state": "1"}
 
 
-def _make_coordinator(desc="闭麦按钮", mic_present=True, config=None, ready=True):
+def _make_coordinator(mic_state=True, config=None, ready=True):
     events = []
     coordinator = PlaybackMuting.__new__(PlaybackMuting)
-    coordinator.soul_handler = _SoulHandler(events, desc, mic_present, config)
+    coordinator.soul_handler = _SoulHandler(events, config)
     coordinator.music_manager = _MusicManager(events, ready)
-    coordinator.mic_manager = _MicManager(events)
+    coordinator.mic_manager = _MicManager(events, state=mic_state)
     coordinator.logger = coordinator.soul_handler.logger
     return coordinator, events
 
@@ -108,7 +98,7 @@ def test_guard_mutes_then_waits_for_readiness_then_restores_mic():
 
 
 def test_guard_skips_mute_click_when_mic_is_already_off():
-    coordinator, events = _make_coordinator(desc="开麦按钮")
+    coordinator, events = _make_coordinator(mic_state=False)
 
     with coordinator.guard() as muted:
         events.append("playback")
@@ -118,7 +108,7 @@ def test_guard_skips_mute_click_when_mic_is_already_off():
 
 
 def test_guard_skips_mute_click_when_mic_button_is_absent():
-    coordinator, events = _make_coordinator(mic_present=False)
+    coordinator, events = _make_coordinator(mic_state=None)
 
     with coordinator.guard() as muted:
         events.append("playback")

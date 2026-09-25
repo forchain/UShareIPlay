@@ -1,5 +1,3 @@
-import traceback
-
 from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
@@ -18,7 +16,7 @@ class PlaylistCommand(BaseCommand):
         else:
             # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
             config = getattr(self.controller, "config", None)
-            protection_error = await self.info_manager.check_playlist_protection(
+            protection_error = await self.playlist_adoption.guard_switch(
                 message_info.nickname, config=config
             )
             if protection_error:
@@ -27,51 +25,18 @@ class PlaylistCommand(BaseCommand):
                 )
                 return protection_error
 
-            self.info_manager.player_name = message_info.nickname
-            playing_info = self.play_playlist(query)
+            playing_info = self.play_playlist(query, message_info.nickname)
 
         return playing_info
 
-    def select_playlist_tab(self):
-        """Select the 'Playlist' tab in search results"""
-        try:
-            # Try to find playlist tab first or music tabs container
-            key, element = self.handler.element_finder.wait_for_any_element(['playlist_tab', 'music_tabs'])
-
-            if key == 'playlist_tab':
-                playlist_tab = element
-            elif key == 'music_tabs':
-                _, playlist_tab, _ = self.handler.gesture_handler.scroll_container_until_element(
-                    'playlist_tab',
-                    'music_tabs',
-                    'left',
-                    max_swipes=10,
-                )
-                if not playlist_tab:
-                    playlist_tab = self.handler.element_finder.try_find_element('playlist_tab')
-                    if not playlist_tab:
-                        self.handler.logger.error("Failed to find playlist tab after scrolling")
-                        return False
-            else:
-                self.handler.logger.error("Failed to find music tabs or playlist tab")
-                return False
-
-            playlist_tab.click()
-            self.handler.logger.info("Selected playlist tab")
-            return True
-
-        except Exception as e:
-            self.handler.logger.error(f"Error selecting playlist tab: {traceback.format_exc()}")
-            return False
-
-    def play_playlist(self, query: str):
+    def play_playlist(self, query: str, requester=None):
         if not self.handler.query_music(query):
             self.handler.logger.error('Failed to query music in playlist')
             return {
                 'error': 'Failed to query music playlist',
             }
 
-        if not self.select_playlist_tab():
+        if not self.music_manager.select_tab('playlist'):
             self.handler.logger.error('Failed to find playlist tab')
             return {
                 'error': 'Failed to find playlist tab',
@@ -131,13 +96,13 @@ class PlaylistCommand(BaseCommand):
             self.handler.logger.warning(f"Failed to read playlist after playback started: {error}")
             playlist_text = original_playlist_name
 
-        # 使用 room_name_manager 和 topic_manager 管理标题和话题
-        self.room_name_manager.set_next_title(subject)
-        self.topic_manager.change_topic(topic)
-        self.handler.list_mode = 'playlist'
-
-        # 存储完整的歌单名称到 InfoManager
-        self.info_manager.current_playlist_name = original_playlist_name
+        self.playlist_adoption.adopt(
+            requester=requester,
+            mode='playlist',
+            title=subject,
+            topic=topic,
+            playlist=original_playlist_name,
+        )
 
         return {
             'playlist': playlist_text,

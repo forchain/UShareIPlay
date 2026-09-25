@@ -124,15 +124,11 @@ class RecommendationManager(Singleton):
         """
         关闭房间信息弹窗，确保返回到派对主界面。
         由于切换推荐选项后可能停留在房间信息弹窗（父级对话框），需要确保彻底退出弹窗。
+        关窗动作归 RoomInfoWindow 所有。
         """
         try:
-            self.handler.key_actions.press_back()
-            elem = self.handler.element_finder.try_find_element(
-                "party_recommendation_status", log=False
-            )
-            if elem:
-                self.logger.info("Room info window still visible after back, pressing back again to exit")
-                self.handler.key_actions.press_back()
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            RoomInfoWindow.instance().close_with_back()
         except Exception as e:
             self.logger.warning(f"Error closing title dialog: {str(e)}")
 
@@ -140,8 +136,10 @@ class RecommendationManager(Singleton):
         """
         主动同步：回到/恢复房间或执行 info 时调用。
         若 RoomState 已有保存状态，则跳过（不打开弹窗）；
-        若状态未保存 (None)，仅打开第 2 层房间信息窗口，读取 tv_private_title 文本保存状态，
-        随后按一次返回键退出第二层窗口。不强行点击进入第三层选项列表。
+        若状态未保存 (None)，打开房间信息窗口读取真实状态并按需纠正。
+
+        窗口的打开/关闭与窗口内四类字段的审计顺序归 RoomInfoWindow 所有；
+        本方法只负责「要不要做」的决策。
         """
         if self.room_state.is_guest_room:
             return {"skipped": True, "reason": "guest_room"}
@@ -150,57 +148,14 @@ class RecommendationManager(Singleton):
             return {"skipped": True, "reason": "already_saved"}
 
         try:
-            switch_res = self.handler.ui_actions.switch_and_click(
-                "chat_room_title", error_message="Failed to click room title for sync"
-            )
-            if isinstance(switch_res, dict) and "error" in switch_res:
-                return switch_res
-
-            from ushareiplay.managers.room_info_auditor import RoomInfoWindowAuditor
-            if RoomInfoWindowAuditor.is_initialized():
-                try:
-                    auditor_res = RoomInfoWindowAuditor.instance().audit_and_close()
-                    rec_res = auditor_res.get('recommendation', {})
-                    ui_status = rec_res.get('status')
-                except Exception as e:
-                    self.logger.warning(f"Error in auditor audit_and_close: {e}")
-                    ui_status = self.inspect_current_ui_status(wait=True)
-            else:
+            from ushareiplay.managers.room_info_window import RoomInfoWindow
+            try:
+                RoomInfoWindow.instance().audit_and_repair()
+            except Exception as e:
+                self.logger.warning(f"Error in room info audit: {e}")
                 ui_status = self.inspect_current_ui_status(wait=True)
                 if ui_status is not None:
                     self.room_state.recommendation_enabled = ui_status
-
-                from ushareiplay.managers.party_manager import PartyManager
-                if PartyManager.is_initialized():
-                    try:
-                        PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
-                    except Exception:
-                        pass
-
-                from ushareiplay.managers.notice_manager import NoticeManager
-                if NoticeManager.is_initialized():
-                    try:
-                        NoticeManager.instance().sync_and_correct_notice_if_dialog_open()
-                    except Exception:
-                        pass
-
-                from ushareiplay.managers.room_name_manager import RoomNameManager
-                if RoomNameManager.is_initialized():
-                    try:
-                        RoomNameManager.instance().initialize_from_ui()
-                    except Exception:
-                        pass
-
-                closed_by_party_mgr = False
-                if PartyManager.is_initialized():
-                    try:
-                        PartyManager.instance().ensure_room_info_window_closed()
-                        closed_by_party_mgr = True
-                    except Exception:
-                        pass
-
-                if not closed_by_party_mgr:
-                    self.handler.key_actions.press_back()
 
             self.logger.info("Closed room info window after reading recommendation status and auditing room attributes")
             return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
