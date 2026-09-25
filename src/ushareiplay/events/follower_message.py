@@ -148,10 +148,14 @@ class FollowerMessageEvent(BaseEvent):
             if not send_button:
                 self.logger.warning("Failed to find send button, pressing back")
                 self.handler.key_actions.press_back()
+                if hasattr(self.handler, "ensure_chat_window_closed"):
+                    self.handler.ensure_chat_window_closed()
                 return True
 
             send_button.click()
             self.logger.info("Sent greeting message")
+            if hasattr(self.handler, "ensure_chat_window_closed"):
+                self.handler.ensure_chat_window_closed()
 
             # 点击操作成功，返回 True 以中断后续事件处理（因为 UI 可能已改变）
             return True
