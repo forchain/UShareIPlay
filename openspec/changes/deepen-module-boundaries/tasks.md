@@ -78,11 +78,19 @@
 
 ## 6. MessageManager 观察接口 (候选 6 · Strong)
 
-- [ ] 6.1 定义 `observe(content_list) → ChatDelta`，把 47 行位置 diff 与 anchor 兜底移入 manager
-- [ ] 6.2 `dispatch()` 统一服务 live 与 missed 路径
-- [ ] 6.3 房主解析改走 `RolePolicy`
-- [ ] 6.4 `events/message_content.py` 收缩为 dispatch 包装
-- [ ] 6.5 测试直接注入 manager 依赖，删除 `monkeypatch _instance` 模式
+- [x] 6.1 定义 `ChatDelta(new_lines, anchor, missed)` 与 `observe(content_list)`：位置 diff、`RECENT_MAXLEN`、锚点兜底全部移入 manager；两个公有 deque 换成私有的 `_recent`
+- [x] 6.2 `dispatch(lines, room_owner, from_backfill)` 统一服务实时与补漏：礼物处理、mention 派发、日志分类各只剩一份
+- [x] 6.3 `resolve_room_owner()` 改走 `RolePolicy`（ADR-0008），并把 `MessageContentEvent` 里的第二份配置读取与 level-9 回落合并进来
+- [x] 6.4 `events/message_content.py` 从 ~270 行收缩到 89 行：拿 `ChatDelta`、派发、按需执行命令或走更新逻辑
+- [x] 6.5 聊天流测试改为配置真实的 `MessageManager` 实例（新增 `chat_window` fixture），`monkeypatch MessageManager.instance` 的模式清零
+
+**结果**：845 通过；`recent_chats` / `latest_chats` 与内联 diff 算法在 `src/` 中清零。
+
+**两处有意保留的差异**（由 `from_backfill` 显式表达，而不是各写一份实现）：
+1. 回溯发现的命令**入队**交给 runtime 管线执行，实时扫描的命令立即执行（执行时机不同是既有的、有意的设计）。
+2. 回溯发现的入场横幅**不**触发「用户返回」（历史行不应重新触发在线事件）。
+
+**修复的一处白盒测试**：`test_missed_detection_fallback_prevents_false_missed` 原先把生产算法抄了一份到测试里验证；现在改为断言 `observe()` 的返回值。
 
 ## 7. PendingWrite 内核 (候选 7 · Worth exploring)
 

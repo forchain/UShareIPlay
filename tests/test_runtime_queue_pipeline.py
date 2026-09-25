@@ -240,13 +240,10 @@ def test_process_new_messages_accepts_dollar_prefix_and_keeps_content():
     try:
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
+        manager = MessageManager.instance()
         manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：$play 123")
+        manager.observe(["souler[Alice]说：$play 123"])
 
         messages = _run(manager.process_new_messages())
 
@@ -273,13 +270,10 @@ def test_process_new_messages_accepts_fullwidth_dollar_prefix_and_keeps_content(
     try:
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
+        manager = MessageManager.instance()
         manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new_fullwidth")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：＄info")
+        manager.observe(["souler[Alice]说：＄info"])
 
         messages = _run(manager.process_new_messages())
 
@@ -306,14 +300,11 @@ def test_process_new_messages_skips_non_command_and_keeps_following_dollar_comma
     try:
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
+        manager = MessageManager.instance()
         manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_new_mixed")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说：hello")
-        manager.latest_chats.append("souler[Alice]说：$play 123")
+        # 两句都是"新"的：第一句是普通发言，第二句是命令
+        manager.observe(["souler[Alice]说：hello", "souler[Alice]说：$play 123"])
 
         messages = _run(manager.process_new_messages())
 
@@ -339,13 +330,10 @@ def test_process_new_messages_accepts_ascii_colon_in_chat_prefix():
     try:
         fake_command_manager = _FakeCommandManager()
         CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = object.__new__(MessageManager)
+        manager = MessageManager.instance()
         manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_ascii_colon")
-        manager.recent_chats = deque(maxlen=3)
-        manager.latest_chats = deque(maxlen=3)
-        manager.latest_chats.clear()
-        manager.latest_chats.append("souler[Alice]说:$info")
+        manager.observe(["souler[Alice]说:$info"])
 
         messages = _run(manager.process_new_messages())
 
@@ -377,15 +365,11 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
         def send_message(self, _message):
             return None
 
-    manager = object.__new__(MessageManager)
+    manager = MessageManager.instance()
     manager._handler = _with_ui_components(_FakeSoulHandler())
     manager._chat_logger = logging.getLogger("test_chat_logger_missed")
     manager._recovery_manager = None
-    manager.recent_chats = deque(maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
-    manager.recent_chats.clear()
-    manager.latest_chats.clear()
-    manager.recent_chats.append("souler[Anchor]说：:noop")
+    manager.observe(["souler[Anchor]说：:noop"])
 
     queue = MessageQueue.instance()
     _run(queue.clear_queue())
@@ -417,12 +401,11 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
             self.sent_messages.append(message)
 
     handler = _with_ui_components(_FakeSoulHandler())
-    manager = object.__new__(MessageManager)
+    manager = MessageManager.instance()
     manager._handler = handler
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")
     manager._recovery_manager = None
-    manager.recent_chats = deque(["兴趣主题已更换为「Turn Around」"], maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
+    manager.observe(["兴趣主题已更换为「Turn Around」"])
 
     assert _run(manager.process_missed_messages()) == set()
     # send_message("") should be called to scroll back to bottom
@@ -430,67 +413,47 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
 
 
 def test_missed_detection_fallback_prevents_false_missed():
-    """When content_list has more items than recent_chats.maxlen,
-    the forward-matching fails but the anchor IS on screen.
-    The fallback check should set missed=False."""
+    """屏幕上的行比窗口宽时，前向对齐会整体失配 —— 但锚点还在屏幕上，不算漏。
+
+    这条用例原先把生产算法抄了一份来验证；现在走 observe() 的接口。
+    """
     from ushareiplay.managers.message_manager import MessageManager
 
-    manager = object.__new__(MessageManager)
-    manager._handler = None
-    manager._chat_logger = logging.getLogger("test_fallback")
-    manager._recovery_manager = None
-    # recent_chats only holds 3, but screen shows 5 messages
-    manager.recent_chats = deque(["msg_C", "msg_D", "msg_E"], maxlen=3)
-    manager.latest_chats = deque(maxlen=3)
+    manager = MessageManager.instance()
+    # 窗口只保留 3 行，屏幕上有 5 行
+    manager.observe(["msg_C", "msg_D", "msg_E"])
 
-    # Simulate the matching logic from MessageContentEvent.handle()
-    content_list = ["msg_A", "msg_B", "msg_C", "msg_D", "msg_E"]
-    recent_len = len(manager.recent_chats)
-    content_len = len(content_list)
-    missed = False
+    delta = manager.observe(["msg_A", "msg_B", "msg_C", "msg_D", "msg_E"])
 
-    # Run the matching algorithm (copy from message_content.py)
-    for i in range(recent_len):
-        no_new = False
-        for j in range(content_len):
-            content = content_list[j]
-            ii = i + j
-            if ii < recent_len:
-                recent_chat = manager.recent_chats[ii]
-                if content != recent_chat:
-                    break
-                if ii == recent_len - 1 and j == content_len - 1:
-                    no_new = True
-                    break
-            else:
-                manager.latest_chats.append(content)
-        if no_new:
-            break
-        if len(manager.latest_chats) > 0:
-            break
-        elif i == recent_len - 1:
-            missed = True
-            for c in content_list:
-                manager.latest_chats.append(c)
+    assert delta.anchor == "msg_E"
+    assert delta.missed is False
+    # 锚点之后没有新行
+    assert delta.new_lines == ()
 
-    # Without the fallback, missed would be True
-    assert missed is True
 
-    # Now apply the fallback check (same as in message_content.py)
-    if missed and recent_len > 0:
-        last_recent = manager.recent_chats[-1]
-        for idx, content in enumerate(content_list):
-            if content == last_recent:
-                missed = False
-                manager.latest_chats.clear()
-                for new_content in content_list[idx + 1:]:
-                    manager.latest_chats.append(new_content)
-                break
+def test_observe_reports_missed_when_the_anchor_scrolled_away():
+    """锚点确实不在屏幕上时才是真的漏了。"""
+    from ushareiplay.managers.message_manager import MessageManager
 
-    # After fallback, missed should be False
-    assert missed is False
-    # No new messages after anchor
-    assert len(manager.latest_chats) == 0
+    manager = MessageManager.instance()
+    manager.observe(["msg_A", "msg_B", "msg_C"])
+
+    delta = manager.observe(["msg_X", "msg_Y", "msg_Z"])
+
+    assert delta.missed is True
+    assert delta.new_lines == ("msg_X", "msg_Y", "msg_Z")
+
+
+def test_observe_returns_only_the_lines_after_the_anchor():
+    from ushareiplay.managers.message_manager import MessageManager
+
+    manager = MessageManager.instance()
+    manager.observe(["msg_A", "msg_B", "msg_C"])
+
+    delta = manager.observe(["msg_A", "msg_B", "msg_C", "msg_D"])
+
+    assert delta.missed is False
+    assert delta.new_lines == ("msg_D",)
 
 
 def test_message_content_update_logic_does_not_drain_runtime_queue():
@@ -527,45 +490,17 @@ def test_message_content_update_logic_does_not_drain_runtime_queue():
         InfoManager.instance = original_info_instance
 
 
-def test_message_content_event_dispatches_dollar_command(monkeypatch):
-    from ushareiplay.events import message_content as message_content_module
+def test_message_content_event_dispatches_dollar_command(chat_window, monkeypatch):
+    """事件把命令交给 CommandManager 执行 —— 通过真实的 MessageManager 接口。"""
     from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.managers.command_manager import CommandManager
 
-    class _FakeMessageManager:
-        def __init__(self):
-            self.recent_chats = deque(maxlen=3)
-            self.latest_chats = deque(maxlen=3)
-            self.processed_new = False
-            self.processed_missed = False
+    fake_command_manager = _FakeCommandManager()
+    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager))
+    chat_window.handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
 
-        async def process_new_messages(self):
-            self.processed_new = True
+    event = MessageContentEvent(chat_window.handler)
 
-        async def process_missed_messages(self):
-            self.processed_missed = True
+    _run(event.handle("message_content", [_FakeWrapper("souler[Outlier]说：$info")]))
 
-    class _FakeChatLogger:
-        def critical(self, _message):
-            return None
-
-        def info(self, _message):
-            return None
-
-    fake_manager = _FakeMessageManager()
-    original_message_manager_instance = MessageManager.instance
-    monkeypatch.setattr(MessageManager, "instance", classmethod(lambda cls: fake_manager))
-    monkeypatch.setattr(
-        message_content_module,
-        "get_chat_logger",
-        lambda _config=None: _FakeChatLogger(),
-        raising=False,
-    )
-    try:
-        event = MessageContentEvent(_FakeHandler())
-
-        _run(event.handle("message_content", [_FakeWrapper("souler[Outlier]说：$info")]))
-
-        assert fake_manager.processed_new is True
-    finally:
-        MessageManager.instance = original_message_manager_instance
+    assert [m.content for m in fake_command_manager.received] == ["$info"]

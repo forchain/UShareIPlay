@@ -73,11 +73,6 @@ async def test_at_keyword_message_executes_keyword_with_sleep_exemption(monkeypa
                     keyword_record, result.nickname, params=result.params, sleep_exempt=sleep_exempt
                 )
 
-    class _FakeMessageManager:
-        def __init__(self):
-            self.latest_chats = []
-            self.recent_chats = []
-
     class _Logger:
         def critical(self, *_args, **_kwargs):
             return None
@@ -93,16 +88,9 @@ async def test_at_keyword_message_executes_keyword_with_sleep_exemption(monkeypa
         logger = _Logger()
         controller = None
 
-    monkeypatch.setattr(
-        message_manager_module.MessageManager,
-        "instance",
-        staticmethod(lambda: _FakeMessageManager()),
-    )
-    monkeypatch.setattr(
-        message_manager_module,
-        "get_chat_logger",
-        lambda _config: _Logger(),
-    )
+    manager = message_manager_module.MessageManager.instance()
+    manager._handler = _Handler()
+    manager._chat_logger = _Logger()
     monkeypatch.setattr(
         keyword_manager_module.KeywordManager,
         "instance",

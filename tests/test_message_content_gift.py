@@ -5,7 +5,6 @@ from ushareiplay.core.db_manager import DatabaseManager
 from ushareiplay.events.message_content import MessageContentEvent
 from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line
 
-
 @pytest_asyncio.fixture
 async def db_init():
     manager = DatabaseManager(db_url="sqlite://:memory:")
@@ -13,9 +12,15 @@ async def db_init():
     yield
     await manager.close()
 
+class _Wrapper:
+    """ElementWrapper 替身：composed_message_text 只读它的 content。"""
+
+    def __init__(self, text):
+        self.content = text
+
 
 @pytest.mark.asyncio
-async def test_message_content_event_gift_handling(db_init, monkeypatch):
+async def test_message_content_event_gift_handling(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
@@ -24,23 +29,13 @@ async def test_message_content_event_gift_handling(db_init, monkeypatch):
         pass
     await MessageQueue.instance().clear_queue()
 
-    handler_mock = MagicMock()
-    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
-    event_handler = MessageContentEvent(handler_mock)
-
-    # Mock MessageManager and chat_logger
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["souler[🍻🥂🥃🍸🍷🍺]送给Joyer"]
-    mock_msg_manager.recent_chats = []
-
-    monkeypatch.setattr("ushareiplay.managers.message_manager.MessageManager.instance", lambda: mock_msg_manager)
-    monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
+    chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
+    event_handler = MessageContentEvent(chat_window.handler)
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
-    wrapper = MagicMock()
-    wrapper.content = "souler[🍻🥂🥃🍸🍷🍺]送给Joyer"
+    wrapper = _Wrapper("souler[🍻🥂🥃🍸🍷🍺]送给Joyer")
 
     await event_handler.handle("message_content", wrapper)
 
@@ -56,9 +51,8 @@ async def test_message_content_event_gift_handling(db_init, monkeypatch):
     queue_msgs = await MessageQueue.instance().get_all_messages()
     assert any(m.content == "@🍻🥂🥃🍸🍷🍺 谢谢" for m in queue_msgs.values())
 
-
 @pytest.mark.asyncio
-async def test_message_content_event_heat_contribution_handling(db_init, monkeypatch):
+async def test_message_content_event_heat_contribution_handling(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
@@ -67,22 +61,13 @@ async def test_message_content_event_heat_contribution_handling(db_init, monkeyp
         pass
     await MessageQueue.instance().clear_queue()
 
-    handler_mock = MagicMock()
-    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
-    event_handler = MessageContentEvent(handler_mock)
-
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["恭喜Alice在此房间贡献出3120热力值"]
-    mock_msg_manager.recent_chats = []
-
-    monkeypatch.setattr("ushareiplay.managers.message_manager.MessageManager.instance", lambda: mock_msg_manager)
-    monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
+    chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
+    event_handler = MessageContentEvent(chat_window.handler)
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
-    wrapper = MagicMock()
-    wrapper.content = "恭喜Alice在此房间贡献出3120热力值"
+    wrapper = _Wrapper("恭喜Alice在此房间贡献出3120热力值")
 
     await event_handler.handle("message_content", wrapper)
 
@@ -99,9 +84,8 @@ async def test_message_content_event_heat_contribution_handling(db_init, monkeyp
     queue_msgs = await MessageQueue.instance().get_all_messages()
     assert any(m.content == "@Alice 谢谢" for m in queue_msgs.values())
 
-
 @pytest.mark.asyncio
-async def test_message_content_event_gift_higher_level_not_downgraded(db_init, monkeypatch):
+async def test_message_content_event_gift_higher_level_not_downgraded(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
@@ -115,22 +99,15 @@ async def test_message_content_event_gift_higher_level_not_downgraded(db_init, m
     user7.level = 7
     await user7.save()
 
-    handler_mock = MagicMock()
-    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
-    event_handler = MessageContentEvent(handler_mock)
+    chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
+    event_handler = MessageContentEvent(chat_window.handler)
 
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["souler[HighLevelUser]送给Joyer 【爱心】"]
-    mock_msg_manager.recent_chats = []
-
-    monkeypatch.setattr("ushareiplay.managers.message_manager.MessageManager.instance", lambda: mock_msg_manager)
     monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
-    wrapper = MagicMock()
-    wrapper.content = "souler[HighLevelUser]送给Joyer 【爱心】"
+    wrapper = _Wrapper("souler[HighLevelUser]送给Joyer 【爱心】")
 
     await event_handler.handle("message_content", wrapper)
 
@@ -142,9 +119,8 @@ async def test_message_content_event_gift_higher_level_not_downgraded(db_init, m
     queue_msgs = await MessageQueue.instance().get_all_messages()
     assert any(m.content == "@HighLevelUser 谢谢" for m in queue_msgs.values())
 
-
 @pytest.mark.asyncio
-async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypatch):
+async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
@@ -153,22 +129,15 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
         pass
     await MessageQueue.instance().clear_queue()
 
-    handler_mock = MagicMock()
-    handler_mock.config = {"soul": {"room_owner": "Joyer"}}
-    event_handler = MessageContentEvent(handler_mock)
+    chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
+    event_handler = MessageContentEvent(chat_window.handler)
 
-    mock_msg_manager = MagicMock()
-    mock_msg_manager.latest_chats = ["souler[Sender]送给OtherUser"]
-    mock_msg_manager.recent_chats = []
-
-    monkeypatch.setattr("ushareiplay.managers.message_manager.MessageManager.instance", lambda: mock_msg_manager)
     monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
-    wrapper = MagicMock()
-    wrapper.content = "souler[Sender]送给OtherUser"
+    wrapper = _Wrapper("souler[Sender]送给OtherUser")
 
     await event_handler.handle("message_content", wrapper)
 
@@ -183,9 +152,8 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
     queue_msgs = await MessageQueue.instance().get_all_messages()
     assert len(queue_msgs) == 0
 
-
 @pytest.mark.asyncio
-async def test_process_missed_messages_heat_contribution(db_init, monkeypatch):
+async def test_process_missed_messages_heat_contribution(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     from ushareiplay.managers.message_manager import MessageManager
@@ -196,10 +164,8 @@ async def test_process_missed_messages_heat_contribution(db_init, monkeypatch):
         pass
     await MessageQueue.instance().clear_queue()
 
-    manager = object.__new__(MessageManager)
-    manager.recent_chats = ["old_anchor"]
-    manager.latest_chats = []
-    manager._chat_logger = MagicMock()
+    manager = chat_window.manager
+    manager.observe(["old_anchor"])
 
     handler_mock = MagicMock()
     handler_mock.config = {"soul": {"room_owner": "Joyer"}}
@@ -237,9 +203,8 @@ async def test_process_missed_messages_heat_contribution(db_init, monkeypatch):
     # Verify notify_gift_receive called
     notify_mock.assert_called_once_with("dio🤐")
 
-
 @pytest.mark.asyncio
-async def test_process_missed_messages_owner_gift(db_init, monkeypatch):
+async def test_process_missed_messages_owner_gift(db_init, monkeypatch, chat_window):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     from ushareiplay.managers.message_manager import MessageManager
@@ -250,10 +215,8 @@ async def test_process_missed_messages_owner_gift(db_init, monkeypatch):
         pass
     await MessageQueue.instance().clear_queue()
 
-    manager = object.__new__(MessageManager)
-    manager.recent_chats = ["old_anchor"]
-    manager.latest_chats = []
-    manager._chat_logger = MagicMock()
+    manager = chat_window.manager
+    manager.observe(["old_anchor"])
 
     handler_mock = MagicMock()
     handler_mock.config = {"soul": {"room_owner": "Joyer"}}
@@ -288,5 +251,3 @@ async def test_process_missed_messages_owner_gift(db_init, monkeypatch):
 
     # Verify notify_gift_receive called
     notify_mock.assert_called_once_with("GiftSender")
-
-

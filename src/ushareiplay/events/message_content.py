@@ -10,7 +10,6 @@ __multiple__ = True
 import traceback
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.core.chat_intake import QUEUE_COMMAND_PREFIX_CHARS, ChatIntakeKind, classify_chat_line
 from ushareiplay.core.element_wrapper import composed_message_text
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -51,215 +50,31 @@ class MessageContentEvent(BaseEvent):
                 if content := composed_message_text(wrapper):
                     content_list.append(content)
 
-            # 获取 MessageManager 实例，使用其 recent_chats
+            # 窗口状态与 diff 归 MessageManager：这里只提供本次屏幕上的行，
+            # 拿回一个增量（哪些是新行、要不要补漏、补漏的锚点是谁）。
             from ushareiplay.managers.message_manager import MessageManager
 
             message_manager = MessageManager.instance()
+            room_owner = await message_manager.resolve_room_owner()
+            delta = message_manager.observe(content_list)
 
-            # 获取聊天日志记录器
-            from ushareiplay.managers.message_manager import get_chat_logger
+            commands = await message_manager.dispatch(delta.new_lines, room_owner=room_owner)
+            has_command_message = bool(commands)
 
-            chat_logger = get_chat_logger(self.handler.config)
-
-            # 标记是否有命令消息
-            has_command_message = False
-
-            message_manager.latest_chats.clear()
-            recent_len = len(message_manager.recent_chats)
-            content_len = len(content_list)
-            missed = False
-            if recent_len == 0:
-                for content in content_list:
-                    message_manager.latest_chats.append(content)
-            else:
-                for i in range(recent_len):
-                    no_new = False
-                    for j in range(content_len):
-                        content = content_list[j]
-                        ii = i + j
-                        if ii < recent_len:
-                            recent_chat = message_manager.recent_chats[ii]
-                            if content != recent_chat:
-                                break
-                            if ii == recent_len - 1 and j == content_len - 1:
-                                no_new = True
-                                break
-                        else:
-                            message_manager.latest_chats.append(content)
-                    if no_new:
-                        break
-                    if len(message_manager.latest_chats) > 0:
-                        break
-                    elif i == recent_len - 1:
-                        missed = True
-                        for content in content_list:
-                            message_manager.latest_chats.append(content)
-
-            # Fallback: the forward-matching above can fail when content_list
-            # contains more items than recent_chats.maxlen (3).  In that case
-            # content_list[0] is older than anything in recent_chats and every
-            # alignment attempt mismatches at j=0.  Check whether the anchor
-            # (recent_chats[-1]) actually *is* visible on screen; if so, we
-            # are not truly "missed" — only the window is wider than maxlen.
-            if missed and recent_len > 0:
-                last_recent = message_manager.recent_chats[-1]
-                for idx, content in enumerate(content_list):
-                    if content == last_recent:
-                        # Anchor visible — override missed.
-                        missed = False
-                        message_manager.latest_chats.clear()
-                        for new_content in content_list[idx + 1:]:
-                            message_manager.latest_chats.append(new_content)
-                        break
-
-            room_owner = None
-            if hasattr(self.handler, 'config') and isinstance(self.handler.config, dict):
-                soul_cfg = self.handler.config.get("soul", {})
-                if isinstance(soul_cfg, dict):
-                    room_owner = soul_cfg.get("room_owner") or soul_cfg.get("owner_username")
-                if not room_owner:
-                    room_owner = self.handler.config.get("room_owner") or self.handler.config.get("owner_username")
-
-
-            if not room_owner:
-                try:
-                    from ushareiplay.models import User
-                    owner_user = await User.filter(level=9).first()
-                    if owner_user:
-                        room_owner = owner_user.username
-                except Exception:
-                    pass
-
-            # 处理所有消息元素
-            for content in message_manager.latest_chats:
-
-                result = classify_chat_line(content, room_owner=room_owner)
-
-                is_return = result.kind == ChatIntakeKind.USER_RETURN
-                if is_return:
-                    from ushareiplay.state.presence_tracker import PresenceTracker
-                    presence_tracker = PresenceTracker.instance()
-                    if presence_tracker.should_trigger_return(result.nickname):
-                        presence_tracker.record_return(result.nickname)
-                        self.logger.critical(f"User returned: {result.nickname}")
-                        chat_logger.critical(content)
-                        await self._notify_user_return(result.nickname)
-                    else:
-                        self.logger.info(
-                            f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
-                        )
-                        chat_logger.info(content)
-                    continue
-
-                if result.kind == ChatIntakeKind.GIFT_RECEIVE:
-                    chat_logger.critical(content)
-                    if getattr(result, "heat_value", 0) > 0:
-                        self.logger.info(
-                            f"Heat contribution received from user '{result.nickname}': +{result.heat_value} heat"
-                        )
-                    else:
-                        self.logger.info(
-                            f"Gift received from user '{result.nickname}' (sent to room_owner '{room_owner}')"
-                        )
-                    await self._handle_gift_receive(result)
-                    continue
-
-                if result.kind == ChatIntakeKind.KEYWORD_MENTION:
-                    from ushareiplay.managers.keyword_manager import KeywordManager
-                    await KeywordManager.instance().dispatch_mention(result, sleep_exempt=True)
-
-                    chat_logger.critical(content)
-                    continue
-
-                if result.kind == ChatIntakeKind.COMMAND:
-                    if result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
-                        has_command_message = True
-                        chat_logger.critical(content)
-                    else:
-                        chat_logger.info(content)
-                    continue
-
-                chat_logger.info(content)
-
-            handled = False
-            # 如果有命令消息，调用 get_latest_messages 获取命令
+            # 如果有命令消息，交给 CommandManager 执行；否则只做常规更新
             if has_command_message:
-                await message_manager.process_new_messages()
+                await message_manager.process_new_messages(delta.new_lines)
             else:
                 await self._process_update_logic()
 
-            if missed:
-                await message_manager.process_missed_messages()
-                # After processing, the view has changed (scrolled back to
-                # bottom via send_message).  Clear recent_chats so the next
-                # iteration starts fresh instead of re-detecting a stale gap.
-                message_manager.recent_chats.clear()
+            if delta.missed:
+                await message_manager.process_missed_messages(delta.anchor)
 
-            for chat in message_manager.latest_chats:
-                message_manager.recent_chats.append(chat)
-
-            return handled
+            return False
 
         except Exception:
             self.logger.error(f"Error processing message content event: {traceback.format_exc()}")
             return False
-
-    async def _handle_gift_receive(self, result):
-        """处理收礼物与热力值贡献：自动升级等级、发送感谢消息、触发自定义命令"""
-        try:
-            from ushareiplay.dal.user_dao import UserDAO
-            from ushareiplay.core.message_queue import MessageQueue
-            from ushareiplay.models.message_info import MessageInfo
-
-            username = result.nickname
-            heat_val = getattr(result, "heat_value", 0)
-            if heat_val > 0:
-                user = await UserDAO.record_heat_contribution(username, heat_val)
-            else:
-                user = await UserDAO.record_owner_gift(username)
-
-            if user:
-                self.logger.info(
-                    f"User '{user.username}' status after gift/heat processing: level=L{user.level}, cumulative_heat={user.heat_value}"
-                )
-
-            # 自动发送 @用户 谢谢
-            thank_msg = MessageInfo(
-                content=f"@{username} 谢谢",
-                nickname=username,
-            )
-            await MessageQueue.instance().put_message(thank_msg)
-            self.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
-
-            # 触发命令管理器的收礼物通知
-            await self._notify_gift_receive(username)
-        except Exception:
-            self.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
-
-    async def _notify_user_enter(self, username: str):
-        """通知所有命令用户进入"""
-        try:
-            command_manager = CommandManager.instance()
-            await command_manager.notify_user_enter(username)
-        except Exception as e:
-            self.logger.error(f"Error notifying user enter: {str(e)}")
-
-    async def _notify_gift_receive(self, username: str):
-        """通知所有命令收礼物事件"""
-        try:
-            command_manager = CommandManager.instance()
-            await command_manager.notify_gift_receive(username)
-        except Exception as e:
-            self.logger.error(f"Error notifying gift receive: {str(e)}")
-
-
-    async def _notify_user_return(self, username: str):
-        """通知所有命令用户返回"""
-        try:
-            command_manager = CommandManager.instance()
-            await command_manager.notify_user_return(username)
-        except Exception as e:
-            self.logger.error(f"Error notifying user return: {str(e)}")
 
     async def _process_update_logic(self):
         """处理更新逻辑（、播放信息等）- 在没有命令消息时执行"""
