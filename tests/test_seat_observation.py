@@ -5,6 +5,7 @@ C1/C2）：desk 是真 ElementWrapper，raw WebElement 路径走 find_element �
 controller 用真实的 ui_session 异步上下文管理器。
 """
 
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -60,8 +61,12 @@ def test_map_desks_to_indices_by_number_labels():
     assert [idx for idx, _ in mapped] == [0, 3, 4]
 
 
-def test_map_desks_to_indices_fallback_by_coordinates():
-    # 昵称占满可视桌位，读不到座位号，只能靠坐标聚类
+def test_map_desks_to_indices_without_any_anchor_maps_nothing():
+    """身份未知不猜：整条带位都读不到麦位编号时，绝不按坐标顺序硬排座位号。
+
+    旧实现会从 desk 0 起往后排（[0,1,2,3]）—— 面板只露出中后排时整条带位被
+    错配两个桌位，第二排的空座读数就被写进 1~4 号位。
+    """
     manager = SeatObservationManager.initialize(make_handler())
     desks = [
         build_desk_wrapper(manager.handler, left="群主", right="A", y=500),
@@ -70,9 +75,31 @@ def test_map_desks_to_indices_fallback_by_coordinates():
         build_desk_wrapper(manager.handler, left="F", right="G", y=200),
     ]
 
-    mapped = manager.map_desks_to_indices(desks)
+    assert manager.map_desks_to_indices(desks) == []
 
-    assert [idx for idx, _ in mapped] == [0, 1, 2, 3]
+
+def test_anchor_pins_band_offset_for_desks_without_seat_numbers():
+    """同一视口里只要有一张桌位读到编号，整条带位就能对上正确座位号。
+
+    只露出第二排且左侧桌位全是昵称（读不到编号）时，右侧桌位读到的 7 号空位把
+    整个带位的偏移钉在 2：左侧桌位仍落在 desk 2（5/6 号位），不会被排到 0 号位。
+    """
+    manager = SeatObservationManager.initialize(make_handler())
+    desk_without_numbers = build_desk_wrapper(
+        manager.handler,
+        left="锦鲤",
+        right="儿童不易",
+        left_occupied=True,
+        right_occupied=True,
+        bounds="[40,611][400,771]",
+    )
+    desk_with_seat_numbers = build_desk_wrapper(
+        manager.handler, left="7", right="8", bounds="[383,611][743,771]"
+    )
+
+    mapped = manager.map_desks_to_indices([desk_without_numbers, desk_with_seat_numbers])
+
+    assert [idx for idx, _ in mapped] == [2, 3]
 
 
 def test_nickname_digits_do_not_anchor_seat_number():
@@ -180,8 +207,11 @@ async def test_observe_visible_desks_reuses_known_occupant_without_reinspection(
 
 
 @pytest.mark.asyncio
-async def test_occupant_swap_is_detected():
-    """R2 回归：座位上换人不能被旧昵称覆盖掉。"""
+async def test_same_seat_occupant_swap_escalates_to_full_rescan():
+    """同位换人：旧人去向、新人来路都不知道 → 不写快照，全量扫描一遍取最新信息。
+
+    （旧实现会把「李四坐 1 号」直接写进快照并给张三发一条假的离座事件。）
+    """
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
@@ -189,17 +219,24 @@ async def test_occupant_swap_is_detected():
 
     desk = build_desk_wrapper(handler, left="李四", right="2", left_occupied=True)
 
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
-        notify = AsyncMock()
-        cmd_mgr.return_value.notify_focus_count_change = notify
-        changed = await manager.observe_visible_desks([desk])
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
 
-    assert changed is True
-    assert manager.seats[1].username == "李四"
-    kwargs = notify.call_args.kwargs
-    assert set(kwargs["changed_users"]) == {"张三", "李四"}
-    assert kwargs["seat_info"]["张三"] == {"seat_number": 1, "action": "leave_seat"}
-    assert kwargs["seat_info"]["李四"] == {"seat_number": 1, "action": "sit_down"}
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as mock_rescan:
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            notify = AsyncMock()
+            cmd_mgr.return_value.notify_focus_count_change = notify
+            changed = await manager.observe_visible_desks([desk])
+
+    # 快照保持原值等全量扫描给结论，也不发任何座位变更通知
+    assert changed is False
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].username == "张三"
+    notify.assert_not_awaited()
+    mock_rescan.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -670,29 +707,37 @@ def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
     assert manager.seats[5].username == "锦鲤"
 
 
-def test_apply_snapshot_clears_occupant_when_seat_is_explicitly_empty():
-    """只有检测到明确空座（下座）时，才清空座位信息。"""
+def test_apply_snapshot_clears_only_when_desk_is_fully_visible_and_clearable():
+    """判「下座」的两个前提：桌位完整可见，且该号位被允许清空。"""
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)
 
-    # 5 号麦位此前被“锦鲤”占用
-    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
-
-    # 模拟新一轮观测：5 号麦位明确显示为“点击入座”空座 (is_empty=True)
-    observed = {
-        5: (None, "left", {
+    def _empty_read(**overrides):
+        info = {
             "occupied": False,
             "is_empty": True,
-            "label": "5",
+            "label": "7",
             "username": None,
-        })
-    }
+            "unclipped": True,
+        }
+        info.update(overrides)
+        return {3: (None, "left", info)}
 
-    manager._apply_snapshot(observed)
+    # 权威路径（clearable=None，全量重扫读过全部麦位）：桌位完整可见即可判下座
+    manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
+    manager._apply_snapshot(_empty_read())
+    assert manager.seats[3].occupied is False
+    assert manager.seats[3].username is None
 
-    # 正常下座清空
-    assert manager.seats[5].occupied is False
-    assert manager.seats[5].username is None
+    # 被动观测：只有显式列入 clearable 的号位（视口内配对换座的旧位）才允许清空
+    manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
+    manager._apply_snapshot(_empty_read(), clearable={5})
+    assert manager.seats[3].occupied is True
+    assert manager.seats[3].username == "Chainer"
+
+    # 桌位被裁切（几十 px 的残片）时，即便允许清空也不清
+    manager._apply_snapshot(_empty_read(unclipped=False), clearable={3})
+    assert manager.seats[3].occupied is True
 
 
 @pytest.mark.asyncio
@@ -747,6 +792,230 @@ async def test_real_clipped_desks_do_not_wipe_out_of_view_seats_or_trigger_loop(
 
         # 专注人数 5 与在座人数 5 一致，绝对不应触发全量重扫死循环
         mock_rescan.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_passive_observation_never_clears_a_seat_it_cannot_identify():
+    """复现 2026-09-26 18:13 那次死循环。
+
+    折叠视口只露出第二排的两张桌位，且两张都读不到麦位编号（空座显示「点击入座」、
+    占座侧读不到 state）。旧实现按坐标兜底把它们排成 1/2 号位，第二排空座的读数
+    于是把已确认的 3 号位占座（Chainer）推平成空闲 → 在座数 3 ≠ 专注人数 4 →
+    再展开重扫 → 恢复 → 再推平，17 秒一轮无限循环。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 全量重扫刚确认的快照：1/3/5/8 号位有人，专注人数 4
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="Outlier")
+    manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+    manager.seats[8] = SeatSlot(seat_number=8, occupied=True, username="群主", is_owner=True)
+    manager._last_focus_count = 4
+
+    seat_ui = FakeSeatUI()
+    seat_ui.is_expanded = False
+    manager._seat_ui = seat_ui
+
+    # 折叠视口：两张第二排桌位，都读不到座位号
+    desk_row2_left = build_desk_wrapper(
+        handler,
+        left_default_name="点击入座",
+        right_default_name="点击入座",
+        bounds="[40,611][400,771]",
+    )
+    desk_row2_right = build_desk_wrapper(
+        handler,
+        left_default_name="点击入座",
+        right_default_name="点击入座",
+        bounds="[383,611][743,771]",
+    )
+
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        changed = await manager.observe_visible_desks(
+            [desk_row2_left, desk_row2_right], current_focus_count=4
+        )
+
+    # 身份未知的读数一律不写：既不推平 3 号位，也不触发重扫
+    assert changed is False
+    assert manager.seats[3].occupied is True
+    assert manager.seats[3].username == "Chainer"
+    assert sum(1 for s in manager.seats.values() if s.occupied) == 4
+    mock_rescan.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_seat_read_as_empty_without_a_destination_escalates_to_full_rescan():
+    """快照里有人、本轮视口读成空，但同轮找不到他的新座位 → 去向不明。
+
+    这种情况既不许推平快照（可能只是走出了可视范围），也不许当作没发生（那会漏检）：
+    必须全量扫描一遍取最新信息。同一份读数只扫一次，否则就是每轮十几秒的死循环。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="不约儿童")
+
+    # 折叠视口只露出第二排两张桌位：空位显示麦位编号（位置可定），快照里那两位却有人
+    desks = [
+        build_desk_wrapper(
+            handler, left="5", right="6", bounds="[40,611][400,771]"
+        ),
+        build_desk_wrapper(
+            handler, left="7", right="8", bounds="[383,611][743,771]"
+        ),
+    ]
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as mock_rescan:
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            changed = await manager.observe_visible_desks(desks)
+
+    assert changed is False
+    # 快照不被局部读数推平，等全量扫描给结论
+    assert manager.seats[5].occupied is True
+    assert manager.seats[5].username == "锦鲤"
+    assert manager.seats[7].occupied is True
+    assert manager.seats[7].username == "不约儿童"
+    mock_rescan.assert_awaited_once()
+    # 检测到的变更以「号位 + 去向不明」的指纹记录下来
+    assert manager._scanned_seat_change_fingerprint == frozenset(
+        {(5, "disappear"), (7, "disappear")}
+    )
+
+    # 同一份读数再来一轮：已经扫过了，不再重复展开（把冷却清掉，确保拦住它的是指纹）
+    manager._last_rescan_time = -1e9
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as repeat_rescan:
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks(desks)
+
+    repeat_rescan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_appearing_user_still_recorded_elsewhere_escalates_to_full_rescan():
+    """可视范围内出现一个人，而快照里他还挂在别的位子上 → 可能是从看不见的位子挪过来的。
+
+    这时既不能直接把新位置写进快照（旧位置会留成幽灵），也不能当作没发生：
+    全量扫描一遍。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    # 锦鲤此前记录在第三排 9 号位（当前不可视）
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=True, username="锦鲤")
+
+    desk = build_desk_wrapper(handler, left="锦鲤", right="6", left_occupied=True)
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as mock_rescan:
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            changed = await manager.observe_visible_desks([desk])
+
+    assert changed is False
+    assert manager.seats[5].occupied is False   # 新位置不写，等扫描定夺
+    assert manager.seats[9].occupied is True    # 旧位置保持，不产生幽灵/也别急着清
+    mock_rescan.assert_awaited_once()
+    assert ("appear") in {kind for _seat, kind in manager._scanned_seat_change_fingerprint}
+
+
+@pytest.mark.asyncio
+async def test_one_full_rescan_serves_both_signals_in_the_same_observation():
+    """同一次观测里人数背离和「去向不明」同时出现 → 只展开扫一次，不排队扫两遍。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+
+    desk = build_desk_wrapper(handler, left="5", right="6")
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as mock_rescan:
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            # 专注 3 人在座 1 人 → 人数背离；同一轮里 5 号位读成空 → 去向不明
+            await manager.observe_visible_desks([desk], current_focus_count=3)
+
+    mock_rescan.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_same_focus_count_is_reconciled_only_once():
+    """闸门：专注人数这个取值只允许触发一次全量重扫，人数没变绝不重复展开。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ) as mock_rescan:
+        # 第一次对账：专注 4 人、在座 0 人 → 展开扫一次
+        await manager.on_focus_count(None, 4)
+        mock_rescan.assert_awaited_once_with(4)
+
+        # 同一个人数反复上报（事件轮询每轮都会报）不再展开 —— 即便冷却时间早就过了，
+        # 只看人数有没有变（旧实现里冷却一过就会再展开一次，这正是死循环的节奏）
+        manager._last_rescan_time = 0.0
+        await manager.on_focus_count(4, 4)
+        manager._last_rescan_time = 0.0
+        await manager.observe_visible_desks(
+            [build_desk_wrapper(handler, left="1", right="2")], current_focus_count=4
+        )
+        assert mock_rescan.await_count == 1
+
+        # 人数真的变了才允许再对一次账
+        manager._last_rescan_time = 0.0
+        await manager.on_focus_count(4, 5)
+        assert mock_rescan.await_count == 2
+        mock_rescan.assert_awaited_with(5)
+
+
+@pytest.mark.asyncio
+async def test_rescan_that_never_landed_is_retried():
+    """扫描没落地（展开失败/半截快照）时闸门要撤掉，不能把信号吞掉。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    # 替身不设置 _last_rescan_ok，模拟「扫了但没扫成」
+    manager.expand_rescan_and_collapse = AsyncMock(return_value=False)
+
+    await manager.on_focus_count(None, 4)
+    manager.expand_rescan_and_collapse.assert_awaited_once_with(4)
+
+    # 退避期内不重复展开
+    manager._last_rescan_time = time.monotonic()
+    await manager.on_focus_count(4, 4)
+    assert manager.expand_rescan_and_collapse.await_count == 1
+
+    # 退避时间过去后重试（闸门没被永久占用）
+    manager._last_rescan_time = -1e9
+    await manager.on_focus_count(4, 4)
+    assert manager.expand_rescan_and_collapse.await_count == 2
 
 
 

@@ -37,6 +37,13 @@ class SeatObservationManager(Singleton):
     """
 
     RESCAN_COOLDOWN: ClassVar[float] = 3.0
+    # 上一次重扫没落地（展开失败/半截快照）时的重试间隔：放宽到几十秒，
+    # 既不会把信号吞掉，也不会让失败的展开每几秒刷一次日志。
+    RESCAN_RETRY_COOLDOWN: ClassVar[float] = 30.0
+
+    # 完整桌位实测高度 150~250px；几十像素高的是 RecyclerView 边缘被裁下来的残片。
+    # 残片只允许用来补占座（正向证据），不允许据此判定「空座」把已确认的占座推平。
+    FULL_DESK_MIN_HEIGHT: ClassVar[int] = 120
 
     def __init__(self, handler=None):
         self.handler = handler
@@ -48,6 +55,15 @@ class SeatObservationManager(Singleton):
             i: SeatSlot(seat_number=i) for i in range(1, 13)
         }
         self._last_focus_count: Optional[int] = None
+        # 最近一次已完成对账的专注人数：同一个取值只允许触发一次全量重扫，
+        # 否则「视口读数 ↔ 全量重扫」会互相拆台，形成展开/收起死循环。
+        self._reconciled_focus_count: Optional[int] = None
+        # 最近一次「变更去向不明」的读数指纹：同一份读数只全量扫描一次，
+        # 扫过就认为已经取到最新信息；读数变了（新指纹）才再扫。
+        self._scanned_seat_change_fingerprint: Optional[frozenset] = None
+        # 最近一次全量重扫是否真正落地（失败/半截快照时不算），用于决定要不要把
+        # 闸门标记撤掉、留给下一轮重试。
+        self._last_rescan_ok: bool = False
         self._last_rescan_time: float = 0.0
         self._lock = asyncio.Lock()
 
@@ -88,6 +104,9 @@ class SeatObservationManager(Singleton):
         """重置所有麦位状态"""
         self.seats = {i: SeatSlot(seat_number=i) for i in range(1, 13)}
         self._last_focus_count = None
+        self._reconciled_focus_count = None
+        self._scanned_seat_change_fingerprint = None
+        self._last_rescan_ok = False
         self._last_rescan_time = 0.0
         self.logger.info("Cleared seat observation snapshot")
 
@@ -211,51 +230,79 @@ class SeatObservationManager(Singleton):
 
     def map_desks_to_indices(self, desk_wrappers: list) -> List[Tuple[int, any]]:
         """
-        根据桌子中的麦位编号、标签或坐标，将当前可见的 desk_wrappers 映射为其全局 desk_index (0..5)。
+        把当前可见的 desk_wrappers 映射为其全局 desk_index (0..5)。
         - Row 0 (第一排): desk 0 (seats 1,2), desk 1 (seats 3,4)
         - Row 1 (第二排): desk 2 (seats 5,6), desk 3 (seats 7,8)
         - Row 2 (第三排): desk 4 (seats 9,10), desk 5 (seats 11,12)
 
-        优先用空座位上的麦位编号锚定；读不到编号（例如可视桌位全满）时退回坐标
-        聚类，此时**假设可视桌位从 desk 0 起连续可见** —— 面板被滚动、只露出
-        中后排时坐标兜底会把桌位错配。被动观测不滚动面板，因此该兜底只在
-        视口对齐默认位置时可信。
+        座位号只认麦位编号锚点：某张桌位自己读到编号，或同一视口里其它桌位读到编号、
+        由此推定整条带位的偏移。读不到编号的桌位身份未知，一律不映射 —— 宁可不写，
+        不可猜。旧实现在无锚点时「从 desk 0 起往后再排」，面板被滚动、只露出中后排
+        时会把整条带位整体错配（第二排的读数被写进 1~4 号位），这正是把 3 号位
+        已确认占座推平的那次死循环的机理。
+        """
+        mapped, _dropped, _source = self._map_desks_with_identity(desk_wrappers)
+        return [(desk_idx, desk) for desk_idx, desk, _own in mapped]
+
+    def _map_desks_with_identity(
+        self, desk_wrappers: list
+    ) -> Tuple[List[Tuple[int, any, bool]], List[Tuple[any, str]], str]:
+        """映射可见桌位，并标注座位号是不是这张桌位自己读出来的。
+
+        Returns:
+            mapped: [(desk_index, desk, own_seat_number)]，按 desk_index 升序。
+                own_seat_number=True 表示这张桌位自己读到了麦位编号（自己钉死座位号）；
+                False 表示座位号是由同视口其它桌位的编号推定的（带位整体可信，但
+                单张桌位仍有错位可能）。
+            dropped: [(desk, 原因)]，身份未知或不可见的桌位，调用方不得写快照。
+            offset_source: 带位偏移的来源说明（诊断用）。
         """
         # 过滤掉不可见/零尺寸的桌位
-        visible_desks = [d for d in desk_wrappers if self._is_desk_visible(d)]
+        visible_desks = []
+        dropped: List[Tuple[any, str]] = []
+        for desk in desk_wrappers:
+            if self._is_desk_visible(desk):
+                visible_desks.append(desk)
+            else:
+                dropped.append((desk, "不可见或尺寸不足"))
         if not visible_desks:
-            return []
+            return [], dropped, "无可见桌位"
 
-        result = []
-        unresolved = []
+        # 视觉顺序（先按 y 量化分行、再按 x）就是带位里的连续序号
+        ordered = sorted(visible_desks, key=self._desk_sort_key)
 
-        # 判断当前麦位面板是否处于展开状态
-        is_expanded = getattr(self.seat_ui, "is_expanded", False)
-        # 折叠状态下，最多只应映射前两排桌位（desk_index 0..3，对应 1~8 号麦位）
-        max_desk_index = 5 if is_expanded else 3
-
-        for idx, desk in enumerate(visible_desks):
+        anchored: Dict[int, int] = {}
+        for rank, desk in enumerate(ordered):
             desk_idx = self._detect_desk_index_from_labels(desk)
             if desk_idx is not None and 0 <= desk_idx <= 5:
-                result.append((desk_idx, desk))
-            else:
-                unresolved.append((idx, desk))
+                anchored[rank] = desk_idx
 
-        if not unresolved:
-            # 按 desk_index 升序排序
-            result.sort(key=lambda item: item[0])
-            return result
+        offsets = {idx - rank for rank, idx in anchored.items()}
+        if len(offsets) == 1:
+            # 锚点唯一确定了整条带位的偏移：只露出一排的视口也能对上正确座位号
+            offset: Optional[int] = offsets.pop()
+            offset_source = f"锚定({offset})"
+        else:
+            # 没有锚点或锚点互相矛盾：整条带位身份未知，只保留自身读到编号的桌位
+            offset = None
+            offset_source = "锚点矛盾" if offsets else "锚点缺失"
 
-        # 辅助策略：基于 bounds 坐标排序聚类
-        assigned_indices = {r[0] for r in result}
-        sorted_unresolved = sorted(unresolved, key=lambda item: self._desk_sort_key(item[1]))
+        mapped: List[Tuple[int, any, bool]] = []
+        for rank, desk in enumerate(ordered):
+            desk_idx = anchored.get(rank)
+            own_seat_number = desk_idx is not None
+            if desk_idx is None:
+                if offset is None:
+                    dropped.append((desk, "身份未知（无锚点）"))
+                    continue
+                desk_idx = offset + rank
+                if not 0 <= desk_idx <= 5:
+                    dropped.append((desk, f"推定座位号越界({desk_idx})"))
+                    continue
+            mapped.append((desk_idx, desk, own_seat_number))
 
-        avail_indices = [i for i in range(max_desk_index + 1) if i not in assigned_indices]
-        for (orig_idx, desk), desk_idx in zip(sorted_unresolved, avail_indices):
-            result.append((desk_idx, desk))
-
-        result.sort(key=lambda item: item[0])
-        return result
+        mapped.sort(key=lambda item: item[0])
+        return mapped, dropped, offset_source
 
     def _desk_sort_key(self, desk) -> Tuple[int, int]:
         bounds = getattr(desk, "bounds", None)
@@ -383,12 +430,16 @@ class SeatObservationManager(Singleton):
         if not occupied:
             is_empty = self._is_seat_empty(desk, side, seat_num)
 
+        # has_state / has_default 只做诊断记录（判定「空座」的原始依据），
+        # 不参与 occupied / is_empty 的判据。
         return {
             "occupied": occupied,
             "is_empty": is_empty,
             "label": label,
             "is_owner": is_owner,
             "username": username,
+            "has_state": self._find_child_element(desk, f"{side}_state") is not None,
+            "has_default": self._find_child_element(desk, f"{side}_default_name") is not None,
         }
 
     def _desk_bounds(self, desk) -> Optional[dict]:
@@ -567,14 +618,122 @@ class SeatObservationManager(Singleton):
 
         return has_changes, changed_users, seat_info
 
-    def _read_visible_seats(self, desk_wrappers: list) -> Dict[int, Tuple[any, str, dict]]:
-        """把可见桌位读成 {seat_number: (desk, side, info)}。"""
+    def _plan_observation_changes(
+        self,
+        old_slots: Dict[int, SeatSlot],
+        observed: Dict[int, Tuple[any, str, dict]],
+    ) -> Tuple[Set[int], Set[int], Set[Tuple[int, str]]]:
+        """把本轮视口读数与快照比对，分成「可以落快照」「视口内换座的旧位」「去向不明」。
+
+        被动观测只看得到一部分麦位，因此只接受两类**完备**的变更：
+        - 同一位子上还是同一个人（含昵称补齐）；
+        - 视口内的换座：离座的人在同一轮观测的另一个位子上出现（去向可查）。
+
+        其余任何变更都说明影响可能落在看不见的麦位上 —— 既不能凭一个局部读数写快照
+        （会推出错误的座位信息），也不能当作没发生（那是漏检）：必须全量扫描一遍取
+        最新信息。三种"去向不明"的情形都会进 fingerprint：
+        disappear（有人从这个位子消失，去哪不知道）、appear（有人凭空出现在这个位子，
+        或者这个人还在快照别处占着座）、swap（同一个位子换人，两边来去都不知道）。
+        """
+        writable: Set[int] = set()
+        clearable: Set[int] = set()
+        unexplained: Set[Tuple[int, str]] = set()
+        appears: Dict[int, Optional[str]] = {}
+        disappears: Dict[int, Optional[str]] = {}
+
+        for seat_num, (_desk, _side, info) in observed.items():
+            old = old_slots.get(seat_num)
+            if old is None:
+                continue
+            if info["occupied"]:
+                new_user = info.get("username")
+                if not old.occupied:
+                    appears[seat_num] = new_user
+                elif old.username and new_user and old.username != new_user:
+                    unexplained.add((seat_num, "swap"))
+                else:
+                    writable.add(seat_num)
+            elif info.get("is_empty") and old.occupied:
+                disappears[seat_num] = old.username
+            # 读不到内容（不可见/渲染缺失）不算变更，保持快照原值
+
+        for seat_num, user in disappears.items():
+            matched = None
+            if user:
+                matched = next((s for s, u in appears.items() if u == user), None)
+            if matched is None:
+                unexplained.add((seat_num, "disappear"))
+            else:
+                # 视口内换座：去向已确定，旧位清空 + 新位占座都可以直接落快照
+                writable.add(seat_num)
+                writable.add(matched)
+                clearable.add(seat_num)
+                appears.pop(matched)
+
+        for seat_num, user in appears.items():
+            stale_seat = bool(user) and any(
+                slot.occupied and slot.username == user
+                for num, slot in old_slots.items()
+                if num != seat_num
+            )
+            if user is None or stale_seat:
+                # 昵称读不出来，或这个人还挂在快照的其它位子上（可能刚从看不见的位子挪过来）
+                unexplained.add((seat_num, "appear"))
+            else:
+                writable.add(seat_num)
+
+        return writable, clearable, unexplained
+
+    @staticmethod
+    def _describe_side(side: str, info: dict) -> str:
+        """一侧麦位的原始读数（诊断用，一行内可读）。"""
+        label = (info.get("label") or "").replace("\n", " ")
+        return (
+            f"{side[0].upper()}:{{state={int(bool(info.get('has_state')))} "
+            f"label='{label}' default={int(bool(info.get('has_default')))} "
+            f"empty={int(bool(info.get('is_empty')))} occupied={int(bool(info.get('occupied')))} "
+            f"user={info.get('username') or ''}}}"
+        )
+
+    def _read_visible_seats(
+        self, desk_wrappers: list
+    ) -> Tuple[Dict[int, Tuple[any, str, dict]], str]:
+        """把可见桌位读成 {seat_number: (desk, side, info)}，并附一行 DEBUG 诊断。
+
+        座位号身份未知的桌位不会出现在结果里（见 _map_desks_with_identity），
+        所以进入快照的读数都带着「座位号由锚点确定」这个前提；`unclipped` 区分
+        桌位是否完整可见（被裁下来的残片不能用来判定下座）。
+        """
+        mapped, dropped, offset_source = self._map_desks_with_identity(desk_wrappers)
+
         observed: Dict[int, Tuple[any, str, dict]] = {}
-        for desk_idx, desk in self.map_desks_to_indices(desk_wrappers):
+        details: List[str] = []
+        for desk_idx, desk, self_anchored in mapped:
+            bounds = self._desk_bounds(desk) or {}
+            height = bounds.get("height", 0)
+            unclipped = height >= self.FULL_DESK_MIN_HEIGHT
+            sides = []
             for side, offset in (("left", 1), ("right", 2)):
                 seat_num = desk_idx * 2 + offset
-                observed[seat_num] = (desk, side, self._extract_seat_info(desk, side, seat_num))
-        return observed
+                info = self._extract_seat_info(desk, side, seat_num)
+                info["unclipped"] = unclipped
+                observed[seat_num] = (desk, side, info)
+                sides.append(self._describe_side(side, info))
+            details.append(
+                f"d{desk_idx}(y={bounds.get('y', '?')},h={height},"
+                f"{'自锚定' if self_anchored else '带位推定'}) " + " ".join(sides)
+            )
+
+        dropped_notes = []
+        for desk, reason in dropped:
+            bounds = self._desk_bounds(desk) or {}
+            dropped_notes.append(f"(y={bounds.get('y', '?')},h={bounds.get('height', '?')}){reason}")
+
+        parts = [f"[seat-obs] 读数 偏移={offset_source}"]
+        parts.extend(details)
+        if dropped_notes:
+            parts.append("丢弃: " + "; ".join(dropped_notes))
+        return observed, " | ".join(parts)
 
     async def _resolve_usernames(
         self,
@@ -612,7 +771,18 @@ class SeatObservationManager(Singleton):
             async with self._ui_session("seat_inspect"):
                 await _inspect_pending()
 
-    def _apply_snapshot(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
+    def _apply_snapshot(
+        self,
+        observed: Dict[int, Tuple[any, str, dict]],
+        *,
+        clearable: Optional[Set[int]] = None,
+    ) -> None:
+        """落快照。
+
+        clearable 为 None 表示权威路径（全量重扫读过全部麦位）：观测到的明确空座
+        即可判为下座，只受「桌位完整可见」约束。被动观测必须显式给出可清空的号位
+        （视口内配对换座的旧位）—— 其余读数只能补占座，绝不能凭局部读数把人推平。
+        """
         for seat_num, (desk, side, info) in observed.items():
             slot = self.seats[seat_num]
             if info["occupied"]:
@@ -621,11 +791,18 @@ class SeatObservationManager(Singleton):
                 slot.label = info.get("label", "")
                 slot.is_owner = info.get("is_owner", False)
             elif info.get("is_empty"):
-                # 明确空座（下座状态）：具有“点击入座”或麦位编号标识
-                slot.occupied = False
-                slot.username = None
-                slot.label = info.get("label", "")
-                slot.is_owner = False
+                if info.get("unclipped") and (clearable is None or seat_num in clearable):
+                    slot.occupied = False
+                    slot.username = None
+                    slot.label = info.get("label", "")
+                    slot.is_owner = False
+                elif slot.occupied:
+                    self.logger.debug(
+                        f"Seat {seat_num}: read as empty but not clearable "
+                        f"(unclipped={info.get('unclipped')}, clearable="
+                        f"{clearable is None or seat_num in clearable}); "
+                        f"keeping known occupant {slot.username!r}"
+                    )
             else:
                 # 不可见/稀疏内容状态（例如仅有 leftBottomView，出了视口或被折叠）
                 # 严禁将不可见误认为下座！如果之前是被占用状态，必须保留原占座信息，防止触发死循环扫描
@@ -639,15 +816,18 @@ class SeatObservationManager(Singleton):
         *,
         caller_holds_ui_session: bool = False,
         notify_after: Optional[int] = None,
-    ) -> bool:
-        """映射 -> 读麦位 -> 补昵称 -> 落快照 -> diff -> 通知。
+    ) -> Tuple[bool, Set[Tuple[int, str]]]:
+        """映射 -> 读麦位 -> 补昵称 -> 分类 -> 落快照 -> diff -> 通知。
+
+        返回 (快照是否有变更, 去向不明需要全量扫描的变更指纹)。
 
         被动观测与背离重扫共用这一段；区别只在触发源文案、是否自己拿 ui_session
         （重扫已在外层持有，asyncio.Lock 不可重入）以及通知里的人数取值。
         """
-        observed = self._read_visible_seats(desk_wrappers)
+        # 被动观测不滚面板、视口可能停在任何位置：座位号读不到就不写（见 _read_visible_seats）
+        observed, diagnostics = self._read_visible_seats(desk_wrappers)
         if not observed:
-            return False
+            return False, set()
 
         old_slots = {k: v.copy() for k, v in self.seats.items()}
 
@@ -655,14 +835,21 @@ class SeatObservationManager(Singleton):
             observed, caller_holds_ui_session=caller_holds_ui_session
         )
 
-        self._apply_snapshot(observed)
+        # 只有「看得明白」的变更才落快照：有人消失/凭空出现/同位换人都说明影响可能
+        # 落在看不见的麦位上 —— 那种读数既不写快照，也不当作没发生，交给全量扫描定夺。
+        writable, clearable, unexplained = self._plan_observation_changes(old_slots, observed)
+        to_apply = {num: item for num, item in observed.items() if num in writable}
+        if to_apply:
+            self._apply_snapshot(to_apply, clearable=clearable)
 
         has_changes, changed_users, seat_info = self._compute_diff(
-            old_slots, self.seats, set(observed.keys())
+            old_slots, self.seats, set(to_apply.keys())
         )
 
         if has_changes:
             self.logger.info(self.format_3row_layout(trigger_source=trigger_source, focus_count=focus_count))
+            # 只在真的有变更时输出原始读数，便于回溯「某号位为什么被判定成空/占」
+            self.logger.debug(diagnostics)
 
             if changed_users:
                 from ushareiplay.managers.command_manager import CommandManager
@@ -676,64 +863,149 @@ class SeatObservationManager(Singleton):
         if focus_count is not None:
             self._last_focus_count = focus_count
 
-        return has_changes
+        if unexplained:
+            self.logger.debug(
+                f"[seat-obs] 变更去向不明 {sorted(unexplained)}；本轮原始读数: {diagnostics}"
+            )
+
+        return has_changes, unexplained
 
     async def observe_visible_desks(
         self, desk_wrappers: list, current_focus_count: Optional[int] = None
     ) -> bool:
-        """被动观测当前可见的桌位，检测变动并维护全局快照"""
+        """被动观测当前可见的桌位，检测变动并维护全局快照。
+
+        两类信号都会触发一次全量重扫（同一份信号只扫一次，见 _request_full_scan）：
+        - 专注人数变化：有人进/出专注，看不看得见都一样；
+        - 视口里出现「变更了但去向不明」的读数：有人消失、凭空出现、同一位子换人。
+        """
         if not desk_wrappers:
             return False
 
         async with self._lock:
-            has_changes = await self._sync_desks(
+            has_changes, unexplained = await self._sync_desks(
                 desk_wrappers,
                 "可视区域变更",
                 current_focus_count,
                 caller_holds_ui_session=False,
             )
 
-        # 验证在座人数与专注人数是否一致，如背离则触发全量扫描
-        target_focus = current_focus_count
-        if target_focus is None:
-            target_focus = self._last_focus_count
-        if target_focus is None:
-            try:
-                from ushareiplay.state.room_state import RoomState
-                target_focus = RoomState.instance().focus_count
-            except Exception:
-                pass
+        target_focus = self._resolve_target_focus(current_focus_count)
 
-        if target_focus is not None:
-            total_seated = sum(1 for s in self.seats.values() if s.occupied)
-            if total_seated != target_focus:
-                now = time.monotonic()
-                if now - self._last_rescan_time >= self.RESCAN_COOLDOWN:
-                    self._last_rescan_time = now
-                    self.logger.info(
-                        f"Seated count ({total_seated}) does not match focus count ({target_focus}) "
-                        f"after visible desk observation. Triggering full scan."
-                    )
-                    await self.expand_rescan_and_collapse(target_focus)
+        # 被动观测只看得到一部分麦位，「在座数 != 专注人数」本身不构成异常，
+        # 按专注人数取值对账即可（同一人数只重扫一次）。
+        scanned = await self._reconcile_focus_count(target_focus)
+        await self._resolve_unexplained_changes(
+            unexplained, target_focus, already_scanned=scanned
+        )
 
         return has_changes
 
-    async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
-        """专注人数发生变化时调用。如果人数与当前在座人数背离，打破被动规则主动展开全量扫描。"""
-        self._last_focus_count = current_focus_count
-        total_seated = sum(1 for s in self.seats.values() if s.occupied)
-        divergence = (current_focus_count != total_seated)
+    def _resolve_target_focus(self, current_focus_count: Optional[int]) -> Optional[int]:
+        """本轮观测对应的人数：优先用事件带过来的，其次最近已知的，最后问 RoomState。"""
+        if current_focus_count is not None:
+            return current_focus_count
+        if self._last_focus_count is not None:
+            return self._last_focus_count
+        try:
+            from ushareiplay.state.room_state import RoomState
+            return RoomState.instance().focus_count
+        except Exception:
+            return None
 
-        if divergence:
-            now = time.monotonic()
-            if now - self._last_rescan_time >= self.RESCAN_COOLDOWN:
-                self._last_rescan_time = now
-                self.logger.info(
-                    f"Focus divergence detected: focus_count={current_focus_count}, known_seated={total_seated}. "
-                    "Triggering active expansion rescan."
-                )
-                return await self.expand_rescan_and_collapse(current_focus_count)
-        return False
+    async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
+        """专注人数发生变化时调用。与在座人数背离时打破被动规则，主动展开全量扫描。"""
+        self._last_focus_count = current_focus_count
+        return await self._reconcile_focus_count(current_focus_count)
+
+    async def _reconcile_focus_count(self, target_focus: Optional[int]) -> bool:
+        """按专注人数对账：同一个取值最多触发一次全量重扫。
+
+        被动观测只能看到部分麦位，它的在座数与专注人数不一致是常态，不能作为
+        「再扫一次」的依据；只有专注人数这个取值本身发生变化（有人进来/离开专注）
+        才值得重新对一次账。人数没变时即使快照仍然对不上也绝不重复展开。
+        """
+        if target_focus is None:
+            return False
+        if target_focus == self._reconciled_focus_count:
+            return False
+        # 先登记再重扫：重扫耗时十几秒，期间事件轮询还会反复进来
+        self._reconciled_focus_count = target_focus
+
+        total_seated = sum(1 for s in self.seats.values() if s.occupied)
+        if total_seated == target_focus:
+            return False
+
+        attempted = await self._request_full_scan(
+            target_focus=target_focus,
+            reason=(
+                f"Focus divergence detected: focus_count={target_focus}, known_seated={total_seated}. "
+                "Triggering active expansion rescan."
+            ),
+        )
+        if not attempted or not self._last_rescan_ok:
+            # 被冷却挡下、或扫描没真正落地：撤掉登记，留给下一轮重试
+            self._reconciled_focus_count = None
+        return attempted and self._last_rescan_ok
+
+    async def _resolve_unexplained_changes(
+        self,
+        unexplained: Set[Tuple[int, str]],
+        target_focus: Optional[int],
+        *,
+        already_scanned: bool = False,
+    ) -> bool:
+        """视口里出现去向不明的变更 → 全量扫描一遍，取最最最新的座位信息。
+
+        抑制规则：同一份读数指纹只扫一次 —— 扫过就说明最新信息已经拿到了；如果扫完
+        读数还是这样，说明这份读数在该渲染下不可信（例如折叠视口读不到某个麦位），
+        不能无限重复展开。读数一旦变化（新的指纹）就重新扫；读数恢复一致时清空指纹，
+        同样的异常下次还会重新触发。
+        """
+        if not unexplained:
+            self._scanned_seat_change_fingerprint = None
+            return False
+        fingerprint = frozenset(unexplained)
+        if fingerprint == self._scanned_seat_change_fingerprint:
+            return False
+        if already_scanned:
+            # 本轮已经因为专注人数对账全量扫过了，这份读数已经被那次扫描服务过
+            self._scanned_seat_change_fingerprint = fingerprint
+            return False
+        return await self._request_full_scan(
+            target_focus=target_focus,
+            fingerprint=fingerprint,
+            reason=(
+                f"Seat change with unknown destination {sorted(unexplained)}; "
+                "triggering full rescan."
+            ),
+        )
+
+    async def _request_full_scan(
+        self,
+        *,
+        target_focus: Optional[int],
+        reason: str,
+        fingerprint: Optional[frozenset] = None,
+    ) -> bool:
+        """统一的展开重扫入口：冷却 + 指纹去重 + 失败回滚。
+
+        返回 True 表示扫描确实执行过（成败看 _last_rescan_ok），False 表示被冷却或
+        指纹挡下、根本没扫。闸门都是先登记再扫：重扫要十几秒，期间事件轮询会反复进来。
+        """
+        cooldown = self.RESCAN_COOLDOWN if self._last_rescan_ok else self.RESCAN_RETRY_COOLDOWN
+        if time.monotonic() - self._last_rescan_time < cooldown:
+            return False
+        if fingerprint is not None:
+            self._scanned_seat_change_fingerprint = fingerprint
+        self._last_rescan_time = time.monotonic()
+        self.logger.info(reason)
+        await self.expand_rescan_and_collapse(target_focus)
+        if not self._last_rescan_ok and fingerprint is not None:
+            # 扫描没落地（展开失败/半截快照）：撤掉指纹，留给下一轮重试
+            self._scanned_seat_change_fingerprint = None
+        # 返回值表示「扫描确实执行过」，成败一律看 _last_rescan_ok
+        return True
 
     async def _scan_all_rows_expanded(self, initial_desks: list) -> Dict[int, Tuple[any, str, dict]]:
         """
@@ -761,7 +1033,9 @@ class SeatObservationManager(Singleton):
         if not top_desks:
             top_desks = initial_desks
 
-        top_observed = self._read_visible_seats(top_desks)
+        # 顶部相位：前两排（desk 0..3）在视口里
+        top_observed, top_diagnostics = self._read_visible_seats(top_desks)
+        self.logger.debug(top_diagnostics)
         await self._resolve_usernames(top_observed, caller_holds_ui_session=True)
         observed_all.update(top_observed)
 
@@ -782,7 +1056,10 @@ class SeatObservationManager(Singleton):
         if not bottom_desks:
             bottom_desks = top_desks
 
-        bottom_observed = self._read_visible_seats(bottom_desks)
+        # 底部相位：后两排（desk 2..5）在视口里。整排都占满、读不到座位号时这一相位
+        # 会整体作废（身份未知不猜），但相邻相位通常能靠别的空座编号把带位钉住。
+        bottom_observed, bottom_diagnostics = self._read_visible_seats(bottom_desks)
+        self.logger.debug(bottom_diagnostics)
         # 将 top_observed 或已有快照中已知的昵称共享给 bottom_observed，避免重复弹窗检查（如第 5 号麦位）
         for seat_num, item in bottom_observed.items():
             if item[2].get("occupied") and not item[2].get("username"):
@@ -822,6 +1099,8 @@ class SeatObservationManager(Singleton):
             return False
 
         self._last_rescan_time = time.monotonic()
+        # 记为「没落地」：中途失败/半截快照时调用方要据此保留闸门、下轮重试
+        self._last_rescan_ok = False
 
         async with self._lock, self._ui_session("seat_expansion"):
             try:
@@ -837,7 +1116,9 @@ class SeatObservationManager(Singleton):
                     return False
 
                 old_slots = {k: v.copy() for k, v in self.seats.items()}
+                # 权威路径：两个相位把 12 个麦位都读过，明确空座即可判下座
                 self._apply_snapshot(observed)
+                self._last_rescan_ok = True
 
                 has_changes, changed_users, seat_info = self._compute_diff(
                     old_slots, self.seats, set(observed.keys())
