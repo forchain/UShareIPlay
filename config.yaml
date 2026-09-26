@@ -166,6 +166,8 @@ soul:
     right_default_name: "cn.soulapp.android:id/rightTvDefaultName"
     left_avatar: "cn.soulapp.android:id/leftAvatarView"
     right_avatar: "cn.soulapp.android:id/rightAvatarView"
+    left_rank: "cn.soulapp.android:id/leftRankView"
+    right_rank: "cn.soulapp.android:id/rightRankView"
     luck_pack: "cn.soulapp.android:id/tvLbLabelPack" # 福袋 / 2个奖励
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用

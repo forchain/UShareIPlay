@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -115,6 +116,68 @@ def build_desk_wrapper(handler, **kwargs) -> ElementWrapper:
     root = etree.fromstring(f"<hierarchy>{build_desk_xml(**kwargs)}</hierarchy>".encode())
     desk_xml = root.xpath(f"//*[@resource-id='{DESK_RESOURCE_ID}']")[0]
     return ElementWrapper(desk_xml, handler, "seat_desk")
+
+
+SEAT_DOM_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "seat_dom"
+
+
+def load_real_desk_nodes(fixture_name: str) -> list:
+    """真机 page_source dump 里的 userRoot 桌位子树（Appium 原始节点，含重复节点怪癖）。
+
+    夹具由设备实测 dump 裁剪而来（tests/fixtures/seat_dom/）—— 座位号 label、
+    裁切高度、AvatarView 子节点数都是真机事实，不是构造出来的假设。
+    """
+    root = etree.parse(str(SEAT_DOM_FIXTURES / fixture_name)).getroot()
+    return root.findall(f".//*[@resource-id='{DESK_RESOURCE_ID}']")
+
+
+def build_real_desk_wrappers(handler, fixture_name: str) -> list:
+    """真机 dump -> 事件轮询形状的 ElementWrapper 列表。"""
+    return [ElementWrapper(node, handler, "seat_desk") for node in load_real_desk_nodes(fixture_name)]
+
+
+def _location_from_bounds(bounds_str: str) -> tuple[dict, dict]:
+    numbers = [int(n) for n in re.findall(r"-?\d+", bounds_str or "")]
+    if len(numbers) != 4:
+        return {"x": 0, "y": 0}, {"width": 0, "height": 0}
+    x1, y1, x2, y2 = numbers
+    return {"x": x1, "y": y1}, {"width": x2 - x1, "height": y2 - y1}
+
+
+class RawDumpNode:
+    """真机 dump 节点的 raw WebElement 形状。
+
+    必须包一层：lxml 的叶子节点是 falsy 的（`if elem` 直接判空），而 Appium 的
+    WebElement 恒为真 —— 直接喂 lxml 节点会把生产代码里的 `if elem` 判断骗过去。
+    """
+
+    def __init__(self, xml_node):
+        self._node = xml_node
+        self.text = xml_node.get("text") or ""
+        self.clicked = False
+
+    def click(self):
+        self.clicked = True
+
+
+def build_real_raw_desks(fixture_name: str) -> list:
+    """同一份真机 DOM 的 raw WebElement 形状（展开重扫路径的 find_elements 返回物）。
+
+    子节点按 resource-id 建索引，与 Appium 的 parent.find_element 一样返回文档序第一个；
+    头像子树不在 raw 路径里数图（生产契约见 seat_observation._avatar_image_count）。
+    """
+    desks = []
+    for node in load_real_desk_nodes(fixture_name):
+        children: dict = {}
+        for child in node.iterdescendants():
+            rid = child.get("resource-id")
+            if rid and rid not in children:
+                children[rid] = RawDumpNode(child)
+        location, size = _location_from_bounds(node.get("bounds"))
+        desk = RawSeatDesk(children, location=location)
+        desk.size = size
+        desks.append(desk)
+    return desks
 
 
 def build_base_fragment_xml(y=100, bounds=None) -> str:
