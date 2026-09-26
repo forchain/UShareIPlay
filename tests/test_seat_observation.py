@@ -16,10 +16,17 @@ from tests.seat_fixtures import (
     FakeController,
     FakeSeatUI,
     RawSeatDesk,
+    build_base_fragment_wrapper,
     build_desk_wrapper,
+    build_real_desk_wrappers,
+    build_real_raw_desks,
+    load_real_desk_nodes,
     make_handler,
     soul_elements,
 )
+from lxml import etree
+
+from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
     SeatSlot,
@@ -636,50 +643,264 @@ async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_th
     assert manager.seats[12].occupied is True
 
 
-def test_is_seat_empty_vs_invisible():
+def test_no_pixel_height_threshold_constant_remains():
+    """#341：FULL_DESK_MIN_HEIGHT 连同所有 bounds 宽高阈值必须彻底删除。"""
+    assert not hasattr(SeatObservationManager, "FULL_DESK_MIN_HEIGHT")
+
+
+def test_seat_dom_is_read_regardless_of_pixel_size():
+    """几十像素的残片只要 DOM 里有麦位就必须照读 —— 高度不再是可见性的代理。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 40x18px（旧实现里宽高都 <60 会被整张丢弃）
+    clipped = build_desk_wrapper(handler, left="1", right="2", bounds="[10,566][50,584]")
+
+    assert manager._is_desk_visible(clipped) is True
+    assert manager.map_desks_to_indices([clipped]) == [(0, clipped)]
+    info = manager._extract_seat_info(clipped, "left", 1)
+    assert info["occupied"] is False
+    assert info["is_empty"] is True
+
+
+def test_empty_seat_with_single_avatar_image_is_empty():
+    """空座只剩 AvatarView 里的一张占位图（没有编号、没有「点击入座」）也要判为空座。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 右侧 "2" 把桌位钉在 desk 0；左侧空座没有任何文字，只有一张占位图
+    desk = build_desk_wrapper(handler, right="2", left_avatar_images=1)
+
+    info = manager._extract_seat_info(desk, "left", 1)
+    assert info["occupied"] is False
+    assert info["is_empty"] is True
+    assert info["avatar_images"] == 1
+
+
+def test_occupied_seat_with_multiple_avatar_images_is_occupied():
+    """占座麦位的 AvatarView 有多张图（头像 + 挂件/边框），即便读不到昵称也算占座。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    desk = build_desk_wrapper(handler, right="2", left_avatar_images=3)
+
+    info = manager._extract_seat_info(desk, "left", 1)
+    assert info["occupied"] is True
+    assert info["is_empty"] is False
+    assert info["avatar_images"] == 3
+
+
+def test_occupied_seat_with_state_widgets_is_occupied():
+    """ClState 里的活跃控件（勋章、专注时长）本身就是占座证据，不依赖头像或昵称。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    desk = build_desk_wrapper(handler, right="2", left_state_widgets=True)
+
+    info = manager._extract_seat_info(desk, "left", 1)
+    assert info["occupied"] is True
+    assert info["is_empty"] is False
+    assert info["has_state"] is True
+    assert info["username"] is None  # 昵称留给权威路径点头像弹窗补齐
+
+
+def test_bare_clstate_reads_as_occupied():
+    """ClState 存在即占座：空座渲染 TvDefaultName 或麦位编号、不带 ClState。
+
+    这与 seating.py 定座流程的判据（bool(left_state)）同源，也是 CONTEXT.md 写的
+    「ClState presence」；勋章/专注时长等活跃控件因此天然覆盖（见 #341）。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # leftClState 在，但里面既没有勋章/时长，也没有昵称
+    desk = build_desk_wrapper(handler, left_occupied=True, right="2")
+
+    info = manager._extract_seat_info(desk, "left", 1)
+    assert info["has_state"] is True
+    assert info["avatar_images"] == 0
+    assert info["occupied"] is True
+    assert info["is_empty"] is False
+
+
+def test_raw_desk_avatar_image_count_is_unreadable_and_never_clears_a_seat():
+    """展开重扫的 raw WebElement 数不到 AvatarView 的图片（Appium 的 XPath 是整页
+    作用域，数下去会数到全屏的图），所以这类读数只能靠 ClState / 昵称 / 编号。
+
+    数不到时必须落在「未知」上：既不算占座也不算空座，绝不能凭一个半截读数把人推平。
+    """
+    elements = soul_elements()
+    raw_desk = RawSeatDesk(
+        {
+            elements["left_avatar"]: SimpleNamespace(),  # 有 AvatarView 节点，但没有图片可数
+            elements["right_label"]: SimpleNamespace(text="2"),
+        },
+        location={"x": 40, "y": 100},
+    )
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    info = manager._extract_seat_info(raw_desk, "left", 1)
+    assert info["avatar_images"] == 0
+    assert info["occupied"] is False
+    assert info["is_empty"] is False
+
+
+def test_avatar_view_without_images_is_unknown_not_empty():
+    """占位图都没渲染出来时既不算占座也不算空座：宁可不写，不可猜。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    desk = build_desk_wrapper(handler, right="2")
+
+    info = manager._extract_seat_info(desk, "left", 1)
+    assert info["occupied"] is False
+    assert info["is_empty"] is False
+    assert manager._is_desk_visible(desk) is True  # 右侧有编号，桌位本身仍可用
+
+
+def test_base_only_fragment_produces_no_seat_slot_data():
+    """只渲染底座的残片（bgRoot + left/rightBottomView）不产出任何麦位数据。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    fragment = build_base_fragment_wrapper(handler, y=566)
+
+    assert manager._has_desk_content(fragment) is False
+    assert manager._is_desk_visible(fragment) is False
+    assert manager.map_desks_to_indices([fragment]) == []
+
+
+@pytest.mark.asyncio
+async def test_observation_of_base_only_fragment_writes_nothing():
+    """底座残片既不能推平快照，也不构成变更 —— 它不是任何一个麦位的读数。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
+    manager._last_focus_count = 1
+
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        changed = await manager.observe_visible_desks(
+            [build_base_fragment_wrapper(handler, y=566)], current_focus_count=1
+        )
+
+    assert changed is False
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].username == "张三"
+    mock_rescan.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_full_rescan_clears_seat_showing_only_the_placeholder_image():
+    """权威路径的落快照逻辑：空座只有一张占位图（读不到编号）也要判下座并发离座事件。
+
+    这里 desk 用快照形状（与被动观测同一套读数）；生产上展开重扫拿到的是 raw
+    WebElement，数不到占位图，见 test_raw_desk_avatar_image_count_is_unreadable_and_never_clears_a_seat。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
+
+    desk = build_desk_wrapper(handler, right="2", left_avatar_images=1)
+    manager._seat_ui = FakeSeatUI(desks=[desk])
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.expand_rescan_and_collapse(0)
+
+    assert changed is True
+    assert manager.seats[1].occupied is False
+    assert manager.seats[1].username is None
+    assert notify.call_args.kwargs["seat_info"]["张三"] == {
+        "seat_number": 1,
+        "action": "leave_seat",
+    }
+
+
+@pytest.mark.asyncio
+async def test_full_rescan_inspects_occupant_of_seat_with_multiple_avatar_images():
+    """权威路径：AvatarView 多图判定占座后点头像弹窗取真实昵称，再发上座事件。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value="Bob")
+
+    desk = build_desk_wrapper(handler, right="2", left_avatar_images=3)
+    manager._seat_ui = FakeSeatUI(desks=[desk])
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.expand_rescan_and_collapse(1)
+
+    assert changed is True
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].username == "Bob"
+    assert notify.call_args.kwargs["seat_info"]["Bob"] == {
+        "seat_number": 1,
+        "action": "sit_down",
+    }
+
+
+def test_seat_reads_as_empty_vs_invisible():
     """验证空座（下座）与看不见（不可见/稀疏内容）的严格区分。"""
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)
 
+    def _read(**kwargs) -> dict:
+        return manager._extract_seat_info(build_desk_wrapper(handler, y=200, **kwargs), "left", 1)
+
     # 1. 空座：具备明确的默认名称“点击入座”
-    desk_empty_by_default = build_desk_wrapper(handler, left_default_name="点击入座", y=200)
-    assert manager._is_seat_empty(desk_empty_by_default, "left") is True
+    empty_by_default = _read(left_default_name="点击入座")
+    assert empty_by_default["is_empty"] is True
+    assert empty_by_default["occupied"] is False
 
     # 2. 空座：label 为座位编号数字（房间内空位显示编号）
-    desk_empty_by_number = build_desk_wrapper(handler, left="5", y=200)
-    assert manager._is_seat_empty(desk_empty_by_number, "left") is True
+    empty_by_number = _read(left="1")
+    assert empty_by_number["is_empty"] is True
+    assert empty_by_number["occupied"] is False
 
-    # 3. 看不见状态：无 state、无 label、无 default_name（例如滑动出视口或仅留底部装饰）
-    desk_invisible = build_desk_wrapper(handler, left="", y=200)
-    assert manager._is_seat_empty(desk_invisible, "left") is False
-    assert manager._is_seat_occupied(desk_invisible, "left") is False
+    # 3. 看不见状态：无 state、无 label、无 default_name、无占位图
+    #    （例如滑动出视口或仅留底部装饰）—— 既不是空座，也不是占座
+    invisible = _read(left="")
+    assert invisible["is_empty"] is False
+    assert invisible["occupied"] is False
 
     # 4. 占座状态：state 存在，绝对不是空座
-    desk_occupied = build_desk_wrapper(handler, left="锦鲤", left_occupied=True, y=200)
-    assert manager._is_seat_occupied(desk_occupied, "left") is True
-    assert manager._is_seat_empty(desk_occupied, "left") is False
+    occupied = _read(left="锦鲤", left_occupied=True)
+    assert occupied["occupied"] is True
+    assert occupied["is_empty"] is False
 
 
-def test_desk_visibility_requires_minimum_bounds_and_content():
-    """验证只有尺寸正常（>=60px）且具有实质麦位内容的桌位才被判定为可视桌位。"""
+def test_desk_visibility_requires_dom_content_not_bounds():
+    """桌位是否可用只看 DOM 证据，像素宽高一律不参与判定（见 #341）。"""
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)
 
-    # 1. 边缘裁切残片（例如高度仅 18px 或 11px），即便在 XML 中也判定为不可见
+    # 1. 边缘裁切残片（高 18px）：DOM 里没有麦位证据 → 不可用
     desk_clipped = build_desk_wrapper(handler, bounds="[28,566][337,584]")
     assert manager._is_desk_visible(desk_clipped) is False
 
-    # 2. 正常尺寸但内部无任何实质麦位内容（无占座、无编号、无点击入座）
+    # 2. 正常尺寸但内部无任何麦位 DOM（无占座、无编号、无点击入座、无占位图）
     desk_no_content = build_desk_wrapper(handler, bounds="[28,200][337,400]")
     assert manager._is_desk_visible(desk_no_content) is False
 
-    # 3. 正常尺寸且有占座内容
+    # 3. 有占座内容
     desk_with_seat = build_desk_wrapper(handler, left="锦鲤", left_occupied=True, bounds="[28,200][337,400]")
     assert manager._is_desk_visible(desk_with_seat) is True
 
-    # 4. 正常尺寸且有空座内容（点击入座）
+    # 4. 有空座内容（点击入座）
     desk_with_empty = build_desk_wrapper(handler, left_default_name="点击入座", bounds="[28,200][337,400]")
     assert manager._is_desk_visible(desk_with_empty) is True
+
+    # 5. 高 18px 的残片只要 DOM 里有麦位（这里是空座占位图）就照读
+    desk_clipped_with_seat = build_desk_wrapper(
+        handler, right="2", left_avatar_images=1, bounds="[28,566][337,584]"
+    )
+    assert manager._is_desk_visible(desk_clipped_with_seat) is True
+
+    # 6. 只渲染底座的残片（没有 userView）永远不产出麦位数据
+    assert manager._is_desk_visible(build_base_fragment_wrapper(handler)) is False
 
 
 def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
@@ -707,23 +928,31 @@ def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
     assert manager.seats[5].username == "锦鲤"
 
 
-def test_apply_snapshot_clears_only_when_desk_is_fully_visible_and_clearable():
-    """判「下座」的两个前提：桌位完整可见，且该号位被允许清空。"""
+def test_apply_snapshot_clears_only_on_explicit_empty_evidence_and_clearable():
+    """判「下座」的两个前提：DOM 读出明确空座，且该号位被允许清空。
+
+    像素高度不再是判据 —— 「读不到空座证据」（滑出视口/折叠/底座残片）由
+    _judge_empty 直接挡在 is_empty 之外（见 test_apply_snapshot_preserves_occupant_when_seat_is_invisible
+    与 test_base_only_fragment_produces_no_seat_slot_data）。
+    """
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)
 
-    def _empty_read(**overrides):
-        info = {
-            "occupied": False,
-            "is_empty": True,
-            "label": "7",
-            "username": None,
-            "unclipped": True,
+    def _empty_read():
+        return {
+            3: (
+                None,
+                "left",
+                {
+                    "occupied": False,
+                    "is_empty": True,
+                    "label": "7",
+                    "username": None,
+                },
+            )
         }
-        info.update(overrides)
-        return {3: (None, "left", info)}
 
-    # 权威路径（clearable=None，全量重扫读过全部麦位）：桌位完整可见即可判下座
+    # 权威路径（clearable=None，全量重扫读过全部麦位）：读到明确空座即可判下座
     manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
     manager._apply_snapshot(_empty_read())
     assert manager.seats[3].occupied is False
@@ -735,9 +964,9 @@ def test_apply_snapshot_clears_only_when_desk_is_fully_visible_and_clearable():
     assert manager.seats[3].occupied is True
     assert manager.seats[3].username == "Chainer"
 
-    # 桌位被裁切（几十 px 的残片）时，即便允许清空也不清
-    manager._apply_snapshot(_empty_read(unclipped=False), clearable={3})
-    assert manager.seats[3].occupied is True
+    # 列入 clearable 的号位读到明确空座就清
+    manager._apply_snapshot(_empty_read(), clearable={3})
+    assert manager.seats[3].occupied is False
 
 
 @pytest.mark.asyncio
@@ -1018,6 +1247,274 @@ async def test_rescan_that_never_landed_is_retried():
     assert manager.expand_rescan_and_collapse.await_count == 2
 
 
+def test_avatar_image_count_matches_real_appium_xml_tag():
+    """真实 Appium page_source 的节点是 <android.widget.ImageView>，不带 class 属性。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    xml = """
+    <android.view.ViewGroup resource-id="cn.soulapp.android:id/userRoot">
+      <android.view.ViewGroup resource-id="cn.soulapp.android:id/leftUserView">
+        <android.widget.FrameLayout resource-id="cn.soulapp.android:id/leftAvatarView">
+          <android.widget.ImageView/>
+          <android.widget.ImageView/>
+          <android.widget.ImageView/>
+        </android.widget.FrameLayout>
+      </android.view.ViewGroup>
+    </android.view.ViewGroup>
+    """
+    desk = ElementWrapper(etree.fromstring(xml.encode()), handler, "seat_desk")
+    assert manager._avatar_image_count(desk, "left") == 3
+
+
+@pytest.mark.asyncio
+async def test_move_seat_to_collapsed_row_triggers_full_rescan():
+    """用户从折叠不可见的 11 号位换座到折叠可视的 7 号位时，必须触发全量重扫。
+
+    在折叠状态下，第二排桌位的麦位标签（leftTvLabelH / ClState）通常未渲染或被裁剪，
+    麦位判定完全依赖 AvatarView 里的 ImageView 数量。
+    真实 Appium XML 节点为 <android.widget.ImageView>。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照（与线上日志一致）：5锦鲤，6儿童不易，11 Outlier，12群主
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+    manager.seats[6] = SeatSlot(seat_number=6, occupied=True, username="儿童不易")
+    manager.seats[11] = SeatSlot(seat_number=11, occupied=True, username="Outlier")
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="群主", is_owner=True)
+    manager._reconciled_focus_count = 4
+    manager._last_focus_count = 4
+
+    def build_real_desk(desk_idx, left_imgs, right_imgs, left_lbl="", right_lbl=""):
+        xml = f"""
+        <android.view.ViewGroup resource-id="cn.soulapp.android:id/userRoot" bounds="[40,{desk_idx*100}][400,{desk_idx*100+160}]">
+          <android.view.ViewGroup resource-id="cn.soulapp.android:id/leftUserView">
+            <android.widget.FrameLayout resource-id="cn.soulapp.android:id/leftAvatarView">
+              {''.join('<android.widget.ImageView/>' for _ in range(left_imgs))}
+            </android.widget.FrameLayout>
+            {f'<android.widget.TextView resource-id="cn.soulapp.android:id/leftTvLabelH" text="{left_lbl}"/>' if left_lbl else ''}
+          </android.view.ViewGroup>
+          <android.view.ViewGroup resource-id="cn.soulapp.android:id/rightUserView">
+            <android.widget.FrameLayout resource-id="cn.soulapp.android:id/rightAvatarView">
+              {''.join('<android.widget.ImageView/>' for _ in range(right_imgs))}
+            </android.widget.FrameLayout>
+            {f'<android.widget.TextView resource-id="cn.soulapp.android:id/rightTvLabelH" text="{right_lbl}"/>' if right_lbl else ''}
+          </android.view.ViewGroup>
+        </android.view.ViewGroup>
+        """
+        return ElementWrapper(etree.fromstring(xml.encode()), handler, "seat_desk")
+
+    # 4 张可见桌位（折叠状态视口）
+    d0 = build_real_desk(0, 1, 1, "1", "2")
+    d1 = build_real_desk(1, 1, 1, "3", "4")
+    d2 = build_real_desk(2, 2, 2, "锦鲤", "儿童不易")
+    # 7 号位（左侧）Outlier 坐下，3 张 ImageView，折叠未渲染 label；8 号位空闲
+    d3 = build_real_desk(3, 3, 1, "", "8")
+
+    desks = [d0, d1, d2, d3]
+
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        mock_rescan.return_value = True
+        with patch.object(manager, "inspect_occupant", new_callable=AsyncMock) as mock_inspect:
+            mock_inspect.return_value = "Outlier"
+            await manager.observe_visible_desks(desks, current_focus_count=4)
+
+    mock_rescan.assert_awaited_once_with(4)
 
 
 
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# 真机视口夹具（tests/fixtures/seat_dom/，从设备实测 page_source dump 裁剪）：
+# config.yaml 里 left_label/rightTvLabelH 只在普通用户占座时才是座位号数字，
+# 群主/管理占座显示身份文字、空座根本没有 label 节点 —— 所以「群主在第二排、
+# 第二排只露出顶部一角」的视口一个数字锚点都拿不到。下面这些用例就覆盖这种
+# 真实视口，避免再用构造 DOM 的假设去掩盖生产分歧（#341 的教训）。
+# ---------------------------------------------------------------------------
+
+
+def _real_raw_desks_without_number_anchors(fixture_name: str) -> list:
+    """真机相位读数，把数字 label 换成身份文字（等价于可见带位里没有普通用户占座）。"""
+    desks = build_real_raw_desks(fixture_name)
+    for desk in desks:
+        for node in desk.children.values():
+            if node.text.strip().isdigit():
+                node.text = "管理"
+    return desks
+
+
+def test_real_top_phase_maps_leading_desks_without_anchor():
+    """展开重扫顶相位（滚动被内容顶部夹住）：真机几何下没有锚点也能定出座位号。
+
+    夹具是实测的展开态首相位：第 0 排满高、第 1 排满高、第 2 排裁到 45px。
+    """
+    manager = SeatObservationManager.initialize(make_handler())
+
+    observed, _diag = manager._read_visible_seats(
+        _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml"), band="top"
+    )
+
+    # 夹具当时的真机事实：1 号位群主、5 号位（第二排左）有人占座，其余空座
+    assert sorted(observed) == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert observed[1][2]["occupied"] is True
+    assert observed[1][2]["is_owner"] is True
+    assert observed[5][2]["occupied"] is True
+    assert observed[5][2]["username"] is None  # 身份文字不能用当昵称
+    assert observed[6][2]["is_empty"] is True
+
+
+def test_real_bottom_phase_maps_trailing_desks_without_anchor():
+    """展开重扫底相位（滚动被内容底部夹住）：真机几何下没有锚点也能定出座位号。
+
+    夹具是实测的滚到底相位：第 0 排只剩上方残片，第 1、2 排满高。
+    """
+    manager = SeatObservationManager.initialize(make_handler())
+
+    observed, _diag = manager._read_visible_seats(
+        _real_raw_desks_without_number_anchors("expanded_scrolled_bottom.xml"), band="bottom"
+    )
+
+    assert sorted(observed) == [5, 6, 7, 8, 9, 10, 11, 12]
+    assert observed[5][2]["occupied"] is True  # 真机：5 号位有人
+    assert observed[6][2]["is_empty"] is True
+    assert observed[12][2]["is_empty"] is True
+
+
+def test_phase_mapping_refuses_when_panel_is_at_the_other_end():
+    """相位兜底必须过几何校验：面板没滚到那一端时绝不按相位硬排（会写错座位号）。"""
+
+    manager = SeatObservationManager.initialize(make_handler())
+    top_leaning = _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml")
+    bottom_leaning = _real_raw_desks_without_number_anchors("expanded_scrolled_bottom.xml")
+
+    assert manager._read_visible_seats(top_leaning, band="bottom")[0] == {}
+    assert manager._read_visible_seats(bottom_leaning, band="top")[0] == {}
+
+
+def test_mid_scroll_viewport_stays_unknown():
+    """中间滚动位置（上方和下方都还有桌位）不猜 —— 复现 #341 之前错配座位号的成因。"""
+
+    manager = SeatObservationManager.initialize(make_handler())
+    desks = _real_raw_desks_without_number_anchors("collapsed_scrolled_after_collapse.xml")
+
+    for band in (None, "top", "bottom"):
+        assert manager._read_visible_seats(desks, band=band)[0] == {}
+
+
+def test_real_collapsed_viewport_without_anchor_maps_nothing():
+    """被动观测的保守语义不变：身份未知（既无锚点也无相位）时整屏读数丢弃。
+
+    这就是本次 bug 的现场：真机折叠视口里群主在 1 号位、第二排只露一角，
+    没有任何数字锚点，旧实现整屏丢弃 -> 第二排任何变动都读不到。
+    """
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    wrappers = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
+
+    assert manager._read_visible_seats(wrappers)[0] == {}
+
+
+def _collapsed_wrappers_with_second_row_occupant_gone(handler) -> list:
+    """真机折叠夹具的最小改动：第二排左侧那角的挂件图删到只剩一张占位图 = 人离座。"""
+
+    nodes = load_real_desk_nodes("collapsed_top_no_anchor.xml")
+    for node in nodes:
+        desk_bounds = node.get("bounds") or ""
+        if desk_bounds.startswith("[28,800"):  # 第二排左桌位（5/6 号位）
+            avatars = node.findall(".//*[@resource-id='cn.soulapp.android:id/leftAvatarView']")
+            for avatar in avatars:
+                for image in list(avatar)[1:]:  # 空座只剩一张占位图
+                    avatar.remove(image)
+    return [ElementWrapper(node, handler, "seat_desk") for node in nodes]
+
+
+@pytest.mark.asyncio
+async def test_real_collapsed_second_row_change_escalates_without_anchor():
+    """真机折叠视口里第二排变动：读数进不了快照，但必须升级为全量重扫。
+
+    重扫的相位由本管理器自己滚出来（顶相位/底相位是已知几何），能把座位号对上，
+    座位变更事件才有机会触发 —— 否则「第二排换座没有事件」会一直复现。
+    """
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    before = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
+    await manager.observe_visible_desks(before)  # 记下基线指纹（此轮不应触发重扫）
+
+    after = _collapsed_wrappers_with_second_row_occupant_gone(handler)
+    with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as rescan:
+        rescan.return_value = True
+        await manager.observe_visible_desks(after)
+
+    assert rescan.await_count == 1
+    assert "identity is unknown" in rescan.await_args.kwargs["reason"]
+
+
+@pytest.mark.asyncio
+async def test_real_collapsed_viewport_without_change_does_not_rescan():
+    """指纹没变就不重扫：避免身份未知的稳定视口把重扫当监控用（铁律：无行为不刷日志）。"""
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    first = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
+    second = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
+    await manager.observe_visible_desks(first)
+
+    with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as rescan:
+        rescan.return_value = True
+        await manager.observe_visible_desks(second)
+
+    assert rescan.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_band_change_signal_survives_failed_rescan():
+    """重扫没落地时变更信号不能被消费掉：下一轮还得再试。
+
+    真机复现（23:57:56）：换座后指纹兜底触发了重扫，但展开按钮当时找不到
+    （Failed to expand seats for full rescan），快照就停在旧座位上了。
+    """
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    await manager.observe_visible_desks(
+        build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
+    )
+    after = _collapsed_wrappers_with_second_row_occupant_gone(handler)
+
+    async def failed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = False  # 扫描跑了但没落地
+        return True
+
+    with patch.object(manager, "_request_full_scan", side_effect=failed_scan) as rescan:
+        await manager.observe_visible_desks(after)
+
+    assert rescan.await_count == 1
+    assert manager._band_change_reason is not None  # 信号留着，冷却结束后重试
+
+
+@pytest.mark.asyncio
+async def test_rescan_falls_back_to_on_screen_desks_when_expansion_unavailable():
+    """展开按钮不可用（弹窗切换/面板已展开）时退回当前桌位继续扫，不整轮放弃。"""
+
+    raw_desks = _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml")
+    handler = make_handler(desks=raw_desks)
+    manager = SeatObservationManager.initialize(handler)
+    manager._seat_ui = FakeSeatUI(desks=None)  # 展开失败
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.expand_rescan_and_collapse(target_focus_count=2)
+
+    assert manager._last_rescan_ok is True
+    assert manager.seats[1].occupied is True  # 真机夹具：1 号位是群主
+    assert manager.seats[5].occupied is True  # 真机夹具：5 号位有人
