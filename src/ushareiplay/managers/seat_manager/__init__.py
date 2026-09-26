@@ -3,6 +3,7 @@ from ushareiplay.managers.seat_manager.reservation import ReservationManager
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 import logging
 
 class SeatManager(SeatManagerBase):
@@ -13,6 +14,10 @@ class SeatManager(SeatManagerBase):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    @classmethod
+    def reset_instance(cls):
+        cls._instance = None
 
     def __init__(self, handler=None):
         # 打印更多日志，帮助调试
@@ -37,6 +42,19 @@ class SeatManager(SeatManagerBase):
             self._check._message_dispatch = None
             self._ui.handler = handler
             self._seating.handler = handler
+            if SeatObservationManager.is_initialized():
+                SeatObservationManager.instance().bind_handler(handler)
+
+    @property
+    def observation(self):
+        """Lookup-only access to SeatObservationManager singleton if initialized."""
+        if SeatObservationManager.is_initialized():
+            return SeatObservationManager.instance()
+        return None
+
+    @property
+    def _observation(self):
+        return self.observation
 
     def _is_guest_room(self) -> bool:
         try:

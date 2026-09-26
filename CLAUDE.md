@@ -100,6 +100,12 @@ Element selectors and UI automation logic are tightly coupled to `config.yaml` �
 
 `AppHandler` (base class for `SoulHandler`/`QQMusicHandler`) implements automatic crash detection and app restart. `main.py` wraps the controller in a retry loop (up to 10 restarts).
 
+### Logging Policy (铁律)
+
+- **禁止输出无行为触发的监控日志**：严禁在循环监控、轮询、周期性检测（如麦位观测、UI 锁获取/释放、心跳巡检等）中输出无行为触发的监控日志。
+- **只有触发了具体行为才输出日志**：例如检测到麦位变更、执行命令、用户进出、发起弹窗交互或出现异常/错误时才输出日志。锁机制等内部同步细节严禁使用 INFO/CRITICAL 等级别在监控轮询中刷屏，仅限 DEBUG 级别排查。
+
+
 ## OpenSpec Workflow
 
 This repo uses OpenSpec for structured change management:

@@ -619,18 +619,27 @@ class CommandManager(Singleton):
             except Exception:
                 self.logger.error(f"Error in command user_gift_receive: {traceback.format_exc()}")
 
-    async def notify_focus_count_change(self, before: int | None, after: int):
-
+    async def notify_focus_count_change(
+        self,
+        before: int | None,
+        after: int,
+        changed_users: list[str] | None = None,
+        seat_info: dict | None = None,
+    ):
         """
-        Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) changes.
+        Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) or seats change.
 
         Args:
             before: Previous parsed count, or None on first observation
             after: New parsed count
+            changed_users: Specific users whose seat/focus status changed, or None for all
+            seat_info: Optional dictionary mapping username to seat details
         """
         for module in self.get_command_modules().values():
             try:
                 if hasattr(module.command, "focus_count_change"):
-                    await module.command.focus_count_change(before, after)
+                    await module.command.focus_count_change(
+                        before, after, changed_users=changed_users, seat_info=seat_info
+                    )
             except Exception:
                 self.logger.error(f"Error in command focus_count_change: {traceback.format_exc()}")

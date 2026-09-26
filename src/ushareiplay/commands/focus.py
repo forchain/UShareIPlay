@@ -68,28 +68,56 @@ class FocusCommand(BaseCommand):
 
         return {"error": f"未知操作: {operation}。使用: :focus [add|del|list|clear]"}
 
-    async def focus_count_change(self, before: int | None, after: int):
-        """专注人数变化时执行：谁 :focus add 的配置，就用谁的 nickname 入队执行。"""
+    async def focus_count_change(
+        self,
+        before: int | None,
+        after: int,
+        changed_users: list[str] | None = None,
+        seat_info: dict | None = None,
+    ):
+        """专注人数变化或特定用户麦位变动时执行。
+
+        若指定了 changed_users，仅检索并入队这部分用户的 :focus add 配置（用户级隔离）；
+        若未指定 changed_users（兼容旧调用），则回退为执行所有用户的联动命令。
+        """
         try:
             from ushareiplay.core.message_queue import MessageQueue
             from ushareiplay.models.message_info import MessageInfo
 
-            commands = await FocusEventDao.get_all_ordered()
+            commands = []
+            if changed_users is not None:
+                for username in changed_users:
+                    user_cmds = await FocusEventDao.get_by_username(username)
+                    commands.extend(user_cmds)
+            else:
+                commands = await FocusEventDao.get_all_ordered()
+
             if not commands:
                 return
 
             self.handler.logger.info(
-                f"Focus count {before} -> {after}, queuing {len(commands)} focus command(s) "
-                f"across {len({c.user_id for c in commands})} user(s)"
+                f"Focus change {before} -> {after}, queuing {len(commands)} focus command(s) "
+                f"for changed users: {changed_users if changed_users is not None else 'all'}"
             )
 
             message_queue = MessageQueue.instance()
+            seat_info = seat_info or {}
             for cmd in commands:
                 username = cmd.user.username
-                message_info = MessageInfo(content=cmd.command, nickname=username)
+                cmd_text = cmd.command
+                user_seat = seat_info.get(username, {})
+                seat_num = str(user_seat.get("seat_number", ""))
+                action = str(user_seat.get("action", ""))
+                cmd_text = (
+                    cmd_text.replace("{username}", username)
+                    .replace("{seat}", seat_num)
+                    .replace("{action}", action)
+                )
+
+                message_info = MessageInfo(content=cmd_text, nickname=username)
                 await message_queue.put_message(message_info)
                 self.handler.logger.info(
-                    f"Queued focus event command [{cmd.id}] for {username}: {cmd.command}"
+                    f"Queued focus event command [{cmd.id}] for {username}: {cmd_text}"
                 )
         except Exception:
             self.handler.log_error(f"Error in focus_count_change: {traceback.format_exc()}")

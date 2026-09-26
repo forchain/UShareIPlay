@@ -29,3 +29,9 @@ class SeatManagerBase:
         elif handler is not None:
             cls(handler, *args, **kwargs)
         return cls._instance
+
+    @classmethod
+    def reset_instance(cls):
+        cls._instance = None
+        cls._initialized = False
+

@@ -112,20 +112,37 @@ class SeatUIManager:
             return
 
         reference_desk = seat_desks[2]
-        center_x = reference_desk.location['x'] + reference_desk.size['width'] // 2
-        center_y = reference_desk.location['y'] + reference_desk.size['height'] // 2
-        desk_height = reference_desk.size['height']
+        loc = getattr(reference_desk, "location", None)
+        size = getattr(reference_desk, "size", None)
+        bounds = getattr(reference_desk, "bounds", None)
+
+        if isinstance(loc, dict) and isinstance(size, dict):
+            center_x = loc.get('x', 0) + size.get('width', 0) // 2
+            center_y = loc.get('y', 0) + size.get('height', 0) // 2
+            desk_height = size.get('height', 160)
+        elif isinstance(bounds, dict):
+            center_x = bounds.get('x', 0) + bounds.get('width', 0) // 2
+            center_y = bounds.get('y', 0) + bounds.get('height', 0) // 2
+            desk_height = bounds.get('height', 160)
+        else:
+            return
+
+        gesture = getattr(self.handler, "gesture_handler", None)
+        if gesture is None or not hasattr(gesture, "swipe"):
+            return
 
         if row_index == 0:
-            self.handler.gesture_handler.swipe(
+            gesture.swipe(
                 center_x, center_y, center_x, center_y + desk_height, duration
             )
-            self.handler.logger.info(f"Scrolled to show first row for desk {desk_index + 1}")
+            if hasattr(self.handler, "logger") and self.handler.logger:
+                self.handler.logger.debug(f"Scrolled to show first row for desk {desk_index + 1}")
         elif row_index == 2:
-            self.handler.gesture_handler.swipe(
+            gesture.swipe(
                 center_x, center_y, center_x, center_y - desk_height, duration
             )
-            self.handler.logger.info(f"Scrolled to show third row for desk {desk_index + 1}")
+            if hasattr(self.handler, "logger") and self.handler.logger:
+                self.handler.logger.debug(f"Scrolled to show third row for desk {desk_index + 1}")
 
     async def collapse_seats(self):
         """Collapse seats if expanded"""
