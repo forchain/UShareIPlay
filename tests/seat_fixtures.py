@@ -143,6 +143,7 @@ class FakeSeatUI:
     def __init__(self, desks=None):
         self.desks = desks
         self.collapsed = False
+        self.scrolled_rows = []
 
     async def expand_and_find_desks(self):
         return self.desks
@@ -150,6 +151,11 @@ class FakeSeatUI:
     async def collapse_seats(self):
         self.collapsed = True
         return True
+
+    def scroll_to_row(self, desk_index, seat_desks=None, duration=100):
+        if not hasattr(self, "scrolled_rows"):
+            self.scrolled_rows = []
+        self.scrolled_rows.append(desk_index // 2)
 
 
 def make_handler(elements=None, desks=None, popup_name=None, controller=None):

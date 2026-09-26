@@ -168,9 +168,8 @@ class SeatObservationManager(Singleton):
     ) -> str:
         """
         输出符合物理现实效果的直观快照：一排两张桌，每张桌两个人，共三排。
-        同时输出专注人数和在座人数。
+        输出专注人数（与在座人数一致）。
         """
-        total_seated = sum(1 for s in self.seats.values() if s.occupied)
         if focus_count is None:
             focus_count = self._last_focus_count
         if focus_count is None:
@@ -192,7 +191,7 @@ class SeatObservationManager(Singleton):
             return f"[{num}号: {name}]"
 
         lines = [
-            f"[FocusSeatObservation] 专注麦位状态变更 (触发源: {trigger_source}, 专注人数: {focus_str}, 在座人数: {total_seated}):",
+            f"[FocusSeatObservation] 专注麦位状态变更 (触发源: {trigger_source}, 专注人数: {focus_str}):",
             f"  第一排: {format_seat(1)} {format_seat(2)}  |  {format_seat(3)} {format_seat(4)}",
             f"  第二排: {format_seat(5)} {format_seat(6)}  |  {format_seat(7)} {format_seat(8)}",
             f"  第三排: {format_seat(9)} {format_seat(10)}  |  {format_seat(11)} {format_seat(12)}",
@@ -644,9 +643,80 @@ class SeatObservationManager(Singleton):
                 return await self.expand_rescan_and_collapse(current_focus_count)
         return False
 
+    async def _scan_all_rows_expanded(self, initial_desks: list) -> Dict[int, Tuple[any, str, dict]]:
+        """
+        在展开状态下执行双向全量扫描：
+        1. 滑到第一排（Row 0），观测前两排（1~8号麦位）并解析未识别昵称；
+        2. 滑到第三排（Row 2），观测后两排（5~12号麦位）并解析未识别昵称；
+        3. 合并两次观测结果，确保 1~12 号麦位全部完整覆盖，最后滑回第一排复位。
+        """
+        observed_all: Dict[int, Tuple[any, str, dict]] = {}
+
+        # 1. 滑动至第一排（Row 0），使第一排（1~4号）和第二排（5~8号）处于可视视口
+        if hasattr(self.seat_ui, "scroll_to_row"):
+            try:
+                self.seat_ui.scroll_to_row(0, initial_desks, duration=300)
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                self.logger.debug(f"Scroll to top row failed: {e}")
+
+        top_desks = None
+        if self.handler and hasattr(self.handler, "element_finder"):
+            try:
+                top_desks = self.handler.element_finder.find_elements("seat_desk")
+            except Exception:
+                pass
+        if not top_desks:
+            top_desks = initial_desks
+
+        top_observed = self._read_visible_seats(top_desks)
+        await self._resolve_usernames(top_observed, caller_holds_ui_session=True)
+        observed_all.update(top_observed)
+
+        # 2. 滑动至第三排（Row 2），使第二排（5~8号）和第三排（9~12号）处于可视视口
+        if hasattr(self.seat_ui, "scroll_to_row"):
+            try:
+                self.seat_ui.scroll_to_row(4, top_desks, duration=300)
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                self.logger.debug(f"Scroll to bottom row failed: {e}")
+
+        bottom_desks = None
+        if self.handler and hasattr(self.handler, "element_finder"):
+            try:
+                bottom_desks = self.handler.element_finder.find_elements("seat_desk")
+            except Exception:
+                pass
+        if not bottom_desks:
+            bottom_desks = top_desks
+
+        bottom_observed = self._read_visible_seats(bottom_desks)
+        await self._resolve_usernames(bottom_observed, caller_holds_ui_session=True)
+
+        for seat_num, item in bottom_observed.items():
+            if seat_num not in observed_all:
+                observed_all[seat_num] = item
+            else:
+                existing_info = observed_all[seat_num][2]
+                new_info = item[2]
+                if not existing_info.get("occupied") and new_info.get("occupied"):
+                    observed_all[seat_num] = item
+                elif new_info.get("username") and not existing_info.get("username"):
+                    observed_all[seat_num] = item
+
+        # 3. 滑回第一排（复位到默认可视区域）
+        if hasattr(self.seat_ui, "scroll_to_row"):
+            try:
+                self.seat_ui.scroll_to_row(0, bottom_desks, duration=300)
+                await asyncio.sleep(0.2)
+            except Exception as e:
+                self.logger.debug(f"Reset scroll to top failed: {e}")
+
+        return observed_all
+
     async def expand_rescan_and_collapse(self, target_focus_count: int) -> bool:
         """
-        主动展开面板 -> 全量重扫 12 个麦位 -> 立即收起恢复聊天视口。
+        主动展开面板 -> 全量双向重扫 12 个麦位（滑到顶扫前两排，滑到底扫后两排） -> 复位并收起。
         """
         if not self.handler:
             return False
@@ -661,22 +731,39 @@ class SeatObservationManager(Singleton):
                     self.logger.warning("Failed to expand seats for full rescan")
                     return False
 
-                # 检查初步识别的在座人数：若少于目标专注人数，稍等 0.4s 重拉一次元素，避免动画/视图绑定延迟漏人
-                pre_observed = self._read_visible_seats(seat_desks)
-                pre_seated = sum(1 for _, _, info in pre_observed.values() if info.get("occupied"))
-                if pre_seated < target_focus_count and self.handler and hasattr(self.handler, "element_finder"):
-                    await asyncio.sleep(0.4)
-                    refreshed = self.handler.element_finder.find_elements("seat_desk")
-                    if refreshed and len(refreshed) == 6:
-                        seat_desks = refreshed
+                # 双向扫描覆盖全部 3 排麦位（顶部前两排与底部后两排）
+                observed = await self._scan_all_rows_expanded(seat_desks)
+                if not observed:
+                    return False
 
-                return await self._sync_desks(
-                    seat_desks,
-                    "专注人数背离展开重扫",
-                    target_focus_count,
-                    caller_holds_ui_session=True,
-                    notify_after=target_focus_count,
+                old_slots = {k: v.copy() for k, v in self.seats.items()}
+                self._apply_snapshot(observed)
+
+                has_changes, changed_users, seat_info = self._compute_diff(
+                    old_slots, self.seats, set(observed.keys())
                 )
+
+                if has_changes:
+                    self.logger.info(
+                        self.format_3row_layout(
+                            trigger_source="专注人数背离展开重扫",
+                            focus_count=target_focus_count,
+                        )
+                    )
+
+                    if changed_users:
+                        from ushareiplay.managers.command_manager import CommandManager
+                        await CommandManager.instance().notify_focus_count_change(
+                            self._last_focus_count,
+                            target_focus_count,
+                            changed_users=changed_users,
+                            seat_info=seat_info,
+                        )
+
+                if target_focus_count is not None:
+                    self._last_focus_count = target_focus_count
+
+                return has_changes
 
             except Exception:
                 self.logger.error(f"Error during expand_rescan_and_collapse: {traceback.format_exc()}")

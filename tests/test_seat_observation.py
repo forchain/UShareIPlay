@@ -43,7 +43,7 @@ def test_format_3row_layout_visual_representation():
     layout = manager.format_3row_layout("测试触发")
     lines = layout.splitlines()
 
-    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 测试触发, 专注人数: 未知, 在座人数: 4):" in lines[0]
+    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 测试触发, 专注人数: 未知):" in lines[0]
     assert "第一排: [1号: 群主] [2号: 空闲]  |  [3号: 张三] [4号: 空闲]" in lines[1]
     assert "第二排: [5号: 空闲] [6号: 空闲]  |  [7号: 李四] [8号: 空闲]" in lines[2]
     assert "第三排: [9号: 空闲] [10号: 空闲]  |  [11号: 王五] [12号: 空闲]" in lines[3]
@@ -416,19 +416,79 @@ async def test_ui_session_logs_at_debug_level_only():
     mock_logger.info.assert_not_called()
 
 
-def test_format_3row_layout_includes_focus_count_and_seated_count():
-    """输出日志时必须同时输出专注人数和在座人数。"""
+def test_format_3row_layout_includes_focus_count():
+    """输出日志时输出专注人数，不输出在座人数。"""
     manager = SeatObservationManager.initialize(make_handler())
     manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
     manager.seats[6] = SeatSlot(seat_number=6, occupied=True, username="儿童不易")
 
     log_str = manager.format_3row_layout(trigger_source="可视区域变更", focus_count=6)
-    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 可视区域变更, 专注人数: 6, 在座人数: 2):" in log_str
+    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 可视区域变更, 专注人数: 6):" in log_str
+    assert "在座人数" not in log_str
 
     # 当 focus_count 为 None 时回退未知
     manager._last_focus_count = None
     log_str_unknown = manager.format_3row_layout(trigger_source="可视区域变更", focus_count=None)
-    assert "专注人数: 未知, 在座人数: 2" in log_str_unknown
+    assert "专注人数: 未知" in log_str_unknown
+    assert "在座人数" not in log_str_unknown
+
+
+@pytest.mark.asyncio
+async def test_expand_rescan_bidirectional_scans_top_and_bottom_rows():
+    """全量重扫必须双向滚动（先到第0排扫顶，再到第2排扫底），保证第1排和第3排均不漏扫。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 构造6张桌位：
+    # 第1排 (desk 0): 1号 occupied (张三)
+    # 第2排 (desk 2): 5号 occupied (李四)
+    # 第3排 (desk 4): 9号 occupied (王五)
+    desk0 = build_desk_wrapper(handler, left="张三", right="2", left_occupied=True, y=100)
+    desk1 = build_desk_wrapper(handler, left="3", right="4", y=100)
+    desk2 = build_desk_wrapper(handler, left="李四", right="6", left_occupied=True, y=300)
+    desk3 = build_desk_wrapper(handler, left="7", right="8", y=300)
+    desk4 = build_desk_wrapper(handler, left="王五", right="10", left_occupied=True, y=500)
+    desk5 = build_desk_wrapper(handler, left="11", right="12", y=500)
+
+    # 模拟视口滚动：
+    # 顶部视口只能看到 desk 0, 1, 2, 3（前两排）
+    top_desks = [desk0, desk1, desk2, desk3]
+    # 底部视口只能看到 desk 2, 3, 4, 5（后两排）
+    bottom_desks = [desk2, desk3, desk4, desk5]
+
+    scroll_state = {"row": None}
+    def mock_find_elements(key):
+        if scroll_state["row"] == 0:
+            return top_desks
+        elif scroll_state["row"] == 2:
+            return bottom_desks
+        return [desk0, desk1, desk2, desk3, desk4, desk5]
+
+    handler.element_finder.find_elements = mock_find_elements
+
+    fake_seat_ui = FakeSeatUI(desks=top_desks)
+    def tracking_scroll_to_row(desk_index, seat_desks=None, duration=100):
+        scroll_state["row"] = desk_index // 2
+        fake_seat_ui.scrolled_rows.append(desk_index // 2)
+
+    fake_seat_ui.scroll_to_row = tracking_scroll_to_row
+    manager._seat_ui = fake_seat_ui
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        changed = await manager.expand_rescan_and_collapse(3)
+
+    assert changed is True
+    # 确认执行了双向滚动：先到 row 0，再到 row 2，最后复位 row 0
+    assert fake_seat_ui.scrolled_rows == [0, 2, 0]
+    # 确认第 1 排（1号）与第 3 排（9号）全部成功采集，没有漏人
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].username == "张三"
+    assert manager.seats[5].occupied is True
+    assert manager.seats[5].username == "李四"
+    assert manager.seats[9].occupied is True
+    assert manager.seats[9].username == "王五"
+    assert sum(1 for s in manager.seats.values() if s.occupied) == 3
 
 
 def test_extract_seat_info_marks_occupied_when_label_is_nickname_even_without_state_node():
