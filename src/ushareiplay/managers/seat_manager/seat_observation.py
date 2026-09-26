@@ -41,9 +41,13 @@ class SeatObservationManager(Singleton):
     # 既不会把信号吞掉，也不会让失败的展开每几秒刷一次日志。
     RESCAN_RETRY_COOLDOWN: ClassVar[float] = 30.0
 
-    # 完整桌位实测高度 150~250px；几十像素高的是 RecyclerView 边缘被裁下来的残片。
-    # 残片只允许用来补占座（正向证据），不允许据此判定「空座」把已确认的占座推平。
-    FULL_DESK_MIN_HEIGHT: ClassVar[int] = 120
+    # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
+    # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
+    # 所以按框架常量放在这里，不进 config.yaml 的 elements。
+    IMAGE_VIEW_CLASS: ClassVar[str] = "android.widget.ImageView"
+
+    # 空座占位文案：出现它们就说明这一侧没人
+    EMPTY_SEAT_LABELS: ClassVar[Tuple[str, ...]] = ("点击入座", "入座")
 
     def __init__(self, handler=None):
         self.handler = handler
@@ -65,6 +69,10 @@ class SeatObservationManager(Singleton):
         # 闸门标记撤掉、留给下一轮重试。
         self._last_rescan_ok: bool = False
         self._last_rescan_time: float = 0.0
+        # 身份未知（读不出座位号）时可见麦位带的内容指纹：指纹变了说明有变动，
+        # 但身份未知写不得快照，只能升级为全量重扫（见 _sync_desks）。
+        self._last_visible_band_signature: Optional[Tuple] = None
+        self._band_change_reason: Optional[str] = None
         self._lock = asyncio.Lock()
 
     def bind_handler(self, handler):
@@ -108,6 +116,8 @@ class SeatObservationManager(Singleton):
         self._scanned_seat_change_fingerprint = None
         self._last_rescan_ok = False
         self._last_rescan_time = 0.0
+        self._last_visible_band_signature = None
+        self._band_change_reason = None
         self.logger.info("Cleared seat observation snapshot")
 
     @asynccontextmanager
@@ -137,23 +147,23 @@ class SeatObservationManager(Singleton):
         ElementFinder._get_locator / EventManager._screen_elements 的取法一致。
         """
         config = getattr(self.handler, "config", None)
-        if not isinstance(config, dict):
-            return None
+        if isinstance(config, dict):
+            elements = config.get("elements")
+            if not isinstance(elements, dict):
+                soul = config.get("soul")
+                elements = soul.get("elements") if isinstance(soul, dict) else None
 
-        elements = config.get("elements")
-        if not isinstance(elements, dict):
-            soul = config.get("soul")
-            elements = soul.get("elements") if isinstance(soul, dict) else None
-
-        selector = elements.get(element_key) if isinstance(elements, dict) else None
-        if isinstance(selector, str) and selector.strip():
-            return selector.strip()
+            selector = elements.get(element_key) if isinstance(elements, dict) else None
+            if isinstance(selector, str) and selector.strip():
+                return selector.strip()
 
         _FALLBACK_SELECTORS = {
             "left_default_name": "cn.soulapp.android:id/leftTvDefaultName",
             "right_default_name": "cn.soulapp.android:id/rightTvDefaultName",
             "left_avatar": "cn.soulapp.android:id/leftAvatarView",
             "right_avatar": "cn.soulapp.android:id/rightAvatarView",
+            "left_rank": "cn.soulapp.android:id/leftRankView",
+            "right_rank": "cn.soulapp.android:id/rightRankView",
             "empty_seat": "cn.soulapp.android:id/leftTvDefaultName",
         }
         return _FALLBACK_SELECTORS.get(element_key)
@@ -190,8 +200,67 @@ class SeatObservationManager(Singleton):
             return None
         return finder.find_child_element(desk, element_key, log_failure=False)
 
-    def _is_seat_occupied(self, desk, side: str) -> bool:
-        return self._find_child_element(desk, f"{side}_state") is not None
+    def _avatar_image_count(self, desk, side: str) -> int:
+        """AvatarView 里的 ImageView 数量（空座恰好一张占位图，占座是头像+挂件）。
+
+        只对快照（ElementWrapper）数图：它在本地 lxml 上按子树查，是真正收敛到
+        AvatarView 里的。展开重扫拿到的是 raw WebElement，而 Appium 的 XPath 是
+        整页作用域（不随父元素收敛），照数会数到全屏的图，把每个麦位都读成占座 ——
+        所以那条路径返回 0（没读到），占用/空座由同在 DOM 里的 ClState、昵称、
+        麦位编号判定（见 #341）。
+
+        Appium 在真实 Android 页面转储中通常使用框架类名作为 XML 标签名
+        （如 <android.widget.ImageView>），且往往不附带 class="..." 属性；
+        而在部分测试或快照中可能为 <node class="...">。因此同时匹配标签名与 class 属性。
+        """
+        avatar = self._find_child_element(desk, f"{side}_avatar")
+        if not isinstance(avatar, ElementWrapper):
+            return 0
+        xpath = (
+            f".//*[self::{self.IMAGE_VIEW_CLASS} or self::ImageView "
+            f"or @class='{self.IMAGE_VIEW_CLASS}' or @class='ImageView']"
+        )
+        return len(avatar.find_child_elements(xpath))
+
+    def _read_seat_dom(self, desk, side: str) -> dict:
+        """一侧麦位的原始 DOM 证据：只读数，不判定空/占。"""
+        return {
+            "label": self._get_label_text(desk, side),
+            "avatar_images": self._avatar_image_count(desk, side),
+            "has_state": self._find_child_element(desk, f"{side}_state") is not None,
+            "has_default": self._find_child_element(desk, f"{side}_default_name") is not None,
+            "has_rank": self._find_child_element(desk, f"{side}_rank") is not None,
+        }
+
+    @staticmethod
+    def _is_seat_number_label(label: str) -> bool:
+        """label 是房间给空座标的麦位编号（1~12 纯数字）。"""
+        return label.isdigit() and 1 <= int(label) <= 12
+
+    def _has_occupancy_evidence(self, dom: dict) -> bool:
+        """占座证据（纯 DOM，见 #341）：
+
+        - AvatarView 里多于一张图（头像 + 挂件/边框）；
+        - ClState 存在 —— 空座渲染 TvDefaultName 或纯数字编号、不带 ClState，
+          这与 seating.py 定座流程沿用的判据（bool(left_state)）是同一个，
+          ClState 里的勋章 / 专注时长等活跃控件据此天然覆盖；
+        - RankView（勋章/段位图标）存在 —— 房间里只有在座用户才会渲染段位图标；
+        - label 是非空的昵称/角色文本（既不是麦位编号，也不是「点击入座」）。
+
+        正向证据优先：只要有一条成立就算占座，绝不因为另一条空座证据把它推平。
+        """
+        label = dom["label"].strip()
+        if dom["avatar_images"] > 1:
+            return True
+        if dom["has_state"]:
+            return True
+        if dom.get("has_rank"):
+            return True
+        return (
+            bool(label)
+            and not self._is_seat_number_label(label)
+            and label not in self.EMPTY_SEAT_LABELS
+        )
 
     def format_3row_layout(
         self, trigger_source: str = "可视区域变更", focus_count: Optional[int] = None
@@ -245,9 +314,13 @@ class SeatObservationManager(Singleton):
         return [(desk_idx, desk) for desk_idx, desk, _own in mapped]
 
     def _map_desks_with_identity(
-        self, desk_wrappers: list
+        self, desk_wrappers: list, *, band: Optional[str] = None
     ) -> Tuple[List[Tuple[int, any, bool]], List[Tuple[any, str]], str]:
         """映射可见桌位，并标注座位号是不是这张桌位自己读出来的。
+
+        Args:
+            band: 已知滚动相位（"top"/"bottom"，仅展开重扫路径传入）。相位成立时
+                不依赖数字 label 锚点也能定座位号，见 _band_offset_from_phase。
 
         Returns:
             mapped: [(desk_index, desk, own_seat_number)]，按 desk_index 升序。
@@ -257,14 +330,14 @@ class SeatObservationManager(Singleton):
             dropped: [(desk, 原因)]，身份未知或不可见的桌位，调用方不得写快照。
             offset_source: 带位偏移的来源说明（诊断用）。
         """
-        # 过滤掉不可见/零尺寸的桌位
+        # 过滤掉不产出麦位数据的桌位（底座残片 / 没渲染出麦位 DOM 的空容器）
         visible_desks = []
         dropped: List[Tuple[any, str]] = []
         for desk in desk_wrappers:
             if self._is_desk_visible(desk):
                 visible_desks.append(desk)
             else:
-                dropped.append((desk, "不可见或尺寸不足"))
+                dropped.append((desk, "无麦位 DOM（底座残片或未渲染）"))
         if not visible_desks:
             return [], dropped, "无可见桌位"
 
@@ -283,9 +356,15 @@ class SeatObservationManager(Singleton):
             offset: Optional[int] = offsets.pop()
             offset_source = f"锚定({offset})"
         else:
-            # 没有锚点或锚点互相矛盾：整条带位身份未知，只保留自身读到编号的桌位
-            offset = None
-            offset_source = "锚点矛盾" if offsets else "锚点缺失"
+            # 锚点缺失/矛盾时用已知滚动相位兜底（只有重扫路径给得出相位），
+            # 相位也不成立就整条带位身份未知，只保留自身读到编号的桌位
+            phase_offset = self._band_offset_from_phase(ordered, band, dropped)
+            if phase_offset is not None:
+                offset = phase_offset
+                offset_source = f"相位({band})"
+            else:
+                offset = None
+                offset_source = "锚点矛盾" if offsets else "锚点缺失"
 
         mapped: List[Tuple[int, any, bool]] = []
         for rank, desk in enumerate(ordered):
@@ -303,6 +382,40 @@ class SeatObservationManager(Singleton):
 
         mapped.sort(key=lambda item: item[0])
         return mapped, dropped, offset_source
+
+    def _band_offset_from_phase(
+        self, ordered: List[any], band: Optional[str], dropped: List[Tuple[any, str]]
+    ) -> Optional[int]:
+        """按已确认的滚动相位推出整条带位的偏移（不需要数字 label 锚点）。
+
+        展开重扫的两次读数由本管理器自己把面板滚到两端后采集（见
+        _scan_all_rows_expanded）：顶相位 scroll_to_row(0) 会被滚到内容顶部夹住，
+        可见带位一定从第一排（desk 0）起；底相位 scroll_to_row(4) 被滚到底部夹住，
+        一定到第三排（desk 5）止。房间里的 label 只在普通用户占座时才是数字
+        （config.yaml：群主/管理占座显示身份文字、空座没有 label 节点），
+        光靠锚点会让「第二排只露一角 + 群主占座」的视口整屏读不出任何座位号。
+
+        仍然做几何校验：顶相位要求可见带位上方没有任何有坐标的桌位节点（含被裁掉
+        的残片），底相位要求下方没有 —— 滚动失败时读数会错位，宁可不写不可猜。
+        """
+        if band not in ("top", "bottom") or not ordered:
+            return None
+
+        first_key = self._desk_sort_key(ordered[0])
+        last_key = self._desk_sort_key(ordered[-1])
+        fragment_keys = [
+            self._desk_sort_key(desk)
+            for desk, _reason in dropped
+            if self._desk_bounds(desk) is not None
+        ]
+
+        if band == "top":
+            if any(key < first_key for key in fragment_keys):
+                return None
+            return 0
+        if any(key > last_key for key in fragment_keys):
+            return None
+        return 6 - len(ordered)
 
     def _desk_sort_key(self, desk) -> Tuple[int, int]:
         bounds = getattr(desk, "bounds", None)
@@ -329,12 +442,9 @@ class SeatObservationManager(Singleton):
         昵称（「小明7」）不算；纯数字昵称的误读由下面的奇偶/配对校验兜住。
         """
         label_text = self._get_label_text(desk, side).strip()
-        if not label_text.isdigit():
+        if not self._is_seat_number_label(label_text):
             return None
-        seat_num = int(label_text)
-        if not 1 <= seat_num <= 12:
-            return None
-        return seat_num
+        return int(label_text)
 
     def _seat_number_from_label(self, desk, side: str) -> Optional[int]:
         """单侧读到的编号，需符合左右奇偶约定。"""
@@ -367,79 +477,60 @@ class SeatObservationManager(Singleton):
             return elem.text or ""
         return ""
 
-    def _is_seat_empty(self, desk, side: str, seat_num: Optional[int] = None) -> bool:
+    def _judge_empty(self, dom: dict, seat_num: Optional[int] = None) -> bool:
+        """明确的空座证据（纯 DOM，见 #341），与「看不见」严格区分：
+
+        - TvDefaultName（点击入座）存在；
+        - label 是 1~12 的麦位编号（房间里只有空位显示编号）；
+        - AvatarView 里恰好一张占位图。
+
+        滑出视口或折叠时 page source 只剩底座/空容器，一条都不成立 —— 那是「看不见」，
+        不是「空座」，调用方不得据此推平快照。
         """
-        判断麦位是否明确为空座（下座/空闲状态）。
-        空座具有明确的 UI 表现：
-        - 显示默认名称（如 '点击入座'，对应 leftTvDefaultName / rightTvDefaultName）；
-        - 或者 label 显示麦位数字（如 '1'~'12'）或 '点击入座'；
-        - 且该位置不是被占用的状态。
-        与之相对的是“看不见/不可见状态”（如滑动出视口或折叠，page source 只有 leftBottomView 或空容器）。
-        """
-        if self._is_seat_occupied(desk, side):
+        if self._has_occupancy_evidence(dom):
             return False
 
-        # 1. 检查是否存在默认名称元素 (leftTvDefaultName / rightTvDefaultName)
-        default_elem = self._find_child_element(desk, f"{side}_default_name")
-        if default_elem is not None:
-            text = getattr(default_elem, "text", "") or ""
-            if text in ("点击入座", "入座") or "DefaultName" in getattr(default_elem, "resource_id", ""):
-                return True
+        if dom["has_default"]:
             return True
 
-        # 2. 检查 ElementWrapper 是否包含 '点击入座'
-        if isinstance(desk, ElementWrapper):
-            try:
-                elem = desk.find_child_element(
-                    f".//*[@resource-id='cn.soulapp.android:id/{side}TvDefaultName'] | .//*[@text='点击入座']"
-                )
-                if elem is not None:
-                    return True
-            except Exception:
-                pass
-
-        # 3. 检查 label 是否为麦位编号或 '点击入座'
-        label = self._get_label_text(desk, side).strip()
-        if label in ("点击入座", "入座"):
+        label = dom["label"].strip()
+        if label in self.EMPTY_SEAT_LABELS:
             return True
-        if label.isdigit():
-            num = int(label)
-            if 1 <= num <= 12:
-                if seat_num is None or num == seat_num:
-                    return True
-
-        return False
+        if self._is_seat_number_label(label):
+            # 座位号已知时必须对得上：右侧读到 8 号不会把左侧 7 号位判空
+            return seat_num is None or int(label) == seat_num
+        return dom["avatar_images"] == 1
 
     def _extract_seat_info(self, desk, side: str, seat_num: Optional[int] = None) -> dict:
-        occupied = self._is_seat_occupied(desk, side)
-        label = self._get_label_text(desk, side)
-
-        # 只要 label 存在且不是纯数字也不是“点击入座”，就说明有人占座
-        # 防止 UiAutomator 漏掉 state 容器节点导致占座误判为空闲
-        is_occupied_by_label = bool(label and not label.isdigit() and label not in ("点击入座", ""))
-        occupied = occupied or is_occupied_by_label
+        dom = self._read_seat_dom(desk, side)
+        label = dom["label"]
+        occupied = self._has_occupancy_evidence(dom)
 
         is_owner = (label == "群主")
         username = None
         if is_owner:
             username = "群主"
+        # 这里问的是「label 能不能当昵称用」，与 _has_occupancy_evidence 问的
+        # 「label 是不是占座证据」是两个问题：管理/已占用是占座证据但不是昵称。
         elif label and not label.isdigit() and label not in ("管理", "已占用", "点击入座"):
             username = label
 
         is_empty = False
         if not occupied:
-            is_empty = self._is_seat_empty(desk, side, seat_num)
+            is_empty = self._judge_empty(dom, seat_num)
 
-        # has_state / has_default 只做诊断记录（判定「空座」的原始依据），
-        # 不参与 occupied / is_empty 的判据。
+        # has_state / has_default / avatar_images 只做诊断记录（判定空/占的原始依据），
+        # 判据本身只看 _has_occupancy_evidence / _judge_empty。
         return {
             "occupied": occupied,
             "is_empty": is_empty,
             "label": label,
             "is_owner": is_owner,
             "username": username,
-            "has_state": self._find_child_element(desk, f"{side}_state") is not None,
-            "has_default": self._find_child_element(desk, f"{side}_default_name") is not None,
+            "has_state": dom["has_state"],
+            "has_default": dom["has_default"],
+            "has_rank": dom.get("has_rank", False),
+            "avatar_images": dom["avatar_images"],
         }
 
     def _desk_bounds(self, desk) -> Optional[dict]:
@@ -459,34 +550,35 @@ class SeatObservationManager(Singleton):
         return None
 
     def _has_desk_content(self, desk) -> bool:
-        """
-        检查桌位是否有任何麦位实质内容。
-        若左右两侧均无占座状态、无麦位标签、无空座默认名称（仅有 leftBottomView 等底部装饰），
-        则为不可见的边缘容器，予以忽略。
+        """桌位是否有任何麦位 DOM 证据（占座、麦位标签、空座占位）。
+
+        底座残片（bgRoot + left/rightBottomView，没有 left/rightUserView）靠
+        「一条结构证据都不成立」识别，而不是去认底座节点本身：任意一侧渲染出
+        userView 里的东西（头像图、ClState、标签、占位文案）就说明这张桌位在
+        产出麦位数据。这样无需给底座节点另配选择器，也不会把「露出了底座、
+        同时又露出某个麦位」的桌位误杀（见 #341）。
         """
         if desk is None:
             return False
         for side in ("left", "right"):
-            if self._is_seat_occupied(desk, side):
+            dom = self._read_seat_dom(desk, side)
+            if self._has_occupancy_evidence(dom):
                 return True
-            label = self._get_label_text(desk, side).strip()
-            if label:
+            if dom["label"].strip():
                 return True
-            if self._is_seat_empty(desk, side):
-                return True
-            if self._find_child_element(desk, f"{side}_avatar") is not None:
+            if self._judge_empty(dom):
                 return True
         return False
 
     def _is_desk_visible(self, desk) -> bool:
+        """桌位是否可用作麦位读数 —— 只由 DOM 决定。
+
+        像素宽高阈值（旧 FULL_DESK_MIN_HEIGHT=120 与 <60px 残片过滤）已删除
+        （见 #341）：Android 的无障碍层会把「哪怕只露出一部分」的 View 完整 dump
+        进 page source，几十像素高不代表读不到，所以高度不能当可见性的代理。
+        """
         if desk is None:
             return False
-        bounds = self._desk_bounds(desk)
-        if bounds is not None:
-            # 屏幕上有效的一张桌位高度通常在 150px~250px 左右。
-            # 如果宽高小于 60px，说明是 RecyclerView 滑动或折叠边缘被裁切的无效残片。
-            if bounds.get("width", 0) < 60 or bounds.get("height", 0) < 60:
-                return False
         if hasattr(desk, "is_displayed"):
             try:
                 if not desk.is_displayed():
@@ -690,44 +782,86 @@ class SeatObservationManager(Singleton):
         label = (info.get("label") or "").replace("\n", " ")
         return (
             f"{side[0].upper()}:{{state={int(bool(info.get('has_state')))} "
-            f"label='{label}' default={int(bool(info.get('has_default')))} "
+            f"imgs={info.get('avatar_images', 0)} label='{label}' "
+            f"default={int(bool(info.get('has_default')))} "
+            f"rank={int(bool(info.get('has_rank')))} "
             f"empty={int(bool(info.get('is_empty')))} occupied={int(bool(info.get('occupied')))} "
             f"user={info.get('username') or ''}}}"
         )
 
+    def _visible_band_signature(self, desk_wrappers: list) -> Optional[Tuple]:
+        """可见麦位带的内容指纹（只记读数，不含座位号），用于身份未知时的变更检测。
+
+        只收 DOM 读数（label 原文、头像图数、ClState/占位文案/段位图标的有无），
+        不含屏幕坐标：面板被滚动（同一批读数换了位置）不算变更，读数本身变了才算。
+        """
+        rows = []
+        for desk in sorted(desk_wrappers or [], key=self._desk_sort_key):
+            if not self._has_desk_content(desk):
+                continue
+            sides = []
+            for side in ("left", "right"):
+                dom = self._read_seat_dom(desk, side)
+                sides.append(
+                    (
+                        dom["label"].strip(),
+                        int(dom["avatar_images"]),
+                        bool(dom["has_state"]),
+                        bool(dom["has_default"]),
+                        bool(dom.get("has_rank")),
+                    )
+                )
+            rows.append(tuple(sides))
+        return tuple(rows) if rows else None
+
+    def _note_band_change(self, desk_wrappers: list) -> None:
+        """身份未知时比对可见带内容指纹，变了就登记一次全量重扫请求。
+
+        指纹本身只把「要不要扫」记进 _band_change_reason（由 observe_visible_desks
+        在 ui_lock 之外消费），真正写快照的永远是重扫的权威读数。
+        """
+        signature = self._visible_band_signature(desk_wrappers)
+        if (
+            signature is not None
+            and self._last_visible_band_signature is not None
+            and signature != self._last_visible_band_signature
+        ):
+            self._band_change_reason = (
+                "Visible seat band changed while seat identity is unknown "
+                "(no numeric seat label anchor); triggering full rescan."
+            )
+        self._last_visible_band_signature = signature
+
     def _read_visible_seats(
-        self, desk_wrappers: list
+        self, desk_wrappers: list, *, band: Optional[str] = None
     ) -> Tuple[Dict[int, Tuple[any, str, dict]], str]:
         """把可见桌位读成 {seat_number: (desk, side, info)}，并附一行 DEBUG 诊断。
 
         座位号身份未知的桌位不会出现在结果里（见 _map_desks_with_identity），
-        所以进入快照的读数都带着「座位号由锚点确定」这个前提；`unclipped` 区分
-        桌位是否完整可见（被裁下来的残片不能用来判定下座）。
+        所以进入快照的读数都带着「座位号由锚点确定」这个前提。band 为已知滚动
+        相位（展开重扫路径），锚点缺失时据此定座位号。
         """
-        mapped, dropped, offset_source = self._map_desks_with_identity(desk_wrappers)
+        mapped, dropped, offset_source = self._map_desks_with_identity(desk_wrappers, band=band)
 
         observed: Dict[int, Tuple[any, str, dict]] = {}
         details: List[str] = []
         for desk_idx, desk, self_anchored in mapped:
             bounds = self._desk_bounds(desk) or {}
-            height = bounds.get("height", 0)
-            unclipped = height >= self.FULL_DESK_MIN_HEIGHT
             sides = []
             for side, offset in (("left", 1), ("right", 2)):
                 seat_num = desk_idx * 2 + offset
                 info = self._extract_seat_info(desk, side, seat_num)
-                info["unclipped"] = unclipped
                 observed[seat_num] = (desk, side, info)
                 sides.append(self._describe_side(side, info))
             details.append(
-                f"d{desk_idx}(y={bounds.get('y', '?')},h={height},"
+                f"d{desk_idx}(y={bounds.get('y', '?')},"
                 f"{'自锚定' if self_anchored else '带位推定'}) " + " ".join(sides)
             )
 
         dropped_notes = []
         for desk, reason in dropped:
             bounds = self._desk_bounds(desk) or {}
-            dropped_notes.append(f"(y={bounds.get('y', '?')},h={bounds.get('height', '?')}){reason}")
+            dropped_notes.append(f"(y={bounds.get('y', '?')}){reason}")
 
         parts = [f"[seat-obs] 读数 偏移={offset_source}"]
         parts.extend(details)
@@ -780,8 +914,11 @@ class SeatObservationManager(Singleton):
         """落快照。
 
         clearable 为 None 表示权威路径（全量重扫读过全部麦位）：观测到的明确空座
-        即可判为下座，只受「桌位完整可见」约束。被动观测必须显式给出可清空的号位
-        （视口内配对换座的旧位）—— 其余读数只能补占座，绝不能凭局部读数把人推平。
+        即可判为下座。被动观测必须显式给出可清空的号位（视口内配对换座的旧位）——
+        其余读数只能补占座，绝不能凭局部读数把人推平。
+
+        「明确空座」由 DOM 证据定义（见 _judge_empty），不再看像素高度：滑出视口或
+        折叠的麦位读不到任何空座证据，走到这里时 is_empty 本来就是 False。
         """
         for seat_num, (desk, side, info) in observed.items():
             slot = self.seats[seat_num]
@@ -791,7 +928,7 @@ class SeatObservationManager(Singleton):
                 slot.label = info.get("label", "")
                 slot.is_owner = info.get("is_owner", False)
             elif info.get("is_empty"):
-                if info.get("unclipped") and (clearable is None or seat_num in clearable):
+                if clearable is None or seat_num in clearable:
                     slot.occupied = False
                     slot.username = None
                     slot.label = info.get("label", "")
@@ -799,8 +936,7 @@ class SeatObservationManager(Singleton):
                 elif slot.occupied:
                     self.logger.debug(
                         f"Seat {seat_num}: read as empty but not clearable "
-                        f"(unclipped={info.get('unclipped')}, clearable="
-                        f"{clearable is None or seat_num in clearable}); "
+                        f"(clearable={clearable}); "
                         f"keeping known occupant {slot.username!r}"
                     )
             else:
@@ -827,7 +963,15 @@ class SeatObservationManager(Singleton):
         # 被动观测不滚面板、视口可能停在任何位置：座位号读不到就不写（见 _read_visible_seats）
         observed, diagnostics = self._read_visible_seats(desk_wrappers)
         if not observed:
+            # 身份未知（读不出任何座位号）时整屏读数都被丢弃 —— 但这不等于「没有
+            # 变化」。房间里只有群主/管理占座、或第二排只露出顶部（label 节点根本
+            # 没 dump 进来）时就是这个情形，靠放大镜也读不出编号，只能拿可见带的
+            # 内容指纹比对：指纹变了就升级为全量重扫（重扫相位已知，能对上座位号）。
+            self._note_band_change(desk_wrappers)
             return False, set()
+
+        # 身份可解析的轮次不需要指纹兜底，清掉以免下次身份丢失时拿旧指纹比对出假变更
+        self._last_visible_band_signature = None
 
         old_slots = {k: v.copy() for k, v in self.seats.items()}
 
@@ -875,9 +1019,11 @@ class SeatObservationManager(Singleton):
     ) -> bool:
         """被动观测当前可见的桌位，检测变动并维护全局快照。
 
-        两类信号都会触发一次全量重扫（同一份信号只扫一次，见 _request_full_scan）：
+        三类信号都会触发一次全量重扫（同一份信号只扫一次，见 _request_full_scan）：
         - 专注人数变化：有人进/出专注，看不看得见都一样；
-        - 视口里出现「变更了但去向不明」的读数：有人消失、凭空出现、同一位子换人。
+        - 视口里出现「变更了但去向不明」的读数：有人消失、凭空出现、同一位子换人；
+        - 座位号读不出来（没有数字 label 锚点）时可见带内容指纹变化：读数进不了
+          快照，但变动确实发生了，交给相位已知的重扫去对上座位号。
         """
         if not desk_wrappers:
             return False
@@ -889,12 +1035,21 @@ class SeatObservationManager(Singleton):
                 current_focus_count,
                 caller_holds_ui_session=False,
             )
+            band_change_reason = self._band_change_reason
+            self._band_change_reason = None
 
         target_focus = self._resolve_target_focus(current_focus_count)
 
         # 被动观测只看得到一部分麦位，「在座数 != 专注人数」本身不构成异常，
         # 按专注人数取值对账即可（同一人数只重扫一次）。
         scanned = await self._reconcile_focus_count(target_focus)
+        if band_change_reason is not None and not scanned:
+            await self._request_full_scan(target_focus=target_focus, reason=band_change_reason)
+            if not self._last_rescan_ok:
+                # 重扫没落地（展开按钮找不到/半截快照）时读数还是旧的：把信号留着，
+                # 下一轮再试（重试间隔由 _request_full_scan 的冷却兜住）。否则这次
+                # 变更就永久丢了 —— 真机上「换座后快照停在旧位子」就是这么来的。
+                self._band_change_reason = band_change_reason
         await self._resolve_unexplained_changes(
             unexplained, target_focus, already_scanned=scanned
         )
@@ -1033,8 +1188,9 @@ class SeatObservationManager(Singleton):
         if not top_desks:
             top_desks = initial_desks
 
-        # 顶部相位：前两排（desk 0..3）在视口里
-        top_observed, top_diagnostics = self._read_visible_seats(top_desks)
+        # 顶部相位：前两排（desk 0..3）在视口里。相位由本方法自己的滚动决定，
+        # 滚动被内容顶部夹住 —— 带位一定从第一排起（无锚点也能定座位号）。
+        top_observed, top_diagnostics = self._read_visible_seats(top_desks, band="top")
         self.logger.debug(top_diagnostics)
         await self._resolve_usernames(top_observed, caller_holds_ui_session=True)
         observed_all.update(top_observed)
@@ -1056,9 +1212,9 @@ class SeatObservationManager(Singleton):
         if not bottom_desks:
             bottom_desks = top_desks
 
-        # 底部相位：后两排（desk 2..5）在视口里。整排都占满、读不到座位号时这一相位
-        # 会整体作废（身份未知不猜），但相邻相位通常能靠别的空座编号把带位钉住。
-        bottom_observed, bottom_diagnostics = self._read_visible_seats(bottom_desks)
+        # 底部相位：后两排（desk 2..5）在视口里。滚动被内容底部夹住 —— 带位一定到
+        # 第三排止，可见桌位从末尾倒着数（无锚点也能定座位号）。
+        bottom_observed, bottom_diagnostics = self._read_visible_seats(bottom_desks, band="bottom")
         self.logger.debug(bottom_diagnostics)
         # 将 top_observed 或已有快照中已知的昵称共享给 bottom_observed，避免重复弹窗检查（如第 5 号麦位）
         for seat_num, item in bottom_observed.items():
@@ -1091,6 +1247,16 @@ class SeatObservationManager(Singleton):
 
         return observed_all
 
+    def _desks_on_screen(self) -> list:
+        """当前页面里的桌位（展开按钮不可用时的降级来源，只读不点）。"""
+        finder = getattr(self.handler, "element_finder", None)
+        if finder is None or not hasattr(finder, "find_elements"):
+            return []
+        try:
+            return list(finder.find_elements("seat_desk") or [])
+        except Exception:
+            return []
+
     async def expand_rescan_and_collapse(self, target_focus_count: int) -> bool:
         """
         主动展开面板 -> 全量双向重扫 12 个麦位（滑到顶扫前两排，滑到底扫后两排） -> 复位并收起。
@@ -1107,8 +1273,17 @@ class SeatObservationManager(Singleton):
                 # 用规范 helper：展开失败或桌位不足 6 张都返回 None，避免半截快照
                 seat_desks = await self.seat_ui.expand_and_find_desks()
                 if not seat_desks:
-                    self.logger.warning("Failed to expand seats for full rescan")
-                    return False
+                    # 展开按钮找不到（弹窗/动画切换中）或面板本来就展开着时直接放弃，
+                    # 会把这次变更整轮丢掉（真机日志：Failed to expand seats for full rescan）。
+                    # 退回当前页面里的桌位继续扫，可信范围由带几何校验的相位映射裁决：
+                    # 相位不成立的部分一律丢弃，不会写错座位号。
+                    seat_desks = self._desks_on_screen()
+                    if not seat_desks:
+                        self.logger.warning("Failed to expand seats for full rescan")
+                        return False
+                    self.logger.warning(
+                        f"Seat expansion unavailable; rescanning {len(seat_desks)} on-screen desks"
+                    )
 
                 # 双向扫描覆盖全部 3 排麦位（顶部前两排与底部后两排）
                 observed = await self._scan_all_rows_expanded(seat_desks)

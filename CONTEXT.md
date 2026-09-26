@@ -9,8 +9,8 @@ All behavior around Soul App party seats, including reservation policy, occupanc
 _Avoid_: Seat command, seating helper, seat UI layer
 
 **Seat Observation**:
-The passive detection of party room seat occupancy and focus changes across visible desks, incremental profile inspection on state changes, conditional full expansion when room focus count diverges from visible seats, and maintenance of the complete room seat snapshot.
-Occupancy and nicknames are read from the seat label — the room shows a nickname (or 群主/管理) on an occupied seat and the seat number on an empty one — so desk index anchoring trusts only pure-number labels that pair as a desk (left odd, right = left + 1). When no such label is visible (a fully occupied viewport), desks are mapped by coordinates, which assumes the visible desks start at desk 0.
+The passive detection of party room seat occupancy via page-source DOM structure (avatar sub-image count, ClState presence, and empty seat placeholders) across visible desks regardless of pixel height, incremental profile inspection on state changes, conditional full expansion when the room focus count diverges from the known seats, and maintenance of the complete room seat snapshot.
+Occupancy and nicknames are read from the seat label — the room shows a nickname (or 群主/管理) on an occupied seat and the seat number on an empty one — so desk index anchoring trusts only pure-number labels that pair as a desk (left odd, right = left + 1). When no label anchors the band of visible desks, they are left unmapped rather than guessed, and a change whose destination is unknown triggers a full expansion rescan to resolve occupant identities and dispatch user-specific Seat Event Hooks.
 _Avoid_: Seat poller, desk scraper, seat clicker
 
 **Seat Event Hooks**:
