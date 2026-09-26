@@ -30,29 +30,38 @@ def soul_elements() -> dict:
         return yaml.safe_load(handle)["soul"]["elements"]
 
 
-def _seat_xml(side: str, label: str, occupied: bool) -> str:
+def _seat_xml(side: str, label: str, occupied: bool, default_name: str = "") -> str:
     """一个麦位。
 
     占用时 leftClState 存在（沿用 seating.py 的占用判据），label 是昵称；
-    空位没有 state 节点，label 是座位号（房间里只有空位显示编号）。
+    空位没有 state 节点，label 是座位号（房间里只有空位显示编号）或有 leftTvDefaultName（点击入座）。
     """
-    label_node = (
-        f'<node resource-id="{SOUL_PACKAGE}/{side}TvLabelH" text="{label}"/>'
-        if label
-        else ""
-    )
+    nodes = []
+    if default_name:
+        nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}TvDefaultName" text="{default_name}"/>')
+    if label:
+        nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}TvLabelH" text="{label}"/>')
+    inner = "".join(nodes)
     if occupied:
-        inner = f'<node resource-id="{SOUL_PACKAGE}/{side}ClState">{label_node}</node>'
-    else:
-        inner = label_node
+        inner = f'<node resource-id="{SOUL_PACKAGE}/{side}ClState">{inner}</node>'
     return f'<node resource-id="{SOUL_PACKAGE}/{side}UserView">{inner}</node>'
 
 
-def build_desk_xml(left="", right="", y=100, left_occupied=False, right_occupied=False) -> str:
+def build_desk_xml(
+    left="",
+    right="",
+    y=100,
+    left_occupied=False,
+    right_occupied=False,
+    left_default_name="",
+    right_default_name="",
+    bounds=None,
+) -> str:
+    bounds_attr = bounds if bounds else f"[40,{y}][400,{y + 160}]"
     return (
-        f'<node resource-id="{DESK_RESOURCE_ID}" bounds="[40,{y}][400,{y + 160}]">'
-        + _seat_xml("left", left, left_occupied)
-        + _seat_xml("right", right, right_occupied)
+        f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{bounds_attr}">'
+        + _seat_xml("left", left, left_occupied, left_default_name)
+        + _seat_xml("right", right, right_occupied, right_default_name)
         + "</node>"
     )
 

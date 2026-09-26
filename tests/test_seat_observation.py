@@ -599,5 +599,156 @@ async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_th
     assert manager.seats[12].occupied is True
 
 
+def test_is_seat_empty_vs_invisible():
+    """验证空座（下座）与看不见（不可见/稀疏内容）的严格区分。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 1. 空座：具备明确的默认名称“点击入座”
+    desk_empty_by_default = build_desk_wrapper(handler, left_default_name="点击入座", y=200)
+    assert manager._is_seat_empty(desk_empty_by_default, "left") is True
+
+    # 2. 空座：label 为座位编号数字（房间内空位显示编号）
+    desk_empty_by_number = build_desk_wrapper(handler, left="5", y=200)
+    assert manager._is_seat_empty(desk_empty_by_number, "left") is True
+
+    # 3. 看不见状态：无 state、无 label、无 default_name（例如滑动出视口或仅留底部装饰）
+    desk_invisible = build_desk_wrapper(handler, left="", y=200)
+    assert manager._is_seat_empty(desk_invisible, "left") is False
+    assert manager._is_seat_occupied(desk_invisible, "left") is False
+
+    # 4. 占座状态：state 存在，绝对不是空座
+    desk_occupied = build_desk_wrapper(handler, left="锦鲤", left_occupied=True, y=200)
+    assert manager._is_seat_occupied(desk_occupied, "left") is True
+    assert manager._is_seat_empty(desk_occupied, "left") is False
+
+
+def test_desk_visibility_requires_minimum_bounds_and_content():
+    """验证只有尺寸正常（>=60px）且具有实质麦位内容的桌位才被判定为可视桌位。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 1. 边缘裁切残片（例如高度仅 18px 或 11px），即便在 XML 中也判定为不可见
+    desk_clipped = build_desk_wrapper(handler, bounds="[28,566][337,584]")
+    assert manager._is_desk_visible(desk_clipped) is False
+
+    # 2. 正常尺寸但内部无任何实质麦位内容（无占座、无编号、无点击入座）
+    desk_no_content = build_desk_wrapper(handler, bounds="[28,200][337,400]")
+    assert manager._is_desk_visible(desk_no_content) is False
+
+    # 3. 正常尺寸且有占座内容
+    desk_with_seat = build_desk_wrapper(handler, left="锦鲤", left_occupied=True, bounds="[28,200][337,400]")
+    assert manager._is_desk_visible(desk_with_seat) is True
+
+    # 4. 正常尺寸且有空座内容（点击入座）
+    desk_with_empty = build_desk_wrapper(handler, left_default_name="点击入座", bounds="[28,200][337,400]")
+    assert manager._is_desk_visible(desk_with_empty) is True
+
+
+def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
+    """不可见不等于下座：稀疏内容不可见时，必须保留原有占座人，防止被错误清空触发死循环。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 5 号麦位此前已知被“锦鲤”占用
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+
+    # 模拟新一轮观测：5 号麦位因不可见导致 occupied=False，且 is_empty=False
+    observed = {
+        5: (None, "left", {
+            "occupied": False,
+            "is_empty": False,
+            "label": "",
+            "username": None,
+        })
+    }
+
+    manager._apply_snapshot(observed)
+
+    # 必须保留原有占座信息！
+    assert manager.seats[5].occupied is True
+    assert manager.seats[5].username == "锦鲤"
+
+
+def test_apply_snapshot_clears_occupant_when_seat_is_explicitly_empty():
+    """只有检测到明确空座（下座）时，才清空座位信息。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 5 号麦位此前被“锦鲤”占用
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+
+    # 模拟新一轮观测：5 号麦位明确显示为“点击入座”空座 (is_empty=True)
+    observed = {
+        5: (None, "left", {
+            "occupied": False,
+            "is_empty": True,
+            "label": "5",
+            "username": None,
+        })
+    }
+
+    manager._apply_snapshot(observed)
+
+    # 正常下座清空
+    assert manager.seats[5].occupied is False
+    assert manager.seats[5].username is None
+
+
+@pytest.mark.asyncio
+async def test_real_clipped_desks_do_not_wipe_out_of_view_seats_or_trigger_loop():
+    """复现并验证生产真实场景：
+    RecyclerView 边缘带有 clipped 桌位残片（h=18, h=11），当前视口仅可见第二排（5~8号）；
+    被动监控绝不能将第一排（1~4号）或第三排（9~12号）误清空，人数保持一致，不触发全量重扫。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照：全量扫描已识别 5 位用户
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="Outlier")
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer")
+    manager.seats[11] = SeatSlot(seat_number=11, occupied=True, username="不约儿童")
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="群主", is_owner=True)
+    manager._last_focus_count = 5
+
+    seat_ui = FakeSeatUI()
+    seat_ui.is_expanded = False
+    manager._seat_ui = seat_ui
+
+    # 模拟生产 page source 中的 6 个 userRoot
+    # Desk 0, 1: 顶部裁切边缘 (height=18)
+    desk0 = build_desk_wrapper(handler, bounds="[28,566][337,584]")
+    desk1 = build_desk_wrapper(handler, bounds="[383,566][692,584]")
+    # Desk 2: 第二排左侧（seats 5 & 6）
+    desk2 = build_desk_wrapper(handler, left="5", right="6", left_occupied=True, right_occupied=False, bounds="[28,611][337,818]")
+    # Desk 3: 第二排右侧（seat 7 empty, seat 8 empty）
+    desk3 = build_desk_wrapper(handler, left_default_name="点击入座", right="8", bounds="[383,611][692,818]")
+    # Desk 4, 5: 底部裁切边缘 (height=11)
+    desk4 = build_desk_wrapper(handler, bounds="[28,845][337,856]")
+    desk5 = build_desk_wrapper(handler, bounds="[383,845][692,856]")
+
+    desks = [desk0, desk1, desk2, desk3, desk4, desk5]
+
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        await manager.observe_visible_desks(desks, current_focus_count=5)
+
+        # 验证第一排和第三排所有已在座用户完好保留，未被推平成空闲
+        assert manager.seats[1].occupied is True
+        assert manager.seats[1].username == "Outlier"
+        assert manager.seats[5].occupied is True
+        assert manager.seats[5].username == "锦鲤"
+        assert manager.seats[9].occupied is True
+        assert manager.seats[9].username == "Chainer"
+        assert manager.seats[11].occupied is True
+        assert manager.seats[11].username == "不约儿童"
+        assert manager.seats[12].occupied is True
+        assert manager.seats[12].username == "群主"
+
+        # 专注人数 5 与在座人数 5 一致，绝对不应触发全量重扫死循环
+        mock_rescan.assert_not_called()
+
+
+
 
 

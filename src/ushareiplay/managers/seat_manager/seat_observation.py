@@ -129,7 +129,15 @@ class SeatObservationManager(Singleton):
         selector = elements.get(element_key) if isinstance(elements, dict) else None
         if isinstance(selector, str) and selector.strip():
             return selector.strip()
-        return None
+
+        _FALLBACK_SELECTORS = {
+            "left_default_name": "cn.soulapp.android:id/leftTvDefaultName",
+            "right_default_name": "cn.soulapp.android:id/rightTvDefaultName",
+            "left_avatar": "cn.soulapp.android:id/leftAvatarView",
+            "right_avatar": "cn.soulapp.android:id/rightAvatarView",
+            "empty_seat": "cn.soulapp.android:id/leftTvDefaultName",
+        }
+        return _FALLBACK_SELECTORS.get(element_key)
 
     def _find_child_element(self, desk, element_key: str):
         """按 config.yaml 的元素 key 在 desk 下查找子元素。
@@ -149,7 +157,10 @@ class SeatObservationManager(Singleton):
             return None
 
         if isinstance(desk, ElementWrapper):
-            xpath = f".//*[@resource-id='{selector}']"
+            if selector.startswith("//") or selector.startswith("."):
+                xpath = selector if selector.startswith(".") else f".{selector}"
+            else:
+                xpath = f".//*[@resource-id='{selector}']"
             try:
                 return desk.find_child_element(xpath)
             except Exception:
@@ -309,7 +320,50 @@ class SeatObservationManager(Singleton):
             return elem.text or ""
         return ""
 
-    def _extract_seat_info(self, desk, side: str) -> dict:
+    def _is_seat_empty(self, desk, side: str, seat_num: Optional[int] = None) -> bool:
+        """
+        判断麦位是否明确为空座（下座/空闲状态）。
+        空座具有明确的 UI 表现：
+        - 显示默认名称（如 '点击入座'，对应 leftTvDefaultName / rightTvDefaultName）；
+        - 或者 label 显示麦位数字（如 '1'~'12'）或 '点击入座'；
+        - 且该位置不是被占用的状态。
+        与之相对的是“看不见/不可见状态”（如滑动出视口或折叠，page source 只有 leftBottomView 或空容器）。
+        """
+        if self._is_seat_occupied(desk, side):
+            return False
+
+        # 1. 检查是否存在默认名称元素 (leftTvDefaultName / rightTvDefaultName)
+        default_elem = self._find_child_element(desk, f"{side}_default_name")
+        if default_elem is not None:
+            text = getattr(default_elem, "text", "") or ""
+            if text in ("点击入座", "入座") or "DefaultName" in getattr(default_elem, "resource_id", ""):
+                return True
+            return True
+
+        # 2. 检查 ElementWrapper 是否包含 '点击入座'
+        if isinstance(desk, ElementWrapper):
+            try:
+                elem = desk.find_child_element(
+                    f".//*[@resource-id='cn.soulapp.android:id/{side}TvDefaultName'] | .//*[@text='点击入座']"
+                )
+                if elem is not None:
+                    return True
+            except Exception:
+                pass
+
+        # 3. 检查 label 是否为麦位编号或 '点击入座'
+        label = self._get_label_text(desk, side).strip()
+        if label in ("点击入座", "入座"):
+            return True
+        if label.isdigit():
+            num = int(label)
+            if 1 <= num <= 12:
+                if seat_num is None or num == seat_num:
+                    return True
+
+        return False
+
+    def _extract_seat_info(self, desk, side: str, seat_num: Optional[int] = None) -> dict:
         occupied = self._is_seat_occupied(desk, side)
         label = self._get_label_text(desk, side)
 
@@ -325,8 +379,13 @@ class SeatObservationManager(Singleton):
         elif label and not label.isdigit() and label not in ("管理", "已占用", "点击入座"):
             username = label
 
+        is_empty = False
+        if not occupied:
+            is_empty = self._is_seat_empty(desk, side, seat_num)
+
         return {
             "occupied": occupied,
+            "is_empty": is_empty,
             "label": label,
             "is_owner": is_owner,
             "username": username,
@@ -348,12 +407,34 @@ class SeatObservationManager(Singleton):
             }
         return None
 
+    def _has_desk_content(self, desk) -> bool:
+        """
+        检查桌位是否有任何麦位实质内容。
+        若左右两侧均无占座状态、无麦位标签、无空座默认名称（仅有 leftBottomView 等底部装饰），
+        则为不可见的边缘容器，予以忽略。
+        """
+        if desk is None:
+            return False
+        for side in ("left", "right"):
+            if self._is_seat_occupied(desk, side):
+                return True
+            label = self._get_label_text(desk, side).strip()
+            if label:
+                return True
+            if self._is_seat_empty(desk, side):
+                return True
+            if self._find_child_element(desk, f"{side}_avatar") is not None:
+                return True
+        return False
+
     def _is_desk_visible(self, desk) -> bool:
         if desk is None:
             return False
         bounds = self._desk_bounds(desk)
         if bounds is not None:
-            if bounds.get("width", 0) <= 0 or bounds.get("height", 0) <= 0:
+            # 屏幕上有效的一张桌位高度通常在 150px~250px 左右。
+            # 如果宽高小于 60px，说明是 RecyclerView 滑动或折叠边缘被裁切的无效残片。
+            if bounds.get("width", 0) < 60 or bounds.get("height", 0) < 60:
                 return False
         if hasattr(desk, "is_displayed"):
             try:
@@ -361,7 +442,7 @@ class SeatObservationManager(Singleton):
                     return False
             except Exception:
                 pass
-        return True
+        return self._has_desk_content(desk)
 
     def _click_seat_avatar(self, desk, side: str, target_element) -> bool:
         """点开麦位头像弹窗。
@@ -492,7 +573,7 @@ class SeatObservationManager(Singleton):
         for desk_idx, desk in self.map_desks_to_indices(desk_wrappers):
             for side, offset in (("left", 1), ("right", 2)):
                 seat_num = desk_idx * 2 + offset
-                observed[seat_num] = (desk, side, self._extract_seat_info(desk, side))
+                observed[seat_num] = (desk, side, self._extract_seat_info(desk, side, seat_num))
         return observed
 
     async def _resolve_usernames(
@@ -534,10 +615,21 @@ class SeatObservationManager(Singleton):
     def _apply_snapshot(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
         for seat_num, (desk, side, info) in observed.items():
             slot = self.seats[seat_num]
-            slot.occupied = info["occupied"]
-            slot.username = info.get("username")
-            slot.label = info.get("label", "")
-            slot.is_owner = info.get("is_owner", False)
+            if info["occupied"]:
+                slot.occupied = True
+                slot.username = info.get("username")
+                slot.label = info.get("label", "")
+                slot.is_owner = info.get("is_owner", False)
+            elif info.get("is_empty"):
+                # 明确空座（下座状态）：具有“点击入座”或麦位编号标识
+                slot.occupied = False
+                slot.username = None
+                slot.label = info.get("label", "")
+                slot.is_owner = False
+            else:
+                # 不可见/稀疏内容状态（例如仅有 leftBottomView，出了视口或被折叠）
+                # 严禁将不可见误认为下座！如果之前是被占用状态，必须保留原占座信息，防止触发死循环扫描
+                pass
 
     async def _sync_desks(
         self,
@@ -691,6 +783,14 @@ class SeatObservationManager(Singleton):
             bottom_desks = top_desks
 
         bottom_observed = self._read_visible_seats(bottom_desks)
+        # 将 top_observed 或已有快照中已知的昵称共享给 bottom_observed，避免重复弹窗检查（如第 5 号麦位）
+        for seat_num, item in bottom_observed.items():
+            if item[2].get("occupied") and not item[2].get("username"):
+                if seat_num in top_observed and top_observed[seat_num][2].get("username"):
+                    item[2]["username"] = top_observed[seat_num][2]["username"]
+                elif self.seats[seat_num].occupied and self.seats[seat_num].username:
+                    item[2]["username"] = self.seats[seat_num].username
+
         await self._resolve_usernames(bottom_observed, caller_holds_ui_session=True)
 
         for seat_num, item in bottom_observed.items():
