@@ -15,6 +15,10 @@ class SeatManager(SeatManagerBase):
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @classmethod
+    def reset_instance(cls):
+        cls._instance = None
+
     def __init__(self, handler=None):
         # 打印更多日志，帮助调试
         logging.getLogger('seat_manager').info(f"初始化 SeatManager，handler={handler}")
@@ -27,10 +31,6 @@ class SeatManager(SeatManagerBase):
             self._check = SeatCheckManager(handler, self._ui)
             self._reservation = ReservationManager(handler, self._ui, self._check)
             self._seating = SeatingManager(handler, self._ui)
-            if not SeatObservationManager.is_initialized():
-                self._observation = SeatObservationManager.initialize(handler)
-            else:
-                self._observation = SeatObservationManager.instance().bind_handler(handler)
             self.initialized = True
             logging.getLogger('seat_manager').info("SeatManager 初始化完成")
         elif handler and not self.handler:
@@ -42,8 +42,19 @@ class SeatManager(SeatManagerBase):
             self._check._message_dispatch = None
             self._ui.handler = handler
             self._seating.handler = handler
-            if hasattr(self, '_observation') and self._observation:
-                self._observation.handler = handler
+            if SeatObservationManager.is_initialized():
+                SeatObservationManager.instance().bind_handler(handler)
+
+    @property
+    def observation(self):
+        """Lookup-only access to SeatObservationManager singleton if initialized."""
+        if SeatObservationManager.is_initialized():
+            return SeatObservationManager.instance()
+        return None
+
+    @property
+    def _observation(self):
+        return self.observation
 
     def _is_guest_room(self) -> bool:
         try:

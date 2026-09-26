@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import traceback
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -35,6 +36,8 @@ class SeatObservationManager(Singleton):
     以及专注人数与可视麦位背离时的自动展开探测。
     """
 
+    RESCAN_COOLDOWN: ClassVar[float] = 3.0
+
     def __init__(self, handler=None):
         self.handler = handler
         self._logger = None
@@ -45,6 +48,7 @@ class SeatObservationManager(Singleton):
             i: SeatSlot(seat_number=i) for i in range(1, 13)
         }
         self._last_focus_count: Optional[int] = None
+        self._last_rescan_time: float = 0.0
         self._lock = asyncio.Lock()
 
     def bind_handler(self, handler):
@@ -84,6 +88,7 @@ class SeatObservationManager(Singleton):
         """重置所有麦位状态"""
         self.seats = {i: SeatSlot(seat_number=i) for i in range(1, 13)}
         self._last_focus_count = None
+        self._last_rescan_time = 0.0
         self.logger.info("Cleared seat observation snapshot")
 
     @asynccontextmanager
@@ -158,10 +163,24 @@ class SeatObservationManager(Singleton):
     def _is_seat_occupied(self, desk, side: str) -> bool:
         return self._find_child_element(desk, f"{side}_state") is not None
 
-    def format_3row_layout(self, trigger_source: str = "可视区域变更") -> str:
+    def format_3row_layout(
+        self, trigger_source: str = "可视区域变更", focus_count: Optional[int] = None
+    ) -> str:
         """
         输出符合物理现实效果的直观快照：一排两张桌，每张桌两个人，共三排。
+        同时输出专注人数和在座人数。
         """
+        total_seated = sum(1 for s in self.seats.values() if s.occupied)
+        if focus_count is None:
+            focus_count = self._last_focus_count
+        if focus_count is None:
+            try:
+                from ushareiplay.state.room_state import RoomState
+                focus_count = RoomState.instance().focus_count
+            except Exception:
+                pass
+        focus_str = str(focus_count) if focus_count is not None else "未知"
+
         def format_seat(num: int) -> str:
             slot = self.seats.get(num)
             if not slot or not slot.occupied:
@@ -173,7 +192,7 @@ class SeatObservationManager(Singleton):
             return f"[{num}号: {name}]"
 
         lines = [
-            f"[FocusSeatObservation] 专注麦位状态变更 (触发源: {trigger_source}):",
+            f"[FocusSeatObservation] 专注麦位状态变更 (触发源: {trigger_source}, 专注人数: {focus_str}, 在座人数: {total_seated}):",
             f"  第一排: {format_seat(1)} {format_seat(2)}  |  {format_seat(3)} {format_seat(4)}",
             f"  第二排: {format_seat(5)} {format_seat(6)}  |  {format_seat(7)} {format_seat(8)}",
             f"  第三排: {format_seat(9)} {format_seat(10)}  |  {format_seat(11)} {format_seat(12)}",
@@ -192,10 +211,20 @@ class SeatObservationManager(Singleton):
         中后排时坐标兜底会把桌位错配。被动观测不滚动面板，因此该兜底只在
         视口对齐默认位置时可信。
         """
+        # 过滤掉不可见/零尺寸的桌位
+        visible_desks = [d for d in desk_wrappers if self._is_desk_visible(d)]
+        if not visible_desks:
+            return []
+
         result = []
         unresolved = []
 
-        for idx, desk in enumerate(desk_wrappers):
+        # 判断当前麦位面板是否处于展开状态
+        is_expanded = getattr(self.seat_ui, "is_expanded", False)
+        # 折叠状态下，最多只应映射前两排桌位（desk_index 0..3，对应 1~8 号麦位）
+        max_desk_index = 5 if is_expanded else 3
+
+        for idx, desk in enumerate(visible_desks):
             desk_idx = self._detect_desk_index_from_labels(desk)
             if desk_idx is not None and 0 <= desk_idx <= 5:
                 result.append((desk_idx, desk))
@@ -211,7 +240,7 @@ class SeatObservationManager(Singleton):
         assigned_indices = {r[0] for r in result}
         sorted_unresolved = sorted(unresolved, key=lambda item: self._desk_sort_key(item[1]))
 
-        avail_indices = [i for i in range(6) if i not in assigned_indices]
+        avail_indices = [i for i in range(max_desk_index + 1) if i not in assigned_indices]
         for (orig_idx, desk), desk_idx in zip(sorted_unresolved, avail_indices):
             result.append((desk_idx, desk))
 
@@ -285,6 +314,11 @@ class SeatObservationManager(Singleton):
         occupied = self._is_seat_occupied(desk, side)
         label = self._get_label_text(desk, side)
 
+        # 只要 label 存在且不是纯数字也不是“点击入座”，就说明有人占座
+        # 防止 UiAutomator 漏掉 state 容器节点导致占座误判为空闲
+        is_occupied_by_label = bool(label and not label.isdigit() and label not in ("点击入座", ""))
+        occupied = occupied or is_occupied_by_label
+
         is_owner = (label == "群主")
         username = None
         if is_owner:
@@ -314,6 +348,21 @@ class SeatObservationManager(Singleton):
                 "height": size.get("height", 0),
             }
         return None
+
+    def _is_desk_visible(self, desk) -> bool:
+        if desk is None:
+            return False
+        bounds = self._desk_bounds(desk)
+        if bounds is not None:
+            if bounds.get("width", 0) <= 0 or bounds.get("height", 0) <= 0:
+                return False
+        if hasattr(desk, "is_displayed"):
+            try:
+                if not desk.is_displayed():
+                    return False
+            except Exception:
+                pass
+        return True
 
     def _click_seat_avatar(self, desk, side: str, target_element) -> bool:
         """点开麦位头像弹窗。
@@ -447,7 +496,12 @@ class SeatObservationManager(Singleton):
                 observed[seat_num] = (desk, side, self._extract_seat_info(desk, side))
         return observed
 
-    async def _resolve_usernames(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
+    async def _resolve_usernames(
+        self,
+        observed: Dict[int, Tuple[any, str, dict]],
+        *,
+        caller_holds_ui_session: bool = False,
+    ) -> None:
         """补齐占用麦位的昵称：先沿用快照里已知的占位者，读不到再点头像弹窗。
 
         只在本轮确实没读到昵称时才沿用旧值 —— 无条件沿用会让座位上换人
@@ -463,10 +517,20 @@ class SeatObservationManager(Singleton):
                 continue
             pending.append((seat_num, desk, side))
 
-        for seat_num, desk, side in pending:
-            username = await self.inspect_occupant(desk, side, seat_num)
-            if username:
-                observed[seat_num][2]["username"] = username
+        if not pending:
+            return
+
+        async def _inspect_pending():
+            for seat_num, desk, side in pending:
+                username = await self.inspect_occupant(desk, side, seat_num)
+                if username:
+                    observed[seat_num][2]["username"] = username
+
+        if caller_holds_ui_session:
+            await _inspect_pending()
+        else:
+            async with self._ui_session("seat_inspect"):
+                await _inspect_pending()
 
     def _apply_snapshot(self, observed: Dict[int, Tuple[any, str, dict]]) -> None:
         for seat_num, (desk, side, info) in observed.items():
@@ -496,11 +560,9 @@ class SeatObservationManager(Singleton):
 
         old_slots = {k: v.copy() for k, v in self.seats.items()}
 
-        if caller_holds_ui_session:
-            await self._resolve_usernames(observed)
-        else:
-            async with self._ui_session("seat_inspect"):
-                await self._resolve_usernames(observed)
+        await self._resolve_usernames(
+            observed, caller_holds_ui_session=caller_holds_ui_session
+        )
 
         self._apply_snapshot(observed)
 
@@ -509,7 +571,7 @@ class SeatObservationManager(Singleton):
         )
 
         if has_changes:
-            self.logger.info(self.format_3row_layout(trigger_source=trigger_source))
+            self.logger.info(self.format_3row_layout(trigger_source=trigger_source, focus_count=focus_count))
 
             if changed_users:
                 from ushareiplay.managers.command_manager import CommandManager
@@ -533,27 +595,54 @@ class SeatObservationManager(Singleton):
             return False
 
         async with self._lock:
-            return await self._sync_desks(
+            has_changes = await self._sync_desks(
                 desk_wrappers,
                 "可视区域变更",
                 current_focus_count,
                 caller_holds_ui_session=False,
             )
 
+        # 验证在座人数与专注人数是否一致，如背离则触发全量扫描
+        target_focus = current_focus_count
+        if target_focus is None:
+            target_focus = self._last_focus_count
+        if target_focus is None:
+            try:
+                from ushareiplay.state.room_state import RoomState
+                target_focus = RoomState.instance().focus_count
+            except Exception:
+                pass
+
+        if target_focus is not None:
+            total_seated = sum(1 for s in self.seats.values() if s.occupied)
+            if total_seated != target_focus:
+                now = time.monotonic()
+                if now - self._last_rescan_time >= self.RESCAN_COOLDOWN:
+                    self._last_rescan_time = now
+                    self.logger.info(
+                        f"Seated count ({total_seated}) does not match focus count ({target_focus}) "
+                        f"after visible desk observation. Triggering full scan."
+                    )
+                    await self.expand_rescan_and_collapse(target_focus)
+
+        return has_changes
+
     async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
         """专注人数发生变化时调用。如果人数与当前在座人数背离，打破被动规则主动展开全量扫描。"""
+        self._last_focus_count = current_focus_count
         total_seated = sum(1 for s in self.seats.values() if s.occupied)
         divergence = (current_focus_count != total_seated)
 
         if divergence:
-            self.logger.info(
-                f"Focus divergence detected: focus_count={current_focus_count}, known_seated={total_seated}. "
-                "Triggering active expansion rescan."
-            )
-            return await self.expand_rescan_and_collapse(current_focus_count)
-        else:
-            self._last_focus_count = current_focus_count
-            return False
+            now = time.monotonic()
+            if now - self._last_rescan_time >= self.RESCAN_COOLDOWN:
+                self._last_rescan_time = now
+                self.logger.info(
+                    f"Focus divergence detected: focus_count={current_focus_count}, known_seated={total_seated}. "
+                    "Triggering active expansion rescan."
+                )
+                return await self.expand_rescan_and_collapse(current_focus_count)
+        return False
 
     async def expand_rescan_and_collapse(self, target_focus_count: int) -> bool:
         """
@@ -562,6 +651,8 @@ class SeatObservationManager(Singleton):
         if not self.handler:
             return False
 
+        self._last_rescan_time = time.monotonic()
+
         async with self._lock, self._ui_session("seat_expansion"):
             try:
                 # 用规范 helper：展开失败或桌位不足 6 张都返回 None，避免半截快照
@@ -569,6 +660,15 @@ class SeatObservationManager(Singleton):
                 if not seat_desks:
                     self.logger.warning("Failed to expand seats for full rescan")
                     return False
+
+                # 检查初步识别的在座人数：若少于目标专注人数，稍等 0.4s 重拉一次元素，避免动画/视图绑定延迟漏人
+                pre_observed = self._read_visible_seats(seat_desks)
+                pre_seated = sum(1 for _, _, info in pre_observed.values() if info.get("occupied"))
+                if pre_seated < target_focus_count and self.handler and hasattr(self.handler, "element_finder"):
+                    await asyncio.sleep(0.4)
+                    refreshed = self.handler.element_finder.find_elements("seat_desk")
+                    if refreshed and len(refreshed) == 6:
+                        seat_desks = refreshed
 
                 return await self._sync_desks(
                     seat_desks,

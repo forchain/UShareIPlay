@@ -153,11 +153,11 @@ class AppController(Singleton):
         await self.ui_lock.acquire()
         try:
             if self.logger and reason:
-                self.logger.critical(f"[ui_lock] acquired: {reason}")
+                self.logger.debug(f"[ui_lock] acquired: {reason}")
             yield
         finally:
             if self.logger and reason:
-                self.logger.critical(f"[ui_lock] released: {reason}")
+                self.logger.debug(f"[ui_lock] released: {reason}")
             self.ui_lock.release()
 
     def _start_apps(self):
@@ -471,7 +471,7 @@ class AppController(Singleton):
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
-            SeatObservationManager.initialize(self.soul_handler)
+            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
@@ -674,3 +674,10 @@ class AppController(Singleton):
             except Exception:
                 pass
             self._network_bridge = None
+
+        try:
+            from ushareiplay.managers.seat_manager import SeatManager
+            SeatManager.reset_instance()
+        except Exception:
+            pass
+

@@ -43,7 +43,7 @@ def test_format_3row_layout_visual_representation():
     layout = manager.format_3row_layout("测试触发")
     lines = layout.splitlines()
 
-    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 测试触发):" in lines[0]
+    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 测试触发, 专注人数: 未知, 在座人数: 4):" in lines[0]
     assert "第一排: [1号: 群主] [2号: 空闲]  |  [3号: 张三] [4号: 空闲]" in lines[1]
     assert "第二排: [5号: 空闲] [6号: 空闲]  |  [7号: 李四] [8号: 空闲]" in lines[2]
     assert "第三排: [9号: 空闲] [10号: 空闲]  |  [11号: 王五] [12号: 空闲]" in lines[3]
@@ -347,3 +347,197 @@ async def test_controller_without_ui_session_api_fails_loudly():
 
     with pytest.raises(AttributeError):
         await manager.observe_visible_desks([desk])
+
+
+def test_seat_manager_does_not_initialize_seat_observation_singleton():
+    """
+    SeatObservationManager is a Singleton whose creation is limited to the composition root.
+    SeatManager must never call SeatObservationManager.initialize(...), so that the composition root
+    can initialize SeatObservationManager without raising SingletonError.
+    """
+    from ushareiplay.managers.seat_manager import SeatManager
+    from ushareiplay.managers.seat_manager.base import SeatManagerBase
+
+    SeatObservationManager.reset_instance()
+    SeatManagerBase._instance = None
+    SeatManager._instance = None
+
+    handler = make_handler()
+    seat_mgr = SeatManager.get_instance(handler)
+
+    # SeatManager must not eagerly initialize the singleton
+    assert not SeatObservationManager.is_initialized()
+    assert seat_mgr.observation is None
+    assert seat_mgr._observation is None
+
+    # Composition root initializes SeatObservationManager
+    observation = SeatObservationManager.initialize(handler)
+    assert SeatObservationManager.is_initialized()
+    assert seat_mgr.observation is observation
+    assert seat_mgr._observation is observation
+
+
+@pytest.mark.asyncio
+async def test_observe_visible_desks_does_not_acquire_ui_session_when_no_unknown_occupants():
+    """监控轮询在没有未解析昵称时不得抢占 ui_session，避免常规监控输出日志与锁竞争。"""
+    controller = FakeController()
+    handler = make_handler(controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+
+    desk = build_desk_wrapper(handler, left="1", right="2")
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.observe_visible_desks([desk])
+
+    # 无需点头像弹窗解析，不应申请 ui_session
+    assert controller.sessions == []
+
+
+@pytest.mark.asyncio
+async def test_ui_session_logs_at_debug_level_only():
+    """AppController.ui_session 的锁获取/释放仅允许打在 debug 级别，严禁在 critical/info 刷屏。"""
+    import asyncio
+    from unittest.mock import MagicMock
+    from ushareiplay.core.app_controller import AppController
+
+    controller = AppController.__new__(AppController)
+    controller.ui_lock = asyncio.Lock()
+    mock_logger = MagicMock()
+    controller.logger = mock_logger
+
+    async with controller.ui_session("seat_inspect"):
+        pass
+
+    assert mock_logger.debug.call_count == 2
+    mock_logger.debug.assert_any_call("[ui_lock] acquired: seat_inspect")
+    mock_logger.debug.assert_any_call("[ui_lock] released: seat_inspect")
+    mock_logger.critical.assert_not_called()
+    mock_logger.info.assert_not_called()
+
+
+def test_format_3row_layout_includes_focus_count_and_seated_count():
+    """输出日志时必须同时输出专注人数和在座人数。"""
+    manager = SeatObservationManager.initialize(make_handler())
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
+    manager.seats[6] = SeatSlot(seat_number=6, occupied=True, username="儿童不易")
+
+    log_str = manager.format_3row_layout(trigger_source="可视区域变更", focus_count=6)
+    assert "[FocusSeatObservation] 专注麦位状态变更 (触发源: 可视区域变更, 专注人数: 6, 在座人数: 2):" in log_str
+
+    # 当 focus_count 为 None 时回退未知
+    manager._last_focus_count = None
+    log_str_unknown = manager.format_3row_layout(trigger_source="可视区域变更", focus_count=None)
+    assert "专注人数: 未知, 在座人数: 2" in log_str_unknown
+
+
+def test_extract_seat_info_marks_occupied_when_label_is_nickname_even_without_state_node():
+    """即使 state 节点未抓取到，只要 label 是用户昵称，麦位必须判定为占用。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 构造一个没有 left_state 但 left_label 是昵称的 desk
+    elements = soul_elements()
+    raw_desk = RawSeatDesk(
+        {
+            elements["left_label"]: SimpleNamespace(text="锦鲤"),
+            elements["right_label"]: SimpleNamespace(text="2"),
+        },
+        location={"x": 40, "y": 100},
+    )
+
+    info = manager._extract_seat_info(raw_desk, "left")
+    assert info["occupied"] is True
+    assert info["username"] == "锦鲤"
+
+
+@pytest.mark.asyncio
+async def test_observe_visible_desks_validates_focus_count_and_triggers_full_scan():
+    """验证：如果输出的座位与专注人数对不上（如在座2人但专注6人），必须触发全量重扫。"""
+    controller = FakeController()
+    handler = make_handler(controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+    manager.expand_rescan_and_collapse = AsyncMock(return_value=True)
+
+    desk = build_desk_wrapper(handler, left="张三", right="2", left_occupied=True)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        # 专注人数为 6，但当前仅能观测到 1 人在座，必须触发全量扫描
+        await manager.observe_visible_desks([desk], current_focus_count=6)
+
+    manager.expand_rescan_and_collapse.assert_awaited_once_with(6)
+
+
+@pytest.mark.asyncio
+async def test_collapsed_seats_do_not_overwrite_third_row_snapshot():
+    """折叠状态下的可视区域观测不得把未展开的第三排麦位（9~12号）误推平为空闲。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 预设全量扫描已探明的第三排麦位
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer")
+    manager.seats[11] = SeatSlot(seat_number=11, occupied=True, username="不约儿童")
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="群主", is_owner=True)
+
+    # 模拟座位已收起（折叠状态）
+    seat_ui = FakeSeatUI()
+    seat_ui.is_expanded = False
+    manager._seat_ui = seat_ui
+
+    # 折叠状态下，传递前两排桌位（包含占位与空位）
+    desk0 = build_desk_wrapper(handler, left="1", right="2", y=100)
+    desk1 = build_desk_wrapper(handler, left="锦鲤", right="儿童不易", left_occupied=True, right_occupied=True, y=200)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.observe_visible_desks([desk0, desk1], current_focus_count=5)
+
+    # 第三排依然保存在快照中，未被推平
+    assert manager.seats[9].occupied is True
+    assert manager.seats[9].username == "Chainer"
+    assert manager.seats[11].occupied is True
+    assert manager.seats[11].username == "不约儿童"
+    assert manager.seats[12].occupied is True
+    assert manager.seats[12].username == "群主"
+    assert sum(1 for s in manager.seats.values() if s.occupied) == 5
+
+
+@pytest.mark.asyncio
+async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_third_row():
+    """当 Appium XML 中带有折叠/零尺寸的桌位节点时，不得误作为可见空座位处理。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer")
+    manager.seats[11] = SeatSlot(seat_number=11, occupied=True, username="不约儿童")
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="群主", is_owner=True)
+
+    seat_ui = FakeSeatUI()
+    seat_ui.is_expanded = False
+    manager._seat_ui = seat_ui
+
+    # 模拟 6 个桌位节点都在 XML 树中，但后两张桌子 bounds 为 [0,0][0,0]（折叠状态）
+    desk0 = build_desk_wrapper(handler, left="1", right="2", y=100)
+    desk1 = build_desk_wrapper(handler, left="锦鲤", right="儿童不易", left_occupied=True, right_occupied=True, y=200)
+    desk2 = build_desk_wrapper(handler, left="7", right="8", y=300)
+    desk3 = build_desk_wrapper(handler, left="3", right="4", y=400)
+    desk4_collapsed = build_desk_wrapper(handler, left="", right="", y=0)
+    desk4_collapsed._xml_element.set("bounds", "[0,0][0,0]")
+    desk5_collapsed = build_desk_wrapper(handler, left="", right="", y=0)
+    desk5_collapsed._xml_element.set("bounds", "[0,0][0,0]")
+
+    desks = [desk0, desk1, desk2, desk3, desk4_collapsed, desk5_collapsed]
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.observe_visible_desks(desks, current_focus_count=5)
+
+    assert manager.seats[9].occupied is True
+    assert manager.seats[9].username == "Chainer"
+    assert manager.seats[11].occupied is True
+    assert manager.seats[12].occupied is True
+
+
+
+
