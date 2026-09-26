@@ -20,6 +20,12 @@ from ushareiplay.core.element_wrapper import ElementWrapper
 
 DESK_RESOURCE_ID = "cn.soulapp.android:id/userRoot"
 SOUL_PACKAGE = "cn.soulapp.android:id"
+# 只渲染底座的残片（见 #341）：没有 left/rightUserView，只有背景与底座。
+BASE_ROOT_RESOURCE_ID = "cn.soulapp.android:id/bgRoot"
+BOTTOM_VIEW_RESOURCE_IDS = (
+    "cn.soulapp.android:id/leftBottomView",
+    "cn.soulapp.android:id/rightBottomView",
+)
 
 
 @lru_cache(maxsize=1)
@@ -30,21 +36,41 @@ def soul_elements() -> dict:
         return yaml.safe_load(handle)["soul"]["elements"]
 
 
-def _seat_xml(side: str, label: str, occupied: bool, default_name: str = "") -> str:
+def _seat_xml(
+    side: str,
+    label: str,
+    occupied: bool,
+    default_name: str = "",
+    *,
+    avatar_images: int = 0,
+    state_widgets: bool = False,
+) -> str:
     """一个麦位。
 
     占用时 leftClState 存在（沿用 seating.py 的占用判据），label 是昵称；
     空位没有 state 节点，label 是座位号（房间里只有空位显示编号）或有 leftTvDefaultName（点击入座）。
+
+    `avatar_images` / `state_widgets` 描述纯 DOM 的占用与空座证据（见 #341）：
+    AvatarView 下的 ImageView 数量（空座占位图恰好一张，占座是头像+挂件）与
+    ClState 里的活跃控件（勋章、专注时长）。
     """
+    avatar = ""
+    if avatar_images:
+        images = "".join('<node class="android.widget.ImageView"/>' for _ in range(avatar_images))
+        avatar = f'<node resource-id="{SOUL_PACKAGE}/{side}AvatarView">{images}</node>'
+
     nodes = []
     if default_name:
         nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}TvDefaultName" text="{default_name}"/>')
     if label:
         nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}TvLabelH" text="{label}"/>')
+    if state_widgets:
+        nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}IvMedal"/>')
+        nodes.append(f'<node resource-id="{SOUL_PACKAGE}/{side}TvTime" text="28分钟"/>')
     inner = "".join(nodes)
-    if occupied:
+    if occupied or state_widgets:
         inner = f'<node resource-id="{SOUL_PACKAGE}/{side}ClState">{inner}</node>'
-    return f'<node resource-id="{SOUL_PACKAGE}/{side}UserView">{inner}</node>'
+    return f'<node resource-id="{SOUL_PACKAGE}/{side}UserView">{avatar}{inner}</node>'
 
 
 def build_desk_xml(
@@ -56,12 +82,30 @@ def build_desk_xml(
     left_default_name="",
     right_default_name="",
     bounds=None,
+    left_avatar_images=0,
+    right_avatar_images=0,
+    left_state_widgets=False,
+    right_state_widgets=False,
 ) -> str:
     bounds_attr = bounds if bounds else f"[40,{y}][400,{y + 160}]"
     return (
         f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{bounds_attr}">'
-        + _seat_xml("left", left, left_occupied, left_default_name)
-        + _seat_xml("right", right, right_occupied, right_default_name)
+        + _seat_xml(
+            "left",
+            left,
+            left_occupied,
+            left_default_name,
+            avatar_images=left_avatar_images,
+            state_widgets=left_state_widgets,
+        )
+        + _seat_xml(
+            "right",
+            right,
+            right_occupied,
+            right_default_name,
+            avatar_images=right_avatar_images,
+            state_widgets=right_state_widgets,
+        )
         + "</node>"
     )
 
@@ -69,6 +113,25 @@ def build_desk_xml(
 def build_desk_wrapper(handler, **kwargs) -> ElementWrapper:
     """按 EventManager 的方式把 desk 包成 ElementWrapper。"""
     root = etree.fromstring(f"<hierarchy>{build_desk_xml(**kwargs)}</hierarchy>".encode())
+    desk_xml = root.xpath(f"//*[@resource-id='{DESK_RESOURCE_ID}']")[0]
+    return ElementWrapper(desk_xml, handler, "seat_desk")
+
+
+def build_base_fragment_xml(y=100, bounds=None) -> str:
+    """只渲染底座的残片：bgRoot + left/rightBottomView，没有任何 userView。"""
+    bounds_attr = bounds if bounds else f"[40,{y}][400,{y + 18}]"
+    bottoms = "".join(f'<node resource-id="{rid}"/>' for rid in BOTTOM_VIEW_RESOURCE_IDS)
+    return (
+        f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{bounds_attr}">'
+        f'<node resource-id="{BASE_ROOT_RESOURCE_ID}"/>'
+        f"{bottoms}"
+        "</node>"
+    )
+
+
+def build_base_fragment_wrapper(handler, **kwargs) -> ElementWrapper:
+    """按 EventManager 的方式把底座残片包成 ElementWrapper。"""
+    root = etree.fromstring(f"<hierarchy>{build_base_fragment_xml(**kwargs)}</hierarchy>".encode())
     desk_xml = root.xpath(f"//*[@resource-id='{DESK_RESOURCE_ID}']")[0]
     return ElementWrapper(desk_xml, handler, "seat_desk")
 
