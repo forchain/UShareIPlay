@@ -94,11 +94,11 @@
 
 | # | 用例 | 期望 | 备注 |
 |---|---|---|---|
-| T1 | 快照里 5 号位空 → 直接滚动到 row 1（desk 2/3）→ `sync_current_viewport(band="top")` 验证空 → 物理点击 → 写入快照 | `seats[5].occupied=True, is_owner=True`；`gesture_handler.click_at(center_x, center_y)` 被调用一次；`_last_focus_count += 1`；`_reconciled_focus_count == _last_focus_count`；`collapse_seats()` 被调用 | 新增 |
+| T1 | 快照里 5 号位空 → 滚到顶部夹住（row 1 同用此滚动取得相位）→ `sync_current_viewport(band="top")` 验证空 → 物理点击 → 写入快照 | `seats[5].occupied=True, is_owner=True`；`gesture_handler.click_at(center_x, center_y)` 被调用一次；`_last_focus_count += 1`；`_reconciled_focus_count == _last_focus_count`；`collapse_seats()` 被调用 | 新增 |
 | T2 | 滚动到目标行后 page_source 显示 5 号位被占 → 立即返回错误，**不**点击 | `gesture_handler.click_at.assert_not_called()`；`seats[5]` 在快照里更新为占座但**不**是 owner；返回 `{'error': 'Seat 5 is already occupied by <昵称>'}` | 新增（验收 #5 对账保护） |
 | T3 | 物理点击坐标取自 `page_source` 的 `bounds`（不是 `ElementWrapper.get_web_element()`） | mock 的 `click_at` 入参 = `(bounds.x + w/2, bounds.y + h/2)`；不再依赖 `left_seat.click()` | 新增（验收 #3） |
 | T4 | 越界座位（13/0/-1）被 `coerce_int` 兜住，**不**触发任何 UI 动作 | `find_elements` 未被调用；返回 error dict | 复用既有 `test_seat_2_delegates_specific_seat_to_seat_management` 风格 |
-| T5 | 滚动手势只滚到目标行（row 0/2），不再触发 row 1 中间行的二次滚动 | mock `gesture_handler.swipe` 仅被调用一次 | 新增（验收 #2：「不再逐桌扫描」） |
+| T5 | 滚动只发生一次且相位由这次滚动决定：row 0/2 滚到对应端，row 1 也滚到顶部夹住（不再假设「展开后默认视口就是顶相位」） | mock `gesture_handler.swipe` 仅被调用一次；row 1 目标的 `scrolled_rows == [0]` | 新增（验收 #2：「不再逐桌扫描」） |
 | T6 | 验证失败时不写入 owner 标记、不预增 `_last_focus_count` | 失败路径下 `_last_focus_count` 维持原值 | 新增 |
 
 #### 3.2.3 关闭对账闸门（验收 #6）
@@ -369,7 +369,7 @@
 
 | Ticket | 新 L1 文件 | 新 L2 / 复用的现有能力 |
 |---|---|---|
-| #346 | `tests/test_seat_viewport_sync.py`、`tests/test_seat_take_targeted.py` | `e2e_take_seat_2_success`、`e2e_take_seat_2_occupied`、`e2e_anti_trigger_rescan` |
+| #346 | `tests/test_seat_targeted_seating.py`（`:seat 2 <n>` 直达 + 反 back-trigger）；`sync_current_viewport` 契约用例落在既有的 `tests/test_seat_observation.py` | `e2e_take_seat_2_success`、`e2e_take_seat_2_occupied`、`e2e_anti_trigger_rescan` |
 | #347 | `tests/test_seat_find_owner_optimistic.py` | `e2e_seat_owner_companion`、`e2e_seat_owner_self_heal`、`e2e_seat_owner_no_trigger_rescan` |
 | #348 | `tests/test_seat_accompany_snapshot.py`、`tests/test_seat_off_sync.py` | `e2e_seat_3_success`、`e2e_seat_3_partner_occupied`、`e2e_seat_3_unknown_with_unverified`、`e2e_seat_4_owner`、`e2e_seat_4_specific`、`e2e_seat_off_no_trigger_rescan` |
 

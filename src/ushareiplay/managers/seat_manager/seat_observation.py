@@ -1420,7 +1420,8 @@ class SeatObservationManager(Singleton):
             try:
                 from ushareiplay.state.room_state import RoomState
                 current = RoomState.instance().focus_count
-            except Exception:
+            except Exception as e:
+                self.logger.debug(f"RoomState focus_count unavailable, falling back to seated count: {e}")
                 current = None
 
         if current is not None:
@@ -1434,6 +1435,8 @@ class SeatObservationManager(Singleton):
         try:
             from ushareiplay.state.room_state import RoomState
             RoomState.instance().focus_count = new_count
-        except Exception:
-            pass
+        except Exception as e:
+            # 对账闸门读的是 _reconciled_focus_count 与快照座位数，不读 RoomState，
+            # 所以这里写失败不会误触发重扫；但 RoomState 会停在旧值，必须留痕。
+            self.logger.warning(f"Failed to write RoomState.focus_count={new_count} after seating: {e}")
 

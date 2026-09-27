@@ -32,7 +32,13 @@ class SeatingManager:
         desk_index = (seat_number - 1) // 2
         row_index = desk_index // 2
         side = 'left' if seat_number % 2 == 1 else 'right'
+
+        # 相位必须由本次真实滚动决定，不能只是声明：第二排（row 1）在展开后的
+        # 默认可视区域内，但「默认视口就是顶相位」是没被真机证实过的假设 ——
+        # 面板若停在滚动后的位置，带位偏移会算错。row 0/1 一律先滚到内容顶部
+        # 夹住（row 1 时这次滚动被内容顶端夹住，是幂等的空操作），row 2 滚到底部。
         band = "bottom" if row_index == 2 else "top"
+        scroll_target_desk = desk_index if row_index == 2 else 0
 
         try:
             # 展开座位面板
@@ -41,7 +47,7 @@ class SeatingManager:
                 return {'error': 'Failed to find seat desks'}
 
             # 直达目标行滚动，传播对应相位
-            self.seat_ui.scroll_to_row(desk_index, seat_desks)
+            self.seat_ui.scroll_to_row(scroll_target_desk, seat_desks)
             await asyncio.sleep(0.3)
 
             # 视口同步与 DOM 证据校验
@@ -51,9 +57,13 @@ class SeatingManager:
                 return {'error': f'Seat {seat_number} could not be verified in viewport'}
 
             desk, seat_side, info = observed[seat_number]
-            if info.get('occupied') or not info.get('is_empty'):
+            if info.get('occupied'):
                 occupied_label = info.get("label") or info.get("username") or "occupant"
                 return {'error': f'Seat {seat_number} is already occupied by {occupied_label}'}
+            if not info.get('is_empty'):
+                # occupied=False 且 is_empty=False 是第三种状态：读不到判据（渲染缺证据）。
+                # 它同样不该点击，但不能谎报成「有人占座」。
+                return {'error': f'Seat {seat_number} could not be verified in viewport'}
 
             # 目标为空座，通过 page_source 导出的坐标点击
             seat_element = obs._find_child_element(desk, f"{side}_seat")
@@ -70,8 +80,10 @@ class SeatingManager:
                 click_y = desk_bounds["y"] + h // 2
 
             gesture = getattr(self.handler, "gesture_handler", None)
-            if gesture and hasattr(gesture, "click_at"):
-                gesture.click_at(click_x, click_y)
+            if not gesture or not hasattr(gesture, "click_at"):
+                # 点不了就必须报错返回：继续往下走会去等一个不存在的确认弹窗
+                return {'error': f'Gesture handler cannot click; seat {seat_number} was not selected'}
+            gesture.click_at(click_x, click_y)
             await asyncio.sleep(0.3)
 
             # 确认就座
