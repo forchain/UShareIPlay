@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
+from lxml import etree
+
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
 
@@ -158,6 +160,13 @@ class SeatObservationManager(Singleton):
                 return selector.strip()
 
         _FALLBACK_SELECTORS = {
+            "seat_desk": "cn.soulapp.android:id/userRoot",
+            "left_seat": "cn.soulapp.android:id/leftUserView",
+            "right_seat": "cn.soulapp.android:id/rightUserView",
+            "left_state": "cn.soulapp.android:id/leftClState",
+            "right_state": "cn.soulapp.android:id/rightClState",
+            "left_label": "cn.soulapp.android:id/leftTvLabelH",
+            "right_label": "cn.soulapp.android:id/rightTvLabelH",
             "left_default_name": "cn.soulapp.android:id/leftTvDefaultName",
             "right_default_name": "cn.soulapp.android:id/rightTvDefaultName",
             "left_avatar": "cn.soulapp.android:id/leftAvatarView",
@@ -1329,3 +1338,102 @@ class SeatObservationManager(Singleton):
                     await self.seat_ui.collapse_seats()
                 except Exception as e:
                     self.logger.error(f"Failed to collapse seats after rescan: {e}")
+
+    async def sync_current_viewport(
+        self, band: Optional[str] = None, page_source: Optional[str] = None
+    ) -> Dict[int, Tuple[any, str, dict]]:
+        """从 driver.page_source 提取可见桌位，按滚动相位映射并同步 DOM 证据至快照。
+
+        Args:
+            band: 已知滚动相位（"top" / "bottom"）。
+            page_source: 可选页面 XML 字符串；若为 None 则从 driver.page_source 获取。
+
+        Returns:
+            observed: {seat_number: (desk, side, info)}，本轮视口中识别出的麦位及读数。
+        """
+        if page_source is None:
+            driver = getattr(self.handler, "driver", None)
+            if driver and hasattr(driver, "page_source"):
+                page_source = driver.page_source
+
+        if not page_source:
+            return {}
+
+        try:
+            root = etree.fromstring(page_source.encode("utf-8"))
+        except Exception as e:
+            self.logger.warning(f"Failed to parse page_source XML for viewport sync: {e}")
+            return {}
+
+        selector = self._element_selector("seat_desk") or "cn.soulapp.android:id/userRoot"
+        if selector.startswith("//"):
+            nodes = root.xpath(selector)
+        else:
+            nodes = root.xpath(f"//*[@resource-id='{selector}']")
+
+        desk_wrappers = [ElementWrapper(node, self.handler, "seat_desk") for node in nodes]
+        if not desk_wrappers:
+            return {}
+
+        async with self._lock:
+            observed, diagnostics = self._read_visible_seats(desk_wrappers, band=band)
+            if not observed:
+                return {}
+
+            old_slots = {k: v.copy() for k, v in self.seats.items()}
+
+            # 沿用快照中已知的昵称
+            for seat_num, (desk, side, info) in observed.items():
+                if info["occupied"] and not info.get("username"):
+                    old_slot = self.seats.get(seat_num)
+                    if old_slot and old_slot.occupied and old_slot.username:
+                        info["username"] = old_slot.username
+
+            # 视口可见麦位具有直接 DOM 证据，明确空座允许清空旧快照
+            self._apply_snapshot(observed, clearable=set(observed.keys()))
+
+            has_changes, changed_users, seat_info = self._compute_diff(
+                old_slots, self.seats, set(observed.keys())
+            )
+
+            if has_changes:
+                self.logger.info(
+                    self.format_3row_layout(
+                        trigger_source="视口同步", focus_count=self._last_focus_count
+                    )
+                )
+                self.logger.debug(diagnostics)
+
+            return observed
+
+    def mark_owner_seated(self, seat_number: int, username: str = "群主") -> None:
+        """确认就座后立即写入快照、预增 _last_focus_count 并标记已对账。"""
+        slot = self.seats.get(seat_number)
+        if slot:
+            slot.occupied = True
+            slot.username = username
+            slot.label = "群主"
+            slot.is_owner = True
+
+        current = self._last_focus_count
+        if current is None:
+            try:
+                from ushareiplay.state.room_state import RoomState
+                current = RoomState.instance().focus_count
+            except Exception:
+                current = None
+
+        if current is not None:
+            new_count = current + 1
+        else:
+            new_count = sum(1 for s in self.seats.values() if s.occupied)
+
+        self._last_focus_count = new_count
+        self._reconciled_focus_count = new_count
+
+        try:
+            from ushareiplay.state.room_state import RoomState
+            RoomState.instance().focus_count = new_count
+        except Exception:
+            pass
+
