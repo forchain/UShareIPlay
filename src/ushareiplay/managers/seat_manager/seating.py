@@ -5,51 +5,106 @@ import traceback
 
 
 class SeatingManager:
-    def __init__(self, handler=None, seat_ui=None):
+    def __init__(self, handler=None, seat_ui=None, observation=None):
         self.handler = handler
         self.seat_ui = seat_ui or SeatUIManager(handler)
+        self._observation = observation
         self.current_desk_index = 0
         self.current_side = None
 
+    @property
+    def observation(self):
+        if self._observation is not None:
+            return self._observation
+        from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+        if SeatObservationManager.is_initialized():
+            return SeatObservationManager.instance()
+        return SeatObservationManager.initialize(self.handler)
+
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
-        """Sit at a specific seat position (1-12)"""
+        """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
-        try:
-            # Convert seat number to desk index and side
-            # Odd numbers = left seat, Even numbers = right seat
-            desk_index = (seat_number - 1) // 2
-            side = 'left' if seat_number % 2 == 1 else 'right'
+        if not 1 <= seat_number <= 12:
+            return {'error': f'Invalid seat number {seat_number}. Must be between 1 and 12'}
 
+        desk_index = (seat_number - 1) // 2
+        row_index = desk_index // 2
+        side = 'left' if seat_number % 2 == 1 else 'right'
+
+        # 相位必须由本次真实滚动决定，不能只是声明：第二排（row 1）在展开后的
+        # 默认可视区域内，但「默认视口就是顶相位」是没被真机证实过的假设 ——
+        # 面板若停在滚动后的位置，带位偏移会算错。row 0/1 一律先滚到内容顶部
+        # 夹住（row 1 时这次滚动被内容顶端夹住，是幂等的空操作），row 2 滚到底部。
+        band = "bottom" if row_index == 2 else "top"
+        scroll_target_desk = desk_index if row_index == 2 else 0
+
+        try:
+            # 展开座位面板
             seat_desks = await self.seat_ui.expand_and_find_desks()
             if not seat_desks:
                 return {'error': 'Failed to find seat desks'}
 
-            if desk_index >= len(seat_desks):
-                return {'error': f'Desk {desk_index + 1} does not exist'}
+            # 直达目标行滚动，传播对应相位
+            self.seat_ui.scroll_to_row(scroll_target_desk, seat_desks)
+            await asyncio.sleep(0.3)
 
-            # Ensure the target row is visible
-            self.seat_ui.scroll_to_row(desk_index, seat_desks)
+            # 视口同步与 DOM 证据校验
+            obs = self.observation
+            observed = await obs.sync_current_viewport(band=band)
+            if not observed or seat_number not in observed:
+                return {'error': f'Seat {seat_number} could not be verified in viewport'}
 
-            # Get the specific desk and collect its info
-            desk = seat_desks[desk_index]
-            desk_info = self._collect_desk_info(desk)
+            desk, seat_side, info = observed[seat_number]
+            if info.get('occupied'):
+                occupied_label = info.get("label") or info.get("username") or "occupant"
+                return {'error': f'Seat {seat_number} is already occupied by {occupied_label}'}
+            if not info.get('is_empty'):
+                # occupied=False 且 is_empty=False 是第三种状态：读不到判据（渲染缺证据）。
+                # 它同样不该点击，但不能谎报成「有人占座」。
+                return {'error': f'Seat {seat_number} could not be verified in viewport'}
 
-            # Get the target seat info
-            target_seat = desk_info[side]
+            # 目标为空座，通过 page_source 导出的坐标点击
+            seat_element = obs._find_child_element(desk, f"{side}_seat")
+            seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
+            if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
+                click_x = seat_bounds["x"] + seat_bounds["width"] // 2
+                click_y = seat_bounds["y"] + seat_bounds["height"] // 2
+            else:
+                desk_bounds = getattr(desk, "bounds", None) or obs._desk_bounds(desk)
+                if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
+                    return {'error': f'Could not determine click bounds for seat {seat_number}'}
+                w, h = desk_bounds["width"], desk_bounds["height"]
+                click_x = desk_bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
+                click_y = desk_bounds["y"] + h // 2
 
-            # Check if the target seat is occupied
-            if target_seat['occupied']:
-                return {'error': f'Seat {seat_number} is already occupied by {target_seat["label"]}'}
+            gesture = getattr(self.handler, "gesture_handler", None)
+            if not gesture or not hasattr(gesture, "click_at"):
+                # 点不了就必须报错返回：继续往下走会去等一个不存在的确认弹窗
+                return {'error': f'Gesture handler cannot click; seat {seat_number} was not selected'}
+            gesture.click_at(click_x, click_y)
+            await asyncio.sleep(0.3)
 
-            # Take the seat
-            self.handler.logger.info(f"Sitting at seat {seat_number} (desk {desk_index + 1}, {side} side)")
-            return self._take_seat(desk_index, target_seat)
+            # 确认就座
+            result = self._confirm_seat()
+            if result.get('success'):
+                obs.mark_owner_seated(seat_number)
+                self.current_desk_index = desk_index
+                self.current_side = side
+
+            return result
 
         except Exception as e:
-            self.handler.log_error(f"Error sitting at specific seat: {traceback.format_exc()}")
+            if hasattr(self.handler, "log_error"):
+                self.handler.log_error(f"Error sitting at specific seat: {traceback.format_exc()}")
             return {'error': f'Failed to sit at seat {seat_number}: {str(e)}'}
+        finally:
+            try:
+                await self.seat_ui.collapse_seats()
+            except Exception as e:
+                if hasattr(self.handler, "logger") and self.handler.logger:
+                    self.handler.logger.error(f"Failed to collapse seats: {e}")
 
     async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""

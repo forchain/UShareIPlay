@@ -30,7 +30,7 @@ class SeatManager(SeatManagerBase):
             self._ui = SeatUIManager(handler)
             self._check = SeatCheckManager(handler, self._ui)
             self._reservation = ReservationManager(handler, self._ui, self._check)
-            self._seating = SeatingManager(handler, self._ui)
+            self._seating = SeatingManager(handler, self._ui, self.observation)
             self.initialized = True
             logging.getLogger('seat_manager').info("SeatManager 初始化完成")
         elif handler and not self.handler:
@@ -42,6 +42,8 @@ class SeatManager(SeatManagerBase):
             self._check._message_dispatch = None
             self._ui.handler = handler
             self._seating.handler = handler
+            if hasattr(self._seating, "_observation"):
+                self._seating._observation = self.observation
             if SeatObservationManager.is_initialized():
                 SeatObservationManager.instance().bind_handler(handler)
 

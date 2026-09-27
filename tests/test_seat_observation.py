@@ -5,13 +5,15 @@ C1/C2）：desk 是真 ElementWrapper，raw WebElement 路径走 find_element �
 controller 用真实的 ui_session 异步上下文管理器。
 """
 
+from pathlib import Path
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tests.seat_fixtures import (
+    SEAT_DOM_FIXTURES,
     ClickableNode,
     FakeController,
     FakeSeatUI,
@@ -1518,3 +1520,91 @@ async def test_rescan_falls_back_to_on_screen_desks_when_expansion_unavailable()
     assert manager._last_rescan_ok is True
     assert manager.seats[1].occupied is True  # 真机夹具：1 号位是群主
     assert manager.seats[5].occupied is True  # 真机夹具：5 号位有人
+
+
+@pytest.mark.asyncio
+async def test_sync_current_viewport_extracts_desks_and_updates_snapshot_with_band_top():
+    """sync_current_viewport 从 driver.page_source 提取桌位并根据 top 相位更新快照。"""
+    handler = make_handler()
+    xml_content = (
+        Path(__file__).resolve().parent / "fixtures" / "seat_dom" / "expanded_top_with_anchor.xml"
+    ).read_text(encoding="utf-8")
+    handler.driver = MagicMock()
+    handler.driver.page_source = xml_content
+
+    manager = SeatObservationManager.initialize(handler)
+    # 预设快照中 2 号位原为占座，检验视口同步能将真实空座清空
+    manager.seats[2] = SeatSlot(seat_number=2, occupied=True, username="旧占用者")
+
+    observed = await manager.sync_current_viewport(band="top")
+
+    assert 1 in observed
+    assert 2 in observed
+    assert 5 in observed
+
+    # 1 号位在真机夹具中为群主占用
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].is_owner is True
+    assert manager.seats[1].username == "群主"
+
+    # 2 号位在真机夹具中为“点击入座”空座，快照应被正确清空
+    assert manager.seats[2].occupied is False
+    assert manager.seats[2].username is None
+
+    # 5 号位在真机夹具中为占用
+    assert manager.seats[5].occupied is True
+
+
+@pytest.mark.asyncio
+async def test_sync_current_viewport_with_band_bottom_preserves_unseen_seats():
+    """sync_current_viewport 在 bottom 相位下只更新可见麦位（5~12），保留顶部麦位原值。"""
+    handler = make_handler()
+    xml_content = (
+        Path(__file__).resolve().parent / "fixtures" / "seat_dom" / "expanded_scrolled_bottom.xml"
+    ).read_text(encoding="utf-8")
+    handler.driver = MagicMock()
+    handler.driver.page_source = xml_content
+
+    manager = SeatObservationManager.initialize(handler)
+    # 预先设置 1 号位群主与 9 号位旧占用者
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="群主", is_owner=True)
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=True, username="旧占用者")
+
+    observed = await manager.sync_current_viewport(band="bottom")
+
+    # bottom 视口覆盖 5~12 号位
+    assert 9 in observed
+    assert 1 not in observed
+
+    # 1 号位不在 bottom 视口中，必须被完好保留
+    assert manager.seats[1].occupied is True
+    assert manager.seats[1].username == "群主"
+
+    # 9 号位在真机夹具中为空座（点击入座），快照中旧占用者被清空
+    assert manager.seats[9].occupied is False
+    assert manager.seats[9].username is None
+
+
+@pytest.mark.asyncio
+async def test_mark_owner_seated_updates_snapshot_and_suppresses_focus_count_divergence():
+    """就座后立即写入快照、预增基准并标记已对账，下游 +1 专注人数事件不再触发全量展开重扫。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager._last_focus_count = 2
+
+    # 模拟确认就座 2 号位
+    manager.mark_owner_seated(2)
+
+    # 验证快照与基准
+    assert manager.seats[2].occupied is True
+    assert manager.seats[2].is_owner is True
+    assert manager.seats[2].username == "群主"
+    assert manager._last_focus_count == 3
+    assert manager._reconciled_focus_count == 3
+
+    # 下游事件到来：专注人数变为 3（+1）
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        triggered = await manager.on_focus_count(before=2, current_focus_count=3)
+        assert triggered is False
+        mock_rescan.assert_not_called()
+
