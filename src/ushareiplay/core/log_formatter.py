@@ -1,5 +1,14 @@
 """Custom log formatter with color support and abbreviated level markers"""
 import logging
+import re
+
+# ANSI 转义序列（SGR）：CSI + 数字/分号 + 'm'
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    """去掉文本里的 ANSI 转义码，只留可视内容。"""
+    return ANSI_ESCAPE_PATTERN.sub("", text)
 
 
 class ColoredFormatter(logging.Formatter):
@@ -48,6 +57,10 @@ class ColoredFormatter(logging.Formatter):
             color = self.COLORS[original_levelname]
             reset = self.COLORS['RESET']
             formatted = f"{color}{formatted}{reset}"
+        elif not self.use_colors:
+            # 文件日志（use_colors=False）必须落纯文本：消息体里自带转义码的输出
+            # （例如座次表给在座麦位上的色）不许污染文件，否则 tail / grep 全是乱码。
+            formatted = strip_ansi(formatted)
         
         # Restore original levelname for other handlers
         record.levelname = original_levelname
