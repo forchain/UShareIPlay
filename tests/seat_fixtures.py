@@ -210,6 +210,9 @@ class FakeElementFinder:
         self.elements = elements
         self.desks = desks or []
         self.popup_name = popup_name
+        # 弹窗（头像名片）是否在屏幕上：与生产一致 —— 关掉后节点不在 dump 里，
+        # 与「昵称读不读得出来」是两件事（卡片刚渲染出来时 wait 可能已经超时）。
+        self.popup_open = popup_name is not None
         self.wait_calls = 0
         self.on_wait = None
 
@@ -221,6 +224,11 @@ class FakeElementFinder:
 
     def find_elements(self, element_key):
         return list(self.desks)
+
+    def try_find_element(self, element_key, log=False, clickable=False):
+        if self.popup_open and element_key in ("souler_name", "user_name"):
+            return SimpleNamespace(text=self.popup_name or "")
+        return None
 
     def wait_for_any_element(self, element_keys, timeout=10):
         self.wait_calls += 1
