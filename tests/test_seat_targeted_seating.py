@@ -106,8 +106,11 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
     # 相位由真实滚动得到：row 1 也要滚到顶部夹住，不是靠「默认就在顶部」的假设
     assert fake_seat_ui.scrolled_rows == [0]
 
-    # 顶相位映射正确落到 6 号位（1 号位群主来自夹具，证明座位号没整体错位）
-    assert observation.seats[1].is_owner is True
+    # 夹具里 1 号位群主占座（顶相位读数落到 1 号位）；房主本来就在座，
+    # sit_at_specific_seat 是一次移动：旧位必须腾出，专注人数不变。
+    # （真机 09-28 18:07:08：10→11 换座被当成新增 +1，凭空把 RoomState
+    # 推成 2，随即被真实读数 1 判背离、引爆全量重扫。）
+    assert observation.seats[1].occupied is False
     handler.gesture_handler.click_at.assert_called_once()
     click_x, click_y = handler.gesture_handler.click_at.call_args.args
     # 6 号位 bounds=[170,810][305,977]（desk 2 右座）
@@ -116,8 +119,8 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
 
     assert observation.seats[6].occupied is True
     assert observation.seats[6].is_owner is True
-    assert observation._last_focus_count == 2
-    assert observation._reconciled_focus_count == 2
+    assert observation._last_focus_count == 1
+    assert observation._reconciled_focus_count == 1
     assert fake_seat_ui.collapsed is True
 
 
@@ -184,14 +187,15 @@ async def test_sit_at_specific_seat_clicks_coordinate_bounds_and_confirms_when_e
     # 确认弹窗被点击
     confirm_elem.click.assert_called_once()
 
-    # 快照被标记为群主占用
+    # 快照被标记为群主占用；1 号位（夹具里房主的旧位）被移动腾出
     assert observation.seats[2].occupied is True
     assert observation.seats[2].is_owner is True
     assert observation.seats[2].username == "群主"
+    assert observation.seats[1].occupied is False
 
-    # 基准与已对账人数递增（1 -> 2）
-    assert observation._last_focus_count == 2
-    assert observation._reconciled_focus_count == 2
+    # 房主原本就在座（夹具 1 号位群主）：换座净人数为 0，基准不许动
+    assert observation._last_focus_count == 1
+    assert observation._reconciled_focus_count == 1
 
     # 面板收起
     assert fake_seat_ui.collapsed is True
@@ -262,7 +266,7 @@ async def test_sit_at_specific_seat_collapses_panel_on_error():
 
 @pytest.mark.asyncio
 async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
-    """就座成功后，下游专注人数 +1 事件不再触发背离全量重扫。"""
+    """换座成功后，下游专注人数事件不再触发背离全量重扫。"""
     handler = make_handler()
     top_xml = _load_xml("expanded_top_with_anchor.xml")
     handler.driver = MagicMock()
@@ -279,16 +283,16 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
         side_effect=lambda key, **kwargs: confirm_elem if key == "confirm_seat" else None
     )
 
-    # 就座 2 号位
+    # 就座 2 号位：夹具里房主已坐 1 号位 → 这是一次移动，净人数不变
     await seating.sit_at_specific_seat(2)
-    assert observation._last_focus_count == 2
-    assert observation._reconciled_focus_count == 2
+    assert observation._last_focus_count == 1
+    assert observation._reconciled_focus_count == 1
 
-    # 模拟 FocusCountEvent 处理 “2人专注中”
+    # 模拟 FocusCountEvent 处理「1人专注中」：换座后房间真实读数仍是 1
     event = FocusCountEvent(handler)
-    event.previous_focus_count = 1  # 事件系统此前记录的数字
+    event.previous_focus_count = 0  # 事件系统此前记录的数字
 
-    focus_wrapper = SimpleNamespace(text="2人专注中")
+    focus_wrapper = SimpleNamespace(text="1人专注中")
     with patch.object(observation, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan, \
             patch.object(
                 observation, "on_focus_count", wraps=observation.on_focus_count
@@ -298,7 +302,7 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
         # 先证明事件真的走到了对账逻辑：否则 mock_rescan 未被调用是空断言
         # （RoomState 未初始化时 handle 的兜底 except 会在到达前就吞掉异常）。
         assert spy_on_focus_count.call_count == 1
-        assert spy_on_focus_count.call_args.args == (1, 2)
+        assert spy_on_focus_count.call_args.args == (0, 1)
 
         # 验证全量重扫未被触发！
         mock_rescan.assert_not_called()
