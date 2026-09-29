@@ -81,10 +81,15 @@ class SeatObservationManager(Singleton):
         # 闸门标记撤掉、留给下一轮重试。
         self._last_rescan_ok: bool = False
         self._last_rescan_time: float = 0.0
-        # 身份未知（读不出座位号）时可见麦位带的内容指纹：指纹变了说明有变动，
-        # 但身份未知写不得快照，只能升级为全量重扫（见 _sync_desks）。
-        self._last_visible_band_signature: Optional[Tuple] = None
+        # 身份未知（读不出座位号）时可见麦位带的基线：(几何形状, 内容指纹)。
+        # 形状变了内容就不可比（展开/收起/滚动都会换一批桌位），只有同一屏形状下
+        # 内容变了才说明有变动 —— 身份未知写不得快照，只能升级为全量重扫。
+        self._last_visible_band: Optional[Tuple] = None
         self._band_change_reason: Optional[str] = None
+        # 已确认的残留渲染：{位子: 人}。这个人已经被本轮证据落在别的位子上，该位子
+        # 剩下的"占座"只是没重绘的像素。不记这一笔，下一轮同一个残留又会和真正的
+        # 落座处抢身份，账本在两个位子之间来回掀翻（每次重扫换一个答案）。
+        self._residual_seats: Dict[int, str] = {}
         # 最近一次「12 个位子全部读出确定结论」的重扫读数指纹，以及是否欠一次
         # 补扫：重扫结论与专注人数不自洽时才登记，读数没变化的补扫没有信息量（见
         # _verify_focus_consistency）。
@@ -133,8 +138,9 @@ class SeatObservationManager(Singleton):
         self._scanned_seat_change_fingerprint = None
         self._last_rescan_ok = False
         self._last_rescan_time = 0.0
-        self._last_visible_band_signature = None
+        self._last_visible_band = None
         self._band_change_reason = None
+        self._residual_seats = {}
         self._last_scan_fingerprint = None
         self._consistency_retry_due = False
         self.logger.info("Cleared seat observation snapshot")
@@ -851,9 +857,10 @@ class SeatObservationManager(Singleton):
 
         其余任何变更都说明影响可能落在看不见的麦位上 —— 既不能凭一个局部读数写快照
         （会推出错误的座位信息），也不能当作没发生（那是漏检）：必须全量扫描一遍取
-        最新信息。三种"去向不明"的情形都会进 fingerprint：
+        最新信息。四种"去向不明"的情形都会进 fingerprint：
         disappear（有人从这个位子消失，去哪不知道）、appear（有人凭空出现在这个位子，
-        或者这个人还在快照别处占着座）、swap（同一个位子换人，两边来去都不知道）。
+        或者这个人还在快照别处占着座）、swap（同一个位子换人，两边来去都不知道）、
+        contested（本轮弹窗把快照挂在这个位子的人指到了别处，这里的身份已无证据）。
         """
         writable: Set[int] = set()
         clearable: Set[int] = set()
@@ -864,6 +871,11 @@ class SeatObservationManager(Singleton):
         for seat_num, (_desk, _side, info) in observed.items():
             old = old_slots.get(seat_num)
             if old is None:
+                continue
+            if info.get("identity_contested"):
+                # 写「还坐着」等于替残留渲染背书（可视范围内换座就是被这样吞掉的），
+                # 写「空了」又是拿局部读数猜去向 —— 一律不写，交给全量重扫。
+                unexplained.add((seat_num, "contested"))
                 continue
             if info["occupied"]:
                 new_user = info.get("username")
@@ -929,23 +941,52 @@ class SeatObservationManager(Singleton):
             rows.append(tuple(sides))
         return tuple(rows) if rows else None
 
+    def _visible_band_geometry_key(self, desk_wrappers: list) -> Optional[Tuple]:
+        """可见麦位带的屏形状（桌位节点的排布），内容指纹的比对前提。
+
+        麦位带的内容只有在「同一屏形状」之间才可比：面板展开/收起、滚动位置一变，
+        可见桌位的数量与坐标就全变了，拿两份不同形状的读数比内容只会造出假变更
+        —— 那正是旧版在身份可解析轮次直接清空基线的原因（见 _read_band_baseline）。
+        """
+        keys = tuple(
+            self._desk_sort_key(desk)
+            for desk in sorted(desk_wrappers or [], key=self._desk_sort_key)
+            if self._has_desk_content(desk)
+        )
+        return keys or None
+
+    def _read_band_baseline(self, desk_wrappers: list) -> Tuple:
+        """刷新麦位带基线并返回 (上一轮基线, 本轮形状, 本轮内容)。
+
+        每一轮都刷新，身份可解析的轮次也不例外：把唯一编号 label 带走的正是换座本身
+        （人离座后那个位子只剩「点击入座」），下一轮往往就再也读不出座位号了。基线
+        一旦在这里被清空，这次变更就永远没有可比对象 —— 真机「可视范围内换座没有
+        检测到座位变化」的漏检就是这么来的。
+        """
+        geometry = self._visible_band_geometry_key(desk_wrappers)
+        signature = self._visible_band_signature(desk_wrappers)
+        previous = self._last_visible_band
+        if signature is not None:
+            self._last_visible_band = (geometry, signature)
+        return previous, geometry, signature
+
     def _note_band_change(self, desk_wrappers: list) -> None:
         """身份未知时比对可见带内容指纹，变了就登记一次全量重扫请求。
 
         指纹本身只把「要不要扫」记进 _band_change_reason（由 observe_visible_desks
-        在 ui_lock 之外消费），真正写快照的永远是重扫的权威读数。
+        在 ui_lock 之外消费），真正写快照的永远是重扫的权威读数。屏形状不同一律不比。
         """
-        signature = self._visible_band_signature(desk_wrappers)
-        if (
-            signature is not None
-            and self._last_visible_band_signature is not None
-            and signature != self._last_visible_band_signature
-        ):
+        previous, geometry, signature = self._read_band_baseline(desk_wrappers)
+        if signature is None or previous is None:
+            return
+        previous_geometry, previous_signature = previous
+        if previous_geometry != geometry:
+            return
+        if previous_signature != signature:
             self._band_change_reason = (
                 "Visible seat band changed while seat identity is unknown "
                 "(no numeric seat label anchor); triggering full rescan."
             )
-        self._last_visible_band_signature = signature
 
     def _read_visible_seats(
         self, desk_wrappers: list, *, band: Optional[str] = None
@@ -978,6 +1019,47 @@ class SeatObservationManager(Singleton):
             if info.get("occupied") and info.get("username")
         }
 
+    def _placed_elsewhere(
+        self, username: str, seat_num: int, observed: Dict[int, Tuple[any, str, dict]]
+    ) -> bool:
+        """本轮读数里，这个人是不是在**别的**位子上有位置。"""
+        return any(
+            other != seat_num
+            and info.get("occupied")
+            and info.get("username") == username
+            for other, (_desk, _side, info) in observed.items()
+        )
+
+    def _mark_residual_seat(self, seat_num: int, info: dict, username: str) -> None:
+        """把一个位子判成换座后的残留渲染：本轮读数的"占座"是像素，不是人。"""
+        info["occupied"] = False
+        info["is_empty"] = True
+        info["username"] = None
+        info["label"] = ""
+        info["is_owner"] = False
+        self._residual_seats[seat_num] = username
+
+    def _prune_residual_records(
+        self, observed: Dict[int, Tuple[any, str, dict]]
+    ) -> Dict[int, str]:
+        """清掉已经不成立的残留渲染记录，返回本轮仍然在场的：{位子: 人}。
+
+        位子这一轮读不出占座（面板重绘了）或 label 直接读到别人（真有人新落座）时，
+        记录当场作废。弹窗认出别人的情形在 _resolve_usernames 里另行撤销。
+        """
+        for seat_num in list(self._residual_seats):
+            item = observed.get(seat_num)
+            info = item[2] if item is not None else None
+            if info is None or not info["occupied"]:
+                del self._residual_seats[seat_num]
+            elif info.get("username") and info["username"] != self._residual_seats[seat_num]:
+                del self._residual_seats[seat_num]
+        return {
+            seat_num: name
+            for seat_num, name in self._residual_seats.items()
+            if seat_num in observed
+        }
+
     async def _resolve_usernames(
         self,
         observed: Dict[int, Tuple[any, str, dict]],
@@ -994,8 +1076,30 @@ class SeatObservationManager(Singleton):
         同一个人钉在两个位子上，还把真正的换座整个吞掉 —— 全量重扫本该给出结论，
         不能拿旧快照替它猜答案。与别处冲突时不猜，改用唯一能认出人的手段：点头像
         读弹窗。
+
+        冲突时谁让位，看的是证据的**来路**，不是谁先登记：
+        - 本轮读到的身份（label 里的昵称/身份文字、或已经读过的弹窗）是这一屏的证据；
+        - 从上一轮快照沿用的身份只是账面残留，本轮没有任何读数支持它。
+        所以弹窗证据只否得掉「本轮读到」的身份。真机 09-29 11:40:5x：Outlier 从
+        12 号换到 11 号，12 号还挂着残留渲染 —— 旧实现把快照里的 Outlier 沿用给
+        12 号，再拿这条沿用值把 11 号的本轮弹窗证据判成 ghost 清空，可视范围内的
+        换座被整个吞掉（快照原地不动、无座次表、无 move_seat 事件）。现在改成撤销
+        那条没有证据的沿用值，把旧位子标成身份存疑（identity_contested）：被动观测
+        一律不写、升级为全量重扫；权威重扫才把它按残留渲染清掉。
+
+        撤销沿用值这条规则本身是对称的 —— 提交之后，"上一轮的位子"就换到了另一边，
+        光靠证据来路判会让账本在两个位子之间来回掀翻。所以权威重扫清掉的残留位要记
+        进 _residual_seats，并且只在"这个人本轮在别处确实还有位置"时继续成立。
         """
-        claimed = self._claimed_usernames(observed)
+        residual_seats = self._prune_residual_records(observed)
+
+        read_claims: Dict[str, int] = {
+            info["username"]: seat_num
+            for seat_num, (_desk, _side, info) in observed.items()
+            if info.get("occupied") and info.get("username")
+        }
+        inherited_claims: Dict[str, int] = {}
+        claimed = set(read_claims)
         pending = []
         for seat_num, (desk, side, info) in observed.items():
             if not info["occupied"] or info.get("username"):
@@ -1004,6 +1108,7 @@ class SeatObservationManager(Singleton):
             if old_slot.occupied and old_slot.username and old_slot.username not in claimed:
                 info["username"] = old_slot.username
                 claimed.add(old_slot.username)
+                inherited_claims[old_slot.username] = seat_num
                 continue
             pending.append((seat_num, desk, side))
 
@@ -1013,25 +1118,47 @@ class SeatObservationManager(Singleton):
         async def _inspect_pending():
             for seat_num, desk, side in pending:
                 username = await self.inspect_occupant(desk, side, seat_num)
+                info = observed[seat_num][2]
+                residual_name = residual_seats.get(seat_num)
+                if residual_name:
+                    if not self._placed_elsewhere(residual_name, seat_num, observed):
+                        # 这个人别处已经没有位置了：这里就是他真实的落座处，
+                        # 残留判定作废（宁可重扫一次，也不能把人从账上抹掉）
+                        self._residual_seats.pop(seat_num, None)
+                    elif not username or username == residual_name:
+                        self._mark_residual_seat(seat_num, info, residual_name)
+                        continue
+                    else:
+                        # 残留位上真坐了别人：作废残留记录，按正常落座处理
+                        self._residual_seats.pop(seat_num, None)
                 if not username:
                     continue
-                # 弹窗读出的人已经占着本轮别处的位子：该位为换座后的残留渲染（ghost avatar）。
-                # 一个人不能同时占两个位子，且弹窗证实头像是已落座之人而非他人，
-                # 故该位实为空座，清除占座标记，避免虚增在座人数引发专注人数对账矛盾。
-                if username in claimed:
+                # 弹窗读出的人本轮在别处有**读到的**证据：该位为换座后的残留渲染
+                # （ghost avatar）。一个人不能同时占两个位子，且弹窗证实头像是已落座
+                # 之人而非他人，故该位实为空座，清除占座标记，避免虚增在座人数引发
+                # 专注人数对账矛盾。
+                if username in read_claims:
                     self.logger.warning(
                         f"Seat {seat_num}: popup shows {username!r}, who is already read on "
                         f"another seat this round; clearing ghost/residual occupant on seat {seat_num}"
                     )
-                    info = observed[seat_num][2]
-                    info["occupied"] = False
-                    info["is_empty"] = True
-                    info["username"] = None
-                    info["label"] = ""
-                    info["is_owner"] = False
+                    self._mark_residual_seat(seat_num, info, username)
                     continue
-                observed[seat_num][2]["username"] = username
+                # 冲突对象只是上一轮快照的沿用值：撤销它，旧位子的身份本轮无证据。
+                stale_seat = inherited_claims.pop(username, None)
+                if stale_seat is not None and stale_seat != seat_num:
+                    claimed.discard(username)
+                    stale_info = observed[stale_seat][2]
+                    stale_info["username"] = None
+                    stale_info["identity_contested"] = username
+                    self.logger.warning(
+                        f"Seat {seat_num}: popup identifies {username!r}; seat {stale_seat} only "
+                        f"inherited them from the previous snapshot, so the move is unresolved "
+                        f"there and the full rescan decides"
+                    )
+                info["username"] = username
                 claimed.add(username)
+                read_claims[username] = seat_num
 
         if caller_holds_ui_session:
             await _inspect_pending()
@@ -1094,6 +1221,23 @@ class SeatObservationManager(Singleton):
 
         for seat_num, (desk, side, info) in observed.items():
             slot = self.seats[seat_num]
+            if info.get("identity_contested") and clearable is None:
+                # 权威路径（全量重扫读过全部麦位）：这个位子本轮没有自己的身份证据，
+                # 而快照挂在它上面的人已被弹窗落在别处 —— 它就是换座后的残留渲染。
+                # 留着不改就等于一人两座，在座数凭空 +1，下一轮专注人数对账又要重扫。
+                self.logger.warning(
+                    f"Seat {seat_num}: residual render after an in-viewport move, clearing "
+                    f"(the occupant is accounted for on another seat this round)"
+                )
+                slot.occupied = False
+                slot.username = None
+                slot.label = info.get("label", "")
+                slot.is_owner = False
+                info["occupied"] = False
+                info["is_empty"] = True
+                # 记下这笔残留：下一轮它还渲染成占座，不能再跟真正的落座处抢身份
+                self._residual_seats[seat_num] = str(info.get("identity_contested") or "")
+                continue
             if info["occupied"]:
                 username = info.get("username")
                 if username in colliding:
@@ -1164,8 +1308,9 @@ class SeatObservationManager(Singleton):
             self._note_band_change(desk_wrappers)
             return False, set()
 
-        # 身份可解析的轮次不需要指纹兜底，清掉以免下次身份丢失时拿旧指纹比对出假变更
-        self._last_visible_band_signature = None
+        # 身份可解析的轮次不需要指纹兜底，但基线必须照样刷新（按屏形状比对，
+        # 见 _read_band_baseline）：清掉基线等于放弃下一轮的比对资格。
+        self._read_band_baseline(desk_wrappers)
 
         old_slots = {k: v.copy() for k, v in self.seats.items()}
 

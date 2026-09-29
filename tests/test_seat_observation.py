@@ -20,6 +20,8 @@ from tests.seat_fixtures import (
     RawSeatDesk,
     build_base_fragment_wrapper,
     build_desk_wrapper,
+    build_live_desk_wrapper,
+    build_live_raw_desk,
     build_real_desk_wrappers,
     build_real_raw_desks,
     load_real_desk_nodes,
@@ -2155,3 +2157,126 @@ async def test_seat_identity_collision_in_snapshot_resolves_to_winner_and_clears
     # observed 字典中的 info 也同步被置为 empty
     assert observed[9][2]["occupied"] is False
     assert observed[9][2]["is_empty"] is True
+
+
+# ---------------------------------------------------------------------------
+# 可视范围内换座的检测（真机 09-29 11:40~11:41 / 09-28 21:33:57 现场）
+#
+# 真机麦位 DOM 的关键事实（tests/fixtures/seat_dom/ 的 dump）：普通用户占座时
+# TvLabelH 渲染的是**麦位编号**，昵称根本不在 DOM 里，只能点头像弹窗读
+# （inspect_occupant）。所以「换座」在视口里的形状永远是：
+#   旧位子：ClState + 编号 label（残留渲染）或「点击入座」（已重绘）
+#   新位子：ClState + 编号 label，昵称要靠弹窗
+# ---------------------------------------------------------------------------
+
+
+def _moved_within_viewport_desks(handler):
+    """Outlier 从 12 号换到 11 号，12 号位还挂着残留渲染。"""
+    return [
+        build_live_desk_wrapper(handler, (9, False, None), (10, False, None), y=300),
+        build_live_desk_wrapper(handler, (11, True, None), (12, True, None), y=600),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_in_viewport_move_with_residual_render_is_not_swallowed_by_stale_inheritance():
+    """可视范围内换座必须被检测到：弹窗的本轮证据不许被上一轮快照判成"残留"。
+
+    真机 09-29 11:40:5x：Outlier 在 12 号位（快照），换到 11 号后 12 号仍渲染成占座。
+    旧逻辑先拿快照把 Outlier 沿用给 12 号（本轮并没有读到他的身份），再点头像弹窗
+    在 11 号读出 Outlier，于是"11 号的人本轮已别处落座"成立，把**真正的新位子**
+    当成 ghost 清空 —— 快照原地不动、没有座次表、没有 move_seat 事件，
+    可视范围内换座被整个吞掉。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="Outlier", label="Outlier")
+    # 真机：11 号位点头像弹窗读出 Outlier；12 号位的残留渲染弹窗同样是他
+    manager.inspect_occupant = AsyncMock(
+        side_effect=lambda desk, side, seat_number: "Outlier" if seat_number in (11, 12) else None
+    )
+
+    desks = _moved_within_viewport_desks(handler)
+    with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as rescan:
+        rescan.return_value = True
+        await manager.observe_visible_desks(desks)
+
+    # 本轮弹窗读到的身份不能被撤销成空座：11 号位仍然是占座
+    assert manager.seats[11].occupied is not True or manager.seats[11].username == "Outlier"
+    # 去向不明的变更必须升级为全量重扫，而不是"当作没发生"
+    assert rescan.await_count == 1, "可视范围内换座被静默吞掉：没有任何重扫/事件"
+    assert "contested" in rescan.await_args.kwargs["reason"] or "unknown destination" in rescan.await_args.kwargs["reason"]
+
+
+@pytest.mark.asyncio
+async def test_full_rescan_lands_an_in_viewport_move_and_reports_move_seat():
+    """权威重扫必须把可视范围内的换座落到快照并发出 move_seat（12 号→11 号）。
+
+    这是用户看到的最终结果：座次表从 [12号: Outlier] 变成 [11号: Outlier]，
+    并且联动命令拿到 action=move_seat。旧逻辑在重扫里同样先沿用旧快照把 Outlier
+    钉在 12 号，再把 11 号的本轮弹窗证据判成残留清空 —— 重扫也检不出来。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    desks = [
+        build_live_raw_desk((1, False, None), (2, False, None), y=100),
+        build_live_raw_desk((3, False, None), (4, False, None), y=200),
+        build_live_raw_desk((5, False, None), (6, False, None), y=300),
+        build_live_raw_desk((7, False, None), (8, False, None), y=400),
+        build_live_raw_desk((9, False, None), (10, False, None), y=500),
+        # 11 号：本轮真实落座处；12 号：换座后还没重绘的残留渲染
+        build_live_raw_desk((11, True, None), (12, True, None), y=600),
+    ]
+    handler.element_finder.find_elements = MagicMock(return_value=desks)
+    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="Outlier", label="Outlier")
+    manager._last_focus_count = 1
+    manager.inspect_occupant = AsyncMock(
+        side_effect=lambda desk, side, seat_number: "Outlier" if seat_number in (11, 12) else None
+    )
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.expand_rescan_and_collapse(1)
+
+    assert manager._last_rescan_ok is True
+    assert changed is True, "换座必须被判成有变更"
+    assert manager.seats[11].occupied is True and manager.seats[11].username == "Outlier"
+    assert manager.seats[12].occupied is False, "旧位子（残留渲染）必须腾出来"
+    kwargs = notify.call_args.kwargs
+    assert kwargs["seat_info"]["Outlier"] == {"seat_number": 11, "action": "move_seat"}
+    # 一人一麦位：不许同时占两座
+    assert sum(1 for s in manager.seats.values() if s.occupied) == 1
+
+
+@pytest.mark.asyncio
+async def test_in_viewport_move_without_residual_render_is_applied_directly():
+    """旧位子已重绘成空座时，视口内换座应当直接配对落快照并发出 move_seat。
+
+    真机 09-28 21:33:57 的形状：Chainer 从 12 号换到 11 号，12 号渲染成「点击入座」。
+    这条路径不依赖重扫，是换座检测最便宜也最常见的形状，必须钉住。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.seats[12] = SeatSlot(seat_number=12, occupied=True, username="Chainer", label="Chainer")
+    manager.inspect_occupant = AsyncMock(
+        side_effect=lambda desk, side, seat_number: "Chainer" if seat_number == 11 else None
+    )
+
+    desks = [
+        build_live_desk_wrapper(handler, (9, False, None), (10, False, None), y=300),
+        build_live_desk_wrapper(handler, (11, True, None), (12, False, None), y=600),
+    ]
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        notify = AsyncMock()
+        cmd_mgr.return_value.notify_focus_count_change = notify
+        changed = await manager.observe_visible_desks(desks)
+
+    assert changed is True
+    assert manager.seats[11].username == "Chainer"
+    assert manager.seats[12].occupied is False
+    assert notify.call_args.kwargs["seat_info"]["Chainer"] == {
+        "seat_number": 11,
+        "action": "move_seat",
+    }
