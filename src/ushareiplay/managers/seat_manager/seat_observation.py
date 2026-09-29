@@ -312,6 +312,14 @@ class SeatObservationManager(Singleton):
         focus_str = str(focus_count) if focus_count is not None else "未知"
         changed_seats = changed_seats or set()
 
+        room_admins = set()
+        try:
+            from ushareiplay.managers.admin_manager import AdminManager
+            if AdminManager.is_initialized():
+                room_admins = AdminManager.instance().get_room_admins()
+        except Exception:
+            pass
+
         def format_seat(num: int) -> str:
             slot = self.seats.get(num)
             if not slot or not slot.occupied:
@@ -319,7 +327,14 @@ class SeatObservationManager(Singleton):
             if slot.is_owner:
                 name = f"群主({slot.username})" if slot.username and slot.username != "群主" else "群主"
             else:
-                name = slot.username or slot.label or "已占用"
+                is_admin = (slot.username in room_admins) if slot.username else False
+                if not is_admin and slot.label == "管理":
+                    is_admin = True
+
+                if is_admin:
+                    name = f"管理({slot.username})" if slot.username and slot.username != "管理" else "管理"
+                else:
+                    name = slot.username or slot.label or "已占用"
             color = self.SEAT_COLOR_CHANGED if num in changed_seats else self.SEAT_COLOR_OCCUPIED
             return f"{color}[{num}号: {name}]{self.SEAT_COLOR_RESET}"
 
@@ -330,6 +345,23 @@ class SeatObservationManager(Singleton):
             f"  第三排: {format_seat(9)} {format_seat(10)}  |  {format_seat(11)} {format_seat(12)}",
         ]
         return "\n".join(lines)
+
+    def get_user_seat(self, username: str) -> Optional[int]:
+        """查询用户当前所占麦位号（1..12），若不在麦上则返回 None。"""
+        if not username:
+            return None
+        for num, slot in self.seats.items():
+            if slot.occupied and slot.username == username:
+                return num
+        return None
+
+    def get_all_seated_users(self) -> Dict[str, int]:
+        """返回当前所有在座用户及其麦位号映射 {username: seat_number}。"""
+        seated = {}
+        for num, slot in self.seats.items():
+            if slot.occupied and slot.username:
+                seated[slot.username] = num
+        return seated
 
     def map_desks_to_indices(self, desk_wrappers: list) -> List[Tuple[int, any]]:
         """

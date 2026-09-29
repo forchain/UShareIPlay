@@ -26,8 +26,9 @@ class InfoCommand(BaseCommand):
 
         online_users = info_manager.get_online_users()
         if online_users:
+            formatted_users = self._format_online_users(online_users)
             result["online_users"] = (
-                f"{len(online_users)}人: {', '.join(sorted(online_users))}"
+                f"{len(online_users)}人: {', '.join(formatted_users)}"
             )
         else:
             result["online_users"] = "列表暂未更新"
@@ -76,6 +77,46 @@ class InfoCommand(BaseCommand):
             result["party_recommendation"] = "未知"
 
         return result
+
+    def _format_online_users(self, online_users):
+        """
+        格式化在线用户列表，标注管理员身份与麦位编号。
+        格式规范：
+          - 仅为管理且不在麦：昵称(管理)
+          - 仅在麦非管理：昵称(N号)
+          - 既是管理又在麦：昵称(管理, N号)
+          - 既非管理又不在麦：昵称
+        """
+        room_admins = set()
+        try:
+            from ushareiplay.managers.admin_manager import AdminManager
+            if AdminManager.is_initialized():
+                room_admins = AdminManager.instance().get_room_admins()
+        except Exception:
+            pass
+
+        seated_users = {}
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+            if SeatObservationManager.is_initialized():
+                seated_users = SeatObservationManager.instance().get_all_seated_users()
+        except Exception:
+            pass
+
+        formatted = []
+        for user in sorted(online_users):
+            is_admin = user in room_admins
+            seat_num = seated_users.get(user)
+            tags = []
+            if is_admin:
+                tags.append("管理")
+            if seat_num is not None:
+                tags.append(f"{seat_num}号")
+            if tags:
+                formatted.append(f"{user}({', '.join(tags)})")
+            else:
+                formatted.append(user)
+        return formatted
 
     def update(self):
         """Update playback info and user count - delegates to InfoManager"""

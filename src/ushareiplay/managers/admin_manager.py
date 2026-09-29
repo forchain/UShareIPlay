@@ -6,6 +6,30 @@ class AdminManager(Singleton):
         # 延迟初始化 handler，避免循环依赖
         self._handler = None
         self._logger = None
+        self._room_admins: set[str] = set()
+
+    def is_room_admin(self, username: str) -> bool:
+        """检查用户是否为房间管理员"""
+        if not username:
+            return False
+        return username in self._room_admins
+
+    def get_room_admins(self) -> set[str]:
+        """获取当前活跃房间管理员集合（副本）"""
+        return set(self._room_admins)
+
+    def add_room_admin(self, username: str) -> None:
+        """添加用户至房间管理员列表"""
+        if username:
+            self._room_admins.add(username)
+
+    def remove_room_admin(self, username: str) -> None:
+        """从房间管理员列表中移除用户"""
+        self._room_admins.discard(username)
+
+    def clear_room_admins(self) -> None:
+        """清空房间管理员列表"""
+        self._room_admins.clear()
 
     @property
     def handler(self):
@@ -48,11 +72,13 @@ class AdminManager(Singleton):
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
+                self.add_room_admin(target_nickname)
                 self.handler.key_actions.press_back()
                 recovery_manager.close_drawer('online_drawer')
                 return {'error': '你已经是管理员了', 'user': target_nickname}
         else:
             if current_text == "管理邀请":
+                self.remove_room_admin(target_nickname)
                 self.handler.key_actions.press_back()
                 recovery_manager.close_drawer('online_drawer')
                 return {'error': '你还不是管理员', 'user': target_nickname}
@@ -73,6 +99,11 @@ class AdminManager(Singleton):
 
         confirm_button.click()
         self.logger.info(f"Clicked {action} confirmation button")
+
+        if enable:
+            self.add_room_admin(target_nickname)
+        else:
+            self.remove_room_admin(target_nickname)
 
         recovery_manager.close_drawer('online_drawer')
 

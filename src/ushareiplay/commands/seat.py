@@ -14,6 +14,31 @@ class SeatCommand(BaseCommand):
         except Exception:
             return False
 
+    async def process(self, message_info, parameters):
+        try:
+            return await super().process(message_info, parameters)
+        finally:
+            self._log_seating_layout()
+
+    def _log_seating_layout(self):
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+            try:
+                obs = SeatObservationManager.instance()
+            except Exception:
+                obs = None
+            if not obs:
+                return
+            layout_str = obs.format_3row_layout(trigger_source="seat命令执行")
+            logger = getattr(obs, "logger", None)
+            if not logger and self.soul_handler:
+                logger = getattr(self.soul_handler, "logger", None)
+            if logger and hasattr(logger, "info"):
+                logger.info(layout_str)
+        except Exception as e:
+            if self.soul_handler and hasattr(self.soul_handler, "log_error"):
+                self.soul_handler.log_error(f"Error logging seat layout after seat command: {e}")
+
     async def do_process(self, message_info, parameters):
         """Process seat command"""
         if self._is_guest_room():
