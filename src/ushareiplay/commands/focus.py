@@ -68,6 +68,28 @@ class FocusCommand(BaseCommand):
 
         return {"error": f"未知操作: {operation}。使用: :focus [add|del|list|clear]"}
 
+    @staticmethod
+    async def _seat_info_for(username: str, seat_info: dict) -> dict:
+        """取该用户本次观测到的座位信息（{seat}/{action} 宏的数据源）。
+
+        麦位观测的键是 Soul UI 上可见的分身名，而钩子挂在 DB 解析后的主账号名上；
+        直接按主账号名取值会落空，宏就被替换成空串。查不到时按身份匹配再取一次。
+        """
+        info = seat_info.get(username)
+        if info:
+            return info
+
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            identity = await UserDAO.get_identity_usernames(username)
+        except Exception:
+            return {}
+
+        for observed_name, observed_info in seat_info.items():
+            if observed_name in identity:
+                return observed_info
+        return {}
+
     async def focus_count_change(
         self,
         before: int | None,
@@ -105,7 +127,7 @@ class FocusCommand(BaseCommand):
             for cmd in commands:
                 username = cmd.user.username
                 cmd_text = cmd.command
-                user_seat = seat_info.get(username, {})
+                user_seat = await self._seat_info_for(username, seat_info)
                 seat_num = str(user_seat.get("seat_number", ""))
                 action = str(user_seat.get("action", ""))
                 cmd_text = (
