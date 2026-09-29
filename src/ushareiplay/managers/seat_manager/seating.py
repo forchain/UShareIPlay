@@ -194,10 +194,14 @@ class SeatingManager:
 
         try:
             # Step 1: Check if the target user is online
-            # Skip online check if sender is the target (they are obviously online)
-            if sender_username != target_username:
+            # Skip online check if sender is the target (they are obviously online).
+            # 两侧名字可能来自不同命名域（调用方常拿到 DB 的主账号名，UI 只有分身名），
+            # 所以同一身份必须按身份判定，而不是按字符串相等。
+            from ushareiplay.dal.user_dao import UserDAO
+
+            if not await UserDAO.is_same_identity(sender_username, target_username):
                 info_manager = InfoManager.instance()
-                if not info_manager.is_user_online(target_username):
+                if not await info_manager.is_user_or_avatar_online(target_username):
                     return {'error': f'User {target_username} is not online'}
 
             seat_desks = await self.seat_ui.expand_and_find_desks()
@@ -258,7 +262,9 @@ class SeatingManager:
                     f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
                 )
 
-                if actual_username != target_username:
+                # 麦位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
+                # 按身份匹配，命中后一律使用 UI 可见名字继续后续动作。
+                if not await UserDAO.is_same_identity(target_username, actual_username):
                     # Not the target user, close popup and continue
                     self.handler.key_actions.press_back()
                     await asyncio.sleep(0.3)
@@ -274,7 +280,7 @@ class SeatingManager:
 
                 # Sit next to the target user
                 self.handler.logger.info(
-                    f"Sitting next to {target_username} at desk {desk_index + 1}, {other_seat['side']} side"
+                    f"Sitting next to {actual_username} at desk {desk_index + 1}, {other_seat['side']} side"
                 )
 
                 # Re-collect desk info to get fresh element references after popup interaction
@@ -284,7 +290,7 @@ class SeatingManager:
                 return self._take_seat(
                     desk_index,
                     fresh_other_seat,
-                    neighbor_label=target_username
+                    neighbor_label=actual_username
                 )
 
             return {'error': f'User {target_username} not found on any seat'}

@@ -39,6 +39,16 @@ class SeatCommand(BaseCommand):
             if self.soul_handler and hasattr(self.soul_handler, "log_error"):
                 self.soul_handler.log_error(f"Error logging seat layout after seat command: {e}")
 
+    async def _resolve_visible_username(self, nickname: str) -> str:
+        """把昵称解析成 Soul UI 房间里可见的名字（分身名），解析不了则原样返回。"""
+        if not nickname:
+            return nickname
+        try:
+            return await self.info_manager.resolve_visible_username(nickname)
+        except Exception:
+            # 门面不可用时退回座位层的按身份匹配，不让解析失败变成命令失败。
+            return nickname
+
     async def do_process(self, message_info, parameters):
         """Process seat command"""
         if self._is_guest_room():
@@ -69,7 +79,11 @@ class SeatCommand(BaseCommand):
             return await SeatManager.get_instance().take_seat(seat_number)
         elif command == '3':
             # Accompany a specific user (sit next to them)
-            target_username = parameters[1] if len(parameters) > 1 else message_info.nickname
+            # 座位层只认 Soul UI 上可见的名字（分身名）；调用方给的昵称、以及
+            # 专注钩子带进来的 message_info.nickname，都可能是 DB 解析后的主账号名，
+            # 所以先解析成房间里当前可见的那个名字，再交给座位层。
+            target_username = (parameters[1].strip() if len(parameters) > 1 else message_info.nickname) or ''
+            target_username = await self._resolve_visible_username(target_username)
             return await SeatManager.get_instance().accompany_user(target_username, sender_username=message_info.nickname)
         elif command == '4':
             if len(parameters) == 1:

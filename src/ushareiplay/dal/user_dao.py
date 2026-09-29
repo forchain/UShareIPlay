@@ -156,6 +156,45 @@ class UserDAO:
         return user
 
     @staticmethod
+    async def get_identity_usernames(username: str) -> set:
+        """同一身份（主账号 + 全部分身）的全部昵称，**不写库**。
+
+        与 `get_all_avatar_usernames` 的区别：后者会给陌生名字建记录，
+        因此只能用在"确认这个人存在"的场合；本方法用于把 Soul UI 读到的名字
+        和 DB 里的 canonical 名字放在一起比对，绝不因为一次查找就污染用户表。
+
+        Args:
+            username: 任意分身或主账号的昵称（可以不在库里）
+        Returns:
+            该身份的昵称集合；库里查不到时退化为 {username}
+        """
+        if not username:
+            return set()
+
+        user = await User.get_or_none(username=username)
+        if not user:
+            return {username}
+
+        canonical = await UserDAO.resolve_canonical(user)
+        aliases = await User.filter(canonical_user_id=canonical.id).values_list(
+            "username", flat=True
+        )
+        return set(aliases) | {canonical.username, user.username}
+
+    @staticmethod
+    async def is_same_identity(requested_username: str, observed_username: str) -> bool:
+        """判断"Soul UI 上读到的名字"和"调用方传入的名字"是否属于同一个人。
+
+        Soul UI 只显示分身名，而 DB 侧 `get_or_create` 会把任何名字解析成主账号名，
+        所以凡是拿 UI 文本去等值比较一个可能来自 DB 的名字，都必须走这里。
+        """
+        if not requested_username or not observed_username:
+            return False
+        if requested_username == observed_username:
+            return True
+        return observed_username in await UserDAO.get_identity_usernames(requested_username)
+
+    @staticmethod
     async def get_all_avatar_usernames(username: str) -> set:
         """
         获取某个用户（可以是别名或主账号）所有分身的 username 集合，

@@ -57,11 +57,21 @@ class AdminManager(Singleton):
         Returns:
             dict: 成功含 user/action，失败含 error/user
         """
+        # 在线列表里显示的是 Soul UI 的可见名字（分身名），传入主账号名会找不到人，
+        # 因此先把目标解析成房间里当前可见的那个名字。
+        from ushareiplay.managers.info_manager import InfoManager
+        try:
+            visible_nickname = await InfoManager.instance().resolve_visible_username(target_nickname)
+        except Exception:
+            visible_nickname = target_nickname
+
         from ushareiplay.managers.user_manager import UserManager
         user_manager = UserManager.instance()
-        open_result = user_manager.open_user_profile_from_online_list(target_nickname)
+        open_result = user_manager.open_user_profile_from_online_list(visible_nickname)
         if 'error' in open_result:
             return open_result
+        # 房间管理员按 UI 名字记账：麦位观测与 :info 都用 slot.username（分身名）比对。
+        target_nickname = open_result.get('user') or visible_nickname
 
         manager_invite = self.handler.element_finder.wait_for_element_clickable('manager_invite')
         if not manager_invite:

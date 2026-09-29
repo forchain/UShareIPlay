@@ -73,7 +73,7 @@ class UserManager(Singleton):
         try:
             user_elem.click()
             self.logger.info(f"Clicked user element for {nickname}")
-            return {}
+            return {'user': nickname}
         except Exception as e:
             self.logger.error(f"Failed to click user element: {e}")
             self._close_online_drawer()

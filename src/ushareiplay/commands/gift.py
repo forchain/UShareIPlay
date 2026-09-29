@@ -14,4 +14,11 @@ class GiftCommand(BaseCommand):
         else:
             target_nickname = message_info.nickname  # 未指定则送给自己
 
+        # 送礼要在在线列表里点到具体的人，必须用房间里可见的分身名（分身与主账号
+        # 在 UI 上是两个名字）；解析不到时保留原名，由下游按身份匹配兜底。
+        try:
+            target_nickname = await self.info_manager.resolve_visible_username(target_nickname)
+        except Exception:
+            pass  # 门面不可用时保留原名，由下游按身份匹配兜底
+
         return UserManager.instance().send_gift(target_nickname)

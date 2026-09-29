@@ -18,6 +18,10 @@ _Avoid_: Seat poller, desk scraper, seat clicker
 User-configured commands that automatically execute via `:focus add` when a specific user's seat/focus state changes (taking a seat, leaving a seat, or relocating to another seat). Triggers are isolated to the specific user whose occupancy changed and never fire for unrelated occupants. Hook commands substitute `{username}`, `{seat}` (the new seat, for a relocation) and `{action}` — one of `sit_down`, `leave_seat`, `move_seat`.
 _Avoid_: Seat trigger, seat callback script
 
+**User Naming Domains**:
+The two names one person carries: the **visible name** (分身名) — the only nickname Soul App renders in the room (seat avatar card, online list, chat line) — and the **canonical name** (主账号名) — the `users.username` record that `UserDAO` transparently resolves every alias to, and the identity that all ID-bound configuration hangs on (event hooks, seat reservations, keywords, memory, levels). A Soul-visible name and a canonical name are different strings for the same person, so any username parameter must be resolved by naming domain before use: canonical for DB reads/writes, visible for every Soul UI lookup, and identity-based (never string equality) when a UI-read name is compared with a caller-supplied one.
+_Avoid_: nickname mismatch workaround, alias string hack, display-name fudge
+
 **Room Name**:
 The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.
 _Avoid_: ThemeManager, TitleManager (legacy adapters)
