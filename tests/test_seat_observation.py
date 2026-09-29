@@ -2159,6 +2159,73 @@ async def test_seat_identity_collision_in_snapshot_resolves_to_winner_and_clears
     assert observed[9][2]["is_empty"] is True
 
 
+def test_format_3row_layout_with_room_admins():
+    from ushareiplay.core.log_formatter import strip_ansi
+    from ushareiplay.managers.admin_manager import AdminManager
+
+    AdminManager.reset_instance()
+    admin_mgr = AdminManager.initialize()
+    admin_mgr.add_room_admin("AdminAlice")
+    admin_mgr.add_room_admin("OwnerUser")  # Owner is also in room admins
+
+    manager = SeatObservationManager.initialize(None)
+    # Seat 1: Owner with username
+    manager.seats[1] = SeatSlot(seat_number=1, occupied=True, username="OwnerUser", is_owner=True)
+    # Seat 2: Owner without distinct username
+    manager.seats[2] = SeatSlot(seat_number=2, occupied=True, username="群主", is_owner=True)
+    # Seat 3: Admin with username
+    manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="AdminAlice")
+    # Seat 4: Admin by label only (no username)
+    manager.seats[4] = SeatSlot(seat_number=4, occupied=True, label="管理")
+    # Seat 5: Admin by label and username
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, label="管理", username="AdminBob")
+    # Seat 6: Admin by label where username is "管理"
+    manager.seats[6] = SeatSlot(seat_number=6, occupied=True, label="管理", username="管理")
+    # Seat 7: Normal user
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="NormalUser")
+    # Seat 8: Occupied without username/label
+    manager.seats[8] = SeatSlot(seat_number=8, occupied=True)
+    # Seat 9: Empty
+    manager.seats[9] = SeatSlot(seat_number=9, occupied=False)
+
+    layout = manager.format_3row_layout("测试管理员标记", changed_seats={3})
+    lines = strip_ansi(layout).splitlines()
+
+    # Owner priority preserved
+    assert "[1号: 群主(OwnerUser)]" in lines[1]
+    assert "[2号: 群主]" in lines[1]
+    # Admin formats
+    assert "[3号: 管理(AdminAlice)]" in lines[1]
+    assert "[4号: 管理]" in lines[1]
+    assert "[5号: 管理(AdminBob)]" in lines[2]
+    assert "[6号: 管理]" in lines[2]
+    # Normal user and empty
+    assert "[7号: NormalUser]" in lines[2]
+    assert "[8号: 已占用]" in lines[2]
+    assert "[9号: 空闲]" in lines[3]
+
+    # ANSI colors
+    assert f"{manager.SEAT_COLOR_CHANGED}[3号: 管理(AdminAlice)]{manager.SEAT_COLOR_RESET}" in layout
+    assert f"{manager.SEAT_COLOR_OCCUPIED}[4号: 管理]{manager.SEAT_COLOR_RESET}" in layout
+    assert f"{manager.SEAT_COLOR_IDLE}[9号: 空闲]{manager.SEAT_COLOR_RESET}" in layout
+
+
+def test_get_user_seat_and_all_seated_users():
+    manager = SeatObservationManager.initialize(None)
+    manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Alice")
+    manager.seats[5] = SeatSlot(seat_number=5, occupied=True, username="Bob")
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=False, username="Charlie")  # not occupied
+
+    assert manager.get_user_seat("Alice") == 3
+    assert manager.get_user_seat("Bob") == 5
+    assert manager.get_user_seat("Charlie") is None
+    assert manager.get_user_seat("David") is None
+    assert manager.get_user_seat("") is None
+    assert manager.get_user_seat(None) is None
+
+    assert manager.get_all_seated_users() == {"Alice": 3, "Bob": 5}
+
+
 # ---------------------------------------------------------------------------
 # 可视范围内换座的检测（真机 09-29 11:40~11:41 / 09-28 21:33:57 现场）
 #
