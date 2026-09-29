@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import MagicMock
 
 import yaml
@@ -313,3 +314,194 @@ def make_handler(elements=None, desks=None, popup_name=None, controller=None):
         elements or soul_elements(), desks=desks, popup_name=popup_name
     )
     return handler
+
+
+def build_live_desk_wrapper(handler, left, right, y=600, bounds=None) -> ElementWrapper:
+    """真机麦位 DOM 形状的桌位（事件轮询的 ElementWrapper）。
+
+    左右两侧各是一个三元组 ``(座位号, 是否占座, 身份文字或 None)``，渲染规则取自
+    真机 dump（tests/fixtures/seat_dom/expanded_*_with_anchor.xml）：
+
+    - **空位**：只有 ``TvDefaultName``「点击入座」+ 一张占位图，没有 ClState，
+      也**没有 label 节点**；
+    - **占座**：``ClState`` + ``IvMedal`` + ``TvTime`` + 4 张图，``TvLabelH`` 是
+      **麦位编号**（普通用户）或身份文字（群主/管理）。
+
+    关键事实：普通用户的**昵称不在麦位 DOM 里**，只能点头像读弹窗
+    （``inspect_occupant``）。用 ``left="张三", left_occupied=True`` 那种
+    「label 就是昵称」的形状测不出真机换座——它跳过了昵称缺失这条主路径。
+    """
+    kwargs = {"y": y, "bounds": bounds}
+    for side, (seat_number, seated, role) in (("left", left), ("right", right)):
+        if seated:
+            kwargs[f"{side}_occupied"] = True
+            kwargs[f"{side}_state_widgets"] = True
+            kwargs[f"{side}_avatar_images"] = 4
+            kwargs[side] = role or str(seat_number)
+        else:
+            kwargs[f"{side}_default_name"] = "点击入座"
+            kwargs[f"{side}_avatar_images"] = 1
+    return build_desk_wrapper(handler, **kwargs)
+
+
+def build_live_raw_desk(left, right, y=600) -> RawSeatDesk:
+    """真机麦位 DOM 形状的桌位（展开重扫路径的 raw WebElement）。
+
+    与 build_live_desk_wrapper 同一套三元组语义；raw 路径数不到 AvatarView 里的
+    图片（Appium XPath 是整页作用域），占用证据只有 ClState 与 label。
+    """
+    elements = soul_elements()
+    children = {}
+    for side, (seat_number, seated, role) in (("left", left), ("right", right)):
+        label = (role or str(seat_number)) if seated else ""
+        children[elements[f"{side}_label"]] = SimpleNamespace(text=label)
+        if seated:
+            children[elements[f"{side}_state"]] = SimpleNamespace(text="")
+        else:
+            children[elements[f"{side}_default_name"]] = SimpleNamespace(text="点击入座")
+    return RawSeatDesk(children, location={"x": 40, "y": y})
+
+
+# ---------------------------------------------------------------------------
+# 真机形状的整屏 page_source 生成器：视口相位 × 占用情况 × 换座残留渲染
+#
+# 几何取自 tests/fixtures/seat_dom/ 的真机 dump：两列三排共 6 张桌位，
+# 一张桌位左右各一个麦位，奇数号在左、偶数号在右。
+# ---------------------------------------------------------------------------
+
+LIVE_DESK_ORIGIN = (28, 566)
+LIVE_DESK_SIZE = (309, 207)
+LIVE_DESK_GAP = (46, 27)
+LIVE_SIDE_INSET = {"left": (32, 52), "right": (142, 55)}
+LIVE_SIDE_SIZE = (135, 167)
+# 视口相位 -> (完整渲染的 desk 序号, 只露出残片的 desk 序号)
+LIVE_VIEWPORT_PHASES = {
+    "top": ((0, 1, 2, 3), (4, 5)),
+    "bottom": ((2, 3, 4, 5), (0, 1)),
+    "collapsed_top": ((0, 1), (2, 3)),
+    "collapsed_bottom": ((4, 5), (2, 3)),
+    # 展开重扫合并顶/底两次读数后的等效全景（两次 find_elements 都看得见全部桌位）
+    "full": ((0, 1, 2, 3, 4, 5), ()),
+}
+
+
+def _bounds_str(x1, y1, x2, y2) -> str:
+    return f"[{x1},{y1}][{x2},{y2}]"
+
+
+def live_desk_bounds(desk_index: int) -> tuple[int, int, int, int]:
+    ox, oy = LIVE_DESK_ORIGIN
+    w, h = LIVE_DESK_SIZE
+    gx, gy = LIVE_DESK_GAP
+    col, row = desk_index % 2, desk_index // 2
+    x1 = ox + col * (w + gx)
+    y1 = oy + row * (h + gy)
+    return x1, y1, x1 + w, y1 + h
+
+
+def live_seat_bounds(seat_number: int) -> dict:
+    """麦位 UserView 的屏幕坐标（:seat 2 <n> 的点击落点就应该是它）。"""
+    desk_index = (seat_number - 1) // 2
+    side = "left" if seat_number % 2 else "right"
+    x1, y1, _x2, _y2 = live_desk_bounds(desk_index)
+    dx, dy = LIVE_SIDE_INSET[side]
+    w, h = LIVE_SIDE_SIZE
+    return {"x": x1 + dx, "y": y1 + dy, "width": w, "height": h}
+
+
+def _live_seat_xml(side: str, seat_number: int, occupant) -> str:
+    """一个麦位。occupant：``True`` 普通用户占座 / 字符串 = 身份文字 / 其它 = 空座。
+
+    占用与否的 DOM 证据与真机 dump 一致：空座只有 1 张占位图 + TvDefaultName
+    「点击入座」，占座是 4 张图 + ClState（内含 BgUserStateH 与 TvLabelH）+
+    IvMedal + TvTime。
+    """
+    b = live_seat_bounds(seat_number)
+    bounds = _bounds_str(b["x"], b["y"], b["x"] + b["width"], b["y"] + b["height"])
+    user_view = f'<node resource-id="{SOUL_PACKAGE}/{side}UserView" bounds="{bounds}">'
+    seated = bool(occupant)
+    images = '<node class="android.widget.ImageView"/>' * (1 if not seated else 4)
+    avatar = (
+        f'<node resource-id="{SOUL_PACKAGE}/{side}AvatarView" '
+        f'bounds="{_bounds_str(b["x"], b["y"], b["x"] + 108, b["y"] + 108)}">{images}</node>'
+    )
+    if not seated:
+        # 空座：没有 ClState，也没有 label 节点（房间里只有占座麦位渲染 TvLabelH）
+        return (
+            f"{user_view}{avatar}"
+            f'<node resource-id="{SOUL_PACKAGE}/{side}TvDefaultName" text="点击入座"/></node>'
+        )
+    state = (
+        f'<node resource-id="{SOUL_PACKAGE}/{side}ClState">'
+        f'<node resource-id="{SOUL_PACKAGE}/{side}BgUserStateH"/>'
+        f'<node resource-id="{SOUL_PACKAGE}/{side}TvLabelH" '
+        f'text="{seat_number if occupant is True else occupant}"/></node>'
+    )
+    medal = (
+        f'<node resource-id="{SOUL_PACKAGE}/{side}IvMedal"/>'
+        f'<node resource-id="{SOUL_PACKAGE}/{side}TvTime" text="2分钟"/>'
+    )
+    return f"{user_view}{avatar}{state}{medal}</node>"
+
+
+def build_live_page_source(occupants: dict, phase: str = "top") -> str:
+    """按视口相位拼一份真机形状的 page_source。
+
+    Args:
+        occupants: ``{座位号: 占用者}``。``True`` = 普通用户占座（TvLabelH 渲染成
+            麦位编号，**昵称不在 DOM 里**，只能点头像弹窗读）；``"群主"``/``"管理"``
+            = 身份文字；省略 = 空座。
+        phase: top / bottom / collapsed_top / collapsed_bottom，决定哪些桌位完整
+            渲染、哪些只露出残片（残片没有 userView，读不出任何麦位数据）。
+    """
+    full, fragments = LIVE_VIEWPORT_PHASES[phase]
+    desks = []
+    for desk_index in range(6):
+        x1, y1, x2, y2 = live_desk_bounds(desk_index)
+        if desk_index not in full:
+            if desk_index not in fragments:
+                continue
+            # 残片：只剩背景与底座，与真机滑出视口的桌位同形
+            desks.append(
+                f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{_bounds_str(x1, y1, x2, y1 + 18)}">'
+                f'<node resource-id="cn.soulapp.android:id/bgRoot"/>'
+                f'<node resource-id="cn.soulapp.android:id/leftBottomView"/>'
+                f'<node resource-id="cn.soulapp.android:id/rightBottomView"/></node>'
+            )
+            continue
+        sides = []
+        for side, offset in (("left", 1), ("right", 2)):
+            seat_number = desk_index * 2 + offset
+            sides.append(_live_seat_xml(side, seat_number, occupants.get(seat_number)))
+        desks.append(
+            f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{_bounds_str(x1, y1, x2, y2)}">'
+            f'<node resource-id="cn.soulapp.android:id/bgRoot"/>'
+            f"{''.join(sides)}</node>"
+        )
+    return "<hierarchy>" + "".join(desks) + "</hierarchy>"
+
+
+def build_live_desk_wrappers_for(handler, occupants: dict, phase: str = "top") -> list:
+    """page_source -> 事件轮询形状的桌位列表（与 EventManager 的构造方式一致）。"""
+    root = etree.fromstring(build_live_page_source(occupants, phase).encode("utf-8"))
+    return [
+        ElementWrapper(node, handler, "seat_desk")
+        for node in root.xpath(f"//*[@resource-id='{DESK_RESOURCE_ID}']")
+    ]
+
+
+def build_live_raw_desks_for(occupants: dict, phase: str = "top") -> list:
+    """page_source -> 展开重扫路径的 raw WebElement 桌位列表。"""
+    root = etree.fromstring(build_live_page_source(occupants, phase).encode("utf-8"))
+    desks = []
+    for node in root.xpath(f"//*[@resource-id='{DESK_RESOURCE_ID}']"):
+        children: dict = {}
+        for child in node.iterdescendants():
+            rid = child.get("resource-id")
+            if rid and rid not in children:
+                children[rid] = RawDumpNode(child)
+        location, size = _location_from_bounds(node.get("bounds"))
+        desk = RawSeatDesk(children, location=location)
+        desk.size = size
+        desks.append(desk)
+    return desks
