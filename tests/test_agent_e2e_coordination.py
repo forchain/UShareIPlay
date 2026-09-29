@@ -90,6 +90,33 @@ def test_process_inventory_marks_manual_repo_process_as_external_session(monkeyp
     assert sessions[0]["pid"] == 123
 
 
+def test_discovery_never_returns_the_caller_process_group(monkeypatch):
+    """调用方自己不能被当成待清理的 E2E 会话根。
+
+    toolbelt 的命令行里同时带着仓库路径（ushareiplay）和脚本名（e2e_toolbelt），
+    按"仓库身份"匹配时先把自己匹配进来，terminate_sessions 再 killpg 就是自杀：
+    start/cleanup-local 拿到 130，整条 E2E 生命周期原地中断。托管服务一律以
+    start_new_session 独立成组，所以排除本进程组不会漏掉真正的服务根。
+    """
+    import os
+
+    coordination = _load_coordination()
+    own_pgid = os.getpgid(0)
+    other_pgid = own_pgid + 987654
+    output = (
+        f"{own_pgid + 7} {own_pgid} Mon Jan  1 00:00:00 2026 "
+        f"python /tmp/UShareIPlay/.agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py start\n"
+        f"{other_pgid + 9} {other_pgid} Mon Jan  1 00:00:00 2026 "
+        f"python /tmp/UShareIPlay/.agents/skills/agent-e2e-test/scripts/e2e_toolbelt.py start\n"
+    )
+    monkeypatch.setattr(coordination, "run_text", lambda *args, **kwargs: output)
+    monkeypatch.setattr(coordination, "process_cwd", lambda pid: "/tmp/UShareIPlay")
+
+    sessions = coordination.discover_local_sessions("emulator-1")
+
+    assert [item["pid"] for item in sessions] == [other_pgid + 9]
+
+
 def test_remote_pause_queues_stop_command_and_force_is_explicit():
     coordination = _load_coordination()
     target = coordination.RemoteTarget(host="tony@192.168.8.103", deploy_path="~/github.com/forchain/UShareIPlay")

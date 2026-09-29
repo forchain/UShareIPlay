@@ -150,12 +150,17 @@ def discover_local_sessions(device_id: str) -> list[dict[str, Any]]:
     """Find both managed and manually-started E2E process roots for one device."""
     output = run_text(["ps", "-axo", "pid=,pgid=,lstart=,command="], timeout=5)
     sessions: list[dict[str, Any]] = []
+    # 本进程所在的进程组永远不是清理对象：命令行里带着仓库路径与脚本名，
+    # 按"仓库身份"匹配时先把自己匹配进来，再 killpg 就是自杀（toolbelt 拿到 130，
+    # 整条 E2E 生命周期在 start/cleanup-local 上原地中断）。托管服务一律以
+    # start_new_session 独立成组，排除自己这一组不会漏掉真正的服务根。
+    own_pgid = os.getpgid(0)
     for line in output.splitlines():
         parts = line.strip().split(None, 8)
         if len(parts) < 9 or not parts[0].isdigit() or not parts[1].isdigit():
             continue
         pid = int(parts[0])
-        if pid in {os.getpid(), os.getppid()}:
+        if pid in {os.getpid(), os.getppid()} or int(parts[1]) == own_pgid:
             continue
         command = parts[8]
         cwd = process_cwd(pid)
