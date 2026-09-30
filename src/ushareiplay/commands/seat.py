@@ -3,16 +3,12 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.seat_manager import SeatManager
 
 
+from ushareiplay.state.room_state import RoomState
+
+
 class SeatCommand(BaseCommand):
     handler_attr = 'soul_handler'
     error_message = 'Failed to process seat command: {error}'
-
-    def _is_guest_room(self) -> bool:
-        try:
-            from ushareiplay.state.room_state import RoomState
-            return RoomState.instance().is_guest_room
-        except Exception:
-            return False
 
     async def process(self, message_info, parameters):
         try:
@@ -51,7 +47,7 @@ class SeatCommand(BaseCommand):
 
     async def do_process(self, message_info, parameters):
         """Process seat command"""
-        if self._is_guest_room():
+        if RoomState.in_guest_room():
             return {'error': '他人房间不支持座位功能'}
 
         if not parameters:
@@ -103,7 +99,7 @@ class SeatCommand(BaseCommand):
     async def user_enter(self, username: str):
         """Called when a user enters the party"""
         try:
-            if self._is_guest_room():
+            if RoomState.in_guest_room():
                 return
             # Check seats when user enters, passing the username
             await SeatManager.get_instance().check_seats_on_entry(username)
@@ -113,7 +109,7 @@ class SeatCommand(BaseCommand):
     async def user_return(self, username: str):
         """Called when a user returns to the party"""
         try:
-            if self._is_guest_room():
+            if RoomState.in_guest_room():
                 return
             # Check seats when user returns, passing the username
             await SeatManager.get_instance().check_seats_on_entry(username)

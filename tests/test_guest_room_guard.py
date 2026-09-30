@@ -503,6 +503,62 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
     party_manager.leave_and_recreate_party.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_new_seat_entry_inherits_guest_room_guard():
+    """证明新增座位入口无需复制守卫即可获得同样的客房行为。"""
+    from ushareiplay.managers.seat_manager.guard import (
+        guest_room_guard,
+        GUEST_ROOM_ERROR_RESULT,
+        GUEST_ROOM_CHAT_SCAN_RESULT,
+        GUEST_ROOM_ENTRY_CHECK_RESULT,
+    )
+
+    executed = {"error_entry": False, "scan_entry": False, "check_entry": False}
+
+    class DummySeatManager:
+        @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
+        async def new_action(self):
+            executed["error_entry"] = True
+            return {"success": "done"}
+
+        @guest_room_guard(GUEST_ROOM_CHAT_SCAN_RESULT)
+        async def new_scan(self):
+            executed["scan_entry"] = True
+            return False
+
+        @guest_room_guard(GUEST_ROOM_ENTRY_CHECK_RESULT)
+        async def new_check(self):
+            executed["check_entry"] = True
+            return {"user": "checked"}
+
+    mgr = DummySeatManager()
+    room_state = RoomState.instance()
+
+    # 1. 客房状态：无需复制任何客房检测样板，直接短路返回对应显式命名的返回形状
+    room_state.is_guest_room = True
+
+    assert await mgr.new_action() == GUEST_ROOM_ERROR_RESULT
+    assert executed["error_entry"] is False
+
+    assert await mgr.new_scan() == GUEST_ROOM_CHAT_SCAN_RESULT
+    assert executed["scan_entry"] is False
+
+    assert await mgr.new_check() == GUEST_ROOM_ENTRY_CHECK_RESULT
+    assert executed["check_entry"] is False
+
+    # 2. 主房状态：正常穿透并执行方法体
+    room_state.is_guest_room = False
+
+    assert await mgr.new_action() == {"success": "done"}
+    assert executed["error_entry"] is True
+
+    assert await mgr.new_scan() is False
+    assert executed["scan_entry"] is True
+
+    assert await mgr.new_check() == {"user": "checked"}
+    assert executed["check_entry"] is True
+
+
 
 
 

@@ -48,7 +48,7 @@ class PlaybackMuting(Singleton):
             return False
         if not settings["guest_room_only"]:
             return True
-        return self._is_guest_room()
+        return RoomState.in_guest_room()
 
     @contextmanager
     def guard(self, expected_song: Optional[str] = None) -> Iterator[bool]:
@@ -86,11 +86,6 @@ class PlaybackMuting(Singleton):
         在错误提示后仍长时间听不到机器人。
         """
         self._playback_failed = True
-
-    def _is_guest_room(self) -> bool:
-        if not RoomState.is_initialized():
-            return False
-        return bool(RoomState.instance().is_guest_room)
 
     def _mute_if_active(self) -> bool:
         """开麦时点击闭麦；本就闭麦或无法判定时不产生多余的 UI 点击。"""
