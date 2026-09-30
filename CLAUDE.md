@@ -82,7 +82,7 @@ AppController
 
 ### Configuration
 
-`config.yaml` (26,000+ lines) is the master config containing:
+`config.yaml` (596 lines / 37,401 characters) is the master config containing:
 - Android device and Appium server settings
 - 100+ Soul App UI element XPath selectors
 - 80+ QQ Music UI element XPath selectors
