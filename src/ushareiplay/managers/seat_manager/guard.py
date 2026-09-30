@@ -3,7 +3,7 @@ import inspect
 from functools import wraps
 from typing import Any, Callable, TypeVar
 
-from ushareiplay.state.room_state import RoomState
+import ushareiplay.state.room_state as room_state
 
 # 三种显式命名的返回形状
 GUEST_ROOM_ERROR_RESULT = {'error': '他人房间不支持座位功能'}
@@ -19,14 +19,14 @@ def guest_room_guard(fallback_value: Any) -> Callable[[F], F]:
         if inspect.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                if RoomState.in_guest_room():
+                if room_state.RoomState.in_guest_room():
                     return fallback_value
                 return await func(*args, **kwargs)
             return async_wrapper  # type: ignore
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                if RoomState.in_guest_room():
+                if room_state.RoomState.in_guest_room():
                     return fallback_value
                 return func(*args, **kwargs)
             return sync_wrapper  # type: ignore

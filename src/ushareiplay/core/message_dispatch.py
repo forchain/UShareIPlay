@@ -2,14 +2,15 @@ import traceback
 
 from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.user_manager import UserManager
 
 
 class MessageDispatch(Singleton):
     """Route outbound chat messages through one observable application seam."""
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, user_manager=None):
         self._handler = handler
-        self._user_manager = None
+        self._user_manager = user_manager
         self._runtime = None
 
     def configure_runtime(self, runtime):
@@ -27,17 +28,11 @@ class MessageDispatch(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def user_manager(self):
         if self._user_manager is None:
-            from ushareiplay.managers.user_manager import UserManager
-
             self._user_manager = UserManager.instance()
         return self._user_manager
 

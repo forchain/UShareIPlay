@@ -1,9 +1,11 @@
 import asyncio
+import logging
 import time
 import traceback
 from typing import Dict, List, Set
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.command_manager import CommandManager
 
 
 class PresenceTracker(Singleton):
@@ -18,21 +20,13 @@ class PresenceTracker(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            if SoulHandler.is_initialized():
-                self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            if self.handler and hasattr(self.handler, "logger"):
-                self._logger = self.handler.logger
-            else:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                self._logger = SoulHandler.instance().logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.presence_tracker")
         return self._logger
 
     def update_online_users(self, users: List[str]):
@@ -82,9 +76,9 @@ class PresenceTracker(Singleton):
             username: Username of the user who left
         """
         try:
-            from ushareiplay.managers.command_manager import CommandManager
-            command_manager = CommandManager.instance()
-            asyncio.create_task(command_manager.notify_user_leave(username))
+            if CommandManager.is_initialized():
+                command_manager = CommandManager.instance()
+                asyncio.create_task(command_manager.notify_user_leave(username))
         except Exception:
             self.logger.error(f"Error notifying user leave: {traceback.format_exc()}")
 
@@ -97,9 +91,9 @@ class PresenceTracker(Singleton):
         """
         try:
             self._recent_enters[username] = time.time()
-            from ushareiplay.managers.command_manager import CommandManager
-            command_manager = CommandManager.instance()
-            asyncio.create_task(command_manager.notify_user_enter(username))
+            if CommandManager.is_initialized():
+                command_manager = CommandManager.instance()
+                asyncio.create_task(command_manager.notify_user_enter(username))
         except Exception:
             self.logger.error(f"Error notifying user enter: {traceback.format_exc()}")
 

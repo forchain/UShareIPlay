@@ -1,8 +1,10 @@
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
 
 class RoomState(Singleton):
@@ -26,22 +28,13 @@ class RoomState(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            if SoulHandler.is_initialized():
-                self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            if SoulHandler.is_initialized():
-                self._logger = SoulHandler.instance().logger
-            else:
-                import logging
-                self._logger = logging.getLogger("ushareiplay.state.room_state")
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.room_state")
         return self._logger
 
     @property
@@ -135,8 +128,7 @@ class RoomState(Singleton):
     def _get_default_party_id(self) -> Optional[str]:
         """获取配置中的默认主房间ID"""
         try:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            handler = SoulHandler.instance()
+            handler = self._handler
             if handler and hasattr(handler, 'config') and isinstance(handler.config, dict):
                 soul_cfg = handler.config.get("soul", {})
                 if isinstance(soul_cfg, dict) and soul_cfg.get("default_party_id"):
@@ -154,11 +146,9 @@ class RoomState(Singleton):
 
         default_party_id = self._get_default_party_id()
         current_party_id = self._room_id
-        if not current_party_id:
+        if not current_party_id and self._handler:
             try:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                if SoulHandler.is_initialized():
-                    current_party_id = SoulHandler.instance().party_id
+                current_party_id = getattr(self._handler, "party_id", None)
             except Exception:
                 pass
 
@@ -235,7 +225,6 @@ class RoomState(Singleton):
         self._recommendation_enabled = None
         self._is_guest_room = None
         try:
-            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             if SeatObservationManager.is_initialized():
                 SeatObservationManager.instance().clear()
         except Exception as e:

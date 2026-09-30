@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
@@ -14,28 +15,13 @@ class PlaylistState(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            try:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                if SoulHandler.is_initialized():
-                    self._handler = SoulHandler.instance()
-            except Exception:
-                pass
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            try:
-                if self.handler and hasattr(self.handler, "logger"):
-                    self._logger = self.handler.logger
-                else:
-                    from ushareiplay.handlers.soul_handler import SoulHandler
-                    self._logger = SoulHandler.instance().logger
-            except Exception:
-                import logging
-                return logging.getLogger(__name__)
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.playlist_state")
         return self._logger
 
     @property

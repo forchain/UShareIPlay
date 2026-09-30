@@ -1,8 +1,12 @@
 import asyncio
+import logging
 import traceback
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.state.presence_tracker import PresenceTracker
+from ushareiplay.state.room_state import RoomState
 
 
 class OnlineListScraper(Singleton):
@@ -14,21 +18,13 @@ class OnlineListScraper(Singleton):
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            if self.handler and hasattr(self.handler, "logger"):
-                self._logger = self.handler.logger
-            else:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                self._logger = SoulHandler.instance().logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.online_list_scraper")
         return self._logger
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
@@ -43,10 +39,6 @@ class OnlineListScraper(Singleton):
 
     async def _do_refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         try:
-            from ushareiplay.state.room_state import RoomState
-            from ushareiplay.state.presence_tracker import PresenceTracker
-            from ushareiplay.dal.user_dao import UserDAO
-
             if target_count is None:
                 target_count = RoomState.instance().user_count
 
