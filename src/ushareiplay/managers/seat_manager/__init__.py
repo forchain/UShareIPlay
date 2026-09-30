@@ -14,44 +14,21 @@ import logging
 
 class SeatManager(SeatManagerBase):
     """Global singleton instance for seat management"""
-    _instance = None
 
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls):
-        cls._instance = None
-
-    def __init__(self, handler=None):
-        # 打印更多日志，帮助调试
-        logging.getLogger('seat_manager').info(f"初始化 SeatManager，handler={handler}")
-
-        if not hasattr(self, 'initialized'):
-            super().__init__(handler)
-            # Initialize component managers
-            # FocusManager 已迁移到事件系统，不再需要
-            self._ui = SeatUIManager(handler)
-            self._check = SeatCheckManager(handler, self._ui)
-            self._reservation = ReservationManager(handler, self._ui, self._check)
-            self._seating = SeatingManager(handler, self._ui, self.observation)
-            self.initialized = True
-            logging.getLogger('seat_manager').info("SeatManager 初始化完成")
-        elif handler and not self.handler:
-            # 如果已经初始化过，但handler为None，更新handler
-            logging.getLogger('seat_manager').info(f"更新 SeatManager 的 handler: {handler}")
-            self.handler = handler
-            self._reservation.handler = handler
-            self._check.handler = handler
-            self._check._message_dispatch = None
-            self._ui.handler = handler
-            self._seating.handler = handler
-            if hasattr(self._seating, "_observation"):
-                self._seating._observation = self.observation
-            if SeatObservationManager.is_initialized():
-                SeatObservationManager.instance().bind_handler(handler)
+    def __init__(
+        self,
+        handler=None,
+        seat_ui=None,
+        seat_check=None,
+        reservation=None,
+        seating=None,
+    ):
+        super().__init__(handler)
+        self._ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
+        self._check = seat_check if seat_check is not None else (SeatCheckManager.instance() if SeatCheckManager.is_initialized() else None)
+        self._reservation = reservation if reservation is not None else (ReservationManager.instance() if ReservationManager.is_initialized() else None)
+        self._seating = seating if seating is not None else (SeatingManager.instance() if SeatingManager.is_initialized() else None)
+        logging.getLogger('seat_manager').info(f"初始化 SeatManager 完成，handler={handler}")
 
     @property
     def observation(self):

@@ -1,13 +1,14 @@
 import asyncio
+from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
 
 
-class SeatingManager:
+class SeatingManager(Singleton):
     def __init__(self, handler=None, seat_ui=None, observation=None):
         self.handler = handler
-        self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.seat_ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
         self._observation = observation
         self.current_desk_index = 0
         self.current_side = None
@@ -19,7 +20,7 @@ class SeatingManager:
         from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
         if SeatObservationManager.is_initialized():
             return SeatObservationManager.instance()
-        return SeatObservationManager.initialize(self.handler)
+        return None
 
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""

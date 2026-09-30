@@ -40,11 +40,20 @@ class _FakeSeating:
         return {"removed": seat_number}
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_seat_manager():
+    SeatManager.reset_instance()
+    yield
+    SeatManager.reset_instance()
+
+
 def _manager_with_fakes(ui=None, reservation=None, seating=None):
-    manager = object.__new__(SeatManager)
-    manager._ui = ui or _FakeSeatUI(expanded=False)
-    manager._reservation = reservation or _FakeReservation()
-    manager._seating = seating or _FakeSeating()
+    SeatManager.reset_instance()
+    manager = SeatManager.initialize(
+        seat_ui=ui or _FakeSeatUI(expanded=False),
+        reservation=reservation or _FakeReservation(),
+        seating=seating or _FakeSeating(),
+    )
     return manager
 
 
@@ -77,13 +86,16 @@ async def test_seat_management_preserves_remove_occupant_paths():
 
 
 def test_seat_management_shares_ui_and_check_dependencies():
-    singleton_classes = (SeatManager,)
+    singleton_classes = (SeatUIManager, SeatCheckManager, ReservationManager, SeatingManager, SeatManager)
     for manager_class in singleton_classes:
-        manager_class._instance = None
-        manager_class._initialized = False
+        manager_class.reset_instance()
 
     handler = object()
-    manager = SeatManager.get_instance(handler)
+    seat_ui = SeatUIManager.initialize(handler)
+    seat_check = SeatCheckManager.initialize(handler, seat_ui)
+    reservation = ReservationManager.initialize(handler, seat_ui, seat_check)
+    seating = SeatingManager.initialize(handler, seat_ui)
+    manager = SeatManager.initialize(handler, seat_ui, seat_check, reservation, seating)
 
     assert manager._ui is manager._check.seat_ui
     assert manager._ui is manager._reservation.seat_ui
@@ -91,8 +103,7 @@ def test_seat_management_shares_ui_and_check_dependencies():
     assert manager._reservation.seat_check is manager._check
 
     for manager_class in singleton_classes:
-        manager_class._instance = None
-        manager_class._initialized = False
+        manager_class.reset_instance()
 
 
 @pytest.mark.asyncio

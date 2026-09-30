@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from ushareiplay.core.singleton import Singleton
 
 
-class SeatUIManager:
+class SeatUIManager(Singleton):
     def __init__(self, handler=None):
         self.handler = handler
         self.is_expanded = False

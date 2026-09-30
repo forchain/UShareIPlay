@@ -94,7 +94,7 @@ class MessageManager(Singleton):
     def _get_seat_manager(self):
         from ushareiplay.managers.seat_manager import SeatManager
 
-        return SeatManager.get_instance()
+        return SeatManager.instance()
 
     async def resolve_room_owner(self) -> str | None:
         """房间房主名：配置优先（走 ADR-0008 的 RolePolicy），否则回落到库里的房主。

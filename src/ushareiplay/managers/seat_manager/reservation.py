@@ -1,14 +1,15 @@
+from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal import UserDAO, SeatReservationDAO
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 import traceback
 
 
-class ReservationManager:
+class ReservationManager(Singleton):
     def __init__(self, handler=None, seat_ui=None, seat_check=None):
         self.handler = handler
-        self.seat_ui = seat_ui or SeatUIManager(handler)
-        self.seat_check = seat_check or SeatCheckManager(handler, self.seat_ui)
+        self.seat_ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
+        self.seat_check = seat_check if seat_check is not None else (SeatCheckManager.instance() if SeatCheckManager.is_initialized() else None)
 
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """Reserve a seat for a user (data operation only)"""

@@ -472,14 +472,12 @@ def test_seat_manager_does_not_initialize_seat_observation_singleton():
     can initialize SeatObservationManager without raising SingletonError.
     """
     from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.managers.seat_manager.base import SeatManagerBase
 
     SeatObservationManager.reset_instance()
-    SeatManagerBase._instance = None
-    SeatManager._instance = None
+    SeatManager.reset_instance()
 
     handler = make_handler()
-    seat_mgr = SeatManager.get_instance(handler)
+    seat_mgr = SeatManager.initialize(handler)
 
     # SeatManager must not eagerly initialize the singleton
     assert not SeatObservationManager.is_initialized()

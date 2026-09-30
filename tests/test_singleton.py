@@ -85,3 +85,41 @@ def test_thread_safe_concurrent_creation():
 
     assert len(set(id(i) for i in instances)) == 1, "并发创建应返回同一实例"
     _ConcurrentService.reset_instance()
+
+
+def test_seat_management_classes_follow_singleton_contract():
+    from ushareiplay.managers.seat_manager import (
+        SeatManager,
+        SeatUIManager,
+        SeatCheckManager,
+        ReservationManager,
+        SeatingManager,
+    )
+
+    seat_classes = [SeatUIManager, SeatCheckManager, ReservationManager, SeatingManager, SeatManager]
+    for cls in seat_classes:
+        cls.reset_instance()
+        with pytest.raises(SingletonError, match=f"Use {cls.__name__}.initialize"):
+            cls()
+
+    # Initialize in dependency order
+    ui = SeatUIManager.initialize(handler=None)
+    check = SeatCheckManager.initialize(handler=None, seat_ui=ui)
+    res = ReservationManager.initialize(handler=None)
+    seating = SeatingManager.initialize(handler=None)
+    sm = SeatManager.initialize(handler=None, seat_ui=ui, seat_check=check, reservation=res, seating=seating)
+
+    assert SeatUIManager.instance() is ui
+    assert SeatCheckManager.instance() is check
+    assert ReservationManager.instance() is res
+    assert SeatingManager.instance() is seating
+    assert SeatManager.instance() is sm
+
+    with pytest.raises(SingletonError, match="already initialized"):
+        SeatManager.initialize()
+
+    Singleton.reset_all_instances()
+    for cls in seat_classes:
+        with pytest.raises(SingletonError, match="has not been initialized"):
+            cls.instance()
+

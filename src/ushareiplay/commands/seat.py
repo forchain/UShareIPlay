@@ -52,27 +52,27 @@ class SeatCommand(BaseCommand):
 
         if not parameters:
             # No parameters - find and take an available seat for owner
-            return await SeatManager.get_instance().find_owner_seat(force_relocate=True)
+            return await SeatManager.instance().find_owner_seat(force_relocate=True)
 
         command = parameters[0]
 
         if command == '0':
             # Remove user's reservations
-            return await SeatManager.get_instance().remove_user_reservation(message_info.nickname)
+            return await SeatManager.instance().remove_user_reservation(message_info.nickname)
         elif command == '1' and len(parameters) == 2:
             # Reserve specific seat
             seat_number, err = self.coerce_int(
                 parameters[1], 1, 12, 'Invalid seat number. Must be between 1 and 12')
             if err:
                 return {'error': err}
-            return await SeatManager.get_instance().reserve_seat(message_info.nickname, seat_number)
+            return await SeatManager.instance().reserve_seat(message_info.nickname, seat_number)
         elif command == '2' and len(parameters) == 2:
             # Sit at specific seat position
             seat_number, err = self.coerce_int(
                 parameters[1], 1, 12, 'Invalid seat number. Must be between 1 and 12')
             if err:
                 return {'error': err}
-            return await SeatManager.get_instance().take_seat(seat_number)
+            return await SeatManager.instance().take_seat(seat_number)
         elif command == '3':
             # Accompany a specific user (sit next to them)
             # 座位层只认 Soul UI 上可见的名字（分身名）；调用方给的昵称、以及
@@ -80,18 +80,18 @@ class SeatCommand(BaseCommand):
             # 所以先解析成房间里当前可见的那个名字，再交给座位层。
             target_username = (parameters[1].strip() if len(parameters) > 1 else message_info.nickname) or ''
             target_username = await self._resolve_visible_username(target_username)
-            return await SeatManager.get_instance().accompany_user(target_username, sender_username=message_info.nickname)
+            return await SeatManager.instance().accompany_user(target_username, sender_username=message_info.nickname)
         elif command == '4':
             if len(parameters) == 1:
                 # Remove owner from their current seat
-                return await SeatManager.get_instance().remove_seat_occupant(None)
+                return await SeatManager.instance().remove_seat_occupant(None)
             if len(parameters) == 2:
                 # Remove whoever is sitting at the specified seat
                 seat_number, err = self.coerce_int(
                     parameters[1], 1, 12, 'Invalid seat number. Must be between 1 and 12')
                 if err:
                     return {'error': err}
-                return await SeatManager.get_instance().remove_seat_occupant(seat_number)
+                return await SeatManager.instance().remove_seat_occupant(seat_number)
             return {'error': 'Invalid command. Use: :seat 4 [seat_number]'}
         else:
             return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]|4 [seat_number]]'}
@@ -102,7 +102,7 @@ class SeatCommand(BaseCommand):
             if RoomState.in_guest_room():
                 return
             # Check seats when user enters, passing the username
-            await SeatManager.get_instance().check_seats_on_entry(username)
+            await SeatManager.instance().check_seats_on_entry(username)
         except Exception as e:
             self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
 
@@ -112,7 +112,7 @@ class SeatCommand(BaseCommand):
             if RoomState.in_guest_room():
                 return
             # Check seats when user returns, passing the username
-            await SeatManager.get_instance().check_seats_on_entry(username)
+            await SeatManager.instance().check_seats_on_entry(username)
         except Exception as e:
             self.handler.log_error(f"Error checking seats on user return: {traceback.format_exc()}")
 

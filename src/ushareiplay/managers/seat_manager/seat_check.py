@@ -1,14 +1,15 @@
 import asyncio
 import traceback
 from datetime import datetime, timedelta
+from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal import SeatReservationDAO, UserDAO
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 
 
-class SeatCheckManager:
+class SeatCheckManager(Singleton):
     def __init__(self, handler=None, seat_ui=None):
         self.handler = handler
-        self.seat_ui = seat_ui or SeatUIManager(handler)
+        self.seat_ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
         self._message_dispatch = None
 
     @property

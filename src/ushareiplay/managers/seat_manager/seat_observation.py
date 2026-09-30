@@ -61,11 +61,11 @@ class SeatObservationManager(Singleton):
     SEAT_COLOR_IDLE: ClassVar[str] = "\033[90m"
     SEAT_COLOR_RESET: ClassVar[str] = "\033[0m"
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, seat_ui=None):
         self.handler = handler
         self._logger = None
         self._controller = None
-        self._seat_ui = None
+        self._seat_ui = seat_ui
         # 全局 1~12 号位快照
         self.seats: Dict[int, SeatSlot] = {
             i: SeatSlot(seat_number=i) for i in range(1, 13)
@@ -127,7 +127,8 @@ class SeatObservationManager(Singleton):
     def seat_ui(self):
         if self._seat_ui is None:
             from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-            self._seat_ui = SeatUIManager(self.handler)
+            if SeatUIManager.is_initialized():
+                self._seat_ui = SeatUIManager.instance()
         return self._seat_ui
 
     def clear(self):

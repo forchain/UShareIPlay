@@ -418,6 +418,10 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
+            from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
+            from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
+            from ushareiplay.managers.seat_manager.reservation import ReservationManager
+            from ushareiplay.managers.seat_manager.seating import SeatingManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
@@ -433,7 +437,19 @@ class AppController(Singleton):
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            self.seat_manager = SeatManager.get_instance(self.soul_handler)
+            self.seat_ui_manager = SeatUIManager.initialize(self.soul_handler)
+            self.seat_check_manager = SeatCheckManager.initialize(self.soul_handler, self.seat_ui_manager)
+            self.reservation_manager = ReservationManager.initialize(
+                self.soul_handler, self.seat_ui_manager, self.seat_check_manager
+            )
+            self.seating_manager = SeatingManager.initialize(self.soul_handler, self.seat_ui_manager)
+            self.seat_manager = SeatManager.initialize(
+                self.soul_handler,
+                seat_ui=self.seat_ui_manager,
+                seat_check=self.seat_check_manager,
+                reservation=self.reservation_manager,
+                seating=self.seating_manager,
+            )
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
@@ -471,7 +487,7 @@ class AppController(Singleton):
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
-            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler)
+            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler, seat_ui=self.seat_ui_manager)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
@@ -676,8 +692,8 @@ class AppController(Singleton):
             self._network_bridge = None
 
         try:
-            from ushareiplay.managers.seat_manager import SeatManager
-            SeatManager.reset_instance()
+            from ushareiplay.core.singleton import Singleton
+            Singleton.reset_all_instances()
         except Exception:
             pass
 

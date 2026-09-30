@@ -57,17 +57,20 @@ class DummyCommand:
 def _reset_singletons():
     from ushareiplay.core.message_dispatch import MessageDispatch
     from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.managers.seat_manager import SeatManager
 
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
     MessageDispatch.initialize()
     RoomState.reset_instance()
+    SeatManager.reset_instance()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     yield
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
     RoomState.reset_instance()
+    SeatManager.reset_instance()
 
 
 @pytest.mark.asyncio
@@ -223,7 +226,8 @@ async def test_guest_room_blocks_all_seat_manager_actions():
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    seat_mgr = SeatManager()
+    SeatManager.reset_instance()
+    seat_mgr = SeatManager.initialize()
 
     # take seat
     res = await seat_mgr.take_seat(1)
