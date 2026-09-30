@@ -4,6 +4,7 @@ from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationGateState,
     SeatObservationManager,
     SeatRescanCooldownPolicy,
 )

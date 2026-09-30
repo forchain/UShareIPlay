@@ -5,6 +5,7 @@ C1/C2）：desk 是真 ElementWrapper，raw WebElement 路径走 find_element �
 controller 用真实的 ui_session 异步上下文管理器。
 """
 
+import asyncio
 from pathlib import Path
 import time
 from types import SimpleNamespace
@@ -32,6 +33,7 @@ from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationGateState,
     SeatObservationManager,
     SeatRescanCooldownPolicy,
     SeatSlot,
@@ -2462,4 +2464,74 @@ async def test_rescan_invariants_with_injected_cooldown_policy():
     )
     assert res6 is True
     assert len(scan_calls) == 4
+
+
+def test_gate_state_unified_reset():
+    """验证 11 个协调字段可通过 reset() 单动作整体重置回初始值。"""
+    state = SeatObservationGateState()
+    assert state.last_focus_count is None
+    assert state.reconciled_focus_count is None
+    assert state.scanned_seat_change_fingerprint is None
+    assert state.last_rescan_ok is False
+    assert state.last_rescan_time == 0.0
+    assert state.last_visible_band is None
+    assert state.band_change_reason is None
+    assert state.residual_seats == {}
+    assert state.last_scan_fingerprint is None
+    assert state.consistency_retry_due is False
+    assert isinstance(state.lock, asyncio.Lock)
+
+    # 脏化全部 11 个字段
+    state.last_focus_count = 5
+    state.reconciled_focus_count = 5
+    state.scanned_seat_change_fingerprint = frozenset([("a", "b")])
+    state.last_rescan_ok = True
+    state.last_rescan_time = 123.45
+    state.last_visible_band = ("band", 1)
+    state.band_change_reason = "reason"
+    state.residual_seats = {1: "user1"}
+    state.last_scan_fingerprint = frozenset([("c", "d")])
+    state.consistency_retry_due = True
+    old_lock = state.lock
+
+    # 单动作重置
+    state.reset()
+
+    assert state.last_focus_count is None
+    assert state.reconciled_focus_count is None
+    assert state.scanned_seat_change_fingerprint is None
+    assert state.last_rescan_ok is False
+    assert state.last_rescan_time == 0.0
+    assert state.last_visible_band is None
+    assert state.band_change_reason is None
+    assert state.residual_seats == {}
+    assert state.last_scan_fingerprint is None
+    assert state.consistency_retry_due is False
+    assert state.lock is not old_lock
+
+
+def test_gate_state_integration_with_manager_clear():
+    """验证 SeatObservationManager.clear() 委托 gate_state.reset() 重置全部闸门。"""
+    manager = SeatObservationManager.initialize(None)
+    manager._last_focus_count = 3
+    manager._reconciled_focus_count = 3
+    manager._last_rescan_ok = True
+    manager._last_rescan_time = 999.0
+    manager._residual_seats = {12: "Alice"}
+    manager._consistency_retry_due = True
+    manager.seats[1].occupied = True
+
+    assert manager.gate_state.last_focus_count == 3
+    assert manager.gate_state.residual_seats == {12: "Alice"}
+
+    manager.clear()
+
+    assert manager.gate_state.last_focus_count is None
+    assert manager.gate_state.reconciled_focus_count is None
+    assert manager.gate_state.last_rescan_ok is False
+    assert manager.gate_state.last_rescan_time == 0.0
+    assert manager.gate_state.residual_seats == {}
+    assert manager.gate_state.consistency_retry_due is False
+    assert manager.seats[1].occupied is False
+
 
