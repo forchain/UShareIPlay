@@ -33,8 +33,20 @@ from lxml import etree
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
+    SeatRescanCooldownPolicy,
     SeatSlot,
 )
+
+
+class FakeClock:
+    def __init__(self, start: float = 1000.0):
+        self.current = start
+
+    def __call__(self) -> float:
+        return self.current
+
+    def advance(self, seconds: float):
+        self.current += seconds
 
 
 @pytest.fixture(autouse=True)
@@ -1298,21 +1310,23 @@ async def test_same_focus_count_is_reconciled_only_once():
 @pytest.mark.asyncio
 async def test_rescan_that_never_landed_is_retried():
     """扫描没落地（展开失败/半截快照）时闸门要撤掉，不能把信号吞掉。"""
+    clock = FakeClock()
+    policy = SeatRescanCooldownPolicy(time_fn=clock)
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, cooldown_policy=policy)
     # 替身不设置 _last_rescan_ok，模拟「扫了但没扫成」
     manager.expand_rescan_and_collapse = AsyncMock(return_value=False)
 
     await manager.on_focus_count(None, 4)
     manager.expand_rescan_and_collapse.assert_awaited_once_with(4)
 
-    # 退避期内不重复展开
-    manager._last_rescan_time = time.monotonic()
+    # 退避期内不重复展开（生产默认 retry 退避为 30 秒，前进 10 秒仍在退避期）
+    clock.advance(10.0)
     await manager.on_focus_count(4, 4)
     assert manager.expand_rescan_and_collapse.await_count == 1
 
-    # 退避时间过去后重试（闸门没被永久占用）
-    manager._last_rescan_time = -1e9
+    # 退避时间过去后重试（闸门没被永久占用，再前进 25 秒，总计 35s > 30s）
+    clock.advance(25.0)
     await manager.on_focus_count(4, 4)
     assert manager.expand_rescan_and_collapse.await_count == 2
 
@@ -1851,10 +1865,14 @@ async def test_partial_coverage_rescan_does_not_claim_inconsistency():
 
 @pytest.mark.asyncio
 async def test_consistency_retry_uses_the_longer_cooldown():
-    """补扫要 5 秒后才允许，常规重扫 3 秒就行：一次展开要十几秒，不能追着扫。"""
-    manager = SeatObservationManager.initialize(make_handler())
+    """补扫要 10 秒后才允许，常规重扫 3 秒就行：一次展开要十几秒，不能追着扫。"""
+    clock = FakeClock()
+    policy = SeatRescanCooldownPolicy(time_fn=clock)
+    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
     manager._last_rescan_ok = True
-    manager._last_rescan_time = time.monotonic() - 5
+    manager._last_rescan_time = clock()
+
+    clock.advance(5.0)  # 5 秒过去：> 3.0s (常规冷却已过)，但 < 10.0s (补扫冷却未到)
 
     manager._consistency_retry_due = True
     with patch.object(
@@ -2345,3 +2363,103 @@ async def test_in_viewport_move_without_residual_render_is_applied_directly():
         "seat_number": 11,
         "action": "move_seat",
     }
+
+
+def test_seat_rescan_cooldown_policy_defaults():
+    policy = SeatRescanCooldownPolicy()
+    assert policy.rescan_cooldown == 3.0
+    assert policy.rescan_retry_cooldown == 30.0
+    assert policy.consistency_rescan_cooldown == 10.0
+    assert SeatObservationManager.RESCAN_COOLDOWN == 3.0
+    assert SeatObservationManager.RESCAN_RETRY_COOLDOWN == 30.0
+    assert SeatObservationManager.CONSISTENCY_RESCAN_COOLDOWN == 10.0
+
+
+@pytest.mark.asyncio
+async def test_rescan_invariants_with_injected_cooldown_policy():
+    """三条不变量以时序断言验证：
+    1. 同一份读数只触发一次全量重扫；
+    2. 冷却未到不重扫；
+    3. 重扫未真正落地则留下一次补扫欠账。
+    """
+    clock = FakeClock(100.0)
+    policy = SeatRescanCooldownPolicy(
+        rescan_cooldown=5.0,
+        rescan_retry_cooldown=20.0,
+        consistency_rescan_cooldown=15.0,
+        time_fn=clock,
+    )
+    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
+
+    scan_calls = []
+
+    async def _mock_scan(focus):
+        scan_calls.append(focus)
+        manager._last_rescan_ok = True
+
+    manager.expand_rescan_and_collapse = _mock_scan
+
+    fingerprint_a = frozenset([("left", "userA"), ("right", "userB")])
+
+    # 1. 首次触发：成功执行
+    res1 = await manager._request_full_scan(
+        target_focus=2, reason="scan_1", fingerprint=fingerprint_a
+    )
+    assert res1 is True
+    assert len(scan_calls) == 1
+
+    # 2. 不变量 2：冷却未到不重扫 (只过了 2 秒，< 5.0)
+    clock.advance(2.0)
+    res2 = await manager._request_full_scan(
+        target_focus=2, reason="scan_too_soon", fingerprint=fingerprint_a
+    )
+    assert res2 is False
+    assert len(scan_calls) == 1
+
+    # 3. 冷却过了 (再过 4 秒，总计 6s > 5.0)，但是指纹未变：不变量 1：同一份读数只触发一次重扫
+    clock.advance(4.0)
+    # 模拟视口传入相同指纹：
+    # Note: _request_full_scan 自身如果传入同指纹，会被 _scanned_seat_change_fingerprint 或上一层拦截
+    assert manager._scanned_seat_change_fingerprint == fingerprint_a
+
+    # 新读数指纹：允许触发重扫
+    fingerprint_b = frozenset([("left", "userC")])
+    res3 = await manager._request_full_scan(
+        target_focus=3, reason="scan_new_fp", fingerprint=fingerprint_b
+    )
+    assert res3 is True
+    assert len(scan_calls) == 2
+
+    # 4. 不变量 3：重扫未真正落地则留下一次补扫欠账（撤掉指纹标记，冷却放宽到 retry_cooldown）
+    async def _failing_scan(focus):
+        scan_calls.append(focus)
+        manager._last_rescan_ok = False
+
+    manager.expand_rescan_and_collapse = _failing_scan
+    clock.advance(10.0)
+
+    fingerprint_c = frozenset([("left", "userD")])
+    res4 = await manager._request_full_scan(
+        target_focus=4, reason="scan_failing", fingerprint=fingerprint_c
+    )
+    assert res4 is True
+    assert len(scan_calls) == 3
+    # 失败后指纹撤回
+    assert manager._scanned_seat_change_fingerprint is None
+
+    # retry 冷却为 20.0，前进 10 秒（未到 20.0）不能扫
+    clock.advance(10.0)
+    res5 = await manager._request_full_scan(
+        target_focus=4, reason="retry_too_soon", fingerprint=fingerprint_c
+    )
+    assert res5 is False
+    assert len(scan_calls) == 3
+
+    # 前进再过 11 秒（总计 21.0 > 20.0），补扫可以执行
+    clock.advance(11.0)
+    res6 = await manager._request_full_scan(
+        target_focus=4, reason="retry_landing", fingerprint=fingerprint_c
+    )
+    assert res6 is True
+    assert len(scan_calls) == 4
+

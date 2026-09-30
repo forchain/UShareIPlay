@@ -6,12 +6,44 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import ClassVar, Dict, List, Optional, Set, Tuple
+from typing import Callable, ClassVar, Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
+
+
+@dataclass(frozen=True)
+class SeatRescanCooldownPolicy:
+    """重扫冷却策略值对象，集中管理各类重扫/补扫的退避时长与时间流逝判定。"""
+
+    rescan_cooldown: float = 3.0
+    rescan_retry_cooldown: float = 30.0
+    consistency_rescan_cooldown: float = 10.0
+    time_fn: Callable[[], float] = time.monotonic
+
+    def get_cooldown(self, *, last_rescan_ok: bool, consistency_retry_due: bool) -> float:
+        cooldown = self.rescan_cooldown if last_rescan_ok else self.rescan_retry_cooldown
+        if consistency_retry_due:
+            cooldown = max(cooldown, self.consistency_rescan_cooldown)
+        return cooldown
+
+    def is_cooldown_expired(
+        self,
+        last_rescan_time: float,
+        *,
+        last_rescan_ok: bool,
+        consistency_retry_due: bool,
+    ) -> bool:
+        cooldown = self.get_cooldown(
+            last_rescan_ok=last_rescan_ok,
+            consistency_retry_due=consistency_retry_due,
+        )
+        return (self.now() - last_rescan_time) >= cooldown
+
+    def now(self) -> float:
+        return self.time_fn()
 
 
 @dataclass
@@ -38,13 +70,14 @@ class SeatObservationManager(Singleton):
     以及专注人数与可视麦位背离时的自动展开探测。
     """
 
-    RESCAN_COOLDOWN: ClassVar[float] = 3.0
+    DEFAULT_COOLDOWN_POLICY: ClassVar[SeatRescanCooldownPolicy] = SeatRescanCooldownPolicy()
+    RESCAN_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.rescan_cooldown
     # 上一次重扫没落地（展开失败/半截快照）时的重试间隔：放宽到几十秒，
     # 既不会把信号吞掉，也不会让失败的展开每几秒刷一次日志。
-    RESCAN_RETRY_COOLDOWN: ClassVar[float] = 30.0
+    RESCAN_RETRY_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.rescan_retry_cooldown
     # 重扫落地了、但结论与专注人数不自洽时的补扫间隔：展开收起会逼面板重绘，
     # 残留 label 通常在第二遍就清掉，但一次展开要十几秒，不能按 3 秒追着扫。
-    CONSISTENCY_RESCAN_COOLDOWN: ClassVar[float] = 10.0
+    CONSISTENCY_RESCAN_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.consistency_rescan_cooldown
 
     # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
     # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
@@ -61,11 +94,17 @@ class SeatObservationManager(Singleton):
     SEAT_COLOR_IDLE: ClassVar[str] = "\033[90m"
     SEAT_COLOR_RESET: ClassVar[str] = "\033[0m"
 
-    def __init__(self, handler=None, seat_ui=None):
+    def __init__(
+        self,
+        handler=None,
+        seat_ui=None,
+        cooldown_policy: Optional[SeatRescanCooldownPolicy] = None,
+    ):
         self.handler = handler
         self._logger = None
         self._controller = None
         self._seat_ui = seat_ui
+        self.cooldown_policy = cooldown_policy or self.DEFAULT_COOLDOWN_POLICY
         # 全局 1~12 号位快照
         self.seats: Dict[int, SeatSlot] = {
             i: SeatSlot(seat_number=i) for i in range(1, 13)
@@ -1524,16 +1563,15 @@ class SeatObservationManager(Singleton):
         返回 True 表示扫描确实执行过（成败看 _last_rescan_ok），False 表示被冷却或
         指纹挡下、根本没扫。闸门都是先登记再扫：重扫要十几秒，期间事件轮询会反复进来。
         """
-        cooldown = self.RESCAN_COOLDOWN if self._last_rescan_ok else self.RESCAN_RETRY_COOLDOWN
-        if self._consistency_retry_due:
-            # 上一扫落地但不自洽：补扫是有信息量的（重绘可能清掉残留 label），
-            # 但一次展开要十几秒，按更长的冷却追着扫，别把面板反复展开收起。
-            cooldown = max(cooldown, self.CONSISTENCY_RESCAN_COOLDOWN)
-        if time.monotonic() - self._last_rescan_time < cooldown:
+        if not self.cooldown_policy.is_cooldown_expired(
+            self._last_rescan_time,
+            last_rescan_ok=self._last_rescan_ok,
+            consistency_retry_due=self._consistency_retry_due,
+        ):
             return False
         if fingerprint is not None:
             self._scanned_seat_change_fingerprint = fingerprint
-        self._last_rescan_time = time.monotonic()
+        self._last_rescan_time = self.cooldown_policy.now()
         self.logger.info(reason)
         await self.expand_rescan_and_collapse(target_focus)
         if not self._last_rescan_ok and fingerprint is not None:
@@ -1806,7 +1844,7 @@ class SeatObservationManager(Singleton):
         self.logger.warning(
             f"Rescan is not self-consistent: {seated} seats occupied but focus count is "
             f"{target_focus_count} (occupied: {seated_nums}); ledger reopened, "
-            f"will re-scan after {self.CONSISTENCY_RESCAN_COOLDOWN}s"
+            f"will re-scan after {self.cooldown_policy.consistency_rescan_cooldown}s"
         )
 
     async def sync_current_viewport(

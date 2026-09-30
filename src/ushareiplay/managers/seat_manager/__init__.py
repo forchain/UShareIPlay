@@ -3,7 +3,10 @@ from ushareiplay.managers.seat_manager.reservation import ReservationManager
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationManager,
+    SeatRescanCooldownPolicy,
+)
 from ushareiplay.managers.seat_manager.guard import (
     guest_room_guard,
     GUEST_ROOM_ERROR_RESULT,
