@@ -8,9 +8,9 @@ YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首�
 class UserManager(Singleton):
     """在在线用户列表中查找指定用户并打开其资料页"""
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
 
     @property
     def handler(self):

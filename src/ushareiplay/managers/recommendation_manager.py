@@ -11,9 +11,9 @@ class RecommendationManager(Singleton):
     负责房间推荐状态的读取、更新、主动同步与被动纠偏。
     """
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
 
     @property
     def handler(self):

@@ -17,9 +17,9 @@ class TimerManager(Singleton):
     管理定时任务的执行和重复，数据持久化到数据库
     """
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._timers = {}
         self._running = False
         self._task = None

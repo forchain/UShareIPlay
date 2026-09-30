@@ -14,14 +14,23 @@ class RoomState(Singleton):
         "info", "help", "room", "mic", "say", "end"
     }
 
-    def __init__(self):
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._user_count: Optional[int] = None
         self._focus_count: Optional[int] = None
         self._room_id: Optional[str] = None
         self._recommendation_enabled: Optional[bool] = None
         self._is_guest_room: Optional[bool] = None
         self._expected_party_id: Optional[str] = self._load_persisted_expected_party_id()
+
+    @property
+    def handler(self):
+        if self._handler is None:
+            from ushareiplay.handlers.soul_handler import SoulHandler
+            if SoulHandler.is_initialized():
+                self._handler = SoulHandler.instance()
+        return self._handler
 
     @property
     def logger(self):

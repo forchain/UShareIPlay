@@ -14,11 +14,10 @@ class InfoManager(Singleton):
     测试需要注入 handler/logger 时，请直接注入目标状态模块。
     """
 
-    def __init__(self):
+    def __init__(self, handler=None):
         """初始化信息管理器，创建/获取子模块单例"""
-        # 延迟初始化 handler，避免循环依赖
-        self._handler = None
-        self._logger = None
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._party_manager = None
 
     @property

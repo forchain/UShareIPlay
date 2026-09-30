@@ -2,10 +2,9 @@ from ushareiplay.core.singleton import Singleton
 
 
 class AdminManager(Singleton):
-    def __init__(self):
-        # 延迟初始化 handler，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._room_admins: set[str] = set()
 
     def is_room_admin(self, username: str) -> bool:

@@ -28,10 +28,9 @@ class CommandManager(Singleton):
     单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self):
-        # 延迟初始化 handler 和 logger，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
 

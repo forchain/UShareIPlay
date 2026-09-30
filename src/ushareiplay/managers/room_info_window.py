@@ -43,9 +43,9 @@ DEFAULT_ENTRY_KEYS = ('chat_room_title', 'room_topic')
 class RoomInfoWindow(Singleton):
     """打开、检测、关闭房间信息窗口，并拥有窗口内的全量审计顺序。"""
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self.pending_audit_retry = False
         self.last_audit_results: Dict = {}
 

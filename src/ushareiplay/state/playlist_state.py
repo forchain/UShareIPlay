@@ -6,18 +6,33 @@ from ushareiplay.core.singleton import Singleton
 class PlaylistState(Singleton):
     """播放器/歌单元数据：当前播放器名与当前歌单名。"""
 
-    def __init__(self):
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: Optional[str] = None  # 当前歌单名称（完整原始名称）
+
+    @property
+    def handler(self):
+        if self._handler is None:
+            try:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                if SoulHandler.is_initialized():
+                    self._handler = SoulHandler.instance()
+            except Exception:
+                pass
+        return self._handler
 
     @property
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
             try:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                self._logger = SoulHandler.instance().logger
+                if self.handler and hasattr(self.handler, "logger"):
+                    self._logger = self.handler.logger
+                else:
+                    from ushareiplay.handlers.soul_handler import SoulHandler
+                    self._logger = SoulHandler.instance().logger
             except Exception:
                 import logging
                 return logging.getLogger(__name__)

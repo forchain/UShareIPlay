@@ -14,10 +14,9 @@ class KeywordManager(Singleton):
     单例模式，提供统一的关键字管理服务
     """
     
-    def __init__(self):
-        # 延迟初始化 handler 和 logger，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._config = None
         self._default_keyword_command = None
         self._nl_resolver = None

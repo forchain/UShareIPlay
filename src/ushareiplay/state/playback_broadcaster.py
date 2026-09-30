@@ -7,20 +7,27 @@ from ushareiplay.core.singleton import Singleton
 class PlaybackBroadcaster(Singleton):
     """播放信息缓存、质量检查与广播发送。"""
 
-    def __init__(self):
-        self._logger = None
-        self._soul_handler = None
+    def __init__(self, handler=None):
+        self._soul_handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._music_manager = None
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
         self._message_dispatch = None
 
     @property
+    def handler(self):
+        return self.soul_handler
+
+    @property
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            if self.soul_handler and hasattr(self.soul_handler, "logger"):
+                self._logger = self.soul_handler.logger
+            else:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                self._logger = SoulHandler.instance().logger
         return self._logger
 
     @property

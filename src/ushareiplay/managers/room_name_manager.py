@@ -17,9 +17,9 @@ class RoomNameManager(Singleton):
     #: 房间名共享冷却时长（分钟）
     COOLDOWN_MINUTES = 10
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._notice_manager = None
 
         # 冷却时钟与待写入标题：计时机制由 PendingWrite 拥有

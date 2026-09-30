@@ -10,10 +10,9 @@ class TopicManager(Singleton):
     单例模式，提供统一的话题管理服务
     """
     
-    def __init__(self):
-        # 延迟初始化 handler，避免循环依赖
-        self._soul_handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._soul_handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._message_dispatch = None
         
         # 冷却时钟与待写入话题：计时机制由 PendingWrite 拥有
@@ -58,6 +57,10 @@ class TopicManager(Singleton):
         """距离可写入还有多少分钟。"""
         return self._write.remaining_minutes()
     
+    @property
+    def handler(self):
+        return self.soul_handler
+
     @property
     def soul_handler(self):
         """延迟获取 SoulHandler 实例"""

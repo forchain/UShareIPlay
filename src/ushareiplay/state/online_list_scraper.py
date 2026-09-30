@@ -8,16 +8,19 @@ from ushareiplay.core.singleton import Singleton
 class OnlineListScraper(Singleton):
     """从 Soul App 在线用户列表 UI 抓取当前在线用户。"""
 
-    def __init__(self):
-        self._logger = None
-        self._handler = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
 
     @property
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            if self.handler and hasattr(self.handler, "logger"):
+                self._logger = self.handler.logger
+            else:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                self._logger = SoulHandler.instance().logger
         return self._logger
 
     @property

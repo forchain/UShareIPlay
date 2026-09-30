@@ -12,10 +12,9 @@ from selenium.common.exceptions import StaleElementReferenceException, WebDriver
 class PartyManager(Singleton):
     """派对管理器，负责派对的创建、重启、监控和状态管理"""
 
-    def __init__(self):
-        # 延迟初始化，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._message_dispatch = None
         self._room_info_window = None
 

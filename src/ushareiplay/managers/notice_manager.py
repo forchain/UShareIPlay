@@ -11,7 +11,9 @@ class NoticeManager(Singleton):
     #: 公告冷却时长（分钟）
     COOLDOWN_MINUTES = 15
 
-    def __init__(self):
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         # 冷却时钟与待写入公告：计时机制由 PendingWrite 拥有
         self._write = PendingWrite(cooldown_minutes=self.COOLDOWN_MINUTES, label="notice")
 

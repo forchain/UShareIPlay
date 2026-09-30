@@ -64,10 +64,9 @@ class MessageManager(Singleton):
     #: 上一次观察保留多少行用于去重（比屏幕可见行数窄，因此存在 missed 兜底）
     RECENT_MAXLEN = 3
 
-    def __init__(self):
+    def __init__(self, handler=None):
         """Initialize MessageManager with handler, previous messages, recent messages"""
-        # 延迟初始化 handler，避免循环依赖
-        self._handler = None
+        self._handler = handler
         self._chat_logger = None
 
         self.previous_messages = {}

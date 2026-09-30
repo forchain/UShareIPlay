@@ -7,8 +7,8 @@ from ushareiplay.core.singleton import Singleton
 class MessageDispatch(Singleton):
     """Route outbound chat messages through one observable application seam."""
 
-    def __init__(self):
-        self._handler = None
+    def __init__(self, handler=None):
+        self._handler = handler
         self._user_manager = None
         self._runtime = None
 

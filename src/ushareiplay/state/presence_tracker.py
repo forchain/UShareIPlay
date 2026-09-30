@@ -9,18 +9,30 @@ from ushareiplay.core.singleton import Singleton
 class PresenceTracker(Singleton):
     """在线用户集合与进入/离开通知。"""
 
-    def __init__(self):
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._online_users: Set[str] = set()
         self._recent_enters: Dict[str, float] = {}
         self._recent_returns: Dict[str, float] = {}
 
     @property
+    def handler(self):
+        if self._handler is None:
+            from ushareiplay.handlers.soul_handler import SoulHandler
+            if SoulHandler.is_initialized():
+                self._handler = SoulHandler.instance()
+        return self._handler
+
+    @property
     def logger(self):
         """延迟获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            if self.handler and hasattr(self.handler, "logger"):
+                self._logger = self.handler.logger
+            else:
+                from ushareiplay.handlers.soul_handler import SoulHandler
+                self._logger = SoulHandler.instance().logger
         return self._logger
 
     def update_online_users(self, users: List[str]):
