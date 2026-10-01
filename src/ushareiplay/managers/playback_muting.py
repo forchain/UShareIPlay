@@ -1,3 +1,4 @@
+import logging
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -22,14 +23,13 @@ class PlaybackMuting(Singleton):
         "settling_delay": 0.3,
     }
 
-    def __init__(self):
-        from ushareiplay.handlers.soul_handler import SoulHandler
+    def __init__(self, handler=None, music_manager=None, mic_manager=None):
         from ushareiplay.managers.mic_manager import MicManager
         from ushareiplay.managers.music_manager import MusicManager
-        self.soul_handler = SoulHandler.instance()
-        self.music_manager = MusicManager.instance()
-        self.mic_manager = MicManager.instance()
-        self.logger = self.soul_handler.logger
+        self.soul_handler = handler
+        self.music_manager = music_manager or (MusicManager.instance() if MusicManager.is_initialized() else None)
+        self.mic_manager = mic_manager or (MicManager.instance() if MicManager.is_initialized() else None)
+        self.logger = getattr(handler, "logger", None) or logging.getLogger("PlaybackMuting")
 
     @property
     def settings(self) -> dict:

@@ -52,8 +52,7 @@ class FakeHandler:
 
 
 def _make_manager(monkeypatch, handler):
-    monkeypatch.setattr(SoulHandler, "instance", classmethod(lambda cls: handler))
-    return RecoveryManager.initialize()
+    return RecoveryManager.initialize(handler)
 
 
 def test_close_drawer_succeeds_after_second_tap(monkeypatch):

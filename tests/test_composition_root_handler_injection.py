@@ -9,9 +9,12 @@ from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.keyword_manager import KeywordManager
 from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recommendation_manager import RecommendationManager
+from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.managers.room_info_window import RoomInfoWindow
 from ushareiplay.managers.room_name_manager import RoomNameManager
 from ushareiplay.managers.timer_manager import TimerManager
@@ -55,11 +58,15 @@ def test_composition_root_services_receive_identical_injected_handler():
         AdminManager.initialize(fake_soul_handler),
         KeywordManager.initialize(fake_soul_handler),
         EventManager.initialize(fake_soul_handler),
+        RecoveryManager.initialize(fake_soul_handler),
+        MicManager.initialize(fake_soul_handler),
+        PlaybackMuting.initialize(fake_soul_handler),
     ]
 
     for service in services:
-        assert service.handler is fake_soul_handler, (
-            f"{service.__class__.__name__}.handler ({service.handler}) is not "
+        h = getattr(service, "handler", None) or getattr(service, "soul_handler", None)
+        assert h is fake_soul_handler, (
+            f"{service.__class__.__name__}.handler ({h}) is not "
             f"identically equal to injected fake_soul_handler ({fake_soul_handler})"
         )
 
