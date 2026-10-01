@@ -20,11 +20,14 @@
 `audit_and_repair()` / `process_pending_retry()`，该模块已删除。
 """
 
+import logging
 import traceback
 from contextlib import contextmanager
 from typing import Dict, Iterator, Optional, Sequence
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.recovery_manager import RecoveryManager
+from ushareiplay.state.room_state import RoomState
 
 # 窗口开着的证据：抽屉自身，或抽屉内任一控件。
 DIALOG_KEYS = (
@@ -43,28 +46,20 @@ DEFAULT_ENTRY_KEYS = ('chat_room_title', 'room_topic')
 class RoomInfoWindow(Singleton):
     """打开、检测、关闭房间信息窗口，并拥有窗口内的全量审计顺序。"""
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self.pending_audit_retry = False
         self.last_audit_results: Dict = {}
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            if SoulHandler.is_initialized():
-                self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
         if self._logger is None:
-            if self.handler is not None and getattr(self.handler, 'logger', None) is not None:
-                self._logger = self.handler.logger
-            else:
-                import logging
-                self._logger = logging.getLogger("RoomInfoWindow")
+            self._logger = getattr(self._handler, 'logger', None) or logging.getLogger("RoomInfoWindow")
         return self._logger
 
     # ------------------------------------------------------------------
@@ -126,7 +121,6 @@ class RoomInfoWindow(Singleton):
                 return
 
             self.logger.info("Room info window is open, attempting to close via close_drawer UI action")
-            from ushareiplay.managers.recovery_manager import RecoveryManager
             if RecoveryManager.is_initialized():
                 if RecoveryManager.instance().close_drawer('slide_drawer'):
                     self.logger.info("Successfully closed room info window via close_drawer")
@@ -184,6 +178,7 @@ class RoomInfoWindow(Singleton):
                 一次性改完所有字段」的全量审计才等；标题更新等被动路径沿用
                 原来的非阻塞读 —— 布局里没有该字段时，等待会白等满整个超时。
         """
+        # 懒加载：避免与 RecommendationManager 的循环依赖（RecommendationManager 依赖 RoomInfoWindow）
         from ushareiplay.managers.recommendation_manager import RecommendationManager
         if not RecommendationManager.is_initialized():
             return {'skipped': True, 'reason': 'not_initialized'}
@@ -195,6 +190,7 @@ class RoomInfoWindow(Singleton):
 
     def _sync_room_type(self) -> Dict:
         """派对类型检查与修正（"闲聊唠嗑" -> "唱歌听歌"）。"""
+        # 懒加载：避免与 PartyManager 的循环依赖（PartyManager 依赖 RoomInfoWindow）
         from ushareiplay.managers.party_manager import PartyManager
         if not PartyManager.is_initialized() or getattr(PartyManager.instance(), 'handler', None) is None:
             return {'skipped': True, 'reason': 'not_initialized'}
@@ -233,7 +229,6 @@ class RoomInfoWindow(Singleton):
         在所有修正尝试完成之前绝不提前关窗。任何一项修正失败都会标记
         `pending_audit_retry`，供 `process_pending_retry()` 补救。
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -248,7 +243,7 @@ class RoomInfoWindow(Singleton):
             # 窗口是这里刚打开的，字段可能还没渲染 —— 全量审计等它出现。
             results.update(self.sync_while_open(wait=True))
 
-            # 3. 房间标题/主题检查与同步
+            # 3. 房间标题/主题检查与同步（懒加载：避免与 RoomNameManager 的顶层模块循环依赖）
             try:
                 from ushareiplay.managers.room_name_manager import RoomNameManager
                 if RoomNameManager.is_initialized() and getattr(RoomNameManager.instance(), 'handler', None) is not None:
@@ -256,7 +251,7 @@ class RoomInfoWindow(Singleton):
             except Exception as e:
                 self.logger.warning(f"Auditor: error in room name sync: {e}")
 
-            # 4. 派对公告检查与修正
+            # 4. 派对公告检查与修正（懒加载：避免与 NoticeManager 的顶层模块循环依赖）
             try:
                 from ushareiplay.managers.notice_manager import NoticeManager
                 if NoticeManager.is_initialized() and getattr(NoticeManager.instance(), 'handler', None) is not None:
@@ -285,7 +280,6 @@ class RoomInfoWindow(Singleton):
         循环重试」从未接线）。保留是为了不静默丢掉这套补救语义；接线与否需要
         单独决定。
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 

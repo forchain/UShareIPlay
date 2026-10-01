@@ -1,12 +1,14 @@
 import asyncio
 import importlib
 import importlib.util
+import logging
 import sys
 import traceback
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
+from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
@@ -15,11 +17,19 @@ from ushareiplay.core.chat_intake import (
     is_silent_prefix,
     normalize_command_text,
 )
+from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
+from ushareiplay.core.roles import RolePolicy
+from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.memory_manager import MemoryManager
+from ushareiplay.managers.playback_muting import PlaybackMuting
+from ushareiplay.managers.sleep_manager import SleepManager
 from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.state.room_state import RoomState
 
 
 class CommandManager(Singleton):
@@ -28,10 +38,9 @@ class CommandManager(Singleton):
     单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self):
-        # 延迟初始化 handler 和 logger，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
 
@@ -52,17 +61,12 @@ class CommandManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("CommandManager")
         return self._logger
 
     @property
@@ -77,8 +81,6 @@ class CommandManager(Singleton):
         return None
 
     def _find_command_class(self, module):
-        from ushareiplay.core.base_command import BaseCommand
-
         candidates = [
             value
             for value in module.__dict__.values()
@@ -185,7 +187,6 @@ class CommandManager(Singleton):
 
     @staticmethod
     def _playback_muting():
-        from ushareiplay.managers.playback_muting import PlaybackMuting
         return PlaybackMuting.instance()
 
     @contextmanager
@@ -239,7 +240,6 @@ class CommandManager(Singleton):
                 pass
             
             # 角色与权限策略检查
-            from ushareiplay.core.roles import RolePolicy
             cfg = getattr(self.handler, "config", None)
             role_policy = RolePolicy(cfg if isinstance(cfg, dict) else None)
 
@@ -248,7 +248,6 @@ class CommandManager(Singleton):
             # 1. 检查用户等级：人工操作者（房主、Console、管理员）与系统自动化角色不受等级限制
             if not role_policy.is_privileged(message_info.nickname):
                 required_level = command_info.get('level', 1)
-                from ushareiplay.dal.user_dao import UserDAO
                 user = await UserDAO.get_or_create(message_info.nickname)
                 
                 if user.level < required_level:
@@ -267,8 +266,6 @@ class CommandManager(Singleton):
             # - 系统自动化角色（Timer、Agent）与普通用户不得打断睡眠保护。
             if not is_human_op:
                 try:
-                    from ushareiplay.managers.sleep_manager import SleepManager
-
                     prefix = command_info.get("prefix") or ""
                     sleep_exempt = bool(getattr(message_info, "sleep_exempt", False))
                     sg = SleepManager.instance()
@@ -288,7 +285,6 @@ class CommandManager(Singleton):
 
             # 他人房间（客房模式）限制：仅支持点歌功能，所有群管理和配置命令全部禁用
             try:
-                from ushareiplay.state.room_state import RoomState
                 room_state = RoomState.instance()
                 prefix = command_info.get("prefix") or ""
                 if room_state.is_guest_room and not room_state.is_command_allowed_in_guest_room(prefix):
@@ -397,8 +393,6 @@ class CommandManager(Singleton):
         return is_silent_prefix(raw)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
-        from ushareiplay.core.runtime_services import route_queue_text
-
         command_messages = []
         for message_info in queue_messages:
             routing = route_queue_text(
@@ -520,9 +514,6 @@ class CommandManager(Singleton):
             username: Username of the user who left
         """
         try:
-            from ushareiplay.dal.user_dao import UserDAO
-            from ushareiplay.managers.info_manager import InfoManager
-
             all_avatars = await UserDAO.get_all_avatar_usernames(username)
             online_users = InfoManager.instance().get_online_users()
             still_online = all_avatars & online_users
@@ -546,7 +537,6 @@ class CommandManager(Singleton):
 
             # Schedule memory consolidation for the leaving user (canonical)
             try:
-                from ushareiplay.managers.memory_manager import MemoryManager
                 if MemoryManager.is_initialized():
                     MemoryManager.instance().schedule_consolidation_user(canonical_username)
             except Exception:
@@ -570,7 +560,6 @@ class CommandManager(Singleton):
             username: Username of the user who entered
         """
         try:
-            from ushareiplay.managers.memory_manager import MemoryManager
             if MemoryManager.is_initialized():
                 MemoryManager.instance().schedule_consolidation_user(username)
         except Exception:
@@ -591,7 +580,6 @@ class CommandManager(Singleton):
             username: Username of the user who returned
         """
         try:
-            from ushareiplay.managers.memory_manager import MemoryManager
             if MemoryManager.is_initialized():
                 MemoryManager.instance().schedule_consolidation_user(username)
         except Exception:

@@ -1,49 +1,47 @@
+import logging
 import traceback
 from typing import Optional
 
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.music_manager import MusicManager
 
 
 class PlaybackBroadcaster(Singleton):
     """播放信息缓存、质量检查与广播发送。"""
 
-    def __init__(self):
-        self._logger = None
-        self._soul_handler = None
+    def __init__(self, handler=None):
+        self._soul_handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._music_manager = None
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
         self._message_dispatch = None
 
     @property
+    def handler(self):
+        return self.soul_handler
+
+    @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            self._logger = getattr(self._soul_handler, "logger", None) or logging.getLogger("ushareiplay.state.playback_broadcaster")
         return self._logger
 
     @property
     def soul_handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._soul_handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._soul_handler = SoulHandler.instance()
         return self._soul_handler
 
     @property
     def music_manager(self):
-        """延迟获取 MusicManager 实例"""
         if self._music_manager is None:
-            from ushareiplay.managers.music_manager import MusicManager
             self._music_manager = MusicManager.instance()
         return self._music_manager
 
     @property
     def message_dispatch(self):
         if self._message_dispatch is None:
-            from ushareiplay.core.message_dispatch import MessageDispatch
-
             self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
         return self._message_dispatch
 

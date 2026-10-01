@@ -1,21 +1,28 @@
+import logging
 import time
 import traceback
 from datetime import datetime
 from typing import Any, Optional
 
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.models import MessageInfo
-from ushareiplay.core.singleton import Singleton
 from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+
+from ushareiplay.core.message_dispatch import MessageDispatch
+from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.memory_manager import MemoryManager
+from ushareiplay.managers.recommendation_manager import RecommendationManager
+from ushareiplay.managers.room_info_window import RoomInfoWindow
+from ushareiplay.models import MessageInfo
+from ushareiplay.state.room_state import RoomState
 
 
 class PartyManager(Singleton):
     """派对管理器，负责派对的创建、重启、监控和状态管理"""
 
-    def __init__(self):
-        # 延迟初始化，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._message_dispatch = None
         self._room_info_window = None
 
@@ -26,31 +33,24 @@ class PartyManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 Handler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("PartyManager")
         return self._logger
 
     @property
     def room_info_window(self):
-        """延迟获取 RoomInfoWindow——窗口的打开/检测/关闭归它所有。"""
+        """获取 RoomInfoWindow——窗口的打开/检测/关闭归它所有。"""
         if self._room_info_window is None:
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
             self._room_info_window = RoomInfoWindow.instance()
         return self._room_info_window
 
     @property
     def message_dispatch(self):
         if self._message_dispatch is None:
-            from ushareiplay.core.message_dispatch import MessageDispatch
             if MessageDispatch.is_initialized():
                 self._message_dispatch = MessageDispatch.instance().bind_handler(self.handler)
         return self._message_dispatch
@@ -72,7 +72,6 @@ class PartyManager(Singleton):
     def update(self):
         """检查并自动管理派对"""
         try:
-            from ushareiplay.state.room_state import RoomState
             if RoomState.in_guest_room():
                 return
 
@@ -168,7 +167,6 @@ class PartyManager(Singleton):
                 self.logger.info("No confirm button found, proceeding directly")
 
             # Reset state after ending/exiting party
-            from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().expected_party_id = None
                 RoomState.instance().clear()
@@ -176,7 +174,6 @@ class PartyManager(Singleton):
 
             # Trigger background memory consolidation sweep on party end
             try:
-                from ushareiplay.managers.memory_manager import MemoryManager
                 if MemoryManager.is_initialized():
                     MemoryManager.instance().schedule_consolidation_all()
             except Exception:
@@ -202,8 +199,6 @@ class PartyManager(Singleton):
         Returns:
             True 表示已经退房并重建（调用方应中断当前这轮屏幕处理）
         """
-        from ushareiplay.state.room_state import RoomState
-
         if not room_id or not RoomState.is_initialized():
             return False
 
@@ -243,7 +238,6 @@ class PartyManager(Singleton):
         """
         try:
             # 从 InfoManager 获取在线人数
-            from ushareiplay.managers.info_manager import InfoManager
             info_manager = InfoManager.instance()
             user_count = info_manager.user_count
 
@@ -471,7 +465,6 @@ class PartyManager(Singleton):
             # 8. 进入后自动抢麦并更新 party_id 与 RoomState (含预期目标ID)
             self.handler.grab_mic_and_confirm()
             self.handler.party_id = party_id
-            from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().expected_party_id = party_id
                 RoomState.instance().room_id = party_id
@@ -498,7 +491,6 @@ class PartyManager(Singleton):
         except Exception as e:
             self.logger.warning(f"Error while leaving unexpected room: {e}")
 
-        from ushareiplay.state.room_state import RoomState
         if RoomState.is_initialized():
             RoomState.instance().expected_party_id = None
             RoomState.instance().clear()
@@ -541,7 +533,6 @@ class PartyManager(Singleton):
             if party_back_elem:
                 if self._click_element_safe(party_back_elem, 'party_back'):
                     self.logger.info("Clicked back to party (dialog was already visible)")
-                    from ushareiplay.managers.recommendation_manager import RecommendationManager
                     if RecommendationManager.is_initialized():
                         RecommendationManager.instance().ensure_synced_on_return()
                     return True
@@ -550,13 +541,11 @@ class PartyManager(Singleton):
                 return False
 
             # 发现首页并进入大厅，说明已离开前一个房间（无论原为主房还是客房），清空旧房间状态
-            from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().clear()
             self.handler.party_id = None
 
             if self._search_and_try_enter_existing_party():
-                from ushareiplay.managers.recommendation_manager import RecommendationManager
                 if RecommendationManager.is_initialized():
                     RecommendationManager.instance().ensure_synced_on_return()
                 return True
@@ -712,12 +701,10 @@ class PartyManager(Singleton):
             self.logger.info("Clicked close party notification")
             if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
                 self.handler.element_finder.wait_for_element_disappear('close_party_notification', timeout=2.0)
-            from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = False
         else:
             self.logger.info("Keep party recommendation enabled as configured (default '所有人')")
-            from ushareiplay.state.room_state import RoomState
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = True
 
@@ -781,7 +768,6 @@ class PartyManager(Singleton):
 
     async def _after_party_created(self) -> None:
         self.reset_party_time()
-        from ushareiplay.state.room_state import RoomState
         if RoomState.is_initialized():
             # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
             RoomState.instance().promote_to_host_room(self.handler.party_id)
@@ -790,7 +776,6 @@ class PartyManager(Singleton):
         # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，
         # 否则房间重启后 info 显示的推荐状态会与实际不一致（如实际"所有人"却记录为"关闭"）。
         if RoomState.is_initialized():
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
             if RecommendationManager.is_initialized():
                 try:
                     RoomState.instance().recommendation_enabled = None
@@ -833,7 +818,6 @@ class PartyManager(Singleton):
 
         # Trigger background memory consolidation sweep on party create/restart
         try:
-            from ushareiplay.managers.memory_manager import MemoryManager
             if MemoryManager.is_initialized():
                 MemoryManager.instance().schedule_consolidation_all()
         except Exception:

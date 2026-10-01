@@ -1,9 +1,14 @@
+import logging
 import time
 import traceback
 
+from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TITLE_MAX_LENGTH, clean_banner_text
+from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.pending_write import PendingWrite
+from ushareiplay.managers.room_info_window import RoomInfoWindow
+from ushareiplay.state.room_state import RoomState
 
 
 class RoomNameManager(Singleton):
@@ -17,9 +22,9 @@ class RoomNameManager(Singleton):
     #: 房间名共享冷却时长（分钟）
     COOLDOWN_MINUTES = 10
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._notice_manager = None
 
         # 冷却时钟与待写入标题：计时机制由 PendingWrite 拥有
@@ -71,31 +76,25 @@ class RoomNameManager(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.managers.room_name_manager")
         return self._logger
 
     @property
     def notice_manager(self):
         if self._notice_manager is None:
-            from ushareiplay.managers.notice_manager import NoticeManager
             self._notice_manager = NoticeManager.instance()
         return self._notice_manager
 
     def get_default_theme(self) -> str:
-        from ushareiplay.core.config_loader import ConfigLoader
         config = ConfigLoader.load_config()
         return config.get('soul', {}).get('default_theme', '听歌')
 
     def get_default_title(self) -> str:
-        from ushareiplay.core.config_loader import ConfigLoader
         config = ConfigLoader.load_config()
         return config.get('soul', {}).get('default_title', '听歌')
 
@@ -107,7 +106,6 @@ class RoomNameManager(Singleton):
         return self.current_theme
 
     def set_theme(self, theme: str):
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'error': '他人房间模式下不可修改房间主题'}
 
@@ -247,7 +245,6 @@ class RoomNameManager(Singleton):
             return None
 
     def set_next_title(self, title: str, theme: str = None):
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             self.logger.info("Skipping set_next_title in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
@@ -284,7 +281,6 @@ class RoomNameManager(Singleton):
             - 'skipped': True if nothing was pending
             - 'current_title': the title after a successful update
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -311,14 +307,12 @@ class RoomNameManager(Singleton):
 
     def _update_title_ui(self, title: str):
         """Single attempt to write the room name to the Soul UI."""
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             self.logger.info("Skipping room title UI update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
         try:
             # 打开窗口（打开 ritual 归 RoomInfoWindow）
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
             open_error = RoomInfoWindow.instance().ensure_open(
                 error_message='Failed to find room title'
             )
@@ -407,7 +401,6 @@ class RoomNameManager(Singleton):
     # ------------------------------------------------------------------
 
     def _check_notice_reset(self):
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 
@@ -422,7 +415,6 @@ class RoomNameManager(Singleton):
 
             self.logger.info(f"Current room notice: {current_notice}")
 
-            from ushareiplay.core.config_loader import ConfigLoader
             config = ConfigLoader.load_config()
             system_notices = config.get('soul', {}).get('system_default_notices', [])
             if not system_notices:

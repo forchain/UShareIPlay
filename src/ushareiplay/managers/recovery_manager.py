@@ -1,14 +1,13 @@
+import logging
 from ushareiplay.core.singleton import Singleton
 
 
 class RecoveryManager(Singleton):
     """异常检测和恢复管理器，用于检测和处理各种异常情况"""
 
-    def __init__(self):
-        # 获取 SoulHandler 单例实例
-        from ushareiplay.handlers.soul_handler import SoulHandler
-        self.handler = SoulHandler.instance()
-        self.logger = self.handler.logger
+    def __init__(self, handler=None):
+        self.handler = handler
+        self.logger = getattr(handler, "logger", None) or logging.getLogger("RecoveryManager")
 
     def close_drawer(
             self, drawer_key: str, wait_element: str = "room_id", max_attempts: int = 2

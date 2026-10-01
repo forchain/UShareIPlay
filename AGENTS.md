@@ -42,7 +42,7 @@ No linter configuration (flake8/pylint/ruff) is committed. Use `python -m py_com
 
 ### Key gotchas
 
-- `config.yaml` is 26k+ lines. Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
+- `config.yaml` is 596 lines / 37,401 characters. Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
 - 用户名参数铁律：同一个人在 Soul UI 上是**可见昵称（分身名）**、在 DB 里是 **canonical 名（主账号名）**，两者字符串不同。任何以用户名作参数的命令（`:seat 3`、`:admin`、`:gift`、`:level`、事件钩子等），DB 侧用 canonical，**面向 UI 的查找必须先 `InfoManager.resolve_visible_username(...)`**；跨命名域比对只能用 `UserDAO.is_same_identity(...)`，严禁拿 canonical 名与 UI 文本做 `==`。详见 `docs/users.md` 的「两个命名域」。
 - Singleton creation is limited to the composition root: call `.initialize(...)` exactly once there, then use `.instance()` for lookup only. Never construct singleton classes directly.
 - The project is configured via `pyproject.toml` and can be run with `uv run ushareiplay`.

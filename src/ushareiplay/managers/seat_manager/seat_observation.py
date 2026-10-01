@@ -5,13 +5,93 @@ import logging
 import time
 import traceback
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from typing import ClassVar, Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Callable, ClassVar, Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
+
+
+@dataclass(frozen=True)
+class SeatRescanCooldownPolicy:
+    """重扫冷却策略值对象，集中管理各类重扫/补扫的退避时长与时间流逝判定。"""
+
+    rescan_cooldown: float = 3.0
+    rescan_retry_cooldown: float = 30.0
+    consistency_rescan_cooldown: float = 10.0
+    time_fn: Callable[[], float] = time.monotonic
+
+    def get_cooldown(self, *, last_rescan_ok: bool, consistency_retry_due: bool) -> float:
+        cooldown = self.rescan_cooldown if last_rescan_ok else self.rescan_retry_cooldown
+        if consistency_retry_due:
+            cooldown = max(cooldown, self.consistency_rescan_cooldown)
+        return cooldown
+
+    def is_cooldown_expired(
+        self,
+        last_rescan_time: float,
+        *,
+        last_rescan_ok: bool,
+        consistency_retry_due: bool,
+    ) -> bool:
+        cooldown = self.get_cooldown(
+            last_rescan_ok=last_rescan_ok,
+            consistency_retry_due=consistency_retry_due,
+        )
+        return (self.now() - last_rescan_time) >= cooldown
+
+    def now(self) -> float:
+        return self.time_fn()
+
+
+@dataclass
+class SeatObservationGateState:
+    """Seat Observation 决策与协调闸门状态，支持单动作整体重置。
+
+    包含 11 个协调字段：
+    - last_focus_count: 最近一次视口/外部同步的专注人数
+    - reconciled_focus_count: 最近一次已完成对账的专注人数（防展开收起死循环）
+    - scanned_seat_change_fingerprint: 最近一次「去向不明」变更的读数指纹
+    - last_rescan_ok: 最近一次全量重扫是否真正落地
+    - last_rescan_time: 最近一次重扫执行时刻
+    - last_visible_band: 身份未知时可见麦位带基线 (几何形状, 内容指纹)
+    - band_change_reason: 带变化原因
+    - residual_seats: 已确认的残留渲染 {位子: 人}
+    - last_scan_fingerprint: 最近一次全量确定的重扫读数指纹
+    - consistency_retry_due: 是否欠一次补扫
+    - lock: 麦位状态互斥锁
+    """
+
+    last_focus_count: Optional[int] = None
+    reconciled_focus_count: Optional[int] = None
+    scanned_seat_change_fingerprint: Optional[frozenset] = None
+    last_rescan_ok: bool = False
+    last_rescan_time: float = 0.0
+    last_visible_band: Optional[Tuple] = None
+    band_change_reason: Optional[str] = None
+    residual_seats: Dict[int, str] = field(default_factory=dict)
+    last_scan_fingerprint: Optional[frozenset] = None
+    consistency_retry_due: bool = False
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def reset(self) -> None:
+        """单动作整体重置所有协调与决策闸门状态回初始默认值。"""
+        fresh = SeatObservationGateState()
+        for f in self.__dataclass_fields__:
+            setattr(self, f, getattr(fresh, f))
+
+    def __getattr__(self, name: str):
+        if name.startswith("_") and name[1:] in self.__dataclass_fields__:
+            return getattr(self, name[1:])
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value):
+        if name.startswith("_") and name != "_gate_state" and name[1:] in self.__dataclass_fields__:
+            super().__setattr__(name[1:], value)
+        else:
+            super().__setattr__(name, value)
 
 
 @dataclass
@@ -38,13 +118,14 @@ class SeatObservationManager(Singleton):
     以及专注人数与可视麦位背离时的自动展开探测。
     """
 
-    RESCAN_COOLDOWN: ClassVar[float] = 3.0
+    DEFAULT_COOLDOWN_POLICY: ClassVar[SeatRescanCooldownPolicy] = SeatRescanCooldownPolicy()
+    RESCAN_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.rescan_cooldown
     # 上一次重扫没落地（展开失败/半截快照）时的重试间隔：放宽到几十秒，
     # 既不会把信号吞掉，也不会让失败的展开每几秒刷一次日志。
-    RESCAN_RETRY_COOLDOWN: ClassVar[float] = 30.0
+    RESCAN_RETRY_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.rescan_retry_cooldown
     # 重扫落地了、但结论与专注人数不自洽时的补扫间隔：展开收起会逼面板重绘，
     # 残留 label 通常在第二遍就清掉，但一次展开要十几秒，不能按 3 秒追着扫。
-    CONSISTENCY_RESCAN_COOLDOWN: ClassVar[float] = 10.0
+    CONSISTENCY_RESCAN_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.consistency_rescan_cooldown
 
     # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
     # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
@@ -61,41 +142,119 @@ class SeatObservationManager(Singleton):
     SEAT_COLOR_IDLE: ClassVar[str] = "\033[90m"
     SEAT_COLOR_RESET: ClassVar[str] = "\033[0m"
 
-    def __init__(self, handler=None):
+    def __init__(
+        self,
+        handler=None,
+        seat_ui=None,
+        cooldown_policy: Optional[SeatRescanCooldownPolicy] = None,
+        gate_state: Optional[SeatObservationGateState] = None,
+    ):
         self.handler = handler
         self._logger = None
         self._controller = None
-        self._seat_ui = None
+        self._seat_ui = seat_ui
+        self.cooldown_policy = cooldown_policy or self.DEFAULT_COOLDOWN_POLICY
+        self.gate_state = gate_state or SeatObservationGateState()
         # 全局 1~12 号位快照
         self.seats: Dict[int, SeatSlot] = {
             i: SeatSlot(seat_number=i) for i in range(1, 13)
         }
-        self._last_focus_count: Optional[int] = None
-        # 最近一次已完成对账的专注人数：同一个取值只允许触发一次全量重扫，
-        # 否则「视口读数 ↔ 全量重扫」会互相拆台，形成展开/收起死循环。
-        self._reconciled_focus_count: Optional[int] = None
-        # 最近一次「变更去向不明」的读数指纹：同一份读数只全量扫描一次，
-        # 扫过就认为已经取到最新信息；读数变了（新指纹）才再扫。
-        self._scanned_seat_change_fingerprint: Optional[frozenset] = None
-        # 最近一次全量重扫是否真正落地（失败/半截快照时不算），用于决定要不要把
-        # 闸门标记撤掉、留给下一轮重试。
-        self._last_rescan_ok: bool = False
-        self._last_rescan_time: float = 0.0
-        # 身份未知（读不出座位号）时可见麦位带的基线：(几何形状, 内容指纹)。
-        # 形状变了内容就不可比（展开/收起/滚动都会换一批桌位），只有同一屏形状下
-        # 内容变了才说明有变动 —— 身份未知写不得快照，只能升级为全量重扫。
-        self._last_visible_band: Optional[Tuple] = None
-        self._band_change_reason: Optional[str] = None
-        # 已确认的残留渲染：{位子: 人}。这个人已经被本轮证据落在别的位子上，该位子
-        # 剩下的"占座"只是没重绘的像素。不记这一笔，下一轮同一个残留又会和真正的
-        # 落座处抢身份，账本在两个位子之间来回掀翻（每次重扫换一个答案）。
-        self._residual_seats: Dict[int, str] = {}
-        # 最近一次「12 个位子全部读出确定结论」的重扫读数指纹，以及是否欠一次
-        # 补扫：重扫结论与专注人数不自洽时才登记，读数没变化的补扫没有信息量（见
-        # _verify_focus_consistency）。
-        self._last_scan_fingerprint: Optional[frozenset] = None
-        self._consistency_retry_due: bool = False
-        self._lock = asyncio.Lock()
+
+    @property
+    def _gate_state(self) -> SeatObservationGateState:
+        return self.gate_state
+
+    @_gate_state.setter
+    def _gate_state(self, val: SeatObservationGateState):
+        self.gate_state = val
+
+    @property
+    def _last_focus_count(self) -> Optional[int]:
+        return self.gate_state.last_focus_count
+
+    @_last_focus_count.setter
+    def _last_focus_count(self, val: Optional[int]):
+        self.gate_state.last_focus_count = val
+
+    @property
+    def _reconciled_focus_count(self) -> Optional[int]:
+        return self.gate_state.reconciled_focus_count
+
+    @_reconciled_focus_count.setter
+    def _reconciled_focus_count(self, val: Optional[int]):
+        self.gate_state.reconciled_focus_count = val
+
+    @property
+    def _scanned_seat_change_fingerprint(self) -> Optional[frozenset]:
+        return self.gate_state.scanned_seat_change_fingerprint
+
+    @_scanned_seat_change_fingerprint.setter
+    def _scanned_seat_change_fingerprint(self, val: Optional[frozenset]):
+        self.gate_state.scanned_seat_change_fingerprint = val
+
+    @property
+    def _last_rescan_ok(self) -> bool:
+        return self.gate_state.last_rescan_ok
+
+    @_last_rescan_ok.setter
+    def _last_rescan_ok(self, val: bool):
+        self.gate_state.last_rescan_ok = val
+
+    @property
+    def _last_rescan_time(self) -> float:
+        return self.gate_state.last_rescan_time
+
+    @_last_rescan_time.setter
+    def _last_rescan_time(self, val: float):
+        self.gate_state.last_rescan_time = val
+
+    @property
+    def _last_visible_band(self) -> Optional[Tuple]:
+        return self.gate_state.last_visible_band
+
+    @_last_visible_band.setter
+    def _last_visible_band(self, val: Optional[Tuple]):
+        self.gate_state.last_visible_band = val
+
+    @property
+    def _band_change_reason(self) -> Optional[str]:
+        return self.gate_state.band_change_reason
+
+    @_band_change_reason.setter
+    def _band_change_reason(self, val: Optional[str]):
+        self.gate_state.band_change_reason = val
+
+    @property
+    def _residual_seats(self) -> Dict[int, str]:
+        return self.gate_state.residual_seats
+
+    @_residual_seats.setter
+    def _residual_seats(self, val: Dict[int, str]):
+        self.gate_state.residual_seats = val
+
+    @property
+    def _last_scan_fingerprint(self) -> Optional[frozenset]:
+        return self.gate_state.last_scan_fingerprint
+
+    @_last_scan_fingerprint.setter
+    def _last_scan_fingerprint(self, val: Optional[frozenset]):
+        self.gate_state.last_scan_fingerprint = val
+
+    @property
+    def _consistency_retry_due(self) -> bool:
+        return self.gate_state.consistency_retry_due
+
+    @_consistency_retry_due.setter
+    def _consistency_retry_due(self, val: bool):
+        self.gate_state.consistency_retry_due = val
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        return self.gate_state.lock
+
+    @_lock.setter
+    def _lock(self, val: asyncio.Lock):
+        self.gate_state.lock = val
 
     def bind_handler(self, handler):
         if handler:
@@ -127,22 +286,14 @@ class SeatObservationManager(Singleton):
     def seat_ui(self):
         if self._seat_ui is None:
             from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-            self._seat_ui = SeatUIManager(self.handler)
+            if SeatUIManager.is_initialized():
+                self._seat_ui = SeatUIManager.instance()
         return self._seat_ui
 
     def clear(self):
-        """重置所有麦位状态"""
+        """重置所有麦位状态与决策闸门状态"""
         self.seats = {i: SeatSlot(seat_number=i) for i in range(1, 13)}
-        self._last_focus_count = None
-        self._reconciled_focus_count = None
-        self._scanned_seat_change_fingerprint = None
-        self._last_rescan_ok = False
-        self._last_rescan_time = 0.0
-        self._last_visible_band = None
-        self._band_change_reason = None
-        self._residual_seats = {}
-        self._last_scan_fingerprint = None
-        self._consistency_retry_due = False
+        self.gate_state.reset()
         self.logger.info("Cleared seat observation snapshot")
 
     @asynccontextmanager
@@ -1523,16 +1674,15 @@ class SeatObservationManager(Singleton):
         返回 True 表示扫描确实执行过（成败看 _last_rescan_ok），False 表示被冷却或
         指纹挡下、根本没扫。闸门都是先登记再扫：重扫要十几秒，期间事件轮询会反复进来。
         """
-        cooldown = self.RESCAN_COOLDOWN if self._last_rescan_ok else self.RESCAN_RETRY_COOLDOWN
-        if self._consistency_retry_due:
-            # 上一扫落地但不自洽：补扫是有信息量的（重绘可能清掉残留 label），
-            # 但一次展开要十几秒，按更长的冷却追着扫，别把面板反复展开收起。
-            cooldown = max(cooldown, self.CONSISTENCY_RESCAN_COOLDOWN)
-        if time.monotonic() - self._last_rescan_time < cooldown:
+        if not self.cooldown_policy.is_cooldown_expired(
+            self._last_rescan_time,
+            last_rescan_ok=self._last_rescan_ok,
+            consistency_retry_due=self._consistency_retry_due,
+        ):
             return False
         if fingerprint is not None:
             self._scanned_seat_change_fingerprint = fingerprint
-        self._last_rescan_time = time.monotonic()
+        self._last_rescan_time = self.cooldown_policy.now()
         self.logger.info(reason)
         await self.expand_rescan_and_collapse(target_focus)
         if not self._last_rescan_ok and fingerprint is not None:
@@ -1805,7 +1955,7 @@ class SeatObservationManager(Singleton):
         self.logger.warning(
             f"Rescan is not self-consistent: {seated} seats occupied but focus count is "
             f"{target_focus_count} (occupied: {seated_nums}); ledger reopened, "
-            f"will re-scan after {self.CONSISTENCY_RESCAN_COOLDOWN}s"
+            f"will re-scan after {self.cooldown_policy.consistency_rescan_cooldown}s"
         )
 
     async def sync_current_viewport(

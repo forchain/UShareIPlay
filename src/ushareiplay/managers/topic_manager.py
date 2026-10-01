@@ -1,7 +1,11 @@
+import logging
+import time
 import traceback
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, clean_banner_text
 from ushareiplay.managers.pending_write import PendingWrite
+from ushareiplay.state.room_state import RoomState
 
 
 class TopicManager(Singleton):
@@ -10,10 +14,9 @@ class TopicManager(Singleton):
     单例模式，提供统一的话题管理服务
     """
     
-    def __init__(self):
-        # 延迟初始化 handler，避免循环依赖
-        self._soul_handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._soul_handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._message_dispatch = None
         
         # 冷却时钟与待写入话题：计时机制由 PendingWrite 拥有
@@ -59,25 +62,22 @@ class TopicManager(Singleton):
         return self._write.remaining_minutes()
     
     @property
+    def handler(self):
+        return self.soul_handler
+
+    @property
     def soul_handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._soul_handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._soul_handler = SoulHandler.instance()
         return self._soul_handler
     
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.soul_handler.logger
+            self._logger = getattr(self._soul_handler, "logger", None) or logging.getLogger("ushareiplay.managers.topic_manager")
         return self._logger
 
     @property
     def message_dispatch(self):
         if self._message_dispatch is None:
-            from ushareiplay.core.message_dispatch import MessageDispatch
-
             self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
         return self._message_dispatch
     
@@ -139,7 +139,6 @@ class TopicManager(Singleton):
             dict: 操作结果
         """
         try:
-            from ushareiplay.state.room_state import RoomState
             if RoomState.in_guest_room():
                 self.logger.info("In guest room, skip topic UI update")
                 return {'skipped': 'guest_room'}
@@ -178,7 +177,6 @@ class TopicManager(Singleton):
             confirm.click()
 
             # Wait for completion
-            import time
             time.sleep(1)
 
             # Check if update was successful

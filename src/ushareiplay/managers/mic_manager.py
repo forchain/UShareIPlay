@@ -24,6 +24,7 @@
 都收敛到这里；`UIActions.toggle_mic`（盲点击）随之删除。
 """
 
+import logging
 import traceback
 from typing import Optional
 
@@ -36,22 +37,18 @@ class MicManager(Singleton):
     MIC_ACTIVE_DESC = "闭麦按钮"    # content-desc 为「闭麦按钮」表示当前开麦
     MIC_INACTIVE_DESC = "开麦按钮"  # content-desc 为「开麦按钮」表示当前闭麦
 
-    def __init__(self):
-        # 延迟解析的依赖；测试可直接注入替身（见 ADR-0004 的注入约定）
-        self._soul_handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._soul_handler = handler
+        self._logger = getattr(handler, "logger", None)
 
     @property
     def soul_handler(self):
-        if self._soul_handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._soul_handler = SoulHandler.instance()
         return self._soul_handler
 
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = self.soul_handler.logger
+            self._logger = getattr(self._soul_handler, "logger", None) or logging.getLogger("MicManager")
         return self._logger
 
     # ------------------------------------------------------------------

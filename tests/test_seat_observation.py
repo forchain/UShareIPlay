@@ -5,6 +5,7 @@ C1/C2）：desk 是真 ElementWrapper，raw WebElement 路径走 find_element �
 controller 用真实的 ui_session 异步上下文管理器。
 """
 
+import asyncio
 from pathlib import Path
 import time
 from types import SimpleNamespace
@@ -32,9 +33,22 @@ from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationGateState,
     SeatObservationManager,
+    SeatRescanCooldownPolicy,
     SeatSlot,
 )
+
+
+class FakeClock:
+    def __init__(self, start: float = 1000.0):
+        self.current = start
+
+    def __call__(self) -> float:
+        return self.current
+
+    def advance(self, seconds: float):
+        self.current += seconds
 
 
 @pytest.fixture(autouse=True)
@@ -472,14 +486,12 @@ def test_seat_manager_does_not_initialize_seat_observation_singleton():
     can initialize SeatObservationManager without raising SingletonError.
     """
     from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.managers.seat_manager.base import SeatManagerBase
 
     SeatObservationManager.reset_instance()
-    SeatManagerBase._instance = None
-    SeatManager._instance = None
+    SeatManager.reset_instance()
 
     handler = make_handler()
-    seat_mgr = SeatManager.get_instance(handler)
+    seat_mgr = SeatManager.initialize(handler)
 
     # SeatManager must not eagerly initialize the singleton
     assert not SeatObservationManager.is_initialized()
@@ -1300,21 +1312,23 @@ async def test_same_focus_count_is_reconciled_only_once():
 @pytest.mark.asyncio
 async def test_rescan_that_never_landed_is_retried():
     """扫描没落地（展开失败/半截快照）时闸门要撤掉，不能把信号吞掉。"""
+    clock = FakeClock()
+    policy = SeatRescanCooldownPolicy(time_fn=clock)
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, cooldown_policy=policy)
     # 替身不设置 _last_rescan_ok，模拟「扫了但没扫成」
     manager.expand_rescan_and_collapse = AsyncMock(return_value=False)
 
     await manager.on_focus_count(None, 4)
     manager.expand_rescan_and_collapse.assert_awaited_once_with(4)
 
-    # 退避期内不重复展开
-    manager._last_rescan_time = time.monotonic()
+    # 退避期内不重复展开（生产默认 retry 退避为 30 秒，前进 10 秒仍在退避期）
+    clock.advance(10.0)
     await manager.on_focus_count(4, 4)
     assert manager.expand_rescan_and_collapse.await_count == 1
 
-    # 退避时间过去后重试（闸门没被永久占用）
-    manager._last_rescan_time = -1e9
+    # 退避时间过去后重试（闸门没被永久占用，再前进 25 秒，总计 35s > 30s）
+    clock.advance(25.0)
     await manager.on_focus_count(4, 4)
     assert manager.expand_rescan_and_collapse.await_count == 2
 
@@ -1853,10 +1867,14 @@ async def test_partial_coverage_rescan_does_not_claim_inconsistency():
 
 @pytest.mark.asyncio
 async def test_consistency_retry_uses_the_longer_cooldown():
-    """补扫要 5 秒后才允许，常规重扫 3 秒就行：一次展开要十几秒，不能追着扫。"""
-    manager = SeatObservationManager.initialize(make_handler())
+    """补扫要 10 秒后才允许，常规重扫 3 秒就行：一次展开要十几秒，不能追着扫。"""
+    clock = FakeClock()
+    policy = SeatRescanCooldownPolicy(time_fn=clock)
+    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
     manager._last_rescan_ok = True
-    manager._last_rescan_time = time.monotonic() - 5
+    manager._last_rescan_time = clock()
+
+    clock.advance(5.0)  # 5 秒过去：> 3.0s (常规冷却已过)，但 < 10.0s (补扫冷却未到)
 
     manager._consistency_retry_due = True
     with patch.object(
@@ -2347,3 +2365,173 @@ async def test_in_viewport_move_without_residual_render_is_applied_directly():
         "seat_number": 11,
         "action": "move_seat",
     }
+
+
+def test_seat_rescan_cooldown_policy_defaults():
+    policy = SeatRescanCooldownPolicy()
+    assert policy.rescan_cooldown == 3.0
+    assert policy.rescan_retry_cooldown == 30.0
+    assert policy.consistency_rescan_cooldown == 10.0
+    assert SeatObservationManager.RESCAN_COOLDOWN == 3.0
+    assert SeatObservationManager.RESCAN_RETRY_COOLDOWN == 30.0
+    assert SeatObservationManager.CONSISTENCY_RESCAN_COOLDOWN == 10.0
+
+
+@pytest.mark.asyncio
+async def test_rescan_invariants_with_injected_cooldown_policy():
+    """三条不变量以时序断言验证：
+    1. 同一份读数只触发一次全量重扫；
+    2. 冷却未到不重扫；
+    3. 重扫未真正落地则留下一次补扫欠账。
+    """
+    clock = FakeClock(100.0)
+    policy = SeatRescanCooldownPolicy(
+        rescan_cooldown=5.0,
+        rescan_retry_cooldown=20.0,
+        consistency_rescan_cooldown=15.0,
+        time_fn=clock,
+    )
+    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
+
+    scan_calls = []
+
+    async def _mock_scan(focus):
+        scan_calls.append(focus)
+        manager._last_rescan_ok = True
+
+    manager.expand_rescan_and_collapse = _mock_scan
+
+    fingerprint_a = frozenset([("left", "userA"), ("right", "userB")])
+
+    # 1. 首次触发：成功执行
+    res1 = await manager._request_full_scan(
+        target_focus=2, reason="scan_1", fingerprint=fingerprint_a
+    )
+    assert res1 is True
+    assert len(scan_calls) == 1
+
+    # 2. 不变量 2：冷却未到不重扫 (只过了 2 秒，< 5.0)
+    clock.advance(2.0)
+    res2 = await manager._request_full_scan(
+        target_focus=2, reason="scan_too_soon", fingerprint=fingerprint_a
+    )
+    assert res2 is False
+    assert len(scan_calls) == 1
+
+    # 3. 冷却过了 (再过 4 秒，总计 6s > 5.0)，但是指纹未变：不变量 1：同一份读数只触发一次重扫
+    clock.advance(4.0)
+    # 模拟视口传入相同指纹：
+    # Note: _request_full_scan 自身如果传入同指纹，会被 _scanned_seat_change_fingerprint 或上一层拦截
+    assert manager._scanned_seat_change_fingerprint == fingerprint_a
+
+    # 新读数指纹：允许触发重扫
+    fingerprint_b = frozenset([("left", "userC")])
+    res3 = await manager._request_full_scan(
+        target_focus=3, reason="scan_new_fp", fingerprint=fingerprint_b
+    )
+    assert res3 is True
+    assert len(scan_calls) == 2
+
+    # 4. 不变量 3：重扫未真正落地则留下一次补扫欠账（撤掉指纹标记，冷却放宽到 retry_cooldown）
+    async def _failing_scan(focus):
+        scan_calls.append(focus)
+        manager._last_rescan_ok = False
+
+    manager.expand_rescan_and_collapse = _failing_scan
+    clock.advance(10.0)
+
+    fingerprint_c = frozenset([("left", "userD")])
+    res4 = await manager._request_full_scan(
+        target_focus=4, reason="scan_failing", fingerprint=fingerprint_c
+    )
+    assert res4 is True
+    assert len(scan_calls) == 3
+    # 失败后指纹撤回
+    assert manager._scanned_seat_change_fingerprint is None
+
+    # retry 冷却为 20.0，前进 10 秒（未到 20.0）不能扫
+    clock.advance(10.0)
+    res5 = await manager._request_full_scan(
+        target_focus=4, reason="retry_too_soon", fingerprint=fingerprint_c
+    )
+    assert res5 is False
+    assert len(scan_calls) == 3
+
+    # 前进再过 11 秒（总计 21.0 > 20.0），补扫可以执行
+    clock.advance(11.0)
+    res6 = await manager._request_full_scan(
+        target_focus=4, reason="retry_landing", fingerprint=fingerprint_c
+    )
+    assert res6 is True
+    assert len(scan_calls) == 4
+
+
+def test_gate_state_unified_reset():
+    """验证 11 个协调字段可通过 reset() 单动作整体重置回初始值。"""
+    state = SeatObservationGateState()
+    assert state.last_focus_count is None
+    assert state.reconciled_focus_count is None
+    assert state.scanned_seat_change_fingerprint is None
+    assert state.last_rescan_ok is False
+    assert state.last_rescan_time == 0.0
+    assert state.last_visible_band is None
+    assert state.band_change_reason is None
+    assert state.residual_seats == {}
+    assert state.last_scan_fingerprint is None
+    assert state.consistency_retry_due is False
+    assert isinstance(state.lock, asyncio.Lock)
+
+    # 脏化全部 11 个字段
+    state.last_focus_count = 5
+    state.reconciled_focus_count = 5
+    state.scanned_seat_change_fingerprint = frozenset([("a", "b")])
+    state.last_rescan_ok = True
+    state.last_rescan_time = 123.45
+    state.last_visible_band = ("band", 1)
+    state.band_change_reason = "reason"
+    state.residual_seats = {1: "user1"}
+    state.last_scan_fingerprint = frozenset([("c", "d")])
+    state.consistency_retry_due = True
+    old_lock = state.lock
+
+    # 单动作重置
+    state.reset()
+
+    assert state.last_focus_count is None
+    assert state.reconciled_focus_count is None
+    assert state.scanned_seat_change_fingerprint is None
+    assert state.last_rescan_ok is False
+    assert state.last_rescan_time == 0.0
+    assert state.last_visible_band is None
+    assert state.band_change_reason is None
+    assert state.residual_seats == {}
+    assert state.last_scan_fingerprint is None
+    assert state.consistency_retry_due is False
+    assert state.lock is not old_lock
+
+
+def test_gate_state_integration_with_manager_clear():
+    """验证 SeatObservationManager.clear() 委托 gate_state.reset() 重置全部闸门。"""
+    manager = SeatObservationManager.initialize(None)
+    manager._last_focus_count = 3
+    manager._reconciled_focus_count = 3
+    manager._last_rescan_ok = True
+    manager._last_rescan_time = 999.0
+    manager._residual_seats = {12: "Alice"}
+    manager._consistency_retry_due = True
+    manager.seats[1].occupied = True
+
+    assert manager.gate_state.last_focus_count == 3
+    assert manager.gate_state.residual_seats == {12: "Alice"}
+
+    manager.clear()
+
+    assert manager.gate_state.last_focus_count is None
+    assert manager.gate_state.reconciled_focus_count is None
+    assert manager.gate_state.last_rescan_ok is False
+    assert manager.gate_state.last_rescan_time == 0.0
+    assert manager.gate_state.residual_seats == {}
+    assert manager.gate_state.consistency_retry_due is False
+    assert manager.seats[1].occupied is False
+
+

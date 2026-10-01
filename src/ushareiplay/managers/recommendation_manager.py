@@ -1,7 +1,9 @@
+import logging
 import traceback
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.room_info_window import RoomInfoWindow
 from ushareiplay.state.room_state import RoomState
 
 
@@ -11,22 +13,18 @@ class RecommendationManager(Singleton):
     负责房间推荐状态的读取、更新、主动同步与被动纠偏。
     """
 
-    def __init__(self):
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("RecommendationManager")
         return self._logger
 
     @property
@@ -127,7 +125,6 @@ class RecommendationManager(Singleton):
         关窗动作归 RoomInfoWindow 所有。
         """
         try:
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
             RoomInfoWindow.instance().close_with_back()
         except Exception as e:
             self.logger.warning(f"Error closing title dialog: {str(e)}")
@@ -148,7 +145,6 @@ class RecommendationManager(Singleton):
             return {"skipped": True, "reason": "already_saved"}
 
         try:
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
             try:
                 RoomInfoWindow.instance().audit_and_repair()
             except Exception as e:

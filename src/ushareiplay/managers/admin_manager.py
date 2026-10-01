@@ -1,11 +1,15 @@
+import logging
+
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.recovery_manager import RecoveryManager
+from ushareiplay.managers.user_manager import UserManager
 
 
 class AdminManager(Singleton):
-    def __init__(self):
-        # 延迟初始化 handler，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._room_admins: set[str] = set()
 
     def is_room_admin(self, username: str) -> bool:
@@ -33,17 +37,12 @@ class AdminManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("AdminManager")
         return self._logger
 
     async def manage_admin(self, enable: bool, target_nickname: str):
@@ -59,13 +58,11 @@ class AdminManager(Singleton):
         """
         # 在线列表里显示的是 Soul UI 的可见名字（分身名），传入主账号名会找不到人，
         # 因此先把目标解析成房间里当前可见的那个名字。
-        from ushareiplay.managers.info_manager import InfoManager
         try:
             visible_nickname = await InfoManager.instance().resolve_visible_username(target_nickname)
         except Exception:
             visible_nickname = target_nickname
 
-        from ushareiplay.managers.user_manager import UserManager
         user_manager = UserManager.instance()
         open_result = user_manager.open_user_profile_from_online_list(visible_nickname)
         if 'error' in open_result:
@@ -77,7 +74,6 @@ class AdminManager(Singleton):
         if not manager_invite:
             return {'error': 'Failed to find manager invite button', 'user': target_nickname}
 
-        from ushareiplay.managers.recovery_manager import RecoveryManager
         recovery_manager = RecoveryManager.instance()
         current_text = manager_invite.text
         if enable:

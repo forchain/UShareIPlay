@@ -26,6 +26,7 @@ from ushareiplay.dal.focus_event_dao import FocusEventDao
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.models.user import User
@@ -170,8 +171,8 @@ class DummyController:
 
 def _seating_manager(desks, popup_name):
     handler = DummySeatHandler(desks, popup_name)
-    manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI(handler)
+    SeatingManager.reset_instance()
+    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
     return handler, manager
 
 
@@ -227,8 +228,8 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
     """`:seat 3` 不接参数时，交给座位层的靶子必须是麦位上可见的分身名。"""
     desks = [_desk(right_label=AVATAR, right_occupied=True)]
     handler = DummySeatHandler(desks, popup_name=AVATAR)
-    seating = SeatingManager(handler)
-    seating.seat_ui = DummySeatUI(handler)
+    SeatingManager.reset_instance()
+    seating = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
     presence_env = PresenceTracker.instance()
     presence_env._online_users = {AVATAR}
 
@@ -238,12 +239,13 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
         accompanying["target"] = target_username
         return await seating.accompany_user(target_username, sender_username=sender_username)
 
-    seat_manager = SimpleNamespace(accompany_user=spy)
-    with patch("ushareiplay.commands.seat.SeatManager.get_instance", return_value=seat_manager):
-        command = SeatCommand(DummyController(handler))
-        result = await command.do_process(
-            MessageInfo(content=":seat 3", nickname=CANONICAL), ["3"]
-        )
+    SeatManager.reset_instance()
+    seat_manager = SeatManager.initialize()
+    seat_manager.accompany_user = spy
+    command = SeatCommand(DummyController(handler))
+    result = await command.do_process(
+        MessageInfo(content=":seat 3", nickname=CANONICAL), ["3"]
+    )
 
     assert accompanying["target"] == AVATAR
     assert result == {"success": "Successfully took a seat"}

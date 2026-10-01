@@ -1,6 +1,8 @@
+import logging
 import traceback
-from typing import Set, List, Optional
 from datetime import datetime
+from typing import List, Optional, Set
+
 from ushareiplay.core.singleton import Singleton
 
 
@@ -14,11 +16,10 @@ class InfoManager(Singleton):
     测试需要注入 handler/logger 时，请直接注入目标状态模块。
     """
 
-    def __init__(self):
+    def __init__(self, handler=None):
         """初始化信息管理器，创建/获取子模块单例"""
-        # 延迟初始化 handler，避免循环依赖
-        self._handler = None
-        self._logger = None
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._party_manager = None
 
     @property
@@ -58,22 +59,19 @@ class InfoManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("InfoManager")
         return self._logger
 
     @property
     def party_manager(self):
-        """延迟获取 PartyManager 实例"""
+        """延迟获取 PartyManager 实例。
+        环的另一端：PartyManager 顶层 import InfoManager。
+        """
         if self._party_manager is None:
             from ushareiplay.managers.party_manager import PartyManager
             self._party_manager = PartyManager.instance()
@@ -200,13 +198,8 @@ class InfoManager(Singleton):
         from ushareiplay.core.roles import RolePolicy
 
         cfg = config
-        if cfg is None:
-            if self._handler is not None and hasattr(self._handler, "config"):
-                cfg = self._handler.config
-            else:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                if SoulHandler.is_initialized():
-                    cfg = SoulHandler.instance().config
+        if cfg is None and self._handler is not None and hasattr(self._handler, "config"):
+            cfg = self._handler.config
 
         role_policy = RolePolicy(cfg if isinstance(cfg, dict) else None)
 

@@ -72,7 +72,8 @@ def _desk():
 
 
 def _manager(handler):
-    return SeatCheckManager(handler, DummySeatUI(handler))
+    SeatCheckManager.reset_instance()
+    return SeatCheckManager.initialize(handler, DummySeatUI(handler))
 
 
 def test_check_user_specific_seat_stops_when_expansion_shows_four_desks():

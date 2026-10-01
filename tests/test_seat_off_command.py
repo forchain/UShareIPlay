@@ -6,8 +6,18 @@ import pytest
 
 from ushareiplay.commands import seat as seat_command_module
 from ushareiplay.commands.seat import SeatCommand
+from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.models.message_info import MessageInfo
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_seat_singletons():
+    SeatManager.reset_instance()
+    SeatingManager.reset_instance()
+    yield
+    SeatManager.reset_instance()
+    SeatingManager.reset_instance()
 
 
 class DummyController:
@@ -103,11 +113,9 @@ def _desk(left_label="", left_occupied=False, right_label="", right_occupied=Fal
     }
 
 
-def test_seat_1_delegates_reservation_to_seat_management(monkeypatch):
-    manager = SimpleNamespace(
-        reserve_seat=AsyncMock(return_value={"success": "Seat 5 reserved"})
-    )
-    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
+def test_seat_1_delegates_reservation_to_seat_management():
+    manager = SeatManager.initialize()
+    manager.reserve_seat = AsyncMock(return_value={"success": "Seat 5 reserved"})
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 1 5", nickname="Alice")
@@ -118,9 +126,9 @@ def test_seat_1_delegates_reservation_to_seat_management(monkeypatch):
     manager.reserve_seat.assert_awaited_once_with("Alice", 5)
 
 
-def test_seat_2_delegates_specific_seat_to_seat_management(monkeypatch):
-    manager = SimpleNamespace(take_seat=AsyncMock(return_value={"success": "Took seat 5"}))
-    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
+def test_seat_2_delegates_specific_seat_to_seat_management():
+    manager = SeatManager.initialize()
+    manager.take_seat = AsyncMock(return_value={"success": "Took seat 5"})
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 2 5", nickname="Alice")
@@ -131,11 +139,9 @@ def test_seat_2_delegates_specific_seat_to_seat_management(monkeypatch):
     manager.take_seat.assert_awaited_once_with(5)
 
 
-def test_seat_4_without_parameter_dispatches_owner_seat_off(monkeypatch):
-    manager = SimpleNamespace(
-        remove_seat_occupant=AsyncMock(return_value={"success": "Owner removed from seat"})
-    )
-    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
+def test_seat_4_without_parameter_dispatches_owner_seat_off():
+    manager = SeatManager.initialize()
+    manager.remove_seat_occupant = AsyncMock(return_value={"success": "Owner removed from seat"})
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4", nickname="Alice")
@@ -146,11 +152,9 @@ def test_seat_4_without_parameter_dispatches_owner_seat_off(monkeypatch):
     manager.remove_seat_occupant.assert_awaited_once_with(None)
 
 
-def test_seat_4_with_parameter_dispatches_specific_seat_off(monkeypatch):
-    manager = SimpleNamespace(
-        remove_seat_occupant=AsyncMock(return_value={"success": "Seat 5 removed"})
-    )
-    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
+def test_seat_4_with_parameter_dispatches_specific_seat_off():
+    manager = SeatManager.initialize()
+    manager.remove_seat_occupant = AsyncMock(return_value={"success": "Seat 5 removed"})
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4 5", nickname="Alice")
@@ -161,9 +165,9 @@ def test_seat_4_with_parameter_dispatches_specific_seat_off(monkeypatch):
     manager.remove_seat_occupant.assert_awaited_once_with(5)
 
 
-def test_seat_4_with_invalid_seat_number_returns_error(monkeypatch):
-    manager = SimpleNamespace(remove_seat_occupant=AsyncMock())
-    monkeypatch.setattr(seat_command_module.SeatManager, "get_instance", lambda: manager)
+def test_seat_4_with_invalid_seat_number_returns_error():
+    manager = SeatManager.initialize()
+    manager.remove_seat_occupant = AsyncMock()
 
     command = SeatCommand(DummyController())
     message = MessageInfo(content=":seat 4 13", nickname="Alice")
@@ -177,8 +181,7 @@ def test_seat_4_with_invalid_seat_number_returns_error(monkeypatch):
 def test_seat_off_owner_clicks_owner_seat_and_seat_off_button():
     desks = [_desk(left_label="群主", left_occupied=True)]
     handler = DummyHandler(desks, popup_name="群主")
-    manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI(handler)
+    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(manager.seat_off_owner())
 
@@ -193,8 +196,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
         _desk(left_label="C", left_occupied=True),
     ]
     handler = DummyHandler(desks, popup_name="C")
-    manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI(handler)
+    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(manager.seat_off_specific_seat(3))
 
@@ -205,8 +207,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
 
 def test_seat_off_owner_returns_error_when_owner_not_found():
     handler = DummyHandler([_desk(left_label="Alice", left_occupied=True)])
-    manager = SeatingManager(handler)
-    manager.seat_ui = DummySeatUI(handler)
+    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(manager.seat_off_owner())
 

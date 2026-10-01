@@ -1,37 +1,18 @@
-class SeatManagerBase:
-    _instance = None
-    _initialized = False
+from ushareiplay.core.singleton import Singleton
 
-    def __new__(cls, handler=None, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super(SeatManagerBase, cls).__new__(cls)
-        return cls._instance
+
+class SeatManagerBase(Singleton):
+    """Base singleton class for seat management components."""
 
     def __init__(self, handler=None):
-        if not self._initialized:
-            self.handler = handler
-            self._initialized = True
+        self.handler = handler
 
     def __str__(self):
         """Return string representation of the object for logging"""
         handler_status = "with handler" if self.handler else "no handler"
         return f"{self.__class__.__name__} ({handler_status})"
-        
+
     def __repr__(self):
         """Return detailed representation of the object"""
         handler_id = id(self.handler) if self.handler else "None"
-        return f"{self.__class__.__name__}(handler={handler_id}, initialized={self._initialized})"
-
-    @classmethod
-    def get_instance(cls, handler=None, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = cls(handler, *args, **kwargs)
-        elif handler is not None:
-            cls(handler, *args, **kwargs)
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls):
-        cls._instance = None
-        cls._initialized = False
-
+        return f"{self.__class__.__name__}(handler={handler_id})"

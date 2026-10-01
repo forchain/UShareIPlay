@@ -418,6 +418,10 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
+            from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
+            from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
+            from ushareiplay.managers.seat_manager.reservation import ReservationManager
+            from ushareiplay.managers.seat_manager.seating import SeatingManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
@@ -433,45 +437,57 @@ class AppController(Singleton):
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            self.seat_manager = SeatManager.get_instance(self.soul_handler)
+            self.seat_ui_manager = SeatUIManager.initialize(self.soul_handler)
+            self.seat_check_manager = SeatCheckManager.initialize(self.soul_handler, self.seat_ui_manager)
+            self.reservation_manager = ReservationManager.initialize(
+                self.soul_handler, self.seat_ui_manager, self.seat_check_manager
+            )
+            self.seating_manager = SeatingManager.initialize(self.soul_handler, self.seat_ui_manager)
+            self.seat_manager = SeatManager.initialize(
+                self.soul_handler,
+                seat_ui=self.seat_ui_manager,
+                seat_check=self.seat_check_manager,
+                reservation=self.reservation_manager,
+                seating=self.seating_manager,
+            )
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
-            UserManager.initialize()
+            UserManager.initialize(self.soul_handler)
             SleepManager.initialize(self.config)
             MessageQueue.initialize()
-            RecoveryManager.initialize()
-            MessageManager.initialize()
-            self.message_dispatch = MessageDispatch.initialize()
-            self.topic_manager = TopicManager.initialize()
-            self.mic_manager = MicManager.initialize()
+            RecoveryManager.initialize(self.soul_handler)
+            MessageManager.initialize(self.soul_handler)
+            self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
+            self.topic_manager = TopicManager.initialize(self.soul_handler)
+            self.mic_manager = MicManager.initialize(self.soul_handler)
             self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
-            self.playback_muting = PlaybackMuting.initialize()
+            self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
             self.recovery_manager = RecoveryManager.instance()
-            self.timer_manager = TimerManager.initialize()
-            self.command_manager = CommandManager.initialize()
+            self.timer_manager = TimerManager.initialize(self.soul_handler)
+            self.command_manager = CommandManager.initialize(self.soul_handler)
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            RoomState.initialize()
-            PresenceTracker.initialize()
-            PlaylistState.initialize()
-            PlaybackBroadcaster.initialize()
-            OnlineListScraper.initialize()
-            self.info_manager = InfoManager.initialize()
-            self.party_manager = PartyManager.initialize()
-            self.notice_manager = NoticeManager.initialize()
+            RoomState.initialize(self.soul_handler)
+            PresenceTracker.initialize(self.soul_handler)
+            PlaylistState.initialize(self.soul_handler)
+            PlaybackBroadcaster.initialize(self.soul_handler)
+            OnlineListScraper.initialize(self.soul_handler)
+            self.info_manager = InfoManager.initialize(self.soul_handler)
+            self.party_manager = PartyManager.initialize(self.soul_handler)
+            self.notice_manager = NoticeManager.initialize(self.soul_handler)
             PlaylistAdoption.initialize()
-            RecommendationManager.initialize()
-            RoomNameManager.initialize()
-            RoomInfoWindow.initialize()
-            AdminManager.initialize()
-            KeywordManager.initialize()
+            RecommendationManager.initialize(self.soul_handler)
+            RoomNameManager.initialize(self.soul_handler)
+            RoomInfoWindow.initialize(self.soul_handler)
+            AdminManager.initialize(self.soul_handler)
+            KeywordManager.initialize(self.soul_handler)
             from ushareiplay.managers.memory_manager import MemoryManager
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
-            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler)
+            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler, seat_ui=self.seat_ui_manager)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
@@ -490,7 +506,7 @@ class AppController(Singleton):
 
             # Initialize event manager
             self.logger.info("初始化事件管理器...")
-            self.event_manager = EventManager.initialize()
+            self.event_manager = EventManager.initialize(self.soul_handler)
             self.event_manager.configure_runtime(self.event_runtime_context)
             self.event_manager.initialize_events()
             self.logger.info("事件管理器初始化完成")
@@ -676,8 +692,8 @@ class AppController(Singleton):
             self._network_bridge = None
 
         try:
-            from ushareiplay.managers.seat_manager import SeatManager
-            SeatManager.reset_instance()
+            from ushareiplay.core.singleton import Singleton
+            Singleton.reset_all_instances()
         except Exception:
             pass
 

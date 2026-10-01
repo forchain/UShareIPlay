@@ -1,6 +1,7 @@
+import logging
+import random
 import traceback
 import yaml
-import random
 from pathlib import Path
 from typing import Optional
 from ushareiplay.core.singleton import Singleton
@@ -14,10 +15,9 @@ class KeywordManager(Singleton):
     单例模式，提供统一的关键字管理服务
     """
     
-    def __init__(self):
-        # 延迟初始化 handler 和 logger，避免循环依赖
-        self._handler = None
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._config = None
         self._default_keyword_command = None
         self._nl_resolver = None
@@ -44,17 +44,12 @@ class KeywordManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("KeywordManager")
         return self._logger
 
     @property

@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
@@ -6,21 +7,21 @@ from ushareiplay.core.singleton import Singleton
 class PlaylistState(Singleton):
     """播放器/歌单元数据：当前播放器名与当前歌单名。"""
 
-    def __init__(self):
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._player_name: str = "Joyer"  # 默认播放器名称
         self._current_playlist_name: Optional[str] = None  # 当前歌单名称（完整原始名称）
 
     @property
+    def handler(self):
+        return self._handler
+
+    @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            try:
-                from ushareiplay.handlers.soul_handler import SoulHandler
-                self._logger = SoulHandler.instance().logger
-            except Exception:
-                import logging
-                return logging.getLogger(__name__)
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.playlist_state")
         return self._logger
 
     @property

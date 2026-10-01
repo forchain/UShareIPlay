@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import traceback
 from typing import Dict, List, Set
@@ -9,18 +10,22 @@ from ushareiplay.core.singleton import Singleton
 class PresenceTracker(Singleton):
     """在线用户集合与进入/离开通知。"""
 
-    def __init__(self):
-        self._logger = None
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
         self._online_users: Set[str] = set()
         self._recent_enters: Dict[str, float] = {}
         self._recent_returns: Dict[str, float] = {}
 
     @property
+    def handler(self):
+        return self._handler
+
+    @property
     def logger(self):
-        """延迟获取 logger 实例"""
+        """获取 logger 实例"""
         if self._logger is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._logger = SoulHandler.instance().logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.presence_tracker")
         return self._logger
 
     def update_online_users(self, users: List[str]):
@@ -70,9 +75,11 @@ class PresenceTracker(Singleton):
             username: Username of the user who left
         """
         try:
+            # 环的另一端：CommandManager -> RoomState -> state.__init__ -> PresenceTracker (上层依赖下层)
             from ushareiplay.managers.command_manager import CommandManager
-            command_manager = CommandManager.instance()
-            asyncio.create_task(command_manager.notify_user_leave(username))
+            if CommandManager.is_initialized():
+                command_manager = CommandManager.instance()
+                asyncio.create_task(command_manager.notify_user_leave(username))
         except Exception:
             self.logger.error(f"Error notifying user leave: {traceback.format_exc()}")
 
@@ -85,9 +92,11 @@ class PresenceTracker(Singleton):
         """
         try:
             self._recent_enters[username] = time.time()
+            # 环的另一端：CommandManager -> RoomState -> state.__init__ -> PresenceTracker (上层依赖下层)
             from ushareiplay.managers.command_manager import CommandManager
-            command_manager = CommandManager.instance()
-            asyncio.create_task(command_manager.notify_user_enter(username))
+            if CommandManager.is_initialized():
+                command_manager = CommandManager.instance()
+                asyncio.create_task(command_manager.notify_user_enter(username))
         except Exception:
             self.logger.error(f"Error notifying user enter: {traceback.format_exc()}")
 

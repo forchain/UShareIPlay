@@ -129,3 +129,11 @@ _Avoid_: Memory sync, log summarizer, batch updater
 **Playback Muting**:
 The microphone lifecycle guard that closes the bot's mic for the duration of a song-switching operation — from the start of a play/skip command until Android MediaSession confirms the new track is playing — and then safely restores microphone activity. It does not mute during steady-state playback.
 _Avoid_: Temporary mute, anti-noise hack, mic delay script
+
+**Composition Root Dependency Injection**:
+The architectural boundary where `AppController` centralizes instantiation and constructor-injects dependencies (`SoulHandler`, managers) into all protected singletons at startup. Lazy imports are forbidden except for verified, documented circular dependencies (see ADR-0009).
+_Avoid_: Lazy singleton lookup, runtime service locator, global state sniffing
+
+**Protected Singleton Contract**:
+The strict instantiation gate enforced by `SingletonMeta` where protected services can only be created via `Service.initialize(...)` and direct constructor invocation (`Service()`) raises `SingletonError`. External callers look up services exclusively via `Service.instance()`.
+_Avoid_: Unprotected singleton, direct instantiator, ad-hoc singleton pattern

@@ -35,11 +35,13 @@ def reset_state():
     # on_focus_count —— 反 back-trigger 断言就成了空断言。
     SeatObservationManager.reset_instance()
     SeatManager.reset_instance()
+    SeatingManager.reset_instance()
     RoomState.reset_instance()
     RoomState.initialize()
     yield
     SeatObservationManager.reset_instance()
     SeatManager.reset_instance()
+    SeatingManager.reset_instance()
     RoomState.reset_instance()
 
 
@@ -60,7 +62,7 @@ async def test_sit_at_specific_seat_navigates_directly_to_target_row_and_collaps
 
     # 构造 FakeSeatUI，记录滚动行
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # Mock 确认弹窗
     confirm_elem = MagicMock()
@@ -93,7 +95,7 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
     observation._last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     confirm_elem = MagicMock()
     handler.element_finder.wait_for_element_clickable = MagicMock(
@@ -135,7 +137,7 @@ async def test_sit_at_specific_seat_aborts_without_clicking_when_seat_is_occupie
 
     observation = SeatObservationManager.initialize(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # 尝试入座 1 号位（已占用）
     result = await seating.sit_at_specific_seat(1)
@@ -166,7 +168,7 @@ async def test_sit_at_specific_seat_clicks_coordinate_bounds_and_confirms_when_e
     observation._last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # Mock 确认弹窗
     confirm_elem = MagicMock()
@@ -214,7 +216,7 @@ async def test_sit_at_specific_seat_reports_error_when_seat_is_unjudgable():
 
     observation = SeatObservationManager.initialize(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     result = await seating.sit_at_specific_seat(2)
 
@@ -232,7 +234,7 @@ async def test_sit_at_specific_seat_reports_error_when_gesture_click_unavailable
 
     observation = SeatObservationManager.initialize(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     handler.element_finder.wait_for_element_clickable = MagicMock(return_value=None)
 
@@ -254,7 +256,7 @@ async def test_sit_at_specific_seat_collapses_panel_on_error():
 
     observation = SeatObservationManager.initialize(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # 模拟确认就座异常
     handler.element_finder.wait_for_element_clickable = MagicMock(side_effect=RuntimeError("UI error"))
@@ -276,7 +278,7 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
     observation._last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = SeatingManager.initialize(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     confirm_elem = MagicMock()
     handler.element_finder.wait_for_element_clickable = MagicMock(
