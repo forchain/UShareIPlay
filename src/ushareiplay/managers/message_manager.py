@@ -23,8 +23,16 @@ from ushareiplay.core.chat_intake import (
     strip_quoted_segment,
 )
 from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.core.roles import RolePolicy
+from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.managers.keyword_manager import KeywordManager
+from ushareiplay.managers.seat_manager import SeatManager
+from ushareiplay.models import User
 from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.state.presence_tracker import PresenceTracker
 
 
 # Global chat logger - will be initialized when needed
@@ -39,8 +47,6 @@ def get_chat_logger(config=None):
     """
     global chat_logger
     if chat_logger is None:
-        from ushareiplay.core.runtime_logging import get_runtime_logging
-
         chat_logger = get_runtime_logging().attach_chat_logger(config)
     return chat_logger
 
@@ -78,21 +84,16 @@ class MessageManager(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def chat_logger(self):
         if self._chat_logger is None:
-            self._chat_logger = get_chat_logger(self.handler.config)
+            config = getattr(self._handler, "config", None)
+            self._chat_logger = get_chat_logger(config)
         return self._chat_logger
 
     def _get_seat_manager(self):
-        from ushareiplay.managers.seat_manager import SeatManager
-
         return SeatManager.instance()
 
     async def resolve_room_owner(self) -> str | None:
@@ -105,15 +106,12 @@ class MessageManager(Singleton):
         `DEFAULT_ROOM_OWNER`，会让库回落永远走不到（配置没写 room_owner 的部署
         就检测不到「送给房主」的礼物）。
         """
-        from ushareiplay.core.roles import RolePolicy
-
         config = getattr(self.handler, "config", None)
         owner = RolePolicy(config if isinstance(config, dict) else None).configured_room_owner
         if owner:
             return owner
 
         try:
-            from ushareiplay.models import User
             owner_user = await User.filter(level=9).first()
             if owner_user:
                 return owner_user.username
@@ -262,7 +260,6 @@ class MessageManager(Singleton):
                 continue
 
             if kind == ChatIntakeKind.KEYWORD_MENTION:
-                from ushareiplay.managers.keyword_manager import KeywordManager
                 await KeywordManager.instance().dispatch_mention(result, sleep_exempt=True)
                 chat_logger.critical(content)
                 continue
@@ -286,14 +283,11 @@ class MessageManager(Singleton):
 
     async def _handle_user_return(self, result, content: str) -> None:
         """入场通知：由 PresenceTracker 判定是否算作「用户返回」。"""
-        from ushareiplay.state.presence_tracker import PresenceTracker
-
         presence_tracker = PresenceTracker.instance()
         if presence_tracker.should_trigger_return(result.nickname):
             presence_tracker.record_return(result.nickname)
             self.handler.logger.critical(f"User returned: {result.nickname}")
             self.chat_logger.critical(content)
-            from ushareiplay.managers.command_manager import CommandManager
             await CommandManager.instance().notify_user_return(result.nickname)
         else:
             self.handler.logger.info(
@@ -307,8 +301,6 @@ class MessageManager(Singleton):
         实时路径与补漏路径原先各有一份实现，只有日志文案不同。
         """
         try:
-            from ushareiplay.dal.user_dao import UserDAO
-
             username = result.nickname
             heat_value = getattr(result, "heat_value", 0)
             if heat_value > 0:
@@ -326,7 +318,6 @@ class MessageManager(Singleton):
             await MessageQueue.instance().put_message(thank_msg)
             self.handler.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
 
-            from ushareiplay.managers.command_manager import CommandManager
             await CommandManager.instance().notify_gift_receive(username)
         except Exception:
             self.handler.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
@@ -410,7 +401,6 @@ class MessageManager(Singleton):
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
-        from ushareiplay.managers.command_manager import CommandManager
         return await CommandManager.instance().execute_chat_scan(
             self._recent if lines is None else lines
         )

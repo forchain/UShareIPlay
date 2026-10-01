@@ -1,14 +1,18 @@
 import asyncio
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
 
+from tortoise import connections
 from tortoise.exceptions import IntegrityError
 
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.dal.timer_dao import TimerDAO
+from ushareiplay.models.message_info import MessageInfo
 
 
 class TimerManager(Singleton):
@@ -27,17 +31,12 @@ class TimerManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("TimerManager")
         return self._logger
 
     def is_running(self) -> bool:
@@ -124,13 +123,10 @@ class TimerManager(Singleton):
 
     async def _trigger_timer(self, timer_key: str, timer_data: dict):
         """触发并添加消息到队列"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
         try:
             message = timer_data['message']
             self.logger.info(f"Timer {timer_key} triggered: {message}")
 
-            from ushareiplay.models.message_info import MessageInfo
             message_info = MessageInfo(
                 content=message,
                 nickname="Timer"
@@ -155,7 +151,6 @@ class TimerManager(Singleton):
 
     async def _sanitize_db(self):
         """ORM 加载前用原生 SQL 修正不合法的 next_trigger 值（如带时区后缀）"""
-        from tortoise import connections
         try:
             conn = connections.get("default")
             # 去掉时区后缀（如 +00:00）并补齐单位数小时（如 1:00:00 → 01:00:00）
@@ -187,8 +182,6 @@ class TimerManager(Singleton):
 
     async def _load_timers(self):
         """从数据库加载所有定时器到内存缓存，跳过积压的已过期触发"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
         await self._sanitize_db()
 
         try:
@@ -229,8 +222,6 @@ class TimerManager(Singleton):
 
     async def _migrate_from_json(self):
         """首次运行时从 timers.json 迁移数据到数据库"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
         timers_file = Path(__file__).parent.parent.parent.parent / 'data' / 'timers.json'
         if not timers_file.exists():
             return
@@ -314,8 +305,6 @@ class TimerManager(Singleton):
         Raises:
             ValueError: for invalid time grammar or duplicate explicit key.
         """
-        from ushareiplay.dal.timer_dao import TimerDAO
-
         next_trigger = self._compute_next_trigger(target_time, repeat)
         target_time = (target_time or "").strip()
 
@@ -386,8 +375,6 @@ class TimerManager(Singleton):
 
     async def remove_timer(self, timer_key: str) -> bool:
         """Remove a timer"""
-        from ushareiplay.dal.timer_dao import TimerDAO
-
         try:
             deleted = await TimerDAO.delete_by_key(timer_key)
             if deleted:

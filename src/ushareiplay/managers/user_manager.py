@@ -1,4 +1,4 @@
-"""用户管理器：在在线列表中查找用户并打开其信息页等"""
+import logging
 
 from ushareiplay.core.singleton import Singleton
 
@@ -14,15 +14,12 @@ class UserManager(Singleton):
 
     @property
     def handler(self):
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("UserManager")
         return self._logger
 
     def open_user_profile_from_online_list(self, nickname: str):

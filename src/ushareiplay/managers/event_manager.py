@@ -7,6 +7,7 @@
 
 import importlib
 import importlib.util
+import logging
 import re
 import sys
 import time
@@ -51,24 +52,18 @@ class EventManager(Singleton):
 
     @property
     def handler(self):
-        """延迟获取 SoulHandler 实例"""
-        if self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            self._handler = SoulHandler.instance()
         return self._handler
 
     @property
     def logger(self):
-        """延迟获取 logger 实例"""
         if self._logger is None:
-            self._logger = self.handler.logger
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("EventManager")
         return self._logger
 
     @property
     def config(self):
-        """延迟获取配置"""
         if self._config is None:
-            self._config = self.handler.config
+            self._config = getattr(self._handler, "config", {}) or {}
         return self._config
 
     @property

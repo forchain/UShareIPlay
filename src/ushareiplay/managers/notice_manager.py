@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import traceback
 from typing import Dict
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.pending_write import PendingWrite
+from ushareiplay.managers.room_info_window import RoomInfoWindow
+from ushareiplay.state.room_state import RoomState
 
 
 class NoticeManager(Singleton):
@@ -46,22 +49,12 @@ class NoticeManager(Singleton):
 
     @property
     def handler(self):
-        if not hasattr(self, '_handler') or self._handler is None:
-            from ushareiplay.handlers.soul_handler import SoulHandler
-            if SoulHandler.is_initialized():
-                self._handler = SoulHandler.instance()
-            else:
-                self._handler = None
         return self._handler
 
     @property
     def logger(self):
         if not hasattr(self, '_logger') or self._logger is None:
-            if self.handler and hasattr(self.handler, 'logger'):
-                self._logger = self.handler.logger
-            else:
-                import logging
-                self._logger = logging.getLogger("NoticeManager")
+            self._logger = getattr(self.handler, 'logger', None) or logging.getLogger("NoticeManager")
         return self._logger
 
     def can_update_now(self) -> bool:
@@ -79,7 +72,6 @@ class NoticeManager(Singleton):
         Returns:
             dict: 包含成功、错误或冷却信息的结果
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
@@ -120,7 +112,6 @@ class NoticeManager(Singleton):
         Returns:
             dict: 包含成功或错误信息的结果
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
@@ -129,7 +120,6 @@ class NoticeManager(Singleton):
             self.logger.info(f"准备设置notice: {notice}")
 
             # 打开房间信息窗口（打开 ritual 归 RoomInfoWindow）
-            from ushareiplay.managers.room_info_window import RoomInfoWindow
             window = RoomInfoWindow.instance()
             with window.with_window_open() as open_error:
                 if open_error:
@@ -199,7 +189,6 @@ class NoticeManager(Singleton):
         Returns:
             dict: 处理结果
         """
-        from ushareiplay.state.room_state import RoomState
         if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}
 
