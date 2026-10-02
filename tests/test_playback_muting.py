@@ -204,9 +204,21 @@ def test_settings_fall_back_to_documented_defaults():
     assert coordinator.settings == {
         "enabled": True,
         "guest_room_only": False,
+        "auto_enable_on_mic": True,
+        "ignore_users": (),
         "timeout": 5.0,
         "settling_delay": 0.3,
     }
+
+
+def test_settings_are_read_from_the_soul_section_like_the_shipped_config():
+    """config.yaml 把这一节放在 `soul:` 下；只读顶层键会让整节静默取默认值。"""
+    coordinator, _events = _make_coordinator(
+        config={"soul": {"playback_mute": {"enabled": False, "ignore_users": ["Timer"]}}}
+    )
+
+    assert coordinator.settings["enabled"] is False
+    assert coordinator.settings["ignore_users"] == ["Timer"]
 
 
 def test_settings_pass_configured_timeout_and_settling_delay_to_readiness_wait():
@@ -226,6 +238,8 @@ def test_settings_ignore_unknown_keys():
     assert coordinator.settings == {
         "enabled": True,
         "guest_room_only": False,
+        "auto_enable_on_mic": True,
+        "ignore_users": (),
         "timeout": 5.0,
         "settling_delay": 0.3,
     }
@@ -239,6 +253,8 @@ def test_shipped_config_declares_playback_mute_defaults():
     assert config["soul"]["playback_mute"] == {
         "enabled": True,
         "guest_room_only": False,
+        "auto_enable_on_mic": True,
+        "ignore_users": [],
         "timeout": 5.0,
         "settling_delay": 0.3,
     }

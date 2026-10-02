@@ -17,6 +17,8 @@ soul:
   playback_mute:
     enabled: true            # 是否启用播放静音保护
     guest_room_only: false   # 是否仅在他人房间（客房模式）生效
+    auto_enable_on_mic: true  # 有人上麦（公屏「XXX 已上麦」）时即时开启，不受上面两项限制；换房时重置
+    ignore_users: []          # 额外忽略的上麦昵称（系统账号等）；机器人自身（room_owner）始终忽略
     timeout: 5.0             # 等待播放就绪的最长秒数，超时后兜底开麦
     settling_delay: 0.3      # 就绪后开麦前的声卡稳定延时（秒）
 

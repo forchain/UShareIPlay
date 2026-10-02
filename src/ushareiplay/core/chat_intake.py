@@ -2,8 +2,8 @@
 
 This module is side-effect-free and singleton-free. It owns the regex families
 that recognize user-enter/return notifications (in chat lines *and* in party
-banners — see `classify_banner_line`), 点赞 banners, keyword mentions (@我 or
-@owner, anywhere in the message body), chat-room
+banners — see `classify_banner_line`), on-mic notices (`XXX 已上麦`), 点赞 banners,
+keyword mentions (@我 or @owner, anywhere in the message body), chat-room
 commands, and plain chat lines, plus the queue grammar used by timer/runtime
 messages (`;` split, `{user_name}` expansion, silent/private prefix detection).
 
@@ -46,6 +46,8 @@ _WHITESPACE_RUN_PATTERN = re.compile(r"\s+")
 
 # 点赞横幅：「荒草 为派对点赞了」。它属于同一族房间横幅文案，因此归 Chat Intake 所有。
 _PARTY_LIKE_PATTERN = re.compile(r"^(.+?)\s*为派对点赞了")
+# 上麦通知：「荒草 已上麦」。锚在行尾 —— 后缀还有内容就是有人在讲话，不是系统行。
+_ON_MIC_PATTERN = re.compile(r"^(.+?)\s*已上麦$")
 _GIFT_TYPE1_PATTERN = re.compile(r"souler\[(.+?)\]\s*送给\s*([^\s【]+)")
 _GIFT_TYPE2_PATTERN = re.compile(r"恭喜\s*(.+?)\s*在此房间贡献出\s*(\d+)\s*热力值")
 
@@ -151,11 +153,33 @@ def parse_party_like_username(raw: str) -> str | None:
     return name or None
 
 
+def parse_on_mic_username(raw: str) -> str | None:
+    """从公屏「XXX 已上麦」系统通知里取昵称，不是这类行则返回 None。
+
+    与入场家族同形：系统消息没有 `souler[...]说：` 包裹。防冒充靠的就是这条
+    —— 用户发言一律带包裹，冒充的聊天在进到这里之前就退化成普通发言了。
+    因此这里刻意不复用 `_ENTER_EXCLUDE_SUBSTRINGS`：那份名单挡的是入场横幅噪音，
+    搬过来只会把真实的上麦行（「恭喜XX已上麦」这类）一起挡掉。候选名过昵称护栏
+    已经能挡住「你好，荒草 已上麦」这类把整句当成名字的行。
+    """
+    raw = (raw or "").strip()
+    if not raw or raw.startswith("souler["):
+        return None
+    m = _ON_MIC_PATTERN.match(raw)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    if not name or not _looks_like_a_nickname(name):
+        return None
+    return name
+
+
 class ChatIntakeKind(Enum):
     """Taxonomy of a single raw chat line or queue part."""
 
     USER_ENTER = "user_enter"
     USER_RETURN = "user_return"
+    USER_ON_MIC = "user_on_mic"
     PARTY_LIKE = "party_like"
     KEYWORD_MENTION = "keyword_mention"
     COMMAND = "command"
@@ -172,8 +196,8 @@ class ChatIntakeResult:
         nickname: The speaker/user name (extracted from the line or passed in).
         text: Normalized payload. For COMMAND this includes the trigger prefix
               (e.g. ":play 123"); for KEYWORD_MENTION this is the keyword only;
-              for USER_ENTER/RETURN this is the username; for PLAIN_CHAT this is
-              the raw visible text.
+              for USER_ENTER/RETURN and USER_ON_MIC this is the username;
+              for PLAIN_CHAT this is the raw visible text.
         params: Parameters after the keyword (only set for KEYWORD_MENTION).
         trigger: The matched command trigger character (only set for COMMAND).
         silent: True if the command should suppress screen output.
@@ -314,8 +338,9 @@ def _find_keyword_mention(
 def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeResult:
     """Classify a single raw chat line.
 
-    Order of precedence: user enter/return, gift receive, keyword mention, command, plain chat.
-    The result is frozen; callers may convert it to a mutable MessageInfo if needed.
+    Order of precedence: user enter/return, on-mic notice, gift receive, keyword
+    mention, command, plain chat.  The result is frozen; callers may convert it
+    to a mutable MessageInfo if needed.
 
     Quoted Message content is extracted into `quoted_text` and removed from the
     line *before* any matching, so history quoted in a reply can never trigger a
@@ -334,6 +359,17 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
             kind=ChatIntakeKind.USER_RETURN,
             nickname=entrant_name,
             text=entrant_name,
+            raw=raw,
+            quoted_text=quoted_text,
+        )
+
+    # 上麦通知同形：系统消息没有 souler 包裹，冒充的聊天已在解析层被排除。
+    on_mic_name = parse_on_mic_username(line)
+    if on_mic_name:
+        return ChatIntakeResult(
+            kind=ChatIntakeKind.USER_ON_MIC,
+            nickname=on_mic_name,
+            text=on_mic_name,
             raw=raw,
             quoted_text=quoted_text,
         )

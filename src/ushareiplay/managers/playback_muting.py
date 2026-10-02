@@ -2,6 +2,7 @@ import logging
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
+from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.state.room_state import RoomState
 
@@ -14,14 +15,23 @@ class PlaybackMuting(Singleton):
     -> 等待底层播放就绪 -> 无条件恢复开麦（异常与超时同样兜底）。
     就绪检测由 MusicManager 提供，麦克风状态与恢复由 MicManager 提供
     （见 ADR-0007：接缝是 MicManager.state()/set_active()/ensure_active()）。
+
+    是否生效由两层决定：配置（`enabled` / `guest_room_only`）是常态策略，
+    `arm_on_mic()` 是有人上麦时的运行时救场 —— 麦上有人时切歌底噪会盖住他，
+    因此此时无条件保护，房间生命周期（RoomState.clear()）再把它重置。
     """
 
     DEFAULT_SETTINGS = {
         "enabled": True,
         "guest_room_only": False,
+        "auto_enable_on_mic": True,
+        "ignore_users": (),
         "timeout": 5.0,
         "settling_delay": 0.3,
     }
+
+    #: 运行时开启状态的兜底默认值；`__init__` 会在实例上落一份。
+    _dynamic_enabled = False
 
     def __init__(self, handler=None, music_manager=None, mic_manager=None):
         from ushareiplay.managers.mic_manager import MicManager
@@ -30,25 +40,97 @@ class PlaybackMuting(Singleton):
         self.music_manager = music_manager or (MusicManager.instance() if MusicManager.is_initialized() else None)
         self.mic_manager = mic_manager or (MicManager.instance() if MicManager.is_initialized() else None)
         self.logger = getattr(handler, "logger", None) or logging.getLogger("PlaybackMuting")
+        self._dynamic_enabled = False
 
     @property
     def settings(self) -> dict:
-        """soul.playback_mute 配置，缺失或未声明的项回退到默认值。"""
+        """soul.playback_mute 配置，缺失或未声明的项回退到默认值。
+
+        配置写在 `soul.playback_mute` 下（见 config.yaml），顶层 `playback_mute`
+        只作为扁平写法的回落：只读顶层键会让整节配置静默取默认值。
+        """
         settings = dict(self.DEFAULT_SETTINGS)
         config = getattr(self.soul_handler, "config", None)
-        section = config.get("playback_mute") if isinstance(config, dict) else None
+        section = None
+        if isinstance(config, dict):
+            soul_cfg = config.get("soul")
+            if isinstance(soul_cfg, dict):
+                section = soul_cfg.get("playback_mute")
+            if not isinstance(section, dict):
+                section = config.get("playback_mute")
         if isinstance(section, dict):
             settings.update({key: section[key] for key in settings if key in section})
         return settings
 
+    @property
+    def dynamically_enabled(self) -> bool:
+        """是否因有人上麦而运行时开启（配置之外的状态）。"""
+        return self._dynamic_enabled
+
     def should_engage(self, settings: dict = None) -> bool:
-        """当前房间是否启用静音保护（guest_room_only 时仅他人房间生效）。"""
+        """当前房间是否启用静音保护。
+
+        运行时开启时无条件生效：配置里的 `enabled` / `guest_room_only` 描述的是
+        常态策略，救场由联动负责（`auto_enable_on_mic` 才是联动行为的总开关）。
+        """
         settings = self.settings if settings is None else settings
+        if self._dynamic_enabled:
+            return True
         if not settings["enabled"]:
             return False
         if not settings["guest_room_only"]:
             return True
         return RoomState.in_guest_room()
+
+    # ------------------------------------------------------------------
+    # 运行时开启：有人上麦时救场
+    # ------------------------------------------------------------------
+
+    def enable(self, reason: str = "") -> bool:
+        """运行时开启静音保护；返回本次调用是否改变了状态。"""
+        if self._dynamic_enabled:
+            return False
+        self._dynamic_enabled = True
+        suffix = f": {reason}" if reason else ""
+        self.logger.info(f"Playback muting enabled at runtime{suffix}")
+        return True
+
+    def arm_on_mic(self, nickname: str) -> bool:
+        """有人上麦时的联动入口：总开关、自身与忽略名单的判定都归这里。
+
+        读配置的是本模块，因此调用方（MessageManager）只负责把事件递进来。
+        """
+        if not self.settings["auto_enable_on_mic"]:
+            return False
+        name = (nickname or "").strip()
+        if not name or self._is_ignored(name):
+            self.logger.debug(f"Playback muting not armed for on-mic user '{name}'")
+            return False
+        return self.enable(reason=f"'{name}' 已上麦")
+
+    def reset(self) -> None:
+        """房间生命周期重置：丢掉运行时开启状态，不跨场次、跨会话。"""
+        if self._dynamic_enabled:
+            self._dynamic_enabled = False
+            self.logger.info("Playback muting runtime enable reset for the new room")
+
+    def _is_ignored(self, nickname: str) -> bool:
+        """自身账号与配置指定的系统账号不触发联动。"""
+        normalized = nickname.strip().lower()
+        if normalized in self._own_accounts():
+            return True
+        ignored = self.settings["ignore_users"] or ()
+        return normalized in {str(name).strip().lower() for name in ignored}
+
+    def _own_accounts(self) -> set[str]:
+        """机器人自己的 Soul 账号：配置的 room_owner。
+
+        机器人以该账号在房间里发言（见 roles.py 的身份约定），它自己上麦
+        不构成「别人在麦上」，否则一次抢麦就把静音保护永久锁死。
+        """
+        config = getattr(self.soul_handler, "config", None)
+        owner = RolePolicy(config if isinstance(config, dict) else None).configured_room_owner
+        return {owner.strip().lower()} if owner else set()
 
     @contextmanager
     def guard(self, expected_song: Optional[str] = None) -> Iterator[bool]:

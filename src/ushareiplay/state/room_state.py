@@ -230,5 +230,20 @@ class RoomState(Singleton):
         except Exception as e:
             # 换房后麦位快照没清掉会拿上一间房的数据做 diff，不能静默吞掉
             self.logger.error(f"Failed to clear seat observation on room clear: {e}")
+        self._clear_room_scoped_runtime()
         self.logger.info("Cleared room state")
+
+    def _clear_room_scoped_runtime(self) -> None:
+        """随房间一起作废的运行期状态：上麦触发的播放静音保护动态开启。
+
+        换房 / 退房 / 派对重启后「有人在麦上」不再成立，动态开启不得跨场次。
+        延迟 import：`playback_muting` 顶层就 import 本模块。
+        """
+        from ushareiplay.managers.playback_muting import PlaybackMuting
+
+        try:
+            if PlaybackMuting.is_initialized():
+                PlaybackMuting.instance().reset()
+        except Exception as e:
+            self.logger.error(f"Failed to reset playback muting on room clear: {e}")
 

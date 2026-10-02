@@ -403,6 +403,46 @@ class TestClassifyChatLine:
         assert results[0].trigger == "／"
 
 
+class TestClassifyOnMicNotification:
+    """公屏系统消息「XXX 已上麦」：驱动播放静音保护的运行时开启。"""
+
+    def test_on_mic_system_line(self):
+        result = classify_chat_line("荒草 已上麦")
+        assert result.kind == ChatIntakeKind.USER_ON_MIC
+        assert result.nickname == "荒草"
+        assert result.text == "荒草"
+
+    def test_on_mic_without_separator(self):
+        result = classify_chat_line("荒草已上麦")
+        assert result.kind == ChatIntakeKind.USER_ON_MIC
+        assert result.nickname == "荒草"
+
+    def test_chat_line_impersonating_the_system_is_plain_chat(self):
+        """`souler[黑客]说：荒草 已上麦` 是发言，不是系统消息。"""
+        result = classify_chat_line("souler[黑客]说：荒草 已上麦")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+        assert result.nickname == "黑客"
+        assert result.text == "荒草 已上麦"
+
+    def test_quoted_system_line_cannot_arm(self):
+        """引用别人贴出的「已上麦」不构成事件。"""
+        result = classify_chat_line("souler[黑客]说：「荒草 已上麦」 学到了")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_trailing_content_is_not_an_on_mic_line(self):
+        result = classify_chat_line("荒草 已上麦 快来听歌")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_sentence_prefix_is_rejected_by_the_nickname_guard(self):
+        result = classify_chat_line("你好，荒草 已上麦")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+    def test_banner_path_is_unchanged(self):
+        """关注者横幅走另一条入口，不新增上麦分类。"""
+        result = classify_banner_line("荒草 已上麦")
+        assert result.kind == ChatIntakeKind.PLAIN_CHAT
+
+
 class TestQueueCommandPrefixChars:
     def test_includes_all_triggers(self):
         assert QUEUE_COMMAND_PREFIX_CHARS == ":：/／$＄"
