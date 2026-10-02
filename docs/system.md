@@ -1,6 +1,6 @@
 ---
 covers: [AppController, DriverLifecycle, AppHandler, SoulHandler, QQMusicHandler, CommandManager, ChatIntake, EventManager, MessageManager, MessageQueue, PlaybackMuting, DatabaseManager, Singleton, BaseCommand, RecoveryManager, InfoManager, RoomState, PresenceTracker, PlaylistState, PlaybackBroadcaster, OnlineListScraper, RolePolicy, main.py]
-last-synced: 2026-09-23
+last-synced: 2026-10-02
 ---
 
 ## Overview
@@ -19,7 +19,7 @@ last-synced: 2026-09-23
 | `ChatIntake` | Pure classification boundary: regex parsing, Quoted Message isolation (`「...」`), prefix normalization, queue grammar |
 | `CommandManager` | Discovers commands dynamically, checks permissions via `RolePolicy`, dispatches execution |
 | `RolePolicy` | Evaluates caller tiers: Human Operators (Host, Console, Admin), System Users, Privileged, Normal |
-| `PlaybackMuting` | Mutes bot microphone during track transitions, polls MediaSession for playback readiness |
+| `PlaybackMuting` | Mutes bot microphone during track transitions, polls MediaSession for playback readiness; also armed at runtime when someone goes on mic (`XXX 已上麦`), reset with the room |
 | `EventManager` | Background UI monitor (page classification, drawer auto-dismissal, focus/entry events) |
 | `MessageQueue` | Thread-safe async queue for outbound Soul App messages |
 | `MessageManager` | Dequeues messages, formats tags (`[智能]`, `[人工]`), and sends them via `SoulHandler` |
@@ -49,6 +49,7 @@ ConfigLoader.load_config('config.yaml')
      - Silent commands: `/` or `／` (executes quietly without broadcasting response)
      - Private reply commands: `$` or `＄` (routes command output to the sender's private chat)
    - Recognizes `@我` or `@room_owner` mentions anywhere in the chat text.
+   - Classifies system lines without a `souler[...]说：` wrapper: enter/return notices, `XXX 已上麦` (`USER_ON_MIC`, arms `PlaybackMuting`), and party-like banners. Lines carrying the wrapper can never pose as those notices.
 2. `CommandManager` resolves the command:
    - Validates caller permissions against `RolePolicy`.
    - Checks `SleepManager` (blocks non-exempt commands between 23:00 and 06:00).

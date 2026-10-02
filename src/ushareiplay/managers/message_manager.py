@@ -29,6 +29,7 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.keyword_manager import KeywordManager
+from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.models import User
 from ushareiplay.models.message_info import MessageInfo
@@ -245,6 +246,15 @@ class MessageManager(Singleton):
                 await self._handle_user_return(result, content)
                 continue
 
+            if kind == ChatIntakeKind.USER_ON_MIC:
+                chat_logger.info(content)
+                if from_backfill:
+                    # 回溯到的是历史行：那人可能早已下麦，不能当作「现在有人在麦上」
+                    self.handler.logger.debug(f"Backfilled on-mic line skipped: {content}")
+                else:
+                    self._handle_user_on_mic(result)
+                continue
+
             if kind == ChatIntakeKind.GIFT_RECEIVE:
                 chat_logger.critical(content)
                 heat_value = getattr(result, "heat_value", 0)
@@ -280,6 +290,15 @@ class MessageManager(Singleton):
             chat_logger.info(content)
 
         return commands
+
+    def _handle_user_on_mic(self, result) -> None:
+        """有人上麦：即时开启播放静音保护（切歌底噪会盖住麦上的人）。
+
+        判定（`auto_enable_on_mic` 总开关、自身账号、`ignore_users`）归
+        PlaybackMuting —— 那一节配置由它读，判定与日志也都在那里。
+        """
+        if PlaybackMuting.is_initialized():
+            PlaybackMuting.instance().arm_on_mic(result.nickname)
 
     async def _handle_user_return(self, result, content: str) -> None:
         """入场通知：由 PresenceTracker 判定是否算作「用户返回」。"""

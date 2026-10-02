@@ -1,6 +1,6 @@
 ---
 covers: [QQMusicHandler, MusicManager, PlaybackMuting, PlayCommand, FavCommand, SkipCommand, NextCommand, PauseCommand, VolCommand, ModeCommand, AccCommand, LyricsCommand, SingerCommand, AlbumCommand, PlaylistCommand, RadioCommand, InfoCommand]
-last-synced: 2026-09-23
+last-synced: 2026-10-02
 ---
 
 ## Overview
@@ -27,6 +27,12 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
    - Background polling checks Android MediaSession (`dumpsys media_session`) adaptively until playback state reports `STATE_PLAYING`.
    - Soul App microphone is safely unmuted (`SoulHandler.unmute_mic()`).
 4. Queuing commands like `:next` only append tracks without interrupting current playback and do not trigger muting.
+
+### On-Mic Arming
+- `PlaybackMuting` is not config-only: when chat intake classifies a public-screen system line `XXX 已上麦` as `ChatIntakeKind.USER_ON_MIC`, `MessageManager.dispatch` calls `PlaybackMuting.arm_on_mic()`, which enables muting for the rest of the room session (it overrides `enabled` / `guest_room_only`).
+- Own account (configured `room_owner`) and `playback_mute.ignore_users` never arm it; `playback_mute.auto_enable_on_mic: false` turns the whole linkage off.
+- The dynamic enable is room-scoped: `RoomState.clear()` (party end / room switch / restart) calls `PlaybackMuting.reset()`.
+- Backfilled on-mic lines are history and do not arm.
 
 ### Song Quality Policy & On-Demand Intent
 - `MusicManager` automatically filters low-quality tracks (old songs per `old_song_filter`, DJ/Remix noise, singer-mode heuristics) when radio stations or auto-playlists advance.
