@@ -1,5 +1,6 @@
 import asyncio
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal import SeatReservationDAO, UserDAO
@@ -77,22 +78,41 @@ class SeatCheckManager(Singleton):
         except Exception as e:
             self.handler.log_error(f"Error checking seats: {traceback.format_exc()}")
 
-    async def check_user_specific_seat(self, username: str, seat_number: int):
-        self.handler.logger.info("expanding seats for check")
-        seat_desks = await self.seat_ui.expand_and_find_desks()
-        if not seat_desks:
+    @asynccontextmanager
+    async def _ui_session(self, reason: str):
+        """独占 UI 执行权，契约与 SeatObservationManager._ui_session 一致。
+
+        展开座位面板、滚动、点头像弹窗、点「请下麦」全程会改页面结构。若不持锁，
+        EventManager 的兜底 press_back 会在这些 await 点把弹窗当成未知页面关掉，
+        手里那个 seat_off 句柄随之失效（StaleElementReferenceException）。
+
+        controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
+        契约时直接抛错，而不是静默裸奔。
+        """
+        ctrl = getattr(self.handler, "controller", None) if self.handler else None
+        if ctrl is None:
+            yield
             return
-        self.handler.logger.info(f"found {len(seat_desks)} seat desks")
+        async with ctrl.ui_session(reason):
+            yield
 
-        # check and handle the user's specific seat
-        self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
+    async def check_user_specific_seat(self, username: str, seat_number: int):
+        async with self._ui_session(f"seat_check:{seat_number}"):
+            self.handler.logger.info("expanding seats for check")
+            seat_desks = await self.seat_ui.expand_and_find_desks()
+            if not seat_desks:
+                return
+            self.handler.logger.info(f"found {len(seat_desks)} seat desks")
 
-        desk_index = (seat_number - 1) // 2
-        self.seat_ui.scroll_to_row(desk_index, seat_desks, duration=1000)
-        if desk_index // 2 in (0, 2):
-            await asyncio.sleep(0.5)
+            # check and handle the user's specific seat
+            self.handler.logger.info(f"checking specific seat {seat_number} for user {username}")
 
-        await self._handle_occupied_seat(username, seat_desks, seat_number)
+            desk_index = (seat_number - 1) // 2
+            self.seat_ui.scroll_to_row(desk_index, seat_desks, duration=1000)
+            if desk_index // 2 in (0, 2):
+                await asyncio.sleep(0.5)
+
+            await self._handle_occupied_seat(username, seat_desks, seat_number)
 
     async def _handle_occupied_seat(self, username: str, seat_desks, seat_number: int):
         """Handle an occupied seat by removing the occupant"""
