@@ -7,6 +7,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from appium import webdriver
 from appium.options.common import AppiumOptions
@@ -40,6 +41,11 @@ from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
 class AppController(Singleton):
+    # ui_lock 的持有者与嵌套深度（见 ui_session）。用类属性兜底，让绕过
+    # __init__ 直接构造的测试替身也能安全走 ui_session。
+    _ui_lock_owner: Optional[asyncio.Task] = None
+    _ui_lock_depth: int = 0
+
     def __init__(self, config):
         self.config = config
 
@@ -149,13 +155,31 @@ class AppController(Singleton):
         获取 UI 独占执行权（异步）。
         约定：所有可能改变页面结构/弹窗状态的后台任务（命令、自动处理等）应持有该锁，
         EventManager 的兜底 press_back 也会尊重该锁。
+
+        可重入：同一个 task 嵌套进入时直通。asyncio.Lock 不可重入，而命令派发链
+        上的座位流程（reserve_seat -> check_user_specific_seat）本就在锁内，不放行
+        会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
+        ui_lock.locked()，兜底 back 的抑制语义因此不变。
         """
+        task = asyncio.current_task()
+        if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
+            self._ui_lock_depth += 1
+            try:
+                yield
+            finally:
+                self._ui_lock_depth -= 1
+            return
+
         await self.ui_lock.acquire()
+        self._ui_lock_owner = task
+        self._ui_lock_depth = 1
         try:
             if self.logger and reason:
                 self.logger.debug(f"[ui_lock] acquired: {reason}")
             yield
         finally:
+            self._ui_lock_owner = None
+            self._ui_lock_depth = 0
             if self.logger and reason:
                 self.logger.debug(f"[ui_lock] released: {reason}")
             self.ui_lock.release()
