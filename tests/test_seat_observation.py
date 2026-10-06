@@ -2535,3 +2535,81 @@ def test_gate_state_integration_with_manager_clear():
     assert manager.seats[1].occupied is False
 
 
+@pytest.mark.asyncio
+async def test_ghost_duplicate_cleared_in_rescan_is_recorded_as_residual_and_not_repeatedly_inspected():
+    """复现并防止生产事故：重扫时 2 号和 10 号冲突清空 2 号 ghost 后，收起麦位被动观测时反复弹窗。"""
+    from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    user = "卡拉皮奶巴白大阿🐟啊啊……"
+    observed_all = {
+        2: (None, "right", {"occupied": True, "username": user, "label": ""}),
+        10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
+    }
+    # 权威全量重扫落快照（clearable=None）
+    manager._apply_snapshot(observed_all, clearable=None)
+
+    assert manager.seats[10].occupied is True
+    assert manager.seats[10].username == user
+    assert manager.seats[2].occupied is False
+    assert manager._residual_seats.get(2) == user, "清理 ghost duplicate 时必须记录入 _residual_seats"
+
+    # 随后收起座位，被动观测只看得到前排，2 号位 DOM 仍有残留渲染（occupied=True），10 号位不在当前视口
+    manager.inspect_occupant = AsyncMock(return_value=user)
+    desks = build_live_desk_wrappers_for(handler, {2: True}, "top")
+
+    for _ in range(3):
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+    assert manager.inspect_occupant.await_count == 0, "已知残留位在真实用户落座他处时，绝不应反复调用 inspect_occupant 弹窗"
+    assert manager.seats[2].occupied is False
+    assert manager.seats[10].username == user
+
+
+@pytest.mark.asyncio
+async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_suppressed():
+    """被动观测中 2 号位出现已在 10 号位的用户：触发重扫，重扫裁决为残留后，后续被动观测绝不再弹窗。"""
+    from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    user = "卡拉皮奶巴白大阿🐟啊啊……"
+    # 快照中 10 号位已有人
+    manager.seats[10] = SeatSlot(seat_number=10, occupied=True, username=user, label="管理")
+
+    # 视口只有前排（2 号位占座但 DOM 无昵称），10 号位不在视口内
+    manager.inspect_occupant = AsyncMock(return_value=user)
+    desks = build_live_desk_wrappers_for(handler, {2: True}, "top")
+
+    # 第一轮：触发全量重扫
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        async def fake_rescan(target_focus):
+            # 重扫看到全部麦位并落快照
+            observed_all = {
+                2: (None, "right", {"occupied": True, "username": user, "label": ""}),
+                10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
+            }
+            manager._apply_snapshot(observed_all, clearable=None)
+            manager._last_rescan_ok = True
+            return True
+
+        mock_rescan.side_effect = fake_rescan
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+        assert mock_rescan.await_count == 1
+        assert manager.seats[10].occupied is True
+        assert manager.seats[2].occupied is False
+        assert manager._residual_seats.get(2) == user
+
+    # 随后连续几轮被动观测：已知残留且用户在 10 号位未动，绝不可再次弹窗
+    initial_inspects = manager.inspect_occupant.await_count
+    for _ in range(3):
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+    assert manager.inspect_occupant.await_count == initial_inspects, "后续轮次绝不应再次调用 inspect_occupant 弹窗"
+    assert manager.seats[2].occupied is False
+    assert manager.seats[10].occupied is True
+
+
+
