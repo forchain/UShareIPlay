@@ -2535,3 +2535,164 @@ def test_gate_state_integration_with_manager_clear():
     assert manager.seats[1].occupied is False
 
 
+@pytest.mark.asyncio
+async def test_ghost_duplicate_cleared_in_rescan_is_recorded_as_residual_and_not_repeatedly_inspected():
+    """复现并防止生产事故：重扫时 2 号和 10 号冲突清空 2 号 ghost 后，收起麦位被动观测时反复弹窗。"""
+    from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    user = "卡拉皮奶巴白大阿🐟啊啊……"
+    observed_all = {
+        2: (None, "right", {"occupied": True, "username": user, "label": ""}),
+        10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
+    }
+    # 权威全量重扫落快照（clearable=None）
+    manager._apply_snapshot(observed_all, clearable=None)
+
+    assert manager.seats[10].occupied is True
+    assert manager.seats[10].username == user
+    assert manager.seats[2].occupied is False
+    assert manager._residual_seats.get(2) == user, "清理 ghost duplicate 时必须记录入 _residual_seats"
+
+    # 随后收起座位，被动观测只看得到前排，2 号位 DOM 仍有残留渲染（occupied=True），10 号位不在当前视口
+    manager.inspect_occupant = AsyncMock(return_value=user)
+    desks = build_live_desk_wrappers_for(handler, {2: True}, "top")
+
+    for _ in range(3):
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+    assert manager.inspect_occupant.await_count == 0, "已知残留位在真实用户落座他处时，绝不应反复调用 inspect_occupant 弹窗"
+    assert manager.seats[2].occupied is False
+    assert manager.seats[10].username == user
+
+
+@pytest.mark.asyncio
+async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_suppressed():
+    """被动观测中 2 号位出现已在 10 号位的用户：触发重扫，重扫裁决为残留后，后续被动观测绝不再弹窗。"""
+    from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    user = "卡拉皮奶巴白大阿🐟啊啊……"
+    # 快照中 10 号位已有人
+    manager.seats[10] = SeatSlot(seat_number=10, occupied=True, username=user, label="管理")
+
+    # 视口只有前排（2 号位占座但 DOM 无昵称），10 号位不在视口内
+    manager.inspect_occupant = AsyncMock(return_value=user)
+    desks = build_live_desk_wrappers_for(handler, {2: True}, "top")
+
+    # 第一轮：触发全量重扫
+    with patch.object(manager, "expand_rescan_and_collapse", new_callable=AsyncMock) as mock_rescan:
+        async def fake_rescan(target_focus):
+            # 重扫看到全部麦位并落快照
+            observed_all = {
+                2: (None, "right", {"occupied": True, "username": user, "label": ""}),
+                10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
+            }
+            manager._apply_snapshot(observed_all, clearable=None)
+            manager._last_rescan_ok = True
+            return True
+
+        mock_rescan.side_effect = fake_rescan
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+        assert mock_rescan.await_count == 1
+        assert manager.seats[10].occupied is True
+        assert manager.seats[2].occupied is False
+        assert manager._residual_seats.get(2) == user
+
+    # 随后连续几轮被动观测：已知残留且用户在 10 号位未动，绝不可再次弹窗
+    initial_inspects = manager.inspect_occupant.await_count
+    for _ in range(3):
+        await manager.observe_visible_desks(desks, current_focus_count=7)
+
+    assert manager.inspect_occupant.await_count == initial_inspects, "后续轮次绝不应再次调用 inspect_occupant 弹窗"
+    assert manager.seats[2].occupied is False
+    assert manager.seats[10].occupied is True
+
+
+@pytest.mark.asyncio
+async def test_admin_label_not_dropped_when_observation_has_empty_label():
+    """管理占座的麦位在后续视口读数无 label（如折叠视口中下排截断）时，不得将管理标签推平为普通用户。"""
+    from tests.seat_fixtures import make_handler
+    from ushareiplay.managers.admin_manager import AdminManager
+
+    AdminManager.reset_instance()
+    AdminManager.initialize()
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照：7 号位为管理(Chainer)
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
+
+    # 模拟被动观测：7 号位依然占座且是 Chainer，但本轮因视口截断读到的 label 为空
+    observed = {
+        7: (None, "left", {"occupied": True, "username": "Chainer", "label": "", "is_owner": False}),
+    }
+
+    old_slots = {k: v.copy() for k, v in manager.seats.items()}
+    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    assert 7 in writable
+
+    to_apply = {num: item for num, item in observed.items() if num in writable}
+    manager._apply_snapshot(to_apply, clearable=clearable)
+
+    # 验证：7 号位管理标签必须保留，且 AdminManager 记录 Chainer 为房管
+    assert manager.seats[7].label == "管理"
+    assert AdminManager.instance().is_room_admin("Chainer") is True
+
+    # 比对不得产生虚假变更（防止无行为触发的刷屏）
+    has_changes, changed_users, _ = manager._compute_diff(old_slots, manager.seats, {7})
+    assert has_changes is False, "管理标签未丢失时不应产生虚假麦位变更"
+
+    # 格式化座次表必须仍然是 管理(Chainer)
+    layout = manager.format_3row_layout("测试")
+    assert "[7号: 管理(Chainer)]" in layout
+
+
+@pytest.mark.asyncio
+async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadable_label():
+    """管理员从旧座换到新座后，即使新座在折叠视口中 label 读不到，也必须继承/识别出管理身份。"""
+    from tests.seat_fixtures import make_handler
+    from ushareiplay.managers.admin_manager import AdminManager
+
+    AdminManager.reset_instance()
+    AdminManager.initialize()
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照：7 号位为管理(Chainer)
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
+    AdminManager.instance().add_room_admin("Chainer")
+
+    # 视口内换座：7 号位空闲，6 号位占座；但 6 号位在折叠第二排，label 读不到（为空）
+    manager.inspect_occupant = AsyncMock(return_value="Chainer")
+    observed = {
+        6: (None, "right", {"occupied": True, "username": None, "label": "", "is_owner": False}),
+        7: (None, "left", {"occupied": False, "is_empty": True, "label": "7", "username": None}),
+    }
+
+    await manager._resolve_usernames(observed, caller_holds_ui_session=False)
+
+    old_slots = {k: v.copy() for k, v in manager.seats.items()}
+    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    assert 6 in writable
+    assert 7 in writable
+
+    to_apply = {num: item for num, item in observed.items() if num in writable}
+    manager._apply_snapshot(to_apply, clearable=clearable)
+
+    # 验证：6 号位必须被赋予管理标签
+    assert manager.seats[6].occupied is True
+    assert manager.seats[6].username == "Chainer"
+    assert manager.seats[6].label == "管理"
+
+    layout = manager.format_3row_layout("测试换座")
+    assert "[6号: 管理(Chainer)]" in layout
+
+
+
+

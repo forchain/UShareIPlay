@@ -369,3 +369,33 @@ async def test_level_writes_through_the_alias_to_canonical(alias_pair):
     canonical = await User.get_or_none(username=CANONICAL)
     assert canonical.level == 7
     assert await User.get_or_none(username=AVATAR) is not None  # 分身记录仍在
+
+
+@pytest.mark.asyncio
+async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(alias_pair):
+    """accompany_user 结束时收起麦位，且同一排的桌子不重复触发滚屏。"""
+    desks = [
+        _desk(left_label="U1", left_occupied=True, right_label="U2", right_occupied=True),
+        _desk(left_label="U3", left_occupied=True, right_label="U4", right_occupied=True),
+    ]
+    handler = DummySeatHandler(desks, popup_name="U1")
+    scrolled_desks = []
+    collapsed = []
+
+    class MockUI(DummySeatUI):
+        def scroll_to_row(self, desk_index, seat_desks, duration=100):
+            scrolled_desks.append(desk_index)
+
+        async def collapse_seats(self):
+            collapsed.append(True)
+
+    SeatingManager.reset_instance()
+    manager = SeatingManager.initialize(handler, seat_ui=MockUI(handler))
+
+    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    assert "error" in result
+    # 两个桌子都在 row 0，只滚屏一次（desk 0），不会重复为 desk 1 滚屏
+    assert scrolled_desks == [0]
+    # 最终收起面板
+    assert collapsed == [True]
+
