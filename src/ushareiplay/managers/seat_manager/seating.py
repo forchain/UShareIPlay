@@ -212,8 +212,12 @@ class SeatingManager(Singleton):
             # Step 3: Iterate through all desks.
             # Optimization: only check desks with exactly one occupant, because
             # if both seats are occupied, we can't sit next to the target anyway.
+            last_scrolled_row = -1
             for desk_index in range(len(seat_desks)):
-                self.seat_ui.scroll_to_row(desk_index, seat_desks)
+                row_index = desk_index // 2
+                if row_index != last_scrolled_row:
+                    self.seat_ui.scroll_to_row(desk_index, seat_desks)
+                    last_scrolled_row = row_index
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
 
@@ -299,6 +303,13 @@ class SeatingManager(Singleton):
         except Exception as e:
             self.handler.log_error(f"Error accompanying user: {traceback.format_exc()}")
             return {'error': f'Failed to accompany user {target_username}: {str(e)}'}
+        finally:
+            if self.seat_ui and hasattr(self.seat_ui, "collapse_seats"):
+                try:
+                    await self.seat_ui.collapse_seats()
+                except Exception as e:
+                    if hasattr(self.handler, "logger") and self.handler.logger:
+                        self.handler.logger.error(f"Failed to collapse seats: {e}")
 
     async def seat_off_owner(self) -> dict:
         """Remove the owner from their current seat."""

@@ -107,12 +107,19 @@ class FocusCommand(BaseCommand):
             from ushareiplay.models.message_info import MessageInfo
 
             commands = []
+            seen_cmd_ids = set()
             if changed_users is not None:
                 for username in changed_users:
                     user_cmds = await FocusEventDao.get_by_username(username)
-                    commands.extend(user_cmds)
+                    for cmd in user_cmds:
+                        if cmd.id not in seen_cmd_ids:
+                            seen_cmd_ids.add(cmd.id)
+                            commands.append(cmd)
             else:
-                commands = await FocusEventDao.get_all_ordered()
+                for cmd in await FocusEventDao.get_all_ordered():
+                    if cmd.id not in seen_cmd_ids:
+                        seen_cmd_ids.add(cmd.id)
+                        commands.append(cmd)
 
             if not commands:
                 return
