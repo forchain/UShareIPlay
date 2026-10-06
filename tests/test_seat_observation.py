@@ -2612,4 +2612,87 @@ async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_
     assert manager.seats[10].occupied is True
 
 
+@pytest.mark.asyncio
+async def test_admin_label_not_dropped_when_observation_has_empty_label():
+    """管理占座的麦位在后续视口读数无 label（如折叠视口中下排截断）时，不得将管理标签推平为普通用户。"""
+    from tests.seat_fixtures import make_handler
+    from ushareiplay.managers.admin_manager import AdminManager
+
+    AdminManager.reset_instance()
+    AdminManager.initialize()
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照：7 号位为管理(Chainer)
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
+
+    # 模拟被动观测：7 号位依然占座且是 Chainer，但本轮因视口截断读到的 label 为空
+    observed = {
+        7: (None, "left", {"occupied": True, "username": "Chainer", "label": "", "is_owner": False}),
+    }
+
+    old_slots = {k: v.copy() for k, v in manager.seats.items()}
+    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    assert 7 in writable
+
+    to_apply = {num: item for num, item in observed.items() if num in writable}
+    manager._apply_snapshot(to_apply, clearable=clearable)
+
+    # 验证：7 号位管理标签必须保留，且 AdminManager 记录 Chainer 为房管
+    assert manager.seats[7].label == "管理"
+    assert AdminManager.instance().is_room_admin("Chainer") is True
+
+    # 比对不得产生虚假变更（防止无行为触发的刷屏）
+    has_changes, changed_users, _ = manager._compute_diff(old_slots, manager.seats, {7})
+    assert has_changes is False, "管理标签未丢失时不应产生虚假麦位变更"
+
+    # 格式化座次表必须仍然是 管理(Chainer)
+    layout = manager.format_3row_layout("测试")
+    assert "[7号: 管理(Chainer)]" in layout
+
+
+@pytest.mark.asyncio
+async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadable_label():
+    """管理员从旧座换到新座后，即使新座在折叠视口中 label 读不到，也必须继承/识别出管理身份。"""
+    from tests.seat_fixtures import make_handler
+    from ushareiplay.managers.admin_manager import AdminManager
+
+    AdminManager.reset_instance()
+    AdminManager.initialize()
+
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+
+    # 初始快照：7 号位为管理(Chainer)
+    manager.seats[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
+    AdminManager.instance().add_room_admin("Chainer")
+
+    # 视口内换座：7 号位空闲，6 号位占座；但 6 号位在折叠第二排，label 读不到（为空）
+    manager.inspect_occupant = AsyncMock(return_value="Chainer")
+    observed = {
+        6: (None, "right", {"occupied": True, "username": None, "label": "", "is_owner": False}),
+        7: (None, "left", {"occupied": False, "is_empty": True, "label": "7", "username": None}),
+    }
+
+    await manager._resolve_usernames(observed, caller_holds_ui_session=False)
+
+    old_slots = {k: v.copy() for k, v in manager.seats.items()}
+    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    assert 6 in writable
+    assert 7 in writable
+
+    to_apply = {num: item for num, item in observed.items() if num in writable}
+    manager._apply_snapshot(to_apply, clearable=clearable)
+
+    # 验证：6 号位必须被赋予管理标签
+    assert manager.seats[6].occupied is True
+    assert manager.seats[6].username == "Chainer"
+    assert manager.seats[6].label == "管理"
+
+    layout = manager.format_3row_layout("测试换座")
+    assert "[6号: 管理(Chainer)]" in layout
+
+
+
 

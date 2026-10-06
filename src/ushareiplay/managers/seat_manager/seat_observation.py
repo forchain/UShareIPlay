@@ -498,8 +498,11 @@ class SeatObservationManager(Singleton):
                 name = f"群主({slot.username})" if slot.username and slot.username != "群主" else "群主"
             else:
                 is_admin = (slot.username in room_admins) if slot.username else False
-                if not is_admin and slot.label == "管理":
+                if not is_admin and (slot.label == "管理" or self._is_known_room_admin(slot.username)):
                     is_admin = True
+                    if slot.username:
+                        self._record_room_admin(slot.username)
+
 
                 if is_admin:
                     name = f"管理({slot.username})" if slot.username and slot.username != "管理" else "管理"
@@ -766,6 +769,79 @@ class SeatObservationManager(Singleton):
             return RolePolicy(cfg).configured_room_owner or None
         except Exception:
             return None
+
+    def _is_known_room_admin(self, username: Optional[str]) -> bool:
+        """检查用户是否为已知房间管理员（通过 AdminManager 或现有麦位记录）。"""
+        if not username or username == "管理":
+            return False
+        try:
+            from ushareiplay.managers.admin_manager import AdminManager
+            if AdminManager.is_initialized() and AdminManager.instance().is_room_admin(username):
+                return True
+        except Exception:
+            pass
+        if any(s.occupied and s.username == username and s.label == "管理" for s in self.seats.values()):
+            self._record_room_admin(username)
+            return True
+        return False
+
+    def _record_room_admin(self, username: Optional[str]) -> None:
+        """记录用户为房间管理员（同步至 AdminManager）。"""
+        if not username or username == "管理":
+            return
+        try:
+            from ushareiplay.managers.admin_manager import AdminManager
+            if AdminManager.is_initialized():
+                AdminManager.instance().add_room_admin(username)
+        except Exception:
+            pass
+
+    def _is_known_owner(self, username: Optional[str]) -> bool:
+        """检查用户是否为已知群主/房主。"""
+        if not username or username == "群主":
+            return False
+        owner_name = self._owner_nickname()
+        if owner_name and username == owner_name:
+            return True
+        return any(
+            s.occupied and s.username == username and (s.is_owner or s.label == "群主")
+            for s in self.seats.values()
+        )
+
+    def _apply_seat_role(self, slot: SeatSlot, info: dict, username: Optional[str]) -> None:
+        """应用麦位角色（群主/管理/普通）并维护角色状态的一致性与持久性。"""
+        new_label = info.get("label", "")
+        new_is_owner = info.get("is_owner", False)
+
+        if new_label == "管理":
+            slot.label = "管理"
+            slot.is_owner = False
+            self._record_room_admin(username)
+        elif new_is_owner or new_label == "群主":
+            slot.is_owner = True
+            slot.label = "群主"
+        elif new_label and not self._is_seat_number_label(new_label):
+            slot.label = new_label
+            slot.is_owner = False
+        else:
+            # new_label 为空（视口被折叠/截断或 label 节点未 dump）或纯数字编号占位
+            if self._is_known_owner(username) or (slot.username == username and slot.is_owner):
+                slot.is_owner = True
+                slot.label = "群主"
+            elif self._is_known_room_admin(username) or (slot.username == username and slot.label == "管理"):
+                slot.label = "管理"
+                slot.is_owner = False
+                self._record_room_admin(username)
+            elif slot.username == username and slot.occupied and slot.label:
+                # 同一用户在同一麦位，新读数无 label，保留旧 label 与身份
+                pass
+            else:
+                slot.label = ""
+                slot.is_owner = False
+
+        info["label"] = slot.label
+        info["is_owner"] = slot.is_owner
+
 
     def _extract_seat_info(self, desk, side: str, seat_num: Optional[int] = None) -> dict:
         dom = self._read_seat_dom(desk, side)
@@ -1313,6 +1389,8 @@ class SeatObservationManager(Singleton):
         pending = []
         for seat_num, (desk, side, info) in observed.items():
             if not info["occupied"] or info.get("username"):
+                if info.get("occupied") and info.get("username") and info.get("label") == "管理":
+                    self._record_room_admin(info["username"])
                 continue
             residual_name = residual_seats.get(seat_num)
             if residual_name and self._placed_elsewhere(residual_name, seat_num, observed):
@@ -1326,6 +1404,18 @@ class SeatObservationManager(Singleton):
                 info["username"] = old_slot.username
                 claimed.add(old_slot.username)
                 inherited_claims[old_slot.username] = seat_num
+                if not info.get("label"):
+                    if old_slot.label:
+                        info["label"] = old_slot.label
+                        info["is_owner"] = old_slot.is_owner
+                    elif self._is_known_owner(old_slot.username):
+                        info["label"] = "群主"
+                        info["is_owner"] = True
+                    elif self._is_known_room_admin(old_slot.username):
+                        info["label"] = "管理"
+                        info["is_owner"] = False
+                if info.get("label") == "管理":
+                    self._record_room_admin(info["username"])
                 continue
             pending.append((seat_num, desk, side))
 
@@ -1380,6 +1470,15 @@ class SeatObservationManager(Singleton):
                 info["username"] = username
                 claimed.add(username)
                 read_claims[username] = seat_num
+                if not info.get("label"):
+                    if self._is_known_owner(username):
+                        info["label"] = "群主"
+                        info["is_owner"] = True
+                    elif self._is_known_room_admin(username):
+                        info["label"] = "管理"
+                        info["is_owner"] = False
+                if info.get("label") == "管理":
+                    self._record_room_admin(username)
 
         if caller_holds_ui_session:
             await _inspect_pending()
@@ -1466,8 +1565,7 @@ class SeatObservationManager(Singleton):
                     if seat_num == winner_seats[username]:
                         slot.occupied = True
                         slot.username = username
-                        slot.label = info.get("label", "")
-                        slot.is_owner = info.get("is_owner", False)
+                        self._apply_seat_role(slot, info, username)
                     else:
                         self.logger.warning(
                             f"Seat {seat_num}: clearing ghost duplicate of {username!r} "
@@ -1488,8 +1586,7 @@ class SeatObservationManager(Singleton):
                     continue
                 slot.occupied = True
                 slot.username = username
-                slot.label = info.get("label", "")
-                slot.is_owner = info.get("is_owner", False)
+                self._apply_seat_role(slot, info, username)
             elif info.get("is_empty"):
                 if clearable is None or seat_num in clearable:
                     slot.occupied = False
@@ -1812,6 +1909,9 @@ class SeatObservationManager(Singleton):
                 shared_name = shared[2]["username"]
                 if shared_name not in self._claimed_usernames(bottom_observed):
                     item[2]["username"] = shared_name
+                    if not item[2].get("label") and shared[2].get("label"):
+                        item[2]["label"] = shared[2]["label"]
+                        item[2]["is_owner"] = shared[2].get("is_owner", False)
 
         await self._resolve_usernames(bottom_observed, caller_holds_ui_session=True)
 
@@ -1823,7 +1923,14 @@ class SeatObservationManager(Singleton):
                 # 和「新读数有昵称」两种升级：底相位明确读到「点击入座」的空座，盖不过
                 # 顶相位那条什么都没读到的空读数，于是这个位子谁都不写 —— 快照里的旧
                 # 占座者就此长驻（真机 23:00:0x 的 9 号位）。
+                if not item[2].get("label") and observed_all[seat_num][2].get("label"):
+                    item[2]["label"] = observed_all[seat_num][2]["label"]
+                    item[2]["is_owner"] = observed_all[seat_num][2].get("is_owner", False)
                 observed_all[seat_num] = item
+            else:
+                if not observed_all[seat_num][2].get("label") and item[2].get("label"):
+                    observed_all[seat_num][2]["label"] = item[2]["label"]
+                    observed_all[seat_num][2]["is_owner"] = item[2].get("is_owner", False)
 
         # 3. 滑回第一排（复位到默认可视区域）
         if hasattr(self.seat_ui, "scroll_to_row"):
