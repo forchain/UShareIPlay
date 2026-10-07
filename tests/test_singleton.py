@@ -144,7 +144,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.recovery_manager import RecoveryManager
     from ushareiplay.managers.room_info_window import RoomInfoWindow
-    from ushareiplay.managers.room_name_manager import RoomNameManager
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import (
         ReservationManager,
@@ -187,7 +186,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         PartyManager,
         PlaylistAdoption,
         RecommendationManager,
-        RoomNameManager,
         RoomInfoWindow,
         RoomProfileManager,
         AdminManager,

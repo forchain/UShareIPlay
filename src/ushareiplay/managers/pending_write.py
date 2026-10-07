@@ -24,13 +24,15 @@ from typing import Any, Optional
 class PendingWrite:
     """一个待写入值的冷却与重试状态机。
 
-    调用方的典型用法（见 RoomNameManager.process_pending_update）：
+    调用方的典型用法（见 RoomProfileManager.update_topic / update_notice）：
 
         if not write.can_apply_now():
             return {'cooldown': True, 'remaining_minutes': write.remaining_minutes()}
         result = self._write_ui(write.pending)
-        write.mark_attempted()          # 无论成败都要推进时钟
-        if 'error' not in result:
+        if 'skipped' in result:
+            return result               # 没写成就别记账：草稿与预算都留着
+        write.mark_attempted()          # 真的写过了，无论成败都推进时钟
+        if 'success' in result:
             write.clear()               # 成功才清空待写入值
     """
 

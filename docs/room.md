@@ -1,5 +1,5 @@
 ---
-covers: [PartyManager, SoulHandler, RoomNameManager, RoomProfileManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
+covers: [PartyManager, SoulHandler, RoomProfileManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
 last-synced: 2026-09-23
 ---
 
@@ -13,8 +13,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 |---|---|
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
-| `RoomNameManager` | Room name invariant: `{theme}｜{title}`, shared cooldown, single UI write, notice restore |
-| `RoomProfileManager` | Room drawer session + topic/notice/title drafts; owns the 5-minute topic and 15-minute notice cooldowns, the drawer writes, and the notice restore after a title change |
+| `RoomProfileManager` | Sole owner of the room drawer session and all three drafts (topic / notice / title); owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, and the notice restore after a title change |
 | `SeatManager` | Seat reservation + seating sub-managers |
 | `MicManager` | Microphone on/off automation and off-seat preparation |
 | `RecommendationManager` | Room recommendation state tracking, drawer automation, and toggle (:recommend) |
@@ -24,7 +23,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 ## How It Works
 
 ### Room Name & Cooldowns
-**Room name** = `{theme}｜{title}` — `RoomNameManager` owns the combined value, the shared cooldown, pending state, and the single UI write. legacy `ThemeManager` and `TitleManager` adapters have been consolidated into `RoomNameManager`.
+**Room name** = `{theme}｜{title}` — `RoomProfileManager` owns the combined value, the shared 10-minute cooldown, pending state, and the single UI write. The legacy `ThemeManager`, `TitleManager`, `TopicManager`, `NoticeManager` and `RoomNameManager` adapters have all been consolidated into it; `:title` and `:theme` are thin adapters at the seam.
 
 ### Auto-Restart
 `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.

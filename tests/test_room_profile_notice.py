@@ -23,6 +23,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.state.room_state import RoomState
@@ -593,10 +594,11 @@ def test_a_failed_restore_keeps_the_previous_text_queued():
 
 
 class _TitleFlowFinder:
-    """房名写入流程要用的元素查找器（`RoomNameManager` 那一侧仍是 handler 直连）。
+    """房名写入流程要用的元素查找器。
 
-    公告那一侧走抽屉端口，本替身只负责房名：抽屉里的房名元素、标题输入与提交，
-    以及被改房名冲掉的那条公告文案。
+    房名的物理动作已经走抽屉端口（#392），端口不承载「读文本」，因此本替身只
+    负责那两次**判定**读：抽屉里的房名元素（审核有没有把房名吃掉）与被改房名
+    冲掉的那条公告文案。
     """
 
     def __init__(self, notice_text):
@@ -618,78 +620,78 @@ class _TitleFlowFinder:
             return self.notice_text
         return "听歌｜新标题"
 
-    def wait_for_element_clickable(self, key, timeout=10):
-        return self.title_element
 
-    def wait_for_any_element(self, keys, timeout=10):
-        for key in keys:
-            if key in ("title_edit_entry", "title_edit_confirm"):
-                return key, self.title_element
-        return None, None
+#: 抽屉里标题那一行 + 公告那一行 —— 一次房名写入要在同一个会话里动到它们。
+TITLE_FLOW_DRAWER = (
+    "slide_drawer",
+    "title_edit_entry",
+    "title_edit_input",
+    "title_edit_confirm",
+) + NOTICE_EDIT_LAYER
 
 
 def _title_change(monkeypatch, notice_text):
-    """跑一次真实的房名写入，返回 `(driver, RoomNameManager, 结果)`。
+    """跑一次真实的房名写入，返回 `(driver, RoomProfileManager, 结果)`。
 
-    端到端地走真实调用链：`RoomNameManager._update_title_ui` 自己开抽屉、先读
-    公告有没有被系统冲掉，标题写成功后调 `RoomProfileManager.restore_notice`，
-    那一写必须落到抽屉端口的输入框上。
+    端到端地走真实调用链：`RoomProfileManager._write_title_in_drawer` 自己开抽屉、
+    先读公告有没有被系统冲掉，标题写成功后调同模块的 `restore_notice`，那一写
+    必须落到同一个抽屉端口的输入框上。
     """
-    from ushareiplay.core.config_loader import ConfigLoader
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    from ushareiplay.managers.room_name_manager import RoomNameManager
-
     monkeypatch.setattr(ConfigLoader, "load_config", lambda *a, **k: FULL_CONFIG)
 
     handler = _Handler(notice_text=notice_text, config=CONFIG)
     handler.element_finder = _TitleFlowFinder(notice_text)
-    handler.gesture_handler = MagicMock()
-    handler.gesture_handler.click_element_at.return_value = True
 
-    driver = _driver()
+    driver = InMemoryRoomProfileDrawerDriver(
+        present=TITLE_FLOW_DRAWER,
+        world_after_click={
+            # 提交之后抽屉还在，公告那一行照旧可点。
+            "title_edit_confirm": TITLE_FLOW_DRAWER,
+            "edit_notice_confirm": ("edit_notice_entry",),
+        },
+    )
     RoomProfileManager.reset_instance()
-    RoomProfileManager.initialize(handler=handler, drawer_driver=driver)
+    profile = RoomProfileManager.initialize(handler=handler, drawer_driver=driver)
+    profile.title_settle_seconds = 0
 
-    RoomNameManager.reset_instance()
-    room_name = RoomNameManager.initialize(handler)
-    window = RoomInfoWindow.instance()
-    window._handler = handler  # 与 profile 同一个 handler，抽屉端口不被替换
-    window._logger = handler.logger
-
-    try:
-        return driver, room_name, room_name._update_title_ui("新标题")
-    finally:
-        RoomNameManager.reset_instance()
+    return driver, profile, profile._write_title_in_drawer("新标题")
 
 
 def test_a_title_change_that_wiped_the_notice_restores_the_previous_text(monkeypatch):
     """改房名会把公告冲成系统默认文案；改完要把上一条公告写回去。"""
-    driver, room_name, result = _title_change(
+    driver, profile, result = _title_change(
         monkeypatch, "蹲一个人 蹲了那么久，终于等到你！"
     )
 
     assert result == {"success": True}
-    assert driver.typed == [("edit_notice_input", DEFAULT_NOTICE)]
-    assert room_name.pending_notice_restore is False, "恢复标记用完即清"
-    assert room_name.restore_notice_content is None
+    assert driver.typed == [
+        ("title_edit_input", "听歌｜新标题"),
+        ("edit_notice_input", DEFAULT_NOTICE),
+    ]
+    assert profile.pending_notice_restore is False, "恢复标记用完即清"
+    assert profile.restore_notice_content is None
 
 
 def test_the_restore_after_a_title_change_reuses_the_open_window(monkeypatch):
     """恢复公告发生在房名流程已经打开的那个抽屉会话里，不再开第二次。"""
-    driver, _room_name, _result = _title_change(monkeypatch, "弹唱大会")
+    driver, _profile, _result = _title_change(monkeypatch, "弹唱大会")
 
-    assert driver.typed == [("edit_notice_input", DEFAULT_NOTICE)]
+    assert driver.typed == [
+        ("title_edit_input", "听歌｜新标题"),
+        ("edit_notice_input", DEFAULT_NOTICE),
+    ]
     assert driver.opened_entries == ["chat_room_title"], "整个标题+恢复只开一次抽屉"
-    assert driver.close_attempts == 0, "抽屉由外层房名流程留着"
+    assert driver.close_attempts == 1, "这次抽屉是房名流程自己开的，由它自己关"
+    assert driver.back_presses == 0, "关窗走正规 UI 操作，不盲按返回"
 
 
 def test_a_normal_notice_is_left_alone_by_the_title_change(monkeypatch):
     """公告没被冲掉时，房名变更不该多写一次公告。"""
-    driver, room_name, _result = _title_change(monkeypatch, "今晚八点开播，记得来听")
+    driver, profile, _result = _title_change(monkeypatch, "今晚八点开播，记得来听")
 
-    assert driver.typed == []
-    assert room_name.pending_notice_restore is False
-    assert room_name.restore_notice_content is None
+    assert driver.typed == [("title_edit_input", "听歌｜新标题")]
+    assert profile.pending_notice_restore is False
+    assert profile.restore_notice_content is None
 
 
 # --------------------------------------------------------------------------

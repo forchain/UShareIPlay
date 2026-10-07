@@ -18,8 +18,7 @@
 
 UI 独占性沿用既有做法：本模块的抽屉接口是**同步**的，锁由上游的
 `CommandManager.ui_session`（`app_controller.ui_session`）持有。把这里改成
-async 会打断剩下的同步调用点（`room_name_manager` / `party_manager`），
-因此不做。
+async 会打断剩下的同步调用点（`party_manager` 等），因此不做。
 """
 
 import asyncio
@@ -29,6 +28,7 @@ import traceback
 from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
+from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
 from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
@@ -62,6 +62,20 @@ NOTICE_TEXT_KEY = 'chat_room_notice'
 DEFAULT_NOTICE_FALLBACK = 'U Share I Play\n分享音乐 享受快乐'
 SYSTEM_DEFAULT_NOTICES_FALLBACK = ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
 
+#: 抽屉里「房间标题」那一行：入口 -> 输入框 -> 提交。
+TITLE_EDIT_ENTRY_KEY = 'title_edit_entry'
+TITLE_INPUT_KEY = 'title_edit_input'
+TITLE_CONFIRM_KEY = 'title_edit_confirm'
+#: 提交之后用哪两个元素判断结果：编辑层还在 = 改得太频繁；铅笔回来了 = 成功。
+TITLE_SUBMIT_PROBE_KEYS = ('title_edit_entry', 'title_edit_confirm')
+#: 提交被拒时收掉编辑层的按钮（只关编辑层，抽屉本身由 with_window_open 收尾）。
+TITLE_CLOSE_KEY = 'go_back'
+#: 确认提交之后等 Appium 落地的静默时间（秒）。离线测试把它置 0。
+TITLE_SETTLE_SECONDS = 1.0
+#: 没有配置时的兜底主题/标题，沿用既有实现的字面量。
+DEFAULT_THEME_FALLBACK = '听歌'
+DEFAULT_TITLE_FALLBACK = '听歌'
+
 
 class RoomProfileManager(Singleton):
     """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。"""
@@ -76,6 +90,17 @@ class RoomProfileManager(Singleton):
         # 已经写进黑板的话题。冷启动时为 None，与旧 TopicManager 同义。
         self.current_topic = None
         self.topic_settle_seconds = TOPIC_SETTLE_SECONDS
+        # 房名（ADR-0001）。`current_theme` 懒加载成配置里的默认主题；真正的
+        # 「用户想写的主题」在草稿库的 pending_theme 上，两者不是一回事。
+        self._current_theme = None
+        self.current_title = None
+        self.is_initialized = False
+        self.pending_ui_update = False
+        self.title_settle_seconds = TITLE_SETTLE_SECONDS
+        # 改房名会把公告冲成系统默认文案：这里只负责**判定**并记下上一条，
+        # 写入归同一模块的 restore_notice（用户故事 #6）。
+        self.pending_notice_restore = False
+        self.restore_notice_content = None
 
     @property
     def handler(self):
@@ -238,11 +263,10 @@ class RoomProfileManager(Singleton):
     # 字段草稿：排队 -> 冷却 -> 写 UI
     # ------------------------------------------------------------------
     #
-    # 话题（#390）与公告（#391）两条都已经是完整纵切：`set_xxx` 排队、
-    # `update_xxx` 在冷却到期后经端口写 UI。房名与推荐分发那两条仍只排队，
-    # 写 UI 的那一步分别留在 `RoomNameManager` / `RecommendationManager`，
-    # #392-#393 再迁过来 —— 因此此刻房名与推荐各有一份旧的待写入状态，
-    # 那是刻意的过渡状态，旧那份随下线一起消失。
+    # 话题（#390）、公告（#391）、房名（#392）三条都已经是完整纵切：`set_xxx`
+    # 排队、`update_xxx` 在冷却到期后经端口写 UI。推荐分发那条不走草稿库（它是
+    # 一次性开关），点选项的真实 Appium 逻辑仍在 `RecommendationManager` 里，
+    # #393 把它迁过来。
 
     def get_topic_status(self) -> Dict:
         """`:topic` 无参数那一支的状态面。
@@ -290,6 +314,9 @@ class RoomProfileManager(Singleton):
         两条提前返回都不打日志 —— 这是被 `:topic` 的定时轮询反复走到的分支，
         按 CLAUDE.md 的日志铁律，刷屏属于缺陷而不是信息。
 
+        `skipped`（别人房间）**不是**一次失败的尝试：那个房间里一个点击都没发生，
+        因此既不清草稿也不推进冷却时钟，也不往公屏播报。与 `update_notice` 同。
+
         Returns:
             `{'skipped': 'no_pending_topic'}` / `{'skipped': 'cooldown'}` /
             写 UI 的结果 dict。
@@ -302,14 +329,18 @@ class RoomProfileManager(Singleton):
             return {'skipped': 'cooldown'}
 
         self.logger.info(f'Attempting to update topic to {topic}')
-
-        # 无论成功失败都推进冷却时钟，避免反复重试。话题这条路线的 UI 调用
-        # 可能抛异常，因此「先推进再调用」—— 与旧 TopicManager 同一个次序。
-        self.drafts.mark_attempted('topic')
-
         result = self._write_topic_in_drawer(topic)
 
-        if 'error' not in result:
+        if 'skipped' in result:
+            # 没写就别记账：别人房间里一个点击都没发生，草稿留着、预算留着，
+            # 等真的能写的那一轮再算。写成「跳过之后照样 mark_attempted」会让一条
+            # 用户明确要求的话题静静排队 5 分钟，还往公屏播报一条没发生过的变更。
+            return result
+
+        # UI 调用自己把异常收敛成 {'error': ...}，因此「先写再推进」。
+        self.drafts.mark_attempted('topic')
+
+        if 'success' in result:
             # 成功：清空排队的话题
             self.current_topic = topic
             self.drafts.clear('topic')
@@ -743,12 +774,13 @@ class RoomProfileManager(Singleton):
     def set_title(self, title: str, theme: Optional[str] = None) -> Dict:
         """安排房间标题变更；`theme` 给了就一起改主题。
 
-        返回文案与 `RoomNameManager.set_next_title` 逐字一致（config.yaml 的
-        标题响应模板是 `"{title}"`）。主题非法时直接返回主题的错误，且不排队标题
-        —— 与既有实现同一个次序。
+        与话题/公告两条纵切同形：**这里只排队，不碰 UI**。真正写 UI 是
+        `update_title` 的事 —— 冷却中的房名要等下一次心跳。返回文案与既有实现
+        逐字一致（config.yaml 的标题响应模板是 `"{title}"`）。主题非法时直接返回
+        主题的错误，且不排队标题 —— 与既有实现同一个次序。
         """
         if RoomState.in_guest_room():
-            self.logger.info("Skipping set_next_title in guest room")
+            self.logger.info("Skipping set_title in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
         if theme:
@@ -771,7 +803,8 @@ class RoomProfileManager(Singleton):
         """校验并记录一个待生效的主题。
 
         主题不单独占冷却预算：它只是房名草稿的前缀（ADR-0001 的共享冷却）。
-        校验规则与 `RoomNameManager.set_theme` 逐字一致。
+        校验规则与既有实现逐字一致，**包括长度判定在 strip 之前**这条既有的怪癖
+        —— `set_theme("  听歌  ")` 因为原始长度 6 > 2 而被拒，不在这里「顺手修正」。
         """
         if RoomState.in_guest_room():
             return {'error': '他人房间模式下不可修改房间主题'}
@@ -786,6 +819,9 @@ class RoomProfileManager(Singleton):
         old_theme = self.drafts.pending_theme()
         if old_theme != new_theme:
             self.drafts.set_pending_theme(new_theme)
+            # 与既有实现同一个次序：主题一变，UI 就得跟着重写整条房名。
+            self.current_theme = new_theme
+            self.pending_ui_update = True
             self.logger.info(f'Theme updated from {old_theme} to {new_theme}, pending UI update')
         else:
             self.logger.info(f'Theme unchanged: {new_theme}')
@@ -796,13 +832,405 @@ class RoomProfileManager(Singleton):
             'old_theme': old_theme,
         }
 
+    def verify_theme(self, expected_theme: str) -> Dict:
+        if self.current_theme == expected_theme:
+            self.logger.info(f'Theme verification passed: {expected_theme}')
+            return {'success': True, 'theme': self.current_theme}
+        self.logger.error(f'Theme verification failed: expected {expected_theme}, got {self.current_theme}')
+        return {'error': f'Theme verification failed: expected {expected_theme}, got {self.current_theme}'}
+
+    def reset_theme(self) -> Dict:
+        return self.set_theme(self.get_default_theme())
+
+    # ------------------------------------------------------------------
+    # 房名：状态面
+    # ------------------------------------------------------------------
+
+    @property
+    def current_theme(self):
+        """当前生效的主题。没从 UI 读到过之前是配置里的默认主题。"""
+        if self._current_theme is None:
+            self._current_theme = self.get_default_theme()
+        return self._current_theme
+
+    @current_theme.setter
+    def current_theme(self, value):
+        self._current_theme = value
+
+    def _soul_config(self) -> dict:
+        """`soul` 段配置。
+
+        优先问 handler 的配置快照（组合根用 `config["soul"]` 构造 handler），
+        拿不到再读一次全局配置 —— 与公告那两条判定读同一个形状。
+        """
+        cfg = getattr(self.handler, 'config', None)
+        if isinstance(cfg, dict) and cfg:
+            if isinstance(cfg.get('soul'), dict):
+                return cfg['soul']
+            return cfg
+        return ConfigLoader.load_config().get('soul', {})
+
+    def get_default_theme(self) -> str:
+        return self._soul_config().get('default_theme', DEFAULT_THEME_FALLBACK)
+
+    def get_default_title(self) -> str:
+        return self._soul_config().get('default_title', DEFAULT_TITLE_FALLBACK)
+
+    def get_current_theme(self):
+        return self.current_theme
+
+    def get_current_title(self):
+        return self.current_title
+
+    def get_next_title(self):
+        return self.drafts.pending('title')
+
+    def can_update_now(self):
+        return self.drafts.can_apply_now('title')
+
+    def get_remaining_cooldown_minutes(self):
+        return self.drafts.remaining_minutes('title')
+
+    def has_pending_ui_update(self):
+        return self.pending_ui_update
+
+    def clear_pending_ui_update(self):
+        self.pending_ui_update = False
+        self.logger.info('Cleared pending theme UI update flag')
+
+    def get_title_to_update(self):
+        """这一次要写进 UI 的标题（不含主题）。
+
+        有排队标题就用它；只有主题变了就用当前标题 —— 主题变更必须重写整条房名，
+        否则 Soul 侧的主题不会跟着变。两者都没有且没初始化过，才去 UI 读一次。
+        """
+        if self.drafts.pending('title'):
+            return self.drafts.pending('title')
+        if self.current_title:
+            return self.current_title
+        if not self.is_initialized:
+            return self._parse_title_from_ui()
+        return None
+
     def compose_room_title(self, title: Optional[str] = None) -> str:
-        """把草稿合成房间名 `{theme}｜{title}`（ADR-0001 不变量）。"""
-        return self.drafts.compose_room_title(title)
+        """把草稿合成房间名 `{theme}｜{title}`（ADR-0001 不变量）。
+
+        分隔符是全角 `｜`（U+FF5C）。用的是**写入时真正生效的主题**：排队的主题，
+        没排过就用当前主题（配置默认，或从 UI 读到的主题）—— 否则冷启动后第一次
+        改标题会写成 `None｜标题`。
+        """
+        if title is None:
+            title = self.drafts.pending('title')
+        return f"{self.drafts.pending_theme() or self.current_theme}｜{title or ''}"
 
     def parse_room_title(self, room_title_text: str):
-        """从 UI 读到的房间名里拆出 `(主题, 标题)`；没有分隔符则 None。"""
+        """从 UI 读到的房间名里拆出 `(主题, 标题)`；没有分隔符则 None。
+
+        分隔符是全角 `｜`（U+FF5C），`split(sep, 1)` 只切第一个 —— 与既有实现
+        逐字一致，因此标题里若还有分隔符，它会连同后半段一起留在标题里。
+        """
         return self.drafts.parse_room_title(room_title_text)
+
+    # ------------------------------------------------------------------
+    # 房名：从 UI 读回真实值
+    # ------------------------------------------------------------------
+
+    def initialize_from_ui(self) -> Dict:
+        """冷启动时从抽屉读一次真实房名，填出 `(主题, 标题)`。
+
+        有主题在排队时**不**用 UI 覆盖主题 —— 那会顶掉用户刚下的指令。
+        """
+        if self.is_initialized:
+            self.logger.info("Room name already initialized, skipping UI initialization")
+            return {'success': True, 'theme': self.current_theme, 'already_initialized': True}
+
+        room_title_text = self._read_room_title_text_from_ui()
+        if not room_title_text:
+            return {'error': 'Room title element or text not found'}
+
+        parsed = self.parse_room_title(room_title_text)
+        if parsed:
+            theme_part, title_part = parsed
+            if not self.pending_ui_update:
+                self.current_theme = theme_part
+            self.current_title = title_part
+            self.is_initialized = True
+            self.logger.info(f'Initialized room name from UI: theme={self.current_theme}, title={self.current_title}')
+            return {'success': True, 'theme': self.current_theme, 'title': self.current_title, 'initialized': True}
+
+        self.current_title = room_title_text
+        self.is_initialized = True
+        self.logger.info(f'Initialized title from UI (no theme): {room_title_text}')
+        return {'success': True, 'title': room_title_text, 'initialized': True}
+
+    def _parse_title_from_ui(self):
+        """没初始化过时的一次兜底读。半角 `|` 也认 —— 既有实现如此。"""
+        room_title_text = self._read_room_title_text_from_ui()
+        if not room_title_text:
+            return None
+
+        self.logger.info(f"Found room title in UI: {room_title_text}")
+        sep = '｜' if '｜' in room_title_text else ('|' if '|' in room_title_text else None)
+        if sep:
+            parts = room_title_text.split(sep, 1)
+            if len(parts) == 2:
+                theme_part = parts[0].strip()
+                if not self.pending_ui_update:
+                    self.current_theme = theme_part
+                self.current_title = parts[1].strip()
+                self.is_initialized = True
+                self.logger.info(f"Initialized room name from UI: theme={self.current_theme}, title={self.current_title}")
+                return self.current_title
+
+        self.current_title = room_title_text
+        self.is_initialized = True
+        self.logger.info(f"Initialized title from UI (no theme): {room_title_text}")
+        return room_title_text
+
+    def _read_room_title_text_from_ui(self) -> Optional[str]:
+        """读一次屏幕上的房名。
+
+        抽屉端口只建模物理动作，不承载「读文本」；这一次读只用于**判定**
+        （冷启动填充状态 / 审核是否把房名吃了），因此走 handler 的
+        element_finder —— 与公告那条纵切的形状一致。
+        """
+        finder = getattr(self.handler, 'element_finder', None)
+        if finder is None:
+            return None
+        try:
+            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
+            dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
+            if dialog_element:
+                text = finder.get_element_text(dialog_element)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+
+            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
+            room_title_element = finder.try_find_element('chat_room_title', log=False)
+            if not room_title_element:
+                return None
+            text = finder.get_element_text(room_title_element)
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+            return None
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # 房名：心跳写 UI
+    # ------------------------------------------------------------------
+
+    def update_title(self) -> Dict:
+        """心跳：冷却到期且有排队房名时，把它写进房间信息抽屉。
+
+        形状与 `update_topic` / `update_notice` 一致：**排队在 `set_title`，
+        写 UI 在这里**。提前返回都不打日志 —— 这些分支被 `:title` / `:theme`
+        的定时轮询反复走到，按日志铁律刷屏属于缺陷。
+
+        `skipped`（别人房间）**不是**一次失败的尝试：那个房间里一个点击都没发生，
+        因此既不清草稿也不推进冷却时钟。写成「跳过之后照样记账」会让一条用户明确
+        要求的房名静静排队 10 分钟。
+
+        Returns:
+            `{'skipped': True, 'reason': ...}`（没活可干 / 别人房间）、
+            `{'cooldown': True, 'remaining_minutes': n}`、
+            `{'ui_updated': True, 'current_title': ...}` 或 `{'error': ...}`。
+            键名与既有实现逐字一致，`ThemeCommand` 的回复拼装因此不变。
+        """
+        if RoomState.in_guest_room():
+            return {'skipped': True, 'reason': 'guest_room'}
+
+        # 没有活可干就不要为了「发现没有活」去读 UI：监控循环每周期都调本方法。
+        if not self.drafts.has_pending('title') and not self.pending_ui_update:
+            return {'skipped': True, 'reason': 'no pending update'}
+
+        if not self.can_update_now():
+            return {'cooldown': True, 'remaining_minutes': self.get_remaining_cooldown_minutes()}
+
+        title_to_update = self.get_title_to_update()
+        if not title_to_update:
+            return {'skipped': True, 'reason': 'no title to update'}
+
+        result = self._write_title_in_drawer(title_to_update)
+        if 'skipped' in result:
+            # 没写就别记账：草稿留着、预算留着，等真的能写的那一轮再算。
+            return result
+
+        self.drafts.mark_attempted('title')
+
+        if 'error' in result:
+            self.logger.warning(
+                f'Failed to update title: {result["error"]}. '
+                f'Will retry in {self.drafts.cooldown_minutes("title")} minute(s).'
+            )
+            return {'error': result['error']}
+
+        self.clear_pending_ui_update()
+        return {'ui_updated': True, 'current_title': self.current_title}
+
+    def _write_title_in_drawer(self, title: str) -> Dict:
+        """把 `{theme}｜{title}` 写进抽屉：入口 -> 输入 -> 提交 -> 判结果。
+
+        整段复用端口已有的原语（点元素 / 等任意元素 / 写输入框），没有为房名
+        增加任何新原语。与话题那条纵切一样，收尾不再盲按 `press_back()`：抽屉
+        本身的开与关由 `with_window_open` 拥有。
+
+        `skipped`（别人房间）**不是**写成功了 —— 调用方据此不记账。
+        """
+        try:
+            if RoomState.in_guest_room():
+                self.logger.info("Skipping room title UI update in guest room")
+                return {'skipped': True, 'reason': 'guest_room'}
+
+            with self.with_window_open(error_message='Failed to find room title') as open_error:
+                if open_error:
+                    return open_error
+
+                # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑房名。
+                self.sync_while_open()
+
+                # 房名变更会把公告冲掉：写之前先判定并记下上一条。
+                notice_check_result = self._detect_notice_reset()
+                if 'error' in notice_check_result:
+                    self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
+                elif 'detected' in notice_check_result:
+                    self.logger.info("System notice reset detected, will restore after title update")
+
+                driver = self._require_driver()
+
+                if not driver.click_element(TITLE_EDIT_ENTRY_KEY):
+                    return {'error': 'Failed to find edit title entry'}
+
+                room_name = self.compose_room_title(title)
+                self.logger.info(f"Updating room title: {room_name}")
+
+                if not driver.replace_text(TITLE_INPUT_KEY, room_name):
+                    return {'error': 'Failed to find title input'}
+
+                if not driver.click_element(TITLE_CONFIRM_KEY):
+                    return {'error': 'Failed to find confirm button'}
+
+                # 等待提交落地
+                if self.title_settle_seconds:
+                    time.sleep(self.title_settle_seconds)
+
+                probe = driver.wait_for_any(TITLE_SUBMIT_PROBE_KEYS)
+
+                if probe == TITLE_EDIT_ENTRY_KEY:
+                    # 成功：编辑层收起来了，抽屉回到带铅笔的那一层。
+                    self.current_title = self.drafts.pending('title') or title
+                    self.logger.info(f'Updated current title to {self.current_title}')
+                    # 先清掉刚写成功的那条，再按需排队自愈用的默认标题。
+                    self.drafts.clear('title')
+                    self._recover_from_moderation_loss()
+                    self._restore_notice_if_needed()
+                    return {'success': True}
+
+                if probe == TITLE_CONFIRM_KEY:
+                    # 提交被拒（改得太频繁）：编辑层还开着，先把它收起，不能留在屏幕上。
+                    self.logger.warning('Update title too frequently, hide edit title dialog')
+                    driver.click_element(TITLE_CLOSE_KEY)
+                    self._restore_notice_if_needed()
+                    self._clear_notice_restore()
+                    return {'error': 'Update failed - still in cooldown period'}
+
+                self.logger.warning(f'Unknown key: {probe}')
+                self._clear_notice_restore()
+                return {'error': 'Failed to update title, unknown error'}
+
+        except Exception:
+            self.logger.error(f"Error in title update: {traceback.format_exc()}")
+            self._clear_notice_restore()
+            return {'error': f'Failed to update title: {title}'}
+
+    def _recover_from_moderation_loss(self) -> None:
+        """写完之后房名里没有分隔符 = 审核没通过：排一次默认标题重设。"""
+        room_title_text = self._read_room_title_text_from_ui()
+        if room_title_text and '｜' not in room_title_text:
+            default_title = self.get_default_title()
+            if not (self.drafts.pending('title') == default_title and not self.can_update_now()):
+                self.drafts.set_pending('title', default_title)
+                self.logger.info(
+                    f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 {default_title}'
+                )
+
+    # ------------------------------------------------------------------
+    # 房名把公告冲掉之后的判定与恢复（用户故事 #6）
+    # ------------------------------------------------------------------
+
+    def _detect_notice_reset(self) -> Dict:
+        """判定当前公告是不是被系统重置成了默认文案。
+
+        判定只发生在「刚要改房名」这一刻 —— 这件事只有房名流程知道。恢复的那一写
+        归同一模块的 `restore_notice`：抽屉是本流程开的，能写就当场写。
+        """
+        if RoomState.in_guest_room():
+            return {'skipped': 'guest_room'}
+
+        try:
+            current_notice = self._read_notice_text_from_ui()
+            if not current_notice:
+                return {'skipped': 'Current notice is empty'}
+
+            self.logger.info(f"Current room notice: {current_notice}")
+
+            system_notices = self.get_system_default_notices()
+            if not system_notices:
+                return {'skipped': 'No system notices configured'}
+
+            for system_notice in system_notices:
+                if system_notice in current_notice:
+                    default_notice = self.get_default_notice()
+                    self.pending_notice_restore = True
+                    self.restore_notice_content = default_notice
+                    return {
+                        'detected': True,
+                        'found_notice': system_notice,
+                        'will_restore_to': default_notice
+                    }
+
+            self._clear_notice_restore()
+            return {'status': 'No system reset detected'}
+
+        except Exception as e:
+            self.logger.error(f"Error checking notice reset: {str(e)}")
+            return {'error': f'Error in notice check: {str(e)}'}
+
+    def _clear_notice_restore(self) -> None:
+        self.pending_notice_restore = False
+        self.restore_notice_content = None
+
+    def _restore_notice_if_needed(self) -> Dict:
+        """房名写入结束后，把被系统冲掉的公告补回去。
+
+        判定在 `_detect_notice_reset`，写入归公告的所有者 `restore_notice` ——
+        能写就当场写（抽屉是外层开的），冷却中就排队，等下一次心跳由 `update_notice`
+        写。恢复失败只记日志，不把已经写成功的房名变成一次失败。
+        """
+        if not self.pending_notice_restore or not self.restore_notice_content:
+            return {'skipped': 'No pending notice restore'}
+
+        restore_content = self.restore_notice_content
+        try:
+            self.logger.info(f"Restoring notice to: {restore_content}")
+            restore_result = self.restore_notice(restore_content)
+
+            if 'cooldown' in restore_result:
+                return {'cooldown': True, 'remaining_minutes': restore_result.get('remaining_minutes', 0)}
+            if 'error' in restore_result:
+                self.logger.error(f"Failed to restore notice: {restore_result['error']}")
+                return {'error': f'Failed to restore notice: {restore_result["error"]}'}
+            if 'success' in restore_result:
+                return {'success': f'Notice restored to: {restore_content}'}
+            return restore_result
+
+        except Exception as e:
+            # 恢复失败不许把已经写成功的房名变成一次失败 —— 与既有实现同一个取舍。
+            self.logger.error(f"Error restoring notice: {str(e)}")
+            return {'error': f'Error in notice restore: {str(e)}'}
+
+        finally:
+            self._clear_notice_restore()
 
     def set_recommendation(self, enabled: bool) -> Dict:
         """在抽屉里切换推荐分发。
@@ -863,8 +1291,8 @@ class RoomProfileManager(Singleton):
 
         推荐分发状态与派对类型必须在任何字段编辑之前同步：编辑层（标题/话题/
         公告）会改变抽屉内容，之后再读这两个状态已经不反映进入窗口时的真实值。
-        这个顺序原先只写在 `RoomNameManager._update_title_ui` 的方法体里，
-        现在由本模块拥有，`audit_and_repair()` 复用同一步骤。
+        这个顺序原先只写在旧房名流程的方法体里，现在由本模块拥有，
+        `audit_and_repair()` 复用同一步骤。
 
         Args:
             wait: 是否等推荐状态字段渲染出来。被动路径（标题更新时窗口已开着）
@@ -905,11 +1333,10 @@ class RoomProfileManager(Singleton):
             # 窗口是这里刚打开的，字段可能还没渲染 —— 全量审计等它出现。
             results.update(self.sync_while_open(wait=True))
 
-            # 3. 房间标题/主题检查与同步（懒加载：避免与 RoomNameManager 的顶层模块循环依赖）
+            # 3. 房间标题/主题检查与同步：房名也是本模块的字段了（#392），
+            #    在同一次抽屉会话里读回真实值。
             try:
-                from ushareiplay.managers.room_name_manager import RoomNameManager
-                if RoomNameManager.is_initialized() and getattr(RoomNameManager.instance(), 'handler', None) is not None:
-                    results['room_name'] = RoomNameManager.instance().initialize_from_ui()
+                results['room_name'] = self.initialize_from_ui()
             except Exception as e:
                 self.logger.warning(f"Auditor: error in room name sync: {e}")
 

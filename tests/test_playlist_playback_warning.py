@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from ushareiplay.commands.playlist import PlaylistCommand
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.room_name_manager import RoomNameManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 
 
@@ -72,17 +71,13 @@ class _MusicHandler:
         return self
 
 
-class _RoomNameManager:
-    def __init__(self):
-        self.titles = []
-
-    def set_next_title(self, title):
-        self.titles.append(title)
-
-
 class _RoomProfileManager:
     def __init__(self):
+        self.titles = []
         self.topics = []
+
+    def set_title(self, title):
+        self.titles.append(title)
 
     def set_topic(self, topic):
         self.topics.append(topic)
@@ -96,11 +91,9 @@ class _InfoManager:
 def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     music_handler = _MusicHandler()
     music_manager = _MusicManager()
-    title_manager = _RoomNameManager()
     room_profile = _RoomProfileManager()
     info_manager = _InfoManager()
     monkeypatch.setattr(MusicManager, "instance", lambda: music_manager)
-    monkeypatch.setattr(RoomNameManager, "instance", lambda: title_manager)
     monkeypatch.setattr(RoomProfileManager, "instance", lambda: room_profile)
     monkeypatch.setattr(InfoManager, "instance", lambda: info_manager)
 
@@ -118,7 +111,7 @@ def test_playlist_info_error_warns_and_keeps_setting_room_context(monkeypatch):
     assert result["playlist"] == "学习|英语"
     assert music_handler.play_button.clicks == 1
     assert music_manager.list_mode == "playlist"
-    assert title_manager.titles == ["学习"]
+    assert room_profile.titles == ["学习"], "房名走房间档案这一个所有者"
     assert room_profile.topics == ["英语"]
     assert info_manager.current_playlist_name == "学习|英语"
     assert any(
