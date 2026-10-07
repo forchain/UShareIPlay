@@ -67,7 +67,7 @@ class MessageContentEvent(BaseEvent):
 
             # 如果有命令消息，切到 Soul 前台等 runtime 队列执行；否则只做常规更新
             if has_command_message:
-                await message_manager.process_new_messages(delta.new_lines)
+                await message_manager.process_new_messages()
             else:
                 await self._process_update_logic()
 

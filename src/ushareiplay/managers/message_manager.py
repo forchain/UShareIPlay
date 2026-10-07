@@ -444,15 +444,14 @@ class MessageManager(Singleton):
         )
         return {message.content for message in commands}
 
-    async def process_new_messages(self, lines=None):
+    async def process_new_messages(self):
         """扫描到新命令时，把 Soul 客户端带到前台，等 runtime 队列执行。
 
-        这里**不执行命令**：`dispatch_intake` 已经把命令消息入队，执行由
-        `RuntimeQueueDrainer` 在下一圈监控循环统一完成（#398）。本次扫描仍要
-        切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个界面上操作。
-
-        Args:
-            lines: 本次扫描的行，已由 `dispatch_intake` 分类并入队，此处不再读。
+        这里**不执行命令**，也不接收聊天行：`dispatch_intake` 已经完成分类并
+        把命令消息入队（#396 接缝 / #399 收口），执行由 `RuntimeQueueDrainer`
+        在下一圈监控循环统一完成。原始行不再跨过命令派发接缝（#399）。
+        本次扫描仍要切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个
+        界面上操作。
         """
         if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")

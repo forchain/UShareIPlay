@@ -18,7 +18,6 @@ from ushareiplay.core.chat_intake import (
     classify_chat_line,
     expand_queue_text,
 )
-from ushareiplay.managers import command_manager as command_manager_module
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
@@ -223,10 +222,14 @@ def _routing_manager(monkeypatch):
 
 
 def test_intake_seam_does_not_classify_raw_lines_again(monkeypatch):
-    """The seam consumes the batch; only the legacy path still re-classifies.
+    """The seam consumes the batch as-is: no re-classification, no rebuild.
 
-    The counter is asserted live in both directions so this cannot pass by
-    having patched the wrong reference.
+    Before #399 this counted calls to `CommandManager`'s own reference to
+    `classify_chat_line`. That reference is gone now — `CommandManager` no
+    longer imports the classification surface at all, which
+    `test_command_prefix_routing_characterization.py` asserts directly. What is
+    left to pin here is that the very objects intake built are the ones executed,
+    so nothing between the seam and execution can rewrite the metadata.
     """
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
@@ -239,26 +242,13 @@ def test_intake_seam_does_not_classify_raw_lines_again(monkeypatch):
 
     monkeypatch.setattr(manager, "execute_command_messages", _fake_execute_command_messages)
 
-    calls = []
-    real_classify = command_manager_module.classify_chat_line
-
-    def _counting_classify(raw, room_owner=None):
-        calls.append(raw)
-        return real_classify(raw, room_owner=room_owner)
-
-    monkeypatch.setattr(command_manager_module, "classify_chat_line", _counting_classify)
-
-    batch = build_message_batch([real_classify("souler[Bob]说：/play 123")])
+    batch = build_message_batch([classify_chat_line("souler[Bob]说：/play 123")])
     _run(manager.execute_intake_batch(batch))
 
-    assert calls == []
-    assert [m.content for m in captured] == ["/play 123"]
+    assert len(captured) == 1
+    assert captured[0] is batch.commands[0]  # same object, not a rebuild
+    assert captured[0].content == "/play 123"
     assert captured[0].silent is True
-
-    # The legacy raw-row path is still the one that classifies per row.
-    _run(manager.execute_chat_scan(["souler[Bob]说：/play 123"]))
-
-    assert calls == ["souler[Bob]说：/play 123"]
 
 
 def test_intake_seam_routes_a_silent_and_a_private_command(monkeypatch):
@@ -289,42 +279,40 @@ def test_intake_seam_routes_a_silent_and_a_private_command(monkeypatch):
     ]
 
 
-def test_intake_seam_matches_the_legacy_chat_scan_routing(monkeypatch):
-    """Regression guard: the batch must route exactly as the raw-row path does today."""
-    lines = [
-        "souler[Bob]说：/play 123",
-        "souler[Alice]说：$play 456",
-    ]
+def test_intake_seam_routes_every_prefix_family_as_the_legacy_scan_did(monkeypatch):
+    """Golden routing for the seam, captured from the raw-row path before #399.
 
-    legacy_manager = _routing_manager(monkeypatch)
-    seam_manager = _routing_manager(monkeypatch)
+    This used to compare the batch against `CommandManager.execute_chat_scan`
+    live, so it could only prove the two agreed while the legacy path existed.
+    #399 deleted that path; the expected routing is now pinned outright, using
+    the values the legacy path produced on the pre-deletion tree. The full table
+    — every prefix family, plus quoted and edge-case variants — lives in
+    `test_command_prefix_routing_characterization.py`; this keeps the guard that
+    the seam itself routes both a silent and a private command correctly.
+    """
+    manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
     monkeypatch.setattr(
         "ushareiplay.managers.command_manager.MessageDispatch.instance",
         lambda: dispatch,
     )
 
-    _run(legacy_manager.execute_chat_scan(lines))
-    legacy_routing = (dispatch.screen_messages, dispatch.command_outputs)
-
-    dispatch.screen_messages.clear()
-    dispatch.command_outputs.clear()
-
+    lines = [
+        "souler[Bob]说：/play 123",
+        "souler[Alice]说：$play 456",
+    ]
     batch = build_message_batch([classify_chat_line(line) for line in lines])
-    _run(seam_manager.execute_intake_batch(batch))
-    seam_routing = (dispatch.screen_messages, dispatch.command_outputs)
+    processed = _run(manager.execute_intake_batch(batch))
 
-    assert legacy_routing == (
-        [
-            ("play ... @Bob", True),
-            ("play ... @Alice", False),
-        ],
-        [
-            ("Bob", "playing 123", False, True),
-            ("Alice", "playing 456", True, False),
-        ],
-    )
-    assert seam_routing == legacy_routing
+    assert processed == 2
+    assert dispatch.screen_messages == [
+        ("play ... @Bob", True),
+        ("play ... @Alice", False),
+    ]
+    assert dispatch.command_outputs == [
+        ("Bob", "playing 123", False, True),
+        ("Alice", "playing 456", True, False),
+    ]
 
 
 def test_intake_seam_ignores_a_batch_without_commands():
