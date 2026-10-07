@@ -140,8 +140,10 @@ class RoomProfileManager(Singleton):
     def adopt_handler(self, handler, drawer_driver=None) -> None:
         """把 handler（可选地连同它的端口）接过来。
 
-        只给过渡期的 `RoomInfoWindow` 门面用：既有的调用点与测试把 handler
-        注入到那个窗口上，而真实实现在本模块里。#394 删掉门面后本方法一并删除。
+        正常装配由组合根的 `initialize(handler=..., drawer_driver=...)` 一次做完，
+        运行时不需要再走这条路。它保留下来是给测试用的：conftest 的单例 fixture
+        无参创建本单例，测试要换一套 handler 与端口时从这里接，不必去碰私有的
+        `_handler` / `_drawer_driver`。
         """
         if handler is not None:
             self._handler = handler

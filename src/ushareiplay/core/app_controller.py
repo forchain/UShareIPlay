@@ -36,7 +36,6 @@ from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
 class AppController(Singleton):
@@ -498,9 +497,8 @@ class AppController(Singleton):
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
             PlaylistAdoption.initialize()
-            RoomInfoWindow.initialize(self.soul_handler)
-            # 房间档案的真正所有者：抽屉会话与四类字段（含推荐分发、派对类型）
-            # 全在它这里。剩下的只有过渡门面 RoomInfoWindow，#394 删掉。
+            # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
+            # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(
                 self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
             )

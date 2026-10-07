@@ -373,7 +373,7 @@ async def test_guest_room_blocks_recommendation_sync():
 async def test_guest_room_blocks_events_and_window_audit():
     from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
     from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -386,16 +386,16 @@ async def test_guest_room_blocks_events_and_window_audit():
     res = await evt.handle("chat_room_title", fake_wrapper)
     assert res is False
 
-    # RoomInfoWindow audit in guest room
-    window = RoomInfoWindow.instance()
-    window._handler = handler
-    window._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    # 房间档案的抽屉审计在客房里
+    profile = RoomProfileManager.instance()
+    profile.adopt_handler(handler)
+    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
-    res = window.audit_and_repair()
+    res = profile.audit_and_repair()
     assert res.get("skipped") is True
     assert res.get("reason") == "guest_room"
 
-    res = window.process_pending_retry()
+    res = profile.process_pending_retry()
     assert res.get("skipped") == "guest_room"
 
 
