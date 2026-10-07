@@ -1,10 +1,11 @@
-"""接线层收口（票 #401）：组合根只构造一个座位子系统。
+"""接线层收口（票 #401）与旧单例退役（票 #402）：组合根只构造一个座位子系统。
 
 合并前 `AppController._init_handlers` 逐个 initialize 四个座位旧单例，再交给
-`SeatManager` 接线，观测器则挂在独立的 `SeatUIManager` 上。本文件钉住三件事：
+`SeatManager` 接线，观测器则挂在独立的面板单例上。本文件钉住三件事：
 
-1. **接线层只构造一个座位对象** —— 真实实现只有 `SeatSubsystem` 一处（票 #400）；
-2. **观测器的面板委派来自子系统** —— 不再依赖独立 `SeatUIManager`，且
+1. **接线层只构造一个座位对象** —— 真实实现只有 `SeatSubsystem` 一处（票 #400），
+   四个旧单例模块已从包里删除（票 #402）；
+2. **观测器的面板委派来自子系统** —— 不再依赖独立的面板单例，且
    `bind_handler` 仍然换得到驱动（ADR-0009 第 5 条要求的「同步更新观测器及其
    UI 委派」）；
 3. **真实启动路径跑得通** —— 真的跑一遍 `AppController._init_handlers()` 再真的
@@ -14,6 +15,7 @@
 动作时序的细粒度替身，而这里要的是**接线层本身真的跑一遍**，两者没法共用一套台子。
 """
 
+import importlib
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,20 +28,11 @@ from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.reservation import ReservationManager
-from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
-from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.models.message_info import MessageInfo
 
-# 合并前由接线层逐个 initialize 的四个旧单例（票 #402 连同它们一起退役）。
-LEGACY_SEAT_SINGLETONS = (
-    SeatUIManager,
-    SeatCheckManager,
-    ReservationManager,
-    SeatingManager,
-)
+# 合并前由接线层逐个 initialize 的四个旧单例模块（票 #402 连同它们一起退役）。
+RETIRED_SEAT_MODULES = ("seat_ui", "seat_check", "seating", "reservation")
 
 # 接线层上挂过、现在必须消失的四个属性。
 RETIRED_CONTROLLER_ATTRS = (
@@ -82,11 +75,18 @@ def started_controller(initialized_test_singletons):
 # 1. 接线层只构造一个座位对象
 # ---------------------------------------------------------------------------
 def test_composition_root_initializes_only_the_seat_subsystem(started_controller):
-    """四个旧单例不再由组合根构造（票 #401 的收口点）。"""
-    for legacy in LEGACY_SEAT_SINGLETONS:
-        assert not legacy.is_initialized(), (
-            f"{legacy.__name__} 仍被接线层 initialize，真实实现应只有 SeatSubsystem 一处"
+    """四个旧单例不再是组合根的一部分（票 #401 收口，票 #402 删除）。
+
+    #402 之前这里断言「旧单例没被 initialize」；现在它们连模块都不存在了 ——
+    死代码必须真的删掉，而不是留一份不再初始化的空壳。
+    """
+    for module_name in RETIRED_SEAT_MODULES:
+        assert not (Path(__file__).resolve().parents[1]
+                    / "src/ushareiplay/managers/seat_manager" / f"{module_name}.py").exists(), (
+            f"seat_manager/{module_name}.py 仍在，票 #402 的死单例没有删干净"
         )
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(f"ushareiplay.managers.seat_manager.{module_name}")
 
     assert started_controller.seat_manager is SeatManager.instance()
     assert started_controller.seat_manager.subsystem is not None
@@ -104,13 +104,15 @@ def test_retired_seat_attributes_are_gone_from_the_controller(started_controller
 # 2. 观测器的面板委派来自子系统
 # ---------------------------------------------------------------------------
 def test_observation_manager_receives_the_subsystem_panel(started_controller):
-    """观测器的面板委派就是子系统自己的面板入口，不是独立 SeatUIManager。"""
+    """观测器的面板委派就是子系统自己的面板入口，不是别的面板对象。"""
     subsystem = started_controller.seat_manager.subsystem
     panel_delegate = started_controller.seat_observation_manager.seat_ui
 
     assert panel_delegate is not None, "面板委派解析不到，重扫会 AttributeError"
     assert panel_delegate is subsystem.panel
-    assert not isinstance(panel_delegate, SeatUIManager)
+    assert type(panel_delegate).__name__ == "_DriverSeatPanel", (
+        "面板委派必须是子系统的驱动适配层，不是任何一个别的面板对象"
+    )
 
     # 面板动作最终落在唯一那份 SeatPanelDriver 上（#395 的唯一实现）。
     assert isinstance(subsystem.panel_driver, SeatPanelDriver)

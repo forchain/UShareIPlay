@@ -282,7 +282,7 @@ class FakeController:
 
 
 class FakeSeatUI:
-    """SeatUIManager 的展开/收起契约。"""
+    """座位面板协作者的展开/收起契约（`SeatSubsystem.panel` 的注入替身）。"""
 
     def __init__(self, desks=None):
         self.desks = desks

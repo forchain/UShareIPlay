@@ -9,7 +9,7 @@ from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.runtime_context import EventRuntimeContext
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
 from ushareiplay.managers.seat_manager import subsystem as seat_check_module
-from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 
 class DummyHandler:
@@ -78,8 +78,7 @@ def _desk():
 
 
 def _manager(handler):
-    SeatCheckManager.reset_instance()
-    return SeatCheckManager.initialize(handler, DummySeatUI(handler))
+    return SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
 
 
 def test_check_user_specific_seat_stops_when_expansion_shows_four_desks():
@@ -115,7 +114,7 @@ class _FakeDom:
     ``press_back`` dismisses the card, so every element handle previously taken
     out of it goes stale — the same way Android drops the popup's views.
 
-    ``back_sources`` 记录每一次 back 是谁按的：SeatCheckManager 自己点开的名片由
+    ``back_sources`` 记录每一次 back 是谁按的：子系统自己点开的名片由
     SeatPanelDriver 授权关闭，而 EventManager 的兜底 back 必须一次都不发生。
     """
 
@@ -168,7 +167,7 @@ class _CardHandler(DummyHandler):
         if source == "fallback":
             self.dom.fallback_pressed_back = True
 
-    # -- element_finder surface used by SeatCheckManager --------------------
+    # -- element_finder surface used by SeatSubsystem ----------------------
     def find_child_element(self, parent, key, log_failure=True):
         if key == "left_seat":
             return _CardElement(self.dom, "seat_avatar")

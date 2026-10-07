@@ -1,10 +1,10 @@
-"""座位子系统合并（票 #400）后的结构与对外契约。
+"""座位子系统合并（票 #400 / #402）后的结构与对外契约。
 
 合并前 `SeatManager` 是一个纯转发门面：八个公开方法逐个转给四个互相独立的单例，
-面板展开/收起/滚动在 `SeatUIManager` 与 `SeatPanelDriver` 里各有一份近重复实现。
+面板展开/收起/滚动在面板单例与 `SeatPanelDriver` 里各有一份近重复实现。
 本文件钉住两件事：
 
-1. **结构** —— 真实实现只有一处（`SeatSubsystem`），四个旧单例退化成转发件，
+1. **结构** —— 真实实现只有一处（`SeatSubsystem`），四个旧单例由 #402 删除，
    面板动作只有一个实现；
 2. **契约没动** —— 八个公开方法的返回形状、客房守卫、UI 独占锁语义与合并前一致。
 
@@ -14,7 +14,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -27,11 +27,7 @@ from ushareiplay.managers.seat_manager.guard import (
     GUEST_ROOM_ENTRY_CHECK_RESULT,
     GUEST_ROOM_ERROR_RESULT,
 )
-from ushareiplay.managers.seat_manager.reservation import ReservationManager
-from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
-from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 PUBLIC_SEAT_INTERFACES = (
@@ -45,13 +41,9 @@ PUBLIC_SEAT_INTERFACES = (
     "prepare_for_chat_scan",
 )
 
-LEGACY_SINGLETONS = (
-    SeatUIManager,
-    SeatCheckManager,
-    ReservationManager,
-    SeatingManager,
-    SeatManager,
-)
+# #402 之后座位子系统只剩门面这一个单例；`SeatObservationManager` 是另一个单例，
+# 由它自己的测试负责。
+SEAT_SINGLETONS = (SeatManager,)
 
 
 # ---------------------------------------------------------------------------
@@ -83,10 +75,10 @@ class _RecordingPanel:
 
 @pytest.fixture(autouse=True)
 def _reset_seat_singletons():
-    for singleton in LEGACY_SINGLETONS:
+    for singleton in SEAT_SINGLETONS:
         singleton.reset_instance()
     yield
-    for singleton in LEGACY_SINGLETONS:
+    for singleton in SEAT_SINGLETONS:
         singleton.reset_instance()
 
 
@@ -102,19 +94,6 @@ def _guest_room():
     RoomState.reset_instance()
 
 
-def _bind(handler=None):
-    """按接线层的顺序造出四个旧单例，再交给 SeatManager 接线。"""
-    handler = handler if handler is not None else MagicMock()
-    seat_ui = SeatUIManager.initialize(handler)
-    seat_check = SeatCheckManager.initialize(handler, seat_ui)
-    reservation = ReservationManager.initialize(handler, seat_ui, seat_check)
-    seating = SeatingManager.initialize(handler, seat_ui)
-    manager = SeatManager.initialize(
-        handler, seat_ui, seat_check, reservation, seating
-    )
-    return manager, seat_ui, seat_check, reservation, seating
-
-
 def _manager_with_panel(panel):
     SeatManager.reset_instance()
     return SeatManager.initialize(seat_ui=panel)
@@ -125,7 +104,7 @@ def _manager_with_panel(panel):
 # ---------------------------------------------------------------------------
 def test_seat_manager_owns_a_single_seat_subsystem():
     """八个公开接口背后是同一个子系统的方法，不是四个互相独立的单例。"""
-    manager, *_ = _bind()
+    manager = SeatManager.initialize()
     subsystem = manager.subsystem
 
     assert isinstance(subsystem, SeatSubsystem)
@@ -150,60 +129,61 @@ def test_seat_manager_owns_a_single_seat_subsystem():
     assert hasattr(subsystem, "seat_off_owner")
 
 
-def test_legacy_singletons_are_delegates_onto_the_managers_subsystem():
-    """旧单例不再是四个独立实现，而是接到同一个子系统上的转发件。"""
-    manager, seat_ui, seat_check, reservation, seating = _bind()
+def test_the_subsystem_owns_the_reservation_and_seating_flows():
+    """预约/占座两个流程由子系统自己实现，外面没有第二份实现。"""
+    manager = SeatManager.initialize()
     subsystem = manager.subsystem
 
-    assert seat_ui.subsystem is subsystem
-    assert seat_check.subsystem is subsystem
-    assert reservation.subsystem is subsystem
-    assert seating.subsystem is subsystem
+    assert subsystem.reserve_seat.__name__ == "reserve_seat"
+    assert subsystem.sit_at_specific_seat.__name__ == "sit_at_specific_seat"
+    assert subsystem.check_seats_on_entry.__name__ == "check_seats_on_entry"
 
-    # 预约/占座两个流程不再经过中间单例：预留与占座都由子系统自己实现。
-    assert reservation.reserve_seat.__name__ == "reserve_seat"
-    assert subsystem.panel is not seat_ui, "面板协作者不能回指接线层，否则会自调用"
+    # 注入的面板协作者就是面板入口本身：不存在第二个「实现」对象回指子系统，
+    # 也就不会自调用（#402 之前这里的旧单例句柄正是那个回指风险）。
+    panel = _RecordingPanel()
+    assert SeatSubsystem(seat_ui=panel).panel is panel
 
 
-def test_legacy_singletons_still_expose_their_own_collaborators():
-    manager, seat_ui, seat_check, reservation, seating = _bind()
+def test_every_injected_collaborator_lands_on_one_subsystem():
+    """四个注入点全部落到同一个子系统上（#402 之后没有第二个实现对象）。"""
+    panel = _RecordingPanel()
+    manager = SeatManager.initialize(
+        seat_ui=panel,
+        seat_check=SimpleNamespace(),
+        reservation=SimpleNamespace(),
+        seating=SimpleNamespace(),
+    )
 
-    assert manager._ui is seat_ui
-    assert manager._check is seat_check
-    assert manager._reservation is reservation
-    assert manager._seating is seating
-    assert seat_check.seat_ui is seat_ui
-    assert reservation.seat_ui is seat_ui
-    assert reservation.seat_check is seat_check
-    assert seating.seat_ui is seat_ui
+    assert isinstance(manager.subsystem, SeatSubsystem)
+    # 面板只有一个入口：注入的 seat_ui 就是子系统暴露的 panel。
+    assert manager.subsystem.panel is panel
 
 
 def test_seat_panel_actions_have_a_single_implementation():
-    """#395 之后 seat_ui.py 还留着一份近重复的面板逻辑，这里必须退役。
+    """面板动作只有一个实现：SeatPanelDriver。
 
-    面板的唯一实现在 SeatPanelDriver 上：四个旧单例的展开/收起/滚动都转发过去。
+    #402 删掉了那份近重复的面板逻辑，座位子系统不再可能自带展开/收起/滚动。
+    这里钉住剩下的一半不变式：面板入口始终由 `panel_driver` 驱动，且反复取用是
+    同一个对象（缓存），不是每次新建一份适配层。
     """
-    for legacy in (SeatUIManager, SeatCheckManager, SeatingManager, ReservationManager):
-        source = getattr(legacy, "collapse_seats", None) or getattr(
-            legacy, "expand_and_find_desks", None
-        )
-        assert source is None or source.__module__ == legacy.__module__, (
-            f"{legacy.__name__} 自己实现面板动作，面板逻辑没有收敛到 SeatSubsystem"
-        )
+    manager = SeatManager.initialize()
+    subsystem = manager.subsystem
 
-    manager, seat_ui, *_ = _bind()
-    assert seat_ui.subsystem.panel.driver is manager.subsystem.panel.driver
+    assert isinstance(subsystem.panel.driver, SeatPanelDriver)
+    assert subsystem.panel.driver is subsystem.panel_driver
+    assert subsystem.panel is subsystem.panel
 
 
-def test_seat_ui_manager_is_expanded_tracks_the_panel_driver():
-    """面板只有一份状态：旧的 is_expanded 不再是另一套缓存。"""
-    _manager, seat_ui, *_ = _bind()
-    driver = seat_ui.subsystem.panel.driver
+def test_panel_expanded_state_tracks_the_driver():
+    """面板只有一份状态：`panel.is_expanded` 直接读驱动，不是另一套缓存。"""
+    manager = SeatManager.initialize()
+    panel = manager.subsystem.panel
+    driver = manager.subsystem.panel_driver
 
     assert isinstance(driver, SeatPanelDriver)
-    assert seat_ui.is_expanded is False
+    assert panel.is_expanded is False
     driver.expanded = True
-    assert seat_ui.is_expanded is True
+    assert panel.is_expanded is True
 
 
 # ---------------------------------------------------------------------------
@@ -361,20 +341,18 @@ async def test_nested_ui_session_inside_a_held_command_session_does_not_self_dea
     assert controller.ui_lock.locked() is False
 
 
-async def test_legacy_check_handle_keeps_its_message_dispatch_hook():
-    """既有测试在 SeatCheckManager 实例上直接挂 _message_dispatch，接缝不能断。"""
-    controller = FakeController()
-    handler = make_handler(controller=controller)
+def test_subsystem_keeps_its_injected_message_dispatch():
+    """既有测试直接挂 `_message_dispatch`，接缝不能断。"""
+    handler = make_handler(controller=FakeController())
     subsystem = SeatSubsystem(handler)
-    seat_check = SeatCheckManager.initialize(handler)
-    seat_check.bind_subsystem(subsystem)
 
     sent = []
-    seat_check._message_dispatch = SimpleNamespace(
+    injected = SimpleNamespace(
         send_screen_message=lambda message: sent.append(message)
     )
-    assert seat_check.subsystem.message_dispatch is seat_check._message_dispatch
-    assert seat_check.panel_driver is subsystem.panel_driver
+    subsystem._message_dispatch = injected
+
+    assert subsystem.message_dispatch is injected
 
 
 def test_observation_stays_a_lazy_lookup():

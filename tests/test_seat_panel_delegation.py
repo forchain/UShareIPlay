@@ -2,8 +2,8 @@
 
 两条被迁的调用链：
 
-- ``SeatingManager.accompany_user`` —— 陪伴搜索里的头像点名与昵称读取；
-- ``SeatCheckManager._handle_occupied_seat`` —— 占座检查里的名片点名与昵称读取。
+- ``accompany_user`` —— 陪伴搜索里的头像点名与昵称读取；
+- ``check_user_specific_seat`` 里的占座检查 —— 名片点名与昵称读取。
 
 验收点是一条产品不变量而不是代码风格：**派对房间里一次盲按 back 就是退出派对
 房间**。所以这两个流程里的每一次 back 都必须由「弹窗此刻确实在屏幕上」这份证据
@@ -36,9 +36,8 @@ from tests.seat_fixtures import (
 from ushareiplay.dal.user_dao import UserDAO
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
 from ushareiplay.managers.seat_manager import subsystem as seat_check_module
-from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatCardView
-from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 CANONICAL = "主账号"
 AVATAR = "分身"
@@ -202,7 +201,7 @@ def _seat_check_levels(monkeypatch, occupant_level=3):
 
 
 # ---------------------------------------------------------------------------
-# SeatingManager.accompany_user —— 委托 + 绝不盲按
+# SeatSubsystem.accompany_user —— 委托 + 绝不盲按
 # ---------------------------------------------------------------------------
 async def test_accompany_user_delegates_the_avatar_read_to_the_panel_driver(same_identity):
     """陪伴搜索的点名/读昵称走 SeatPanelDriver，manager 自己不再点弹窗。"""
@@ -211,12 +210,11 @@ async def test_accompany_user_delegates_the_avatar_read_to_the_panel_driver(same
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
     driver = RecordingDriver(opened=True, name=AVATAR)
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(
+    subsystem = SeatSubsystem(
         handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver
     )
 
-    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
     assert result == {"success": "Successfully took a seat"}, result
     assert [(side, seat_number) for _d, side, seat_number, _p in driver.calls] == [("right", 2)]
@@ -236,10 +234,9 @@ async def test_accompany_user_never_presses_back_when_no_popup_opened(same_ident
     desk = _companion_desk(events)
     handler, _finder = make_popup_handler(events, popup_name=None)
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
 
-    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
     assert result == {"error": f"User {CANONICAL} not found on any seat"}
     assert "back" not in events, events
@@ -253,10 +250,9 @@ async def test_accompany_user_does_not_press_back_when_the_card_vanished(same_id
     # 读完昵称就把名片关掉（别的任务抢了锁 / 页面被切走）
     finder.on_wait = finder.close_popup
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
 
-    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
     assert result == {"error": f"User {CANONICAL} not found on any seat"}
     assert "back" not in events, events
@@ -268,10 +264,9 @@ async def test_accompany_user_closes_the_card_before_sitting_next_to_the_target(
     desk = _companion_desk(events)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
 
-    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
     assert result == {"success": "Successfully took a seat"}, result
     assert events == ["tap_right", "back", "sit_left"], events
@@ -288,13 +283,12 @@ async def test_accompany_user_does_not_deadlock_when_a_command_session_holds_the
     controller = FakeController()
     handler.controller = controller
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
 
     async with controller.ui_session("command:seat 3"):
         assert controller.ui_lock.locked() is True
         result = await asyncio.wait_for(
-            manager.accompany_user(CANONICAL, sender_username=CANONICAL), timeout=2
+            subsystem.accompany_user(CANONICAL, sender_username=CANONICAL), timeout=2
         )
 
     assert result == {"success": "Successfully took a seat"}, result
@@ -302,15 +296,16 @@ async def test_accompany_user_does_not_deadlock_when_a_command_session_holds_the
 
 
 # ---------------------------------------------------------------------------
-# SeatCheckManager —— 占座检查的名片点名同样交给驱动
+# SeatSubsystem —— 占座检查的名片点名同样交给驱动
 # ---------------------------------------------------------------------------
 async def _seat_check_run(events, handler, finder, driver=None, occupant="Bob"):
     """跑一遍 check_user_specific_seat（公开入口），返回事件流。"""
     desk = _occupied_desk(events, occupant=occupant)
-    SeatCheckManager.reset_instance()
-    manager = SeatCheckManager.initialize(handler, FakeSeatUI([desk]), panel_driver=driver)
-    manager._message_dispatch = SimpleNamespace(send_screen_message=lambda *a, **k: None)
-    await manager.check_user_specific_seat("Chainer", 1)
+    subsystem = SeatSubsystem(
+        handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver
+    )
+    subsystem._message_dispatch = SimpleNamespace(send_screen_message=lambda *a, **k: None)
+    await subsystem.check_user_specific_seat("Chainer", 1)
     return events
 
 
@@ -396,7 +391,7 @@ async def test_seat_check_closes_the_card_when_the_seat_off_button_is_missing(mo
 
 
 # ---------------------------------------------------------------------------
-# AC #3 的机械见证：这两个模块里不再有任何 press_back 调用
+# AC #3 的机械见证：实现模块里不再有任何 press_back 调用
 # ---------------------------------------------------------------------------
 def _press_back_nodes(path: Path) -> list:
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -408,9 +403,9 @@ def _press_back_nodes(path: Path) -> list:
     ]
 
 
-@pytest.mark.parametrize("module_name", ["seating.py", "seat_check.py"])
+@pytest.mark.parametrize("module_name", ["subsystem.py"])
 def test_the_seat_managers_never_call_press_back_directly(module_name):
-    """按返回只能由 SeatPanelDriver 授权：这两个模块里一处 press_back 都不该有。
+    """按返回只能由 SeatPanelDriver 授权：实现模块里一处 press_back 都不该有。
 
     行为用例各自覆盖了具体分支，这一层用 AST 把「完全移除」钉死 —— 注释与文档字符串
     里的提及不算调用。

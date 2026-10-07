@@ -5,10 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.reservation import ReservationManager
-from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
-from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
 
 
 class _FakeSeatUI:
@@ -85,25 +81,24 @@ async def test_seat_management_preserves_remove_occupant_paths():
     assert await manager.remove_seat_occupant(3) == {"removed": 3}
 
 
-def test_seat_management_shares_ui_and_check_dependencies():
-    singleton_classes = (SeatUIManager, SeatCheckManager, ReservationManager, SeatingManager, SeatManager)
-    for manager_class in singleton_classes:
-        manager_class.reset_instance()
+def test_seat_manager_wires_every_injected_collaborator_onto_one_subsystem():
+    """面板只有 `subsystem.panel` 一个入口（#402 之后不再有第二个面板对象）。
 
+    #402 之前这里断言五个单例对象互相引用同一个 `seat_ui`；四个内部单例删掉后，
+    活下来的等价命题是：显式注入的 `seat_ui` **就是**子系统暴露的面板入口，
+    因此「共享同一份面板依赖」这件事对调用方仍然成立且可断言。
+    预约/占座两个注入点的委托形状由上面两个测试钉住。
+    """
     handler = object()
-    seat_ui = SeatUIManager.initialize(handler)
-    seat_check = SeatCheckManager.initialize(handler, seat_ui)
-    reservation = ReservationManager.initialize(handler, seat_ui, seat_check)
-    seating = SeatingManager.initialize(handler, seat_ui)
-    manager = SeatManager.initialize(handler, seat_ui, seat_check, reservation, seating)
+    seat_ui = _FakeSeatUI(expanded=False)
+    manager = SeatManager.initialize(
+        handler,
+        seat_ui=seat_ui,
+        reservation=_FakeReservation(),
+        seating=_FakeSeating(),
+    )
 
-    assert manager._ui is manager._check.seat_ui
-    assert manager._ui is manager._reservation.seat_ui
-    assert manager._ui is manager._seating.seat_ui
-    assert manager._reservation.seat_check is manager._check
-
-    for manager_class in singleton_classes:
-        manager_class.reset_instance()
+    assert manager.subsystem.panel is seat_ui
 
 
 @pytest.mark.asyncio

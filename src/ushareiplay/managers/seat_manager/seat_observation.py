@@ -297,10 +297,11 @@ class SeatObservationManager(Singleton):
 
     @property
     def seat_ui(self):
-        if self._seat_ui is None:
-            from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-            if SeatUIManager.is_initialized():
-                self._seat_ui = SeatUIManager.instance()
+        """面板委派；没有注入时为 None，扫描路径的 hasattr 守卫会跳过面板动作。
+
+        委派一律由接线层显式注入（app_controller 传 `SeatSubsystem.panel`）：
+        观测器与子系统必须共用同一份面板实现，回退去别处解析会得到第二份。
+        """
         return self._seat_ui
 
     def clear(self):

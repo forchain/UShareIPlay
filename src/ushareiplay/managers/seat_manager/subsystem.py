@@ -1,28 +1,27 @@
 """座位子系统的唯一实现：占座、下麦、占座人清退、预约数据流。
 
-合并前这些能力散在四个互相独立的单例里（`SeatUIManager` 管面板、`SeatingManager` 管
-占座、`SeatCheckManager` 管进房检查与清人、`ReservationManager` 管预约数据），外加
-一个逐方法转发的 `SeatManager` 门面。同一个面板甚至有两份展开/收起/滚动实现。
-本模块把它们收成一处：`SeatSubsystem` 持有全部真实逻辑与面板驱动，四个旧单例退化成
-转发件（#400），接线层由 #401 收口，旧单例由 #402 删除。
+合并前这些能力散在四个互相独立的单例里（面板、占座、进房检查与清人、预约数据各一份），
+外加一个逐方法转发的 `SeatManager` 门面。同一个面板甚至有两份展开/收起/滚动实现。
+本模块把它们收成一处：`SeatSubsystem` 持有全部真实逻辑与面板驱动，接线层由 #401
+收口，四个旧单例由 #402 删除。
 
 ## 依赖方向
 
-`SeatSubsystem` 不依赖任何一个旧单例。旧单例持有（并可被绑定到）一个子系统，实现
-一律从子系统拿。接线层把四个旧单例都绑到同一个子系统上之后，它们就不再是四份实现，
-而是同一份实现的四个入口。
+`SeatSubsystem` 不依赖 `seat_manager` 包里的任何其他类型 —— `SeatPanelDriver` 之外的
+协作者一律由构造注入，自己造不出第二个「实现」。`SeatManager` 门面持有它一个实例，
+所有入口（`reserve_seat`、`take_seat`、`check_seats_on_entry` …）都走这同一份实现。
 
 ## 面板协作者的接缝
 
-`panel` 属性是本模块内部的面板入口。三个来源按优先级：
+`panel` 属性是本模块内部的面板入口。两个来源按优先级：
 
 1. 外部注入的 `seat_ui` 对象（既有测试用这种方式钉住面板动作的调用时序）；
-2. 绑定的旧 `SeatUIManager` **句柄**只作为对外暴露的 `seat_ui` 属性，面板动作一律
-   走 3 —— 否则子系统调句柄、句柄又回调子系统，就是无限递归；
-3. 内置的 `_DriverSeatPanel`，把 `SeatPanelDriver` 适配成旧 `seat_ui` 的契约。
+2. 内置的 `_DriverSeatPanel`，把 `SeatPanelDriver` 适配成 `seat_ui` 契约。
 
-`SeatPanelDriver`（#395）是面板展开/收起/滚动的唯一实现；`SeatUIManager` 里那份
-近重复副本在本票退役。
+外部注入的 `seat_ui` 一旦存在就是**唯一**面板入口：子系统不会再去拿别的实现，
+调用方因此能精确断言面板动作的调用时序。
+
+`SeatPanelDriver`（#395）是面板展开/收起/滚动的唯一实现。
 """
 
 import asyncio
@@ -35,73 +34,11 @@ from ushareiplay.dal import SeatReservationDAO, UserDAO
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 
-# 旧单例打上这个标记，子系统据此识别「这是自己实现的一个转发件」，
-# 从而不会把它当成外部注入的协作者再回调自己。
-SUBSYSTEM_ADAPTER_ATTR = "_seat_subsystem_adapter"
-
-
-def _is_adapter(obj) -> bool:
-    """这个对象是不是本子系统自己的转发件（是的话不能当外部协作者回指）。"""
-    return bool(getattr(obj, SUBSYSTEM_ADAPTER_ATTR, False))
-
-
-def _foreign(obj):
-    """取出真正由外部提供的协作者；转发件（自带实现的一端）不算。"""
-    return obj if obj is not None and not _is_adapter(obj) else None
-
-
-class SubsystemHandle:
-    """旧单例共用的转发基类（#400 临时保留，#402 连同四个旧单例一起删）。
-
-    每个旧单例仍然是单例、仍然是接线层初始化出来的那一个，但它不再持有实现：
-    方法一律回到 `SeatSubsystem`。没被 `SeatManager` 绑定的旧单例（比如单元测试
-    单独 `SeatingManager.initialize(...)`）会按自己的构造参数自建一个子系统 ——
-    于是「单独用」和「接线用」走的是同一份实现。
-    """
-
-    # 供 SeatSubsystem 识别（见 _is_adapter）：这是自己实现的一个端点，不能回指。
-    _seat_subsystem_adapter = True
-
-    def __init__(self, handler=None):
-        self._handler = handler
-        self._bound_subsystem = None
-        self._own_subsystem = None
-
-    # -- handler：旧单例对外暴露的属性，写入要一路传到子系统与面板驱动 --
-
-    @property
-    def handler(self):
-        return self._handler
-
-    @handler.setter
-    def handler(self, value):
-        self._handler = value
-        for subsystem in (self._bound_subsystem, self._own_subsystem):
-            if subsystem is not None:
-                subsystem.handler = value
-
-    def subsystem_kwargs(self) -> dict:
-        """自建子系统时用的构造参数，由子类按各自的注入点覆盖。"""
-        return {}
-
-    def bind_subsystem(self, subsystem):
-        """接到共享子系统上（由 `SeatManager` 在接线时调用）。"""
-        self._bound_subsystem = subsystem
-        return self
-
-    @property
-    def subsystem(self) -> "SeatSubsystem":
-        if self._bound_subsystem is not None:
-            return self._bound_subsystem
-        if self._own_subsystem is None:
-            self._own_subsystem = SeatSubsystem(self._handler, **self.subsystem_kwargs())
-        return self._own_subsystem
-
 
 class _DriverSeatPanel:
-    """`SeatPanelDriver` 的旧 `seat_ui` 契约适配层（子系统内部面板入口）。
+    """`SeatPanelDriver` 的 `seat_ui` 契约适配层（子系统内部面板入口）。
 
-    方法名与 `SeatUIManager` 的旧契约一一对应，面板行为本身完全由驱动决定 ——
+    方法名与旧 `seat_ui` 契约一一对应，面板行为本身完全由驱动决定 ——
     这里不再有第二份展开/收起/滚动的判断逻辑。
     """
 
@@ -144,11 +81,8 @@ class SeatSubsystem:
     """座位子系统的唯一实现。
 
     刻意不是单例：handler 与协作者都由构造注入（与 `SeatPanelDriver` 同一原则），
-    由 `SeatManager` 门面持有并绑定四个旧单例句柄。
+    由 `SeatManager` 门面持有一个实例。
     """
-
-    # 供四个旧单例识别自己用的标记（见 _is_adapter）。
-    _seat_subsystem_adapter = True
 
     def __init__(
         self,
@@ -164,39 +98,17 @@ class SeatSubsystem:
         self._panel_driver = panel_driver
         self._observation = observation
         self._message_dispatch = None
-        # 占座游标：SeatingManager 原本持有的两个状态，合并后归子系统所有。
+        # 占座游标：占座侧原本持有的两个状态，合并后归子系统所有。
         self.current_desk_index = 0
         self.current_side = None
-
-        # 对外暴露的协作者句柄，由 SeatManager 接线时用 attach_handles 回填（#401 收口）。
-        self.seat_ui = None
-        self.seat_check = None
         self._driver_panel = None
 
-        # 后向兼容接缝（#400 临时保留，#402 连同旧单例一起删）：
-        # 既有测试/扩展注入的**外部**协作者优先于子系统自带的实现。
-        # 旧单例句柄不算外部协作者 —— 交给它实现就等于让子系统回调自己的转发件。
-        self._foreign_seat_ui = _foreign(seat_ui)
-        self._foreign_seat_check = _foreign(seat_check)
-        self._foreign_reservation = _foreign(reservation)
-        self._foreign_seating = _foreign(seating)
-
-        # 非转发件的 seat_ui 同时是对外可见的协作者；转发件要等 attach_handles。
-        if self._foreign_seat_ui is not None:
-            self.seat_ui = seat_ui
-        if self._foreign_seat_check is not None:
-            self.seat_check = seat_check
-
-    def attach_handles(self, seat_ui=None, seat_check=None) -> None:
-        """回填接线层给的旧单例句柄，让它们成为本子系统的对外入口。
-
-        句柄本身只是转发件：它们的方法会回到这里来，所以面板动作一律走 `panel`
-        而不是走 `seat_ui`，否则就是子系统调句柄、句柄又回调子系统。
-        """
-        if seat_ui is not None:
-            self.seat_ui = seat_ui
-        if seat_check is not None:
-            self.seat_check = seat_check
+        # 注入接缝：调用方显式传入的协作者优先于子系统自带的实现，命中时对应入口
+        # 整体交给它（ADR-0009 第 4 条：显式依赖优先，默认实现仅作兜底）。
+        self._seat_ui = seat_ui
+        self._seat_check = seat_check
+        self._reservation = reservation
+        self._seating = seating
 
     # ------------------------------------------------------------------
     # 协作者
@@ -223,9 +135,13 @@ class SeatSubsystem:
 
     @property
     def panel(self):
-        """本子系统内部的面板入口（所有面板动作都从这里走）。"""
-        if self._foreign_seat_ui is not None:
-            return self._foreign_seat_ui
+        """本子系统内部的面板入口（所有面板动作都从这里走）。
+
+        构造注入的 `seat_ui` 命中时直接用它；否则用 `_DriverSeatPanel` 把
+        `panel_driver` 适配成同一份契约。两者都只有这一个入口。
+        """
+        if self._seat_ui is not None:
+            return self._seat_ui
         if self._driver_panel is None or self._driver_panel.driver is not self.panel_driver:
             self._driver_panel = _DriverSeatPanel(self.panel_driver)
         return self._driver_panel
@@ -300,8 +216,8 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """给用户预留一个麦位。"""
-        if self._foreign_reservation is not None:
-            return await self._foreign_reservation.reserve_seat(username, seat_number)
+        if self._reservation is not None:
+            return await self._reservation.reserve_seat(username, seat_number)
         return await self._reserve_seat(username, seat_number)
 
     async def _reserve_seat(self, username: str, seat_number: int) -> dict:
@@ -358,8 +274,8 @@ class SeatSubsystem:
 
     async def remove_user_reservation(self, username: str) -> dict:
         """删除某个用户的麦位预留（纯数据操作）。"""
-        if self._foreign_reservation is not None:
-            return await self._foreign_reservation.remove_user_reservation(username)
+        if self._reservation is not None:
+            return await self._reservation.remove_user_reservation(username)
         return await self._remove_user_reservation(username)
 
     async def _remove_user_reservation(self, username: str) -> dict:
@@ -388,8 +304,8 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def check_seats_on_entry(self, username: str = None):
         """用户进房/回房时检查其预留麦位。"""
-        if self._foreign_seat_check is not None:
-            return await self._foreign_seat_check.check_seats_on_entry(username)
+        if self._seat_check is not None:
+            return await self._seat_check.check_seats_on_entry(username)
         return await self._check_seats_on_entry(username)
 
     async def _check_seats_on_entry(self, username: str = None):
@@ -547,8 +463,8 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""
-        if self._foreign_seating is not None:
-            return await self._foreign_seating.sit_at_specific_seat(seat_number)
+        if self._seating is not None:
+            return await self._seating.sit_at_specific_seat(seat_number)
         return await self._sit_at_specific_seat(seat_number)
 
     async def _sit_at_specific_seat(self, seat_number: int) -> dict:
@@ -637,8 +553,8 @@ class SeatSubsystem:
 
     async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
-        if self._foreign_seating is not None:
-            return await self._foreign_seating.find_owner_seat(force_relocate)
+        if self._seating is not None:
+            return await self._seating.find_owner_seat(force_relocate)
         return await self._find_owner_seat(force_relocate)
 
     async def _find_owner_seat(self, force_relocate: bool = False) -> dict:
@@ -723,8 +639,8 @@ class SeatSubsystem:
 
     async def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         """Find a specific user on seats and sit next to them"""
-        if self._foreign_seating is not None:
-            return await self._foreign_seating.accompany_user(target_username, sender_username)
+        if self._seating is not None:
+            return await self._seating.accompany_user(target_username, sender_username)
         return await self._accompany_user(target_username, sender_username)
 
     async def _accompany_user(self, target_username: str, sender_username: str = None) -> dict:
@@ -841,8 +757,8 @@ class SeatSubsystem:
 
     async def seat_off_owner(self) -> dict:
         """Remove the owner from their current seat."""
-        if self._foreign_seating is not None:
-            return await self._foreign_seating.seat_off_owner()
+        if self._seating is not None:
+            return await self._seating.seat_off_owner()
         return await self._seat_off_owner()
 
     async def _seat_off_owner(self) -> dict:
@@ -873,8 +789,8 @@ class SeatSubsystem:
 
     async def seat_off_specific_seat(self, seat_number: int) -> dict:
         """Remove the occupant from a specific seat position (1-12)."""
-        if self._foreign_seating is not None:
-            return await self._foreign_seating.seat_off_specific_seat(seat_number)
+        if self._seating is not None:
+            return await self._seating.seat_off_specific_seat(seat_number)
         return await self._seat_off_specific_seat(seat_number)
 
     async def _seat_off_specific_seat(self, seat_number: int) -> dict:
@@ -1059,9 +975,3 @@ class SeatSubsystem:
         except Exception as e:
             self.handler.log_error(f"Error confirming seat: {traceback.format_exc()}")
             return {'error': f'Failed to confirm seat: {str(e)}'}
-
-
-# 占座游标：SeatingManager 原本持有这两个状态，合并后归子系统所有，
-# 旧句柄仍然通过属性读写同一份（见 seating.py）。
-SeatSubsystem.current_desk_index = 0
-SeatSubsystem.current_side = None

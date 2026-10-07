@@ -27,7 +27,7 @@ from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.models.user import User
 from ushareiplay.state.presence_tracker import PresenceTracker
@@ -184,8 +184,7 @@ class DummyController:
 
 def _seating_manager(desks, popup_name):
     handler = DummySeatHandler(desks, popup_name)
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    manager = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
     return handler, manager
 
 
@@ -241,8 +240,7 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
     """`:seat 3` 不接参数时，交给座位层的靶子必须是麦位上可见的分身名。"""
     desks = [_desk(right_label=AVATAR, right_occupied=True)]
     handler = DummySeatHandler(desks, popup_name=AVATAR)
-    SeatingManager.reset_instance()
-    seating = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    seating = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
     presence_env = PresenceTracker.instance()
     presence_env._online_users = {AVATAR}
 
@@ -402,8 +400,7 @@ async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(a
         async def collapse_seats(self):
             collapsed.append(True)
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=MockUI(handler))
+    manager = SeatSubsystem(handler, seat_ui=MockUI(handler))
 
     result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
     assert "error" in result

@@ -498,9 +498,9 @@ class AppController(Singleton):
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
             # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
-            # 旧 seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现，
-            # 不再依赖独立的 SeatUIManager。传 panel_driver 不行 —— 驱动上是
-            # collapse()，观测器要的是旧契约的 collapse_seats()。
+            # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
+            # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
+            # 契约适配层上的 collapse_seats()。
             self.seat_observation_manager = SeatObservationManager.initialize(
                 self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
             )
