@@ -26,7 +26,6 @@ class BaseCommand(ABC):
         self.last_update_time = time.time()
         self._info_manager = None
         self._room_profile_manager = None
-        self._room_name_manager = None
         self._music_manager = None
         self._playlist_adoption = None
         self._mic_manager = None
@@ -102,13 +101,6 @@ class BaseCommand(ABC):
             from ushareiplay.managers.room_profile import RoomProfileManager
             self._room_profile_manager = RoomProfileManager.instance()
         return self._room_profile_manager
-
-    @property
-    def room_name_manager(self):
-        if self._room_name_manager is None:
-            from ushareiplay.managers.room_name_manager import RoomNameManager
-            self._room_name_manager = RoomNameManager.instance()
-        return self._room_name_manager
 
     @property
     def music_manager(self):

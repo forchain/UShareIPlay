@@ -517,3 +517,79 @@ async def test_the_topic_command_never_reaches_for_the_legacy_topic_manager():
 
     assert "TopicManager" not in source
     assert "topic_manager" not in source
+
+
+# --------------------------------------------------------------------------
+# 他人房间：跳过一次写入不等于写成功了
+# --------------------------------------------------------------------------
+
+
+def _screen_messages(monkeypatch):
+    """记录写进公屏的每一条消息 —— 「有没有宣布成功」必须能被断言。"""
+    from ushareiplay.core.message_dispatch import MessageDispatch
+
+    sent = []
+    monkeypatch.setattr(
+        MessageDispatch.instance(),
+        "send_screen_message",
+        lambda message, silent=False: sent.append(message),
+    )
+    return sent
+
+
+def test_a_guest_room_skip_does_not_bookkeep_the_topic_write(monkeypatch):
+    """`{'skipped': 'guest_room'}` 里没有 'error' 键 —— 别把它当成写成功了。
+
+    在别人房间里一个点击都没发生，因此草稿留着、冷却预算留着、公屏也不该播报
+    一条根本没发生过的变更。这与公告那条纵切同一个次序（先写再记账）。
+    """
+    sent = _screen_messages(monkeypatch)
+    RoomState.reset_instance()
+    room_state = RoomState.initialize()
+    room_state.is_guest_room = True
+    try:
+        driver = _driver()
+        profile = _topic_profile(driver)
+        profile.set_topic("夜曲")
+        assert profile.drafts.last_attempt_at("topic") is None
+
+        result = profile.update_topic()
+    finally:
+        RoomState.reset_instance()
+
+    assert result == {"skipped": "guest_room"}
+    assert profile.drafts.pending("topic") == "夜曲", "没写成就别清草稿，用户的要求不能丢"
+    assert profile.drafts.last_attempt_at("topic") is None, "没写成就别烧冷却预算"
+    assert profile.drafts.can_apply_now("topic") is True
+    assert sent == [], "没有发生的变更不得播报到公屏"
+    assert driver.opened_entries == [], "别人房间里一次点击都不该有"
+
+
+def test_the_idle_topic_skip_branches_stay_silent(monkeypatch):
+    """日志铁律：没有行为触发的跳过分支一个 INFO 都不打。
+
+    这两条分支被 `:topic` 的定时轮询反复走到，刷屏属于缺陷而不是信息。
+    """
+    profile = _topic_profile(_driver())
+    loud = ("info", "warning", "error")
+
+    def _reset_and_assert_silent():
+        for level in ("debug", "info", "warning", "error"):
+            getattr(profile.logger, level).reset_mock()
+        for level in loud:
+            getattr(profile.logger, level).assert_not_called()
+
+    _reset_and_assert_silent()
+    assert profile.update_topic() == {"skipped": "no_pending_topic"}
+    for level in loud:
+        getattr(profile.logger, level).assert_not_called()
+
+    # 用户明确要求的一次排队 —— 这一步允许打日志。写掉它让话题预算进入冷却。
+    profile.set_topic("夜曲")
+    profile.update_topic()
+    profile.set_topic("周曲")
+
+    _reset_and_assert_silent()
+    assert profile.update_topic() == {"skipped": "cooldown"}
+    for level in loud:
+        getattr(profile.logger, level).assert_not_called()

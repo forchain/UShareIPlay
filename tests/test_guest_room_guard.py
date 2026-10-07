@@ -280,38 +280,40 @@ async def test_guest_room_blocks_seat_command_user_enter():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_room_name_and_title_updates():
-    from ushareiplay.managers.room_name_manager import RoomNameManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RoomNameManager.reset_instance()
-    rnm = RoomNameManager.initialize()
-    rnm._handler = HandlerStub(config={})
-    rnm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    RoomProfileManager.reset_instance()
+    profile = RoomProfileManager.initialize()
+    profile.adopt_handler(HandlerStub(config={}))
+    profile._logger = SimpleNamespace(
+        info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None
+    )
 
     try:
         # set_theme in guest room
-        res = rnm.set_theme("听歌")
+        res = profile.set_theme("听歌")
         assert "error" in res
 
-        # process_pending_update in guest room
-        rnm.pending_ui_update = True
-        res = rnm.process_pending_update()
+        # update_title in guest room
+        profile.pending_ui_update = True
+        res = profile.update_title()
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        # _update_title_ui in guest room
-        res = rnm._update_title_ui("新歌速递")
+        # _write_title_in_drawer in guest room
+        res = profile._write_title_in_drawer("新歌速递")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        # set_next_title in guest room
-        res = rnm.set_next_title("新歌速递")
+        # set_title in guest room
+        res = profile.set_title("新歌速递")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
     finally:
-        RoomNameManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio
