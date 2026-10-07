@@ -34,7 +34,6 @@ from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.managers.room_info_window import RoomInfoWindow
@@ -500,13 +499,12 @@ class AppController(Singleton):
             OnlineListScraper.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
-            self.notice_manager = NoticeManager.initialize(self.soul_handler)
             PlaylistAdoption.initialize()
             RecommendationManager.initialize(self.soul_handler)
             RoomNameManager.initialize(self.soul_handler)
             RoomInfoWindow.initialize(self.soul_handler)
-            # 房间档案的真正所有者。公告/房名/推荐那四个旧单例暂时保留，
-            # #391-#394 逐个下线。
+            # 房间档案的真正所有者。房名/推荐那两条还没迁过来，
+            # #392-#394 逐个下线。
             self.room_profile_manager = RoomProfileManager.initialize(
                 self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
             )

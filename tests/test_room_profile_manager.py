@@ -55,7 +55,7 @@ def test_reinitializing_outside_the_composition_root_is_forbidden():
         RoomProfileManager.initialize()
 
 
-def test_the_composition_root_registers_it_next_to_the_legacy_profile_managers():
+def test_the_composition_root_registers_it_next_to_the_remaining_legacy_manager():
     """组合根必须 `.initialize(...)` 一次，而不是在别处懒创建。"""
     from ushareiplay.managers.room_info_window import RoomInfoWindow
 
@@ -68,7 +68,7 @@ def test_the_composition_root_registers_it_next_to_the_legacy_profile_managers()
     ).read_text(encoding="utf-8")
 
     assert "self.room_profile_manager = RoomProfileManager.initialize(" in source
-    # 旧单例暂时保留：#394 才删，controller.notice_manager 现在仍是活调用点。
+    # 旧单例暂时保留：#394 才删，RoomInfoWindow 现在仍是活调用点。
     assert "RoomInfoWindow.initialize(" in source
     assert RoomInfoWindow is not None and RoomProfileManager is not None
 
@@ -101,7 +101,6 @@ class _Handler:
 
 def _stub_sync_partners(monkeypatch, journal):
     """把审计里的四个协作方换成会记账的替身，好断言批处理顺序。"""
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.room_name_manager import RoomNameManager
@@ -131,10 +130,12 @@ def _stub_sync_partners(monkeypatch, journal):
         handler=object(),
         initialize_from_ui=lambda: _record("room_name", {'success': True}),
     )
-    _install(
-        NoticeManager,
-        handler=object(),
-        sync_and_correct_notice_if_dialog_open=lambda: _record("notice", {'success': True}),
+    # 公告是本模块自己的字段（#391），核对发生在同一次抽屉会话里，因此这里
+    # 直接替换掉那个内部方法，而不是另一个 manager 的单例。
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "_audit_notice_in_open_window",
+        lambda self: _record("notice", {'success': True}),
     )
 
 

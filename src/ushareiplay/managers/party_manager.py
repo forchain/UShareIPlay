@@ -795,8 +795,8 @@ class PartyManager(Singleton):
 
         self.logger.info("派对创建成功，准备设置默认notice")
 
-        notice_manager = self.handler.controller.notice_manager
-        result = await notice_manager.set_default_notice()
+        room_profile_manager = self.handler.controller.room_profile_manager
+        result = await room_profile_manager.set_default_notice()
         if 'success' in result:
             self.logger.info("默认notice设置成功")
         else:

@@ -18,15 +18,16 @@
 
 UI 独占性沿用既有做法：本模块的抽屉接口是**同步**的，锁由上游的
 `CommandManager.ui_session`（`app_controller.ui_session`）持有。把这里改成
-async 会打断三个同步调用点（`room_name_manager` / `notice_manager` /
-`party_manager`），因此不做。
+async 会打断剩下的同步调用点（`room_name_manager` / `party_manager`），
+因此不做。
 """
 
+import asyncio
 import logging
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Iterator, Optional, Sequence
+from typing import Dict, Iterator, List, Optional, Sequence
 
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
@@ -46,6 +47,20 @@ TOPIC_EDIT_ENTRY_KEYS = ('edit_topic_entry', 'edit_topic_bg_entry')
 TOPIC_SUBMIT_PROBE_KEYS = ('input_box_entry', 'edit_topic_confirm')
 #: 确认提交之后等 Appium 落地的静默时间（秒）。离线测试把它置 0。
 TOPIC_SETTLE_SECONDS = 1.0
+
+#: 抽屉里「自定义公告」的两种皮肤：新建时是「自定义」，改已有公告时是「修改自定义」。
+NOTICE_CUSTOMIZE_ENTRY_KEYS = ('customize_notice_button', 'modify_notice_button')
+#: 关闭公告编辑层的按钮（不是关抽屉）。既用它判断编辑层是否弹出，也用它收尾。
+NOTICE_CLOSE_KEY = 'close_notice'
+#: 抽屉里公告那一行的入口与输入/提交。
+NOTICE_EDIT_ENTRY_KEY = 'edit_notice_entry'
+NOTICE_INPUT_KEY = 'edit_notice_input'
+NOTICE_CONFIRM_KEY = 'edit_notice_confirm'
+#: 抽屉里显示当前公告文案的元素（只有审计读它）。
+NOTICE_TEXT_KEY = 'chat_room_notice'
+#: 没有配置时的兜底，与旧 `NoticeManager.get_default_notice` 逐字一致。
+DEFAULT_NOTICE_FALLBACK = 'U Share I Play\n分享音乐 享受快乐'
+SYSTEM_DEFAULT_NOTICES_FALLBACK = ['弹唱大会', 'Souler们在随便聊聊ing', '蹲一个人']
 
 
 class RoomProfileManager(Singleton):
@@ -223,10 +238,11 @@ class RoomProfileManager(Singleton):
     # 字段草稿：排队 -> 冷却 -> 写 UI
     # ------------------------------------------------------------------
     #
-    # 话题这一条（#390）已经是完整纵切：`set_topic` 排队、`update_topic` 在
-    # 冷却到期后经端口写 UI。公告/房名两条仍只排队，写 UI 的那一步分别留在
-    # `NoticeManager` / `RoomNameManager`，#391-#393 再迁过来 —— 因此此刻公告与
-    # 房名各有一份旧的 `PendingWrite`，那是刻意的过渡状态，旧那份随下线一起消失。
+    # 话题（#390）与公告（#391）两条都已经是完整纵切：`set_xxx` 排队、
+    # `update_xxx` 在冷却到期后经端口写 UI。房名与推荐分发那两条仍只排队，
+    # 写 UI 的那一步分别留在 `RoomNameManager` / `RecommendationManager`，
+    # #392-#393 再迁过来 —— 因此此刻房名与推荐各有一份旧的待写入状态，
+    # 那是刻意的过渡状态，旧那份随下线一起消失。
 
     def get_topic_status(self) -> Dict:
         """`:topic` 无参数那一支的状态面。
@@ -384,8 +400,10 @@ class RoomProfileManager(Singleton):
     def set_notice(self, notice: str) -> Dict:
         """安排派对公告变更。
 
-        冷却中的返回结构与 `NoticeManager.set_notice_with_cooldown` 逐字一致；
-        冷却外那次「立刻写 UI」留在旧 manager（#392 迁过来）。
+        与话题那条纵切同形：**这里只排队，不碰 UI**。真正写 UI 是 `update_notice`
+        的事 —— 冷却中的公告要等下一次心跳。返回文案与旧
+        `NoticeManager.set_notice_with_cooldown` 的冷却分支逐字一致，因此
+        config.yaml 的公告响应模板不需要改。
         """
         if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
@@ -412,6 +430,315 @@ class RoomProfileManager(Singleton):
             'notice': notice,
             'message': 'Notice will be updated soon',
         }
+
+    def update_notice(self) -> Dict:
+        """心跳：冷却到期且有排队公告时，把它写进房间信息抽屉。
+
+        两条提前返回都不打日志 —— 这是被 `:notice` 的定时轮询反复走到的分支，
+        按 CLAUDE.md 的日志铁律，刷屏属于缺陷而不是信息。
+
+        `skipped`（别人房间）**不是**一次失败的尝试：那个房间里一个点击都没发生，
+        因此既不清草稿也不推进冷却时钟，也不往公屏播报。写成「跳过之后照样
+        `mark_attempted`」会让一条用户明确要求的公告静静排队 15 分钟，
+        甚至往公屏播报一条没发生过的变更。
+
+        Returns:
+            `{'skipped': 'no_pending_notice'}` / `{'skipped': 'cooldown'}` /
+            写 UI 的结果 dict。
+        """
+        notice = self.drafts.pending('notice')
+        if not notice:
+            return {'skipped': 'no_pending_notice'}
+
+        if not self.drafts.can_apply_now('notice'):
+            return {'skipped': 'cooldown'}
+
+        self.logger.info(f'Attempting to set notice to: {notice}')
+        result = self._write_notice_in_drawer(notice)
+
+        if 'skipped' in result:
+            # 没写就别记账：草稿留着、预算留着，等真的能写的那一轮再算。
+            return result
+
+        # UI 调用自己把异常收敛成 {'error': ...}，因此「先写再推进」—— 与旧
+        # NoticeManager 同一个次序（`PendingWrite` 的两种合法次序之一）。
+        self.drafts.mark_attempted('notice')
+
+        if 'success' in result:
+            self.drafts.clear('notice')
+            self.logger.info(f'Notice set successfully: {notice}')
+            self._announce_notice(notice)
+        else:
+            # 失败：保留排队的公告，等下一次冷却到期后重试
+            self.logger.warning(
+                f'Failed to set notice: {result.get("error", "Unknown error")}. '
+                f'Will retry in {self.drafts.cooldown_minutes("notice")} minute(s).'
+            )
+
+        return result
+
+    def restore_notice(self, notice: str) -> Dict:
+        """房名变更把公告冲掉之后的恢复（用户故事 #6）。
+
+        与 `set_notice` 的差别只有一条：这里**当场写**，因为调用方（房名流程）
+        手上正开着抽屉，且必须在这次房名写入结束之前把公告补回去。预算被占用
+        时的行为与 `set_notice` 一致：排队，等冷却到期由 `update_notice` 写。
+
+        别人房间里返回 `skipped` 且不推进时钟 —— 同 `update_notice` 的理由。
+        """
+        if RoomState.in_guest_room():
+            self.logger.info("Skipping notice restore in guest room")
+            return {'skipped': True, 'reason': 'guest_room'}
+
+        if not self.drafts.can_apply_now('notice'):
+            self.drafts.set_pending('notice', notice)
+            remaining_minutes = self.drafts.remaining_minutes('notice')
+            self.logger.info(
+                f"Notice restore in cooldown, {remaining_minutes} minutes remaining."
+                f" Notice will be set: {notice}"
+            )
+            return {
+                'cooldown': True,
+                'remaining_minutes': remaining_minutes,
+                'pending_notice': notice,
+                'message': f'Notice will be updated in {remaining_minutes} minutes',
+            }
+
+        self.logger.info(f'Restoring notice to: {notice}')
+        result = self._write_notice_in_drawer(notice)
+
+        if 'skipped' in result:
+            return result
+
+        self.drafts.mark_attempted('notice')
+
+        if 'success' in result:
+            self.drafts.clear('notice')
+            self.logger.info(f'Notice restored successfully: {notice}')
+        else:
+            self.drafts.set_pending('notice', notice)
+            self.logger.warning(
+                f'Failed to restore notice: {result.get("error", "Unknown error")}. '
+                f'Will retry in {self.drafts.cooldown_minutes("notice")} minute(s).'
+            )
+
+        return result
+
+    def _write_notice_in_drawer(self, notice: str) -> Dict:
+        """把公告写进抽屉：公告入口 -> 自定义 -> 输入 -> 提交 -> 收起公告层。
+
+        整段复用端口已有的原语（点元素 / 等任意元素 / 写输入框），没有为公告
+        增加任何新原语。抽屉本身的开关归 `with_window_open`：窗口是它打开的就
+        由它关，外层开着的就原样留着。
+
+        Returns:
+            `{'success': f'Notice restored to: {notice}'}`，带 `error` 的 dict，
+            或 `{'skipped': True, 'reason': 'guest_room'}`。异常一律转成 error
+            dict —— 走 `update_notice` / `restore_notice` 的失败分支保留草稿重试。
+        """
+        try:
+            if RoomState.in_guest_room():
+                self.logger.info("Skipping notice update in guest room")
+                return {'skipped': True, 'reason': 'guest_room'}
+
+            self.logger.info(f"准备设置notice: {notice}")
+
+            # 公告原先走的是抽屉默认入口（chat_room_title -> room_topic），保持不变。
+            with self.with_window_open() as open_error:
+                if open_error:
+                    return open_error
+
+                driver = self._require_driver()
+
+                if not driver.click_element(NOTICE_EDIT_ENTRY_KEY):
+                    return {'error': 'Failed to find edit notice entry'}
+                self.logger.info("点击了编辑notice入口")
+
+                # 公告编辑层弹出后一定有「关闭公告」按钮；没有说明弹的不是这一层。
+                if driver.wait_for_any([NOTICE_CLOSE_KEY]) is None:
+                    return {'error': 'Close notice not found'}
+
+                customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS)
+                if customize is None:
+                    # 底部抽屉挡住了「自定义」：先把公告层点掉，不能留在屏幕上。
+                    driver.click_element(NOTICE_CLOSE_KEY)
+                    self.logger.warning(
+                        'Bottom drawer is open, notice customization is disabled, hiding...'
+                    )
+                    return {'error': 'Failed to find customize notice button'}
+                driver.click_element(customize)
+                self.logger.info(f"点击了自定义按钮 {customize}")
+
+                if not driver.replace_text(NOTICE_INPUT_KEY, notice):
+                    return {'error': 'Failed to find notice input'}
+                self.logger.info(f"输入了notice内容: {notice}")
+
+                if not driver.click_element(NOTICE_CONFIRM_KEY):
+                    return {'error': 'Failed to find confirm button'}
+                self.logger.info("点击了确认按钮")
+
+                # 收起公告编辑层（抽屉本身由 with_window_open 收尾）
+                driver.click_element(NOTICE_CLOSE_KEY)
+                self.logger.info("隐藏notice设置对话框")
+
+            self.logger.info(f"成功设置notice: {notice}")
+            return {'success': f'Notice restored to: {notice}'}
+
+        except Exception:
+            self.logger.error(f"设置notice时出错: {traceback.format_exc()}")
+            return {'error': f'Failed to update notice to {notice}'}
+
+    def _announce_notice(self, notice: str) -> None:
+        """写成功后往公屏发一条，与旧 `NoticeCommand.update` 同一句话。"""
+        try:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            if not MessageDispatch.is_initialized():
+                return
+            MessageDispatch.instance().bind_handler(self.handler).send_screen_message(
+                f'Notice updated to: {notice}'
+            )
+        except Exception as e:
+            self.logger.warning(f'Failed to announce notice update: {e}')
+
+    async def set_default_notice(self) -> Dict:
+        """开房之后把配置里的默认公告排进去。
+
+        与旧 `NoticeManager.set_default_notice` 同一个返回面（`success` /
+        `cooldown` / `skipped` / `error`），因此 `PartyManager` 那句
+        「默认notice设置成功」不需要改。写入同样走草稿库：15 分钟预算被用户
+        的 `:notice` 占着时，默认公告排队而不是覆盖它。
+        """
+        try:
+            default_notice = (getattr(self.handler, 'config', None) or {}).get(
+                'default_notice'
+            )
+            if not default_notice:
+                self.logger.warning("未找到default_notice配置")
+                return {'error': 'No default_notice configuration found'}
+
+            self.logger.info(f"准备设置默认notice: {default_notice}")
+
+            # 等待界面稳定
+            await asyncio.sleep(3)
+
+            result = self.set_notice(default_notice)
+            if 'success' in result:
+                self.logger.info(f"成功设置默认notice: {default_notice}")
+            else:
+                self.logger.warning(
+                    f"设置默认notice失败: {result.get('error', 'Unknown error')}"
+                )
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"设置默认notice时出错: {traceback.format_exc()}")
+            return {'error': f'Failed to set default notice: {str(e)}'}
+
+    def get_system_default_notices(self) -> List[str]:
+        """系统默认公告文案：房间公告里出现这些内容说明被系统重置了。"""
+        cfg = getattr(self.handler, 'config', None)
+        if not cfg:
+            return list(SYSTEM_DEFAULT_NOTICES_FALLBACK)
+        if 'system_default_notices' in cfg:
+            return cfg.get('system_default_notices', [])
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('system_default_notices', [])
+        return list(SYSTEM_DEFAULT_NOTICES_FALLBACK)
+
+    def get_default_notice(self) -> str:
+        """默认公告文案，被系统重置后恢复成它。"""
+        cfg = getattr(self.handler, 'config', None)
+        if not cfg:
+            return DEFAULT_NOTICE_FALLBACK
+        if 'default_notice' in cfg:
+            return cfg.get('default_notice', DEFAULT_NOTICE_FALLBACK)
+        if 'soul' in cfg and isinstance(cfg['soul'], dict):
+            return cfg['soul'].get('default_notice', DEFAULT_NOTICE_FALLBACK)
+        return DEFAULT_NOTICE_FALLBACK
+
+    def _read_notice_text_from_ui(self) -> str:
+        """读一次抽屉里当前公告的文案。
+
+        抽屉端口只建模物理动作（探测 / 点 / 等 / 写），不承载「读文本」；这一次
+        读只用于**判定**公告是不是被系统冲掉了，因此这里仍然直接问 handler 的
+        element_finder，与旧 `NoticeManager.get_notice_text_from_ui` 逐字一致
+        （用 `chat_room_notice` 而不是 `edit_notice_entry`，避免把「编辑」当成文案）。
+        """
+        finder = getattr(self.handler, 'element_finder', None)
+        if finder is None:
+            return ""
+        element = finder.try_find_element(NOTICE_TEXT_KEY, log=False)
+        if element:
+            text = (finder.get_element_text(element) or "").strip()
+            if text and text != "编辑":
+                return text
+        return ""
+
+    def _audit_notice_in_open_window(self) -> Dict:
+        """窗口已开着时的公告核对：被系统重置就就地恢复默认公告。
+
+        抽屉由外层（全量审计）打开，本方法只在自己的会话里编辑那一行 —— 因此
+        「核对并修正」与房名/话题的纠正发生在同一次抽屉会话内。
+        """
+        try:
+            driver = self.drawer_driver
+            if driver is None:
+                return {'skipped': 'not_initialized'}
+
+            # 等待 edit_notice_entry 呈现（支持在前一步刚执行过房间类型切换后的界面过渡）
+            if driver.wait_for_any([NOTICE_EDIT_ENTRY_KEY], timeout=2) is None:
+                return {'skipped': 'edit_notice_entry not visible'}
+
+            current_text = self._read_notice_text_from_ui()
+            # 没有行为触发的探测，按日志铁律只留在 DEBUG。
+            self.logger.debug(f"Inspected room notice text from UI: '{current_text}'")
+
+            system_notices = self.get_system_default_notices()
+
+            is_reset = not current_text or any(
+                system_notice in current_text for system_notice in system_notices
+            )
+
+            if not is_reset:
+                return {'status': 'notice_normal', 'current_text': current_text}
+
+            default_notice = self.get_default_notice()
+            self.logger.info(
+                f"Notice reset detected in dialog ('{current_text}'), "
+                f"restoring default notice: {default_notice}"
+            )
+
+            driver.click_element(NOTICE_EDIT_ENTRY_KEY)
+            self.logger.info("Clicked edit_notice_entry in room info window")
+
+            if driver.wait_for_any([NOTICE_CLOSE_KEY], timeout=3) is None:
+                return {'error': 'close_notice not found'}
+
+            customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS, timeout=3)
+            if customize is None:
+                driver.click_element(NOTICE_CLOSE_KEY)
+                self.logger.warning('Bottom drawer is open, notice customization is disabled')
+                return {'error': 'Failed to find customize notice button'}
+
+            driver.click_element(customize)
+
+            if not driver.replace_text(NOTICE_INPUT_KEY, default_notice, timeout=3):
+                return {'error': 'Failed to find notice input'}
+
+            driver.click_element(NOTICE_CONFIRM_KEY, timeout=3)
+            driver.click_element(NOTICE_CLOSE_KEY, timeout=3)
+
+            self.drafts.mark_attempted('notice')
+            self.drafts.clear('notice')
+            self.logger.info(
+                f"Successfully restored notice in room info window to: {default_notice}"
+            )
+            return {'success': True, 'restored_notice': default_notice}
+        except Exception:
+            self.logger.error(f"Error in _audit_notice_in_open_window: {traceback.format_exc()}")
+            return {'error': str(traceback.format_exc())}
 
     def set_title(self, title: str, theme: Optional[str] = None) -> Dict:
         """安排房间标题变更；`theme` 给了就一起改主题。
@@ -586,11 +913,10 @@ class RoomProfileManager(Singleton):
             except Exception as e:
                 self.logger.warning(f"Auditor: error in room name sync: {e}")
 
-            # 4. 派对公告检查与修正（懒加载：避免与 NoticeManager 的顶层模块循环依赖）
+            # 4. 派对公告检查与修正：本模块自己的字段，直接在同一次会话里核对。
+            #    只在「编辑入口真的在屏幕上」时才有行为可做，其余一律静默跳过。
             try:
-                from ushareiplay.managers.notice_manager import NoticeManager
-                if NoticeManager.is_initialized() and getattr(NoticeManager.instance(), 'handler', None) is not None:
-                    results['notice'] = NoticeManager.instance().sync_and_correct_notice_if_dialog_open()
+                results['notice'] = self._audit_notice_in_open_window()
             except Exception as e:
                 self.logger.warning(f"Auditor: error in notice sync: {e}")
 
