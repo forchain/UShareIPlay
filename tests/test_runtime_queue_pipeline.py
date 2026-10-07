@@ -268,7 +268,7 @@ def test_screen_scan_queues_ascii_colon_in_chat_prefix():
     assert [m.content for m in queued] == ["$info"]
 
 
-def test_process_new_messages_switches_to_app_without_executing_commands():
+def test_focus_app_for_queued_commands_switches_to_app_without_executing_commands():
     """The scan still brings Soul forward; execution belongs to the drainer (#398)."""
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.command_manager import CommandManager
@@ -287,7 +287,7 @@ def test_process_new_messages_switches_to_app_without_executing_commands():
 
     original_cmd_instance = CommandManager.instance
     try:
-        # A bare object: `process_new_messages` has no execution entry point to
+        # A bare object: the focus step has no execution entry point to
         # call any more (#399), so touching one would raise rather than pass quietly.
         CommandManager.instance = classmethod(lambda cls: object())
         manager = MessageManager.instance()
@@ -297,7 +297,7 @@ def test_process_new_messages_switches_to_app_without_executing_commands():
         _run(queue.clear_queue())
         manager.observe(["souler[Alice]说：$play 123"])
 
-        assert _run(manager.process_new_messages()) is None
+        assert _run(manager.focus_app_for_queued_commands()) is True
 
         assert switches == [True]  # D10: the UI switch stays at scan time
         assert queue.get_queue_size() == 0  # enqueueing belongs to dispatch_intake

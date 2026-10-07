@@ -312,15 +312,15 @@ class MessageManager(Singleton):
 
             chat_logger.info(content)
 
-        batch = build_message_batch(results)
-
         # 命令统一入队：实时与补漏共用这一条入队点，因此两条来源都只会被
-        # `RuntimeQueueDrainer` 这一条消费路径执行。
+        # `RuntimeQueueDrainer` 这一条消费路径执行。来源标签挂在消息上
+        # (`MessageInfo.source`)，日志直接读它，不再另存一份局部字符串。
         queue_source = "backfill" if from_backfill else "screen"
+        batch = build_message_batch(results, source=queue_source)
         for message in batch.commands:
             await MessageQueue.instance().put_message(message)
             self.handler.logger.info(
-                f"{queue_source} command added to queue: {message.content}"
+                f"{message.source} command added to queue: {message.content}"
             )
 
         return batch
@@ -444,7 +444,7 @@ class MessageManager(Singleton):
         )
         return {message.content for message in commands}
 
-    async def process_new_messages(self):
+    async def focus_app_for_queued_commands(self) -> bool:
         """扫描到新命令时，把 Soul 客户端带到前台，等 runtime 队列执行。
 
         这里**不执行命令**，也不接收聊天行：`dispatch_intake` 已经完成分类并
@@ -452,9 +452,12 @@ class MessageManager(Singleton):
         在下一圈监控循环统一完成。原始行不再跨过命令派发接缝（#399）。
         本次扫描仍要切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个
         界面上操作。
+
+        Returns:
+            `switch_to_app()` 的结果：是否已把 Soul 切到前台。
         """
         if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-            return None
+            return False
 
-        return None
+        return True
