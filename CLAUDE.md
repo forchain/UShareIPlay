@@ -103,7 +103,13 @@ Element selectors and UI automation logic are tightly coupled to `config.yaml` �
 ### Logging Policy (铁律)
 
 - **禁止输出无行为触发的监控日志**：严禁在循环监控、轮询、周期性检测（如麦位观测、UI 锁获取/释放、心跳巡检等）中输出无行为触发的监控日志。
-- **只有触发了具体行为才输出日志**：例如检测到麦位变更、执行命令、用户进出、发起弹窗交互或出现异常/错误时才输出日志。锁机制等内部同步细节严禁使用 INFO/CRITICAL 等级别在监控轮询中刷屏，仅限 DEBUG 级别排查。
+- **只有触发了具体行为才输出日志**：例如检测到麦位变更、执行命令、用户进出、发起弹窗交互或出现异常/错误时才输出日志。锁机制等内部同步细节严禁使用 INFO/CRITICAL 等级别在监控轮询中刷屏。
+- **DEBUG 不是安全阀**：`attach_app_logger` 默认级别就是 DEBUG，DEBUG 照样写进 `UShareIPlay.log`，所以"降级到 DEBUG"不构成不刷屏的理由。稳态轮询必须**零日志**。
+- **UI 独占锁的日志契约**（`AppController.ui_session`）：
+  - 稳态加解锁不产出任何日志——它被周期性后台更新按轮询频率触发。
+  - 排障时设 `UShareIPlay_UI_LOCK_TRACE=1` 打开完整加解锁轨迹（含等待/持有时长）。
+  - 等锁超过 `_ui_lock_stuck_seconds`（默认 1s）或持锁超过该阈值时告警，这类卡顿会把用户命令一起挡在门外，必须报出来。
+- **后台更新必须按步骤持锁**：`_process_update_logic` 用 `update_commands(run_step=...)` 让每个命令的 `update()` 各自独立持锁，并在步与步之间让出事件循环。早先一把锁罩住整轮，导致第一个命令的等待级联把后续所有更新步骤和用户命令一起锁在门外（2026-10-07 现场：68 秒）。
 
 
 ## OpenSpec Workflow

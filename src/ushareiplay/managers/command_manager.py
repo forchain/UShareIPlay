@@ -171,12 +171,24 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.error(f"Error loading commands: {traceback.format_exc()}")
 
-    def update_commands(self):
-        """Update all loaded commands"""
+    async def update_commands(self, run_step=None):
+        """Update all loaded commands.
+
+        run_step: 每步的执行器，形如 ``await run_step(name, update_callable)``。
+        周期性后台任务传入它，让每个命令的 update() **各自独立**持 UI 独占锁：
+        早先整轮被一把 ui_session 罩住，于是第一个命令的 10 秒等待级联会把后面
+        所有更新步骤和用户命令一起锁在门外，直到整轮结束才放行。
+        不传时按调用方自己的上下文同步串行执行（行为与从前一致）。
+        """
         for module in self.command_modules.values():
             try:
-                if hasattr(module, 'command'):
-                    module.command.update()
+                command = getattr(module, 'command', None)
+                if command is None:
+                    continue
+                if run_step is None:
+                    command.update()
+                else:
+                    await run_step(module.__name__, command.update)
             except Exception as e:
                 self.logger.error(f"Error updating command {module.__name__}: {str(e)}")
 

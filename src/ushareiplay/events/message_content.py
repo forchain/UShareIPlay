@@ -7,6 +7,7 @@
 
 __multiple__ = True
 
+import asyncio
 import traceback
 
 from ushareiplay.core.base_event import BaseEvent
@@ -80,16 +81,28 @@ class MessageContentEvent(BaseEvent):
         """处理更新逻辑（、播放信息等）- 在没有命令消息时执行。
 
         这里跑的是周期性后台任务（房名/公告/话题等），会真实点击与开关弹窗，
-        因此整段持 UI 独占锁：否则 EventManager 的未知页兜底返回会在这些
+        因此每个步骤各自持 UI 独占锁：否则 EventManager 的未知页兜底返回会在这些
         await 点把弹窗当成未知页面关掉。
+
+        锁必须**按步骤**持有，不能一把锁罩住整轮。这些 update() 是同步调用链，
+        最终落到 Selenium 的 WebDriverWait：一次失败读 10 秒，@with_driver_recovery
+        还会在重建 driver 后重试一次，超时串成级联。整轮被罩住时，第一个命令的级联
+        会把后面所有更新步骤和用户命令一起锁在门外（2026-10-07 现场：15:00:03 取锁，
+        15:01:11 才释放，68 秒，其间的 /radio 只能在最后才跑起来）。按步持锁后，
+        一步卡住只连坐它自己。
         """
         try:
-            async with self.ui_session("periodic:background-updates"):
-                # Update all commands
-                command_manager = CommandManager.instance()
-                command_manager.update_commands()
+            command_manager = CommandManager.instance()
 
-                # update playback info
-                PlaybackBroadcaster.instance().update_playback_info_cache()
+            async def _run_step(name, update):
+                async with self.ui_session(f"periodic:update:{name}"):
+                    update()
+                # 步与步之间把时间片还给事件循环：主循环靠这个才能推进
+                await asyncio.sleep(0)
+
+            await command_manager.update_commands(run_step=_run_step)
+
+            # update playback info
+            PlaybackBroadcaster.instance().update_playback_info_cache()
         except Exception as e:
             self.logger.error(f"Error processing update logic: {str(e)}")

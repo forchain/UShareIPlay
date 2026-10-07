@@ -40,11 +40,19 @@ from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
+# ui_session 的排障开关：置 1 时恢复完整的加解锁轨迹（见 ui_session 的日志纪律）。
+UI_LOCK_TRACE_ENV = "UShareIPlay_UI_LOCK_TRACE"
+
+
 class AppController(Singleton):
     # ui_lock 的持有者与嵌套深度（见 ui_session）。用类属性兜底，让绕过
     # __init__ 直接构造的测试替身也能安全走 ui_session。
     _ui_lock_owner: Optional[asyncio.Task] = None
     _ui_lock_depth: int = 0
+
+    # 等锁超过这个秒数才算卡顿。命令持锁时后台轮询排队是常态，亚秒级重叠
+    # 属正常调度，不该因此刷屏；超过阈值说明有会话真的卡住了。
+    _ui_lock_stuck_seconds: float = 1.0
 
     def __init__(self, config):
         self.config = config
@@ -160,6 +168,17 @@ class AppController(Singleton):
         上的座位流程（reserve_seat -> check_user_specific_seat）本就在锁内，不放行
         会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
         ui_lock.locked()，兜底 back 的抑制语义因此不变。
+
+        日志纪律：稳态加解锁**不产出任何日志**。这条路径被周期性后台任务
+        （``periodic:background-updates``）按轮询频率触发，无条件打 DEBUG 会让
+        [ui_lock] acquired/released 常驻刷屏——既不是用户行为触发的，也不参与
+        任何判断，只会把真正的事件挤出视野，而且 DEBUG 级别照样会落盘
+        （attach_app_logger 默认就是 DEBUG）。
+
+        两条例外，都不是常态轮询：
+        * 设 ``UShareIPlay_UI_LOCK_TRACE=1`` 打开完整轨迹，供排障使用；
+        * 等锁超过 ``_ui_lock_stuck_seconds``（默认 1s）视为真实卡顿，照实报出
+          等待时长，避免问题彻底静默。
         """
         task = asyncio.current_task()
         if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
@@ -170,18 +189,44 @@ class AppController(Singleton):
                 self._ui_lock_depth -= 1
             return
 
+        waited_from = time.monotonic()
         await self.ui_lock.acquire()
+        waited = time.monotonic() - waited_from
         self._ui_lock_owner = task
         self._ui_lock_depth = 1
+        trace = os.environ.get(UI_LOCK_TRACE_ENV, "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        held_from = time.monotonic()
         try:
             if self.logger and reason:
-                self.logger.debug(f"[ui_lock] acquired: {reason}")
+                if trace:
+                    self.logger.debug(
+                        f"[ui_lock] acquired: {reason} (waited {waited * 1000:.0f}ms)"
+                    )
+                elif waited >= self._ui_lock_stuck_seconds:
+                    self.logger.warning(
+                        f"[ui_lock] waited {waited:.1f}s before entering: {reason}"
+                    )
             yield
         finally:
             self._ui_lock_owner = None
             self._ui_lock_depth = 0
+            held = time.monotonic() - held_from
             if self.logger and reason:
-                self.logger.debug(f"[ui_lock] released: {reason}")
+                if trace:
+                    self.logger.debug(
+                        f"[ui_lock] released: {reason} (held {held * 1000:.0f}ms)"
+                    )
+                elif held >= self._ui_lock_stuck_seconds:
+                    # 持锁过久会把用户命令一起挡在门外（现场：68 秒）。这种卡顿必须
+                    # 报出来，否则就是静默故障——只报超时环节报不出来，锁自己知道。
+                    self.logger.warning(
+                        f"[ui_lock] held for {held:.1f}s: {reason}"
+                    )
             self.ui_lock.release()
 
     def _start_apps(self):

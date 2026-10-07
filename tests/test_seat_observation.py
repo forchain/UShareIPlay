@@ -523,11 +523,19 @@ async def test_observe_visible_desks_does_not_acquire_ui_session_when_no_unknown
 
 
 @pytest.mark.asyncio
-async def test_ui_session_logs_at_debug_level_only():
-    """AppController.ui_session 的锁获取/释放仅允许打在 debug 级别，严禁在 critical/info 刷屏。"""
+async def test_ui_session_stays_quiet_in_steady_state(monkeypatch):
+    """AppController.ui_session 稳态加解锁不产出日志，更不得在 critical/info 刷屏。
+
+    这条路径由周期性后台任务按轮询频率触发，无条件打 DEBUG 会让
+    [ui_lock] 常驻刷屏（旧契约还断言每次进出各打一条，已作废）。
+    排障轨迹改由 UShareIPlay_UI_LOCK_TRACE=1 显式开启，
+    见 tests/test_ui_lock_log_policy.py。
+    """
     import asyncio
     from unittest.mock import MagicMock
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.core.app_controller import AppController, UI_LOCK_TRACE_ENV
+
+    monkeypatch.delenv(UI_LOCK_TRACE_ENV, raising=False)
 
     controller = AppController.__new__(AppController)
     controller.ui_lock = asyncio.Lock()
@@ -537,9 +545,7 @@ async def test_ui_session_logs_at_debug_level_only():
     async with controller.ui_session("seat_inspect"):
         pass
 
-    assert mock_logger.debug.call_count == 2
-    mock_logger.debug.assert_any_call("[ui_lock] acquired: seat_inspect")
-    mock_logger.debug.assert_any_call("[ui_lock] released: seat_inspect")
+    mock_logger.debug.assert_not_called()
     mock_logger.critical.assert_not_called()
     mock_logger.info.assert_not_called()
 

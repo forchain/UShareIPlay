@@ -495,7 +495,7 @@ def test_message_content_update_logic_does_not_drain_runtime_queue():
     from ushareiplay.models.message_info import MessageInfo
 
     class _FakeCmdMgr:
-        def update_commands(self):
+        async def update_commands(self, run_step=None):
             return None
 
     class _FakeInfoMgr:

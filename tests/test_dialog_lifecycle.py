@@ -617,7 +617,12 @@ async def _observe_lock(controller, sink):
 
 
 def test_background_updates_run_inside_an_exclusive_ui_session(screen):
-    """周期性房名/公告/话题更新会真实点击，必须整段持 UI 独占锁。"""
+    """周期性房名/公告/话题更新会真实点击，必须整段持 UI 独占锁。
+
+    锁按**步骤**持有（早先一把锁罩住整轮，于是第一个命令的等待级联会把用户命令
+    一起锁在门外，见 tests/test_background_update_stall.py）。#377 的本意不变：
+    每个 update 步骤执行期间锁必须是真实持有的，兜底 back 因此不会掐断弹窗流程。
+    """
     from ushareiplay.core.runtime_context import EventRuntimeContext
     from ushareiplay.events.message_content import MessageContentEvent
     from ushareiplay.managers.command_manager import CommandManager
@@ -629,15 +634,18 @@ def test_background_updates_run_inside_an_exclusive_ui_session(screen):
     event = MessageContentEvent(handler)
     busy_seen = []
 
+    def _step():
+        busy_seen.append(EventRuntimeContext(ui_lock=controller).is_ui_busy())
+
     class _Commands:
         @staticmethod
-        def update_commands():
-            busy_seen.append(EventRuntimeContext(ui_lock=controller).is_ui_busy())
+        async def update_commands(run_step=None):
+            await run_step("topic", _step)
 
     with _patched_command_manager(_Commands):
         asyncio.run(event._process_update_logic())
 
-    assert controller.entered == ["periodic:background-updates"]
+    assert controller.entered == ["periodic:update:topic"]
     # 更新跑到的时候锁是持有的：未知页兜底 back 因此不会掐断弹窗流程
     assert busy_seen == [True]
     assert controller.locked_flag is False, "退出后必须释放锁"
@@ -661,17 +669,30 @@ def test_background_updates_hold_the_real_ui_lock_against_a_fallback_back_listen
 
     lock_states = []
 
+    def _step():
+        lock_states.append(controller.ui_lock.locked())
+        screen.open("slide_drawer")
+
     class _Commands:
         @staticmethod
-        def update_commands():
-            lock_states.append(controller.ui_lock.locked())
-            screen.open("slide_drawer")
+        async def update_commands(run_step=None):
+            await run_step("title", _step)
 
     async def _main():
-        # 后台任务持锁期间，另一个 task（EventManager 的兜底 back 判断）必须看到忙
-        async with controller.ui_session("periodic:background-updates"):
-            listener = aio.create_task(_observe_lock(controller, lock_states))
-            await listener
+        # 后台步骤持锁期间，另一个 task（EventManager 的兜底 back 判断）必须看到忙
+        async def _step_with_listener():
+            async with controller.ui_session("periodic:update:title"):
+                listener = aio.create_task(_observe_lock(controller, lock_states))
+                await listener
+            _step()
+
+        class _ListenerCommands:
+            @staticmethod
+            async def update_commands(run_step=None):
+                await run_step("title", _step_with_listener)
+
+        with _patched_command_manager(_ListenerCommands):
+            await MessageContentEvent(handler)._process_update_logic()
 
         with _patched_command_manager(_Commands):
             await MessageContentEvent(handler)._process_update_logic()
@@ -692,8 +713,8 @@ def test_background_updates_still_run_without_a_controller(screen):
 
     class _Commands:
         @staticmethod
-        def update_commands():
-            ran.append(True)
+        async def update_commands(run_step=None):
+            await run_step("topic", lambda: ran.append(True))
 
     handler = _room_name_handler(screen)
     handler.controller = None
