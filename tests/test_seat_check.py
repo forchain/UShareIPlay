@@ -7,7 +7,8 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.runtime_context import EventRuntimeContext
-from ushareiplay.managers.seat_manager import seat_check as seat_check_module
+# 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
+from ushareiplay.managers.seat_manager import subsystem as seat_check_module
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 
 

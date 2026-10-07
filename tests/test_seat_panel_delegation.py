@@ -34,7 +34,8 @@ from tests.seat_fixtures import (
 )
 
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.seat_manager import seat_check as seat_check_module
+# 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
+from ushareiplay.managers.seat_manager import subsystem as seat_check_module
 from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatCardView
 from ushareiplay.managers.seat_manager.seating import SeatingManager

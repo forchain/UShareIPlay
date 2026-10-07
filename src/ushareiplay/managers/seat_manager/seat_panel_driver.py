@@ -85,10 +85,21 @@ class SeatPanelDriver:
     }
 
     def __init__(self, handler=None):
-        self.handler = handler
         # 面板是否展开的缓存。按钮读不到时它是唯一可用的取值（见 is_expanded）。
         self.expanded = False
-        self._logger = getattr(handler, "logger", None)
+        self.handler = handler
+
+    @property
+    def handler(self):
+        return self._handler
+
+    @handler.setter
+    def handler(self, value):
+        # logger 原来是在构造时快照的。座位子系统合并后 handler 可以被后换掉
+        # （SeatObservationManager.bind_handler 会改写 seat_ui.handler），快照必须
+        # 跟着走，否则驱动会一直往旧 handler 的 logger 上写。
+        self._handler = value
+        self._logger = getattr(value, "logger", None)
 
     @property
     def logger(self):
