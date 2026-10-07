@@ -488,7 +488,9 @@ def classify_chat_line(raw: str, room_owner: str | None = None) -> ChatIntakeRes
             nickname=nickname,
             text=text,
             trigger=trigger,
-            silent=trigger in SILENT_COMMAND_PREFIXES,
+            # 静默语义由 `is_silent_prefix` 独家定义（私聊前缀后仍可跟静默前缀，
+            # 如 `$/play`），分类与命令执行两侧因此不会各说各话。
+            silent=is_silent_prefix(text),
             private_reply=trigger in PRIVATE_REPLY_PREFIXES,
             raw=raw,
             quoted_text=quoted_text,
@@ -628,7 +630,7 @@ def expand_queue_text(
                     nickname=nickname,
                     text=part,
                     trigger=prefix,
-                    silent=silent or (prefix in SILENT_COMMAND_PREFIXES),
+                    silent=silent or is_silent_prefix(part),
                     private_reply=prefix in PRIVATE_REPLY_PREFIXES,
                     sleep_exempt=sleep_exempt,
                     raw=part,

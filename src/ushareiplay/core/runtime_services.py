@@ -52,7 +52,7 @@ def route_queue_text(
         text, nickname, silent=silent, sleep_exempt=sleep_exempt
     ):
         if result.kind == ChatIntakeKind.COMMAND:
-            # 只有触发符、没有内容的不算命令（与 execute_chat_scan 的判定一致）
+            # 只有触发符、没有内容的不算命令（与 `build_message_batch` 的判定一致）
             if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
                 continue
             commands.append(

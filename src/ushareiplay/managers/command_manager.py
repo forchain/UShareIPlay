@@ -9,15 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.core.chat_intake import (
-    QUEUE_COMMAND_PREFIX_CHARS,
-    ChatIntakeKind,
-    MessageBatch,
-    classify_chat_line,
-    is_private_reply_prefix,
-    is_silent_prefix,
-    normalize_command_text,
-)
+from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
 from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -381,18 +373,6 @@ class CommandManager(Singleton):
             return None
         return self.command_parser.parse_command(content)
 
-    def _normalize_command_candidate(self, raw: str) -> str:
-        """Normalize command-candidate text for robust parsing."""
-        return normalize_command_text(raw)
-
-    def _extract_private_reply_and_normalize(self, raw: str) -> tuple[bool, str]:
-        """Extract private-reply marker and normalize command candidate."""
-        private_reply = is_private_reply_prefix(raw)
-        return private_reply, normalize_command_text(raw)
-
-    def _is_silent_command_candidate(self, raw: str) -> bool:
-        return is_silent_prefix(raw)
-
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
         command_messages = []
         for message_info in queue_messages:
@@ -419,21 +399,6 @@ class CommandManager(Singleton):
         await self.execute_command_messages(command_messages)
         return len(command_messages)
 
-    async def execute_chat_scan(self, chats):
-        messages = []
-        for chat in chats:
-            result = classify_chat_line(chat)
-            if result.kind != ChatIntakeKind.COMMAND:
-                continue
-            if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
-                continue
-            messages.append(MessageInfo(result.text, result.nickname))
-
-        if messages:
-            await self.execute_command_messages(messages)
-
-        return messages
-
     async def execute_intake_batch(self, batch: MessageBatch) -> int:
         """执行一批已经分类好的命令消息（intake 接缝）。
 
@@ -452,10 +417,12 @@ class CommandManager(Singleton):
     async def execute_command_messages(self, messages):
         """
         处理消息中的命令
-        Args:
-            messages: 消息字典 {msg_id: MessageInfo}
-        Returns:
-            str: 响应消息（如果有的话）
+
+        消息由 Chat Intake 分类后带元数据过来（intake 接缝 / runtime 队列）：
+        `silent` / `private_reply` 直接读消息上的判定结果，不再拿原文重新推断
+        前缀语义。`normalize_command_text` 只做一件事 —— 剥掉触发符，让内容能
+        匹配 `config.yaml` 里不带触发符的命令前缀（`play` 而不是 `:play`），
+        它不再参与静默 / 私聊的判定。
         """
         success_count = 0
 
@@ -467,16 +434,8 @@ class CommandManager(Singleton):
             if not message_info.content:
                 continue
 
-            # Normalize command input (tolerate leading spaces and spaces after colon)
-            extracted_private_reply, content = self._extract_private_reply_and_normalize(
-                message_info.content
-            )
-            message_info.private_reply = bool(
-                getattr(message_info, "private_reply", False)
-            ) or extracted_private_reply
-            silent = bool(getattr(message_info, "silent", False)) or self._is_silent_command_candidate(
-                message_info.content
-            )
+            silent = bool(getattr(message_info, "silent", False))
+            content = normalize_command_text(message_info.content)
             if not content:
                 continue
 
@@ -512,9 +471,6 @@ class CommandManager(Singleton):
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
         return success_count
-
-    async def handle_message_commands(self, messages):
-        return await self.execute_command_messages(messages)
 
     def get_command_modules(self):
         """获取所有已加载的命令模块"""

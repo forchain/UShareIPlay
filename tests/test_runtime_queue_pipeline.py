@@ -54,14 +54,6 @@ class _FakeCommandManager:
             send_screen_message=send_screen_message,
         )
 
-    async def execute_chat_scan(self, rows):
-        from ushareiplay.managers.command_manager import CommandManager
-
-        manager = CommandManager.__new__(CommandManager)
-        manager.__init__()
-        manager.execute_command_messages = self.execute_command_messages
-        return await manager.execute_chat_scan(rows)
-
 
 class _FakeWrapper:
     def __init__(self, content):
@@ -283,7 +275,6 @@ def test_process_new_messages_switches_to_app_without_executing_commands():
     from ushareiplay.managers.message_manager import MessageManager
 
     switches = []
-    executed = []
 
     class _FakeSoulHandler:
         def __init__(self):
@@ -294,14 +285,11 @@ def test_process_new_messages_switches_to_app_without_executing_commands():
             switches.append(True)
             return True
 
-    class _NeverExecutedCommandManager:
-        async def execute_chat_scan(self, rows):
-            executed.append(list(rows))
-            return []
-
     original_cmd_instance = CommandManager.instance
     try:
-        CommandManager.instance = classmethod(lambda cls: _NeverExecutedCommandManager())
+        # A bare object: `process_new_messages` has no execution entry point to
+        # call any more (#399), so touching one would raise rather than pass quietly.
+        CommandManager.instance = classmethod(lambda cls: object())
         manager = MessageManager.instance()
         manager._handler = _with_ui_components(_FakeSoulHandler())
         manager._chat_logger = logging.getLogger("test_chat_logger_switch")
@@ -312,7 +300,6 @@ def test_process_new_messages_switches_to_app_without_executing_commands():
         assert _run(manager.process_new_messages()) is None
 
         assert switches == [True]  # D10: the UI switch stays at scan time
-        assert executed == []  # no inline execution, and nothing re-classified
         assert queue.get_queue_size() == 0  # enqueueing belongs to dispatch_intake
     finally:
         CommandManager.instance = original_cmd_instance
