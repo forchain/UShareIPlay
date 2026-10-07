@@ -244,6 +244,10 @@ class MessageManager(Singleton):
         批次在**认识 `room_owner` 的地方**构建：礼物与 mention 的判定都要房主名，
         放到下游再分类就会把「送给房主的礼物」当成普通发言。
 
+        命令消息一律入队，由 runtime 队列统一执行 —— 实时扫描与回滚补漏因此共用
+        同一条消费路径（同一批角色校验、权限校验与播放静音保护），实时命令也不再
+        在扫描现场就地执行。
+
         Args:
             lines: 要派发的聊天行，通常来自 `observe()` 的 `new_lines`
             room_owner: 房主名，用于识别「送给房主」的礼物
@@ -252,8 +256,7 @@ class MessageManager(Singleton):
         Returns:
             本批的全部分类结果与其命令消息。命令消息已带上 intake 抽出的全部
             元数据（`silent` / `private_reply` / `sleep_exempt` / `quoted_text`），
-            下游不必再从原始行重新判定。实时路径不代为入队（执行由
-            `CommandManager` 完成）；补漏路径在此入队。
+            下游不必再从原始行重新判定。
         """
         chat_logger = self.chat_logger
         results: list[ChatIntakeResult] = []
@@ -311,10 +314,14 @@ class MessageManager(Singleton):
 
         batch = build_message_batch(results)
 
-        if from_backfill:
-            for message in batch.commands:
-                await MessageQueue.instance().put_message(message)
-                self.handler.logger.info(f"Missed command added to queue: {message.content}")
+        # 命令统一入队：实时与补漏共用这一条入队点，因此两条来源都只会被
+        # `RuntimeQueueDrainer` 这一条消费路径执行。
+        queue_source = "backfill" if from_backfill else "screen"
+        for message in batch.commands:
+            await MessageQueue.instance().put_message(message)
+            self.handler.logger.info(
+                f"{queue_source} command added to queue: {message.content}"
+            )
 
         return batch
 
@@ -438,15 +445,17 @@ class MessageManager(Singleton):
         return {message.content for message in commands}
 
     async def process_new_messages(self, lines=None):
-        """把新出现的聊天行里的命令交给 CommandManager 立即执行。
+        """扫描到新命令时，把 Soul 客户端带到前台，等 runtime 队列执行。
+
+        这里**不执行命令**：`dispatch_intake` 已经把命令消息入队，执行由
+        `RuntimeQueueDrainer` 在下一圈监控循环统一完成（#398）。本次扫描仍要
+        切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个界面上操作。
 
         Args:
-            lines: 要扫描的行；省略时取窗口里最近的行（单独调用时的便利路径）。
+            lines: 本次扫描的行，已由 `dispatch_intake` 分类并入队，此处不再读。
         """
         if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
-        return await CommandManager.instance().execute_chat_scan(
-            self._recent if lines is None else lines
-        )
+        return None
