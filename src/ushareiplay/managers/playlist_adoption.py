@@ -2,7 +2,7 @@
 
 「房间切歌单之后发生什么」原先散落在六个音乐命令里，是 13 个近似相同的五连写块：
 
-    guard -> player_name = -> list_mode = -> set_next_title() -> change_topic()
+    guard -> player_name = -> list_mode = -> set_title() -> set_topic()
 
 这些块已经漂移：写序不同（album 先话题后标题，其余先标题后话题）、话题切分
 有三套规则（不切 / " - " / 裸 "-"）、`list_mode` 直接写在 `QQMusicHandler`
@@ -62,15 +62,14 @@ class PlaylistAdoption(Singleton):
     | `player_name` | `InfoManager`/`PlaylistState` | adopt 开始 |
     | `list_mode` | `MusicManager`（不再直写 handler） | adopt 开始 |
     | `current_playlist_name` | `InfoManager` | adopt 开始 |
-    | 房间标题 | `RoomNameManager.set_next_title` | 状态之后 |
-    | 房间话题 | `TopicManager.change_topic` | 标题之后 |
+    | 房间标题 | `RoomProfileManager.set_title` | 状态之后 |
+    | 房间话题 | `RoomProfileManager.set_topic` | 标题之后 |
     """
 
     def __init__(self):
         # 延迟解析的依赖；测试可直接注入替身（见 ADR-0004 的注入约定）
         self._info = None
-        self._room_name = None
-        self._topic = None
+        self._room_profile = None
         self._music = None
 
     @property
@@ -81,18 +80,11 @@ class PlaylistAdoption(Singleton):
         return self._info
 
     @property
-    def _room_name_manager(self):
-        if self._room_name is None:
-            from ushareiplay.managers.room_name_manager import RoomNameManager
-            self._room_name = RoomNameManager.instance()
-        return self._room_name
-
-    @property
-    def _topic_manager(self):
-        if self._topic is None:
-            from ushareiplay.managers.topic_manager import TopicManager
-            self._topic = TopicManager.instance()
-        return self._topic
+    def _room_profile_manager(self):
+        if self._room_profile is None:
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            self._room_profile = RoomProfileManager.instance()
+        return self._room_profile
 
     @property
     def _music_manager(self):
@@ -143,17 +135,17 @@ class PlaylistAdoption(Singleton):
         # 2. 房间标题
         title_value = (title or "").strip()
         if title_value:
-            title_result = self._room_name_manager.set_next_title(title_value)
+            title_result = self._room_profile_manager.set_title(title_value)
             if isinstance(title_result, dict) and "error" in title_result:
                 return title_result
 
         # 3. 房间话题
         topic_value = primary_topic(topic)
         if topic_value:
-            topic_result = self._topic_manager.change_topic(topic_value)
+            topic_result = self._room_profile_manager.set_topic(topic_value)
             if isinstance(topic_result, dict) and "error" in topic_result:
                 return topic_result
 
-        # 标题/话题各自的落地日志由 RoomNameManager / TopicManager 给出，
-        # 这里不再重复打日志（也就不必依赖任何一个 logger）。
+        # 标题/话题各自的落地日志由 RoomProfileManager 给出，这里不再重复打日志
+        #（也就不必依赖任何一个 logger）。
         return None

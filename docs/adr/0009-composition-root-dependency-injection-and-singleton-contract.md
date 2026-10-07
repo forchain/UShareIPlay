@@ -18,7 +18,7 @@ Accepted
 ### 2. 受保护单例契约（Protected Singleton Contract）
 所有受保护的系统级服务统一继承 `Singleton`（元类为 `SingletonMeta`）：
 - 严禁通过类的直接构造函数 `Cls()` 创建实例，违者抛出明确的 `SingletonError("Use Cls.initialize(...) to create singleton instances")`。
-- 全系统 35 个单例类均受此契约约束并通过自动化测试覆盖。
+- 全系统 33 个单例类均受此契约约束；其中 30 个由 `tests/test_singleton.py::test_all_protected_singletons_reject_direct_constructor_instantiation` 逐一断言拒绝直接构造（两个 App Handler 与 `SeatManagerBase` 不在该清单内）。
 - 业务调用方统一通过 `Cls.instance()` 进行只读查找；严禁在组合根以外的地方重新初始化。
 
 ### 3. 彻底删除全部懒取 Handler 兜底
@@ -29,8 +29,8 @@ Accepted
 
 ### 4. 懒加载严格限定于真循环依赖
 - 严禁在无循环引用的代码中随意使用函数体内 `import`。
-- 逐一排查后确需保留延迟加载的位置，必须在其属性或方法的 docstring 中显式注明循环引用的另一端是谁（例如 `RoomInfoWindow` 与各业务 Manager 互引、`InfoManager` 与 `PartyManager` 顶层互引、`PresenceTracker` 与 `CommandManager` 的跨层交互）。
-- 本次重构后，`src/` 内函数体内 import 数量从基线 228 处大幅减少至 155 处（净减少 73 处，降幅逾 32%）。
+- 逐一排查后确需保留延迟加载的位置，必须在其属性或方法的 docstring 中显式注明循环引用的另一端是谁（例如 `InfoManager` 与 `PartyManager` 顶层互引、`PresenceTracker` 与 `CommandManager` 的跨层交互）。房间档案一线的循环已在 #394 收口：`RoomInfoWindow` 门面与四个遗留单字段管理器下线后，`RoomProfileManager` 只单向依赖 `core/` 与 `state/`，其模块内不再有任何 manager→manager 的延迟导入。
+- 本次重构后，`src/` 内函数体内 import 数量从基线 228 处大幅减少至 151 处（净减少 77 处，降幅逾 33%）。该数字在 #394 复核过：房间档案纵切（#387 系列）又带走了 4 处。
 
 ### 5. 运行时重新绑定（bind_handler）的裁决
 对 `bind_handler` 接口进行收敛与语义澄清：
@@ -42,7 +42,7 @@ Accepted
 1. **测试断言零放宽**：除个别座位测试搭台代码从 `SeatManager()` 修正为符合单例契约的 `SeatManager.initialize(...)` 之外，既有业务逻辑断言零修改，无任何一条断言是为了掩盖行为变更而调整。
 2. **麦位策略零变更**：抢麦规则、他人房间客房守卫判定（`RoomState.in_guest_room()` / `@guest_room_guard`）、麦位重扫阈值（2）与冷却时间默认值（60s）严格保持不变。
 3. **公屏交互零变更**：所有公屏广播文案、静音生命周期（`PlaybackMuting`）与事件互斥语义保持 100% 一致。
-4. **测试结果**：全量测试套件 1151 tests passed。
+4. **测试结果**：#359 系列收官时的全量测试套件为 1151 tests passed。此后 #387 房间档案纵切等变更继续扩充该套件，#394 收口时为 1380 tests passed、0 失败；#387 的评审修正（补齐统一接口契约的 `requester`、复原房名编辑入口的 0.25 高度坐标点击、日志铁律对齐）后为 1411 tests passed、0 失败；上面三条等价性判断以 #359 系列自身的结论为准。
 
 ## 判定不做且不再重复提案的条目（Non-Goals / Excluded Proposals）
 为避免后续代理或代码审查被旧的泛化重构建议带偏，特此固定判定不做以下提案：

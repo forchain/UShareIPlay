@@ -2,6 +2,12 @@ from ushareiplay.core.base_command import BaseCommand
 
 
 class ThemeCommand(BaseCommand):
+    """`:theme` —— 薄适配器，逻辑全在 `RoomProfileManager`（ADR-0001）。
+
+    主题不单独占冷却预算：它只是房名草稿的前缀，因此真正写 UI 的那一步与
+    `:title` 是同一个 `update_title`。
+    """
+
     handler_attr = 'soul_handler'
     error_message = '处理主题命令失败: {error}'
 
@@ -11,15 +17,15 @@ class ThemeCommand(BaseCommand):
             return {'error': 'Failed to switch to Soul app'}
         self.handler.logger.info("Switched to Soul app")
 
-        result = self.room_name_manager.set_theme(theme)
+        result = self.room_profile_manager.set_theme(theme)
         if 'error' in result:
             return result
 
-        verify_result = self.room_name_manager.verify_theme(theme)
+        verify_result = self.room_profile_manager.verify_theme(theme)
         if 'error' in verify_result:
             return verify_result
 
-        ui_result = self.room_name_manager.process_pending_update()
+        ui_result = self.room_profile_manager.update_title()
 
         response = {'theme': f'主题已更新为: {result["theme"]}'}
         if ui_result.get('ui_updated'):
@@ -35,10 +41,10 @@ class ThemeCommand(BaseCommand):
     async def do_process(self, message_info, parameters):
         """Process theme command"""
         if not parameters:
-            current_theme = self.room_name_manager.get_current_theme()
-            current_title = self.room_name_manager.get_current_title()
-            next_title = self.room_name_manager.get_next_title()
-            remaining_minutes = self.room_name_manager.get_remaining_cooldown_minutes()
+            current_theme = self.room_profile_manager.get_current_theme()
+            current_title = self.room_profile_manager.get_current_title()
+            next_title = self.room_profile_manager.get_next_title()
+            remaining_minutes = self.room_profile_manager.get_remaining_cooldown_minutes()
 
             status_parts = [f'当前主题: {current_theme}']
             status_parts.append(f'当前标题: {current_title}' if current_title else '当前标题: 未设置')
@@ -58,8 +64,8 @@ class ThemeCommand(BaseCommand):
     def update(self):
         """Update method for background tasks - handle theme UI synchronization"""
         try:
-            if not self.room_name_manager.has_pending_ui_update():
+            if not self.room_profile_manager.has_pending_ui_update():
                 return
-            self.room_name_manager.process_pending_update()
+            self.room_profile_manager.update_title()
         except Exception as e:
             self.handler.log_error(f"Error in theme update: {str(e)}")

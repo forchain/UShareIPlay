@@ -1,58 +1,44 @@
-import traceback
 from ushareiplay.core.base_command import BaseCommand
 
+
 class NoticeCommand(BaseCommand):
+    """公告命令 —— 只解析参数、拼装回复，业务全在 `RoomProfileManager` 里。
+
+    参数拼接与「回复长什么样」留在命令这一层（config.yaml 的 `:notice` 模板
+    是 `Change notice to {notice}`，因此这里必须交出 `notice` 键）；排队、
+    15 分钟冷却、写抽屉、以及写成功后的公屏播报都在房间档案模块内。
+    `handler_attr` 与 `error_message` 保持原样，模板因此不需要改。
+
+    与话题那条纵切同形：**这一层不碰 UI**。用户下完 `:notice` 立刻收到
+    「Change notice to ...」，真正写入由 `update()` 的心跳在预算允许时完成。
+    """
+
     handler_attr = 'soul_handler'
     error_message = 'Failed to process notice command: {error}'
 
-    def change_notice(self, notice: str):
-        """Change room notice with cooldown check using NoticeManager"""
-        # 使用NoticeManager的冷却时间管理
-        from ushareiplay.managers.notice_manager import NoticeManager
-        notice_manager = NoticeManager.instance()
-        
-        result = notice_manager.set_notice(notice)
-        
-        if 'success' in result:
-            self.handler.logger.info(f'Notice updated to {notice}')
-            return {'notice': f'{notice}'}
-        elif 'cooldown' in result:
-            remaining_minutes = result.get('remaining_minutes', 0)
-            self.handler.logger.info(f'Notice will be updated to {notice} in {remaining_minutes} minutes')
-            return {'notice': f'{notice}. Notice will update in {remaining_minutes} minutes'}
-        else:
-            # 错误情况
-            error_msg = result.get('error', 'Unknown error')
-            self.handler.logger.error(f'Failed to update notice: {error_msg}')
-            return {'error': f'Failed to update notice: {error_msg}'}
-
     async def do_process(self, message_info, parameters):
-        """Process notice command"""
-        # Get new notice from parameters
+        """安排一条公告：参数拼接交给命令，排队与冷却交给房间档案模块。"""
         if not parameters:
             return {'error': 'Missing notice parameter'}
 
         new_notice = ' '.join(parameters)
-        return self.change_notice(new_notice)
+        result = self.room_profile_manager.set_notice(new_notice)
+
+        if 'cooldown' in result:
+            remaining_minutes = result.get('remaining_minutes', 0)
+            return {'notice': f'{new_notice}. Notice will update in {remaining_minutes} minutes'}
+
+        if 'success' in result:
+            return {'notice': f'{new_notice}'}
+
+        error_msg = result.get('error', 'Unknown error')
+        self.handler.logger.error(f'Failed to update notice: {error_msg}')
+        return {'error': f'Failed to update notice: {error_msg}'}
 
     def update(self):
-        """Check and update notice periodically using NoticeManager"""
-        try:
-            # 使用NoticeManager处理待设置的notice
-            from ushareiplay.managers.notice_manager import NoticeManager
-            notice_manager = NoticeManager.instance()
-            
-            # 调用NoticeManager的update方法处理待设置的notice
-            result = notice_manager.update()
-            
-            # 如果notice处理完成，发送消息通知
-            if result and 'success' in result:
-                # Extract notice content from success message
-                success_message = result.get('success', '')
-                notice_content = str(success_message).replace('Notice restored to: ', '')
-                
-                self.handler.logger.info(f'Notice update completed: {notice_content}')
-                self.message_dispatch.send_screen_message(f"Notice updated to: {notice_content}")
+        """心跳：冷却到期且排队的公告由 `RoomProfileManager` 写进抽屉。
 
-        except Exception:
-            self.handler.log_error(f"Error in notice update: {traceback.format_exc()}")
+        返回值一律忽略 —— 写成功后往公屏播报的那句话由房间档案模块负责，
+        这里没有需要回给用户的东西。
+        """
+        self.room_profile_manager.update_notice()

@@ -25,8 +25,7 @@ class BaseCommand(ABC):
         self.handler = getattr(controller, self.handler_attr) if self.handler_attr else None
         self.last_update_time = time.time()
         self._info_manager = None
-        self._topic_manager = None
-        self._room_name_manager = None
+        self._room_profile_manager = None
         self._music_manager = None
         self._playlist_adoption = None
         self._mic_manager = None
@@ -97,18 +96,11 @@ class BaseCommand(ABC):
         return self._info_manager
 
     @property
-    def topic_manager(self):
-        if self._topic_manager is None:
-            from ushareiplay.managers.topic_manager import TopicManager
-            self._topic_manager = TopicManager.instance()
-        return self._topic_manager
-
-    @property
-    def room_name_manager(self):
-        if self._room_name_manager is None:
-            from ushareiplay.managers.room_name_manager import RoomNameManager
-            self._room_name_manager = RoomNameManager.instance()
-        return self._room_name_manager
+    def room_profile_manager(self):
+        if self._room_profile_manager is None:
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            self._room_profile_manager = RoomProfileManager.instance()
+        return self._room_profile_manager
 
     @property
     def music_manager(self):
