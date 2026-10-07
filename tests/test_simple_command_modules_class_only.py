@@ -18,6 +18,7 @@ SIMPLE_COMMAND_MODULES = {
     "pack",
     "pause",
     "playlist",
+    "recommend",
     "say",
     "seat",
     "skip",

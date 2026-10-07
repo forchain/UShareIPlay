@@ -11,8 +11,7 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.recommendation_manager import RecommendationManager
-from ushareiplay.managers.room_info_window import RoomInfoWindow
+from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.models import MessageInfo
 from ushareiplay.state.room_state import RoomState
 
@@ -24,7 +23,7 @@ class PartyManager(Singleton):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._message_dispatch = None
-        self._room_info_window = None
+        self._room_profile_manager = None
 
         # 派对重启相关状态
         self.init_time = None  # 初始化时间
@@ -42,11 +41,27 @@ class PartyManager(Singleton):
         return self._logger
 
     @property
-    def room_info_window(self):
-        """获取 RoomInfoWindow——窗口的打开/检测/关闭归它所有。"""
-        if self._room_info_window is None:
-            self._room_info_window = RoomInfoWindow.instance()
-        return self._room_info_window
+    def room_profile_manager(self):
+        """房间档案的所有者——抽屉的打开/关闭/窗口内顺序都归它（#393）。
+
+        `None` 表示组合根还没注册它（离线装配 / 接线漏了）。本模块不再直接查
+        任何抽屉元素：推荐分发、派对类型、房名与公告的纠正都在那一次会话里。
+        """
+        if self._room_profile_manager is None and RoomProfileManager.is_initialized():
+            self._room_profile_manager = RoomProfileManager.instance()
+        return self._room_profile_manager
+
+    def _refresh_recommendation_state(self):
+        """把推荐分发的真实状态从抽屉读回来（推荐分发归房间档案模块所有）。
+
+        建房流程记录的推荐状态只是配置假设或创建表单的点击结果，不代表真实
+        房间状态；回房与建房之后都要用房间信息抽屉的真实 UI 刷新一次。组合根
+        还没注册房间档案模块时安静跳过 —— 那是接线问题，不是业务失败。
+        """
+        profile = self.room_profile_manager
+        if profile is None:
+            return None
+        return profile.ensure_synced_on_return()
 
     @property
     def message_dispatch(self):
@@ -533,8 +548,7 @@ class PartyManager(Singleton):
             if party_back_elem:
                 if self._click_element_safe(party_back_elem, 'party_back'):
                     self.logger.info("Clicked back to party (dialog was already visible)")
-                    if RecommendationManager.is_initialized():
-                        RecommendationManager.instance().ensure_synced_on_return()
+                    self._refresh_recommendation_state()
                     return True
 
             if not self._enter_party_hall_from_home():
@@ -546,8 +560,7 @@ class PartyManager(Singleton):
             self.handler.party_id = None
 
             if self._search_and_try_enter_existing_party():
-                if RecommendationManager.is_initialized():
-                    RecommendationManager.instance().ensure_synced_on_return()
+                self._refresh_recommendation_state()
                 return True
 
             if not self._create_party_flow():
@@ -776,22 +789,21 @@ class PartyManager(Singleton):
         # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，
         # 否则房间重启后 info 显示的推荐状态会与实际不一致（如实际"所有人"却记录为"关闭"）。
         if RoomState.is_initialized():
-            if RecommendationManager.is_initialized():
-                try:
-                    RoomState.instance().recommendation_enabled = None
-                    sync_res = RecommendationManager.instance().ensure_synced_on_return()
-                    refreshed = RoomState.instance().recommendation_enabled
-                    if isinstance(sync_res, dict) and 'error' in sync_res:
-                        self.logger.warning(
-                            f"Recommendation refresh after party creation failed: {sync_res['error']}; "
-                            f"state left as {refreshed}, will re-sync on next info/return"
-                        )
-                    else:
-                        self.logger.info(
-                            f"Recommendation state refreshed from UI after party creation: {refreshed}"
-                        )
-                except Exception as e:
-                    self.logger.warning(f"Error refreshing recommendation after party creation: {e}")
+            try:
+                RoomState.instance().recommendation_enabled = None
+                sync_res = self._refresh_recommendation_state()
+                refreshed = RoomState.instance().recommendation_enabled
+                if isinstance(sync_res, dict) and 'error' in sync_res:
+                    self.logger.warning(
+                        f"Recommendation refresh after party creation failed: {sync_res['error']}; "
+                        f"state left as {refreshed}, will re-sync on next info/return"
+                    )
+                else:
+                    self.logger.info(
+                        f"Recommendation state refreshed from UI after party creation: {refreshed}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"Error refreshing recommendation after party creation: {e}")
 
         self.logger.info("派对创建成功，准备设置默认notice")
 
@@ -822,68 +834,3 @@ class PartyManager(Singleton):
                 MemoryManager.instance().schedule_consolidation_all()
         except Exception:
             self.logger.warning("Failed to schedule memory consolidation on _after_party_created")
-
-
-    def check_and_correct_room_type(self, auto_close: bool = True) -> dict:
-        """
-        在派对房间内检查并校正房间类型。
-        读取窗口内 tv_type 文本；如文本为“闲聊唠嗑”，自动点击进入二级弹窗
-        切为“唱歌听歌”（选择后自动返回）。
-        窗口的打开与关闭由 RoomInfoWindow 拥有。
-
-        Args:
-            auto_close: 是否在完成后自动关闭房间信息窗口 (默认 True)
-        """
-        try:
-            type_elem = self.handler.element_finder.try_find_element('party_room_type_option', log=False)
-            if not type_elem:
-                # 打开 ritual 归 RoomInfoWindow（原先这里是第四份手写副本）
-                open_error = self.room_info_window.ensure_open(
-                    error_message='Failed to find room topic entry'
-                )
-                if open_error:
-                    return open_error
-                type_elem = self.handler.element_finder.wait_for_element('party_room_type_option')
-
-            if not type_elem:
-                self.logger.warning("未找到房间类型选项 (party_room_type_option)")
-                return {'error': 'Failed to find party_room_type_option'}
-
-            current_type_text = (getattr(type_elem, 'text', '') or "").strip()
-            self.logger.info(f"Inspected in-room party type: '{current_type_text}'")
-
-            if "闲聊唠嗑" in current_type_text or current_type_text == "闲聊唠嗑":
-                self.logger.info("Party type is '闲聊唠嗑', attempting to switch to '唱歌听歌'")
-                type_elem.click()
-
-                target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
-                target_elem = self.handler.element_finder.wait_for_element(target_type_key)
-                if not target_elem:
-                    self.logger.warning(f"未找到目标房间类型按钮 ({target_type_key})")
-                    return {'error': f'Failed to find target party type button ({target_type_key})'}
-
-                target_elem.click()
-                self.logger.info(f"Successfully clicked target party type ({target_type_key})")
-                return {'success': True, 'switched': True}
-            else:
-                self.logger.info(f"Party type already target/different ('{current_type_text}'), no switch needed")
-                return {'success': True, 'switched': False}
-        except Exception as e:
-            self.logger.error(f"Error checking/correcting room type: {traceback.format_exc()}")
-            return {'error': str(e)}
-        finally:
-            if auto_close:
-                self.room_info_window.ensure_closed()
-
-    def sync_and_correct_room_type_if_dialog_open(self) -> dict:
-        """
-        被动纠偏：当房间信息窗口因任何原因（如更新标题/主题/公告/推荐）打开时被动调用。
-        读取当前 UI 中的 party_room_type_option，若为“闲聊唠嗑”则修正为“唱歌听歌”，
-        选择后自动返回并保持在房间信息窗口中（不自动关窗，供后续修改/检查使用）。
-        """
-        type_elem = self.handler.element_finder.try_find_element('party_room_type_option', log=False)
-        if not type_elem:
-            return {'skipped': True, 'reason': 'dialog_not_open'}
-        return self.check_and_correct_room_type(auto_close=False)
-
-

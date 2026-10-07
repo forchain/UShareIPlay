@@ -56,7 +56,11 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         )
         if not element:
             return False
-        return bool(element.click())
+        # Selenium 的 WebElement.click() 返回 None，因此不能拿它的返回值当布尔：
+        # 那样「点成功」与「点失败」在生产里无法区分，调用方会把每一次成功的
+        # 点击误判成「元素没找到」。点得到就报告成功。
+        element.click()
+        return True
 
     def wait_for_any(self, keys, *, timeout: int = 10) -> Optional[str]:
         key, _element = self._require_handler().element_finder.wait_for_any_element(

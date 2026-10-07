@@ -233,28 +233,23 @@ def test_with_window_open_yields_the_error_and_does_not_close_when_it_cannot_ope
 # --------------------------------------------------------------------------
 
 def _stub_managers(monkeypatch, recorder):
-    from ushareiplay.managers.party_manager import PartyManager
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.room_profile import RoomProfileManager
 
-    def _install(cls, **attrs):
-        stub = SimpleNamespace(**attrs)
-        monkeypatch.setattr(cls, "_instance", stub, raising=False)
-        monkeypatch.setattr(cls, "_singleton_initialized", True, raising=False)
-
-    def _inspect_current_ui_status(wait=True):
+    def _inspect_current_ui_status(self, wait=True):
         recorder['recommendation_wait'] = wait
         return recorder.setdefault('recommendation', True) and True
 
-    _install(
-        RecommendationManager,
-        inspect_current_ui_status=_inspect_current_ui_status,
-        room_state=SimpleNamespace(recommendation_enabled=None),
+    # 推荐分发与派对类型都成了 RoomProfileManager 自己的字段（#393），
+    # 不再由两个 legacy 单例在背后提供。
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "inspect_current_ui_status",
+        _inspect_current_ui_status,
     )
-    _install(
-        PartyManager,
-        handler=object(),
-        sync_and_correct_room_type_if_dialog_open=lambda: {'success': True},
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "sync_and_correct_room_type_if_dialog_open",
+        lambda self: {'success': True},
     )
     # 房名也是 RoomProfileManager 自己的字段了（#392），直接替换掉那个内部方法。
     monkeypatch.setattr(
@@ -291,10 +286,11 @@ def test_audit_and_repair_marks_pending_retry_when_a_step_fails(monkeypatch):
     window = _window(handler)
     _stub_managers(monkeypatch, {})
 
-    from ushareiplay.managers.party_manager import PartyManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
     monkeypatch.setattr(
-        PartyManager, "_instance",
-        SimpleNamespace(handler=object(), sync_and_correct_room_type_if_dialog_open=lambda: {'error': 'boom'}),
+        RoomProfileManager,
+        "sync_and_correct_room_type_if_dialog_open",
+        lambda self: {'error': 'boom'},
     )
 
     window.audit_and_repair()
@@ -318,22 +314,16 @@ def test_sync_while_open_corrects_recommendation_status_before_editing(monkeypat
     handler = _handler()
     window = _window(handler)
 
-    room_state = SimpleNamespace(recommendation_enabled=None)
     seen_wait = []
 
-    def _inspect_current_ui_status(wait=True):
+    def _inspect_current_ui_status(self, wait=True):
         seen_wait.append(wait)
         return False
 
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
-    monkeypatch.setattr(
-        RecommendationManager, "_instance",
-        SimpleNamespace(
-            inspect_current_ui_status=_inspect_current_ui_status, room_state=room_state
-        ),
-        raising=False,
-    )
-    monkeypatch.setattr(RecommendationManager, "_singleton_initialized", True, raising=False)
+    from ushareiplay.managers.room_profile import RoomProfileManager
+    from ushareiplay.state.room_state import RoomState
+    monkeypatch.setattr(RoomProfileManager, "inspect_current_ui_status", _inspect_current_ui_status)
+    room_state = RoomState.initialize()
 
     results = window.sync_while_open()
 
