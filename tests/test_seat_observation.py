@@ -791,7 +791,7 @@ def test_occupied_seat_with_state_widgets_is_occupied():
 def test_bare_clstate_reads_as_occupied():
     """ClState 存在即占座：空座渲染 TvDefaultName 或麦位编号、不带 ClState。
 
-    这与 seating.py 定座流程的判据（bool(left_state)）同源，也是 CONTEXT.md 写的
+    这与 seating.py 定座流程的判据（bool(left_state)）同源，也是 GLOSSARY.md 写的
     「ClState presence」；勋章/专注时长等活跃控件因此天然覆盖（见 #341）。
     """
     handler = make_handler()

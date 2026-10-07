@@ -182,7 +182,8 @@ Detailed domain documentation and architectural decisions:
 | [docs/system.md](docs/system.md) | Architecture, state module split, driver lifecycle, chat intake, models |
 | [docs/waydroid-virtual-audio.md](docs/waydroid-virtual-audio.md) | Ubuntu Waydroid deployment and PipeWire virtual audio routing |
 | [docs/acceptance-one-click-install.md](docs/acceptance-one-click-install.md) | Objective verification checklist for one-click installer |
-| [docs/adr/](docs/adr/) | Architecture Decision Records (ADR 0001 - 0008) |
+| [GLOSSARY.md](GLOSSARY.md) | Domain glossary naming concepts across room, music, user, and timer workflows |
+| [docs/adr/](docs/adr/) | Architecture Decision Records (ADR 0001 - 0010) |
 
 ---
 
@@ -199,7 +200,7 @@ src/
     core/                      # AppController, DriverLifecycle, AppHandler, CommandManager, ChatIntake, RolePolicy
     handlers/                  # SoulHandler, QQMusicHandler
     state/                     # RoomState, PresenceTracker, PlaylistState, PlaybackBroadcaster, OnlineListScraper
-    managers/                  # Business logic (Music, RoomName, Seat, Memory, Sleep, Recommendation, etc.)
+    managers/                  # Business logic (Music, RoomName, Seat, Memory, Mic, Sleep, Recommendation, etc.) — 20+ managers
     commands/                  # 37+ command implementations subclassing BaseCommand
     models/                    # Tortoise ORM models (User, UserMemory, Timer, Events)
     dal/                       # Data access objects (UserDAO, EnterDao, ReceiveDao, etc.)

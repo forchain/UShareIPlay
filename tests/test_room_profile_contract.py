@@ -299,8 +299,8 @@ def test_the_singleton_contract_test_names_no_retired_class():
 @pytest.mark.parametrize(
     "doc",
     [
-        "CLAUDE.md",
-        "CONTEXT.md",
+        "AGENTS.md",
+        "GLOSSARY.md",
         "docs/room.md",
         "docs/adr/0001-room-name-deep-module.md",
         "docs/adr/0009-composition-root-dependency-injection-and-singleton-contract.md",

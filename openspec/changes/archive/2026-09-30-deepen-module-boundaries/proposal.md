@@ -47,7 +47,7 @@ Each candidate below is justified by the **deletion test**: delete the duplicate
 
 **选择**: `Chat Intake` 增加 `classify_banner_line()`（吸收 点赞 家族）；`FollowerMessageEvent` 只保留 UI 动作。
 
-**理由**: `CONTEXT.md` 已声明 Chat Intake 拥有正则家族，但 `_parse_message` 逐字符复制了同一套 enter/return 文法，且两份在 return-vs-enter 上已经不一致。Soul 文案变更现在必须改两处。
+**理由**: `GLOSSARY.md` 已声明 Chat Intake 拥有正则家族，但 `_parse_message` 逐字符复制了同一套 enter/return 文法，且两份在 return-vs-enter 上已经不一致。Soul 文案变更现在必须改两处。
 
 ### 决策 4: RoomInfoWindow 成为真模块 (候选 4)
 
