@@ -26,7 +26,7 @@ last-synced: 2026-10-02
 | `InfoManager` | Explicit facade over `RoomState`, `PresenceTracker`, `PlaylistState`, `PlaybackBroadcaster`, and `OnlineListScraper` |
 | `DatabaseManager` | Tortoise ORM initialization and schema management |
 | `Singleton` | Thread-safe base class ensuring explicit composition root initialisation |
-| `BaseCommand` | Base class for all commands; handles permissions, error wrapping, response templates |
+| `BaseCommand` | Base class for all 37+ commands; handles permissions, error wrapping, response templates |
 | `RecoveryManager` | Tracks consecutive Appium/UI failures; triggers driver reinitialisation or app restart |
 
 ## How It Works

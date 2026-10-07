@@ -66,5 +66,5 @@ Explicitly tag outbound conversational and manual messages with standardized sou
 
 ## Further Notes
 
-- Follows domain terminology in `CONTEXT.md` (Natural Language Command Resolution, Command Execution, Chat Intake).
+- Follows domain terminology in `GLOSSARY.md` (Natural Language Command Resolution, Command Execution, Chat Intake).
 - Conforms to existing ADR-0003 (Natural Language Command Resolution).
