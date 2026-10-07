@@ -26,12 +26,12 @@ class _RoomName:
         return self.result
 
 
-class _Topic:
+class _RoomProfile:
     def __init__(self):
         self.topics = []
         self.result = {}
 
-    def change_topic(self, topic):
+    def set_topic(self, topic):
         self.topics.append(topic)
         return self.result
 
@@ -47,7 +47,7 @@ def adoption():
     module = PlaylistAdoption.instance()
     module._info = _Info()
     module._room_name = _RoomName()
-    module._topic = _Topic()
+    module._room_profile = _RoomProfile()
     module._music = _Music()
     return module
 
@@ -88,7 +88,7 @@ def test_adopt_writes_all_five_fields(adoption):
     assert adoption._music.list_mode == "radio"
     assert adoption._info.current_playlist_name == "O Radio"
     assert adoption._room_name.titles == ["O Radio"]
-    assert adoption._topic.topics == ["晴天"]
+    assert adoption._room_profile.topics == ["晴天"]
 
 
 def test_adopt_without_requester_leaves_the_current_player_untouched(adoption):
@@ -104,10 +104,10 @@ def test_adopt_leaves_playlist_name_untouched_when_not_given(adoption):
 
 
 def test_adopt_skips_empty_title_and_topic(adoption):
-    """空标题/空话题不得覆盖正在生效的房间名 —— 也不得把 None 传给 change_topic。"""
+    """空标题/空话题不得覆盖正在生效的房间名 —— 也不得把 None 传给 set_topic。"""
     adoption.adopt(requester="张三", mode="album", title="", topic=None)
     assert adoption._room_name.titles == []
-    assert adoption._topic.topics == []
+    assert adoption._room_profile.topics == []
 
 
 def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
@@ -120,17 +120,17 @@ def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
     assert adoption._info.player_name == "张三"
     assert adoption._music.list_mode == "radio"
     assert adoption._info.current_playlist_name == "O Radio"
-    assert adoption._topic.topics == []  # 标题失败后不再继续写话题
+    assert adoption._room_profile.topics == []  # 标题失败后不再继续写话题
 
 
 def test_adopt_returns_topic_error_after_title_succeeded(adoption):
-    adoption._topic.result = {"error": "Failed to switch to Soul app"}
+    adoption._room_profile.result = {"error": "Failed to switch to Soul app"}
 
     error = adoption.adopt(requester="张三", mode="radio", title="O Radio", topic="晴天")
 
     assert error == {"error": "Failed to switch to Soul app"}
     assert adoption._room_name.titles == ["O Radio"]
-    assert adoption._topic.topics == ["晴天"]
+    assert adoption._room_profile.topics == ["晴天"]
 
 
 class _Missing:

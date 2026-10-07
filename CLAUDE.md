@@ -69,7 +69,8 @@ AppController
 ├── MusicManager      — Playback control
 ├── PlaybackMuting    — Mic mute/restore around song switching
 ├── MessageManager    — Async message queue and dispatch
-└── [KeywordManager, RoomNameManager, TopicManager, NoticeManager, InfoManager, UserManager, AdminManager]
+└── RoomProfileManager — 房间档案唯一所有者（抽屉会话 + 话题/公告/房名草稿）
+└── [KeywordManager, RoomNameManager, NoticeManager, InfoManager, UserManager, AdminManager]
 ```
 
 ### Adding a New Command

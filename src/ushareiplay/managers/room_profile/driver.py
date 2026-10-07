@@ -7,13 +7,17 @@
               ├── SoulDrawerDriver                    生产：包装 SoulHandler 的抽屉编排
               └── InMemoryRoomProfileDrawerDriver     测试：内存替身，pytest 离线可跑
 
-端口只声明物理抽屉的四个原语：探测、点入口打开、点遮罩关闭、返回键。入口
-key 的候选顺序（`DEFAULT_ENTRY_KEYS`）、`{theme}｜{title}` 不变量、冷却与草稿
-都不属于这里 —— 那些是 `RoomProfileManager` 的决策，抽屉只是被驱动的东西。
-因此新增一个字段、一种抽屉形态都不会让端口变宽。
+端口只声明物理抽屉的原语：探测、点入口打开、点遮罩关闭、返回键，再加编辑
+某个字段时那三步（点一个元素、等任意一个元素、往输入框里写字）。入口 key 的
+候选顺序（`DEFAULT_ENTRY_KEYS`）、`{theme}｜{title}` 不变量、冷却与草稿都不
+属于这里 —— 那些是 `RoomProfileManager` 的决策，抽屉只是被驱动的东西。
+因此新增一种抽屉形态不会让端口变宽；而新增一个字段只会复用这里已有的原语，
+不会再加方法 —— 这三个元素级原语是 #390 为了把话题的点击 ritual 从
+`TopicManager` 搬进来一次性加的，#391-#393 直接复用。
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional, Sequence
 
 # 窗口开着的证据：抽屉自身，或抽屉内任一控件。
 DIALOG_KEYS = (
@@ -61,3 +65,22 @@ class RoomProfileDrawerDriverPort(ABC):
     @abstractmethod
     def press_back(self) -> None:
         """按一次返回键。仅在正规关窗失败之后作为保底。"""
+
+    @abstractmethod
+    def click_element(self, key: str, *, timeout: int = 10) -> bool:
+        """点一个可点击元素；等不到就返回 False。
+
+        抽屉里的编辑入口与确认按钮都走这里，Appium 的定位细节止步于适配器。
+        """
+
+    @abstractmethod
+    def wait_for_any(self, keys: Sequence[str], *, timeout: int = 10) -> Optional[str]:
+        """按 `keys` 的顺序等任意一个元素出现，返回命中的那个 key。
+
+        顺序即优先级，与 `ElementFinder.wait_for_any_element` 一致：列表里排在前
+        的先命中。都等不到则返回 None。
+        """
+
+    @abstractmethod
+    def replace_text(self, key: str, text: str, *, timeout: int = 10) -> bool:
+        """清空输入框并键入 `text`；元素等不到则返回 False。"""

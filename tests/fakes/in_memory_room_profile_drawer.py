@@ -8,9 +8,16 @@
 | `ui_actions.switch_and_click`（点开抽屉） | `open_drawer`：成功就真的把内存里的开关置上 |
 | `RecoveryManager.close_drawer`（点遮罩关抽屉） | `close_drawer`：按脚本决定成功与否 |
 | `key_actions.press_back`（保底返回） | `press_back`：计数，并把抽屉关上 |
+| `element_finder.wait_for_element_clickable` | `click_element`：元素在内存里才点得动 |
+| `element_finder.wait_for_any_element` | `wait_for_any`：按传入顺序返回第一个命中的 key |
+| `element.clear()` + `send_keys()` | `replace_text`：记进 `typed` |
 
 因此「只在窗口是自己打开的时候才关」「抽屉关不掉时最多按一次返回」这类断言，
 考的是 `RoomProfileManager` 自己做的决策，而不是任何 UI 时序。
+
+屏幕本身由 `present`（当前存在哪些 key）与 `world_after_click`（点某个 key 之后
+屏幕变成什么样）两个参数描述。真实 Appium 里「点确认之后编辑层消失、聊天框出现」
+是一次界面切换，这里用 `world_after_click` 把那次切换写成数据。
 """
 
 from ushareiplay.managers.room_profile.driver import RoomProfileDrawerDriverPort
@@ -30,6 +37,10 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         journal: 可选的共享事件流。填入后每次抽屉动作会追加一条
             `"drawer:open:<入口>"` / `"drawer:close"` / `"drawer:back"`，
             用来与协作方的记录交错，断言「先纠偏、再编辑、最后统一关窗」。
+        present: 屏幕当前存在哪些 selector key（可点击即存在）。默认空。
+        world_after_click: `{"<被点的 key>": ("<点击后存在的 key>", ...)}`，
+            用于脚本化「点确认之后编辑层消失」这类界面切换。未列出的点击不影响
+            屏幕。
 
     Attributes:
         opened_entries: 每次尝试过的入口 key，按顺序。`[]` 就是「一个打开动作
@@ -37,6 +48,9 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         close_attempts: 点遮罩的次数。
         back_presses: 返回键的次数。
         is_open_calls: 状态探测的次数。
+        clicks: 点过的 key，按顺序。
+        typed: `(key, 文本)` 序列，按顺序。
+        waits: `wait_for_any` 查过的 key 元组，按顺序。
     """
 
     def __init__(
@@ -47,16 +61,25 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         close_drawer_works=True,
         back_closes=True,
         journal=None,
+        present=(),
+        world_after_click=None,
     ):
         self.drawer_open = bool(drawer_open)
         self.fail_for = set(fail_for)
         self.close_drawer_works = close_drawer_works
         self.back_closes = back_closes
         self.journal = journal
+        self.present = set(present)
+        self.world_after_click = {
+            key: tuple(value) for key, value in (world_after_click or {}).items()
+        }
         self.opened_entries = []
         self.close_attempts = 0
         self.back_presses = 0
         self.is_open_calls = 0
+        self.clicks = []
+        self.typed = []
+        self.waits = []
 
     def is_open(self) -> bool:
         self.is_open_calls += 1
@@ -84,6 +107,29 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self._record("drawer:back")
         if self.back_closes:
             self.drawer_open = False
+
+    def click_element(self, key: str, *, timeout: int = 10) -> bool:
+        if key not in self.present:
+            return False
+        self.clicks.append(key)
+        self._record(f"element:click:{key}")
+        if key in self.world_after_click:
+            self.present = set(self.world_after_click[key])
+        return True
+
+    def wait_for_any(self, keys, *, timeout: int = 10):
+        self.waits.append(tuple(keys))
+        for key in keys:
+            if key in self.present:
+                return key
+        return None
+
+    def replace_text(self, key: str, text: str, *, timeout: int = 10) -> bool:
+        if key not in self.present:
+            return False
+        self.typed.append((key, text))
+        self._record(f"element:type:{key}")
+        return True
 
     def _record(self, event: str) -> None:
         if self.journal is not None:

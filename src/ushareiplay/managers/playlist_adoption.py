@@ -63,14 +63,14 @@ class PlaylistAdoption(Singleton):
     | `list_mode` | `MusicManager`（不再直写 handler） | adopt 开始 |
     | `current_playlist_name` | `InfoManager` | adopt 开始 |
     | 房间标题 | `RoomNameManager.set_next_title` | 状态之后 |
-    | 房间话题 | `TopicManager.change_topic` | 标题之后 |
+    | 房间话题 | `RoomProfileManager.set_topic` | 标题之后 |
     """
 
     def __init__(self):
         # 延迟解析的依赖；测试可直接注入替身（见 ADR-0004 的注入约定）
         self._info = None
         self._room_name = None
-        self._topic = None
+        self._room_profile = None
         self._music = None
 
     @property
@@ -88,11 +88,11 @@ class PlaylistAdoption(Singleton):
         return self._room_name
 
     @property
-    def _topic_manager(self):
-        if self._topic is None:
-            from ushareiplay.managers.topic_manager import TopicManager
-            self._topic = TopicManager.instance()
-        return self._topic
+    def _room_profile_manager(self):
+        if self._room_profile is None:
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            self._room_profile = RoomProfileManager.instance()
+        return self._room_profile
 
     @property
     def _music_manager(self):
@@ -150,10 +150,10 @@ class PlaylistAdoption(Singleton):
         # 3. 房间话题
         topic_value = primary_topic(topic)
         if topic_value:
-            topic_result = self._topic_manager.change_topic(topic_value)
+            topic_result = self._room_profile_manager.set_topic(topic_value)
             if isinstance(topic_result, dict) and "error" in topic_result:
                 return topic_result
 
-        # 标题/话题各自的落地日志由 RoomNameManager / TopicManager 给出，
+        # 标题/话题各自的落地日志由 RoomNameManager / RoomProfileManager 给出，
         # 这里不再重复打日志（也就不必依赖任何一个 logger）。
         return None

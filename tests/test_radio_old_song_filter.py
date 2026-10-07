@@ -141,11 +141,11 @@ class _RoomNameManager:
         return {}
 
 
-class _TopicManager:
+class _RoomProfileManager:
     def __init__(self):
         self.topics = []
 
-    def change_topic(self, topic):
+    def set_topic(self, topic):
         self.topics.append(topic)
         return {}
 
@@ -160,7 +160,7 @@ class _InfoManager:
 
 def _make_command(monkeypatch, music_handler):
     title_manager = _RoomNameManager()
-    topic_manager = _TopicManager()
+    room_profile = _RoomProfileManager()
     info_manager = _InfoManager()
 
     controller = SimpleNamespace(
@@ -176,16 +176,15 @@ def _make_command(monkeypatch, music_handler):
     )
     command = RadioCommand(controller)
     command._room_name_manager = title_manager
-    command._topic_manager = topic_manager
     command._info_manager = info_manager
 
     # 房间同步由 PlaylistAdoption 拥有，替身注入到该模块（而非命令）
     adoption = PlaylistAdoption.instance()
     adoption._info = info_manager
     adoption._room_name = title_manager
-    adoption._topic = topic_manager
+    adoption._room_profile = room_profile
     adoption._music = music_handler
-    return command, title_manager, topic_manager
+    return command, title_manager, room_profile
 
 
 def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
@@ -193,7 +192,7 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
         ["新歌 - 歌手C\n第二首 - 歌手D"],
         topics=["老歌", "新歌"],
     )
-    command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    command, title_manager, room_profile = _make_command(monkeypatch, music_handler)
     release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
@@ -208,14 +207,14 @@ def test_default_radio_refreshes_until_first_song_is_not_old(monkeypatch):
     assert [button.clicks for button in music_handler.play_buttons] == [0, 1]
     assert music_handler.home_clicks == 1
     assert title_manager.titles == ["新歌"]
-    assert topic_manager.topics == ["每日推荐"]
+    assert room_profile.topics == ["每日推荐"]
     assert any("Radio recommendation candidate" in message for _, message in music_handler.logger.messages)
     assert any("refreshing recommendation" in message for _, message in music_handler.logger.messages)
 
 
 def test_default_radio_accepts_song_when_release_date_unknown(monkeypatch):
     music_handler = _MusicHandler(["未知歌 - 歌手A"])
-    command, _title_manager, _topic_manager = _make_command(monkeypatch, music_handler)
+    command, _title_manager, _room_profile = _make_command(monkeypatch, music_handler)
     monkeypatch.setattr(command.song_release_lookup, "get_release_date", lambda _song: None)
 
     result = command._handle_collection(SimpleNamespace(nickname="Alice"))
@@ -231,7 +230,7 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
         topics=["老歌", "新歌"],
     )
     music_handler.stale_topics.add("新歌")
-    command, title_manager, topic_manager = _make_command(monkeypatch, music_handler)
+    command, title_manager, room_profile = _make_command(monkeypatch, music_handler)
     release_dates = {"老歌": "1999-12-31", "新歌": "2018-01-01"}
     monkeypatch.setattr(
         command.song_release_lookup,
@@ -243,7 +242,7 @@ def test_default_radio_refinds_stale_topic_after_refresh(monkeypatch):
 
     assert result == {"playlist": "新歌 - 歌手C"}
     assert title_manager.titles == ["新歌"]
-    assert topic_manager.topics == ["每日推荐"]
+    assert room_profile.topics == ["每日推荐"]
     assert any("stale" in message for _, message in music_handler.logger.messages)
 
 

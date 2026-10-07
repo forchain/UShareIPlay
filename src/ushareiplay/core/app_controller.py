@@ -433,7 +433,6 @@ class AppController(Singleton):
             self.logger = self.soul_handler.logger
 
             # Initialize managers using singleton pattern (no parameters needed)
-            from ushareiplay.managers.topic_manager import TopicManager
             from ushareiplay.managers.mic_manager import MicManager
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -485,7 +484,6 @@ class AppController(Singleton):
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
-            self.topic_manager = TopicManager.initialize(self.soul_handler)
             self.mic_manager = MicManager.initialize(self.soul_handler)
             self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
@@ -507,7 +505,8 @@ class AppController(Singleton):
             RecommendationManager.initialize(self.soul_handler)
             RoomNameManager.initialize(self.soul_handler)
             RoomInfoWindow.initialize(self.soul_handler)
-            # 房间档案的真正所有者。旧的那五个单例暂时保留，#390-#394 逐个下线。
+            # 房间档案的真正所有者。公告/房名/推荐那四个旧单例暂时保留，
+            # #391-#394 逐个下线。
             self.room_profile_manager = RoomProfileManager.initialize(
                 self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
             )
