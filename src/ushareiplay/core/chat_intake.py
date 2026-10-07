@@ -17,6 +17,8 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
+from ushareiplay.models.message_info import MessageInfo
+
 
 COMMAND_PREFIXES = (":", "：", "/", "／")
 SILENT_COMMAND_PREFIXES = ("/", "／")
@@ -233,6 +235,57 @@ class ChatIntakeResult:
         if not self.quoted_text:
             return body
         return f"{QUOTE_OPEN}{self.quoted_text}{QUOTE_CLOSE} {body}".strip()
+
+
+@dataclass(frozen=True)
+class MessageBatch:
+    """One scan's classification output, ready to cross into command execution.
+
+    The intake seam used to hand over bare `str` rows, which forced the command
+    side to classify them a second time and rebuild the metadata from scratch.
+    This bundles both halves of that handoff so the extraction happens once.
+
+    Fields:
+        items: Every item the scan classified, in screen order — not only
+               commands, so callers can still see what else the scan saw.
+        commands: The typed command messages, with all intake metadata already
+                  attached (`silent`, `private_reply`, `sleep_exempt`,
+                  `quoted_text`).
+    """
+
+    items: tuple[ChatIntakeResult, ...] = ()
+    commands: tuple[MessageInfo, ...] = ()
+
+
+def build_message_batch(results, *, source: str | None = None) -> MessageBatch:
+    """Bundle classified intake results into a transportable batch.
+
+    Builds each command `MessageInfo` from its `ChatIntakeResult` with every
+    flag attached, so downstream execution consumes intake's decision instead
+    of re-deriving it from the raw line. Mirrors `route_queue_text`: only
+    COMMAND items become messages, and a trigger with no content behind it is
+    not a command.
+
+    Args:
+        results: The classified results of one scan, in screen order.
+        source: Optional provenance tag for the messages (queue/agent origin).
+    """
+    items = tuple(results)
+    commands = tuple(
+        MessageInfo(
+            content=result.text,
+            nickname=result.nickname,
+            silent=result.silent,
+            private_reply=result.private_reply,
+            sleep_exempt=result.sleep_exempt,
+            quoted_text=result.quoted_text,
+            source=source,
+        )
+        for result in items
+        if result.kind == ChatIntakeKind.COMMAND
+        and result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip()
+    )
+    return MessageBatch(items=items, commands=commands)
 
 
 def _normalize_quote_text(quoted: str) -> str:
