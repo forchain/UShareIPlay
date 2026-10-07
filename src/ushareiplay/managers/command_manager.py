@@ -374,8 +374,31 @@ class CommandManager(Singleton):
         return self.command_parser.parse_command(content)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
+        """排空 runtime 队列，按各自文法把消息交给命令执行。
+
+        队列里混着两文法，drainer 不替它们做统一：
+
+        - **intake 来源**（屏幕扫描 / 回溯补漏）已经由 `classify_chat_line`
+          分类完毕，元数据齐全。它们直接交给 `execute_intake_batch` 这条
+          intake 接缝，不再套用 queue 文法 —— 否则 `:play a;b` 会在第一个
+          `;` 处被截断，`quoted_text` 也会在重建消息时丢掉。
+        - **queue 文法来源**（定时器、礼物感谢、console / agent 输入）送来的
+          是裸文本，`;` 拆分与 `{user_name}` 替换正是它们要的，照旧走
+          `route_queue_text`。
+
+        两种来源各自内部保持队列顺序，但一个 tick 之内先执行 queue 文法来源、
+        再执行 intake 来源 —— 命令彼此独立，混排执行顺序没有语义差别。
+
+        Returns:
+            本次路由出去执行的命令条数（不是成功条数）。
+        """
         command_messages = []
+        intake_messages = []
         for message_info in queue_messages:
+            if getattr(message_info, "intake_classified", False):
+                intake_messages.append(message_info)
+                continue
+
             routing = route_queue_text(
                 message_info.content,
                 message_info.nickname,
@@ -393,21 +416,32 @@ class CommandManager(Singleton):
                 for suppressed in routing.suppressed:
                     self._logger.info(f"Silent command suppressed queued message: {suppressed}")
 
-        if not command_messages:
-            return 0
+        routed_count = 0
+        if command_messages:
+            await self.execute_command_messages(command_messages)
+            routed_count += len(command_messages)
 
-        await self.execute_command_messages(command_messages)
-        return len(command_messages)
+        if intake_messages:
+            # 队列只带走批次的命令部分：`items` 在扫描现场就已消费掉，这里
+            # 交回的正是同一批命令消息，metadata 原样带着。
+            await self.execute_intake_batch(MessageBatch(commands=tuple(intake_messages)))
+            routed_count += len(intake_messages)
+
+        return routed_count
 
     async def execute_intake_batch(self, batch: MessageBatch) -> int:
         """执行一批已经分类好的命令消息（intake 接缝）。
 
         接收 `MessageBatch` 而不是原始聊天行：分类已经在 `MessageManager` 里做完，
         这里直接消费 `batch.commands`，既不重复解析原始行，也不重新推导触发符
-        语义 —— `silent` / `private_reply` 随消息一起过来。
+        语义 —— `silent` / `private_reply` / `quoted_text` 随消息一起过来。
+
+        生产路径同样走这里：`execute_runtime_queue_messages` 把队列里 intake
+        来源的消息重新收成一个 `MessageBatch` 交回来，因此这条接缝不是只有测试
+        才会用到的入口。
 
         Returns:
-            实际执行的命令数。
+            实际执行成功的命令数。
         """
         if not batch.commands:
             return 0

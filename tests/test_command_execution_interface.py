@@ -137,10 +137,10 @@ def test_intake_seam_parses_scanned_rows_and_delegates(monkeypatch):
     assert [m.private_reply for m in captured] == [False, True]
 
 
-def test_process_new_messages_does_not_execute_scanned_rows_inline():
+def test_focus_app_for_queued_commands_does_not_execute_scanned_rows_inline():
     """The scan site no longer forwards raw rows to execution (#398, #399).
 
-    `process_new_messages` used to hand the scanned rows to
+    The focus step used to hand the scanned rows to
     `CommandManager.execute_chat_scan`, which classified them a second time and
     executed immediately. Commands now travel `dispatch_intake` → `MessageQueue`
     → `RuntimeQueueDrainer`, so the scan site only brings the app forward and
@@ -164,6 +164,6 @@ def test_process_new_messages_does_not_execute_scanned_rows_inline():
         MessageQueue.instance()
         manager.observe(["souler[Alice]说：$play 123"])
 
-        assert _run(manager.process_new_messages()) is None
+        assert _run(manager.focus_app_for_queued_commands()) is True
     finally:
         CommandManager.instance = original_cmd_instance

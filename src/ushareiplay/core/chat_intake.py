@@ -257,33 +257,64 @@ class MessageBatch:
     commands: tuple[MessageInfo, ...] = ()
 
 
+def command_message(
+    result: ChatIntakeResult,
+    *,
+    source: str | None = None,
+    intake_classified: bool = False,
+) -> MessageInfo | None:
+    """Turn one COMMAND result into a `MessageInfo`, or None if it is not one.
+
+    Both places that build command messages go through here — `build_message_batch`
+    (intake) and `route_queue_text` (queue grammar) — so "a trigger with no
+    content behind it is not a command" is decided in exactly one place instead
+    of being restated per caller. Every flag travels with the message; nothing
+    downstream re-derives it from the raw text.
+
+    Args:
+        result: One classified intake result.
+        source: Provenance tag recorded on the message.
+        intake_classified: Mark the result as already classified by intake, so
+            the runtime queue hands it to execution without re-applying the
+            queue grammar. Queue-grammar output leaves this `False`.
+    """
+    if result.kind != ChatIntakeKind.COMMAND:
+        return None
+    # 只有触发符、没有内容的不算命令（`:` / `：` / `/` / `／` / `$` / `＄`）
+    if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+        return None
+    return MessageInfo(
+        content=result.text,
+        nickname=result.nickname,
+        silent=result.silent,
+        private_reply=result.private_reply,
+        sleep_exempt=result.sleep_exempt,
+        quoted_text=result.quoted_text,
+        source=source,
+        intake_classified=intake_classified,
+    )
+
+
 def build_message_batch(results, *, source: str | None = None) -> MessageBatch:
     """Bundle classified intake results into a transportable batch.
 
     Builds each command `MessageInfo` from its `ChatIntakeResult` with every
     flag attached, so downstream execution consumes intake's decision instead
-    of re-deriving it from the raw line. Mirrors `route_queue_text`: only
-    COMMAND items become messages, and a trigger with no content behind it is
-    not a command.
+    of re-deriving it from the raw line. Only COMMAND items become messages,
+    and a trigger with no content behind it is not a command.
+
+    The messages are marked `intake_classified`: they carry the whole grammar
+    decision, so the runtime queue executes them as they are.
 
     Args:
         results: The classified results of one scan, in screen order.
-        source: Optional provenance tag for the messages (queue/agent origin).
+        source: Provenance tag for the messages (screen/backfill/queue origin).
     """
     items = tuple(results)
     commands = tuple(
-        MessageInfo(
-            content=result.text,
-            nickname=result.nickname,
-            silent=result.silent,
-            private_reply=result.private_reply,
-            sleep_exempt=result.sleep_exempt,
-            quoted_text=result.quoted_text,
-            source=source,
-        )
+        message
         for result in items
-        if result.kind == ChatIntakeKind.COMMAND
-        and result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip()
+        if (message := command_message(result, source=source, intake_classified=True))
     )
     return MessageBatch(items=items, commands=commands)
 

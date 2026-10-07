@@ -5,8 +5,8 @@ from pathlib import Path
 import json
 
 from ushareiplay.core.chat_intake import (
-    QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
+    command_message,
     expand_queue_text,
     format_manual_message,
     is_manual_operator,
@@ -52,20 +52,14 @@ def route_queue_text(
         text, nickname, silent=silent, sleep_exempt=sleep_exempt
     ):
         if result.kind == ChatIntakeKind.COMMAND:
-            # 只有触发符、没有内容的不算命令（与 `build_message_batch` 的判定一致）
-            if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
-                continue
-            commands.append(
-                MessageInfo(
-                    content=result.text,
-                    nickname=result.nickname,
-                    silent=result.silent,
-                    private_reply=result.private_reply,
-                    sleep_exempt=result.sleep_exempt,
-                    source=source,
-                )
-            )
-        elif result.silent:
+            # 「什么算命令」由 `command_message` 独家定义，intake 侧共用同一个实现；
+            # 只有触发符、没有内容的那条直接丢弃，既不算命令也不上屏。
+            command = command_message(result, source=source)
+            if command is not None:
+                commands.append(command)
+            continue
+
+        if result.silent:
             suppressed.append(result.text)
         else:
             screen_texts.append(
