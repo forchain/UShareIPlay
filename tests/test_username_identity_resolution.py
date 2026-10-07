@@ -101,11 +101,16 @@ class DummyLogger:
 
 
 class DummySeatHandler:
-    """麦位 DOM 替身：弹窗里读到的名字就是 UI 可见名字（分身名）。"""
+    """麦位 DOM 替身：弹窗里读到的名字就是 UI 可见名字（分身名）。
+
+    昵称节点与 back 的关系按真机建模：back 关掉弹窗后，昵称节点就离开 dump ——
+    所以 SeatPanelDriver 的二次取证（此刻还读得到昵称才按 back）在这里也成立。
+    """
 
     def __init__(self, desks, popup_name):
         self.desks = desks
         self.popup_name = popup_name
+        self.popup_open = popup_name is not None
         self.logger = DummyLogger()
         self.confirm = DummyElement("确认")
         self.back_pressed = False
@@ -113,14 +118,22 @@ class DummySeatHandler:
     def find_child_element(self, desk, key, log_failure=True):
         return desk.get(key)
 
+    def try_find_element(self, element_key, log=False, clickable=False):
+        if self.popup_open and element_key in ("souler_name", "user_name"):
+            return DummyElement(self.popup_name or "")
+        return None
+
     def wait_for_element_clickable(self, key, *args, **kwargs):
         return self.confirm if key == "confirm_seat" else None
 
-    def wait_for_any_element(self, keys):
+    def wait_for_any_element(self, keys, timeout=10):
+        if not self.popup_name:
+            return None, None
         return keys[0], DummyElement(self.popup_name)
 
     def press_back(self):
         self.back_pressed = True
+        self.popup_open = False
 
     def log_error(self, message):
         self.logger.error(message)

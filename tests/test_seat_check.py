@@ -113,6 +113,9 @@ class _FakeDom:
 
     ``press_back`` dismisses the card, so every element handle previously taken
     out of it goes stale — the same way Android drops the popup's views.
+
+    ``back_sources`` 记录每一次 back 是谁按的：SeatCheckManager 自己点开的名片由
+    SeatPanelDriver 授权关闭，而 EventManager 的兜底 back 必须一次都不发生。
     """
 
     def __init__(self):
@@ -120,6 +123,7 @@ class _FakeDom:
         self.fallback_suppressed = False
         self.fallback_pressed_back = False
         self.seat_off_clicked = False
+        self.back_sources = []
 
 
 class _CardElement:
@@ -156,16 +160,25 @@ class _CardHandler(DummyHandler):
         self.key_actions = self
 
     # -- avatar card open/close -------------------------------------------
-    def press_back(self):
+    def press_back(self, source="seat_flow"):
+        """关掉名片。source 用来区分「座位流程自己收尾」与「EventManager 兜底」。"""
+        self.dom.back_sources.append(source)
         self.dom.card_attached = False
-        self.dom.fallback_pressed_back = True
+        if source == "fallback":
+            self.dom.fallback_pressed_back = True
 
     # -- element_finder surface used by SeatCheckManager --------------------
-    def find_child_element(self, parent, key):
+    def find_child_element(self, parent, key, log_failure=True):
         if key == "left_seat":
             return _CardElement(self.dom, "seat_avatar")
         if key == "left_label":
             return _CardElement(self.dom, "label", text=self.OCCUPANT)
+        return None
+
+    def try_find_element(self, element_key, log=False, clickable=False):
+        """名片还挂在屏幕上时，它自己渲染的昵称节点就在 dump 里（弹窗开着的唯一证据）。"""
+        if self.dom.card_attached and element_key in ("souler_name", "user_name"):
+            return _CardElement(self.dom, element_key, text=self.OCCUPANT)
         return None
 
     def wait_for_element_clickable(self, key, timeout=10):
@@ -209,7 +222,7 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
         if event_runtime.is_ui_busy():
             dom.fallback_suppressed = True
             return
-        handler.press_back()
+        handler.press_back(source="fallback")
 
     fired = False
 
@@ -232,6 +245,7 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
 
     assert dom.fallback_suppressed is True, "unknown-page back ran while the seat flow owned the UI"
     assert dom.fallback_pressed_back is False
+    assert dom.back_sources == ["seat_flow"], dom.back_sources
     assert dom.seat_off_clicked is True
     assert handler.errors == []
 

@@ -4,14 +4,27 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal import SeatReservationDAO, UserDAO
+from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 
 
 class SeatCheckManager(Singleton):
-    def __init__(self, handler=None, seat_ui=None):
+    def __init__(self, handler=None, seat_ui=None, panel_driver=None):
         self.handler = handler
         self.seat_ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
+        self._panel_driver = panel_driver
         self._message_dispatch = None
+
+    @property
+    def panel_driver(self):
+        """座位面板的 UI 驱动：点名片、读占座人昵称、按证据关弹窗。
+
+        构造注入优先，缺省时按需自建并缓存。驱动刻意不是单例（它没有全局状态），
+        所以接线层（#401）可以造一个共享实例传进来，调用点一行都不用改。
+        """
+        if self._panel_driver is None:
+            self._panel_driver = SeatPanelDriver(self.handler)
+        return self._panel_driver
 
     @property
     def message_dispatch(self):
@@ -121,16 +134,14 @@ class SeatCheckManager(Singleton):
 
         # Determine if this is a left or right seat in the row
         is_left_seat = bool(seat_number % 2)
+        side = 'left' if is_left_seat else 'right'
         desk_index = (seat_number - 1) // 2
         desk = seat_desks[desk_index]
 
-        # Find the specific seat element
-        if is_left_seat:
-            seat_element = self.handler.element_finder.find_child_element(desk, 'left_seat')
-            seat_label = self.handler.element_finder.find_child_element(seat_element, 'left_label')
-        else:
-            seat_element = self.handler.element_finder.find_child_element(desk, 'right_seat')
-            seat_label = self.handler.element_finder.find_child_element(seat_element, 'right_label')
+        # 麦位 DOM 上的占用判据（label 节点）仍由本模块自己读：它决定「要不要点开
+        # 名片」，与名片本身无关。
+        seat_element = self.handler.element_finder.find_child_element(desk, f'{side}_seat')
+        seat_label = self.handler.element_finder.find_child_element(seat_element, f'{side}_label')
 
         if not seat_element:
             self.handler.logger.error(f"Cannot find seat element for seat {seat_number}")
@@ -141,45 +152,45 @@ class SeatCheckManager(Singleton):
             self.handler.logger.warning(f"No occupant for seat {seat_number}")
             return
         self.handler.logger.info(f"Found seat {seat_number} with label {seat_label.text if seat_label else 'None'}")
-        
+
         # Send welcome message only when seat is occupied to reduce message frequency
         self.message_dispatch.send_screen_message(f"Welcome {username}!")
 
         # wait for input dialog disappear
         await asyncio.sleep(1)
-        # Click the specific seat element
-        seat_element.click()
-        self.handler.logger.info(f"Clicked seat {seat_number} to remove occupant")
 
-        # Wait for seat off button
-        seat_off = self.handler.element_finder.wait_for_element_clickable('seat_off')
-        if not seat_off:
-            self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
-            self.message_dispatch.send_screen_message(f"Unable to manage seat {seat_number} for {username}")
-            return
+        # 点开占座人的名片、读昵称、最后按证据关掉它，整段交给 SeatPanelDriver：
+        # 房间里一次盲按 back 就是退出派对房间，本模块不再持有任何一次 back。
+        # 顺序也随之调整：名片必须先点开，「请下麦」按钮才可能读到。
+        async with self.panel_driver.avatar_card(desk, side, seat_number) as card:
+            if card.opened:
+                self.handler.logger.info(f"Opened seat {seat_number} card to check the occupant")
+            souler_name_text = card.name if card.opened else None
+            if not souler_name_text:
+                self.handler.logger.error(f"No souler name found for seat {seat_number}")
+                self.message_dispatch.send_screen_message(f"Failed to verify occupant on seat {seat_number}")
+                return
 
-        found_key, souler_name = self.handler.element_finder.wait_for_any_element(['souler_name', 'user_name'])
-        if not souler_name:
-            self.handler.logger.error(f"No souler name found for seat {seat_number}")
-            self.message_dispatch.send_screen_message(f"Failed to verify occupant on seat {seat_number}")
-            return
+            if souler_name_text == username:
+                self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
+                # No message needed - user is already seated successfully
+                return
 
-        souler_name_text = souler_name.text
-        if souler_name_text == username:
-            self.handler.logger.error(f"Souler {username} is already in seat {seat_number}")
-            # No message needed - user is already seated successfully
-            self.handler.key_actions.press_back()
-            return
+            user = await UserDAO.get_by_username(username)
+            souler = await UserDAO.get_by_username(souler_name_text)
+            if user and souler and user.level <= souler.level:
+                self.handler.logger.info(
+                    f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
+                self.message_dispatch.send_screen_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
+                return
 
-        user = await UserDAO.get_by_username(username)
-        souler = await UserDAO.get_by_username(souler_name_text)
-        if user and souler and user.level <= souler.level:
+            # Wait for seat off button
+            seat_off = self.handler.element_finder.wait_for_element_clickable('seat_off')
+            if not seat_off:
+                self.handler.logger.error(f"Failed to find seat off button for seat {seat_number}")
+                self.message_dispatch.send_screen_message(f"Unable to manage seat {seat_number} for {username}")
+                return
+
+            seat_off.click()
             self.handler.logger.info(
-                f"Souler {souler_name_text} has higher or equal level ({souler.level}) than {username} ({user.level}), skipping")
-            self.handler.key_actions.press_back()
-            self.message_dispatch.send_screen_message(f"Cannot seat {username}: Seat {seat_number} occupied by higher level user")
-            return
-
-        seat_off.click()
-        self.handler.logger.info(
-            f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")
+                f"Successfully removed occupant {souler_name_text} from seat {seat_number} by {username}")

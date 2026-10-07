@@ -1,15 +1,17 @@
 import asyncio
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
 import traceback
 
 
 class SeatingManager(Singleton):
-    def __init__(self, handler=None, seat_ui=None, observation=None):
+    def __init__(self, handler=None, seat_ui=None, observation=None, panel_driver=None):
         self.handler = handler
         self.seat_ui = seat_ui if seat_ui is not None else (SeatUIManager.instance() if SeatUIManager.is_initialized() else None)
         self._observation = observation
+        self._panel_driver = panel_driver
         self.current_desk_index = 0
         self.current_side = None
 
@@ -21,6 +23,17 @@ class SeatingManager(Singleton):
         if SeatObservationManager.is_initialized():
             return SeatObservationManager.instance()
         return None
+
+    @property
+    def panel_driver(self):
+        """座位面板的 UI 驱动：点头像、读昵称、按证据关弹窗。
+
+        构造注入优先，缺省时按需自建并缓存。驱动刻意不是单例（它没有全局状态），
+        所以接线层（#401）可以造一个共享实例传进来，调用点一行都不用改。
+        """
+        if self._panel_driver is None:
+            self._panel_driver = SeatPanelDriver(self.handler)
+        return self._panel_driver
 
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""
@@ -242,27 +255,23 @@ class SeatingManager(Singleton):
                 if seat.get('is_owner'):
                     continue
 
-                # Click the state element to open user profile popup
-                state_key = f'{side}_state'
-                state_element = self.handler.element_finder.find_child_element(
-                    desk, state_key, log_failure=False
-                )
-                if not state_element:
-                    continue
+                seat_number = desk_index * 2 + (1 if side == 'left' else 2)
 
-                state_element.click()
-                self.handler.logger.info(f"Clicked {side} seat at desk {desk_index + 1} to check user")
+                # 点头像、读昵称、关掉弹窗整段交给 SeatPanelDriver：派对房间里一次盲按
+                # back 就是退出派对房间，只有驱动才有资格按下那一次 back，而且必须
+                # 在弹窗此刻确实还在屏幕上时才按。manager 自己不再碰任何弹窗动作。
+                async with self.panel_driver.avatar_card(desk, side, seat_number) as card:
+                    if card.opened:
+                        self.handler.logger.info(
+                            f"Checked {side} seat at desk {desk_index + 1} to check user"
+                        )
+                    actual_username = card.name
 
-                # Read the user name from the popup
-                found_key, name_element = self.handler.element_finder.wait_for_any_element(
-                    ['souler_name', 'user_name']
-                )
-                if not name_element:
+                # 读不到昵称＝没有可关的弹窗，也不是「不是那个人」，留给下一轮桌面
+                if not actual_username:
                     self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
-                    self.handler.key_actions.press_back()
                     continue
 
-                actual_username = name_element.text
                 self.handler.logger.info(
                     f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
                 )
@@ -270,15 +279,10 @@ class SeatingManager(Singleton):
                 # 麦位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
                 # 按身份匹配，命中后一律使用 UI 可见名字继续后续动作。
                 if not await UserDAO.is_same_identity(target_username, actual_username):
-                    # Not the target user, close popup and continue
-                    self.handler.key_actions.press_back()
-                    await asyncio.sleep(0.3)
+                    # 不是目标：名片已由驱动按证据关掉，继续看下一张桌位
                     continue
 
-                # Found the target user! Close the popup first
-                self.handler.key_actions.press_back()
-                await asyncio.sleep(0.3)
-
+                # 命中目标：名片同样已关好，接着检查旁边的麦位
                 # Check if the adjacent seat is available
                 if other_seat['occupied']:
                     return {'error': f'User {target_username} has no empty adjacent seat'}
