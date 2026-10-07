@@ -19,6 +19,9 @@ import traceback
 from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
+    ChatIntakeResult,
+    MessageBatch,
+    build_message_batch,
     classify_chat_line,
     strip_quoted_segment,
 )
@@ -214,6 +217,23 @@ class MessageManager(Singleton):
         room_owner: str | None = None,
         from_backfill: bool = False,
     ) -> list[MessageInfo]:
+        """把聊天行按类型派发到各自的处理器，返回本批的命令消息。
+
+        见 `dispatch_intake`：这是同一次派发的列表形态，供只需要命令消息的调用方
+        使用。
+        """
+        batch = await self.dispatch_intake(
+            lines, room_owner=room_owner, from_backfill=from_backfill
+        )
+        return list(batch.commands)
+
+    async def dispatch_intake(
+        self,
+        lines,
+        *,
+        room_owner: str | None = None,
+        from_backfill: bool = False,
+    ) -> MessageBatch:
         """把聊天行按类型派发到各自的处理器。
 
         实时扫描与回滚补漏原先各写一份分类与处理（礼物处理两份、mention 两份），
@@ -221,21 +241,29 @@ class MessageManager(Singleton):
         说明：回滚发现的行属于历史，命令入队等 runtime 管线执行、入场横幅不当作
         「用户刚返回」；其余处理完全一致。
 
+        批次在**认识 `room_owner` 的地方**构建：礼物与 mention 的判定都要房主名，
+        放到下游再分类就会把「送给房主的礼物」当成普通发言。
+
+        命令消息一律入队，由 runtime 队列统一执行 —— 实时扫描与回滚补漏因此共用
+        同一条消费路径（同一批角色校验、权限校验与播放静音保护），实时命令也不再
+        在扫描现场就地执行。
+
         Args:
             lines: 要派发的聊天行，通常来自 `observe()` 的 `new_lines`
             room_owner: 房主名，用于识别「送给房主」的礼物
             from_backfill: 这些行来自回滚补漏
 
         Returns:
-            本批出现的命令消息。实时路径不代为入队（执行由
-            `CommandManager.execute_chat_scan` 完成），仅用其判断是否要执行命令；
-            补漏路径在此入队。
+            本批的全部分类结果与其命令消息。命令消息已带上 intake 抽出的全部
+            元数据（`silent` / `private_reply` / `sleep_exempt` / `quoted_text`），
+            下游不必再从原始行重新判定。
         """
         chat_logger = self.chat_logger
-        commands: list[MessageInfo] = []
+        results: list[ChatIntakeResult] = []
 
         for content in lines:
             result = classify_chat_line(content, room_owner=room_owner)
+            results.append(result)
             kind = result.kind
 
             if kind == ChatIntakeKind.USER_RETURN:
@@ -280,16 +308,22 @@ class MessageManager(Singleton):
                     chat_logger.info(content)
                     continue
                 chat_logger.critical(content)
-                message = MessageInfo(result.text, result.nickname)
-                if from_backfill:
-                    await MessageQueue.instance().put_message(message)
-                    self.handler.logger.info(f"Missed command added to queue: {result.text}")
-                commands.append(message)
                 continue
 
             chat_logger.info(content)
 
-        return commands
+        # 命令统一入队：实时与补漏共用这一条入队点，因此两条来源都只会被
+        # `RuntimeQueueDrainer` 这一条消费路径执行。来源标签挂在消息上
+        # (`MessageInfo.source`)，日志直接读它，不再另存一份局部字符串。
+        queue_source = "backfill" if from_backfill else "screen"
+        batch = build_message_batch(results, source=queue_source)
+        for message in batch.commands:
+            await MessageQueue.instance().put_message(message)
+            self.handler.logger.info(
+                f"{message.source} command added to queue: {message.content}"
+            )
+
+        return batch
 
     def _handle_user_on_mic(self, result) -> None:
         """有人上麦：即时开启播放静音保护（切歌底噪会盖住麦上的人）。
@@ -410,16 +444,20 @@ class MessageManager(Singleton):
         )
         return {message.content for message in commands}
 
-    async def process_new_messages(self, lines=None):
-        """把新出现的聊天行里的命令交给 CommandManager 立即执行。
+    async def focus_app_for_queued_commands(self) -> bool:
+        """扫描到新命令时，把 Soul 客户端带到前台，等 runtime 队列执行。
 
-        Args:
-            lines: 要扫描的行；省略时取窗口里最近的行（单独调用时的便利路径）。
+        这里**不执行命令**，也不接收聊天行：`dispatch_intake` 已经完成分类并
+        把命令消息入队（#396 接缝 / #399 收口），执行由 `RuntimeQueueDrainer`
+        在下一圈监控循环统一完成。原始行不再跨过命令派发接缝（#399）。
+        本次扫描仍要切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个
+        界面上操作。
+
+        Returns:
+            `switch_to_app()` 的结果：是否已把 Soul 切到前台。
         """
         if not self.handler.key_actions.switch_to_app():
             self.handler.logger.error("Failed to switch to Soul app")
-            return None
+            return False
 
-        return await CommandManager.instance().execute_chat_scan(
-            self._recent if lines is None else lines
-        )
+        return True

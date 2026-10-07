@@ -957,14 +957,14 @@ class SeatObservationManager(Singleton):
         return bool(gesture.click_at(x, y))
 
     # 麦位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
-    # 与 RoomInfoWindow.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
+    # 与房间档案模块的 DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
     SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
 
     def _seat_card_still_present(self) -> bool:
         """头像名片此刻是否还在屏幕上 —— 关它的那次 back 只能由这个证据授权。
 
         反过来说：拿不到证据就绝不按 back。房间界面上的一次盲按 back 就是退出
-        派对房间（RoomInfoWindow.ensure_closed 记过同一笔账）。
+        派对房间（`RoomProfileManager.ensure_closed` 记过同一笔账）。
         """
         finder = getattr(self.handler, "element_finder", None)
         if finder is None:
@@ -983,7 +983,7 @@ class SeatObservationManager(Singleton):
         点名由「占座但身份未知」触发，而被点名的位子未必真有可点的头像：房主换座后
         旧位子会留下残留渲染（真机 09-28 18:07/20:46 的 9 号位），面板又常常是收起
         状态，按快照坐标点出去可能什么都没打开。房间里的一次盲按 back 就是退出派对
-        房间（见 RoomInfoWindow.ensure_closed 的同款告诫），所以 back 必须由证据授权：
+        房间（见 `RoomProfileManager.ensure_closed` 的同款告诫），所以 back 必须由证据授权：
         读到昵称节点才算弹窗开着；点都没点出去时同样不按。读不到昵称的弹窗不在屏幕上
         的可能性远大于它就是房间本身 —— 宁可留「身份未知」给下一轮，不可拿房间去赌。
         """

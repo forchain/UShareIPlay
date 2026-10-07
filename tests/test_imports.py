@@ -53,6 +53,12 @@ MODULES = [
     "ushareiplay.managers.playback",
     "ushareiplay.managers.playback.models",
     "ushareiplay.managers.playback.driver",
+    # managers (房间档案深度模块，#388 新增子包)
+    "ushareiplay.managers.room_profile",
+    "ushareiplay.managers.room_profile.driver",
+    "ushareiplay.managers.room_profile.drafts",
+    "ushareiplay.managers.room_profile.soul_drawer",
+    "ushareiplay.managers.room_profile.manager",
 ]
 
 

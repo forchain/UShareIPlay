@@ -6,8 +6,6 @@ def test_play_singer_falls_back_to_singer_tab_when_first_song_not_found():
     command = SingerCommand.__new__(SingerCommand)
     command.handler = MagicMock()
     command._info_manager = MagicMock()
-    command._room_name_manager = MagicMock()
-    command._topic_manager = MagicMock()
     command._music_manager = MagicMock()
     command._playlist_adoption = MagicMock()
 
@@ -39,8 +37,6 @@ def test_singer_tab_selection_goes_through_music_manager_only():
     command = SingerCommand.__new__(SingerCommand)
     command.handler = MagicMock()
     command._info_manager = MagicMock()
-    command._room_name_manager = MagicMock()
-    command._topic_manager = MagicMock()
     command._music_manager = MagicMock()
     command._playlist_adoption = MagicMock()
 

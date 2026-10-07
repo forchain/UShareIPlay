@@ -64,9 +64,9 @@ class InfoCommand(BaseCommand):
 
         rec_status = info_manager.recommendation_enabled
         if rec_status is None:
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
-            if RecommendationManager.is_initialized():
-                RecommendationManager.instance().ensure_synced_on_return()
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            if RoomProfileManager.is_initialized():
+                RoomProfileManager.instance().ensure_synced_on_return()
                 rec_status = info_manager.recommendation_enabled
 
         if rec_status is True:

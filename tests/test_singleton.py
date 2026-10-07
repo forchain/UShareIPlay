@@ -132,19 +132,15 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.mic_manager import MicManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.recovery_manager import RecoveryManager
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    from ushareiplay.managers.room_name_manager import RoomNameManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.managers.sleep_manager import SleepManager
     from ushareiplay.managers.timer_manager import TimerManager
-    from ushareiplay.managers.topic_manager import TopicManager
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -160,7 +156,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         SleepManager,
         RecoveryManager,
         MessageManager,
-        TopicManager,
         MicManager,
         MusicManager,
         PlaybackMuting,
@@ -173,11 +168,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         OnlineListScraper,
         InfoManager,
         PartyManager,
-        NoticeManager,
         PlaylistAdoption,
-        RecommendationManager,
-        RoomNameManager,
-        RoomInfoWindow,
         AdminManager,
         KeywordManager,
         EventManager,

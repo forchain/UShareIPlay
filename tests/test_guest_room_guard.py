@@ -280,74 +280,82 @@ async def test_guest_room_blocks_seat_command_user_enter():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_room_name_and_title_updates():
-    from ushareiplay.managers.room_name_manager import RoomNameManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RoomNameManager.reset_instance()
-    rnm = RoomNameManager.initialize()
-    rnm._handler = HandlerStub(config={})
-    rnm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    RoomProfileManager.reset_instance()
+    profile = RoomProfileManager.initialize()
+    profile.adopt_handler(HandlerStub(config={}))
+    profile._logger = SimpleNamespace(
+        info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None
+    )
 
     try:
         # set_theme in guest room
-        res = rnm.set_theme("听歌")
+        res = profile.set_theme("听歌")
         assert "error" in res
 
-        # process_pending_update in guest room
-        rnm.pending_ui_update = True
-        res = rnm.process_pending_update()
+        # update_title in guest room
+        profile.pending_ui_update = True
+        res = profile.update_title()
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        # _update_title_ui in guest room
-        res = rnm._update_title_ui("新歌速递")
+        # _write_title_in_drawer in guest room
+        res = profile._write_title_in_drawer("新歌速递")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        # set_next_title in guest room
-        res = rnm.set_next_title("新歌速递")
+        # set_title in guest room
+        res = profile.set_title("新歌速递")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
     finally:
-        RoomNameManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_notice_updates():
-    from ushareiplay.managers.notice_manager import NoticeManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    NoticeManager.reset_instance()
-    nm = NoticeManager.initialize()
-    nm._handler = HandlerStub(config={})
-    nm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    RoomProfileManager.reset_instance()
+    profile = RoomProfileManager.initialize()
+    profile._handler = HandlerStub(config={})
+    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
     try:
-        res = nm.set_notice_with_cooldown("欢迎来听歌")
+        res = profile.set_notice("欢迎来听歌")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        res = nm._set_notice_immediate("欢迎来听歌")
+        # 已经排队的公告在别人房间里也不会被写出去（草稿留着，冷却不动）
+        profile.drafts.set_pending("notice", "欢迎来听歌")
+        res = profile.update_notice()
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+        assert profile.drafts.pending("notice") == "欢迎来听歌"
+
+        res = profile.restore_notice("欢迎来听歌")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
     finally:
-        NoticeManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_recommendation_sync():
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RecommendationManager.reset_instance()
-    rm = RecommendationManager.initialize()
-    rm._handler = HandlerStub(config={})
+    RoomProfileManager.reset_instance()
+    rm = RoomProfileManager.initialize(handler=HandlerStub(config={}))
     rm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
     try:
@@ -358,14 +366,14 @@ async def test_guest_room_blocks_recommendation_sync():
         res = rm.update_recommendation_ui(True)
         assert "error" in res
     finally:
-        RecommendationManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_events_and_window_audit():
     from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
     from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -378,16 +386,16 @@ async def test_guest_room_blocks_events_and_window_audit():
     res = await evt.handle("chat_room_title", fake_wrapper)
     assert res is False
 
-    # RoomInfoWindow audit in guest room
-    window = RoomInfoWindow.instance()
-    window._handler = handler
-    window._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    # 房间档案的抽屉审计在客房里
+    profile = RoomProfileManager.instance()
+    profile.adopt_handler(handler)
+    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
-    res = window.audit_and_repair()
+    res = profile.audit_and_repair()
     assert res.get("skipped") is True
     assert res.get("reason") == "guest_room"
 
-    res = window.process_pending_retry()
+    res = profile.process_pending_retry()
     assert res.get("skipped") == "guest_room"
 
 

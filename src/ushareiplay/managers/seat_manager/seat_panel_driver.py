@@ -11,7 +11,7 @@
 
 派对房间里一次盲按返回键就是退出派对房间 —— 真机上房主换座后的残留渲染被读成
 「占座但身份未知」，点名没点出任何弹窗就按了 back，房间界面就此消失（真机
-09-28 18:07/20:46）。`RoomInfoWindow.ensure_closed` 记过同一笔账：优先走 UI 正规
+09-28 18:07/20:46）。`RoomProfileManager.ensure_closed` 记过同一笔账：优先走 UI 正规
 关窗操作，只有在弹窗标志**依然在屏幕上**时才拿 press_back 兜底。
 
 所以本模块里每一次 press_back 都由证据授权：读到弹窗自己渲染的昵称节点（或超时
@@ -33,7 +33,7 @@ EXPAND_LABEL = "展开"
 COLLAPSE_LABEL = "收起"
 
 # 麦位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
-# 与 RoomInfoWindow.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
+# 与 room_profile.driver.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
 SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
 
 EXPAND_SEATS_KEY = "expand_seats"
@@ -472,7 +472,7 @@ class SeatPanelDriver:
         """头像名片此刻是否还在屏幕上 —— 关它的那次 back 只能由这个证据授权。
 
         反过来说：拿不到证据就绝不按 back。读不到昵称的弹窗不在屏幕上的可能性
-        远大于它就是房间本身（RoomInfoWindow.ensure_closed 记过同一笔账）。
+        远大于它就是房间本身（RoomProfileManager.ensure_closed 记过同一笔账）。
         """
         finder = getattr(self.handler, "element_finder", None)
         if finder is None:
