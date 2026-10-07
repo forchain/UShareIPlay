@@ -49,6 +49,10 @@ MODULES = [
     # helpers
 
     "ushareiplay.helpers.playlist_parser",
+    # managers (深度播放引擎，#379 新增子包)
+    "ushareiplay.managers.playback",
+    "ushareiplay.managers.playback.models",
+    "ushareiplay.managers.playback.driver",
 ]
 
 
