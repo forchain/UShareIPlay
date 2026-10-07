@@ -11,6 +11,7 @@ from ushareiplay.managers.playback.models import (
     PlaybackResult,
     PlaybackStatus,
 )
+from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
 class MusicManager(Singleton):
@@ -36,6 +37,8 @@ class MusicManager(Singleton):
 
     def __init__(self, ui_driver=None, playlist_adoption=None, playback_muting=None):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+        # 播放引擎的离线测试不需要 Appium，因此 handler 缺失不再是构造期错误；
+        # 真正要用到 driver 的地方由 `driver` 属性给出明确的装配错误。
         self.music_handler = QQMusicHandler.instance() if QQMusicHandler.is_initialized() else None
         self.logger = getattr(self.music_handler, "logger", None) or logging.getLogger(
             "MusicManager"
@@ -44,10 +47,30 @@ class MusicManager(Singleton):
         self._song_release_lookup = None
 
         # 播放引擎的协作者。构造注入优先，未注入时按需从单例取 —— MusicManager
-        # 在组合根里先于 PlaybackMuting 初始化，无法在 __init__ 传齐依赖。
+        # 与 PlaybackMuting 互相需要，无法在 __init__ 传齐依赖（见 playback_muting 属性）。
         self._ui_driver = ui_driver
         self._playlist_adoption = playlist_adoption
         self._playback_muting = playback_muting
+
+    @property
+    def driver(self):
+        """Appium 驱动。
+
+        没有 QQMusicHandler 时给出明确的装配错误，而不是让每个调用点自己撞上
+        `NoneType` 的属性错误。组合根总是先初始化 handler 再初始化本类
+        （见 `AppController.initialize`），因此这条路径只在装配错误时触发。
+        """
+        driver = self._driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager requires an initialized QQMusicHandler; "
+                "call QQMusicHandler.initialize(...) at the composition root first."
+            )
+        return driver
+
+    @driver.setter
+    def driver(self, value):
+        self._driver = value
 
     @property
     def config(self):
@@ -111,12 +134,9 @@ class MusicManager(Singleton):
     def playlist_adoption(self):
         """房间歌单同步协议。
 
-        函数体内 import 的原因：`PlaylistAdoption._music_manager` 反向依赖本类，
-        顶层互相 import 会形成循环引用（ADR-0009 §4）。
+        构造注入优先；未注入时取已初始化的单例 —— 与 `BaseCommand` 同一套按需查找。
         """
         if self._playlist_adoption is None:
-            from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-
             self._playlist_adoption = PlaylistAdoption.instance()
         return self._playlist_adoption
 
@@ -124,8 +144,11 @@ class MusicManager(Singleton):
     def playback_muting(self):
         """播放静音生命周期协调器。
 
-        函数体内 import 的原因：`PlaybackMuting.__init__` 反向引用本类做兜底解析，
-        顶层互相 import 会形成循环引用（ADR-0009 §4）。
+        函数体内 import 的原因：`playback_muting` 顶层导入 `state.room_state`，
+        而 `state/__init__.py` 又导入 `state.playback_broadcaster`，后者顶层导入本类
+        —— 顶层互相 import 会形成 `playback_muting → state → music_manager` 的循环
+        引用（ADR-0009 §4）。也正因如此两者无法在构造期互注：静音守卫需要本类做
+        就绪探针，本类又需要静音守卫做麦克风生命周期。
         """
         if self._playback_muting is None:
             from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -187,13 +210,14 @@ class MusicManager(Singleton):
                 playlist=outcome.playlist or request.playlist,
             )
             if adopt_error:
-                # 播放本身已经成功，失败的是房间同步：如实回报，但保留曲目信息。
+                # 播放已经发生，失败的只是房间同步。如实回报为「已开始 + 同步错误」：
+                # 房间里响的是歌，回复就必须是歌；同步错误只进日志。
                 self.logger.warning(
                     f"Playback started but room sync failed: "
                     f"mode={request.mode.value}, error={adopt_error.get('error')}"
                 )
                 return PlaybackResult(
-                    status=PlaybackStatus.FAILED,
+                    status=PlaybackStatus.STARTED,
                     track=outcome.track,
                     error=adopt_error.get("error"),
                 )

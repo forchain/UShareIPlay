@@ -5,8 +5,8 @@
 | 真实依赖 | 替身 |
 |---|---|
 | Appium UI（查歌、切 tab、点播放全部） | `InMemoryMusicUIDriver`，按模式返回脚本化结果 |
-| MediaSession 就绪（`dumpsys media_session`） | `InMemoryMusicManager`，无需睡眠即可判定就绪 |
-| 麦克风 UI（`MicManager`） | `RecordingMicManager`，记录真实发生的开闭麦动作 |
+| MediaSession 就绪（`dumpsys media_session`） | 测试模块内的 `_ReadinessProbe`，无需睡眠即可判定就绪 |
+| 麦克风 UI（`MicManager`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
 
 因此「守护拒绝时一个 UI 动作都不该发生」「切歌前必先闭麦」这类断言，
 考的是引擎自己做的决策，而不是任何 UI 时序。
@@ -14,7 +14,6 @@
 
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
-    PlaybackMode,
     PlaybackOutcome,
     PlaybackRequest,
     PlaybackTrack,
@@ -63,10 +62,6 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
             topic=self.topics.get(request.mode),
             playlist=self.playlists.get(request.mode),
         )
-
-    def asked_about(self, mode: PlaybackMode) -> bool:
-        """引擎是否真的为该模式驱动过 UI（守护拒绝时应为 False）。"""
-        return any(request.mode is mode for request in self.requests)
 
     @staticmethod
     def _synthesized_track(request: PlaybackRequest) -> PlaybackTrack:

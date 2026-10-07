@@ -68,7 +68,7 @@ class PlaybackRequest:
         """播放就绪时要校验的目标曲目。
 
         只有点播单曲才校验元数据：其余模式的队列内容由调用方无从预知，
-        拿查询词去比对 MediaSession 上报的当前曲目必然超时。
+        拿查询词去比对 MediaSession 上报的目标曲目必然超时。
         """
         return self.query if self.mode is PlaybackMode.SONG else None
 
@@ -76,11 +76,6 @@ class PlaybackRequest:
     def song(cls, query, requester=None, **kwargs) -> "PlaybackRequest":
         """`:play <query>` —— 单曲点播。"""
         return cls(mode=PlaybackMode.SONG, query=query, requester=requester, **kwargs)
-
-    @classmethod
-    def for_mode(cls, mode, requester=None, **kwargs) -> "PlaybackRequest":
-        """其余模式的便捷构造：`PlaybackRequest.for_mode(FAVORITES, requester=...)`。"""
-        return cls(mode=mode, requester=requester, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -148,8 +143,10 @@ class PlaybackResult:
 
     Attributes:
         status: 三种归宿之一。
-        track: 已开始的曲目；被拒绝或失败时为空。
-        error: 本地化错误说明，被拒绝与失败时非空。
+        track: 已开始的曲目；被拒绝或 UI 失败时为空。
+        error: 本地化错误说明。被拒绝与 UI 失败时非空；`STARTED` 时也可能非空 ——
+            那表示歌已经在放、但房间同步（标题/话题）失败，此时 `error` 只用于日志，
+            不该出现在给用户的回复里。
     """
 
     status: PlaybackStatus
@@ -170,23 +167,19 @@ class PlaybackResult:
         """UI 侧执行失败。"""
         return self.status is PlaybackStatus.FAILED
 
-    @classmethod
-    def from_outcome(cls, outcome: PlaybackOutcome) -> "PlaybackResult":
-        """把驱动结果映射为对外结果。"""
-        if outcome.ok:
-            return cls(status=PlaybackStatus.STARTED, track=outcome.track)
-        return cls(status=PlaybackStatus.FAILED, error=outcome.error)
-
     def as_response(self) -> dict:
         """命令层的返回形状，与迁移前的 dict 契约一致。
 
+        以 `started` 而非 `error` 为准：歌已经在放而房间同步失败时，房间里的人
+        听到的是歌，回复就该是歌。反过来按 `error` 判定会让人在歌响起时读到报错。
+
         `{'song','singer','album'}` 表示成功、`{'error': ...}` 表示被拒或失败。
-        保留它是为了让五个命令能逐个迁移，而不是一次性改掉所有回复文案。
+        保留这个形状是为了让五个命令能逐个迁移，而不是一次性改掉所有回复文案。
         """
-        if self.error:
-            return {"error": self.error}
-        return {
-            "song": self.track.song,
-            "singer": self.track.singer,
-            "album": self.track.album,
-        }
+        if self.started:
+            return {
+                "song": self.track.song,
+                "singer": self.track.singer,
+                "album": self.track.album,
+            }
+        return {"error": self.error}

@@ -299,6 +299,18 @@ async def test_play_restores_the_microphone_immediately_when_the_ui_fails(
     assert journal == ["mute", "ui:song", "restore"]
 
 
+async def test_play_restores_the_microphone_when_playback_never_becomes_ready(
+    initialized_test_singletons,
+):
+    """就绪超时必须仍然开麦，否则房间会在机器人这里彻底没声。"""
+    engine = _build_engine(ready=False)
+
+    await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+
+    assert engine.probe.waits == ["青花瓷"]
+    assert engine.journal == ["mute", "ui:song", "restore"]
+
+
 async def test_play_restores_the_microphone_when_the_ui_work_raises(initialized_test_singletons):
     """UI 层抛异常时也不能把机器人留在闭麦状态。"""
 
@@ -387,3 +399,25 @@ async def test_play_does_not_adopt_room_context_when_the_ui_fails(initialized_te
     assert engine.topic.topics == []
     assert engine.room_name.titles == []
     assert engine.info.player_name is None
+
+
+async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
+    initialized_test_singletons,
+):
+    """歌已经在响时，回复必须是歌 —— 房间同步失败只该进日志。"""
+    engine = _build_engine()
+
+    def _boom(_topic):
+        return {"error": "Failed to change topic"}
+
+    engine.topic.change_topic = _boom
+
+    result = await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+
+    assert result.started
+    assert result.track.song == "青花瓷"
+    assert result.as_response() == {
+        "song": "青花瓷",
+        "singer": "song-歌手",
+        "album": "",
+    }
