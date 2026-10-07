@@ -2,7 +2,20 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
+from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
 from ushareiplay.managers.command_manager import CommandManager
+
+
+def _intake_message(content: str, nickname: str = "Console"):
+    """A command message carrying the metadata Chat Intake attached to it.
+
+    `CommandManager` no longer re-derives `silent` from the raw string (#399), so
+    a command reaches execution the way it does in production: classified by
+    intake first. Tests that want a silent command say so by using a `/` prefix
+    on a real chat line, not by passing a bare string.
+    """
+    result = classify_chat_line(f"souler[{nickname}]说：{content}")
+    return build_message_batch([result]).commands[0]
 
 
 class _Logger:
@@ -97,9 +110,7 @@ def test_slash_command_suppresses_screen_messages_but_still_executes(monkeypatch
     monkeypatch.setattr(manager, "get_command", lambda _cmd: command)
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [SimpleNamespace(content="/demo abc", nickname="Console")]
-        )
+        manager.execute_command_messages([_intake_message("/demo abc")])
     )
 
     assert processed == 1
@@ -121,9 +132,7 @@ def test_fullwidth_slash_command_suppresses_screen_messages(monkeypatch):
     monkeypatch.setattr(manager, "get_command", lambda _cmd: command)
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [SimpleNamespace(content="／demo abc", nickname="Console")]
-        )
+        manager.execute_command_messages([_intake_message("／demo abc")])
     )
 
     assert processed == 1
@@ -136,9 +145,7 @@ def test_colon_command_keeps_existing_screen_messages(monkeypatch):
     monkeypatch.setattr(manager, "get_command", lambda _cmd: command)
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [SimpleNamespace(content=":demo abc", nickname="Console")]
-        )
+        manager.execute_command_messages([_intake_message(":demo abc")])
     )
 
     assert processed == 1

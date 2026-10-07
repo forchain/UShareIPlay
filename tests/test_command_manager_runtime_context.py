@@ -149,34 +149,29 @@ def test_process_command_defaults_missing_release_date_for_templates():
     assert result == "ok abc  @Console"
 
 
-def test_extract_private_reply_and_normalize_dollar_prefix():
-    manager, _runtime, _controller = make_manager(Path("."))
+def test_intake_normalization_handles_dollar_prefix():
+    """The trigger strip that survives #399 handles the private-reply prefix.
 
-    private_reply, normalized = manager._extract_private_reply_and_normalize("$play abc")
+    The command path no longer re-derives `private_reply` from raw text — that
+    decision arrives on the message from intake. What it still needs from
+    `normalize_command_text` is the trigger strip, because `config.yaml` stores
+    prefixes without the trigger (`play`, not `:play`).
+    """
+    from ushareiplay.core.chat_intake import normalize_command_text
 
-    assert private_reply is True
-    assert normalized == "play abc"
-
-
-def test_extract_private_reply_and_normalize_fullwidth_dollar_prefix():
-    manager, _runtime, _controller = make_manager(Path("."))
-
-    private_reply, normalized = manager._extract_private_reply_and_normalize("＄info")
-
-    assert private_reply is True
-    assert normalized == "info"
+    assert normalize_command_text("$play abc") == "play abc"
+    assert normalize_command_text("＄info") == "info"
+    assert normalize_command_text(":help") == "help"
 
 
-def test_extract_private_reply_and_normalize_colon_prefix_unchanged():
-    manager, _runtime, _controller = make_manager(Path("."))
+def test_execute_command_messages_trusts_the_metadata_intake_attached(monkeypatch):
+    """`private_reply` comes off the message, not off the raw string.
 
-    private_reply, normalized = manager._extract_private_reply_and_normalize(":help")
-
-    assert private_reply is False
-    assert normalized == "help"
-
-
-def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
+    A message built with `private_reply=True` replies privately even though its
+    content still carries the `$` trigger — and one built with `private_reply=False`
+    stays public. Before #399 this was decided by re-deriving the prefix, so the
+    two were indistinguishable.
+    """
     manager, _runtime, _controller = make_manager(Path("."))
     manager.initialize_parser(
         [
@@ -191,7 +186,7 @@ def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
 
     captured = {}
 
-    async def _fake_process(command, message_info, command_info):
+    async def _fake_process(_command, message_info, _command_info):
         captured["content"] = message_info.content
         captured["private_reply"] = message_info.private_reply
         return None
@@ -204,8 +199,8 @@ def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
     )
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        manager.execute_command_messages(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=True)]
         )
     )
 
@@ -214,7 +209,8 @@ def test_handle_message_commands_merges_existing_private_reply(monkeypatch):
     assert captured["private_reply"] is True
 
 
-def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeypatch):
+def test_private_reply_keeps_confirmation_public(monkeypatch):
+    """A private command's screen echo stays public; only the reply is private."""
     manager, _runtime, _controller = make_manager(Path("."))
     manager.initialize_parser(
         [
@@ -239,8 +235,8 @@ def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeyp
     )
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        manager.execute_command_messages(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=True)]
         )
     )
 
@@ -251,7 +247,8 @@ def test_handle_message_commands_private_reply_keeps_confirmation_public(monkeyp
     assert dispatch.command_outputs == [("Console", "ok result @Console", False)]
 
 
-def test_handle_message_commands_private_reply_error_routes_private(monkeypatch):
+def test_private_reply_error_routes_private(monkeypatch):
+    """A failed private command reports privately too."""
     manager, _runtime, _controller = make_manager(Path("."))
     manager.initialize_parser(
         [
@@ -276,8 +273,8 @@ def test_handle_message_commands_private_reply_error_routes_private(monkeypatch)
     )
 
     processed = asyncio.run(
-        manager.handle_message_commands(
-            [MessageInfo(content="$play abc", nickname="Console", private_reply=False)]
+        manager.execute_command_messages(
+            [MessageInfo(content="$play abc", nickname="Console", private_reply=True)]
         )
     )
 

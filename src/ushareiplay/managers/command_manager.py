@@ -9,14 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.core.chat_intake import (
-    QUEUE_COMMAND_PREFIX_CHARS,
-    ChatIntakeKind,
-    classify_chat_line,
-    is_private_reply_prefix,
-    is_silent_prefix,
-    normalize_command_text,
-)
+from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
 from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -380,21 +373,32 @@ class CommandManager(Singleton):
             return None
         return self.command_parser.parse_command(content)
 
-    def _normalize_command_candidate(self, raw: str) -> str:
-        """Normalize command-candidate text for robust parsing."""
-        return normalize_command_text(raw)
-
-    def _extract_private_reply_and_normalize(self, raw: str) -> tuple[bool, str]:
-        """Extract private-reply marker and normalize command candidate."""
-        private_reply = is_private_reply_prefix(raw)
-        return private_reply, normalize_command_text(raw)
-
-    def _is_silent_command_candidate(self, raw: str) -> bool:
-        return is_silent_prefix(raw)
-
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
+        """排空 runtime 队列，按各自文法把消息交给命令执行。
+
+        队列里混着两文法，drainer 不替它们做统一：
+
+        - **intake 来源**（屏幕扫描 / 回溯补漏）已经由 `classify_chat_line`
+          分类完毕，元数据齐全。它们直接交给 `execute_intake_batch` 这条
+          intake 接缝，不再套用 queue 文法 —— 否则 `:play a;b` 会在第一个
+          `;` 处被截断，`quoted_text` 也会在重建消息时丢掉。
+        - **queue 文法来源**（定时器、礼物感谢、console / agent 输入）送来的
+          是裸文本，`;` 拆分与 `{user_name}` 替换正是它们要的，照旧走
+          `route_queue_text`。
+
+        两种来源各自内部保持队列顺序，但一个 tick 之内先执行 queue 文法来源、
+        再执行 intake 来源 —— 命令彼此独立，混排执行顺序没有语义差别。
+
+        Returns:
+            本次路由出去执行的命令条数（不是成功条数）。
+        """
         command_messages = []
+        intake_messages = []
         for message_info in queue_messages:
+            if getattr(message_info, "intake_classified", False):
+                intake_messages.append(message_info)
+                continue
+
             routing = route_queue_text(
                 message_info.content,
                 message_info.nickname,
@@ -412,34 +416,47 @@ class CommandManager(Singleton):
                 for suppressed in routing.suppressed:
                     self._logger.info(f"Silent command suppressed queued message: {suppressed}")
 
-        if not command_messages:
+        routed_count = 0
+        if command_messages:
+            await self.execute_command_messages(command_messages)
+            routed_count += len(command_messages)
+
+        if intake_messages:
+            # 队列只带走批次的命令部分：`items` 在扫描现场就已消费掉，这里
+            # 交回的正是同一批命令消息，metadata 原样带着。
+            await self.execute_intake_batch(MessageBatch(commands=tuple(intake_messages)))
+            routed_count += len(intake_messages)
+
+        return routed_count
+
+    async def execute_intake_batch(self, batch: MessageBatch) -> int:
+        """执行一批已经分类好的命令消息（intake 接缝）。
+
+        接收 `MessageBatch` 而不是原始聊天行：分类已经在 `MessageManager` 里做完，
+        这里直接消费 `batch.commands`，既不重复解析原始行，也不重新推导触发符
+        语义 —— `silent` / `private_reply` / `quoted_text` 随消息一起过来。
+
+        生产路径同样走这里：`execute_runtime_queue_messages` 把队列里 intake
+        来源的消息重新收成一个 `MessageBatch` 交回来，因此这条接缝不是只有测试
+        才会用到的入口。
+
+        Returns:
+            实际执行成功的命令数。
+        """
+        if not batch.commands:
             return 0
 
-        await self.execute_command_messages(command_messages)
-        return len(command_messages)
-
-    async def execute_chat_scan(self, chats):
-        messages = []
-        for chat in chats:
-            result = classify_chat_line(chat)
-            if result.kind != ChatIntakeKind.COMMAND:
-                continue
-            if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
-                continue
-            messages.append(MessageInfo(result.text, result.nickname))
-
-        if messages:
-            await self.execute_command_messages(messages)
-
-        return messages
+        return await self.execute_command_messages(list(batch.commands))
 
     async def execute_command_messages(self, messages):
         """
         处理消息中的命令
-        Args:
-            messages: 消息字典 {msg_id: MessageInfo}
-        Returns:
-            str: 响应消息（如果有的话）
+
+        消息由 Chat Intake 分类后带元数据过来（intake 接缝 / runtime 队列）：
+        `silent` / `private_reply` 直接读消息上的判定结果，不再拿原文重新推断
+        前缀语义。`normalize_command_text` 只做一件事 —— 剥掉触发符，让内容能
+        匹配 `config.yaml` 里不带触发符的命令前缀（`play` 而不是 `:play`），
+        它不再参与静默 / 私聊的判定。
         """
         success_count = 0
 
@@ -451,16 +468,8 @@ class CommandManager(Singleton):
             if not message_info.content:
                 continue
 
-            # Normalize command input (tolerate leading spaces and spaces after colon)
-            extracted_private_reply, content = self._extract_private_reply_and_normalize(
-                message_info.content
-            )
-            message_info.private_reply = bool(
-                getattr(message_info, "private_reply", False)
-            ) or extracted_private_reply
-            silent = bool(getattr(message_info, "silent", False)) or self._is_silent_command_candidate(
-                message_info.content
-            )
+            silent = bool(getattr(message_info, "silent", False))
+            content = normalize_command_text(message_info.content)
             if not content:
                 continue
 
@@ -496,9 +505,6 @@ class CommandManager(Singleton):
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
         return success_count
-
-    async def handle_message_commands(self, messages):
-        return await self.execute_command_messages(messages)
 
     def get_command_modules(self):
         """获取所有已加载的命令模块"""
