@@ -316,26 +316,33 @@ async def test_guest_room_blocks_room_name_and_title_updates():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_notice_updates():
-    from ushareiplay.managers.notice_manager import NoticeManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    NoticeManager.reset_instance()
-    nm = NoticeManager.initialize()
-    nm._handler = HandlerStub(config={})
-    nm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    RoomProfileManager.reset_instance()
+    profile = RoomProfileManager.initialize()
+    profile._handler = HandlerStub(config={})
+    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
     try:
-        res = nm.set_notice_with_cooldown("欢迎来听歌")
+        res = profile.set_notice("欢迎来听歌")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
 
-        res = nm._set_notice_immediate("欢迎来听歌")
+        # 已经排队的公告在别人房间里也不会被写出去（草稿留着，冷却不动）
+        profile.drafts.set_pending("notice", "欢迎来听歌")
+        res = profile.update_notice()
+        assert res.get("skipped") is True
+        assert res.get("reason") == "guest_room"
+        assert profile.drafts.pending("notice") == "欢迎来听歌"
+
+        res = profile.restore_notice("欢迎来听歌")
         assert res.get("skipped") is True
         assert res.get("reason") == "guest_room"
     finally:
-        NoticeManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,6 @@ import traceback
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TITLE_MAX_LENGTH, clean_banner_text
-from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.pending_write import PendingWrite
 from ushareiplay.managers.room_info_window import RoomInfoWindow
 from ushareiplay.state.room_state import RoomState
@@ -25,7 +24,7 @@ class RoomNameManager(Singleton):
     def __init__(self, handler=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
-        self._notice_manager = None
+        self._room_profile = None
 
         # 冷却时钟与待写入标题：计时机制由 PendingWrite 拥有
         self._write = PendingWrite(cooldown_minutes=self.COOLDOWN_MINUTES, label="room name")
@@ -85,10 +84,12 @@ class RoomNameManager(Singleton):
         return self._logger
 
     @property
-    def notice_manager(self):
-        if self._notice_manager is None:
-            self._notice_manager = NoticeManager.instance()
-        return self._notice_manager
+    def room_profile_manager(self):
+        """公告的唯一所有者（#391）。延迟导入：与房间档案模块存在循环依赖。"""
+        if self._room_profile is None:
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            self._room_profile = RoomProfileManager.instance()
+        return self._room_profile
 
     def get_default_theme(self) -> str:
         config = ConfigLoader.load_config()
@@ -440,12 +441,20 @@ class RoomNameManager(Singleton):
             return {'error': f'Error in notice check: {str(e)}'}
 
     def _restore_notice_if_needed(self):
+        """标题写入结束后，把被系统冲掉的公告补回去。
+
+        判定留在房名流程（它才知道「刚改过房名」），写入归公告的所有者
+        `RoomProfileManager.restore_notice` —— 能写就当场写（抽屉是外层开的），
+        冷却中就排队，等下一次心跳由 `update_notice` 写。
+        """
         if not self.pending_notice_restore or not self.restore_notice_content:
             return {'skipped': 'No pending notice restore'}
 
         try:
             self.logger.info(f"Restoring notice to: {self.restore_notice_content}")
-            restore_result = self.notice_manager.set_notice(self.restore_notice_content)
+            restore_result = self.room_profile_manager.restore_notice(
+                self.restore_notice_content
+            )
 
             self.pending_notice_restore = False
             restore_content = self.restore_notice_content

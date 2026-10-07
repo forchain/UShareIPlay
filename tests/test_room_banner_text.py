@@ -44,20 +44,17 @@ class TestCleanBannerText:
 
 @pytest.fixture
 def cooldown_managers():
-    """共用冷却内核的两个 manager（房间名 / 公告）。
+    """还留在 manager 上的那一份冷却时钟（房间名）。
 
-    话题的冷却时钟在 #390 迁进了 `RoomProfileManager` 的草稿库，与另两份的
-    逐字等价由 `test_room_profile_manager.py` 守着。
+    话题（#390）与公告（#391）的冷却时钟都已经迁进 `RoomProfileManager` 的
+    草稿库，那两份的时长改由 `test_room_profile_manager.py` 守着。
     """
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.room_name_manager import RoomNameManager
 
-    for cls in (RoomNameManager, NoticeManager):
-        cls.reset_instance()
-    managers = (RoomNameManager.initialize(), NoticeManager.initialize())
+    RoomNameManager.reset_instance()
+    managers = (RoomNameManager.initialize(),)
     yield managers
-    for cls in (RoomNameManager, NoticeManager):
-        cls.reset_instance()
+    RoomNameManager.reset_instance()
 
 
 class TestPendingWrite:
@@ -108,21 +105,21 @@ class TestPendingWrite:
         assert write.pending == "第二个"
 
     def test_cooldown_is_a_parameter_not_a_convention(self, cooldown_managers):
-        """冷却时长是参数，不是三套语义。
+        """冷却时长是参数，不是各写一套语义。
 
-        话题的 5 分钟随 #390 迁进了 `RoomProfileManager` 的草稿库，因此这里只
-        断言还留在这两个 manager 上的 10 / 15；话题那一份由
+        话题的 5 分钟随 #390、公告的 15 分钟随 #391 迁进了 `RoomProfileManager`
+        的草稿库，因此这里只断言还留在房名 manager 上的 10；那两份由
         `test_room_profile_manager.py::test_the_draft_store_keeps_the_established_cooldowns` 守着。
         """
         from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
 
-        room_name, notice = cooldown_managers
+        (room_name,) = cooldown_managers
         assert room_name.cooldown_minutes == 10
-        assert notice.cooldown_minutes == 15
         assert ProfileDraftStore().cooldown_minutes("topic") == 5
+        assert ProfileDraftStore().cooldown_minutes("notice") == 15
 
-    def test_managers_share_one_implementation_of_the_clock(self, cooldown_managers):
-        """两个 manager 的时钟语义一致：未尝试即可写，尝试后进入冷却。"""
+    def test_the_clock_has_one_implementation_of_its_semantics(self, cooldown_managers):
+        """时钟语义只有一份：未尝试即可写，尝试后进入冷却。"""
         for manager in cooldown_managers:
             assert manager.last_update_time is None
             assert manager.can_update_now() is True

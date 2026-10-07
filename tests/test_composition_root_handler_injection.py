@@ -10,7 +10,6 @@ from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.keyword_manager import KeywordManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.mic_manager import MicManager
-from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recommendation_manager import RecommendationManager
@@ -51,7 +50,6 @@ def test_composition_root_services_receive_identical_injected_handler():
         OnlineListScraper.initialize(fake_soul_handler),
         InfoManager.initialize(fake_soul_handler),
         PartyManager.initialize(fake_soul_handler),
-        NoticeManager.initialize(fake_soul_handler),
         RecommendationManager.initialize(fake_soul_handler),
         RoomNameManager.initialize(fake_soul_handler),
         RoomInfoWindow.initialize(fake_soul_handler),

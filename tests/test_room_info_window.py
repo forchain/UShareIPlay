@@ -233,10 +233,10 @@ def test_with_window_open_yields_the_error_and_does_not_close_when_it_cannot_ope
 # --------------------------------------------------------------------------
 
 def _stub_managers(monkeypatch, recorder):
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.room_name_manager import RoomNameManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     def _install(cls, **attrs):
         stub = SimpleNamespace(**attrs)
@@ -262,10 +262,11 @@ def _stub_managers(monkeypatch, recorder):
         handler=object(),
         initialize_from_ui=lambda: {'success': True},
     )
-    _install(
-        NoticeManager,
-        handler=object(),
-        sync_and_correct_notice_if_dialog_open=lambda: {'success': True},
+    # 公告这一步是房间档案模块自己的字段（#391），不再是另一个单例。
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "_audit_notice_in_open_window",
+        lambda self: {'success': True},
     )
 
 

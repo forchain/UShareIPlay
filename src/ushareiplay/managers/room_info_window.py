@@ -16,10 +16,10 @@
 **本模块现在只是一层转发。** 抽屉的全部实现（探测、打开、正规关窗、保底返回、
 窗口内的顺序、全量审计）都在 `ushareiplay.managers.room_profile.manager` 里，
 通过抽屉 UI 端口驱动。保留这里是为了让既有调用点（`room_name_manager`、
-`notice_manager`、`recommendation_manager`、`party_manager`、
-`commands/recommend.py`）一行不改地继续工作：
+`recommendation_manager`、`party_manager`、`commands/recommend.py`）一行不改地
+继续工作：
 
-- #390-#393 把这些调用点逐个迁到 `RoomProfileManager`
+- #392-#393 把这些调用点逐个迁到 `RoomProfileManager`
 - #394 删掉本文件
 
 因此本门面必须**透明**：所有公开方法原样转发，包括既有调用点依赖的

@@ -105,7 +105,7 @@ def create_sync_setup(monkeypatch, tmp_path):
         key_actions=SimpleNamespace(press_back=lambda: None),
         config={},
         controller=SimpleNamespace(
-            notice_manager=SimpleNamespace(set_default_notice=set_default_notice),
+            room_profile_manager=SimpleNamespace(set_default_notice=set_default_notice),
             seat_manager=SimpleNamespace(find_owner_seat=find_owner_seat),
         ),
     )

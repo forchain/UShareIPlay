@@ -138,7 +138,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.mic_manager import MicManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_adoption import PlaylistAdoption
@@ -186,7 +185,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         OnlineListScraper,
         InfoManager,
         PartyManager,
-        NoticeManager,
         PlaylistAdoption,
         RecommendationManager,
         RoomNameManager,
