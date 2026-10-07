@@ -77,13 +77,19 @@ class MessageContentEvent(BaseEvent):
             return False
 
     async def _process_update_logic(self):
-        """处理更新逻辑（、播放信息等）- 在没有命令消息时执行"""
-        try:
-            # Update all commands
-            command_manager = CommandManager.instance()
-            command_manager.update_commands()
+        """处理更新逻辑（、播放信息等）- 在没有命令消息时执行。
 
-            # update playback info
-            PlaybackBroadcaster.instance().update_playback_info_cache()
+        这里跑的是周期性后台任务（房名/公告/话题等），会真实点击与开关弹窗，
+        因此整段持 UI 独占锁：否则 EventManager 的未知页兜底返回会在这些
+        await 点把弹窗当成未知页面关掉。
+        """
+        try:
+            async with self.ui_session("periodic:background-updates"):
+                # Update all commands
+                command_manager = CommandManager.instance()
+                command_manager.update_commands()
+
+                # update playback info
+                PlaybackBroadcaster.instance().update_playback_info_cache()
         except Exception as e:
             self.logger.error(f"Error processing update logic: {str(e)}")

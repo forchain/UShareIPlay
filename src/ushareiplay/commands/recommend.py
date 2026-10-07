@@ -27,12 +27,12 @@ class RecommendCommand(BaseCommand):
         # 打开/关闭窗口归 RoomInfoWindow（原先这里是第五份手写打开副本）
         from ushareiplay.managers.room_info_window import RoomInfoWindow
         window = RoomInfoWindow.instance()
-        open_error = window.ensure_open(error_message='Failed to find room title')
-        if open_error:
-            return open_error
-
-        update_res = rec_manager.update_recommendation_ui(target_state)
-        window.close_with_back()
+        # 任何退出路径（包括 update_recommendation_ui 抛异常）都必须关窗，
+        # 否则悬挂抽屉会挡住后面所有页面交互。
+        with window.with_window_open(error_message='Failed to find room title') as open_error:
+            if open_error:
+                return open_error
+            update_res = rec_manager.update_recommendation_ui(target_state)
 
         if 'error' in update_res:
             return update_res

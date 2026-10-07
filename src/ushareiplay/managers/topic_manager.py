@@ -5,6 +5,7 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, clean_banner_text
 from ushareiplay.managers.pending_write import PendingWrite
+from ushareiplay.managers.room_info_window import RoomInfoWindow
 from ushareiplay.state.room_state import RoomState
 
 
@@ -133,15 +134,18 @@ class TopicManager(Singleton):
     def _update_topic_ui(self, topic: str) -> dict:
         """
         通过 UI 修改房间话题
-        Args:
-            topic: 新话题
-        Returns:
-            dict: 操作结果
+
+        多层交互（点击话题 -> 编辑入口 -> 输入框 -> 确认）任何一步失败都要
+        按逆序退干净：先退掉盖在抽屉上的编辑框，再关掉抽屉本身。
         """
+        if RoomState.in_guest_room():
+            self.logger.info("In guest room, skip topic UI update")
+            return {'skipped': 'guest_room'}
+
+        window = RoomInfoWindow.instance()
         try:
-            if RoomState.in_guest_room():
-                self.logger.info("In guest room, skip topic UI update")
-                return {'skipped': 'guest_room'}
+            # 前置自愈：上一轮残留的抽屉/蒙层会让后面每一次点击都落空。
+            window.heal_stale_overlays()
 
             # Click room topic on blackboard
             room_topic = self.soul_handler.element_finder.wait_for_element_clickable('room_topic')
@@ -155,15 +159,12 @@ class TopicManager(Singleton):
                 timeout=5,
             )
             if not edit_entry:
-                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find edit topic entry'}
             edit_entry.click()
 
             # Input new topic
             topic_input = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_input')
             if not topic_input:
-                self.soul_handler.key_actions.press_back()
-                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find topic input'}
             topic_input.clear()
             topic_input.send_keys(topic)
@@ -171,8 +172,6 @@ class TopicManager(Singleton):
             # Click confirm
             confirm = self.soul_handler.element_finder.wait_for_element_clickable('edit_topic_confirm')
             if not confirm:
-                self.soul_handler.key_actions.press_back()
-                self.soul_handler.key_actions.press_back()
                 return {'error': 'Failed to find confirm button'}
             confirm.click()
 
@@ -180,25 +179,28 @@ class TopicManager(Singleton):
             time.sleep(1)
 
             # Check if update was successful
-            key, element = self.soul_handler.element_finder.wait_for_any_element(['input_box_entry', 'edit_topic_confirm'])
+            key, element = self.soul_handler.element_finder.wait_for_any_element(
+                ['input_box_entry', 'edit_topic_confirm']
+            )
             if key == 'edit_topic_confirm':
-                self.soul_handler.key_actions.press_back()
-                self.soul_handler.key_actions.press_back()
-                self.soul_handler.key_actions.press_back()
                 self.logger.warning('Update topic too frequently, hide edit topic dialog')
                 return {'error': 'update topic too frequently'}
-            elif key == 'input_box_entry':
-                self.logger.info(f'Topic updated successfully to: {topic}')
-            else:
-                self.logger.warning(f'Unknown key: {key}')
-                self.soul_handler.key_actions.press_back()
-                self.soul_handler.key_actions.press_back()
 
+            if key != 'input_box_entry':
+                self.logger.warning(f'Unknown key: {key}')
+                return {'error': f'Failed to update topic: unknown state {key}'}
+
+            self.logger.info(f'Topic updated successfully to: {topic}')
             return {'success': True, 'topic': topic}
 
         except Exception as e:
             self.logger.error(f"Error changing topic: {traceback.format_exc()}")
             return {'error': f'Failed to update topic: {topic}'}
+        finally:
+            # 编辑框先退、抽屉后关。原先这里是散落在各个失败分支上的
+            # press_back() 次数硬编码，中途抛异常时一层都退不掉。
+            window.close_edit_layers()
+            window.ensure_closed()
     
     def update(self):
         """定期检查并更新话题"""

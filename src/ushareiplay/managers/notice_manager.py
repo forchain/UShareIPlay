@@ -125,47 +125,47 @@ class NoticeManager(Singleton):
                 if open_error:
                     return open_error
 
-                # 点击编辑notice入口
-                edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
-                if not edit_entry:
-                    return {'error': 'Failed to find edit notice entry'}
-                edit_entry.click()
-                self.logger.info("点击了编辑notice入口")
+                try:
+                    # 点击编辑notice入口
+                    edit_entry = self.handler.element_finder.wait_for_element_clickable('edit_notice_entry')
+                    if not edit_entry:
+                        return {'error': 'Failed to find edit notice entry'}
+                    edit_entry.click()
+                    self.logger.info("点击了编辑notice入口")
 
-                # 检查是否有关闭按钮
-                close_notice = self.handler.element_finder.wait_for_element('close_notice')
-                if not close_notice:
-                    return {'error': 'Close notice not found'}
+                    # 检查是否有关闭按钮
+                    close_notice = self.handler.element_finder.wait_for_element('close_notice')
+                    if not close_notice:
+                        return {'error': 'Close notice not found'}
 
-                # 点击自定义按钮
-                key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'])
-                if not customize:
-                    close_notice.click()
-                    self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
-                    return {'error': 'Failed to find customize notice button'}
-                customize.click()
-                self.logger.info(f"点击了自定义按钮 {key}")
+                    # 点击自定义按钮
+                    key, customize = self.handler.element_finder.wait_for_any_element(
+                        ['customize_notice_button', 'modify_notice_button']
+                    )
+                    if not customize:
+                        self.logger.warning('Bottom drawer is open, notice customization is disabled, hiding...')
+                        return {'error': 'Failed to find customize notice button'}
+                    customize.click()
+                    self.logger.info(f"点击了自定义按钮 {key}")
 
-                # 输入新的notice
-                notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
-                if not notice_input:
-                    return {'error': 'Failed to find notice input'}
-                notice_input.clear()
-                notice_input.send_keys(notice)
-                self.logger.info(f"输入了notice内容: {notice}")
+                    # 输入新的notice
+                    notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input')
+                    if not notice_input:
+                        return {'error': 'Failed to find notice input'}
+                    notice_input.clear()
+                    notice_input.send_keys(notice)
+                    self.logger.info(f"输入了notice内容: {notice}")
 
-                # 点击确认
-                confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
-                if not confirm:
-                    return {'error': 'Failed to find confirm button'}
-                confirm.click()
-                self.logger.info("点击了确认按钮")
-
-                # 关闭notice设置对话框（抽屉本身由 with_window_open 收尾）
-                close_notice = self.handler.element_finder.wait_for_element('close_notice')
-                if close_notice:
-                    self.logger.info("隐藏notice设置对话框")
-                    close_notice.click()
+                    # 点击确认
+                    confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm')
+                    if not confirm:
+                        return {'error': 'Failed to find confirm button'}
+                    confirm.click()
+                    self.logger.info("点击了确认按钮")
+                finally:
+                    # 公告二级模态弹窗优先按层退出；抽屉本身由 with_window_open 收尾。
+                    # 任何中途失败（找不到按钮/输入/确认、抛异常）都走这里，不留悬挂弹窗。
+                    window.close_edit_layers()
 
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}
@@ -320,67 +320,76 @@ class NoticeManager(Singleton):
         """
         当房间信息窗口已打开时，被动检查并修正派对公告。
         若发现公告被系统重置（例如匹配 system_default_notices），自动点击 edit_notice_entry 并恢复默认公告。
+
+        本方法只负责关闭自己拉起的公告二级模态弹窗；外层抽屉由调用方
+        （RoomInfoWindow.audit_and_repair）决定何时关。
         """
+        window = RoomInfoWindow.instance()
         try:
-            # 等待 edit_notice_entry 呈现（支持在前一步刚执行过房间类型切换后的界面过渡）
-            edit_entry = self.handler.element_finder.wait_for_element('edit_notice_entry', timeout=2)
-            if not edit_entry:
-                return {'skipped': 'edit_notice_entry not visible'}
+            try:
+                # 等待 edit_notice_entry 呈现（支持在前一步刚执行过房间类型切换后的界面过渡）
+                edit_entry = self.handler.element_finder.wait_for_element('edit_notice_entry', timeout=2)
+                if not edit_entry:
+                    return {'skipped': 'edit_notice_entry not visible'}
 
-            current_text = self.get_notice_text_from_ui()
-            self.logger.info(f"Inspected room notice text from UI: '{current_text}'")
+                current_text = self.get_notice_text_from_ui()
+                self.logger.info(f"Inspected room notice text from UI: '{current_text}'")
 
-            system_notices = self.get_system_default_notices()
+                system_notices = self.get_system_default_notices()
 
-            is_reset = False
-            if not current_text:
-                is_reset = True
-            else:
-                for sys_notice in system_notices:
-                    if sys_notice in current_text:
-                        is_reset = True
-                        break
+                is_reset = False
+                if not current_text:
+                    is_reset = True
+                else:
+                    for sys_notice in system_notices:
+                        if sys_notice in current_text:
+                            is_reset = True
+                            break
 
-            if not is_reset:
-                return {'status': 'notice_normal', 'current_text': current_text}
+                if not is_reset:
+                    return {'status': 'notice_normal', 'current_text': current_text}
 
-            default_notice = self.get_default_notice()
-            self.logger.info(f"Notice reset detected in dialog ('{current_text}'), restoring default notice: {default_notice}")
+                default_notice = self.get_default_notice()
+                self.logger.info(
+                    f"Notice reset detected in dialog ('{current_text}'), "
+                    f"restoring default notice: {default_notice}"
+                )
 
-            edit_entry.click()
-            self.logger.info("Clicked edit_notice_entry in room info window")
+                edit_entry.click()
+                self.logger.info("Clicked edit_notice_entry in room info window")
 
-            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
-            if not close_notice:
-                return {'error': 'close_notice not found'}
+                close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
+                if not close_notice:
+                    return {'error': 'close_notice not found'}
 
-            key, customize = self.handler.element_finder.wait_for_any_element(['customize_notice_button', 'modify_notice_button'], timeout=3)
-            if not customize:
-                close_notice.click()
-                self.logger.warning('Bottom drawer is open, notice customization is disabled')
-                return {'error': 'Failed to find customize notice button'}
+                key, customize = self.handler.element_finder.wait_for_any_element(
+                    ['customize_notice_button', 'modify_notice_button'], timeout=3
+                )
+                if not customize:
+                    self.logger.warning('Bottom drawer is open, notice customization is disabled')
+                    return {'error': 'Failed to find customize notice button'}
 
-            customize.click()
+                customize.click()
 
-            notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input', timeout=3)
-            if not notice_input:
-                return {'error': 'Failed to find notice input'}
+                notice_input = self.handler.element_finder.wait_for_element_clickable('edit_notice_input', timeout=3)
+                if not notice_input:
+                    return {'error': 'Failed to find notice input'}
 
-            notice_input.clear()
-            notice_input.send_keys(default_notice)
+                notice_input.clear()
+                notice_input.send_keys(default_notice)
 
-            confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm', timeout=3)
-            if confirm:
-                confirm.click()
+                confirm = self.handler.element_finder.wait_for_element_clickable('edit_notice_confirm', timeout=3)
+                if confirm:
+                    confirm.click()
 
-            close_notice = self.handler.element_finder.wait_for_element('close_notice', timeout=3)
-            if close_notice:
-                close_notice.click()
-
-            self._write.mark_attempted()
-            self.pending_notice = None
-            self.logger.info(f"Successfully restored notice in room info window to: {default_notice}")
-            return {'success': True, 'restored_notice': default_notice}
+                self._write.mark_attempted()
+                self.pending_notice = None
+                self.logger.info(f"Successfully restored notice in room info window to: {default_notice}")
+                return {'success': True, 'restored_notice': default_notice}
+            finally:
+                # 无论中途在哪一步失败，都把公告二级模态弹窗按层退干净，
+                # 否则它会盖在抽屉上，让后续的编辑与关窗全部落空。
+                window.close_edit_layers()
         except Exception as e:
             self.logger.error(f"Error in sync_and_correct_notice_if_dialog_open: {traceback.format_exc()}")
             return {'error': str(e)}

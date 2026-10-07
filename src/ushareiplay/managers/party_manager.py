@@ -857,12 +857,20 @@ class PartyManager(Singleton):
                 type_elem.click()
 
                 target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
-                target_elem = self.handler.element_finder.wait_for_element(target_type_key)
-                if not target_elem:
-                    self.logger.warning(f"未找到目标房间类型按钮 ({target_type_key})")
-                    return {'error': f'Failed to find target party type button ({target_type_key})'}
+                try:
+                    target_elem = self.handler.element_finder.wait_for_element(target_type_key)
+                    if not target_elem:
+                        self.logger.warning(f"未找到目标房间类型按钮 ({target_type_key})")
+                        return {'error': f'Failed to find target party type button ({target_type_key})'}
 
-                target_elem.click()
+                    target_elem.click()
+                except Exception as e:
+                    self.logger.error(f"点击房间类型选项时出错: {e}")
+                    return {'error': str(e)}
+                finally:
+                    # 类型选项是浮在抽屉之上的二级弹窗：无论选中、没找到还是点击
+                    # 抛异常，都必须先把它退掉，否则它会盖住抽屉让后续操作全部落空。
+                    self.room_info_window.close_option_dialog()
                 self.logger.info(f"Successfully clicked target party type ({target_type_key})")
                 return {'success': True, 'switched': True}
             else:

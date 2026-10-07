@@ -121,10 +121,14 @@ def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendatio
     chat_title = MockElement()
     opt_open = MockElement(text="所有人")
     back_count = 0
+    window_finder = None
 
     def press_back():
         nonlocal back_count
         back_count += 1
+        # 返回键真的把抽屉关掉了，否则 ensure_closed 会一直退到上限
+        if window_finder is not None:
+            window_finder.open = False
 
     class _WindowFinder(MockElementFinder):
         """抽屉在成功点击入口之后才出现，因此关窗时确实需要一次返回。"""
@@ -174,28 +178,3 @@ def test_ensure_synced_on_return_reads_ui_without_clicking_options(recommendatio
     assert title_elem.clicked is False
     assert opt_open.clicked is False
     assert back_count == 1
-
-
-def test_close_title_dialog_presses_back_twice_if_window_still_open(recommendation_setup):
-    rec_manager, room_state = recommendation_setup
-    back_count = 0
-    finder = MockElementFinder()
-
-    def press_back():
-        nonlocal back_count
-        back_count += 1
-        if back_count == 1:
-            finder.elements["party_recommendation_status"] = MockElement(text="关闭推荐分发")
-        else:
-            finder.elements.pop("party_recommendation_status", None)
-
-    handler = SimpleNamespace(
-        element_finder=finder,
-        key_actions=SimpleNamespace(press_back=press_back),
-        logger=SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None),
-    )
-    rec_manager._handler = handler
-    _inject_window_handler(handler)
-
-    rec_manager.close_title_dialog()
-    assert back_count == 2

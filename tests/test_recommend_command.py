@@ -71,7 +71,12 @@ def recommend_cmd_setup():
         ),
         ui_actions=SimpleNamespace(switch_and_click=lambda key, **kwargs: {'success': True}),
         key_actions=SimpleNamespace(switch_to_app=lambda: True, press_back=press_back),
-        logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None),
+        logger=SimpleNamespace(
+            debug=lambda _msg: None,
+            info=lambda _msg: None,
+            warning=lambda _msg: None,
+            error=lambda _msg: None,
+        ),
     )
     rec_manager._handler = soul_handler
 

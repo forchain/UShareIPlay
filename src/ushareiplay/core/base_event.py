@@ -13,6 +13,7 @@
 """
 
 from abc import ABC
+from contextlib import asynccontextmanager
 
 
 class BaseEvent(ABC):
@@ -34,6 +35,24 @@ class BaseEvent(ABC):
         if self.runtime is None:
             return False
         return self.runtime.is_ui_busy()
+
+    @asynccontextmanager
+    async def ui_session(self, reason: str):
+        """独占 UI 执行权，契约与 AppController.ui_session 一致。
+
+        事件回调里跑的后台任务（周期性房名/公告/话题更新等）会真实点击、输入、
+        开关弹窗。若不持锁，EventManager 的兜底 press_back 会在这些 await 点把
+        弹窗当成未知页面关掉。
+
+        controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
+        时同样退化为不加锁 —— 绝不因为拿不到锁就把后台任务整个跳过。
+        """
+        controller = getattr(self, 'controller', None)
+        if controller is None or not hasattr(controller, 'ui_session'):
+            yield
+            return
+        async with controller.ui_session(reason):
+            yield
 
     async def handle(self, key: str, element_wrapper):
         """

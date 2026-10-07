@@ -31,11 +31,22 @@ class _ElementFinder:
 
 
 class _KeyActions:
-    def __init__(self):
+    """press_back 每次只弹掉最上面那一层 —— 否则「关干净了」无从观察。
+
+    closes_on_back 按由外到内排列；每按一次返回就弹掉当时在最上面的那一层。
+    """
+
+    def __init__(self, finder, closes_on_back=("slide_drawer",)):
+        self.finder = finder
+        self.closes_on_back = list(closes_on_back)
         self.back_presses = 0
 
     def press_back(self):
         self.back_presses += 1
+        for key in self.closes_on_back:
+            if key in self.finder.elements:
+                self.finder.elements.pop(key)
+                return
 
 
 class _UIActions:
@@ -54,12 +65,12 @@ class _UIActions:
         return {"success": True}
 
 
-def _handler(elements=None, fail_for=()):
+def _handler(elements=None, fail_for=(), closes_on_back=("slide_drawer",)):
     finder = _ElementFinder(elements)
     return SimpleNamespace(
         logger=_Logger(),
         element_finder=finder,
-        key_actions=_KeyActions(),
+        key_actions=_KeyActions(finder, closes_on_back),
         ui_actions=_UIActions(finder, fail_for),
     )
 
@@ -172,9 +183,13 @@ def test_ensure_closed_prefers_close_drawer_over_press_back():
 
 
 def test_ensure_closed_falls_back_to_press_back_when_close_drawer_fails():
+    """close_drawer 失败时按返回键兜底；退干净之后不再多按。"""
     from ushareiplay.managers.recovery_manager import RecoveryManager
 
-    handler = _handler({"party_room_type_option": object()})
+    handler = _handler(
+        {"party_room_type_option": object()},
+        closes_on_back=("party_room_type_option",),
+    )
     window = _window(handler)
 
     class _Recovery:
@@ -189,6 +204,35 @@ def test_ensure_closed_falls_back_to_press_back_when_close_drawer_fails():
         RecoveryManager.reset_instance()
 
     assert handler.key_actions.back_presses == 1
+
+
+def test_ensure_closed_keeps_going_while_an_overlay_is_still_on_top():
+    """上方还压着编辑弹窗时，一次返回只退掉它 —— 必须继续退到抽屉真没了为止。"""
+    from ushareiplay.managers.recovery_manager import RecoveryManager
+
+    handler = _handler(
+        {
+            "party_room_type_option": object(),
+            "edit_topic_input": object(),
+        },
+        closes_on_back=("edit_topic_input", "party_room_type_option"),
+    )
+    window = _window(handler)
+
+    class _Recovery:
+        def close_drawer(self, drawer_key, **_kw):
+            return False
+
+    RecoveryManager._instance = _Recovery()
+    RecoveryManager._singleton_initialized = True
+    try:
+        window.ensure_closed()
+    finally:
+        RecoveryManager.reset_instance()
+
+    # 第一次退掉编辑层，第二次才退掉抽屉；不多按
+    assert handler.key_actions.back_presses == 2
+    assert window.is_open() is False
 
 
 # --------------------------------------------------------------------------

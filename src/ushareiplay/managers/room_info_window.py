@@ -16,6 +16,10 @@
 `with_window_open()` 只在「窗口是它打开的」时候负责关窗；窗口本来就开着时
 （例如被外层流程打开），退出后保持原状，让外层决定何时关。
 
+多层弹窗（公告自定义、话题编辑、标题编辑盖在抽屉之上）由
+`close_edit_layers()` 按层退出；`ensure_open()` 在开窗前先跑一次
+`heal_stale_overlays()`，把上一轮异常残留的蒙层清掉再动手。
+
 `RoomInfoWindowAuditor` 的职责（全量审计 + 待重试标记）已并入本模块的
 `audit_and_repair()` / `process_pending_retry()`，该模块已删除。
 """
@@ -41,6 +45,33 @@ DIALOG_KEYS = (
 # 打开抽屉的入口。chat_room_title 是既有调用点里最常用的入口，
 # room_topic 指向同一个抽屉，作为兜底。
 DEFAULT_ENTRY_KEYS = ('chat_room_title', 'room_topic')
+
+# 抽屉里的二级选项弹窗（例如派对类型选择）标志。
+OPTION_DIALOG_KEYS = ('party_room_type_option',)
+
+# 盖在抽屉之上的编辑层（二级）弹窗标志。抽屉里的 edit_notice_entry 这类
+# 字段不算「多了一层」，这里只放真正浮在抽屉之上、需要单独退出的控件。
+EDIT_LAYER_KEYS = (
+    'customize_notice_button',
+    'modify_notice_button',
+    'edit_notice_confirm',
+    'edit_topic_input',
+    'title_edit_input',
+    'title_edit_confirm',
+)
+
+# 干净基态（派对主页）下不该存在的蒙层/弹窗：上一轮中途失败留下的残留会挡住
+# 后续每一次点击。入选标准是「主界面绝不会出现」，避免误判成房间自身的一部分
+# 而触发误退。
+STALE_OVERLAY_KEYS = (
+    'online_drawer',    # 在线用户抽屉
+    'input_drawer',     # 输入框抽屉
+    'bottom_drawer',    # 公告自定义的底部抽屉
+    'bottom_drawer_1',  # 通用底部抽屉
+    'send_gift',        # 用户资料页（送礼流程残留）
+    'give_gift',        # 礼物面板
+    'use_item',         # 礼物面板
+) + EDIT_LAYER_KEYS
 
 
 class RoomInfoWindow(Singleton):
@@ -76,6 +107,103 @@ class RoomInfoWindow(Singleton):
                 return True
         return False
 
+    def find_visible(self, keys: Sequence[str]) -> list:
+        """无等待地列出当前确实存在的标志 key（不做超时等待、不打日志）。"""
+        handler = self.handler
+        finder = getattr(handler, 'element_finder', None) if handler else None
+        if finder is None:
+            return []
+
+        visible = []
+        for key in keys:
+            try:
+                if finder.try_find_element(key, log=False):
+                    visible.append(key)
+            except Exception as e:
+                self.logger.debug(f"Marker probe failed for '{key}': {e}")
+        return visible
+
+    def has_edit_layer(self) -> bool:
+        """抽屉之上还有编辑模态弹窗没有退出。"""
+        return bool(self.find_visible(EDIT_LAYER_KEYS))
+
+    def close_edit_layers(self, max_backs: int = 2) -> Dict:
+        """把盖在抽屉之上的编辑层逐层退干净，外层抽屉不动。
+
+        优先点界面上的「关闭公告」键；点不了才按返回键兜底。只有确实看到
+        编辑层才动手，因此在干净状态下调用是零动作 —— 不会误退派对房间。
+        """
+        handler = self.handler
+        if handler is None:
+            return {'closed': [], 'clean': True}
+
+        closed = []
+        for _ in range(max_backs):
+            if not self.has_edit_layer():
+                break
+            closed.append(self._dismiss_topmost_edit_layer())
+        return {'closed': closed, 'clean': not self.has_edit_layer()}
+
+    def _dismiss_topmost_edit_layer(self) -> str:
+        """退掉当前最上层的编辑弹窗，返回实际使用的手段。"""
+        handler = self.handler
+        close_btn = handler.element_finder.try_find_element('close_notice', log=False)
+        if close_btn:
+            try:
+                close_btn.click()
+                return 'close_notice'
+            except Exception as e:
+                self.logger.debug(f"close_notice click failed, falling back to back: {e}")
+        handler.key_actions.press_back()
+        return 'back'
+
+    def close_option_dialog(self, max_backs: int = 1) -> bool:
+        """关掉浮在抽屉之上的二级选项弹窗（例如派对类型选择）。
+
+        只在确实看到选项弹窗时才按返回键；干净状态下是零动作，不会误退房间。
+        """
+        def _option_open():
+            return bool(self.find_visible(OPTION_DIALOG_KEYS))
+
+        if not self.is_open():
+            return False
+
+        for _ in range(max_backs):
+            if not _option_open():
+                break
+            self.handler.key_actions.press_back()
+        return not _option_open()
+
+    def heal_stale_overlays(self, max_backs: int = 3) -> Dict:
+        """关键 UI 交互前的轻量前置自愈。
+
+        上一轮若在中途异常退出，抽屉或蒙层会悬在主界面上，后续每一次点击都
+        会打在蒙层上。这里只做「检测到就退」的防御，不参与任何业务判断。
+
+        Returns:
+            {'healed': [...], 'remaining': [...]}；干净基态下两者都是空列表。
+        """
+        handler = self.handler
+        if handler is None:
+            return {'healed': [], 'remaining': []}
+
+        healed = []
+        if self.is_open():
+            self.ensure_closed()
+            healed.append('room_info_window')
+
+        for _ in range(max_backs):
+            leftovers = self.find_visible(STALE_OVERLAY_KEYS)
+            if not leftovers:
+                break
+            healed.extend(leftovers)
+            handler.key_actions.press_back()
+
+        remaining = self.find_visible(STALE_OVERLAY_KEYS)
+        if remaining:
+            self.logger.warning(f"Stale overlays survived self-healing: {sorted(set(remaining))}")
+        return {'healed': sorted(set(healed)), 'remaining': remaining}
+
     def ensure_open(
         self,
         entry_keys: Optional[Sequence[str]] = None,
@@ -98,6 +226,9 @@ class RoomInfoWindow(Singleton):
         if handler is None:
             return {'error': error_message or 'Soul handler is not available'}
 
+        # 前置自愈：上一轮残留的蒙层/抽屉会让后面的点击全部落空，先退干净再开。
+        self.heal_stale_overlays()
+
         for entry_key in entry_keys or DEFAULT_ENTRY_KEYS:
             result = handler.ui_actions.switch_and_click(
                 entry_key,
@@ -109,12 +240,14 @@ class RoomInfoWindow(Singleton):
 
         return {'error': error_message or 'Failed to open room info window'}
 
-    def ensure_closed(self) -> None:
+    def ensure_closed(self, max_backs: int = 3) -> None:
         """确保窗口已关闭，恢复至主房间界面。
 
-        优先使用 UI 正规关窗操作（close_drawer('slide_drawer')）；仅在抽屉关窗未
-        成功且弹窗标志依然存留时，才使用 press_back() 作为最后的保底防御，防止因
-        过快盲按 press_back() 导致误退出派对房间。
+        优先使用 UI 正规关窗操作（close_drawer('slide_drawer')）。它失败后按
+        返回键兜底，但**不是只按一次**：上面还压着编辑弹窗时，那一次返回只会
+        退掉编辑弹窗，抽屉仍然开着。这里循环到确认窗口真的不见了为止，最多
+        max_backs 次 —— 每次都先确认还有窗口才按，因此干净界面上是零动作，
+        不会误退派对房间。
         """
         try:
             if not self.is_open():
@@ -127,13 +260,27 @@ class RoomInfoWindow(Singleton):
                     return
 
             self.logger.warning("close_drawer did not close room info window, falling back to press_back")
-            self.handler.key_actions.press_back()
+            for _ in range(max_backs):
+                if not self.is_open():
+                    return
+                self.handler.key_actions.press_back()
+
+            if self.is_open():
+                self.logger.warning("Room info window still open after bounded press_back attempts")
         except Exception as e:
             self.logger.warning(f"Error ensuring room info window closed: {e}")
 
     @contextmanager
-    def with_window_open(self, entry_keys: Optional[Sequence[str]] = None) -> Iterator[Optional[dict]]:
+    def with_window_open(
+        self,
+        entry_keys: Optional[Sequence[str]] = None,
+        error_message: Optional[str] = None,
+    ) -> Iterator[Optional[dict]]:
         """窗口开着的上下文：需要时才打开，且只关掉自己打开的那一次。
+
+        Args:
+            entry_keys: 打开入口，默认 chat_room_title -> room_topic
+            error_message: 打不开时返回给调用方的文案（同 ensure_open）
 
         Yields:
             error dict（打开失败）或 None（窗口可用、可以开始编辑）。
@@ -143,7 +290,7 @@ class RoomInfoWindow(Singleton):
             yield None
             return
 
-        open_error = self.ensure_open(entry_keys)
+        open_error = self.ensure_open(entry_keys, error_message=error_message)
         if open_error:
             yield open_error
             return
@@ -152,19 +299,6 @@ class RoomInfoWindow(Singleton):
             yield None
         finally:
             self.ensure_closed()
-
-    def close_with_back(self) -> None:
-        """关掉编辑层后回到主界面：先按一次返回，必要时再按一次。
-
-        用于「编辑对话框之上还有一层抽屉」的场景（例如推荐分发选项）。
-        """
-        try:
-            self.handler.key_actions.press_back()
-            if self.is_open():
-                self.logger.info("Room info window still visible after back, pressing back again to exit")
-                self.handler.key_actions.press_back()
-        except Exception as e:
-            self.logger.warning(f"Error closing room info window with back: {e}")
 
     # ------------------------------------------------------------------
     # 窗口内的顺序：先纠偏，再编辑

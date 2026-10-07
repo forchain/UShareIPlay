@@ -225,15 +225,22 @@ class RoomNameManager(Singleton):
         return room_title_text
 
     def get_room_title_text_from_ui(self):
+        """读当前房名。
+
+        抽屉开着才读弹窗内的房名，没开就直接读主界面房名。绝不为了「抽屉
+        也许开着」去等 `room_name_in_dialog`：抽屉没开时那是白等满整个超时，
+        还会留下一条把「抽屉没开」说成「元素找不到」的误导性警告。
+        """
         try:
-            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
-            dialog_element = self.handler.element_finder.wait_for_element('room_name_in_dialog', timeout=2)
-            if dialog_element:
+            if RoomInfoWindow.is_initialized() and RoomInfoWindow.instance().is_open():
+                dialog_element = self.handler.element_finder.try_find_element(
+                    'room_name_in_dialog', log=False
+                )
                 text = self.handler.element_finder.get_element_text(dialog_element)
                 if isinstance(text, str) and text.strip():
                     return text.strip()
 
-            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
+            # 抽屉未打开，回退至主界面房名 ID (chat_room_title / tvChatRoomTitle)
             room_title_element = self.handler.element_finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None
@@ -306,95 +313,105 @@ class RoomNameManager(Singleton):
         return {'error': result['error']}
 
     def _update_title_ui(self, title: str):
-        """Single attempt to write the room name to the Soul UI."""
+        """Single attempt to write the room name to the Soul UI.
+
+        抽屉的开关归 RoomInfoWindow：无论正常改完、冷却期被挡在门外，还是中途
+        抛异常，退出时都必须把抽屉关掉恢复主界面。
+        """
         if RoomState.in_guest_room():
             self.logger.info("Skipping room title UI update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
+        window = RoomInfoWindow.instance()
         try:
-            # 打开窗口（打开 ritual 归 RoomInfoWindow）
-            open_error = RoomInfoWindow.instance().ensure_open(
-                error_message='Failed to find room title'
-            )
-            if open_error:
-                return open_error
+            # 打开 ritual 归 RoomInfoWindow（打开/关窗都归它，异常路径也不例外）
+            with window.with_window_open(error_message='Failed to find room title') as open_error:
+                if open_error:
+                    return open_error
 
-            # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑标题
-            RoomInfoWindow.instance().sync_while_open()
+                # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑标题
+                window.sync_while_open()
 
-            current_theme = self.current_theme
-            self.logger.info(f"Updating room title: {current_theme}｜{title}")
+                current_theme = self.current_theme
+                self.logger.info(f"Updating room title: {current_theme}｜{title}")
 
-            notice_check_result = self._check_notice_reset()
-            if 'error' in notice_check_result:
-                self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
-            elif 'detected' in notice_check_result:
-                self.logger.info("System notice reset detected, will restore after title update")
+                notice_check_result = self._check_notice_reset()
+                if 'error' in notice_check_result:
+                    self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
+                elif 'detected' in notice_check_result:
+                    self.logger.info("System notice reset detected, will restore after title update")
 
-            edit_entry = self.handler.element_finder.wait_for_element_clickable('title_edit_entry')
-            if not edit_entry:
-                return {'error': 'Failed to find edit title entry'}
-            if not self.handler.gesture_handler.click_element_at(edit_entry, y_ratio=0.25):
-                return {'error': 'Failed to click edit entry'}
+                edit_entry = self.handler.element_finder.wait_for_element_clickable('title_edit_entry')
+                if not edit_entry:
+                    return {'error': 'Failed to find edit title entry'}
+                if not self.handler.gesture_handler.click_element_at(edit_entry, y_ratio=0.25):
+                    return {'error': 'Failed to click edit entry'}
 
-            title_input = self.handler.element_finder.wait_for_element_clickable('title_edit_input')
-            if not title_input:
-                return {'error': 'Failed to find title input'}
-            title_input.clear()
-            title_input.send_keys(f"{current_theme}｜" + title)
+                title_input = self.handler.element_finder.wait_for_element_clickable('title_edit_input')
+                if not title_input:
+                    return {'error': 'Failed to find title input'}
+                title_input.clear()
+                title_input.send_keys(f"{current_theme}｜" + title)
 
-            confirm = self.handler.element_finder.wait_for_element_clickable('title_edit_confirm')
-            if not confirm:
-                return {'error': 'Failed to find confirm button'}
-            confirm.click()
+                confirm = self.handler.element_finder.wait_for_element_clickable('title_edit_confirm')
+                if not confirm:
+                    return {'error': 'Failed to find confirm button'}
+                confirm.click()
 
-            time.sleep(1)
+                time.sleep(1)
 
-            key, element = self.handler.element_finder.wait_for_any_element(['title_edit_entry', 'title_edit_confirm'])
+                key, element = self.handler.element_finder.wait_for_any_element(
+                    ['title_edit_entry', 'title_edit_confirm']
+                )
 
-            if key == 'title_edit_entry':
-                if self.next_title:
-                    self.current_title = self.next_title
-                    self.next_title = None
-                else:
-                    self.current_title = title
-                self.logger.info(f'Updated current title to {self.current_title}')
+                if key == 'title_edit_entry':
+                    if self.next_title:
+                        self.current_title = self.next_title
+                        self.next_title = None
+                    else:
+                        self.current_title = title
+                    self.logger.info(f'Updated current title to {self.current_title}')
+
+                    self.handler.key_actions.press_back()
+                    self.logger.info('Hide edit title dialog')
+
+                    room_title_text = self.get_room_title_text_from_ui()
+                    if room_title_text and '｜' not in room_title_text:
+                        default_title = self.get_default_title()
+                        if not (self.next_title == default_title and not self.can_update_now()):
+                            self.next_title = default_title
+                            self.logger.info(
+                                f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 {default_title}'
+                            )
+
+                    self._restore_notice_if_needed()
+                    return {'success': True}
+
+                if key == 'title_edit_confirm':
+                    go_back = self.handler.element_finder.wait_for_element('go_back')
+                    if go_back:
+                        go_back.click()
+                    self.handler.key_actions.press_back()
+                    self._restore_notice_if_needed()
+                    self.pending_notice_restore = False
+                    self.restore_notice_content = None
+                    return {'error': 'Update failed - still in cooldown period'}
 
                 self.handler.key_actions.press_back()
-                self.logger.info('Hide edit title dialog')
-
-                room_title_text = self.get_room_title_text_from_ui()
-                if room_title_text and '｜' not in room_title_text:
-                    default_title = self.get_default_title()
-                    if not (self.next_title == default_title and not self.can_update_now()):
-                        self.next_title = default_title
-                        self.logger.info(
-                            f'房名未包含分隔符｜(当前: {room_title_text!r})，可能审核未通过，已排队重设为 {default_title}'
-                        )
-
-                self._restore_notice_if_needed()
-                return {'success': True}
-
-            if key == 'title_edit_confirm':
-                go_back = self.handler.element_finder.wait_for_element('go_back')
-                if go_back:
-                    go_back.click()
-                self.handler.key_actions.press_back()
-                self._restore_notice_if_needed()
                 self.pending_notice_restore = False
                 self.restore_notice_content = None
-                return {'error': 'Update failed - still in cooldown period'}
-
-            self.handler.key_actions.press_back()
-            self.pending_notice_restore = False
-            self.restore_notice_content = None
-            return {'error': 'Failed to update title, unknown error'}
+                return {'error': 'Failed to update title, unknown error'}
 
         except Exception:
             self.logger.error(f"Error in title update: {traceback.format_exc()}")
             self.pending_notice_restore = False
             self.restore_notice_content = None
             return {'error': f'Failed to update title: {title}'}
+        finally:
+            # with_window_open 只关「自己打开的那一次」；本流程的语义是「改完标题
+            # 就回主界面」，所以连外面已经开着的窗口也一并关掉。ensure_closed 在
+            # 已经干净时是零动作。
+            window.ensure_closed()
 
     # ------------------------------------------------------------------
     # Notice restore

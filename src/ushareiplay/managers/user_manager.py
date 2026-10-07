@@ -4,6 +4,17 @@ from ushareiplay.core.singleton import Singleton
 
 YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
 
+# 送礼流程叠起来的临时层，按「最上层在前」排列：礼物面板上的确认框 -> 礼物面板
+# -> 用户资料页。只在确实看到某一层时才按返回键，避免在干净界面上盲按把派对
+# 房间退掉。
+GIFT_FLOW_OVERLAY_KEYS = (
+    'confirm_use',
+    'give_gift',
+    'use_item',
+    'send_gift',
+    'follow_status',
+)
+
 
 class UserManager(Singleton):
     """在在线用户列表中查找指定用户并打开其资料页"""
@@ -83,12 +94,25 @@ class UserManager(Singleton):
         """
         执行送礼流程：先在在线列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
 
+        在线抽屉 + 资料页 + 礼物面板是三层叠着的。任何一步失败都必须把它们
+        全部收干净，否则残留的蒙层会挡住后面每一次页面交互。
+
         Args:
             nickname: 要送礼的目标用户昵称。
 
         Returns:
             dict: 成功返回 {'success': str}；失败返回 {'error': str} 或 {'error': str, 'user': nickname}。
         """
+        try:
+            return self._send_gift_flow(nickname)
+        except Exception as e:
+            self.logger.error(f"Error sending gift to {nickname}: {e}")
+            return {'error': f'Failed to send gift to {nickname}', 'user': nickname}
+        finally:
+            # 成功与失败都要收尾：这些层是本流程开的东西，就该由本流程关。
+            self._close_gift_flow()
+
+    def _send_gift_flow(self, nickname: str):
         open_result = self.open_user_profile_from_online_list(nickname)
         if 'error' in open_result:
             return open_result
@@ -109,7 +133,6 @@ class UserManager(Singleton):
         luck_item = self.handler.element_finder.try_find_element('luck_item')
         if not luck_item:
             self.logger.warning('Failed to find gift')
-            self.handler.key_actions.press_back()
             return {'error': 'Failed to find gift'}
 
         gift_name = luck_item.text
@@ -122,8 +145,7 @@ class UserManager(Singleton):
         # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
         if gift_name.strip() == YELLOW_DUCK_NAME:
             self.handler.gesture_handler.click_element_at(luck_item)
-            self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
-            self._close_online_drawer()
+            self.logger.info(f"已点击{YELLOW_DUCK_NAME}")
             return {'success': f'{gift_name} 送你啦'}
 
         self.handler.gesture_handler.click_element_at(found_element)
@@ -132,15 +154,27 @@ class UserManager(Singleton):
         if found_key == 'use_item':
             confirm_use = self.handler.element_finder.wait_for_element('confirm_use')
             if not confirm_use:
-                self.handler.key_actions.press_back()
                 self.logger.warning("未找到确认使用按钮")
                 return {'error': '未找到确认使用按钮'}
 
             confirm_use.click()
             self.logger.info("已点击确认使用")
 
-        self._close_online_drawer()
         return {'success': f'{gift_name} 送你啦'}
+
+    def _close_gift_flow(self):
+        """收掉送礼流程叠起来的所有临时层：礼物面板 -> 资料页 -> 在线抽屉。
+
+        原先只有「找到/点不到」的两三个分支记得关抽屉，背包没匹配、确认按钮
+        缺失等分支只按一次返回就把蒙层留在了屏幕上。
+        """
+        try:
+            for key in GIFT_FLOW_OVERLAY_KEYS:
+                if self.handler.element_finder.try_find_element(key, log=False):
+                    self.handler.key_actions.press_back()
+            self._close_online_drawer()
+        except Exception as e:
+            self.logger.warning(f"Error closing gift flow overlays: {e}")
 
     def send_private_message_to_user(self, nickname: str, message: str) -> bool:
         """
@@ -236,5 +270,14 @@ class UserManager(Singleton):
 
     def _close_online_drawer(self):
         """关闭在线用户抽屉"""
-        recovery_manager = self.handler.controller.recovery_manager
+        recovery_manager = getattr(
+            getattr(self.handler, 'controller', None), 'recovery_manager', None
+        )
+        if recovery_manager is None:
+            # 抽屉关不掉会一直挡着主界面，必须让这个问题被看见，而不是安静地
+            # 留给下一轮的前置自愈去兜。
+            self.logger.warning(
+                "Recovery manager unavailable, online drawer left to the next self-heal preflight"
+            )
+            return
         recovery_manager.close_drawer('online_drawer')
