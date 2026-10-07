@@ -474,7 +474,7 @@ class SeatPanelDriver:
         key_actions.press_back()
 
     @asynccontextmanager
-    async def avatar_card(self, desk, side: str, seat_number: int):
+    async def avatar_card(self, desk, side: str, seat_number: int, *, prefer_state: bool = True):
         """点开某个麦位的头像弹窗，读一次昵称，然后保证关回座位面板。
 
         调用方拿到的 `card.opened` 说明「弹窗是不是真的开着」，`card.name` 是读到的
@@ -483,6 +483,11 @@ class SeatPanelDriver:
 
         铁律：press_back 只在**按下那一刻**屏幕上有卡片时才按。房间里一次盲按
         back 就是退出派对房间，所以「没打开」「已经被关掉」两种情况都绝不能按。
+
+        `prefer_state` 选点击目标：默认先点 ClState（房主换座后残留渲染里它最
+        稳定，面板观测那条链路靠它读昵称）。要读 seat_off（「请下麦」）的链路必须
+        传 False 显式点 UserView —— 没有证据证明点 ClState 弹出的名片里带着
+        seat_off 按钮，���错就是静默退化成「Unable to manage seat N」。
 
         用法::
 
@@ -498,7 +503,7 @@ class SeatPanelDriver:
             return
 
         try:
-            target_element = self._find_child_element(desk, f"{side}_state")
+            target_element = self._find_child_element(desk, f"{side}_state") if prefer_state else None
             if target_element is None:
                 target_element = self._find_child_element(desk, f"{side}_seat")
             if not self._tap_avatar(desk, side, target_element):

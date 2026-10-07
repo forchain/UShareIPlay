@@ -162,7 +162,14 @@ class SeatCheckManager(Singleton):
         # 点开占座人的名片、读昵称、最后按证据关掉它，整段交给 SeatPanelDriver：
         # 房间里一次盲按 back 就是退出派对房间，本模块不再持有任何一次 back。
         # 顺序也随之调整：名片必须先点开，「请下麦」按钮才可能读到。
-        async with self.panel_driver.avatar_card(desk, side, seat_number) as card:
+        # prefer_state=False：这条链路要读 seat_off（「请下麦」），必须点 UserView
+        # 而不是默认的 ClState。迁移前点的一直是 seat 节点，重构不该顺手改掉一个
+        # 没有证据支持的点击目标 —— 点 ClState 弹出的名片是否带 seat_off 全仓无
+        # 从验证（真机 dump 里没有 tvSeatDownUp），点错的症状是静默的：
+        # 「Unable to manage seat N」，占位不再清人。
+        async with self.panel_driver.avatar_card(
+            desk, side, seat_number, prefer_state=False
+        ) as card:
             if card.opened:
                 self.handler.logger.info(f"Opened seat {seat_number} card to check the occupant")
             souler_name_text = card.name if card.opened else None

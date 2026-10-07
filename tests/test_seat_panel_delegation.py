@@ -155,16 +155,24 @@ def _occupied_desk(events, occupant="Bob"):
 
 
 class RecordingDriver:
-    """SeatPanelDriver 的记录替身：证明调用点把点名与读数交了出去。"""
+    """SeatPanelDriver 的记录替身：证明调用点把点名与读数交了出去。
+
+    签名与生产一致（含 keyword-only 的 prefer_state），并把点击目标一并记下来：
+    占座检查那条链路必须钉在 seat 节点上，不能跟着默认路径改点 ClState。
+    """
 
     def __init__(self, opened=True, name=None):
         self.calls = []
         self.card = SeatCardView(opened=opened, name=name)
 
     @asynccontextmanager
-    async def avatar_card(self, desk, side, seat_number):
-        self.calls.append((desk, side, seat_number))
+    async def avatar_card(self, desk, side, seat_number, *, prefer_state=True):
+        self.calls.append((desk, side, seat_number, prefer_state))
         yield self.card
+
+    def tap_targets(self):
+        """各次点名的点击目标（prefer_state 的取值）。"""
+        return [call[3] for call in self.calls]
 
 
 @pytest.fixture(autouse=True)
@@ -210,7 +218,9 @@ async def test_accompany_user_delegates_the_avatar_read_to_the_panel_driver(same
     result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
 
     assert result == {"success": "Successfully took a seat"}, result
-    assert [(side, seat_number) for _desk, side, seat_number in driver.calls] == [("right", 2)]
+    assert [(side, seat_number) for _d, side, seat_number, _p in driver.calls] == [("right", 2)]
+    # 陪伴搜索只读昵称，跟默认的 ClState 目标即可
+    assert driver.tap_targets() == [True], driver.calls
     # 名片是驱动点开的：manager 自己那一路点击里不该再有点头像的动作
     assert "tap_right" not in events, events
 
@@ -312,7 +322,10 @@ async def test_seat_check_reads_the_occupant_through_the_panel_driver(monkeypatc
 
     await _seat_check_run(events, handler, finder, driver=driver)
 
-    assert [(side, seat_number) for _d, side, seat_number in driver.calls] == [("left", 1)]
+    assert [(side, seat_number) for _d, side, seat_number, _p in driver.calls] == [("left", 1)]
+    # 点击目标钉在 seat 节点：要读 seat_off，点 ClState 弹出的名片是否带这个按钮
+    # 全仓无从验证，点错的症状是静默的「Unable to manage seat N」。
+    assert driver.tap_targets() == [False], driver.calls
     assert "seat_off" in events, events
     assert "tap_left" not in events, events
 

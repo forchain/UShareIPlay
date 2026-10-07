@@ -395,6 +395,53 @@ def build_raw_desk_with_avatar(elements=None):
     return RawSeatDesk({elements["left_state"]: avatar}, location={"x": 40, "y": 100}), avatar
 
 
+def build_raw_desk_with_state_and_seat(elements=None):
+    """真机上的占座桌位：left_state（ClState）与 left_seat（UserView）同时渲染。"""
+    elements = elements or soul_elements()
+    avatar = ClickableNode()
+    seat = ClickableNode()
+    return (
+        RawSeatDesk(
+            {elements["left_state"]: avatar, elements["left_seat"]: seat},
+            location={"x": 40, "y": 100},
+        ),
+        avatar,
+        seat,
+    )
+
+
+async def test_avatar_card_taps_the_state_node_by_default():
+    """默认点 ClState：#395 立下的行为，面板观测那条链路依赖它。"""
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, avatar, seat = build_raw_desk_with_state_and_seat()
+
+    async with driver.avatar_card(desk, "left", 9) as card:
+        assert card.opened is True
+
+    assert avatar.clicked is True
+    assert seat.clicked is False
+
+
+async def test_avatar_card_taps_the_seat_node_when_the_caller_asks():
+    """要「请下麦」的那条链路必须点 seat 节点，不能跟着默认路径改点 ClState。
+
+    没有���何证据证明「点 ClState 弹出的名片」里带着 seat_off（tvSeatDownUp）——
+    真机 dump 里根本没有这个节点，全仓只有测试替身凭空造了一个。点错了就静默
+    退化成「Unable to manage seat N」，:seat 占位不再清人。所以把点击目标显式
+    钉回迁移前的 seat 节点：重构不该顺手改掉没被验证过的点击目标。
+    """
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, avatar, seat = build_raw_desk_with_state_and_seat()
+
+    async with driver.avatar_card(desk, "left", 9, prefer_state=False) as card:
+        assert card.opened is True
+
+    assert seat.clicked is True
+    assert avatar.clicked is False
+
+
 async def test_avatar_card_closes_only_the_popup_it_opened():
     """读到昵称节点＝弹窗真开着，必须关掉：它会挡住后面的麦位读数。"""
     handler = make_panel_handler(popup_name="Bob")
