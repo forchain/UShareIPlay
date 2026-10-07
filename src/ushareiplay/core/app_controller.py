@@ -452,6 +452,8 @@ class AppController(Singleton):
             from ushareiplay.managers.sleep_manager import SleepManager
             from ushareiplay.managers.recommendation_manager import RecommendationManager
             from ushareiplay.managers.room_name_manager import RoomNameManager
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -505,6 +507,10 @@ class AppController(Singleton):
             RecommendationManager.initialize(self.soul_handler)
             RoomNameManager.initialize(self.soul_handler)
             RoomInfoWindow.initialize(self.soul_handler)
+            # 房间档案的真正所有者。旧的那五个单例暂时保留，#390-#394 逐个下线。
+            self.room_profile_manager = RoomProfileManager.initialize(
+                self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
+            )
             AdminManager.initialize(self.soul_handler)
             KeywordManager.initialize(self.soul_handler)
             from ushareiplay.managers.memory_manager import MemoryManager
