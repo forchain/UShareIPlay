@@ -23,6 +23,7 @@ async 会打断三个同步调用点（`room_name_manager` / `notice_manager` /
 """
 
 import logging
+import time
 import traceback
 from contextlib import contextmanager
 from typing import Dict, Iterator, Optional, Sequence
@@ -36,6 +37,16 @@ from ushareiplay.managers.room_profile.driver import (
 )
 from ushareiplay.state.room_state import RoomState
 
+#: 话题的打开入口。话题原先点的是黑板上的 `room_topic`，而不是抽屉默认的
+#: `chat_room_title`；两者指向同一个抽屉，但入口保持不变。
+TOPIC_ENTRY_KEYS = ('room_topic',)
+#: 抽屉里「自定义话题」的两种皮肤：主色面板与背景板。
+TOPIC_EDIT_ENTRY_KEYS = ('edit_topic_entry', 'edit_topic_bg_entry')
+#: 提交后用来判断结果的屏幕：编辑层还在 = 改得太频繁；聊天框回来了 = 成功。
+TOPIC_SUBMIT_PROBE_KEYS = ('input_box_entry', 'edit_topic_confirm')
+#: 确认提交之后等 Appium 落地的静默时间（秒）。离线测试把它置 0。
+TOPIC_SETTLE_SECONDS = 1.0
+
 
 class RoomProfileManager(Singleton):
     """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。"""
@@ -47,6 +58,9 @@ class RoomProfileManager(Singleton):
         self._drafts = ProfileDraftStore()
         self.pending_audit_retry = False
         self.last_audit_results: Dict = {}
+        # 已经写进黑板的话题。冷启动时为 None，与旧 TopicManager 同义。
+        self.current_topic = None
+        self.topic_settle_seconds = TOPIC_SETTLE_SECONDS
 
     @property
     def handler(self):
@@ -153,8 +167,17 @@ class RoomProfileManager(Singleton):
             self.logger.warning(f"Error ensuring room info window closed: {e}")
 
     @contextmanager
-    def with_window_open(self, entry_keys: Optional[Sequence[str]] = None) -> Iterator[Optional[dict]]:
+    def with_window_open(
+        self,
+        entry_keys: Optional[Sequence[str]] = None,
+        error_message: Optional[str] = None,
+    ) -> Iterator[Optional[dict]]:
         """窗口开着的上下文：需要时才打开，且只关掉自己打开的那一次。
+
+        Args:
+            entry_keys: 打开入口，默认 chat_room_title -> room_topic。
+            error_message: 打不开时返回给调用方的文案，透传给 `ensure_open`，
+                以免统一入口后改变聊天气泡里的报错。
 
         Yields:
             error dict（打开失败）或 None（窗口可用、可以开始编辑）。
@@ -164,7 +187,7 @@ class RoomProfileManager(Singleton):
             yield None
             return
 
-        open_error = self.ensure_open(entry_keys)
+        open_error = self.ensure_open(entry_keys, error_message)
         if open_error:
             yield open_error
             return
@@ -197,20 +220,36 @@ class RoomProfileManager(Singleton):
         return driver
 
     # ------------------------------------------------------------------
-    # 字段草稿：只排队，不碰 UI
+    # 字段草稿：排队 -> 冷却 -> 写 UI
     # ------------------------------------------------------------------
     #
-    # 这一节是 #388 建立的统一面。写 UI 的那一步仍留在既有的 TopicManager /
-    # NoticeManager / RoomNameManager 里 —— #390-#393 才把它们迁过来。因此
-    # 此刻同一字段存在两份 PendingWrite（一份在这份草稿库里，一份在旧 manager
-    # 上），这是刻意的过渡状态，不是重复实现：旧那份随下线一起消失。
+    # 话题这一条（#390）已经是完整纵切：`set_topic` 排队、`update_topic` 在
+    # 冷却到期后经端口写 UI。公告/房名两条仍只排队，写 UI 的那一步分别留在
+    # `NoticeManager` / `RoomNameManager`，#391-#393 再迁过来 —— 因此此刻公告与
+    # 房名各有一份旧的 `PendingWrite`，那是刻意的过渡状态，旧那份随下线一起消失。
+
+    def get_topic_status(self) -> Dict:
+        """`:topic` 无参数那一支的状态面。
+
+        返回结构与旧 `TopicManager.get_status` 逐字一致（`current_topic` /
+        `next_topic` / `remaining_time`），`TopicCommand` 的回复拼装因此不变。
+        """
+        result = {
+            'current_topic': self.current_topic or 'None',
+            'next_topic': self.drafts.pending('topic') or 'None',
+            'remaining_time': None,
+        }
+        if self.drafts.has_pending('topic'):
+            result['remaining_time'] = self.drafts.remaining_minutes('topic')
+        return result
 
     def set_topic(self, topic: str) -> Dict:
         """安排房间话题变更。
 
         与 `TopicManager.change_topic` 的返回文案逐字一致，config.yaml 的话题
-        响应模板 `"{topic}"` 因此不必改。切前台的动作保留在原处（话题这一条
-        原本就在 manager 里做，标题/主题/公告那几条在命令里做）。
+        响应模板 `"{topic}"` 因此不必改。切前台的动作保留在这里（话题这一条
+        原本就在 manager 里做，标题/主题/公告那几条在命令里做）。真正写 UI 是
+        `update_topic` 的事 —— 冷却中的话题要等下一次心跳。
         """
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
@@ -228,6 +267,119 @@ class RoomProfileManager(Singleton):
         remaining_minutes = self.drafts.remaining_minutes('topic')
         self.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
         return {'topic': f'{new_topic}. Topic will update in {remaining_minutes} minutes'}
+
+    def update_topic(self) -> Dict:
+        """心跳：冷却到期且有排队话题时，把它写进黑板。
+
+        两条提前返回都不打日志 —— 这是被 `:topic` 的定时轮询反复走到的分支，
+        按 CLAUDE.md 的日志铁律，刷屏属于缺陷而不是信息。
+
+        Returns:
+            `{'skipped': 'no_pending_topic'}` / `{'skipped': 'cooldown'}` /
+            写 UI 的结果 dict。
+        """
+        topic = self.drafts.pending('topic')
+        if not topic:
+            return {'skipped': 'no_pending_topic'}
+
+        if not self.drafts.can_apply_now('topic'):
+            return {'skipped': 'cooldown'}
+
+        self.logger.info(f'Attempting to update topic to {topic}')
+
+        # 无论成功失败都推进冷却时钟，避免反复重试。话题这条路线的 UI 调用
+        # 可能抛异常，因此「先推进再调用」—— 与旧 TopicManager 同一个次序。
+        self.drafts.mark_attempted('topic')
+
+        result = self._write_topic_in_drawer(topic)
+
+        if 'error' not in result:
+            # 成功：清空排队的话题
+            self.current_topic = topic
+            self.drafts.clear('topic')
+            self.logger.info(f'Topic updated successfully to: {self.current_topic}')
+            self._announce_topic(self.current_topic)
+        else:
+            # 失败：保留排队的话题，等下一次冷却到期后重试
+            self.logger.warning(
+                f'Failed to update topic: {result.get("error")}. '
+                f'Will retry in {self.drafts.cooldown_minutes("topic")} minute(s).'
+            )
+
+        return result
+
+    def _write_topic_in_drawer(self, topic: str) -> Dict:
+        """把话题写进黑板：抽屉会话由 `with_window_open` 独占。
+
+        与旧 `TopicManager._update_topic_ui` 相比只改一件事：收尾不再盲按
+        `press_back()`。旧实现在成功、失败、风险提示三条路上分别连按 3 / 2 / 3
+        次返回键；按多了会直接退出派对房间（spec 用户故事 #12）。现在统一由
+        `with_window_open` 的 `finally` 走 `ensure_closed()` 阶梯：自己没有打开
+        抽屉就一次都不按；自己打开的就先点遮罩关；只有遮罩关不掉才退化为一次
+        保底返回键。
+
+        Returns:
+            `{'success': True, 'topic': topic}`，或带 `error` 的 dict。异常一律
+            转成 error dict —— 走 `update_topic` 的失败分支保留草稿重试。
+        """
+        try:
+            if RoomState.in_guest_room():
+                self.logger.info("In guest room, skip topic UI update")
+                return {'skipped': 'guest_room'}
+
+            with self.with_window_open(
+                TOPIC_ENTRY_KEYS, 'Failed to find room topic'
+            ) as open_error:
+                if open_error:
+                    return open_error
+
+                driver = self._require_driver()
+
+                # 黑板/抽屉里的「自定义话题」入口（两种皮肤）
+                entry_key = driver.wait_for_any(TOPIC_EDIT_ENTRY_KEYS, timeout=5)
+                if entry_key is None:
+                    return {'error': 'Failed to find edit topic entry'}
+                driver.click_element(entry_key)
+
+                # 输入新话题
+                if not driver.replace_text('edit_topic_input', topic):
+                    return {'error': 'Failed to find topic input'}
+
+                # 点击确认
+                if not driver.click_element('edit_topic_confirm'):
+                    return {'error': 'Failed to find confirm button'}
+
+                # 等待提交落地
+                if self.topic_settle_seconds:
+                    time.sleep(self.topic_settle_seconds)
+
+                probe = driver.wait_for_any(TOPIC_SUBMIT_PROBE_KEYS)
+                if probe == 'edit_topic_confirm':
+                    self.logger.warning('Update topic too frequently, hide edit topic dialog')
+                    return {'error': 'update topic too frequently'}
+                if probe == 'input_box_entry':
+                    self.logger.info(f'Topic updated successfully to: {topic}')
+                else:
+                    self.logger.warning(f'Unknown key: {probe}')
+
+                return {'success': True, 'topic': topic}
+
+        except Exception:
+            self.logger.error(f"Error changing topic: {traceback.format_exc()}")
+            return {'error': f'Failed to update topic: {topic}'}
+
+    def _announce_topic(self, topic: str) -> None:
+        """写成功后往公屏发一条，与旧 `TopicManager.update` 同一句话。"""
+        try:
+            from ushareiplay.core.message_dispatch import MessageDispatch
+
+            if not MessageDispatch.is_initialized():
+                return
+            MessageDispatch.instance().bind_handler(self.handler).send_screen_message(
+                f"Updating topic to {topic}"
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to announce topic update: {e}")
 
     def set_notice(self, notice: str) -> Dict:
         """安排派对公告变更。

@@ -1,5 +1,5 @@
 ---
-covers: [PartyManager, SoulHandler, RoomNameManager, TopicManager, NoticeManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
+covers: [PartyManager, SoulHandler, RoomNameManager, RoomProfileManager, NoticeManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
 last-synced: 2026-09-23
 ---
 
@@ -14,7 +14,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
 | `RoomNameManager` | Room name invariant: `{theme}｜{title}`, shared cooldown, single UI write, notice restore |
-| `TopicManager` | Study-room topic display |
+| `RoomProfileManager` | Room drawer session + topic/notice/title drafts |
 | `NoticeManager` | Room announcement text |
 | `SeatManager` | Seat reservation + seating sub-managers |
 | `MicManager` | Microphone on/off automation and off-seat preparation |

@@ -44,16 +44,19 @@ class TestCleanBannerText:
 
 @pytest.fixture
 def cooldown_managers():
-    """三个共用冷却内核的 manager（房间名 / 公告 / 话题）。"""
+    """共用冷却内核的两个 manager（房间名 / 公告）。
+
+    话题的冷却时钟在 #390 迁进了 `RoomProfileManager` 的草稿库，与另两份的
+    逐字等价由 `test_room_profile_manager.py` 守着。
+    """
     from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.room_name_manager import RoomNameManager
-    from ushareiplay.managers.topic_manager import TopicManager
 
-    for cls in (RoomNameManager, NoticeManager, TopicManager):
+    for cls in (RoomNameManager, NoticeManager):
         cls.reset_instance()
-    managers = (RoomNameManager.initialize(), NoticeManager.initialize(), TopicManager.initialize())
+    managers = (RoomNameManager.initialize(), NoticeManager.initialize())
     yield managers
-    for cls in (RoomNameManager, NoticeManager, TopicManager):
+    for cls in (RoomNameManager, NoticeManager):
         cls.reset_instance()
 
 
@@ -105,14 +108,21 @@ class TestPendingWrite:
         assert write.pending == "第二个"
 
     def test_cooldown_is_a_parameter_not_a_convention(self, cooldown_managers):
-        """三个 manager 的冷却时长分别是 10 / 15 / 5 分钟 —— 是参数，不是三套语义。"""
-        room_name, notice, topic = cooldown_managers
+        """冷却时长是参数，不是三套语义。
+
+        话题的 5 分钟随 #390 迁进了 `RoomProfileManager` 的草稿库，因此这里只
+        断言还留在这两个 manager 上的 10 / 15；话题那一份由
+        `test_room_profile_manager.py::test_the_draft_store_keeps_the_established_cooldowns` 守着。
+        """
+        from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
+
+        room_name, notice = cooldown_managers
         assert room_name.cooldown_minutes == 10
         assert notice.cooldown_minutes == 15
-        assert topic.cooldown_minutes == 5
+        assert ProfileDraftStore().cooldown_minutes("topic") == 5
 
     def test_managers_share_one_implementation_of_the_clock(self, cooldown_managers):
-        """三个 manager 的时钟语义一致：未尝试即可写，尝试后进入冷却。"""
+        """两个 manager 的时钟语义一致：未尝试即可写，尝试后进入冷却。"""
         for manager in cooldown_managers:
             assert manager.last_update_time is None
             assert manager.can_update_now() is True
