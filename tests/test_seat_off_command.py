@@ -7,17 +7,15 @@ import pytest
 from ushareiplay.commands import seat as seat_command_module
 from ushareiplay.commands.seat import SeatCommand
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.models.message_info import MessageInfo
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_seat_singletons():
+def _cleanup_seat_manager():
     SeatManager.reset_instance()
-    SeatingManager.reset_instance()
     yield
     SeatManager.reset_instance()
-    SeatingManager.reset_instance()
 
 
 class DummyController:
@@ -181,9 +179,9 @@ def test_seat_4_with_invalid_seat_number_returns_error():
 def test_seat_off_owner_clicks_owner_seat_and_seat_off_button():
     desks = [_desk(left_label="群主", left_occupied=True)]
     handler = DummyHandler(desks, popup_name="群主")
-    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
 
-    result = asyncio.run(manager.seat_off_owner())
+    result = asyncio.run(subsystem.seat_off_owner())
 
     assert result == {"success": "Successfully removed 群主 from seat 1"}
     assert desks[0]["left_seat"].clicked is True
@@ -196,9 +194,9 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
         _desk(left_label="C", left_occupied=True),
     ]
     handler = DummyHandler(desks, popup_name="C")
-    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
 
-    result = asyncio.run(manager.seat_off_specific_seat(3))
+    result = asyncio.run(subsystem.seat_off_specific_seat(3))
 
     assert result == {"success": "Successfully removed C from seat 3"}
     assert desks[1]["left_seat"].clicked is True
@@ -207,9 +205,9 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
 
 def test_seat_off_owner_returns_error_when_owner_not_found():
     handler = DummyHandler([_desk(left_label="Alice", left_occupied=True)])
-    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
 
-    result = asyncio.run(manager.seat_off_owner())
+    result = asyncio.run(subsystem.seat_off_owner())
 
     assert result == {"error": "Owner is not on any seat"}
     assert handler.seat_off.clicked is False

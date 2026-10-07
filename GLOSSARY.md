@@ -23,8 +23,8 @@ The two names one person carries: the **visible name** (分身名) — the only 
 _Avoid_: nickname mismatch workaround, alias string hack, display-name fudge
 
 **Room Name**:
-The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomNameManager`.
-_Avoid_: ThemeManager, TitleManager (legacy adapters)
+The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, pending theme/title state, the single UI write, and notice restoration. Owned by `RoomProfileManager`, which is also the sole owner of the drawer session holding it.
+_Avoid_: ThemeManager, TitleManager, RoomNameManager (legacy adapters)
 
 **Command Execution**:
 All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, configured command retries, and response delivery.

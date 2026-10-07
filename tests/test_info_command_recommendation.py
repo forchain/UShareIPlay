@@ -7,7 +7,8 @@ from ushareiplay.state.playlist_state import PlaylistState
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.recommendation_manager import RecommendationManager
+from ushareiplay.managers.room_profile import RoomProfileManager
+from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 
 
 class MockElementFinder:
@@ -44,7 +45,7 @@ def info_cmd_setup():
         PlaylistState,
         PresenceTracker,
         RoomState,
-        RecommendationManager,
+        RoomProfileManager,
     ):
         cls.reset_instance()
     PlaybackBroadcaster.initialize()
@@ -57,8 +58,9 @@ def info_cmd_setup():
     # 直接注入目标状态模块（见 ADR-0004）
     PresenceTracker.instance()._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
-    rec_manager = RecommendationManager.initialize()
-    rec_manager._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None)
+    # 推荐分发归房间档案模块所有（#393）：抽屉与状态读都在它那里。
+    profile = RoomProfileManager.initialize()
+    profile._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None)
 
     title_elem = MockElement(text="所有人")
     opt_open = MockElement(text="所有人")
@@ -76,13 +78,7 @@ def info_cmd_setup():
         logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None),
         config={"create_party_recommendation": True},
     )
-    rec_manager._handler = soul_handler
-
-    # 窗口的打开/检测/关闭归 RoomInfoWindow：同一替身也注入给它
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    window = RoomInfoWindow.instance()
-    window._handler = soul_handler
-    window._logger = soul_handler.logger
+    profile.adopt_handler(soul_handler, SoulDrawerDriver(soul_handler))
 
     music_handler = SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知")
     controller = SimpleNamespace(soul_handler=soul_handler, music_handler=music_handler)

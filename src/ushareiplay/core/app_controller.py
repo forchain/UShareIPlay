@@ -34,10 +34,8 @@ from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.managers.notice_manager import NoticeManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-from ushareiplay.managers.room_info_window import RoomInfoWindow
 
 
 class AppController(Singleton):
@@ -433,7 +431,6 @@ class AppController(Singleton):
             self.logger = self.soul_handler.logger
 
             # Initialize managers using singleton pattern (no parameters needed)
-            from ushareiplay.managers.topic_manager import TopicManager
             from ushareiplay.managers.mic_manager import MicManager
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -442,16 +439,12 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
-            from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-            from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
-            from ushareiplay.managers.seat_manager.reservation import ReservationManager
-            from ushareiplay.managers.seat_manager.seating import SeatingManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.managers.sleep_manager import SleepManager
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
-            from ushareiplay.managers.room_name_manager import RoomNameManager
+            from ushareiplay.managers.room_profile import RoomProfileManager
+            from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -461,19 +454,9 @@ class AppController(Singleton):
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            self.seat_ui_manager = SeatUIManager.initialize(self.soul_handler)
-            self.seat_check_manager = SeatCheckManager.initialize(self.soul_handler, self.seat_ui_manager)
-            self.reservation_manager = ReservationManager.initialize(
-                self.soul_handler, self.seat_ui_manager, self.seat_check_manager
-            )
-            self.seating_manager = SeatingManager.initialize(self.soul_handler, self.seat_ui_manager)
-            self.seat_manager = SeatManager.initialize(
-                self.soul_handler,
-                seat_ui=self.seat_ui_manager,
-                seat_check=self.seat_check_manager,
-                reservation=self.reservation_manager,
-                seating=self.seating_manager,
-            )
+            # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
+            # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
+            self.seat_manager = SeatManager.initialize(self.soul_handler)
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
@@ -483,7 +466,6 @@ class AppController(Singleton):
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
-            self.topic_manager = TopicManager.initialize(self.soul_handler)
             self.mic_manager = MicManager.initialize(self.soul_handler)
             self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
@@ -500,18 +482,25 @@ class AppController(Singleton):
             OnlineListScraper.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
-            self.notice_manager = NoticeManager.initialize(self.soul_handler)
             PlaylistAdoption.initialize()
-            RecommendationManager.initialize(self.soul_handler)
-            RoomNameManager.initialize(self.soul_handler)
-            RoomInfoWindow.initialize(self.soul_handler)
+            # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
+            # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
+            self.room_profile_manager = RoomProfileManager.initialize(
+                self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
+            )
             AdminManager.initialize(self.soul_handler)
             KeywordManager.initialize(self.soul_handler)
             from ushareiplay.managers.memory_manager import MemoryManager
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
-            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler, seat_ui=self.seat_ui_manager)
+            # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
+            # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
+            # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
+            # 契约适配层上的 collapse_seats()。
+            self.seat_observation_manager = SeatObservationManager.initialize(
+                self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
+            )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(

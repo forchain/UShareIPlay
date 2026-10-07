@@ -11,7 +11,7 @@ from lxml import etree
 from ushareiplay.core.chat_intake import format_quoted_message
 
 # 引用回复视图的默认资源 id；可经 config.yaml 的 soul.elements 覆盖
-# （UI 选择器统一放在配置中，见 CLAUDE.md）
+# （UI 选择器统一放在配置中，见 AGENTS.md）
 DEFAULT_REPLY_VIEW_ID = "gReplyView"
 DEFAULT_REPLY_CONTENT_ID = "tvReplyContent"
 # 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器

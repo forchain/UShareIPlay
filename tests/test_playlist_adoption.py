@@ -16,24 +16,22 @@ class _Info:
         self.current_playlist_name = None
 
 
-class _RoomName:
+class _RoomProfile:
+    """房名与话题现在共用这一个所有者（#392 把房名也搬进了房间档案）。"""
+
     def __init__(self):
         self.titles = []
-        self.result = {}
-
-    def set_next_title(self, title):
-        self.titles.append(title)
-        return self.result
-
-
-class _Topic:
-    def __init__(self):
         self.topics = []
-        self.result = {}
+        self.title_result = {}
+        self.topic_result = {}
 
-    def change_topic(self, topic):
+    def set_title(self, title):
+        self.titles.append(title)
+        return self.title_result
+
+    def set_topic(self, topic):
         self.topics.append(topic)
-        return self.result
+        return self.topic_result
 
 
 class _Music:
@@ -46,8 +44,7 @@ def adoption():
     """把 PlaylistAdoption 的三个协作者替换为替身（模块级注入，见 ADR-0004）。"""
     module = PlaylistAdoption.instance()
     module._info = _Info()
-    module._room_name = _RoomName()
-    module._topic = _Topic()
+    module._room_profile = _RoomProfile()
     module._music = _Music()
     return module
 
@@ -87,8 +84,8 @@ def test_adopt_writes_all_five_fields(adoption):
     assert adoption._info.player_name == "张三"
     assert adoption._music.list_mode == "radio"
     assert adoption._info.current_playlist_name == "O Radio"
-    assert adoption._room_name.titles == ["O Radio"]
-    assert adoption._topic.topics == ["晴天"]
+    assert adoption._room_profile.titles == ["O Radio"]
+    assert adoption._room_profile.topics == ["晴天"]
 
 
 def test_adopt_without_requester_leaves_the_current_player_untouched(adoption):
@@ -104,15 +101,15 @@ def test_adopt_leaves_playlist_name_untouched_when_not_given(adoption):
 
 
 def test_adopt_skips_empty_title_and_topic(adoption):
-    """空标题/空话题不得覆盖正在生效的房间名 —— 也不得把 None 传给 change_topic。"""
+    """空标题/空话题不得覆盖正在生效的房间名 —— 也不得把 None 传给 set_topic。"""
     adoption.adopt(requester="张三", mode="album", title="", topic=None)
-    assert adoption._room_name.titles == []
-    assert adoption._topic.topics == []
+    assert adoption._room_profile.titles == []
+    assert adoption._room_profile.topics == []
 
 
 def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
     """写序是接口的一部分：Soul 侧写入失败时，房间对「谁在放、什么类型」的认知仍然正确。"""
-    adoption._room_name.result = {"error": "Cannot switch to Soul app"}
+    adoption._room_profile.title_result = {"error": "Cannot switch to Soul app"}
 
     error = adoption.adopt(requester="张三", mode="radio", title="O Radio", playlist="O Radio")
 
@@ -120,29 +117,29 @@ def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
     assert adoption._info.player_name == "张三"
     assert adoption._music.list_mode == "radio"
     assert adoption._info.current_playlist_name == "O Radio"
-    assert adoption._topic.topics == []  # 标题失败后不再继续写话题
+    assert adoption._room_profile.topics == []  # 标题失败后不再继续写话题
 
 
 def test_adopt_returns_topic_error_after_title_succeeded(adoption):
-    adoption._topic.result = {"error": "Failed to switch to Soul app"}
+    adoption._room_profile.topic_result = {"error": "Failed to switch to Soul app"}
 
     error = adoption.adopt(requester="张三", mode="radio", title="O Radio", topic="晴天")
 
     assert error == {"error": "Failed to switch to Soul app"}
-    assert adoption._room_name.titles == ["O Radio"]
-    assert adoption._topic.topics == ["晴天"]
+    assert adoption._room_profile.titles == ["O Radio"]
+    assert adoption._room_profile.topics == ["晴天"]
 
 
 class _Missing:
-    """没有 set_next_title 的替身，用来确认非 error 返回不被误判。"""
+    """没有 set_title 的替身，用来确认非 error 返回不被误判。"""
 
-    def set_next_title(self, _title):
+    def set_title(self, _title):
         return {"skipped": True, "reason": "guest_room"}
 
 
 def test_adopt_treats_non_error_result_as_success(adoption):
     """房间名为游客房跳过时返回 {'skipped': ...}，不是错误。"""
-    adoption._room_name = _Missing()
+    adoption._room_profile = _Missing()
     assert adoption.adopt(requester="张三", mode="radio", title="O Radio") is None
 
 

@@ -40,20 +40,16 @@ class _InfoManager:
         return self.protection_error
 
 
-class _RoomNameManager:
+class _RoomProfileManager:
     def __init__(self):
         self.titles = []
+        self.topics = []
 
-    def set_next_title(self, title):
+    def set_title(self, title):
         self.titles.append(title)
         return None
 
-
-class _TopicManager:
-    def __init__(self):
-        self.topics = []
-
-    def change_topic(self, topic):
+    def set_topic(self, topic):
         self.topics.append(topic)
         return None
 
@@ -103,13 +99,11 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
         driver.journal = journal
 
     info = _InfoManager(protection_error=protection_error)
-    room_name = _RoomNameManager()
-    topic = _TopicManager()
+    room_profile = _RoomProfileManager()
 
     adoption = PlaylistAdoption.instance()
     adoption._info = info
-    adoption._room_name = room_name
-    adoption._topic = topic
+    adoption._room_profile = room_profile
     adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
 
     manager = MusicManager.initialize(ui_driver=driver)
@@ -125,8 +119,7 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
         manager=manager,
         driver=driver,
         info=info,
-        room_name=room_name,
-        topic=topic,
+        room_profile=room_profile,
         probe=probe,
         mic=mic,
         journal=journal,
@@ -342,7 +335,7 @@ async def test_play_adopts_the_room_topic_after_playback_is_confirmed(initialize
         PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明", room_title="O Station")
     )
 
-    assert engine.topic.topics == ["起风了"]
+    assert engine.room_profile.topics == ["起风了"]
 
 
 async def test_play_prefers_the_topic_observed_in_the_ui_over_the_derived_one(
@@ -361,7 +354,7 @@ async def test_play_prefers_the_topic_observed_in_the_ui_over_the_derived_one(
     )
 
     # 若引擎忽略了 UI 读到的值而回落到队列行，这里会是 "倔强"。
-    assert engine.topic.topics == ["神的孩子都在跳舞"]
+    assert engine.room_profile.topics == ["神的孩子都在跳舞"]
 
 
 async def test_play_records_player_playlist_and_title_after_playback_is_confirmed(
@@ -384,7 +377,7 @@ async def test_play_records_player_playlist_and_title_after_playback_is_confirme
 
     assert engine.info.player_name == "小明"
     assert engine.info.current_playlist_name == "轻音乐 · 治愈白噪音"
-    assert engine.room_name.titles == ["O Playlist"]
+    assert engine.room_profile.titles == ["O Playlist"]
 
 
 async def test_play_does_not_adopt_room_context_when_the_ui_fails(initialized_test_singletons):
@@ -396,8 +389,8 @@ async def test_play_does_not_adopt_room_context_when_the_ui_fails(initialized_te
         PlaybackRequest(mode=PlaybackMode.ALBUM, query="五月天", requester="小明")
     )
 
-    assert engine.topic.topics == []
-    assert engine.room_name.titles == []
+    assert engine.room_profile.topics == []
+    assert engine.room_profile.titles == []
     assert engine.info.player_name is None
 
 
@@ -410,7 +403,7 @@ async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
     def _boom(_topic):
         return {"error": "Failed to change topic"}
 
-    engine.topic.change_topic = _boom
+    engine.room_profile.set_topic = _boom
 
     result = await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
 

@@ -240,7 +240,7 @@ def test_route_queue_text_separates_commands_from_screen_text():
 
 
 def test_route_queue_text_drops_a_trigger_without_content():
-    """只有触发符不算命令 —— 与 execute_chat_scan 的判定一致。"""
+    """只有触发符不算命令 —— 与 `build_message_batch` 的判定一致。"""
     routing = route_queue_text(":   ", "Alice", source="console")
 
     assert routing.commands == ()

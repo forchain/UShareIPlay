@@ -87,41 +87,35 @@ def test_thread_safe_concurrent_creation():
     _ConcurrentService.reset_instance()
 
 
-def test_seat_management_classes_follow_singleton_contract():
-    from ushareiplay.managers.seat_manager import (
-        SeatManager,
-        SeatUIManager,
-        SeatCheckManager,
-        ReservationManager,
-        SeatingManager,
-    )
+def test_seat_management_follows_singleton_contract():
+    """座位子系统只剩门面一个单例；实现类刻意不是单例（依赖全部构造注入）。
 
-    seat_classes = [SeatUIManager, SeatCheckManager, ReservationManager, SeatingManager, SeatManager]
-    for cls in seat_classes:
-        cls.reset_instance()
-        with pytest.raises(SingletonError, match=f"Use {cls.__name__}.initialize"):
-            cls()
+    #402 删掉面板/占座/进房检查/预约四个内部单例后，座位子系统对外的唯一单例是
+    `SeatManager`。`SeatSubsystem` 反而必须**不**是单例：它没有全局状态，
+    同一进程里可以并存多个实例（接线层一个 + 单元测试各自一个）。
+    """
+    from ushareiplay.managers.seat_manager import SeatManager
+    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
-    # Initialize in dependency order
-    ui = SeatUIManager.initialize(handler=None)
-    check = SeatCheckManager.initialize(handler=None, seat_ui=ui)
-    res = ReservationManager.initialize(handler=None)
-    seating = SeatingManager.initialize(handler=None)
-    sm = SeatManager.initialize(handler=None, seat_ui=ui, seat_check=check, reservation=res, seating=seating)
+    SeatManager.reset_instance()
+    with pytest.raises(SingletonError, match="Use SeatManager.initialize"):
+        SeatManager()
 
-    assert SeatUIManager.instance() is ui
-    assert SeatCheckManager.instance() is check
-    assert ReservationManager.instance() is res
-    assert SeatingManager.instance() is seating
+    sm = SeatManager.initialize(handler=None)
+
     assert SeatManager.instance() is sm
 
     with pytest.raises(SingletonError, match="already initialized"):
         SeatManager.initialize()
 
+    # 实现类不走单例契约：直接构造合法，也不提供 lookup-only 的 instance()。
+    assert not issubclass(SeatSubsystem, Singleton)
+    assert not hasattr(SeatSubsystem, "instance")
+    assert SeatSubsystem(handler=None) is not SeatSubsystem(handler=None)
+
     Singleton.reset_all_instances()
-    for cls in seat_classes:
-        with pytest.raises(SingletonError, match="has not been initialized"):
-            cls.instance()
+    with pytest.raises(SingletonError, match="has not been initialized"):
+        SeatManager.instance()
 
 
 def test_all_protected_singletons_reject_direct_constructor_instantiation():
@@ -138,25 +132,15 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.mic_manager import MicManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.notice_manager import NoticeManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
     from ushareiplay.managers.recovery_manager import RecoveryManager
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    from ushareiplay.managers.room_name_manager import RoomNameManager
-    from ushareiplay.managers.seat_manager import (
-        ReservationManager,
-        SeatCheckManager,
-        SeatingManager,
-        SeatManager,
-        SeatUIManager,
-    )
+    from ushareiplay.managers.room_profile import RoomProfileManager
+    from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.managers.sleep_manager import SleepManager
     from ushareiplay.managers.timer_manager import TimerManager
-    from ushareiplay.managers.topic_manager import TopicManager
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -172,7 +156,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         SleepManager,
         RecoveryManager,
         MessageManager,
-        TopicManager,
         MicManager,
         MusicManager,
         PlaybackMuting,
@@ -185,19 +168,11 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         OnlineListScraper,
         InfoManager,
         PartyManager,
-        NoticeManager,
         PlaylistAdoption,
-        RecommendationManager,
-        RoomNameManager,
-        RoomInfoWindow,
         AdminManager,
         KeywordManager,
         EventManager,
         MemoryManager,
-        SeatUIManager,
-        SeatCheckManager,
-        ReservationManager,
-        SeatingManager,
         SeatManager,
         SeatObservationManager,
     ]

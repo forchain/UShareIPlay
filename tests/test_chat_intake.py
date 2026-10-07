@@ -7,6 +7,7 @@ from ushareiplay.core.chat_intake import (
     classify_banner_line,
     classify_chat_line,
     expand_queue_text,
+    is_silent_prefix,
 )
 
 
@@ -66,6 +67,38 @@ class TestClassifyChatLine:
         assert result.kind == ChatIntakeKind.COMMAND
         assert result.text == ""
         assert result.trigger == ":"
+
+    def test_private_reply_followed_by_silent_prefix_is_silent(self):
+        """`$/cmd` is private *and* silent.
+
+        `is_silent_prefix` has always defined silence as "a silent prefix, after
+        an optional private-reply prefix". The command path used to re-apply
+        that rule to the raw string, which quietly corrected a classification
+        that said otherwise. #399 removed the re-derivation, so classification
+        now has to agree with the rule itself — otherwise `$`-then-`/` commands
+        would start echoing publicly.
+        """
+        for text in ("$/info", "＄/info", "$／info", "＄／info"):
+            result = classify_chat_line(f"souler[Alice]说：{text}")
+            assert result.kind == ChatIntakeKind.COMMAND, text
+            assert result.text == text, text
+            assert result.trigger == text[0], text
+            assert result.silent is True, text
+            assert result.private_reply is True, text
+            assert result.silent == is_silent_prefix(text), text
+
+    def test_normal_prefix_followed_by_slash_is_not_silent(self):
+        """Only the *private* prefix is transparent to a following silent one.
+
+        `:/info` is a normal command whose payload happens to start with `/`; it
+        must not be silenced. `is_silent_prefix` is the single definition of the
+        rule, so the guard against this lives in that function, not here.
+        """
+        for text in (":/info", "：/info"):
+            result = classify_chat_line(f"souler[Alice]说：{text}")
+            assert result.kind == ChatIntakeKind.COMMAND, text
+            assert result.silent is False, text
+            assert result.private_reply is False, text
 
     def test_keyword_mention(self):
         result = classify_chat_line("souler[Alice]说：@我 播放 周杰伦 稻香")
@@ -401,6 +434,25 @@ class TestClassifyChatLine:
         assert results[0].kind == ChatIntakeKind.COMMAND
         assert results[0].silent is True
         assert results[0].trigger == "／"
+
+    def test_dollar_part_followed_by_slash_is_silent(self):
+        """`$/cmd` in the queue grammar is private *and* silent, same as in chat.
+
+        The queue and the chat seam must not disagree: both feed the same
+        execution path, which now trusts the flag attached here.
+        """
+        for text in ("$/info", "＄／info"):
+            results = expand_queue_text(text, "Alice")
+            assert results[0].kind == ChatIntakeKind.COMMAND, text
+            assert results[0].private_reply is True, text
+            assert results[0].silent is True, text
+            assert results[0].silent == is_silent_prefix(text), text
+
+    def test_colon_part_followed_by_slash_is_not_silent(self):
+        results = expand_queue_text(":/info", "Alice")
+        assert results[0].kind == ChatIntakeKind.COMMAND
+        assert results[0].silent is False
+        assert results[0].private_reply is False
 
 
 class TestClassifyOnMicNotification:

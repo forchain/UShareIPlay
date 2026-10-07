@@ -87,9 +87,9 @@ AppController
 ├── PlaybackMuting    — Mic mute/restore around song switching; arms on XXX 已上麦
 ├── MessageManager    — Async message queue and dispatch
 ├── RecoveryManager   — Tracks Appium/UI failures; triggers driver reinit or app restart
-└── [KeywordManager, RoomNameManager, TopicManager, NoticeManager, InfoManager,
-    UserManager, AdminManager, MemoryManager, MicManager, RecommendationManager,
-    RoomInfoWindow, SleepManager, PlaylistAdoption, PendingWrite]
+├── RoomProfileManager — 房间档案唯一所有者（抽屉会话 + 话题/公告/房名草稿）
+└── [KeywordManager, InfoManager, UserManager, AdminManager, MemoryManager,
+    MicManager, SleepManager, PlaylistAdoption, PendingWrite]
 ```
 
 ### Adding a New Command

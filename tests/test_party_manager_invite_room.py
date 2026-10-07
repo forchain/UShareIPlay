@@ -598,7 +598,11 @@ async def test_join_party_recreates_room_after_guest_room_closed():
     # 模拟 controller
     class _MockController:
         def __init__(self):
-            self.notice_manager = type('_MockNM', (), {'set_default_notice': AsyncMock(return_value={'success': True})})()
+            self.room_profile_manager = type(
+                '_MockRPM',
+                (),
+                {'set_default_notice': AsyncMock(return_value={'success': True})},
+            )()
             self.seat_manager = type('_MockSM', (), {'find_owner_seat': AsyncMock(return_value={'success': True})})()
             self.post_party_create_automation = None
 
