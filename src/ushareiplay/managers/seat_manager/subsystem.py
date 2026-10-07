@@ -7,9 +7,11 @@
 
 ## 依赖方向
 
-`SeatSubsystem` 不依赖 `seat_manager` 包里的任何其他类型 —— `SeatPanelDriver` 之外的
-协作者一律由构造注入，自己造不出第二个「实现」。`SeatManager` 门面持有它一个实例，
-所有入口（`reserve_seat`、`take_seat`、`check_seats_on_entry` …）都走这同一份实现。
+`SeatSubsystem` 只依赖包内一个类型：`SeatObservationManager`（模块级导入，观测器的
+只读查找入口，见下方 `observation`）。面板驱动由构造注入、缺省时按需自建，DAO 与
+消息通道都是模块级导入的协作者 —— 都不需要为了绕开循环依赖而在函数体里偷懒导入。
+`SeatManager` 门面持有它一个实例，所有入口（`reserve_seat`、`take_seat`、
+`check_seats_on_entry` …）都走这同一份实现。
 
 ## 面板协作者的接缝
 
@@ -19,20 +21,29 @@
 2. 内置的 `_DriverSeatPanel`，把 `SeatPanelDriver` 适配成 `seat_ui` 契约。
 
 外部注入的 `seat_ui` 一旦存在就是**唯一**面板入口：子系统不会再去拿别的实现，
-调用方因此能精确断言面板动作的调用时序。
+调用方因此能精确断言面板动作的调用时序。这个接缝不是死代码 ——
+`SeatObservationManager` 消费的就是这一份契约（组合根把 `subsystem.panel` 交给它），
+所以它保留。#402 删掉的 `seat_check` / `reservation` / `seating` 三个接缝指向的类
+在 `src/` 里已不存在，留着只是转发给「不存在的协作者」，已经一并删掉。
 
 `SeatPanelDriver`（#395）是面板展开/收起/滚动的唯一实现。
 """
 
 import asyncio
+import logging
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional
 
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.dal import SeatReservationDAO, UserDAO
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatPanelDriver
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+
+# 无 handler 时 logger 的回退目标（ADR-0009 第 3 条）。
+_MODULE_LOGGER = logging.getLogger("ushareiplay.seat_subsystem")
 
 
 class _DriverSeatPanel:
@@ -90,9 +101,6 @@ class SeatSubsystem:
         panel_driver=None,
         observation=None,
         seat_ui=None,
-        seat_check=None,
-        reservation=None,
-        seating=None,
     ):
         self._handler = handler
         self._panel_driver = panel_driver
@@ -103,12 +111,10 @@ class SeatSubsystem:
         self.current_side = None
         self._driver_panel = None
 
-        # 注入接缝：调用方显式传入的协作者优先于子系统自带的实现，命中时对应入口
-        # 整体交给它（ADR-0009 第 4 条：显式依赖优先，默认实现仅作兜底）。
+        # 面板契约接缝（ADR-0009 第 4 条）：调用方显式传入的面板对象命中时就是
+        # **唯一**面板入口。`SeatObservationManager` 消费的就是这一份契约
+        # （app_controller 把 subsystem.panel 交给它），所以它不是死接缝。
         self._seat_ui = seat_ui
-        self._seat_check = seat_check
-        self._reservation = reservation
-        self._seating = seating
 
     # ------------------------------------------------------------------
     # 协作者
@@ -151,7 +157,6 @@ class SeatSubsystem:
         """观测管理器的只读查找入口；刻意不在构造期急初始化那个单例。"""
         if self._observation is not None:
             return self._observation
-        from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
         if SeatObservationManager.is_initialized():
             return SeatObservationManager.instance()
@@ -160,10 +165,13 @@ class SeatSubsystem:
     @property
     def message_dispatch(self):
         if self._message_dispatch is None:
-            from ushareiplay.core.message_dispatch import MessageDispatch
-
             self._message_dispatch = MessageDispatch.instance().bind_handler(self.handler)
         return self._message_dispatch
+
+    @property
+    def logger(self):
+        """注入 handler 的 logger；handler 缺席时回退到模块 logger（ADR-0009 第 3 条）。"""
+        return getattr(self._handler, "logger", None) or _MODULE_LOGGER
 
         # ------------------------------------------------------------------
     # UI 独占
@@ -216,11 +224,6 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """给用户预留一个麦位。"""
-        if self._reservation is not None:
-            return await self._reservation.reserve_seat(username, seat_number)
-        return await self._reserve_seat(username, seat_number)
-
-    async def _reserve_seat(self, username: str, seat_number: int) -> dict:
         try:
             self.handler.logger.info(f"Starting seat reservation process for user {username} on seat {seat_number}")
 
@@ -274,11 +277,6 @@ class SeatSubsystem:
 
     async def remove_user_reservation(self, username: str) -> dict:
         """删除某个用户的麦位预留（纯数据操作）。"""
-        if self._reservation is not None:
-            return await self._reservation.remove_user_reservation(username)
-        return await self._remove_user_reservation(username)
-
-    async def _remove_user_reservation(self, username: str) -> dict:
         try:
             # Get or create user first
             user = await UserDAO.get_or_create(username)
@@ -304,13 +302,13 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def check_seats_on_entry(self, username: str = None):
         """用户进房/回房时检查其预留麦位。"""
-        if self._seat_check is not None:
-            return await self._seat_check.check_seats_on_entry(username)
-        return await self._check_seats_on_entry(username)
-
-    async def _check_seats_on_entry(self, username: str = None):
-        if self.handler is None or not username:
-            self.handler.logger.warning("check_seats_on_entry called with invalid parameters")
+        # 两个前提必须分开判：handler 缺席时 `self.handler.logger` 本身就是
+        # AttributeError，原先合并成一条会把「没注入」变成「崩」。
+        if self.handler is None:
+            self.logger.warning("check_seats_on_entry: handler is None, skipping the entry check")
+            return
+        if not username:
+            self.handler.logger.warning("check_seats_on_entry called without a username")
             return
 
         try:
@@ -332,7 +330,6 @@ class SeatSubsystem:
             start_time = user_reservation.start_time
             if start_time.tzinfo is not None:
                 # Convert to timezone-naive if needed
-                from datetime import timezone
                 start_time = start_time.replace(tzinfo=None)
                 self.handler.logger.info(f"Converted start_time to timezone-naive: {start_time}")
 
@@ -418,13 +415,13 @@ class SeatSubsystem:
         # 点开占座人的名片、读昵称、最后按证据关掉它，整段交给 SeatPanelDriver：
         # 房间里一次盲按 back 就是退出派对房间，本模块不再持有任何一次 back。
         # 顺序也随之调整：名片必须先点开，「请下麦」按钮才可能读到。
-        # prefer_state=False：这条链路要读 seat_off（「请下麦」），必须点 UserView
+        # tap_target=SEAT_NODE：这条链路要读 seat_off（「请下麦」），必须点 UserView
         # 而不是默认的 ClState。迁移前点的一直是 seat 节点，重构不该顺手改掉一个
-        # 没有证据支持的点击目标 —— 点 ClState 弹出的名片是否带 seat_off 全仓无
-        # 从验证（真机 dump 里没有 tvSeatDownUp），点错的症状是静默的：
+        # 没有证据支持的点击目标 —— 点 ClState 弹出的名片是否带 seat_off 全仓无从
+        # 验证（真机 dump 里没有 tvSeatDownUp），点错的症状是静默的：
         # 「Unable to manage seat N」，占位不再清人。
         async with self.panel_driver.avatar_card(
-            desk, side, seat_number, prefer_state=False
+            desk, side, seat_number, tap_target=AvatarTapPolicy.SEAT_NODE
         ) as card:
             if card.opened:
                 self.handler.logger.info(f"Opened seat {seat_number} card to check the occupant")
@@ -463,11 +460,6 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""
-        if self._seating is not None:
-            return await self._seating.sit_at_specific_seat(seat_number)
-        return await self._sit_at_specific_seat(seat_number)
-
-    async def _sit_at_specific_seat(self, seat_number: int) -> dict:
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
@@ -553,11 +545,6 @@ class SeatSubsystem:
 
     async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
-        if self._seating is not None:
-            return await self._seating.find_owner_seat(force_relocate)
-        return await self._find_owner_seat(force_relocate)
-
-    async def _find_owner_seat(self, force_relocate: bool = False) -> dict:
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
@@ -639,11 +626,6 @@ class SeatSubsystem:
 
     async def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         """Find a specific user on seats and sit next to them"""
-        if self._seating is not None:
-            return await self._seating.accompany_user(target_username, sender_username)
-        return await self._accompany_user(target_username, sender_username)
-
-    async def _accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
@@ -652,8 +634,6 @@ class SeatSubsystem:
             # Skip online check if sender is the target (they are obviously online).
             # 两侧名字可能来自不同命名域（调用方常拿到 DB 的主账号名，UI 只有分身名），
             # 所以同一身份必须按身份判定，而不是按字符串相等。
-            from ushareiplay.dal.user_dao import UserDAO
-
             if not await UserDAO.is_same_identity(sender_username, target_username):
                 info_manager = InfoManager.instance()
                 if not await info_manager.is_user_or_avatar_online(target_username):
@@ -701,7 +681,12 @@ class SeatSubsystem:
                 # 点头像、读昵称、关掉弹窗整段交给 SeatPanelDriver：派对房间里一次盲按
                 # back 就是退出派对房间，只有驱动才有资格按下那一次 back，而且必须
                 # 在弹窗此刻确实还在屏幕上时才按。子系统自己不再碰任何弹窗动作。
-                async with self.panel_driver.avatar_card(desk, side, seat_number) as card:
+                # tap_target=STATE_ONLY：这条链路读的是 ClState 名片，ClState 缺席
+                # 时一次都别点 —— 迁移前是 `state_element` 为空直接跳过整张桌位。
+                # 退到 seat 节点会凭空点出一张没有证据支持的 UserView 名片。
+                async with self.panel_driver.avatar_card(
+                    desk, side, seat_number, tap_target=AvatarTapPolicy.STATE_ONLY
+                ) as card:
                     if card.opened:
                         self.handler.logger.info(
                             f"Checked {side} seat at desk {desk_index + 1} to check user"
@@ -757,11 +742,6 @@ class SeatSubsystem:
 
     async def seat_off_owner(self) -> dict:
         """Remove the owner from their current seat."""
-        if self._seating is not None:
-            return await self._seating.seat_off_owner()
-        return await self._seat_off_owner()
-
-    async def _seat_off_owner(self) -> dict:
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 
@@ -789,11 +769,6 @@ class SeatSubsystem:
 
     async def seat_off_specific_seat(self, seat_number: int) -> dict:
         """Remove the occupant from a specific seat position (1-12)."""
-        if self._seating is not None:
-            return await self._seating.seat_off_specific_seat(seat_number)
-        return await self._seat_off_specific_seat(seat_number)
-
-    async def _seat_off_specific_seat(self, seat_number: int) -> dict:
         if self.handler is None:
             return {'error': 'Handler not initialized'}
 

@@ -14,7 +14,6 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,6 +21,7 @@ from tests.seat_fixtures import FakeController, make_handler, soul_elements
 
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.managers.seat_manager import SeatManager
+from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
 from ushareiplay.managers.seat_manager.guard import (
     GUEST_ROOM_CHAT_SCAN_RESULT,
     GUEST_ROOM_ENTRY_CHECK_RESULT,
@@ -144,19 +144,25 @@ def test_the_subsystem_owns_the_reservation_and_seating_flows():
     assert SeatSubsystem(seat_ui=panel).panel is panel
 
 
-def test_every_injected_collaborator_lands_on_one_subsystem():
-    """四个注入点全部落到同一个子系统上（#402 之后没有第二个实现对象）。"""
+def test_the_only_injection_seam_lands_on_one_subsystem():
+    """#402 之后只剩面板契约一个接缝，三个死接缝已从签名里删掉。
+
+    面板对象不是死接缝：`SeatObservationManager` 消费的就是这一份契约
+    （app_controller 把 `subsystem.panel` 交给它），所以它保留。`seat_check` /
+    `reservation` / `seating` 指向的类在 `src/` 里已经不存在，留着只是转发给
+    「不存在的协作者」，只被测试替身够得着。
+    """
     panel = _RecordingPanel()
-    manager = SeatManager.initialize(
-        seat_ui=panel,
-        seat_check=SimpleNamespace(),
-        reservation=SimpleNamespace(),
-        seating=SimpleNamespace(),
-    )
+    manager = SeatManager.initialize(seat_ui=panel)
 
     assert isinstance(manager.subsystem, SeatSubsystem)
     # 面板只有一个入口：注入的 seat_ui 就是子系统暴露的 panel。
     assert manager.subsystem.panel is panel
+
+    for dead in ("seat_check", "reservation", "seating"):
+        assert not hasattr(manager.subsystem, f"_{dead}"), f"{dead} 接缝还在"
+        with pytest.raises(TypeError):
+            SeatSubsystem(make_handler(), **{dead: SimpleNamespace()})
 
 
 def test_seat_panel_actions_have_a_single_implementation():
@@ -199,63 +205,101 @@ async def test_prepare_for_chat_scan_only_collapses_when_the_panel_is_open():
     assert panel.collapsed is False
 
 
-async def test_public_interfaces_keep_their_delegate_return_shapes():
-    """注入的外部替身仍被尊重：既有测试用这种方式钉住转发路径的返回值。"""
-    reservation = SimpleNamespace(
-        reserve_seat=AsyncMock(return_value={"reserved": ("Alice", 5)}),
-        remove_user_reservation=AsyncMock(return_value={"unreserved": "Alice"}),
-    )
-    seating = SimpleNamespace(
-        sit_at_specific_seat=AsyncMock(return_value={"took": 7}),
-        seat_off_owner=AsyncMock(return_value={"removed": "owner"}),
-        seat_off_specific_seat=AsyncMock(return_value={"removed": 3}),
-        find_owner_seat=AsyncMock(return_value={"took": "anywhere"}),
-        accompany_user=AsyncMock(return_value={"accompanied": "Bob"}),
-    )
-    check = SimpleNamespace(
-        check_seats_on_entry=AsyncMock(return_value=None),
-    )
+async def test_public_interfaces_keep_their_canonical_return_shapes(monkeypatch):
+    """八个公开接口的返回形状来自真实实现，不再经过任何转发替身（#402）。
+
+    转发替身删掉之前，这个用例断言的是**替身自己**的返回值 —— 也就是说它对生产
+    代码什么都没说。现在断言真实实现走真实路径时返回的形状。
+    """
     manager = SeatManager.initialize(
-        seat_ui=_RecordingPanel(),
-        reservation=reservation,
-        seating=seating,
-        seat_check=check,
+        make_handler(controller=None), seat_ui=_RecordingPanel()
     )
 
-    assert await manager.reserve_seat("Alice", 5) == {"reserved": ("Alice", 5)}
-    assert await manager.remove_user_reservation("Alice") == {"unreserved": "Alice"}
-    assert await manager.take_seat(7) == {"took": 7}
-    assert await manager.remove_seat_occupant(None) == {"removed": "owner"}
-    assert await manager.remove_seat_occupant(3) == {"removed": 3}
-    assert await manager.find_owner_seat() == {"took": "anywhere"}
-    assert await manager.accompany_user("Bob") == {"accompanied": "Bob"}
-    assert await manager.check_seats_on_entry("Alice") is None
+    # 参数域校验：还没碰任何设备就能返回的形状
+    assert await manager.take_seat(0) == {
+        "error": "Invalid seat number 0. Must be between 1 and 12"
+    }
+    assert await manager.take_seat(13) == {
+        "error": "Invalid seat number 13. Must be between 1 and 12"
+    }
 
-    # :seat 4 [n] 的两条路径没有混起来
-    seating.seat_off_owner.assert_awaited_once_with()
-    seating.seat_off_specific_seat.assert_awaited_once_with(3)
-    reservation.reserve_seat.assert_awaited_once_with("Alice", 5)
-
-
-async def test_guest_room_guard_still_short_circuits_every_public_interface(_guest_room):
+    # handler 缺席：设备依赖的入口都必须短路成同一支错误形状，不能 AttributeError
     SeatManager.reset_instance()
-    manager = SeatManager.initialize(
-        seat_ui=_RecordingPanel(expanded=True),
-        reservation=SimpleNamespace(
-            reserve_seat=AsyncMock(side_effect=AssertionError("不该被调用")),
-            remove_user_reservation=AsyncMock(side_effect=AssertionError("不该被调用")),
-        ),
-        seating=SimpleNamespace(
-            sit_at_specific_seat=AsyncMock(side_effect=AssertionError("不该被调用")),
-            seat_off_owner=AsyncMock(side_effect=AssertionError("不该被调用")),
-            seat_off_specific_seat=AsyncMock(side_effect=AssertionError("不该被调用")),
-            find_owner_seat=AsyncMock(side_effect=AssertionError("不该被调用")),
-            accompany_user=AsyncMock(side_effect=AssertionError("不该被调用")),
-        ),
-        seat_check=SimpleNamespace(
-            check_seats_on_entry=AsyncMock(side_effect=AssertionError("不该被调用")),
-        ),
+    headless = SeatManager.initialize(seat_ui=_RecordingPanel())
+    assert await headless.remove_seat_occupant(None) == {"error": "Handler not initialized"}
+    assert await headless.remove_seat_occupant(3) == {"error": "Handler not initialized"}
+    assert await headless.find_owner_seat() == {"error": "Handler not initialized"}
+    assert await headless.accompany_user("Bob") == {"error": "Handler not initialized"}
+
+    # 预约两个入口的真实错误形状（替身只换 DAO，不换实现）
+    async def _no_user(_username):
+        return None
+
+    monkeypatch.setattr(
+        seat_subsystem_module,
+        "UserDAO",
+        SimpleNamespace(get_or_create=_no_user),
     )
+    assert await manager.reserve_seat("Alice", 5) == {
+        "error": "Failed to get or create user Alice"
+    }
+    assert await manager.remove_user_reservation("Alice") == {
+        "error": "Failed to get or create user Alice"
+    }
+
+
+async def test_remove_seat_occupant_keeps_the_owner_and_specific_paths_apart(monkeypatch):
+    """`:seat 4` 不带参数走 owner 那条，带参数走指定号位 —— 两条路径没有混起来。"""
+    manager = SeatManager.initialize(
+        make_handler(controller=None), seat_ui=_RecordingPanel()
+    )
+    subsystem = manager.subsystem
+    calls = []
+
+    async def _owner():
+        calls.append("owner")
+        return {"error": "Handler not initialized"}
+
+    async def _specific(seat_number):
+        calls.append(("specific", seat_number))
+        return {"error": "Handler not initialized"}
+
+    monkeypatch.setattr(subsystem, "seat_off_owner", _owner)
+    monkeypatch.setattr(subsystem, "seat_off_specific_seat", _specific)
+
+    await manager.remove_seat_occupant(None)
+    await manager.remove_seat_occupant(3)
+
+    assert calls == ["owner", ("specific", 3)], calls
+
+
+async def test_guest_room_guard_still_short_circuits_every_public_interface(
+    _guest_room, monkeypatch
+):
+    """守卫必须挡在实现之前：他人房间里一条实现都不许跑。
+
+    替身换成就地埋雷：把子系统上每个实现都换成「一被调用就报错」，于是这个用例
+    证明的是守卫真的在门面就短路了，而不是「某个替身没被 await 到」。
+    """
+    manager = SeatManager.initialize(
+        make_handler(controller=None), seat_ui=_RecordingPanel(expanded=True)
+    )
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("他人房间里不该跑到位子子系统的实现")
+
+    for name in (
+        "reserve_seat",
+        "sit_at_specific_seat",
+        "seat_off_owner",
+        "seat_off_specific_seat",
+        "find_owner_seat",
+        "remove_user_reservation",
+        "accompany_user",
+        "check_seats_on_entry",
+        "prepare_for_chat_scan",
+    ):
+        monkeypatch.setattr(manager.subsystem, name, _explode)
 
     assert await manager.reserve_seat("Alice", 1) == GUEST_ROOM_ERROR_RESULT
     assert await manager.take_seat(1) == GUEST_ROOM_ERROR_RESULT
@@ -265,6 +309,25 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(_gue
     assert await manager.remove_user_reservation("Alice") == GUEST_ROOM_ERROR_RESULT
     assert await manager.check_seats_on_entry("Alice") == GUEST_ROOM_ENTRY_CHECK_RESULT
     assert await manager.prepare_for_chat_scan() == GUEST_ROOM_CHAT_SCAN_RESULT
+
+
+async def test_check_seats_on_entry_without_a_handler_returns_quietly():
+    """没有 handler 时不得 AttributeError。
+
+    原实现把「handler 缺席」和「username 缺席」并成一条判断，第一件事就是解引用
+    `self.handler.logger` —— 缺席分支自己先崩（票 #402 回归护栏）。
+    """
+    subsystem = SeatSubsystem(handler=None)
+
+    assert await subsystem.check_seats_on_entry("Alice") is None
+
+
+async def test_check_seats_on_entry_without_a_username_warns_once():
+    """username 缺席仍要留痕：调用方传错了参数。"""
+    handler = make_handler(controller=None)
+    subsystem = SeatSubsystem(handler)
+
+    assert await subsystem.check_seats_on_entry(None) is None
 
 
 def test_every_public_interface_carries_the_guest_room_guard():

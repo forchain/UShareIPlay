@@ -23,6 +23,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 from ushareiplay.core.element_wrapper import ElementWrapper
@@ -63,6 +64,24 @@ class SeatCardView:
     opened: bool = False
     name: Optional[str] = None
     name_key: Optional[str] = None
+
+
+class AvatarTapPolicy(str, Enum):
+    """点名某个麦位头像时的点击目标策略。
+
+    三条调用链要的是三件**不同**的事，所以按名字表达，不是一个布尔开关：
+
+    - `SEAT_NODE`：只点 UserView（`{side}_seat`）。要读「请下麦」的那条链路用它。
+    - `STATE_ONLY`：只点 ClState（`{side}_state`）；读不到就**一次都别点**。
+      「不点」与「改点别的」是两回事，这条链路原来就是 ClState 缺席即跳过整张桌位。
+    - `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测链路的长期行为，
+      也是本方法的默认值 —— `SeatObservationManager.inspect_occupant` 按同样顺序
+      自己读这两个节点（那一处在观测器模块内，不走本驱动），两者必须一起改。
+    """
+
+    SEAT_NODE = "seat_node"
+    STATE_ONLY = "state_only"
+    STATE_THEN_SEAT = "state_then_seat"
 
 
 class SeatPanelDriver:
@@ -144,7 +163,10 @@ class SeatPanelDriver:
         elif EXPAND_LABEL in text:
             self.expanded = False
         else:
-            self.logger.warning(f"座位面板按钮文本 '{text}' 无法判断展开状态，沿用缓存状态")
+            # 铁律：这是一次没触发任何动作的读数，且每轮聊天扫描都会走到这里
+            # （MessageManager → SeatSubsystem.prepare_for_chat_scan → is_expanded）。
+            # 与上面「按钮不在页面上」同级：无法分类就读缓存，不是错误。
+            self.logger.debug(f"座位面板按钮文本 '{text}' 无法判断展开状态，沿用缓存状态")
         return self.expanded
 
     # ------------------------------------------------------------------
@@ -178,7 +200,7 @@ class SeatPanelDriver:
     async def expand(self) -> bool:
         """展开座位面板；已经开着就直接返回 True。"""
         if self.handler is None:
-            self.logger.warning("expand: handler 为 None")
+            self.logger.debug("expand: handler 为 None")
             return False
 
         if self.is_expanded():
@@ -194,7 +216,7 @@ class SeatPanelDriver:
     async def collapse(self) -> bool:
         """收起座位面板；已经收着就直接返回 True。"""
         if self.handler is None:
-            self.logger.warning("collapse: handler 为 None")
+            self.logger.debug("collapse: handler 为 None")
             return False
 
         if not self.is_expanded():
@@ -484,8 +506,28 @@ class SeatPanelDriver:
             return
         key_actions.press_back()
 
+    def _resolve_tap_target(self, desk, side: str, tap_target: AvatarTapPolicy):
+        """按策略解析本次点名的点击目标。
+
+        返回 `(target_element, should_tap)`。`should_tap` 为 False 时一次都别点 ——
+        STATE_ONLY 下 ClState 缺席就是「不点」（迁移前那条链路整张桌位跳过）。它必须
+        与 `target_element is None` 分开：后者会让 `_tap_avatar` 退回按桌位坐标点，
+        语义正好相反。
+        """
+        if tap_target is AvatarTapPolicy.SEAT_NODE:
+            return self._find_child_element(desk, f"{side}_seat"), True
+
+        state_element = self._find_child_element(desk, f"{side}_state")
+        if state_element is not None:
+            return state_element, True
+        if tap_target is AvatarTapPolicy.STATE_ONLY:
+            return None, False
+        return self._find_child_element(desk, f"{side}_seat"), True
+
     @asynccontextmanager
-    async def avatar_card(self, desk, side: str, seat_number: int, *, prefer_state: bool = True):
+    async def avatar_card(
+        self, desk, side: str, seat_number: int, *, tap_target: AvatarTapPolicy = AvatarTapPolicy.STATE_THEN_SEAT
+    ):
         """点开某个麦位的头像弹窗，读一次昵称，然后保证关回座位面板。
 
         调用方拿到的 `card.opened` 说明「弹窗是不是真的开着」，`card.name` 是读到的
@@ -495,10 +537,15 @@ class SeatPanelDriver:
         铁律：press_back 只在**按下那一刻**屏幕上有卡片时才按。房间里一次盲按
         back 就是退出派对房间，所以「没打开」「已经被关掉」两种情况都绝不能按。
 
-        `prefer_state` 选点击目标：默认先点 ClState（房主换座后残留渲染里它最
-        稳定，面板观测那条链路靠它读昵称）。要读 seat_off（「请下麦」）的链路必须
-        传 False 显式点 UserView —— 没有证据证明点 ClState 弹出的名片里带着
-        seat_off 按钮，���错就是静默退化成「Unable to manage seat N」。
+        `tap_target` 点名点击目标（见 `AvatarTapPolicy`），三条链路各选各的：
+
+        - 默认 `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测那条
+          链路靠它读昵称，是长期行为。
+        - 要读 seat_off（「请下麦」）的链路传 `SEAT_NODE`：必须点 UserView ——
+          没有证据证明点 ClState 弹出的名片里带着 seat_off 按钮，点错就是静默退化
+          成「Unable to manage seat N」。
+        - 找搭子那条链路传 `STATE_ONLY`：ClState 缺席时一次都不点（原来就是跳过
+          整张桌位），绝不能顺手退到 UserView 点出一张没有证据支持的名片。
 
         用法::
 
@@ -507,16 +554,23 @@ class SeatPanelDriver:
         """
         card = SeatCardView()
         if self.handler is None or desk is None:
-            self.logger.warning(
+            self.logger.debug(
                 f"Seat {seat_number}: cannot inspect occupant (handler or desk missing)"
             )
             yield card
             return
 
         try:
-            target_element = self._find_child_element(desk, f"{side}_state") if prefer_state else None
-            if target_element is None:
-                target_element = self._find_child_element(desk, f"{side}_seat")
+            target_element, should_tap = self._resolve_tap_target(desk, side, tap_target)
+            if not should_tap:
+                self.logger.debug(
+                    f"Seat {seat_number} ({side} side): no {side}_state node and the "
+                    f"state-only tap policy forbids falling back to {side}_seat; "
+                    f"nothing tapped"
+                )
+                yield card
+                return
+
             if not self._tap_avatar(desk, side, target_element):
                 self.logger.warning(
                     f"Seat {seat_number} ({side} side): avatar tap never landed "

@@ -20,22 +20,6 @@ class _FakeSeatUI:
         return True
 
 
-class _FakeReservation:
-    async def reserve_seat(self, username, seat_number):
-        return {"reserved": (username, seat_number)}
-
-
-class _FakeSeating:
-    async def sit_at_specific_seat(self, seat_number):
-        return {"took": seat_number}
-
-    async def seat_off_owner(self):
-        return {"removed": "owner"}
-
-    async def seat_off_specific_seat(self, seat_number):
-        return {"removed": seat_number}
-
-
 @pytest.fixture(autouse=True)
 def _cleanup_seat_manager():
     SeatManager.reset_instance()
@@ -43,14 +27,9 @@ def _cleanup_seat_manager():
     SeatManager.reset_instance()
 
 
-def _manager_with_fakes(ui=None, reservation=None, seating=None):
+def _manager_with_fakes(ui=None):
     SeatManager.reset_instance()
-    manager = SeatManager.initialize(
-        seat_ui=ui or _FakeSeatUI(expanded=False),
-        reservation=reservation or _FakeReservation(),
-        seating=seating or _FakeSeating(),
-    )
-    return manager
+    return SeatManager.initialize(seat_ui=ui or _FakeSeatUI(expanded=False))
 
 
 @pytest.mark.asyncio
@@ -65,20 +44,12 @@ async def test_prepare_for_chat_scan_collapses_only_when_seats_are_expanded():
     assert collapsed_ui.collapsed is False
 
 
-@pytest.mark.asyncio
-async def test_seat_management_delegates_reserve_and_take_intentions():
-    manager = _manager_with_fakes()
-
-    assert await manager.reserve_seat("Alice", 5) == {"reserved": ("Alice", 5)}
-    assert await manager.take_seat(7) == {"took": 7}
-
-
-@pytest.mark.asyncio
-async def test_seat_management_preserves_remove_occupant_paths():
-    manager = _manager_with_fakes()
-
-    assert await manager.remove_seat_occupant(None) == {"removed": "owner"}
-    assert await manager.remove_seat_occupant(3) == {"removed": 3}
+# #402 删掉 reservation / seating / seat_check 三个转发接缝之后，原来那两个
+# 「委托替身返回什么就转发什么」的用例断的是一条已经不存在的路径：它们断言的是
+# 替身自己的返回值，对生产代码什么都没说。相同命题（八个公开接口的返回形状来自
+# 真实实现、`:seat 4` 的两条路径没混起来）迁到了
+# tests/test_seat_subsystem_consolidation.py，并且改成对真实实现断言 —— 覆盖面
+# 只增不减：这里原本钉的「转发」已无对象可钉。
 
 
 def test_seat_manager_wires_every_injected_collaborator_onto_one_subsystem():
@@ -87,16 +58,11 @@ def test_seat_manager_wires_every_injected_collaborator_onto_one_subsystem():
     #402 之前这里断言五个单例对象互相引用同一个 `seat_ui`；四个内部单例删掉后，
     活下来的等价命题是：显式注入的 `seat_ui` **就是**子系统暴露的面板入口，
     因此「共享同一份面板依赖」这件事对调用方仍然成立且可断言。
-    预约/占座两个注入点的委托形状由上面两个测试钉住。
+    八个公开接口的返回形状由 test_seat_subsystem_consolidation.py 对真实实现断言。
     """
     handler = object()
     seat_ui = _FakeSeatUI(expanded=False)
-    manager = SeatManager.initialize(
-        handler,
-        seat_ui=seat_ui,
-        reservation=_FakeReservation(),
-        seating=_FakeSeating(),
-    )
+    manager = SeatManager.initialize(handler, seat_ui=seat_ui)
 
     assert manager.subsystem.panel is seat_ui
 

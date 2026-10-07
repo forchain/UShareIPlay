@@ -27,18 +27,9 @@ class SeatManager(SeatManagerBase):
         self,
         handler=None,
         seat_ui=None,
-        seat_check=None,
-        reservation=None,
-        seating=None,
     ):
         super().__init__(handler)
-        self._subsystem = SeatSubsystem(
-            handler,
-            seat_ui=seat_ui,
-            seat_check=seat_check,
-            reservation=reservation,
-            seating=seating,
-        )
+        self._subsystem = SeatSubsystem(handler, seat_ui=seat_ui)
 
         logging.getLogger('seat_manager').info(f"初始化 SeatManager 完成，handler={handler}")
 

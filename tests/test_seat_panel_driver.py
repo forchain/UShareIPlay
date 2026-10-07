@@ -22,7 +22,10 @@ from tests.seat_fixtures import (
     soul_elements,
 )
 
-from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+from ushareiplay.managers.seat_manager.seat_panel_driver import (
+    AvatarTapPolicy,
+    SeatPanelDriver,
+)
 
 EXPAND_SEATS_KEY = "expand_seats"
 COLLAPSE_LABEL = "收起"
@@ -410,6 +413,20 @@ def build_raw_desk_with_state_and_seat(elements=None):
     )
 
 
+def build_raw_desk_without_state(elements=None):
+    """只渲染了 UserView（left_seat）、没有 ClState 的桌位。"""
+    elements = elements or soul_elements()
+    seat = ClickableNode()
+    return RawSeatDesk({elements["left_seat"]: seat}, location={"x": 40, "y": 100}), seat
+
+
+def build_raw_desk_with_state_only(elements=None):
+    """只渲染了 ClState（left_state）、没有 UserView 的桌位。"""
+    elements = elements or soul_elements()
+    avatar = ClickableNode()
+    return RawSeatDesk({elements["left_state"]: avatar}, location={"x": 40, "y": 100}), avatar
+
+
 async def test_avatar_card_taps_the_state_node_by_default():
     """默认点 ClState：#395 立下的行为，面板观测那条链路依赖它。"""
     handler = make_panel_handler(popup_name="Bob")
@@ -423,10 +440,24 @@ async def test_avatar_card_taps_the_state_node_by_default():
     assert seat.clicked is False
 
 
-async def test_avatar_card_taps_the_seat_node_when_the_caller_asks():
+async def test_avatar_card_state_then_seat_policy_falls_back_to_the_seat_node():
+    """STATE_THEN_SEAT 是长期行为：ClState 缺席时退到 seat 节点（面板观测链路靠它读昵称）。"""
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, seat = build_raw_desk_without_state()
+
+    async with driver.avatar_card(
+        desk, "left", 9, tap_target=AvatarTapPolicy.STATE_THEN_SEAT
+    ) as card:
+        assert card.opened is True
+
+    assert seat.clicked is True
+
+
+async def test_avatar_card_seat_node_policy_taps_the_seat_node_when_the_caller_asks():
     """要「请下麦」的那条链路必须点 seat 节点，不能跟着默认路径改点 ClState。
 
-    没有���何证据证明「点 ClState 弹出的名片」里带着 seat_off（tvSeatDownUp）——
+    没有任何证据证明「点 ClState 弹出的名片」里带着 seat_off（tvSeatDownUp）——
     真机 dump 里根本没有这个节点，全仓只有测试替身凭空造了一个。点错了就静默
     退化成「Unable to manage seat N」，:seat 占位不再清人。所以把点击目标显式
     钉回迁移前的 seat 节点：重构不该顺手改掉没被验证过的点击目标。
@@ -435,11 +466,65 @@ async def test_avatar_card_taps_the_seat_node_when_the_caller_asks():
     driver = SeatPanelDriver(handler)
     desk, avatar, seat = build_raw_desk_with_state_and_seat()
 
-    async with driver.avatar_card(desk, "left", 9, prefer_state=False) as card:
+    async with driver.avatar_card(
+        desk, "left", 9, tap_target=AvatarTapPolicy.SEAT_NODE
+    ) as card:
         assert card.opened is True
 
     assert seat.clicked is True
     assert avatar.clicked is False
+
+
+async def test_avatar_card_seat_node_policy_never_taps_the_state_node():
+    """SEAT_NODE 不看 ClState：只有 UserView 才在这条链路的证据里。"""
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, avatar = build_raw_desk_with_state_only()
+
+    async with driver.avatar_card(
+        desk, "left", 9, tap_target=AvatarTapPolicy.SEAT_NODE
+    ) as card:
+        assert card.opened is True
+
+    assert avatar.clicked is False
+
+
+async def test_avatar_card_state_only_policy_taps_the_state_node_when_present():
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, avatar, seat = build_raw_desk_with_state_and_seat()
+
+    async with driver.avatar_card(
+        desk, "left", 9, tap_target=AvatarTapPolicy.STATE_ONLY
+    ) as card:
+        assert card.opened is True
+        assert card.name == "Bob"
+
+    assert avatar.clicked is True
+    assert seat.clicked is False
+
+
+async def test_avatar_card_state_only_policy_taps_nothing_when_the_state_node_is_absent():
+    """STATE_ONLY 读不到 ClState 就一次都别点 —— 这是「别点」，不是「改点别的」。
+
+    迁移前这条链路（找搭子）在 ClState 缺席时是 `continue`：整张桌位跳过，一次
+    点击都不发。退到 seat 节点会凭空点出一张 UserView 名片，而那次点击没有任何
+    证据支持：迁到这条链路上的读数要的是 ClState 名片，读错了就是静默坐错人旁边。
+    """
+    handler = make_panel_handler(popup_name="Bob")
+    driver = SeatPanelDriver(handler)
+    desk, seat = build_raw_desk_without_state()
+
+    async with driver.avatar_card(
+        desk, "left", 9, tap_target=AvatarTapPolicy.STATE_ONLY
+    ) as card:
+        assert card.opened is False
+        assert card.name is None
+
+    assert seat.clicked is False
+    handler.key_actions.press_back.assert_not_called()
+    # 一次都没点，就不该去等一张不会出现的卡片
+    assert handler.element_finder.wait_calls == 0
 
 
 async def test_avatar_card_closes_only_the_popup_it_opened():

@@ -36,7 +36,7 @@ from tests.seat_fixtures import (
 from ushareiplay.dal.user_dao import UserDAO
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
 from ushareiplay.managers.seat_manager import subsystem as seat_check_module
-from ushareiplay.managers.seat_manager.seat_panel_driver import SeatCardView
+from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatCardView
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 CANONICAL = "主账号"
@@ -157,8 +157,8 @@ def _occupied_desk(events, occupant="Bob"):
 class RecordingDriver:
     """SeatPanelDriver 的记录替身：证明调用点把点名与读数交了出去。
 
-    签名与生产一致（含 keyword-only 的 prefer_state），并把点击目标一并记下来：
-    占座检查那条链路必须钉在 seat 节点上，不能跟着默认路径改点 ClState。
+    签名与生产一致（含 keyword-only 的 tap_target），并把点击策略一并记下来：
+    占座检查那条链路必须钉在 SEAT_NODE 上，陪伴搜索那条必须钉在 STATE_ONLY 上。
     """
 
     def __init__(self, opened=True, name=None):
@@ -166,12 +166,14 @@ class RecordingDriver:
         self.card = SeatCardView(opened=opened, name=name)
 
     @asynccontextmanager
-    async def avatar_card(self, desk, side, seat_number, *, prefer_state=True):
-        self.calls.append((desk, side, seat_number, prefer_state))
+    async def avatar_card(
+        self, desk, side, seat_number, *, tap_target=AvatarTapPolicy.STATE_THEN_SEAT
+    ):
+        self.calls.append((desk, side, seat_number, tap_target))
         yield self.card
 
     def tap_targets(self):
-        """各次点名的点击目标（prefer_state 的取值）。"""
+        """各次点名的点击策略（AvatarTapPolicy）。"""
         return [call[3] for call in self.calls]
 
 
@@ -218,8 +220,9 @@ async def test_accompany_user_delegates_the_avatar_read_to_the_panel_driver(same
 
     assert result == {"success": "Successfully took a seat"}, result
     assert [(side, seat_number) for _d, side, seat_number, _p in driver.calls] == [("right", 2)]
-    # 陪伴搜索只读昵称，跟默认的 ClState 目标即可
-    assert driver.tap_targets() == [True], driver.calls
+    # 陪伴搜索读的是 ClState 名片；ClState 缺席时宁可整张桌位跳过，也不许退到
+    # seat 节点点出一张没有证据支持的 UserView 名片（票 #402 回归护栏）。
+    assert driver.tap_targets() == [AvatarTapPolicy.STATE_ONLY], driver.calls
     # 名片是驱动点开的：manager 自己那一路点击里不该再有点头像的动作
     assert "tap_right" not in events, events
 
@@ -272,6 +275,74 @@ async def test_accompany_user_closes_the_card_before_sitting_next_to_the_target(
     assert events == ["tap_right", "back", "sit_left"], events
 
 
+class _VanishingStateDesk(RawSeatDesk):
+    """一张「判占用时 ClState 在、点名前它没了」的桌位。
+
+    `_collect_desk_info` 用 `{side}_state` 的有无判定「有人占座」，`avatar_card`
+    又按同一个 key 重读一次同一张桌位 —— 两次读之间 DOM 变了（真机上就是残留渲染
+    被回收），第二次读不到。迁移前这条链路在这种情形下是 `continue`：整张桌位跳过，
+    一次点击都不发。
+    """
+
+    def __init__(self, children, location, vanishing_key):
+        super().__init__(children, location=location)
+        self.vanishing_key = vanishing_key
+        self.state_lookups = 0
+
+    def find_element(self, by, value):
+        if value == self.vanishing_key:
+            self.state_lookups += 1
+            if self.state_lookups > 1:
+                raise KeyError(value)
+        return super().find_element(by, value)
+
+
+def _desk_with_vanishing_state(events):
+    """右侧有人占座，但 ClState 在点名前消失。"""
+    elements = soul_elements()
+    children = {
+        elements["left_seat"]: RecordingNode(
+            events,
+            "sit_left",
+            text="",
+            children={elements["left_label"]: SimpleNamespace(text="")},
+        ),
+        elements["left_default_name"]: SimpleNamespace(text="点击入座"),
+        elements["right_state"]: RecordingNode(events, "tap_right"),
+        elements["right_seat"]: RecordingNode(
+            events,
+            "sit_right",
+            text="",
+            children={elements["right_label"]: SimpleNamespace(text="2")},
+        ),
+    }
+    return _VanishingStateDesk(
+        children, location={"x": 40, "y": 600}, vanishing_key=elements["right_state"]
+    )
+
+
+async def test_accompany_user_taps_nothing_when_the_state_node_vanished(same_identity):
+    """ClState 读不到时：一次点击都不发，直接看下一张。
+
+    STATE_ONLY 与「退而求其次点 seat」是两件不同的事。迁移前 `state_element` 为空
+    就是 `continue`；点 seat 会凭空点出一张 UserView 名片，而这条链路读的是 ClState
+    名片，读错了就是静默坐错人旁边（票 #402 回归护栏）。
+    """
+    events = []
+    desk = _desk_with_vanishing_state(events)
+    handler, _finder = make_popup_handler(events, popup_name=AVATAR)
+
+    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+
+    result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
+
+    assert result == {"error": f"User {CANONICAL} not found on any seat"}, events
+    # 一次点头像都没发（tap_right 是那张本该点的 ClState）
+    assert "tap_right" not in events, events
+    assert "sit_right" not in events, events
+    assert "back" not in events, events
+
+
 async def test_accompany_user_does_not_deadlock_when_a_command_session_holds_the_ui_lock(same_identity):
     """驱动绝不能自己再去拿 ui_lock：调用链已经在命令的 ui_session 里了。
 
@@ -321,7 +392,7 @@ async def test_seat_check_reads_the_occupant_through_the_panel_driver(monkeypatc
     assert [(side, seat_number) for _d, side, seat_number, _p in driver.calls] == [("left", 1)]
     # 点击目标钉在 seat 节点：要读 seat_off，点 ClState 弹出的名片是否带这个按钮
     # 全仓无从验证，点错的症状是静默的「Unable to manage seat N」。
-    assert driver.tap_targets() == [False], driver.calls
+    assert driver.tap_targets() == [AvatarTapPolicy.SEAT_NODE], driver.calls
     assert "seat_off" in events, events
     assert "tap_left" not in events, events
 
