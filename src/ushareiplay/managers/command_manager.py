@@ -12,6 +12,7 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
+    MessageBatch,
     classify_chat_line,
     is_private_reply_prefix,
     is_silent_prefix,
@@ -432,6 +433,21 @@ class CommandManager(Singleton):
             await self.execute_command_messages(messages)
 
         return messages
+
+    async def execute_intake_batch(self, batch: MessageBatch) -> int:
+        """执行一批已经分类好的命令消息（intake 接缝）。
+
+        接收 `MessageBatch` 而不是原始聊天行：分类已经在 `MessageManager` 里做完，
+        这里直接消费 `batch.commands`，既不重复解析原始行，也不重新推导触发符
+        语义 —— `silent` / `private_reply` 随消息一起过来。
+
+        Returns:
+            实际执行的命令数。
+        """
+        if not batch.commands:
+            return 0
+
+        return await self.execute_command_messages(list(batch.commands))
 
     async def execute_command_messages(self, messages):
         """
