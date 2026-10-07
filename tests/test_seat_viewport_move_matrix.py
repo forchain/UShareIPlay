@@ -40,7 +40,7 @@ from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
     SeatSlot,
 )
-from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 MOVER = "Outlier"
 
@@ -58,10 +58,8 @@ PHASE_SEATS = {
 @pytest.fixture(autouse=True)
 def reset_observation():
     SeatObservationManager.reset_instance()
-    SeatingManager.reset_instance()
     yield
     SeatObservationManager.reset_instance()
-    SeatingManager.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -305,7 +303,7 @@ async def test_take_seat_command_clicks_the_requested_seat_in_every_phase(seat_n
     observation._last_focus_count = 1
     observation.seats[home] = SeatSlot(home, occupied=True, username="Joyer", label="群主", is_owner=True)
     seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatingManager.initialize(handler=handler, seat_ui=seat_ui, observation=observation)
+    seating = SeatSubsystem(handler=handler, seat_ui=seat_ui, observation=observation)
     handler.element_finder.wait_for_element_clickable = MagicMock(
         side_effect=lambda key, **kwargs: MagicMock() if key == "confirm_seat" else None
     )

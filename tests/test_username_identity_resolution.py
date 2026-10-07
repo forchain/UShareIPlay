@@ -27,7 +27,7 @@ from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seating import SeatingManager
+from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.models.user import User
 from ushareiplay.state.presence_tracker import PresenceTracker
@@ -101,11 +101,16 @@ class DummyLogger:
 
 
 class DummySeatHandler:
-    """麦位 DOM 替身：弹窗里读到的名字就是 UI 可见名字（分身名）。"""
+    """麦位 DOM 替身：弹窗里读到的名字就是 UI 可见名字（分身名）。
+
+    昵称节点与 back 的关系按真机建模：back 关掉弹窗后，昵称节点就离开 dump ——
+    所以 SeatPanelDriver 的二次取证（此刻还读得到昵称才按 back）在这里也成立。
+    """
 
     def __init__(self, desks, popup_name):
         self.desks = desks
         self.popup_name = popup_name
+        self.popup_open = popup_name is not None
         self.logger = DummyLogger()
         self.confirm = DummyElement("确认")
         self.back_pressed = False
@@ -113,14 +118,22 @@ class DummySeatHandler:
     def find_child_element(self, desk, key, log_failure=True):
         return desk.get(key)
 
+    def try_find_element(self, element_key, log=False, clickable=False):
+        if self.popup_open and element_key in ("souler_name", "user_name"):
+            return DummyElement(self.popup_name or "")
+        return None
+
     def wait_for_element_clickable(self, key, *args, **kwargs):
         return self.confirm if key == "confirm_seat" else None
 
-    def wait_for_any_element(self, keys):
+    def wait_for_any_element(self, keys, timeout=10):
+        if not self.popup_name:
+            return None, None
         return keys[0], DummyElement(self.popup_name)
 
     def press_back(self):
         self.back_pressed = True
+        self.popup_open = False
 
     def log_error(self, message):
         self.logger.error(message)
@@ -171,8 +184,7 @@ class DummyController:
 
 def _seating_manager(desks, popup_name):
     handler = DummySeatHandler(desks, popup_name)
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    manager = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
     return handler, manager
 
 
@@ -228,8 +240,7 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
     """`:seat 3` 不接参数时，交给座位层的靶子必须是麦位上可见的分身名。"""
     desks = [_desk(right_label=AVATAR, right_occupied=True)]
     handler = DummySeatHandler(desks, popup_name=AVATAR)
-    SeatingManager.reset_instance()
-    seating = SeatingManager.initialize(handler, seat_ui=DummySeatUI(handler))
+    seating = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
     presence_env = PresenceTracker.instance()
     presence_env._online_users = {AVATAR}
 
@@ -389,8 +400,7 @@ async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(a
         async def collapse_seats(self):
             collapsed.append(True)
 
-    SeatingManager.reset_instance()
-    manager = SeatingManager.initialize(handler, seat_ui=MockUI(handler))
+    manager = SeatSubsystem(handler, seat_ui=MockUI(handler))
 
     result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
     assert "error" in result
