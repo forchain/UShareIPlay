@@ -129,7 +129,15 @@ def test_execute_chat_scan_parses_scanned_rows_and_delegates(monkeypatch):
     assert [m.nickname for m in captured] == ["Alice", "Bob"]
 
 
-def test_process_new_messages_uses_command_execution_chat_scan(monkeypatch):
+def test_process_new_messages_does_not_execute_scanned_rows_inline():
+    """The scan site no longer forwards raw rows to execution (#398).
+
+    `process_new_messages` used to hand the scanned rows to
+    `CommandManager.execute_chat_scan`, which classified them a second time and
+    executed immediately. Commands now travel `dispatch_intake` → `MessageQueue`
+    → `RuntimeQueueDrainer`, so the scan site only brings the app forward.
+    """
+    from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
@@ -142,13 +150,17 @@ def test_process_new_messages_uses_command_execution_chat_scan(monkeypatch):
             return [MessageInfo("$play 123", "Alice")]
 
     fake_command_manager = _FakeCommandManager()
-    monkeypatch.setattr(CommandManager, "_instance", fake_command_manager, raising=False)
-    manager = MessageManager.instance()
-    manager._handler = _FakeHandler()
-    manager._chat_logger = logging.getLogger("test_chat_logger_scan")
-    manager.observe(["souler[Alice]说：$play 123"])
+    original_cmd_instance = CommandManager.instance
+    try:
+        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
+        manager = MessageManager.instance()
+        manager._handler = _FakeHandler()
+        manager._chat_logger = logging.getLogger("test_chat_logger_scan")
+        MessageQueue.instance()
+        manager.observe(["souler[Alice]说：$play 123"])
 
-    messages = _run(manager.process_new_messages())
+        assert _run(manager.process_new_messages()) is None
 
-    assert fake_command_manager.rows == ["souler[Alice]说：$play 123"]
-    assert [m.content for m in messages] == ["$play 123"]
+        assert fake_command_manager.rows is None
+    finally:
+        CommandManager.instance = original_cmd_instance

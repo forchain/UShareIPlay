@@ -58,10 +58,14 @@ class MessageContentEvent(BaseEvent):
             room_owner = await message_manager.resolve_room_owner()
             delta = message_manager.observe(content_list)
 
-            commands = await message_manager.dispatch(delta.new_lines, room_owner=room_owner)
-            has_command_message = bool(commands)
+            # 分类与命令入队都在 dispatch_intake 里完成（#396 接缝）；本事件不再
+            # 就地执行命令 —— 实时命令与补漏命令共用 runtime 队列这一条消费路径。
+            batch = await message_manager.dispatch_intake(
+                delta.new_lines, room_owner=room_owner
+            )
+            has_command_message = bool(batch.commands)
 
-            # 如果有命令消息，交给 CommandManager 执行；否则只做常规更新
+            # 如果有命令消息，切到 Soul 前台等 runtime 队列执行；否则只做常规更新
             if has_command_message:
                 await message_manager.process_new_messages(delta.new_lines)
             else:
