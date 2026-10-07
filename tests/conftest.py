@@ -9,7 +9,6 @@ from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-from ushareiplay.managers.room_info_window import RoomInfoWindow
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.timer_manager import TimerManager
 
@@ -27,7 +26,6 @@ def initialized_test_singletons():
         MicManager,
         PartyManager,
         PlaylistAdoption,
-        RoomInfoWindow,
         RoomProfileManager,
         TimerManager,
     ):

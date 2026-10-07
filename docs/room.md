@@ -1,5 +1,5 @@
 ---
-covers: [PartyManager, SoulHandler, RoomProfileManager, SeatManager, MicManager, RecommendationManager, SleepManager, RoomInfoAuditor, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
+covers: [PartyManager, SoulHandler, RoomProfileManager, SeatManager, MicManager, SleepManager, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
 last-synced: 2026-09-23
 ---
 
@@ -13,17 +13,15 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 |---|---|
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
-| `RoomProfileManager` | Sole owner of the room drawer session and all three drafts (topic / notice / title); owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, and the notice restore after a title change |
+| `RoomProfileManager` | Sole owner of the room drawer session and all four field groups (room name / topic / notice / party type + recommendation); owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, the batched audit, and the notice restore after a title change |
 | `SeatManager` | Seat reservation + seating sub-managers |
 | `MicManager` | Microphone on/off automation and off-seat preparation |
-| `RecommendationManager` | Room recommendation state tracking, drawer automation, and toggle (:recommend) |
 | `SleepManager` | Sleep Guardian: blocks unprivileged automated commands during night hours (23:00 - 06:00) |
-| `RoomInfoAuditor` | Periodic background auditor validating room information and title state |
 
 ## How It Works
 
 ### Room Name & Cooldowns
-**Room name** = `{theme}｜{title}` — `RoomProfileManager` owns the combined value, the shared 10-minute cooldown, pending state, and the single UI write. The legacy `ThemeManager`, `TitleManager`, `TopicManager`, `NoticeManager` and `RoomNameManager` adapters have all been consolidated into it; `:title` and `:theme` are thin adapters at the seam.
+**Room name** = `{theme}｜{title}` — `RoomProfileManager` owns the combined value, the shared 10-minute cooldown, pending state, and the single UI write. The legacy `ThemeManager`, `TitleManager`, `TopicManager`, `NoticeManager` and `RoomNameManager` adapters have all been consolidated into it; `:title` and `:theme` are thin adapters at the seam. `RoomInfoWindow` was a transient facade over the same drawer session and has since been deleted (#394) — `RoomProfileManager` is the only owner.
 
 ### Auto-Restart
 `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
@@ -33,7 +31,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 - **Mic**: `:mic 1` (or `:mic` when off-seat) automatically calls `SoulHandler.ensure_on_seat()` to claim a seat before unmuting. `:mic 0` mutes without leaving the seat.
 
 ### Recommendation Distribution
-Soul App periodically surfaces party recommendation popups or toggles in room settings. `RecommendationManager` controls the recommendation state, handles the drawer UI safely, and allows operators to toggle distribution via `:recommend on` / `:recommend off`.
+Soul App periodically surfaces party recommendation popups or toggles in room settings. `RoomProfileManager` owns the recommendation state as one of its drawer fields, handles the drawer UI safely, and allows operators to toggle distribution via `:recommend on` / `:recommend off`. The legacy `RecommendationManager` was folded into it (#393).
 
 ### Sleep Guardian
 `SleepManager` prevents automated command floods during rest hours (default 23:00 to 06:00).
@@ -71,4 +69,4 @@ Soul App periodically surfaces party recommendation popups or toggles in room se
 
 - **New room UI action**: Add method to `SoulHandler`, expose through the appropriate domain manager.
 - **Sleep schedule customization**: Adjust sleep window or exempted commands in `config.yaml` under `sleep`.
-- **Auditor rules**: Register new room sanity checks in `RoomInfoAuditor`.
+- **Auditor rules**: Register new room sanity checks in `RoomProfileManager.audit_and_repair()`.

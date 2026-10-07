@@ -1,9 +1,9 @@
 """生产适配器：把 `SoulHandler` 的 Appium 细节包成抽屉端口。
 
-这里的每一步都对应 `room_info_window.py` 里原有的那一行 —— 本文件只搬家，
-不改判定：入口点击仍是 `ui_actions.switch_and_click`，正规关窗仍是
+这里的每一步都是抽屉 ritual 原有的那一行 —— 本文件只搬家，不改判定：
+入口点击仍是 `ui_actions.switch_and_click`，正规关窗仍是
 `RecoveryManager.close_drawer('slide_drawer')`，保底仍是 `key_actions.press_back`。
-编辑字段用到的三个元素级原语则逐字对应 `TopicManager._update_topic_ui` 里的
+编辑字段用到的三个元素级原语则逐字对应原 `TopicManager._update_topic_ui` 里的
 `wait_for_element_clickable` / `wait_for_any_element` / `clear()+send_keys()`。
 """
 

@@ -70,7 +70,7 @@ AppController
 ├── PlaybackMuting    — Mic mute/restore around song switching
 ├── MessageManager    — Async message queue and dispatch
 ├── RoomProfileManager — 房间档案唯一所有者（抽屉会话 + 话题/公告/房名草稿）
-└── [KeywordManager, RoomNameManager, InfoManager, UserManager, AdminManager]
+└── [KeywordManager, InfoManager, UserManager, AdminManager]
 ```
 
 ### Adding a New Command

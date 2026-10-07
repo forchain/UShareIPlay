@@ -7,3 +7,7 @@ This gives us one place to reason about the room-name transition, one interface-
 ## Status (2026-07)
 
 The `ThemeManager` and `TitleManager` legacy adapters were deleted; all callers now use `RoomNameManager.instance()` directly. Future architecture reviews should not re-suggest reintroducing the adapters.
+
+## Status (2026-10, #387/#392)
+
+The decision above still holds unchanged — one deep module owns the `{theme}｜{title}` invariant, the shared cooldown, the pending UI state and notice restoration, with the commands as thin adapters. What changed is the module's name: `RoomNameManager` was absorbed into `RoomProfileManager` as part of the room-profile vertical (#392), which also took over topic, notice, party type and recommendation. The same review guidance applies one level up — do not re-suggest splitting the invariant back out across per-field adapters.

@@ -142,7 +142,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_adoption import PlaylistAdoption
     from ushareiplay.managers.recovery_manager import RecoveryManager
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import (
         ReservationManager,
@@ -154,7 +153,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.managers.sleep_manager import SleepManager
     from ushareiplay.managers.timer_manager import TimerManager
-    from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
@@ -170,7 +168,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         SleepManager,
         RecoveryManager,
         MessageManager,
-        RoomProfileManager,
         MicManager,
         MusicManager,
         PlaybackMuting,
@@ -184,8 +181,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         InfoManager,
         PartyManager,
         PlaylistAdoption,
-        RoomInfoWindow,
-        RoomProfileManager,
         AdminManager,
         KeywordManager,
         EventManager,

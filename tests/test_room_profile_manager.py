@@ -55,10 +55,8 @@ def test_reinitializing_outside_the_composition_root_is_forbidden():
         RoomProfileManager.initialize()
 
 
-def test_the_composition_root_registers_it_next_to_the_remaining_legacy_manager():
+def test_the_composition_root_registers_it_and_nothing_else_for_the_room_profile():
     """组合根必须 `.initialize(...)` 一次，而不是在别处懒创建。"""
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-
     source = (
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "src"
@@ -68,9 +66,9 @@ def test_the_composition_root_registers_it_next_to_the_remaining_legacy_manager(
     ).read_text(encoding="utf-8")
 
     assert "self.room_profile_manager = RoomProfileManager.initialize(" in source
-    # 旧单例暂时保留：#394 才删，RoomInfoWindow 现在仍是活调用点。
-    assert "RoomInfoWindow.initialize(" in source
-    assert RoomInfoWindow is not None and RoomProfileManager is not None
+    # #394 之后房间档案只剩这一个单例：组合根里不再有任何遗留初始化。
+    assert source.count("RoomProfileManager.initialize(") == 1
+    assert "RoomInfoWindow.initialize(" not in source
 
 
 def test_reset_all_instances_also_resets_it():
@@ -471,48 +469,52 @@ def test_the_batched_audit_syncs_before_editing_and_closes_the_drawer_last(monke
     assert driver.is_open() is False
 
 
+def test_the_batched_audit_marks_a_pending_retry_when_a_step_fails(monkeypatch):
+    """任一修正项失败都要留下补救标记，且窗口仍由它自己关掉。"""
+    journal = []
+    driver = InMemoryRoomProfileDrawerDriver(journal=journal)
+    profile = _profile(driver, handler=_Handler())
+    _stub_sync_partners(monkeypatch, journal)
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "sync_and_correct_room_type_if_dialog_open",
+        lambda self: {'error': 'boom'},
+    )
+
+    results = profile.audit_and_repair()
+
+    assert results['room_type'] == {'error': 'boom'}
+    assert profile.pending_audit_retry is True
+    assert profile.last_audit_results == results
+    assert driver.is_open() is False, "有失败也不得把抽屉留在屏幕上"
+
+
 # --------------------------------------------------------------------------
-# 过渡门面对既有调用点保持透明
+# 抽屉归属权：谁打开谁关
 # --------------------------------------------------------------------------
 
 
-def test_room_info_window_forwards_the_drawer_session_including_the_callers_error_text():
-    """既有的调用点一行不改地继续工作：文案与「只关自己打开的那一次」都不变。"""
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    profile = RoomProfileManager.initialize()
-    window = RoomInfoWindow.instance()
+def test_the_ownership_rule_holds_across_a_mixed_sequence_of_openers():
+    """`ensure_open` 开的窗不由 `with_window_open` 关，`ensure_closed` 才关。"""
     driver = InMemoryRoomProfileDrawerDriver()
-    profile.adopt_handler(_Handler(), driver)
+    profile = _profile(driver)
 
-    # 调用点自己开的窗，后面的上下文不负责关 —— 归属权规则原样穿过门面。
-    assert window.ensure_open(error_message="Failed to find room title") is None
-    assert window.is_open() is True
+    # 调用点自己开的窗，后面的上下文不负责关 —— 归属权规则逐次成立。
+    assert profile.ensure_open(error_message="Failed to find room title") is None
+    assert profile.is_open() is True
     assert driver.opened_entries == ["chat_room_title"]
 
-    with window.with_window_open() as open_error:
+    with profile.with_window_open() as open_error:
         assert open_error is None
     assert driver.close_attempts == 0
     assert driver.is_open() is True
 
     # 关掉之后，下一个调用点再开就归它自己关。
-    window.ensure_closed()
-    with window.with_window_open():
+    profile.ensure_closed()
+    with profile.with_window_open():
         pass
     assert driver.close_attempts == 2
     assert driver.is_open() is False
-
-
-def test_room_info_window_survives_before_the_profile_manager_is_registered():
-    """组合根还没注册真实实现时，门面必须安静地回答「关着」，而不是炸掉。"""
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    RoomProfileManager.reset_instance()
-    window = RoomInfoWindow.instance()
-    window._handler = _Handler()
-
-    assert window.is_open() is False
-    assert window.ensure_open() == {"error": "Soul handler is not available"}
-    assert window.pending_audit_retry is False
-    assert window.last_audit_results == {}
 
 
 # --------------------------------------------------------------------------
@@ -587,6 +589,29 @@ def test_the_production_adapter_maps_the_port_onto_the_real_handler():
 
     driver.press_back()
     assert keys.back_presses == 1
+
+
+def test_every_dialog_marker_alone_counts_as_an_open_drawer():
+    """窗口开着的证据是「任一弹窗标志命中」—— 逐个标志都得认。
+
+    少认一个就等于给了防盲按返回那道闸一个缺口：标志认不出来时
+    `ensure_closed()` 会以为抽屉没开，于是放任它留在屏幕上。
+    """
+    from ushareiplay.managers.room_profile.driver import DIALOG_KEYS
+
+    for marker in DIALOG_KEYS:
+        class _Finder:
+            def try_find_element(self, key, log=False):
+                return object() if key == marker else None
+
+        driver = SoulDrawerDriver(SimpleNamespace(element_finder=_Finder()))
+        assert driver.is_open() is True, f"标志 {marker} 命中时必须判定抽屉开着"
+
+    class _EmptyFinder:
+        def try_find_element(self, key, log=False):
+            return None
+
+    assert SoulDrawerDriver(SimpleNamespace(element_finder=_EmptyFinder())).is_open() is False
 
 
 def test_the_production_adapter_reports_a_missing_app_instead_of_an_attribute_error():
