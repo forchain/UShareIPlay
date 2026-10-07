@@ -310,7 +310,7 @@ def test_remaining_minutes_is_zero_before_any_attempt():
 
 def test_a_submitted_draft_survives_a_failed_attempt_and_is_cleared_on_success():
     drafts = ProfileDraftStore()
-    drafts.submit("topic", "测试话题")
+    drafts.set_pending("topic", "测试话题")
 
     assert drafts.has_pending("topic") is True
     assert drafts.pending("topic") == "测试话题"
@@ -325,7 +325,7 @@ def test_a_submitted_draft_survives_a_failed_attempt_and_is_cleared_on_success()
 
 def test_setting_a_draft_to_none_clears_it():
     drafts = ProfileDraftStore()
-    drafts.submit("notice", "公告")
+    drafts.set_pending("notice", "公告")
     drafts.set_pending("notice", None)
 
     assert drafts.has_pending("notice") is False
@@ -335,7 +335,7 @@ def test_an_unknown_field_is_rejected_rather_than_silently_created():
     drafts = ProfileDraftStore()
 
     with pytest.raises(KeyError):
-        drafts.submit("playlist", "歌单")
+        drafts.set_pending("playlist", "歌单")
 
 
 def test_set_topic_queues_the_cleaned_text_against_the_topic_budget():
@@ -635,3 +635,184 @@ def test_close_with_back_presses_again_only_when_the_nested_layer_is_still_there
     driver.drawer_open = False
     profile.close_with_back()
     assert driver.back_presses == 1, "抽屉已经关掉时只按一次，不再叠第三次"
+
+
+# --------------------------------------------------------------------------
+# 统一接口契约：四个 setter 都带 `requester`（spec #387 Implementation Decisions）
+# --------------------------------------------------------------------------
+#
+# 契约要求 `set_topic` / `set_notice` / `set_title` / `set_theme` 都有
+# `requester: str = None`。**权限不在这里判** —— ACL 由上游的 `@guest_room_guard`
+# 与 `RolePolicy` 负责，manager 再判一遍就是重复授权。因此 `requester` 只用于
+# **归属**：写进那条「字段确实变了」的 INFO 日志，让参数有真实用处而不是死参数。
+
+
+def test_every_setter_takes_the_optional_requester_from_the_spec_contract():
+    import inspect
+
+    for name in ("set_topic", "set_notice", "set_title", "set_theme"):
+        signature = inspect.signature(getattr(RoomProfileManager, name))
+        assert "requester" in signature.parameters, f"{name} 缺少契约里的 requester"
+        assert (
+            signature.parameters["requester"].default is None
+        ), f"{name} 的 requester 必须是可选的"
+
+
+def test_the_requester_is_advertised_in_each_setter_docstring_as_upstream_authorization():
+    for name in ("set_topic", "set_notice", "set_title", "set_theme"):
+        doc = getattr(RoomProfileManager, name).__doc__ or ""
+        assert "requester" in doc, f"{name} 的 docstring 必须说明 requester 的用途"
+        assert "上游" in doc, f"{name} 的 docstring 必须写明鉴权发生在上游"
+
+
+@pytest.mark.parametrize(
+    "name,args",
+    [
+        ("set_topic", ("话题",)),
+        ("set_notice", ("公告",)),
+        ("set_title", ("标题",)),
+        ("set_theme", ("听歌",)),
+    ],
+)
+def test_the_requester_is_optional_so_every_existing_caller_still_works(name, args):
+    """纯增量：既有调用点一个都不改，也必须继续跑得通。"""
+    profile = RoomProfileManager.initialize()
+    profile.adopt_handler(_Handler())
+    from ushareiplay.state.room_state import RoomState
+
+    RoomState.reset_instance()
+    RoomState.initialize()
+
+    result = getattr(profile, name)(*args)
+
+    assert 'error' not in result, f"{name} 不带 requester 的既有调用必须照常工作"
+
+
+def test_the_requester_shows_up_in_the_change_triggered_log_of_each_setter():
+    """字段真的变了 = 触发了行为，因此这条 INFO 日志合规，requester 也在其中。"""
+    from ushareiplay.state.room_state import RoomState
+
+    handler = _Handler()
+    profile = RoomProfileManager.initialize()
+    profile.adopt_handler(handler)
+    RoomState.reset_instance()
+    RoomState.initialize()
+
+    for name, args in (
+        ("set_topic", ("新话题",)),
+        ("set_notice", ("新公告",)),
+        ("set_title", ("新标题",)),
+        ("set_theme", ("清唱",)),
+    ):
+        handler.logger.reset_mock()
+        getattr(profile, name)(*args, requester="小明")
+
+        info_lines = [call.args[0] for call in handler.logger.info.call_args_list]
+        assert any("小明" in line for line in info_lines), (
+            f"{name} 必须把 requester 记进它自己的行为日志：{info_lines}"
+        )
+
+
+# --------------------------------------------------------------------------
+# 抽屉端口：坐标点击原语（房名编辑入口必须是 0.25 高度那次点击）
+# --------------------------------------------------------------------------
+#
+# 旧 `room_name_manager` 点 `title_edit_entry` 用的是
+# `gesture_handler.click_element_at(edit_entry, y_ratio=0.25)` —— 点在元素上缘，
+# 不是中心。那是随主题功能一起上线的行为，端口必须能表达它，否则就等于在没有
+# 任何人要求的情况下改掉一个已发布的手势。
+
+
+def test_the_drawer_port_exposes_a_coordinate_tap_primitive():
+    from ushareiplay.managers.room_profile.driver import RoomProfileDrawerDriverPort
+
+    assert "click_element_at" in RoomProfileDrawerDriverPort.__abstractmethods__
+    assert hasattr(RoomProfileDrawerDriverPort, "click_element_at")
+
+
+def test_the_in_memory_driver_records_the_coordinate_tap_ratio():
+    driver = InMemoryRoomProfileDrawerDriver(present=("title_edit_entry",))
+
+    assert driver.click_element_at("title_edit_entry", y_ratio=0.25) is True
+    assert driver.coordinate_clicks == [("title_edit_entry", 0.25)]
+    # 坐标点击同样是一次点击，顺序断言对它照旧成立。
+    assert driver.clicks == ["title_edit_entry"]
+
+
+def test_the_in_memory_driver_will_not_tap_a_coordinate_it_cannot_see():
+    driver = InMemoryRoomProfileDrawerDriver(present=())
+    assert driver.click_element_at("title_edit_entry", y_ratio=0.25) is False
+    assert driver.coordinate_clicks == []
+
+
+def test_the_production_adapter_passes_the_ratio_through_to_the_gesture_handler():
+    """端到端：0.25 必须一路走到 `gesture_handler.click_element_at`。"""
+    taps = []
+
+    class _Element:
+        pass
+
+    class _Finder:
+        def wait_for_element_clickable(self, key, timeout=10):
+            return _Element() if key == "title_edit_entry" else None
+
+    class _Gestures:
+        def click_element_at(self, element, y_ratio=0.5):
+            taps.append((element, y_ratio))
+            return True
+
+    driver = SoulDrawerDriver(
+        SimpleNamespace(element_finder=_Finder(), gesture_handler=_Gestures())
+    )
+
+    assert driver.click_element_at("title_edit_entry", y_ratio=0.25) is True
+    assert [ratio for _element, ratio in taps] == [0.25], "0.25 没有传到真实手势层"
+
+
+def test_the_production_adapter_reports_a_failed_coordinate_tap_as_false():
+    """手势失败绝不能被当成点成功 —— 否则调用方会把一次空点当成功记账。"""
+
+    class _Element:
+        pass
+
+    class _Finder:
+        def wait_for_element_clickable(self, key, timeout=10):
+            return _Element() if key == "title_edit_entry" else None
+
+    class _Gestures:
+        def click_element_at(self, element, y_ratio=0.5):
+            return False
+
+    driver = SoulDrawerDriver(
+        SimpleNamespace(element_finder=_Finder(), gesture_handler=_Gestures())
+    )
+
+    assert driver.click_element_at("title_edit_entry", y_ratio=0.25) is False
+
+
+def test_the_production_adapter_reports_a_missing_element_as_false_without_tapping():
+    taps = []
+
+    class _Gestures:
+        def click_element_at(self, element, y_ratio=0.5):
+            taps.append((element, y_ratio))
+            return True
+
+    class _Finder:
+        def wait_for_element_clickable(self, key, timeout=10):
+            return None
+
+    driver = SoulDrawerDriver(
+        SimpleNamespace(element_finder=_Finder(), gesture_handler=_Gestures())
+    )
+
+    assert driver.click_element_at("title_edit_entry", y_ratio=0.25) is False
+    assert taps == [], "元素都没找到就不该去点坐标"
+
+
+def test_the_centre_tap_primitive_is_left_alone():
+    """其余四个点击调用点保持原样：仍然是元素中心点击。"""
+    driver = InMemoryRoomProfileDrawerDriver(present=("edit_topic_entry",))
+
+    assert driver.click_element("edit_topic_entry") is True
+    assert driver.coordinate_clicks == [], "中心点击不得被偷偷改写成坐标点击"

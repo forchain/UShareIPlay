@@ -652,3 +652,143 @@ def test_the_production_adapter_reports_a_missing_element_as_false():
     )
 
     assert driver.click_element("party_recommendation_status") is False
+
+
+# --------------------------------------------------------------------------
+# 日志铁律：只探测、没发生行为的一律留在 DEBUG
+# --------------------------------------------------------------------------
+
+
+def _info_lines(handler):
+    return [call.args[0] for call in handler.logger.info.call_args_list]
+
+
+def _debug_lines(handler):
+    return [call.args[0] for call in handler.logger.debug.call_args_list]
+
+
+def test_probing_an_already_correct_party_type_logs_nothing_at_info():
+    """没有行为触发的探测，按日志铁律不得 INFO。
+
+    这条路径每次回房 / 建房都会走到（`audit_and_repair` 里的派对类型纠偏），
+    一次回房刷一条 INFO 就是刷屏。
+    """
+    driver = _room_type_driver()
+    handler = _Handler(
+        _Screen(
+            DRAWER_SCREEN,
+            {"party_room_type_option": SINGING_TYPE_TEXT, SINGING_TYPE_KEY: SINGING_TYPE_TEXT},
+        )
+    )
+    profile = _profile(driver, handler)
+
+    assert profile.check_and_correct_room_type(auto_close=True) == {
+        "success": True,
+        "switched": False,
+    }
+
+    # 只盯着**探测**那两句：`ensure_closed()` 里的 INFO 是另一回事 ——
+    # 那里真的关掉了一个抽屉，是有行为触发的，合规。
+    probe_lines = [
+        line
+        for line in _info_lines(handler)
+        if "party type" in line or "Inspected" in line
+    ]
+    assert probe_lines == [], f"只探测就换了状态，不得有 INFO：{probe_lines}"
+
+
+def test_an_actual_party_type_switch_still_logs_at_info():
+    """反过来钉住：真的点了就是触发了行为，INFO 合规，不能被一起降级。"""
+    driver = _room_type_driver()
+    handler = _Handler(
+        _Screen(
+            DRAWER_SCREEN,
+            {"party_room_type_option": CHAT_TYPE_TEXT, SINGING_TYPE_KEY: SINGING_TYPE_TEXT},
+        )
+    )
+    profile = _profile(driver, handler)
+
+    assert profile.check_and_correct_room_type(auto_close=True)["switched"] is True
+    assert _info_lines(handler), "真的执行了类型切换，必须留下 INFO"
+
+
+def test_the_party_type_probe_is_still_observable_at_debug():
+    """降级不是丢信息：DEBUG 里要能查清楚当时读到了什么。"""
+    driver = _room_type_driver()
+    handler = _Handler(
+        _Screen(
+            DRAWER_SCREEN,
+            {"party_room_type_option": SINGING_TYPE_TEXT, SINGING_TYPE_KEY: SINGING_TYPE_TEXT},
+        )
+    )
+    profile = _profile(driver, handler)
+
+    profile.check_and_correct_room_type(auto_close=True)
+
+    assert _debug_lines(handler), "探测结果必须仍然留在 DEBUG 以便排查"
+
+
+# --------------------------------------------------------------------------
+# 「已关窗」这句话只在该真关掉的时候说
+# --------------------------------------------------------------------------
+
+
+def test_a_failed_open_never_claims_the_room_info_window_was_closed():
+    """抽屉根本没打开成功，说「已关窗」就是一句假话。"""
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = None
+    driver = _recommendation_driver(fail_for=("chat_room_title", "room_topic"))
+    handler = _Handler(_Screen(DRAWER_SCREEN, {"party_room_type_option": SINGING_TYPE_TEXT}))
+    profile = _profile(driver, handler)
+
+    profile.ensure_synced_on_return()
+
+    assert not any("Closed room info window" in line for line in _info_lines(handler)), (
+        f"打开失败时不得声称关过窗：{_info_lines(handler)}"
+    )
+
+
+def test_a_real_audit_still_claims_the_window_was_closed():
+    """反过来钉住：真的走完一次审计并关窗时，这句 INFO 不得被一起删掉。"""
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = None
+    driver = _recommendation_driver()
+    handler = _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT}))
+    profile = _profile(driver, handler)
+
+    profile.ensure_synced_on_return()
+
+    assert any("Closed room info window" in line for line in _info_lines(handler))
+    assert driver.is_open() is False
+
+
+# --------------------------------------------------------------------------
+# 推荐分发状态：命令层不该穿过模块去摸 RoomState
+# --------------------------------------------------------------------------
+
+
+def test_the_manager_answers_the_recommendation_state_directly():
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = True
+    profile = _profile()
+
+    assert profile.recommendation_enabled is True
+
+    room_state.recommendation_enabled = None
+    assert profile.recommendation_enabled is None, "还没读到过时是 None，不是 False"
+
+
+def test_the_recommend_command_reads_the_state_through_the_module():
+    """`:recommend` 不得 `profile.room_state` 往里摸 —— RoomState 留在模块背后。"""
+    import pathlib
+
+    source = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "src"
+        / "ushareiplay"
+        / "commands"
+        / "recommend.py"
+    ).read_text(encoding="utf-8")
+
+    assert "room_state" not in source, "命令层仍在穿过模块边界读 RoomState"
+    assert "recommendation_enabled" in source, "命令层应改问模块的直接答案"

@@ -712,3 +712,34 @@ def test_the_room_name_manager_module_is_gone():
 
     source_root = pathlib.Path(__file__).resolve().parents[1] / "src" / "ushareiplay"
     assert not (source_root / "managers" / "room_name_manager.py").exists()
+
+
+# --------------------------------------------------------------------------
+# 标题编辑入口的点击坐标
+# --------------------------------------------------------------------------
+#
+# 旧 `room_name_manager` 点 `title_edit_entry` 用的是
+# `gesture_handler.click_element_at(edit_entry, y_ratio=0.25)` —— 点在元素上缘而
+# 不是中心。这是随主题功能一起上线的既有行为，抽屉端口必须能表达它。
+
+
+def test_the_title_entry_is_tapped_at_the_quarter_height_the_legacy_manager_used():
+    driver = _driver()
+    profile = _profile(driver)
+    profile.set_title("晚安")
+
+    profile.update_title()
+
+    assert driver.coordinate_clicks == [("title_edit_entry", 0.25)], (
+        "标题编辑入口必须沿用 0.25 高度那次点击，不得退化成中心点击"
+    )
+
+
+def test_only_the_title_entry_uses_the_coordinate_tap():
+    driver = _driver()
+    profile = _profile(driver)
+    profile.set_title("晚安")
+
+    profile.update_title()
+
+    assert [key for key, _ratio in driver.coordinate_clicks] == ["title_edit_entry"]
