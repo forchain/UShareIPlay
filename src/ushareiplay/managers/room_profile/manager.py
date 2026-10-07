@@ -29,6 +29,7 @@ from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
 from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
 from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
@@ -64,6 +65,9 @@ SYSTEM_DEFAULT_NOTICES_FALLBACK = ['弹唱大会', 'Souler们在随便聊聊ing'
 
 #: 抽屉里「房间标题」那一行：入口 -> 输入框 -> 提交。
 TITLE_EDIT_ENTRY_KEY = 'title_edit_entry'
+#: 标题编辑入口的点击高度：0.0=上缘，0.5=中心。沿用旧 `RoomNameManager` 的
+#: `click_element_at(entry, y_ratio=0.25)` —— 点在元素上缘，不是中心。
+TITLE_ENTRY_Y_RATIO = 0.25
 TITLE_INPUT_KEY = 'title_edit_input'
 TITLE_CONFIRM_KEY = 'title_edit_confirm'
 #: 提交之后用哪两个元素判断结果：编辑层还在 = 改得太频繁；铅笔回来了 = 成功。
@@ -286,8 +290,22 @@ class RoomProfileManager(Singleton):
 
     @property
     def room_state(self):
-        """推荐分发与派对类型在 `RoomState` 里的真实状态记录。"""
+        """推荐分发与派对类型在 `RoomState` 里的真实状态记录。
+
+        模块内部的记账通道。**外部调用方请用 `recommendation_enabled` 那个直接
+        答案** —— `RoomState` 留在本模块背后，命令层不该伸手进去摸。
+        """
         return RoomState.instance()
+
+    @property
+    def recommendation_enabled(self) -> Optional[bool]:
+        """推荐分发当前状态；`None` 表示还没从 UI 读到过。
+
+        `:recommend` 需要知道「现在是开是关」才能决定 toggle 往哪边走，因此这
+        是模块边界上唯一对外的一个纯读出口。语义与 `RoomState` 上那份记录
+        逐字一致：读接口不复制状态，复制就会出现两个真相。
+        """
+        return self.room_state.recommendation_enabled
 
     def get_topic_status(self) -> Dict:
         """`:topic` 无参数那一支的状态面。
@@ -304,13 +322,19 @@ class RoomProfileManager(Singleton):
             result['remaining_time'] = self.drafts.remaining_minutes('topic')
         return result
 
-    def set_topic(self, topic: str) -> Dict:
+    def set_topic(self, topic: str, requester: str = None) -> Dict:
         """安排房间话题变更。
 
         与 `TopicManager.change_topic` 的返回文案逐字一致，config.yaml 的话题
         响应模板 `"{topic}"` 因此不必改。切前台的动作保留在这里（话题这一条
         原本就在 manager 里做，标题/主题/公告那几条在命令里做）。真正写 UI 是
         `update_topic` 的事 —— 冷却中的话题要等下一次心跳。
+
+        Args:
+            topic: 话题文案。
+            requester: 谁提的这条话题。**鉴权不在这里判** —— ACL 由上游的
+                `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
+                记进「话题确实排进队列了」这条行为日志。
         """
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
@@ -322,11 +346,16 @@ class RoomProfileManager(Singleton):
         self.drafts.set_pending('topic', new_topic)
 
         if self.drafts.can_apply_now('topic'):
-            self.logger.info(f'Topic will be updated to {new_topic} soon')
+            self.logger.info(
+                f'Topic {new_topic} queued by {requester or "system"}, will be updated soon'
+            )
             return {'topic': f'{new_topic}. Topic will update soon'}
 
         remaining_minutes = self.drafts.remaining_minutes('topic')
-        self.logger.info(f'Topic will be updated to {new_topic} in {remaining_minutes} minutes')
+        self.logger.info(
+            f'Topic {new_topic} queued by {requester or "system"} '
+            f'will be updated in {remaining_minutes} minutes'
+        )
         return {'topic': f'{new_topic}. Topic will update in {remaining_minutes} minutes'}
 
     def update_topic(self) -> Dict:
@@ -436,26 +465,61 @@ class RoomProfileManager(Singleton):
             self.logger.error(f"Error changing topic: {traceback.format_exc()}")
             return {'error': f'Failed to update topic: {topic}'}
 
-    def _announce_topic(self, topic: str) -> None:
-        """写成功后往公屏发一条，与旧 `TopicManager.update` 同一句话。"""
-        try:
-            from ushareiplay.core.message_dispatch import MessageDispatch
+    def _announce_to_screen(self, message: str, *, what: str) -> None:
+        """往公屏发一条；未初始化或发送失败都只记日志，不影响调用方的结果。
 
+        话题与公告两处播报是同一个形状：句子的内容因字段而异，「怎么发」完全
+        一样（未装配就静默跳过，发送抛异常只记 warning，绝不把已经写成功的字段
+        变成一次失败）。因此这里只抽出这一份，两处各自保留自己的那句话。
+
+        `MessageDispatch` 是顶层导入：`message_dispatch` 只依赖 `user_manager`，
+        而 `user_manager` 不依赖本模块，导入图是单向的，延迟导入没有任何理由。
+        """
+        try:
             if not MessageDispatch.is_initialized():
                 return
             MessageDispatch.instance().bind_handler(self.handler).send_screen_message(
-                f"Updating topic to {topic}"
+                message
             )
         except Exception as e:
-            self.logger.warning(f"Failed to announce topic update: {e}")
+            self.logger.warning(f"Failed to announce {what}: {e}")
 
-    def set_notice(self, notice: str) -> Dict:
+    def _announce_topic(self, topic: str) -> None:
+        """写成功后往公屏发一条，与旧 `TopicManager.update` 同一句话。"""
+        self._announce_to_screen(f"Updating topic to {topic}", what="topic update")
+
+    def _announce_notice(self, notice: str) -> None:
+        """写成功后往公屏发一条，与旧 `NoticeCommand.update` 同一句话。"""
+        self._announce_to_screen(f'Notice updated to: {notice}', what="notice update")
+
+    def _notice_cooldown_result(self, notice: str) -> Dict:
+        """冷却中排队公告的返回面（`set_notice` 与 `restore_notice` 同一形状）。
+
+        四个键与既有实现逐字一致，config.yaml 的公告响应模板因此不必改。之所以
+        收成一处：两处的差别只在**排队的时机**（`set_notice` 先排队再问冷却，
+        `restore_notice` 只在冷却中才排队），返回面本身没有理由分叉。
+        """
+        remaining_minutes = self.drafts.remaining_minutes('notice')
+        return {
+            'cooldown': True,
+            'remaining_minutes': remaining_minutes,
+            'pending_notice': notice,
+            'message': f'Notice will be updated in {remaining_minutes} minutes',
+        }
+
+    def set_notice(self, notice: str, requester: str = None) -> Dict:
         """安排派对公告变更。
 
         与话题那条纵切同形：**这里只排队，不碰 UI**。真正写 UI 是 `update_notice`
         的事 —— 冷却中的公告要等下一次心跳。返回文案与旧
         `NoticeManager.set_notice_with_cooldown` 的冷却分支逐字一致，因此
         config.yaml 的公告响应模板不需要改。
+
+        Args:
+            notice: 公告文案。
+            requester: 谁提的这条公告。**鉴权不在这里判** —— ACL 由上游的
+                `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
+                记进「公告确实排进队列了」这条行为日志。
         """
         if RoomState.in_guest_room():
             self.logger.info("Skipping notice update in guest room")
@@ -464,19 +528,17 @@ class RoomProfileManager(Singleton):
         self.drafts.set_pending('notice', notice)
 
         if not self.drafts.can_apply_now('notice'):
-            remaining_minutes = self.drafts.remaining_minutes('notice')
+            result = self._notice_cooldown_result(notice)
             self.logger.info(
-                f"Notice update in cooldown, {remaining_minutes} minutes remaining."
+                f"Notice queued by {requester or 'system'} but in cooldown, "
+                f"{result['remaining_minutes']} minutes remaining."
                 f" Notice will be set: {notice}"
             )
-            return {
-                'cooldown': True,
-                'remaining_minutes': remaining_minutes,
-                'pending_notice': notice,
-                'message': f'Notice will be updated in {remaining_minutes} minutes',
-            }
+            return result
 
-        self.logger.info(f'Notice will be updated to {notice} soon')
+        self.logger.info(
+            f'Notice {notice} queued by {requester or "system"}, will be updated soon'
+        )
         return {
             'success': True,
             'notice': notice,
@@ -544,17 +606,12 @@ class RoomProfileManager(Singleton):
 
         if not self.drafts.can_apply_now('notice'):
             self.drafts.set_pending('notice', notice)
-            remaining_minutes = self.drafts.remaining_minutes('notice')
+            result = self._notice_cooldown_result(notice)
             self.logger.info(
-                f"Notice restore in cooldown, {remaining_minutes} minutes remaining."
+                f"Notice restore in cooldown, {result['remaining_minutes']} minutes remaining."
                 f" Notice will be set: {notice}"
             )
-            return {
-                'cooldown': True,
-                'remaining_minutes': remaining_minutes,
-                'pending_notice': notice,
-                'message': f'Notice will be updated in {remaining_minutes} minutes',
-            }
+            return result
 
         self.logger.info(f'Restoring notice to: {notice}')
         result = self._write_notice_in_drawer(notice)
@@ -639,19 +696,6 @@ class RoomProfileManager(Singleton):
         except Exception:
             self.logger.error(f"设置notice时出错: {traceback.format_exc()}")
             return {'error': f'Failed to update notice to {notice}'}
-
-    def _announce_notice(self, notice: str) -> None:
-        """写成功后往公屏发一条，与旧 `NoticeCommand.update` 同一句话。"""
-        try:
-            from ushareiplay.core.message_dispatch import MessageDispatch
-
-            if not MessageDispatch.is_initialized():
-                return
-            MessageDispatch.instance().bind_handler(self.handler).send_screen_message(
-                f'Notice updated to: {notice}'
-            )
-        except Exception as e:
-            self.logger.warning(f'Failed to announce notice update: {e}')
 
     async def set_default_notice(self) -> Dict:
         """开房之后把配置里的默认公告排进去。
@@ -792,20 +836,30 @@ class RoomProfileManager(Singleton):
             self.logger.error(f"Error in _audit_notice_in_open_window: {traceback.format_exc()}")
             return {'error': str(traceback.format_exc())}
 
-    def set_title(self, title: str, theme: Optional[str] = None) -> Dict:
+    def set_title(self, title: str, theme: Optional[str] = None, requester: str = None) -> Dict:
         """安排房间标题变更；`theme` 给了就一起改主题。
 
         与话题/公告两条纵切同形：**这里只排队，不碰 UI**。真正写 UI 是
         `update_title` 的事 —— 冷却中的房名要等下一次心跳。返回文案与既有实现
         逐字一致（config.yaml 的标题响应模板是 `"{title}"`）。主题非法时直接返回
         主题的错误，且不排队标题 —— 与既有实现同一个次序。
+
+        Args:
+            title: 标题文案。
+            theme: 一起改的主题；`None` 表示只改标题。**注意它在 `requester`
+                之前** —— 契约里的 `set_title(title, requester=None)` 是按只改标题
+                那条纵切写的，本方法原本就带一个可选的 `theme`，因此 `requester`
+                排在其后以保持既有调用点不破。传 `theme` 请用关键字。
+            requester: 谁提的这次房名变更。**鉴权不在这里判** —— ACL 由上游的
+                `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
+                记进「房名确实排进队列了」这条行为日志。
         """
         if RoomState.in_guest_room():
             self.logger.info("Skipping set_title in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
         if theme:
-            theme_result = self.set_theme(theme)
+            theme_result = self.set_theme(theme, requester=requester)
             if 'error' in theme_result:
                 return theme_result
 
@@ -814,18 +868,29 @@ class RoomProfileManager(Singleton):
 
         if not self.drafts.can_apply_now('title'):
             remaining_minutes = self.drafts.remaining_minutes('title')
-            self.logger.info(f'Title will be updated to {new_title} in {remaining_minutes} minutes')
+            self.logger.info(
+                f'Title {new_title} queued by {requester or "system"} '
+                f'will be updated in {remaining_minutes} minutes'
+            )
             return {'title': f'{new_title}. Title will update in {remaining_minutes} minutes'}
 
-        self.logger.info(f'Title will be updated to {new_title} soon')
+        self.logger.info(
+            f'Title {new_title} queued by {requester or "system"}, will be updated soon'
+        )
         return {'title': f'{new_title}. Title will update soon'}
 
-    def set_theme(self, theme: str) -> Dict:
+    def set_theme(self, theme: str, requester: str = None) -> Dict:
         """校验并记录一个待生效的主题。
 
         主题不单独占冷却预算：它只是房名草稿的前缀（ADR-0001 的共享冷却）。
         校验规则与既有实现逐字一致，**包括长度判定在 strip 之前**这条既有的怪癖
         —— `set_theme("  听歌  ")` 因为原始长度 6 > 2 而被拒，不在这里「顺手修正」。
+
+        Args:
+            theme: 主题文案，最多两个字符。
+            requester: 谁提的这次主题变更。**鉴权不在这里判** —— ACL 由上游的
+                `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
+                记进「主题确实变了」这条行为日志。
         """
         if RoomState.in_guest_room():
             return {'error': '他人房间模式下不可修改房间主题'}
@@ -843,8 +908,13 @@ class RoomProfileManager(Singleton):
             # 与既有实现同一个次序：主题一变，UI 就得跟着重写整条房名。
             self.current_theme = new_theme
             self.pending_ui_update = True
-            self.logger.info(f'Theme updated from {old_theme} to {new_theme}, pending UI update')
+            self.logger.info(
+                f'Theme updated from {old_theme} to {new_theme} '
+                f'by {requester or "system"}, pending UI update'
+            )
         else:
+            # 主题没变不算「没有触发行为」：`:theme` 是一次用户动作，不是监控轮询，
+            # 用户需要看到自己那条指令被受理了。因此这里保留 INFO。
             self.logger.info(f'Theme unchanged: {new_theme}')
 
         return {
@@ -1119,7 +1189,11 @@ class RoomProfileManager(Singleton):
 
                 driver = self._require_driver()
 
-                if not driver.click_element(TITLE_EDIT_ENTRY_KEY):
+                # 标题编辑入口必须点元素上缘（0.25 高度）而不是中心 —— 那是随主题
+                # 功能一起上线的既有手势（旧 RoomNameManager 的
+                # `gesture_handler.click_element_at(entry, y_ratio=0.25)`），退化成
+                # 中心点击就是一次没人要求过的行为变更。
+                if not driver.click_element_at(TITLE_EDIT_ENTRY_KEY, y_ratio=TITLE_ENTRY_Y_RATIO):
                     return {'error': 'Failed to find edit title entry'}
 
                 room_name = self.compose_room_title(title)
@@ -1357,18 +1431,25 @@ class RoomProfileManager(Singleton):
             return {"skipped": True, "reason": "already_saved"}
 
         try:
+            audit_opened = True
             try:
-                self.audit_and_repair()
+                audit_result = self.audit_and_repair()
+                # audit_and_repair 在「打开就失败」时返回 {'open': ...}，那时抽屉
+                # 从来没被打开过，也就没什么可关的。
+                audit_opened = 'open' not in audit_result
             except Exception as e:
                 self.logger.warning(f"Error in room info audit: {e}")
                 ui_status = self.inspect_current_ui_status(wait=True)
                 if ui_status is not None:
                     self.room_state.recommendation_enabled = ui_status
 
-            self.logger.info(
-                "Closed room info window after reading recommendation status "
-                "and auditing room attributes"
-            )
+            # 只有抽屉真的被打开、并且此刻确实已经关掉，才说「已关窗」。打开失败时
+            # 过去照样打这一句，那是一句假话，还会把真正的打开失败从日志里盖掉。
+            if audit_opened and not self.is_open():
+                self.logger.info(
+                    "Closed room info window after reading recommendation status "
+                    "and auditing room attributes"
+                )
             return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
         except Exception:
             self.logger.error(f"Error in ensure_synced_on_return: {traceback.format_exc()}")
@@ -1397,10 +1478,13 @@ class RoomProfileManager(Singleton):
                     return {'error': f'Failed to find {ROOM_TYPE_OPTION_KEY}'}
 
             current_type_text = self._read_room_type_text_from_ui()
-            self.logger.info(f"Inspected in-room party type: '{current_type_text}'")
+            # 没有行为触发的探测，按日志铁律只留在 DEBUG。这条路径每次回房 /
+            # 建房都会走到（`audit_and_repair` 的第三步），一个 INFO 就是一次刷屏。
+            self.logger.debug(f"Inspected in-room party type: '{current_type_text}'")
 
             if CHAT_PARTY_TYPE_TEXT not in current_type_text:
-                self.logger.info(
+                # 同样只是探测：类型已经对了，这次一个点击都没发生。
+                self.logger.debug(
                     f"Party type already target/different ('{current_type_text}'), no switch needed"
                 )
                 return {'success': True, 'switched': False}
@@ -1525,7 +1609,8 @@ class RoomProfileManager(Singleton):
         """打开窗口，一次性顺序完成四类检查与修正，最后统一关窗。
 
         在所有修正尝试完成之前绝不提前关窗。任何一项修正失败都会标记
-        `pending_audit_retry`，供 `process_pending_retry()` 补救。
+        `pending_audit_retry`，**由 `process_pending_retry()` 补救** —— 那是这条
+        标记唯一的读者；本方法自己不重试。
         """
         if RoomState.in_guest_room():
             return {'skipped': True, 'reason': 'guest_room'}
@@ -1572,9 +1657,15 @@ class RoomProfileManager(Singleton):
     def process_pending_retry(self) -> Dict:
         """补救机制：上次审计有未完成项时，重新打开窗口执行一次全量修正。
 
-        注意：截至本次重构，生产代码里没有任何调用点触发它（原先的「供定时器/
-        循环重试」从未接线）。保留是为了不静默丢掉这套补救语义；接线与否需要
-        单独决定。
+        **预期调用方**：监控循环 / 心跳那一层 —— `audit_and_repair` 把失败项记进
+        `pending_audit_retry`，本方法读它；没有待办就直接跳过，因此循环里每周期
+        调它是安全的（提前返回不打日志）。
+
+        为什么留着：用户故事 #11 承诺的「批量恢复」就落在这里，`audit_and_repair`
+        失败时标记的那一面就是等它来救。接线与否是另一个决定（早先的
+        「定时器/循环自动重试」注释从未接线），但语义本身不能因为暂时没人调就删掉
+        —— 删掉会让 `pending_audit_retry` 变成一个只写不读的状态位，审计失败之后
+        无人补救，而从返回值上完全看不出来。
         """
         if RoomState.in_guest_room():
             return {'skipped': 'guest_room'}

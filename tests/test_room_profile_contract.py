@@ -215,6 +215,69 @@ def test_room_profile_has_no_deferred_manager_to_manager_import():
     )
 
 
+def test_room_profile_has_no_deferred_import_at_all():
+    """#394 收口的字面要求：房间档案模块里**一处**延迟导入都不许留。
+
+    上一条只查 manager → manager 的边，因此 core 层的 `MessageDispatch` 逃过一劫。
+    这里是更强的判据：任何函数体里的 import 都不合法，因为模块边已经理顺到
+    可以顶层导入了。真的出现循环时，`_import_cycle_facts` 那个测试会先炸。
+    """
+    offenders = []
+    for path in _python_sources(PKG / "managers" / "room_profile"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for sub in ast.walk(node):
+                if isinstance(sub, (ast.Import, ast.ImportFrom)):
+                    module = getattr(sub, "module", None) or ""
+                    names = " ".join(alias.name for alias in getattr(sub, "names", []))
+                    offenders.append(
+                        f"{path.relative_to(SRC)}:{sub.lineno}: {f'{module} {names}'.strip()}"
+                    )
+    assert offenders == [], (
+        "房间档案模块里仍留着延迟导入（应提升到模块顶层）：\n" + "\n".join(offenders)
+    )
+
+
+def test_the_deferred_import_removal_is_safe_because_the_import_graph_is_acyclic():
+    """把「为什么敢顶层导入」钉成断言，而不是留在评审记录里。
+
+    做法是问解释器：真导入一遍房间档案之后，`MessageDispatch` 及其传递依赖必须
+    **已经**在 `sys.modules` 里，且它们不反向依赖房间档案。前者证明不需要延迟，
+    后者证明没有循环。
+    """
+    probe = (
+        "import json, sys\n"
+        "import ushareiplay.managers.room_profile.manager\n"
+        "loaded = sorted(m for m in sys.modules if m.startswith('ushareiplay'))\n"
+        "deps = [m for m in loaded if m in (\n"
+        "    'ushareiplay.core.message_dispatch',\n"
+        "    'ushareiplay.managers.user_manager',\n"
+        ")]\n"
+        "print(json.dumps({\n"
+        "    'deps': deps,\n"
+        "    'room_profile_loaded': any(\n"
+        "        m.startswith('ushareiplay.managers.room_profile') for m in loaded\n"
+        "    ),\n"
+        "}))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=str(SRC.parent),
+        check=False,
+    )
+    assert result.returncode == 0, f"导入房间档案失败：\n{result.stderr}"
+
+    facts = json.loads(result.stdout.strip().splitlines()[-1])
+    assert facts["deps"] == [
+        "ushareiplay.core.message_dispatch",
+        "ushareiplay.managers.user_manager",
+    ], f"公屏依赖应当随房间档案一起顶层导入，实际 {facts['deps']}"
+
+
 # --------------------------------------------------------------------------
 # 6. ADR-0009 的受保护单例清单不再点名已删除的类
 # --------------------------------------------------------------------------

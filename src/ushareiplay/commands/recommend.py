@@ -23,7 +23,7 @@ class RecommendCommand(BaseCommand):
             return {'error': 'Failed to switch to Soul app'}
 
         profile = self.room_profile_manager
-        current_status = profile.room_state.recommendation_enabled
+        current_status = profile.recommendation_enabled
 
         if not parameters:
             # Toggle current state (if None or True -> False, if False -> True)

@@ -8,12 +8,15 @@
               └── InMemoryRoomProfileDrawerDriver     测试：内存替身，pytest 离线可跑
 
 端口只声明物理抽屉的原语：探测、点入口打开、点遮罩关闭、返回键，再加编辑
-某个字段时那三步（点一个元素、等任意一个元素、往输入框里写字）。入口 key 的
-候选顺序（`DEFAULT_ENTRY_KEYS`）、`{theme}｜{title}` 不变量、冷却与草稿都不
-属于这里 —— 那些是 `RoomProfileManager` 的决策，抽屉只是被驱动的东西。
-因此新增一种抽屉形态不会让端口变宽；而新增一个字段只会复用这里已有的原语，
-不会再加方法 —— 这三个元素级原语是 #390 为了把话题的点击 ritual 从
-`TopicManager` 搬进来一次性加的，#391-#393 直接复用。
+某个字段时那三步（点一个元素、等任意一个元素、往输入框里写字），以及房名编辑
+入口那种「点元素里的某个高度」的手势。入口 key 的候选顺序（`DEFAULT_ENTRY_KEYS`）、
+`{theme}｜{title}` 不变量、冷却与草稿都不属于这里 —— 那些是 `RoomProfileManager`
+的决策，抽屉只是被驱动的东西。因此新增一种抽屉形态不会让端口变宽；而新增一个
+字段只会复用这里已有的原语，不会再加方法 —— 这三个元素级原语是 #390 为了把话题
+的点击 ritual 从 `TopicManager` 搬进来一次性加的，#391-#393 直接复用。
+`click_element_at` 是唯一的后续增补：它复原的是一个**已上线**的手势（旧房名流程
+的 0.25 高度点击），端口表达不出它就等于在没有任何人要求的情况下改掉了产品行为，
+这比多一个原语更糟。
 """
 
 from abc import ABC, abstractmethod
@@ -68,9 +71,22 @@ class RoomProfileDrawerDriverPort(ABC):
 
     @abstractmethod
     def click_element(self, key: str, *, timeout: int = 10) -> bool:
-        """点一个可点击元素；等不到就返回 False。
+        """点一个可点击元素的**中心**；等不到就返回 False。
 
         抽屉里的编辑入口与确认按钮都走这里，Appium 的定位细节止步于适配器。
+        """
+
+    @abstractmethod
+    def click_element_at(self, key: str, *, y_ratio: float, timeout: int = 10) -> bool:
+        """点元素内某个纵向比例的位置（`y_ratio` 0.0=上缘，1.0=下缘）。
+
+        与 `click_element` 分开而不是合成一个可选参数，因为「点中心」与
+        「点 0.25 高度」是**两种不同的物理手势**，调用点必须一眼看出自己点的是
+        哪一个 —— 合成一个参数等于让每个调用点自己判断「我是不是想点中心」。
+
+        房名编辑入口（`title_edit_entry`）就是靠它复原随主题功能一起上线的
+        0.25 高度点击（原先是 `gesture_handler.click_element_at(entry, y_ratio=0.25)`）。
+        点不到元素、或者这一次坐标手势失败，都必须返回 False。
         """
 
     @abstractmethod

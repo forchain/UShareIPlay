@@ -78,16 +78,16 @@ class ProfileDraftStore:
         return self._write(field).pending
 
     def set_pending(self, field: str, value: Any) -> None:
-        """排队一条草稿；`None` 表示清空。"""
+        """排队一条草稿；`None` 表示清空。
+
+        这是**唯一**的排队入口：原先还有一个纯转发的 `submit()`，两条同义路径
+        只会让人猜哪条才是被推荐的那条。
+        """
         write = self._write(field)
         if value is None:
             write.clear()
         else:
             write.submit(value)
-
-    def submit(self, field: str, value: Any) -> None:
-        """记录待写入值。不做冷却判断 —— 那是 `can_apply_now()` 的事。"""
-        self.set_pending(field, value)
 
     def has_pending(self, field: str) -> bool:
         return self._write(field).has_pending
@@ -135,14 +135,10 @@ class ProfileDraftStore:
     def set_pending_theme(self, theme: Optional[str]) -> None:
         self._pending_theme = theme
 
-    def compose_room_title(self, title: Optional[str] = None) -> str:
-        """把草稿合成房间名 `{theme}｜{title}`（ADR-0001 不变量）。
-
-        Args:
-            title: 覆盖待写入标题。缺省用 `pending('title')`。
-        """
-        resolved = self.pending('title') if title is None else title
-        return f"{self._pending_theme}｜{resolved or ''}"
+    # 房名合成**不在本模块**：`{theme}｜{title}` 有一个「排队主题为空时用当前
+    # 主题兜底」的判定，那需要 manager 持有的 `current_theme`，本模块看不见。
+    # 这里曾经有一份忽略该判定的副本，会拼出 `None｜标题`；零调用点，且迟早有人
+    # 调用错的那一份，因此已删除。唯一一份在 `RoomProfileManager.compose_room_title`。
 
     def parse_room_title(self, room_title_text: str):
         """从 UI 读到的房间名里拆出 `(主题, 标题)`；没有分隔符则 None。

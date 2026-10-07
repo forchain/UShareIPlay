@@ -1,10 +1,14 @@
 """生产适配器：把 `SoulHandler` 的 Appium 细节包成抽屉端口。
 
-这里的每一步都是抽屉 ritual 原有的那一行 —— 本文件只搬家，不改判定：
-入口点击仍是 `ui_actions.switch_and_click`，正规关窗仍是
-`RecoveryManager.close_drawer('slide_drawer')`，保底仍是 `key_actions.press_back`。
+这里的每一步都是抽屉 ritual 原有的那一行 —— 入口点击仍是 `ui_actions.switch_and_click`，
+正规关窗仍是 `RecoveryManager.close_drawer('slide_drawer')`，保底仍是 `key_actions.press_back`。
 编辑字段用到的三个元素级原语则逐字对应原 `TopicManager._update_topic_ui` 里的
 `wait_for_element_clickable` / `wait_for_any_element` / `clear()+send_keys()`。
+
+唯一的例外是房名编辑入口：它走 `click_element_at` 落到
+`gesture_handler.click_element_at(element, y_ratio=0.25)`，与旧 `RoomNameManager`
+逐字一致 —— 点在元素上缘而不是中心。那是随主题功能一起上线的既有手势，端口
+第一次成形时没有坐标原语，于是被悄悄退化成了中心点击；这里把它复原。
 """
 
 from typing import Optional, Sequence
@@ -61,6 +65,16 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         # 点击误判成「元素没找到」。点得到就报告成功。
         element.click()
         return True
+
+    def click_element_at(self, key: str, *, y_ratio: float, timeout: int = 10) -> bool:
+        """点元素内某个纵向比例的位置（房名编辑入口的 0.25 高度点击）。"""
+        handler = self._require_handler()
+        element = handler.element_finder.wait_for_element_clickable(key, timeout=timeout)
+        if not element:
+            return False
+        # 坐标手势自己会回 False（手势都失败且回落也失败），这一次失败必须如实
+        # 上报：把它当成点成功，调用方就会把一次空点记成「房名已写」。
+        return bool(handler.gesture_handler.click_element_at(element, y_ratio=y_ratio))
 
     def wait_for_any(self, keys, *, timeout: int = 10) -> Optional[str]:
         key, _element = self._require_handler().element_finder.wait_for_any_element(

@@ -48,7 +48,8 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         close_attempts: 点遮罩的次数。
         back_presses: 返回键的次数。
         is_open_calls: 状态探测的次数。
-        clicks: 点过的 key，按顺序。
+        clicks: 点过的 key，按顺序（坐标点击也算一次点击）。
+        coordinate_clicks: `(key, y_ratio)` 序列，按顺序，只含坐标点击。
         typed: `(key, 文本)` 序列，按顺序。
         waits: `wait_for_any` 查过的 key 元组，按顺序。
     """
@@ -78,6 +79,7 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self.back_presses = 0
         self.is_open_calls = 0
         self.clicks = []
+        self.coordinate_clicks = []
         self.typed = []
         self.waits = []
 
@@ -113,6 +115,18 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
             return False
         self.clicks.append(key)
         self._record(f"element:click:{key}")
+        if key in self.world_after_click:
+            self.present = set(self.world_after_click[key])
+        return True
+
+    def click_element_at(self, key: str, *, y_ratio: float, timeout: int = 10) -> bool:
+        """坐标点击。语义与 `click_element` 完全一致，另外把比例记进
+        `coordinate_clicks`，好断言「房名编辑入口点的是 0.25 高度而不是中心」。"""
+        if key not in self.present:
+            return False
+        self.coordinate_clicks.append((key, y_ratio))
+        self.clicks.append(key)
+        self._record(f"element:click-at:{key}:{y_ratio}")
         if key in self.world_after_click:
             self.present = set(self.world_after_click[key])
         return True
