@@ -108,6 +108,18 @@ class _DriverSeatPanel:
     def __init__(self, driver: SeatPanelDriver):
         self.driver = driver
 
+    # 旧 seat_ui 契约里 handler 是可写的，`SeatObservationManager.bind_handler`
+    # 换手时会写 `seat_ui.handler`（ADR-0009 第 5 条：同步观测器及其 UI 委派）。
+    # 驱动上的 logger 是构造期快照，委派不把换手透传下去就等于让它一直往旧
+    # handler 的 logger 上写。
+    @property
+    def handler(self):
+        return self.driver.handler
+
+    @handler.setter
+    def handler(self, value):
+        self.driver.handler = value
+
     def check_seats_state(self) -> bool:
         return self.driver.is_expanded()
 

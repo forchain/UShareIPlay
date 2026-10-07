@@ -442,10 +442,6 @@ class AppController(Singleton):
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
-            from ushareiplay.managers.seat_manager.seat_ui import SeatUIManager
-            from ushareiplay.managers.seat_manager.seat_check import SeatCheckManager
-            from ushareiplay.managers.seat_manager.reservation import ReservationManager
-            from ushareiplay.managers.seat_manager.seating import SeatingManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
@@ -461,19 +457,9 @@ class AppController(Singleton):
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            self.seat_ui_manager = SeatUIManager.initialize(self.soul_handler)
-            self.seat_check_manager = SeatCheckManager.initialize(self.soul_handler, self.seat_ui_manager)
-            self.reservation_manager = ReservationManager.initialize(
-                self.soul_handler, self.seat_ui_manager, self.seat_check_manager
-            )
-            self.seating_manager = SeatingManager.initialize(self.soul_handler, self.seat_ui_manager)
-            self.seat_manager = SeatManager.initialize(
-                self.soul_handler,
-                seat_ui=self.seat_ui_manager,
-                seat_check=self.seat_check_manager,
-                reservation=self.reservation_manager,
-                seating=self.seating_manager,
-            )
+            # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
+            # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
+            self.seat_manager = SeatManager.initialize(self.soul_handler)
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
@@ -511,7 +497,13 @@ class AppController(Singleton):
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
-            self.seat_observation_manager = SeatObservationManager.initialize(self.soul_handler, seat_ui=self.seat_ui_manager)
+            # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
+            # 旧 seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现，
+            # 不再依赖独立的 SeatUIManager。传 panel_driver 不行 —— 驱动上是
+            # collapse()，观测器要的是旧契约的 collapse_seats()。
+            self.seat_observation_manager = SeatObservationManager.initialize(
+                self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
+            )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
