@@ -100,32 +100,27 @@ class _Handler:
 
 
 def _stub_sync_partners(monkeypatch, journal):
-    """把审计里的四个协作方换成会记账的替身，好断言批处理顺序。"""
-    from ushareiplay.managers.party_manager import PartyManager
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
-
-    def _install(cls, **attrs):
-        monkeypatch.setattr(cls, "_instance", SimpleNamespace(**attrs), raising=False)
-        monkeypatch.setattr(cls, "_singleton_initialized", True, raising=False)
+    """把审计里的四个字段换成会记账的替身，好断言批处理顺序。"""
+    from ushareiplay.state.room_state import RoomState
 
     def _record(key, result):
         journal.append(f"sync:{key}")
         return result
 
-    _install(
-        RecommendationManager,
-        inspect_current_ui_status=lambda wait=False: _record(
-            "recommendation", True
-        ) and True,
-        room_state=SimpleNamespace(recommendation_enabled=None),
+    # 四个字段现在全是本模块自己的字段（推荐分发与派对类型 #393、房名 #392、
+    # 公告 #391），核对发生在同一次抽屉会话里，因此直接替换这四个方法，
+    # 而不是别的 manager 的单例。
+    RoomState.initialize()
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "inspect_current_ui_status",
+        lambda self, wait=False: _record("recommendation", True) and True,
     )
-    _install(
-        PartyManager,
-        handler=object(),
-        sync_and_correct_room_type_if_dialog_open=lambda: _record("room_type", {'success': True}),
+    monkeypatch.setattr(
+        RoomProfileManager,
+        "sync_and_correct_room_type_if_dialog_open",
+        lambda self: _record("room_type", {'success': True}),
     )
-    # 房名（#392）与公告（#391）现在都是本模块自己的字段，核对发生在同一次
-    # 抽屉会话里，因此直接替换那两个内部方法，而不是另一个 manager 的单例。
     monkeypatch.setattr(
         RoomProfileManager,
         "initialize_from_ui",
@@ -523,53 +518,13 @@ def test_room_info_window_survives_before_the_profile_manager_is_registered():
 # --------------------------------------------------------------------------
 # 推荐分发：开关不进草稿库
 # --------------------------------------------------------------------------
+#
+# 推荐分发这一条在 #393 迁入本模块后，完整的行为测试在
+# `tests/test_room_profile_recommendation.py`（端口原语、批处理、命令层），
+# 这里不再重复 —— 旧的两条用例考的是「委托给 RecommendationManager」这条
+# 已经消失的接线。
 
 
-def test_set_recommendation_owns_the_drawer_session_and_leaves_no_draft_behind(monkeypatch):
-    journal = []
-    driver = InMemoryRoomProfileDrawerDriver(journal=journal)
-    profile = _profile(driver, handler=_Handler())
-
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
-
-    clicked = []
-    monkeypatch.setattr(
-        RecommendationManager,
-        "_instance",
-        SimpleNamespace(
-            update_recommendation_ui=lambda enabled: clicked.append(enabled) or {"success": True}
-        ),
-        raising=False,
-    )
-    monkeypatch.setattr(RecommendationManager, "_singleton_initialized", True, raising=False)
-
-    assert profile.set_recommendation(True) == {"success": True}
-
-    # 开一次窗、收一次选项层；抽屉随即确认关好，不再多按返回。
-    assert journal == ["drawer:open:chat_room_title", "drawer:back"]
-    assert driver.back_presses == 1
-    assert clicked == [True]
-    # 推荐分发没有冷却：草稿库里不该多出任何待写入值。
-    assert [profile.drafts.pending(f) for f in profile.drafts.fields()] == [None, None, None]
-    assert driver.is_open() is False
-
-
-def test_set_recommendation_reports_the_open_failure_without_touching_the_options(monkeypatch):
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
-    driver = InMemoryRoomProfileDrawerDriver(fail_for=("chat_room_title", "room_topic"))
-    profile = _profile(driver, handler=_Handler())
-
-    clicked = []
-    monkeypatch.setattr(
-        RecommendationManager,
-        "_instance",
-        SimpleNamespace(update_recommendation_ui=lambda enabled: clicked.append(enabled)),
-        raising=False,
-    )
-    monkeypatch.setattr(RecommendationManager, "_singleton_initialized", True, raising=False)
-
-    assert "error" in profile.set_recommendation(False)
-    assert clicked == [], "开不了窗就不该去点选项"
 
 
 # --------------------------------------------------------------------------

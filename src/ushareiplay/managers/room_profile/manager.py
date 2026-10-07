@@ -76,6 +76,21 @@ TITLE_SETTLE_SECONDS = 1.0
 DEFAULT_THEME_FALLBACK = '听歌'
 DEFAULT_TITLE_FALLBACK = '听歌'
 
+#: 抽屉里「推荐分发」那一行，以及点开之后二级列表里的两个目标选项。
+RECOMMENDATION_STATUS_KEY = 'party_recommendation_status'
+RECOMMENDATION_OPTION_KEYS = {
+    True: 'party_recommendation_open',
+    False: 'party_recommendation_close',
+}
+#: 那一行显示的文案 -> 布尔状态。判定顺序与既有实现一致（先认"所有人"）。
+RECOMMENDATION_OPEN_TEXT = '所有人'
+RECOMMENDATION_CLOSED_TEXT = '关闭推荐分发'
+#: 抽屉里「派对类型」那一行；被纠正的源类型文案。
+ROOM_TYPE_OPTION_KEY = 'party_room_type_option'
+CHAT_PARTY_TYPE_TEXT = '闲聊唠嗑'
+#: 二级弹窗里的目标类型 key 来自 config（沿用既有配置项，不新造）。
+DEFAULT_TARGET_PARTY_TYPE_KEY = 'party_type_singing'
+
 
 class RoomProfileManager(Singleton):
     """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。"""
@@ -264,9 +279,13 @@ class RoomProfileManager(Singleton):
     # ------------------------------------------------------------------
     #
     # 话题（#390）、公告（#391）、房名（#392）三条都已经是完整纵切：`set_xxx`
-    # 排队、`update_xxx` 在冷却到期后经端口写 UI。推荐分发那条不走草稿库（它是
-    # 一次性开关），点选项的真实 Appium 逻辑仍在 `RecommendationManager` 里，
-    # #393 把它迁过来。
+    # 排队、`update_xxx` 在冷却到期后经端口写 UI。推荐分发**不走**草稿库 ——
+    # 它是一个没有预算的一次性开关，`set_recommendation` 当场就写（#393）。
+
+    @property
+    def room_state(self):
+        """推荐分发与派对类型在 `RoomState` 里的真实状态记录。"""
+        return RoomState.instance()
 
     def get_topic_status(self) -> Dict:
         """`:topic` 无参数那一支的状态面。
@@ -1232,29 +1251,222 @@ class RoomProfileManager(Singleton):
         finally:
             self._clear_notice_restore()
 
+    # ------------------------------------------------------------------
+    # 推荐分发：一个没有预算的一次性开关（#393）
+    # ------------------------------------------------------------------
+    #
+    # 与话题/公告/房名三条纵切**形状不同**：那三条是「排队 -> 等预算 -> 写」，
+    # 推荐分发当场就写 —— 既有实现从来没有冷却，`:recommend` 的语义就是
+    # 「我现在就要开/关」。因此这里没有草稿、没有 PendingWrite、没有延迟。
+
     def set_recommendation(self, enabled: bool) -> Dict:
-        """在抽屉里切换推荐分发。
+        """在抽屉里切换推荐分发，当场生效。
 
         抽屉的打开与关闭由本方法独占（原先 `commands/recommend.py` 自己开窗、
-        自己 `close_with_back`，是第五份打开副本）。推荐分发没有冷却，是一次
-        开关，因此不走草稿库；点选项的真实 Appium 逻辑仍在
-        `RecommendationManager` 里，#393 把它迁进来。
+        自己 `close_with_back`，是第五份打开副本）。**没有冷却**：重复下发与
+        第一次下发等价，`:recommend` 的回复因此立刻就能给出去。
+
+        `error_message` 原样传 `Failed to find room title`：这条文案原先由
+        `commands/recommend.py` 传进 `ensure_open`，再经 config.yaml 的
+        `设置派对推荐失败: {error}` 模板进用户的聊天窗口。一个字都不改。
 
         选项层盖在抽屉之上，所以先 `close_with_back()` 收掉选项层，退出上下文
         时再由 `ensure_closed()` 统一确认抽屉已经关好。
         """
-        with self.with_window_open() as open_error:
+        with self.with_window_open(error_message='Failed to find room title') as open_error:
             if open_error:
                 return open_error
 
-            # 懒加载：避免与 RecommendationManager 的循环依赖（RecommendationManager 依赖房间信息抽屉）
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
-            if not RecommendationManager.is_initialized():
-                return {'skipped': True, 'reason': 'not_initialized'}
-
-            result = RecommendationManager.instance().update_recommendation_ui(enabled)
+            result = self.update_recommendation_ui(enabled)
             self.close_with_back()
             return result
+
+    def inspect_current_ui_status(self, wait: bool = False) -> Optional[bool]:
+        """读一次抽屉里推荐分发那一行的真实状态。
+
+        Args:
+            wait: 是否等状态字段渲染出来。只有「窗口刚被自己打开、紧接着就要
+                一次性改完所有字段」的全量审计才等；被动路径沿用非阻塞读 ——
+                布局里没有该字段时，等待会白等满整个超时。
+
+        Returns:
+            True = 显示「所有人」（开放），False = 显示「关闭推荐分发」，
+            None = 没定位到元素或不认识这段文案。
+        """
+        try:
+            text = self._read_drawer_row_text(RECOMMENDATION_STATUS_KEY, wait=wait)
+            if not text:
+                return None
+            if RECOMMENDATION_OPEN_TEXT in text:
+                return True
+            if RECOMMENDATION_CLOSED_TEXT in text:
+                return False
+            return None
+        except Exception:
+            self.logger.error(
+                f"Error inspecting recommendation UI status: {traceback.format_exc()}"
+            )
+            return None
+
+    def update_recommendation_ui(self, target_state: bool) -> Dict:
+        """抽屉已开着时把推荐分发切到目标状态。
+
+        整段复用端口已有的原语（等任意元素 / 点元素），没有为推荐分发增加任何
+        新原语，也没有在端口之外直接抓 Appium 元素。
+        """
+        if RoomState.in_guest_room():
+            return {"error": "他人房间模式下不可修改推荐状态"}
+
+        try:
+            current_status = self.inspect_current_ui_status()
+            if current_status == target_state:
+                self.room_state.recommendation_enabled = target_state
+                self.logger.info(
+                    f"Recommendation status is already target state ({target_state})"
+                )
+                return {"success": True, "recommendation_enabled": target_state}
+
+            driver = self._require_driver()
+            if not driver.click_element(RECOMMENDATION_STATUS_KEY):
+                return {"error": "Failed to find recommendation status entry"}
+            self.logger.info("Clicked recommendation status entry")
+
+            opt_key = RECOMMENDATION_OPTION_KEYS[target_state]
+            if not driver.click_element(opt_key):
+                return {"error": f"Failed to find option for recommendation ({opt_key})"}
+            self.logger.info(f"Clicked recommendation option ({opt_key})")
+
+            self.room_state.recommendation_enabled = target_state
+            return {"success": True, "recommendation_enabled": target_state}
+        except Exception:
+            self.logger.error(f"Error updating recommendation UI: {traceback.format_exc()}")
+            return {"error": "Error updating recommendation UI"}
+
+    def ensure_synced_on_return(self) -> Dict:
+        """回到/恢复房间或建房之后调用：状态未知就把整份房间档案核对一遍。
+
+        窗口的打开/关闭与窗口内各类字段的审计顺序归本模块所有；本方法只负责
+        「要不要做」的决策 —— 已经有记录就不开窗，免得每次回房都白开一次抽屉。
+        """
+        if RoomState.in_guest_room():
+            return {"skipped": True, "reason": "guest_room"}
+
+        if self.room_state.recommendation_enabled is not None:
+            return {"skipped": True, "reason": "already_saved"}
+
+        try:
+            try:
+                self.audit_and_repair()
+            except Exception as e:
+                self.logger.warning(f"Error in room info audit: {e}")
+                ui_status = self.inspect_current_ui_status(wait=True)
+                if ui_status is not None:
+                    self.room_state.recommendation_enabled = ui_status
+
+            self.logger.info(
+                "Closed room info window after reading recommendation status "
+                "and auditing room attributes"
+            )
+            return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
+        except Exception:
+            self.logger.error(f"Error in ensure_synced_on_return: {traceback.format_exc()}")
+            return {"error": "Error during active recommendation sync"}
+
+    # ------------------------------------------------------------------
+    # 派对类型：抽屉里的第三行（#393）
+    # ------------------------------------------------------------------
+
+    def check_and_correct_room_type(self, auto_close: bool = True) -> Dict:
+        """检查并校正派对类型（"闲聊唠嗑" -> "唱歌听歌"）。
+
+        Args:
+            auto_close: 完成后是否关掉抽屉（默认 True）。被动纠偏传 False ——
+                抽屉是外层（全量审计 / 房名写入）开的，外层决定何时关。
+        """
+        try:
+            if not self.is_open():
+                open_error = self.ensure_open(error_message='Failed to find room topic entry')
+                if open_error:
+                    return open_error
+                if self._require_driver().wait_for_any([ROOM_TYPE_OPTION_KEY]) is None:
+                    self.logger.warning(
+                        f"未找到房间类型选项 ({ROOM_TYPE_OPTION_KEY})"
+                    )
+                    return {'error': f'Failed to find {ROOM_TYPE_OPTION_KEY}'}
+
+            current_type_text = self._read_room_type_text_from_ui()
+            self.logger.info(f"Inspected in-room party type: '{current_type_text}'")
+
+            if CHAT_PARTY_TYPE_TEXT not in current_type_text:
+                self.logger.info(
+                    f"Party type already target/different ('{current_type_text}'), no switch needed"
+                )
+                return {'success': True, 'switched': False}
+
+            self.logger.info(
+                f"Party type is '{CHAT_PARTY_TYPE_TEXT}', attempting to switch to '唱歌听歌'"
+            )
+            driver = self._require_driver()
+            driver.click_element(ROOM_TYPE_OPTION_KEY)
+
+            target_type_key = self._target_party_type_key()
+            if not driver.click_element(target_type_key):
+                self.logger.warning(f"未找到目标房间类型按钮 ({target_type_key})")
+                return {'error': f'Failed to find target party type button ({target_type_key})'}
+
+            self.logger.info(f"Successfully clicked target party type ({target_type_key})")
+            return {'success': True, 'switched': True}
+        except Exception as e:
+            self.logger.error(f"Error checking/correcting room type: {traceback.format_exc()}")
+            return {'error': str(e)}
+        finally:
+            if auto_close:
+                self.ensure_closed()
+
+    def sync_and_correct_room_type_if_dialog_open(self) -> Dict:
+        """被动纠偏：抽屉已经开着时才纠正派对类型。
+
+        绝不自己开窗 —— 窗口是外层（全量审计 / 房名写入）开的，外层决定何时关。
+        原先这段逻辑住在 `PartyManager` 里，靠一条延迟 import 才能被全量审计
+        调到；现在它是本模块的字段，与推荐分发读的是同一次抽屉会话。
+        """
+        if not self.is_open():
+            return {'skipped': True, 'reason': 'dialog_not_open'}
+        return self.check_and_correct_room_type(auto_close=False)
+
+    def _target_party_type_key(self) -> str:
+        """二级弹窗里目标类型的 selector key（既有配置项，不新造）。"""
+        config = getattr(self.handler, 'config', None) or {}
+        return config.get('target_party_type_element', DEFAULT_TARGET_PARTY_TYPE_KEY)
+
+    def _read_room_type_text_from_ui(self) -> str:
+        """读一次抽屉里当前派对类型的文案。
+
+        与推荐分发那条纵切同形：端口只建模物理动作，「读一行显示什么」是**判定**，
+        因此直接问 handler 的 element_finder。
+        """
+        return self._read_drawer_row_text(ROOM_TYPE_OPTION_KEY)
+
+    def _read_drawer_row_text(self, key: str, wait: bool = False) -> str:
+        """读一次抽屉里某一行显示的文案；读不到就是空串。
+
+        抽屉端口只建模物理动作（探测 / 点 / 等 / 写），不承载「读文本」；推荐分发
+        与派对类型的判定都只靠这一次读，因此这里仍然直接问 handler 的
+        element_finder —— 与公告、房名两条判定读同一个形状。
+        """
+        finder = getattr(self.handler, 'element_finder', None)
+        if finder is None:
+            return ""
+        try:
+            if wait:
+                element = finder.wait_for_element(key)
+            else:
+                element = finder.try_find_element(key, log=False)
+            if not element:
+                return ""
+            return (finder.get_element_text(element) or "").strip()
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------
     # 窗口内的顺序：先纠偏，再编辑
@@ -1268,23 +1480,17 @@ class RoomProfileManager(Singleton):
                 一次性改完所有字段」的全量审计才等；标题更新等被动路径沿用
                 原来的非阻塞读 —— 布局里没有该字段时，等待会白等满整个超时。
         """
-        # 懒加载：避免与 RecommendationManager 的循环依赖（RecommendationManager 依赖房间信息抽屉）
-        from ushareiplay.managers.recommendation_manager import RecommendationManager
-        if not RecommendationManager.is_initialized():
-            return {'skipped': True, 'reason': 'not_initialized'}
-        rec_mgr = RecommendationManager.instance()
-        ui_status = rec_mgr.inspect_current_ui_status(wait=wait)
-        if ui_status is not None:
-            rec_mgr.room_state.recommendation_enabled = ui_status
+        ui_status = self.inspect_current_ui_status(wait=wait)
+        if ui_status is not None and RoomState.is_initialized():
+            self.room_state.recommendation_enabled = ui_status
         return {'success': True, 'status': ui_status}
 
     def _sync_room_type(self) -> Dict:
-        """派对类型检查与修正（"闲聊唠嗑" -> "唱歌听歌"）。"""
-        # 懒加载：避免与 PartyManager 的循环依赖（PartyManager 依赖房间信息抽屉）
-        from ushareiplay.managers.party_manager import PartyManager
-        if not PartyManager.is_initialized() or getattr(PartyManager.instance(), 'handler', None) is None:
-            return {'skipped': True, 'reason': 'not_initialized'}
-        return PartyManager.instance().sync_and_correct_room_type_if_dialog_open()
+        """派对类型检查与修正（"闲聊唠嗑" -> "唱歌听歌"）。
+
+        同一个抽屉会话里的第二步，与推荐分发一起构成「先纠偏再编辑」的顺序。
+        """
+        return self.sync_and_correct_room_type_if_dialog_open()
 
     def sync_while_open(self, wait: bool = False) -> Dict:
         """窗口已打开时的「先纠偏再编辑」顺序。

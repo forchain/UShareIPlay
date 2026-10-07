@@ -349,14 +349,13 @@ async def test_guest_room_blocks_notice_updates():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_recommendation_sync():
-    from ushareiplay.managers.recommendation_manager import RecommendationManager
+    from ushareiplay.managers.room_profile import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RecommendationManager.reset_instance()
-    rm = RecommendationManager.initialize()
-    rm._handler = HandlerStub(config={})
+    RoomProfileManager.reset_instance()
+    rm = RoomProfileManager.initialize(handler=HandlerStub(config={}))
     rm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
     try:
@@ -367,7 +366,7 @@ async def test_guest_room_blocks_recommendation_sync():
         res = rm.update_recommendation_ui(True)
         assert "error" in res
     finally:
-        RecommendationManager.reset_instance()
+        RoomProfileManager.reset_instance()
 
 
 @pytest.mark.asyncio

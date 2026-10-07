@@ -3,8 +3,7 @@ from types import SimpleNamespace
 
 from ushareiplay.state.room_state import RoomState
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.recommendation_manager import RecommendationManager
-from ushareiplay.managers.room_info_window import RoomInfoWindow
+from ushareiplay.managers.room_profile import RoomProfileManager
 
 
 class _Logger:
@@ -67,26 +66,28 @@ class _RecFinder:
 
 @pytest.fixture
 def create_sync_setup(monkeypatch, tmp_path):
-    """RoomState + RecommendationManager + RoomInfoWindow + PartyManager,
-    mirroring the production composition (window module initialized)."""
+    """RoomState + RoomProfileManager + PartyManager, mirroring the production
+    composition.
+
+    `_RecFinder` 只认推荐分发那一行、**认不出任何抽屉标记**：这正是本文件要考
+    的场景 —— 抽屉开不起来，刷新必须退回「直接读一次 UI」那条兜底路径。
+    """
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RecommendationManager, RoomInfoWindow, PartyManager):
+    for cls in (RoomState, RoomProfileManager, PartyManager):
         cls.reset_instance()
 
     room_state = RoomState.initialize()
     room_state._logger = _Logger()
 
-    rec_manager = RecommendationManager.initialize()
-    rec_manager._logger = _Logger()
-
-    window = RoomInfoWindow.initialize()
-    window._handler = SimpleNamespace(
+    profile = RoomProfileManager.initialize()
+    profile._handler = SimpleNamespace(
         logger=_Logger(),
-        element_finder=_PartyFinder(),  # no dialog marker is ever visible
+        element_finder=_RecFinder(),  # no dialog marker is ever visible
+        config={},
         key_actions=SimpleNamespace(press_back=lambda: None),
         ui_actions=SimpleNamespace(switch_and_click=lambda key, **kwargs: {"success": True}),
     )
-    window._logger = _Logger()
+    profile._logger = _Logger()
 
     calls = {"notice": 0, "seat": 0}
 
@@ -113,23 +114,15 @@ def create_sync_setup(monkeypatch, tmp_path):
     party_manager._handler = party_handler
     party_manager._logger = _Logger()
 
-    rec_manager._handler = SimpleNamespace(
-        element_finder=_RecFinder(),
-        ui_actions=SimpleNamespace(
-            switch_and_click=lambda key, **kwargs: {"success": True}
-        ),
-        key_actions=SimpleNamespace(press_back=lambda: None),
-    )
-
-    return party_manager, room_state, rec_manager, calls
+    return party_manager, room_state, profile, calls
 
 
 async def test_after_party_created_refreshes_stale_closed_record_from_ui(create_sync_setup):
     """房间重启后实际为"所有人"（开放），但记录残留"关闭"：创建房间时须按真实 UI 更新。"""
-    party_manager, room_state, rec_manager, calls = create_sync_setup
+    party_manager, room_state, profile, calls = create_sync_setup
 
     room_state.recommendation_enabled = False  # stale record from before the restart
-    rec_manager._handler.element_finder.status_element = _Element(text="所有人")
+    profile._handler.element_finder.status_element = _Element(text="所有人")
 
     await party_manager._after_party_created()
 
@@ -141,10 +134,10 @@ async def test_after_party_created_refreshes_stale_closed_record_from_ui(create_
 
 async def test_after_party_created_overwrites_assumed_open_record_from_ui(create_sync_setup):
     """配置假设新房间默认开放，但真实 UI 为"关闭推荐分发"时，创建后记录应为关闭。"""
-    party_manager, room_state, rec_manager, calls = create_sync_setup
+    party_manager, room_state, profile, calls = create_sync_setup
 
     room_state.recommendation_enabled = True  # blind assumption from create_party_recommendation=true
-    rec_manager._handler.element_finder.status_element = _Element(text="关闭推荐分发")
+    profile._handler.element_finder.status_element = _Element(text="关闭推荐分发")
 
     await party_manager._after_party_created()
 
@@ -154,10 +147,10 @@ async def test_after_party_created_overwrites_assumed_open_record_from_ui(create
 
 async def test_after_party_created_leaves_record_unsynced_when_ui_unreadable(create_sync_setup):
     """刷新失败时不得保留旧假设值：置为 None 让 info/回房时重新同步。"""
-    party_manager, room_state, rec_manager, calls = create_sync_setup
+    party_manager, room_state, profile, calls = create_sync_setup
 
     room_state.recommendation_enabled = False  # stale/assumed record
-    rec_manager._handler.element_finder.status_element = None  # UI read fails
+    profile._handler.element_finder.status_element = None  # UI read fails
 
     await party_manager._after_party_created()
 

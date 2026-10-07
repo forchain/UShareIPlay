@@ -448,7 +448,6 @@ class AppController(Singleton):
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.managers.sleep_manager import SleepManager
-            from ushareiplay.managers.recommendation_manager import RecommendationManager
             from ushareiplay.managers.room_profile import RoomProfileManager
             from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
@@ -499,9 +498,9 @@ class AppController(Singleton):
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
             PlaylistAdoption.initialize()
-            RecommendationManager.initialize(self.soul_handler)
             RoomInfoWindow.initialize(self.soul_handler)
-            # 房间档案的真正所有者。推荐分发那条还没迁过来，#393-#394 逐个下线。
+            # 房间档案的真正所有者：抽屉会话与四类字段（含推荐分发、派对类型）
+            # 全在它这里。剩下的只有过渡门面 RoomInfoWindow，#394 删掉。
             self.room_profile_manager = RoomProfileManager.initialize(
                 self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
             )

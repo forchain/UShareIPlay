@@ -1,117 +1,71 @@
-from types import SimpleNamespace
+"""`:recommend` 命令层的契约（#393）。
+
+行为测试（开关真的落到了抽屉里、回复长什么样）在
+`tests/test_room_profile_recommendation.py`；这里只钉**这一层**的形状：
+它必须是一个纯粹的 `BaseCommand` 子类——一个类、一个 `do_process`、没有工厂、
+没有模块级 `command = None`——并且**没有**自己的 `error_message` 覆写。
+
+`error_message` 这条是有意钉死的：`RecommendCommand` 一直沿用基类的
+`'Failed to process command: {error}'`，config.yaml 的 `:recommend` 模板按这个
+前缀配的。多一层覆写就等于改了用户看得见的报错，所以这里锁住。
+"""
+
+import inspect
+from pathlib import Path
+
 import pytest
 
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.recommendation_manager import RecommendationManager
 from ushareiplay.commands.recommend import RecommendCommand
+from ushareiplay.core.base_command import BaseCommand
+
+COMMANDS_DIR = Path(__file__).resolve().parents[1] / "src" / "ushareiplay" / "commands"
 
 
-class MockElementFinder:
-    def __init__(self, elements=None):
-        self.elements = elements or {}
+def test_recommend_module_is_class_only():
+    """一个模块一个 `BaseCommand` 子类，没有工厂、没有模块级 `command = None`。"""
+    source = (COMMANDS_DIR / "recommend.py").read_text()
 
-    def try_find_element(self, key, log=True):
-        return self.elements.get(key)
-
-    def wait_for_element_clickable(self, key):
-        return self.elements.get(key)
-
-    def get_element_text(self, element):
-        return getattr(element, "text", "")
+    assert "def create_command(" not in source
+    assert "command = None" not in source
 
 
-class MockElement:
-    def __init__(self, text=""):
-        self.text = text
-        self.clicked = False
+def test_recommend_declares_exactly_one_base_command_subclass():
+    subclasses = [
+        obj
+        for obj in vars(RecommendCommand).values()
+        if inspect.isclass(obj) and issubclass(obj, BaseCommand) and obj is not BaseCommand
+    ]
+    assert subclasses == []
+    assert issubclass(RecommendCommand, BaseCommand)
 
-    def click(self):
-        self.clicked = True
+
+def test_recommend_targets_the_soul_handler_and_keeps_the_base_error_message():
+    assert RecommendCommand.handler_attr == "soul_handler"
+    # 有意不覆写：沿用基类模板，用户的报错文案因此不变。
+    assert "error_message" not in vars(RecommendCommand)
 
 
-@pytest.fixture
-def recommend_cmd_setup():
-    for cls in (
-        InfoManager,
-        PlaybackBroadcaster,
-        PlaylistState,
-        PresenceTracker,
-        RoomState,
-        RecommendationManager,
-    ):
-        cls.reset_instance()
-    PlaybackBroadcaster.initialize()
-    PlaylistState.initialize()
-    PresenceTracker.initialize()
-    room_state = RoomState.initialize()
-    room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager = InfoManager.initialize()
-    info_manager._logger = SimpleNamespace(info=lambda _msg: None)
-    rec_manager = RecommendationManager.initialize()
-    rec_manager._logger = SimpleNamespace(info=lambda _msg: None)
+def test_recommend_delegates_the_toggle_instead_of_touching_the_drawer_itself():
+    """命令层不得自己开窗——那是房间档案模块的事（批处理的前提）。"""
+    source = inspect.getsource(RecommendCommand)
 
-    title_elem = MockElement(text="所有人")
-    opt_close = MockElement(text="关闭推荐分发")
-    pressed_back = False
-
-    def press_back():
-        nonlocal pressed_back
-        pressed_back = True
-
-    soul_handler = SimpleNamespace(
-        element_finder=MockElementFinder(
-            elements={
-                "party_recommendation_status": title_elem,
-                "party_recommendation_close": opt_close,
-            }
-        ),
-        ui_actions=SimpleNamespace(switch_and_click=lambda key, **kwargs: {'success': True}),
-        key_actions=SimpleNamespace(switch_to_app=lambda: True, press_back=press_back),
-        logger=SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None),
-    )
-    rec_manager._handler = soul_handler
-
-    # 窗口的打开/关闭归 RoomInfoWindow：同一替身也注入给它
-    from ushareiplay.managers.room_info_window import RoomInfoWindow
-    window = RoomInfoWindow.instance()
-    window._handler = soul_handler
-    window._logger = soul_handler.logger
-
-    cmd = RecommendCommand(
-        SimpleNamespace(soul_handler=soul_handler, music_handler=SimpleNamespace())
-    )
-    return cmd, room_state, title_elem, opt_close
+    assert "ensure_open" not in source
+    assert "close_with_back" not in source
+    assert "element_finder" not in source
+    assert "set_recommendation" in source
 
 
 @pytest.mark.asyncio
-async def test_recommend_command_toggle_from_open_to_closed(recommend_cmd_setup):
-    cmd, room_state, title_elem, opt_close = recommend_cmd_setup
-    room_state.recommendation_enabled = True
+async def test_recommend_reports_the_switch_to_soul_failure_without_touching_the_manager():
+    """连 Soul 都没切过去就不该去碰抽屉。"""
+    handler = type(
+        "_Handler",
+        (),
+        {"key_actions": type("_K", (), {"switch_to_app": staticmethod(lambda: False)})()},
+    )()
+    runtime = type("_R", (), {"soul_handler": handler, "music_handler": None})()
+    cmd = RecommendCommand(runtime)
 
-    result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
-
-    assert "error" not in result
-    assert result.get("status") == "关闭"
-    assert room_state.recommendation_enabled is False
-    assert opt_close.clicked is True
-
-
-@pytest.mark.asyncio
-async def test_recommend_command_explicit_on(recommend_cmd_setup):
-    cmd, room_state, title_elem, opt_close = recommend_cmd_setup
-    room_state.recommendation_enabled = False
-    title_elem.text = "关闭推荐分发"
-
-    opt_open = MockElement(text="所有人")
-    cmd.handler.element_finder.elements["party_recommendation_open"] = opt_open
-
-    result = await cmd.do_process(SimpleNamespace(nickname="Console"), ["on"])
-
-    assert "error" not in result
-    assert result.get("status") == "开放"
-    assert room_state.recommendation_enabled is True
-    assert opt_open.clicked is True
+    assert await cmd.do_process(type("_M", (), {"nickname": "Console"})(), []) == {
+        "error": "Failed to switch to Soul app"
+    }
