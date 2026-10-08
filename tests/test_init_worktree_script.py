@@ -60,6 +60,15 @@ class Sandbox:
         self._build()
 
     # -- plumbing ---------------------------------------------------------
+    def _configure(self, repo: Path) -> None:
+        """Give a sandbox clone the identity and signing policy commits need."""
+        for key, value in (
+            ("user.email", "fixture@example.com"),
+            ("user.name", "Worktree Fixture"),
+            ("commit.gpgsign", "false"),
+        ):
+            self.git("config", key, value, cwd=repo)
+
     def git(self, *args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["git", *args],
@@ -87,12 +96,7 @@ class Sandbox:
         self.git("init", "--bare", "-q", str(self.origin), cwd=self.root)
         self.git("-C", str(self.origin), "symbolic-ref", "HEAD", "refs/heads/main", cwd=self.root)
         self.git("clone", "-q", str(self.origin), str(self.main), cwd=self.root)
-        for key, value in (
-            ("user.email", "fixture@example.com"),
-            ("user.name", "Worktree Fixture"),
-            ("commit.gpgsign", "false"),
-        ):
-            self.git("config", key, value, cwd=self.main)
+        self._configure(self.main)
 
         self.commit(self.main, "shared.txt", "base\n", "base")
         self.git("push", "-q", "-u", "origin", "main", cwd=self.main)
@@ -119,12 +123,7 @@ class Sandbox:
     def advance_main(self, filename: str, content: str, message: str) -> str:
         """Push a new commit to origin/main from a second clone."""
         self.git("clone", "-q", str(self.origin), str(self.other), cwd=self.root)
-        for key, value in (
-            ("user.email", "fixture@example.com"),
-            ("user.name", "Worktree Fixture"),
-            ("commit.gpgsign", "false"),
-        ):
-            self.git("config", key, value, cwd=self.other)
+        self._configure(self.other)
         sha = self.commit(self.other, filename, content, message)
         self.git("push", "-q", "origin", "main", cwd=self.other)
         return sha
@@ -204,6 +203,24 @@ def test_rebase_conflict_aborts_and_leaves_branch_intact(sandbox: Sandbox):
     assert sandbox.out("diff", "--name-only", "--diff-filter=U", cwd=sandbox.feature) == ""
     assert "rebase" not in sandbox.out("status", "--porcelain", cwd=sandbox.feature).lower()
     assert (sandbox.feature / "shared.txt").read_text(encoding="utf-8") == "feature side\n"
+
+
+# (c2) a conflicting path containing a space must print as one intact line
+def test_conflict_output_keeps_paths_with_spaces_intact(sandbox: Sandbox):
+    filename = "my notes.txt"
+    sandbox.commit(sandbox.feature, filename, "feature side\n", "feat: edit spaced file")
+    sandbox.advance_main(filename, "main side\n", "main: conflicting spaced edit")
+
+    result = sandbox.run_script()
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    printed = [line.strip() for line in output.splitlines()]
+    assert any(line.endswith("conflicting files:") for line in printed), output
+    assert filename in printed, output
+    # the unquoted expansion split the path into two entries
+    assert "my" not in printed, output
+    assert "notes.txt" not in printed, output
 
 
 # (d) symlink points at the main repo's config.local.yaml
