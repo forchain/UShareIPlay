@@ -43,7 +43,10 @@ already in place there).
 
 ## Notes
 
-- `run.sh` still copies `config.local.yaml` from a hardcoded `$HOME/github.com/forchain/UShareIPlay`
-  path; this script is the path-independent replacement for that step but does not change `run.sh`.
+- `run.sh` performs the same `config.local.yaml` link on startup, locating the main worktree
+  with the identical `git rev-parse --git-common-dir` technique — so running the bot from a
+  fresh worktree wires the config even if this script was never run. This script remains the
+  one-stop option because it also syncs `main` and rebases the branch.
 - Behavioural coverage lives in `tests/test_init_worktree_script.py`, which runs the real
-  script against throwaway git environments built in `tmp_path`.
+  script against throwaway git environments built in `tmp_path`, and in
+  `tests/test_run_sh_config_link.py` for the `run.sh` linking path.

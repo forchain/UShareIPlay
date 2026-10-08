@@ -45,6 +45,10 @@ there, so it is advanced in place rather than by fetching into it), rebases the 
 onto the new main (aborting safely on conflict), and links the main repo's
 `config.local.yaml`. See `docs/worktree-init.md`.
 
+No path is ever hardcoded: the main worktree is found via `git rev-parse --git-common-dir`.
+`run.sh` links the same `config.local.yaml` on startup, so the bot still gets its per-machine
+overrides in a fresh worktree even without running the script.
+
 ### Running tests
 
 Use pytest via `uv run`:

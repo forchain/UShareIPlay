@@ -84,4 +84,4 @@ llm:
 - **New top-level section**: Add to `config.yaml`, access via `config['section']['key']` wherever the configuration dictionary is passed.
 - **New command override**: Add entry under `commands:` matching the `prefix`; only specify the fields you want to override (e.g. `level: 2`).
 - **Secrets & Credentials**: Always place API keys, private tokens, or room credentials in `config.local.yaml` rather than the committed `config.yaml`.
-- **Sharing it across worktrees**: `scripts/init_worktree.sh` links each worktree's `config.local.yaml` to the main repository's copy, so per-machine overrides are written once. See `docs/worktree-init.md`.
+- **Sharing it across worktrees**: `scripts/init_worktree.sh` links each worktree's `config.local.yaml` to the main repository's copy, so per-machine overrides are written once. `run.sh` performs the same link on startup. See `docs/worktree-init.md`.
