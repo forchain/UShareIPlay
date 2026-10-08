@@ -32,6 +32,14 @@ EOF
 # or: uv run ushareiplay
 ```
 
+### Working in a git worktree
+
+After `git worktree add`, run `./scripts/init_worktree.sh` from inside the new worktree. It
+locates the main worktree, fast-forwards local `main` from `origin/main` (main is checked out
+there, so it is advanced in place rather than by fetching into it), rebases the worktree branch
+onto the new main (aborting safely on conflict), and links the main repo's
+`config.local.yaml`. See `docs/worktree-init.md`.
+
 ### Running tests
 
 Use pytest via `uv run`:
