@@ -185,7 +185,11 @@ else
       CONFLICTS="$(git -C "${WORKTREE_DIR}" diff --name-only --diff-filter=U)"
       if [[ -n "${CONFLICTS}" ]]; then
         err "conflicting files:"
-        printf '  %s\n' "${CONFLICTS}" >&2
+        # One indented line per path: git emits them newline-separated, and
+        # paths may contain spaces, so read them individually.
+        while IFS= read -r conflicted_path; do
+          printf '  %s\n' "${conflicted_path}" >&2
+        done <<< "${CONFLICTS}"
       fi
       err "resolving them manually would lose the script's safe-stop guarantee,"
       err "so the rebase is being aborted and ${CURRENT_BRANCH} is left at $(git -C "${WORKTREE_DIR}" rev-parse --short "${BEFORE_SHA}")"

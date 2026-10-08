@@ -223,6 +223,30 @@ def test_conflict_output_keeps_paths_with_spaces_intact(sandbox: Sandbox):
     assert "notes.txt" not in printed, output
 
 
+# (c3) every conflicting path gets its own indented line, not just the first
+def test_conflict_output_indents_every_path(sandbox: Sandbox):
+    # Both files must conflict inside a single feature commit: git halts the
+    # rebase at the first conflicted commit, so a second commit would never be
+    # reached and only one path would ever be unmerged.
+    for path in ("alpha.txt", "beta.txt"):
+        (sandbox.feature / path).write_text("feature side\n", encoding="utf-8")
+    sandbox.git("add", "alpha.txt", "beta.txt", cwd=sandbox.feature)
+    sandbox.git("commit", "-m", "feat: both files", cwd=sandbox.feature)
+
+    # advance_main clones origin afresh, so only the first push may use it;
+    # the second conflicting change rides on that same second clone.
+    sandbox.advance_main("alpha.txt", "main side\n", "main: conflicting alpha")
+    sandbox.commit(sandbox.other, "beta.txt", "main side\n", "main: conflicting beta")
+    sandbox.git("push", "-q", "origin", "main", cwd=sandbox.other)
+
+    result = sandbox.run_script()
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    indented = [line for line in output.splitlines() if line.startswith("  ")]
+    assert indented == ["  alpha.txt", "  beta.txt"], output
+
+
 # (d) symlink points at the main repo's config.local.yaml
 def test_creates_config_symlink_to_main_repo(sandbox: Sandbox):
     main_cfg = sandbox.main / "config.local.yaml"
