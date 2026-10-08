@@ -82,7 +82,8 @@ async def test_manage_admin_invite_success():
     with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
          patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls:
         mock_user_mgr = MagicMock()
-        mock_user_mgr.open_user_profile_from_online_list.return_value = {"user": "Alice"}
+        # manage_admin 走异步的身份感知入口 open_user_profile（跨命名域按身份判定）
+        mock_user_mgr.open_user_profile = AsyncMock(return_value={"user": "Alice"})
         mock_user_mgr_cls.return_value = mock_user_mgr
 
         mock_rec_mgr = MagicMock()
@@ -113,7 +114,8 @@ async def test_manage_admin_already_admin():
     with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
          patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls:
         mock_user_mgr = MagicMock()
-        mock_user_mgr.open_user_profile_from_online_list.return_value = {"user": "Alice"}
+        # manage_admin 走异步的身份感知入口 open_user_profile（跨命名域按身份判定）
+        mock_user_mgr.open_user_profile = AsyncMock(return_value={"user": "Alice"})
         mock_user_mgr_cls.return_value = mock_user_mgr
 
         mock_rec_mgr = MagicMock()
@@ -150,7 +152,8 @@ async def test_manage_admin_dismiss_success():
     with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
          patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls:
         mock_user_mgr = MagicMock()
-        mock_user_mgr.open_user_profile_from_online_list.return_value = {"user": "Alice"}
+        # manage_admin 走异步的身份感知入口 open_user_profile（跨命名域按身份判定）
+        mock_user_mgr.open_user_profile = AsyncMock(return_value={"user": "Alice"})
         mock_user_mgr_cls.return_value = mock_user_mgr
 
         mock_rec_mgr = MagicMock()
@@ -183,7 +186,8 @@ async def test_manage_admin_not_admin():
     with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
          patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls:
         mock_user_mgr = MagicMock()
-        mock_user_mgr.open_user_profile_from_online_list.return_value = {"user": "Alice"}
+        # manage_admin 走异步的身份感知入口 open_user_profile（跨命名域按身份判定）
+        mock_user_mgr.open_user_profile = AsyncMock(return_value={"user": "Alice"})
         mock_user_mgr_cls.return_value = mock_user_mgr
 
         mock_rec_mgr = MagicMock()

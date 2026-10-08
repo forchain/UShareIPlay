@@ -81,13 +81,14 @@ def _seat_on_mic(nickname, seat_number=10):
     return obs
 
 
-def test_mic_seated_user_is_reported_with_their_seat_not_as_missing():
+@pytest.mark.asyncio
+async def test_mic_seated_user_is_reported_with_their_seat_not_as_missing():
     """在麦用户：报出号位，而不是谎报「在线列表里没有」。"""
     handler, _elem = _handler_with_online_list(["Joyer", "Chainer"])
     manager = UserManager.initialize(handler)
     _seat_on_mic("不约儿童🐏🐏", seat_number=10)
 
-    result = manager.open_user_profile_from_online_list("不约儿童🐏🐏")
+    result = await manager.open_user_profile("不约儿童🐏🐏")
 
     assert result.get("seat") == 10, "必须回报麦位号，用户才能知道该去哪儿找人"
     assert result.get("user") == "不约儿童🐏🐏"
@@ -95,19 +96,21 @@ def test_mic_seated_user_is_reported_with_their_seat_not_as_missing():
     assert "在线列表里没有" not in result["error"]
 
 
-def test_mic_seated_user_never_scrapes_the_online_list():
+@pytest.mark.asyncio
+async def test_mic_seated_user_never_scrapes_the_online_list():
     """在麦的人根本不在在线列表里：为他空滚一遍列表纯属浪费。"""
     handler, _elem = _handler_with_online_list(["Joyer", "Chainer"])
     manager = UserManager.initialize(handler)
     _seat_on_mic("不约儿童🐏🐏", seat_number=10)
 
-    manager.open_user_profile_from_online_list("不约儿童🐏🐏")
+    await manager.open_user_profile("不约儿童🐏🐏")
 
     handler.gesture_handler.scroll_container_until_element.assert_not_called()
     handler.element_finder.wait_for_element.assert_not_called()
 
 
-def test_online_user_lookup_still_uses_online_list_for_non_seated_user():
+@pytest.mark.asyncio
+async def test_online_user_lookup_still_uses_online_list_for_non_seated_user():
     """不在麦的用户仍走在线列表路径（既有行为不得回归）。"""
     handler, user_elem = _handler_with_online_list(["Joyer", "斯德哥尔摩情人"])
     handler.gesture_handler.scroll_container_until_element.return_value = (
@@ -118,26 +121,28 @@ def test_online_user_lookup_still_uses_online_list_for_non_seated_user():
     manager = UserManager.initialize(handler)
     _seat_on_mic("不约儿童🐏🐏", seat_number=10)
 
-    result = manager.open_user_profile_from_online_list("斯德哥尔摩情人")
+    result = await manager.open_user_profile("斯德哥尔摩情人")
 
     assert "error" not in result
     user_elem.click.assert_called_once()
     handler.gesture_handler.scroll_container_until_element.assert_called_once()
 
 
-def test_unknown_user_still_reports_not_found():
+@pytest.mark.asyncio
+async def test_unknown_user_still_reports_not_found():
     """既不在麦也不在列表里：照旧报「未找到」，错误信息不被改写。"""
     handler, _elem = _handler_with_online_list(["Joyer"])
     manager = UserManager.initialize(handler)
     _seat_on_mic("不约儿童🐏🐏", seat_number=10)
 
-    result = manager.open_user_profile_from_online_list("查无此人")
+    result = await manager.open_user_profile("查无此人")
 
     assert result["error"] == "User not found in online users list"
     assert result["user"] == "查无此人"
 
 
-def test_online_list_is_allowed_to_settle_before_scrolling():
+@pytest.mark.asyncio
+async def test_online_list_is_allowed_to_settle_before_scrolling():
     """抽屉刚打开时列表还在首帧布局：必须先等稳定，否则首次下滑会被误判成边界。"""
     handler, _elem = _handler_with_online_list(["Joyer"])
     handler.driver = MagicMock()
@@ -168,7 +173,8 @@ def test_online_list_is_allowed_to_settle_before_scrolling():
     assert "reads" in seen_before_scroll, "滚动前必须先等列表稳定"
 
 
-def test_settle_wait_stops_even_when_driver_is_missing():
+@pytest.mark.asyncio
+async def test_settle_wait_stops_even_when_driver_is_missing():
     """拿不到 driver/page_source 时不能卡住命令，按原样继续搜索。"""
     handler, user_elem = _handler_with_online_list(["Joyer", "斯德哥尔摩情人"])
     handler.gesture_handler.scroll_container_until_element.return_value = (
@@ -181,6 +187,61 @@ def test_settle_wait_stops_even_when_driver_is_missing():
     _seat_on_mic("不约儿童🐏🐏", seat_number=10)
     manager.ONLINE_LIST_SETTLE_INTERVAL = 0
 
-    result = manager.open_user_profile_from_online_list("斯德哥尔摩情人")
+    result = await manager.open_user_profile("斯德哥尔摩情人")
 
     assert "error" not in result
+
+@pytest.mark.asyncio
+async def test_multi_avatar_identity_matches_seat_by_identity_not_string(monkeypatch):
+    """同一个人开着多个分身时，必须按身份命中在麦的那个分身。
+
+    真机 10-08 15:05:25 回归：`儿童不易~🐏🐏` 与 `不约儿童🐏🐏` 同属
+    canonical 1999，前者在麦的快照里没有名字，后者占着 10 号位。
+    `resolve_visible_username` 传入的是前者（sorted()[0]），
+    用 `==` 比麦位文本必然漏判，于是又滚回在线列表空转。
+    """
+    from ushareiplay.dal.user_dao import UserDAO
+
+    handler, _elem = _handler_with_online_list(["Joyer"])
+    manager = UserManager.initialize(handler)
+    # 麦位快照里只有「不约儿童🐏🐏」，另一个分身「儿童不易~🐏🐏」不在麦
+    _seat_on_mic("不约儿童🐏🐏", seat_number=10)
+
+    async def _same_identity(requested, observed):
+        identity = {"儿童不易~🐏🐏", "不约儿童🐏🐏"}
+        return requested in identity and observed in identity
+
+    monkeypatch.setattr(UserDAO, "is_same_identity", _same_identity)
+
+    # 调用方传的是「儿童不易~🐏🐏」—— 字符串不等于麦位上的名字
+    result = await manager.open_user_profile("儿童不易~🐏🐏")
+
+    assert result.get("seat") == 10, "必须按身份命中在麦的那个分身"
+    assert result.get("user") == "不约儿童🐏🐏", "应回报麦位上真实可见的那个分身名"
+    assert "10 号麦上" in result["error"]
+    handler.gesture_handler.scroll_container_until_element.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_identity_lookup_failure_falls_back_to_online_list(monkeypatch):
+    """身份判定本身出错（DB 不可用）时不得把命令判死，仍走在线列表。"""
+    from ushareiplay.dal.user_dao import UserDAO
+
+    handler, user_elem = _handler_with_online_list(["Joyer", "斯德哥尔摩情人"])
+    handler.gesture_handler.scroll_container_until_element.return_value = (
+        "online_user",
+        user_elem,
+        ["Joyer", "斯德哥尔摩情人"],
+    )
+    manager = UserManager.initialize(handler)
+    _seat_on_mic("不约儿童🐏🐏", seat_number=10)
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(UserDAO, "is_same_identity", _boom)
+
+    result = await manager.open_user_profile("斯德哥尔摩情人")
+
+    assert "error" not in result
+    handler.gesture_handler.scroll_container_until_element.assert_called_once()

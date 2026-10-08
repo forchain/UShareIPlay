@@ -21,4 +21,4 @@ class GiftCommand(BaseCommand):
         except Exception:
             pass  # 门面不可用时保留原名，由下游按身份匹配兜底
 
-        return UserManager.instance().send_gift(target_nickname)
+        return await UserManager.instance().send_gift(target_nickname)

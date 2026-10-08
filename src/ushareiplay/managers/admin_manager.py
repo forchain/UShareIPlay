@@ -64,7 +64,7 @@ class AdminManager(Singleton):
             visible_nickname = target_nickname
 
         user_manager = UserManager.instance()
-        open_result = user_manager.open_user_profile_from_online_list(visible_nickname)
+        open_result = await user_manager.open_user_profile(visible_nickname)
         if 'error' in open_result:
             return open_result
         # 房间管理员按 UI 名字记账：麦位观测与 :info 都用 slot.username（分身名）比对。
