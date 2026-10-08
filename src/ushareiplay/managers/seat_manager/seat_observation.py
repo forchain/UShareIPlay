@@ -22,10 +22,17 @@ class SeatRescanCooldownPolicy:
     rescan_retry_cooldown: float = 30.0
     consistency_rescan_cooldown: float = 10.0
     residual_inspect_cooldown: float = 60.0
+    # 占座成立但弹窗里始终读不出昵称的号位，两次弹窗之间的最小间隔。
+    # 与残留位冷却是两个不同的理由：残留位是「已知是谁、不必再问」，
+    # 这里是「问过了、读不出来」，同样不能让每轮被动观测都去点一次头像。
+    unknown_identity_probe_cooldown: float = 60.0
     time_fn: Callable[[], float] = time.monotonic
 
     def is_residual_inspect_cooldown_expired(self, last_inspect_time: float) -> bool:
         return (self.now() - last_inspect_time) >= self.residual_inspect_cooldown
+
+    def is_unknown_probe_cooldown_expired(self, last_probe_time: float) -> bool:
+        return (self.now() - last_probe_time) >= self.unknown_identity_probe_cooldown
 
     def get_cooldown(self, *, last_rescan_ok: bool, consistency_retry_due: bool) -> float:
         cooldown = self.rescan_cooldown if last_rescan_ok else self.rescan_retry_cooldown
@@ -54,7 +61,7 @@ class SeatRescanCooldownPolicy:
 class SeatObservationGateState:
     """Seat Observation 决策与协调闸门状态，支持单动作整体重置。
 
-    包含 11 个协调字段：
+    包含 12 个协调字段：
     - last_focus_count: 最近一次视口/外部同步的专注人数
     - reconciled_focus_count: 最近一次已完成对账的专注人数（防展开收起死循环）
     - scanned_seat_change_fingerprint: 最近一次「去向不明」变更的读数指纹
@@ -63,6 +70,7 @@ class SeatObservationGateState:
     - last_visible_band: 身份未知时可见麦位带基线 (几何形状, 内容指纹)
     - band_change_reason: 带变化原因
     - residual_seats: 已确认的残留渲染 {位子: 人}
+    - unknown_identity_probed_at: 弹窗读不出昵称的号位的最近一次弹窗时刻 {位子: 时刻}
     - last_scan_fingerprint: 最近一次全量确定的重扫读数指纹
     - consistency_retry_due: 是否欠一次补扫
     - lock: 麦位状态互斥锁
@@ -76,6 +84,7 @@ class SeatObservationGateState:
     last_visible_band: Optional[Tuple] = None
     band_change_reason: Optional[str] = None
     residual_seats: Dict[int, str] = field(default_factory=dict)
+    unknown_identity_probed_at: Dict[int, float] = field(default_factory=dict)
     residual_seats_inspected_at: Dict[int, float] = field(default_factory=dict)
     last_scan_fingerprint: Optional[frozenset] = None
     consistency_retry_due: bool = False
@@ -244,6 +253,14 @@ class SeatObservationManager(Singleton):
     @_residual_seats_inspected_at.setter
     def _residual_seats_inspected_at(self, val: Dict[int, float]):
         self.gate_state.residual_seats_inspected_at = val
+
+    @property
+    def _unknown_identity_probed_at(self) -> Dict[int, float]:
+        return self.gate_state.unknown_identity_probed_at
+
+    @_unknown_identity_probed_at.setter
+    def _unknown_identity_probed_at(self, val: Dict[int, float]):
+        self.gate_state.unknown_identity_probed_at = val
 
     @property
     def _last_scan_fingerprint(self) -> Optional[frozenset]:
@@ -1347,6 +1364,25 @@ class SeatObservationManager(Singleton):
             if seat_num in observed
         }
 
+    def _prune_unknown_probe_records(
+        self, observed: Dict[int, Tuple[any, str, dict]]
+    ) -> None:
+        """清掉不再需要退避的「读不出昵称」记录。
+
+        三种情况立刻作废（下一轮无需再等冷却，可以直接弹窗）：
+        - 号子已不在视口读数里：无从判断它还是不是那个读不出昵称的位子；
+        - 读数已给出昵称：身份不再是未知；
+        - 读数明确读出非占座（面板重绘、人已下麦）：这个位子根本不用问。
+        """
+        for seat_num in list(self._unknown_identity_probed_at):
+            item = observed.get(seat_num)
+            if item is None:
+                del self._unknown_identity_probed_at[seat_num]
+                continue
+            info = item[2]
+            if info.get("username") or not info.get("occupied"):
+                del self._unknown_identity_probed_at[seat_num]
+
     async def _resolve_usernames(
         self,
         observed: Dict[int, Tuple[any, str, dict]],
@@ -1379,6 +1415,7 @@ class SeatObservationManager(Singleton):
         进 _residual_seats，并且只在"这个人本轮在别处确实还有位置"时继续成立。
         """
         residual_seats = self._prune_residual_records(observed)
+        self._prune_unknown_probe_records(observed)
 
         read_claims: Dict[str, int] = {
             info["username"]: seat_num
@@ -1418,6 +1455,17 @@ class SeatObservationManager(Singleton):
                 if info.get("label") == "管理":
                     self._record_room_admin(info["username"])
                 continue
+            # 占座成立、但上一轮点头像没读出昵称，且还在冷却期内：本轮不再弹窗。
+            # 读不出身份的号位不会进 _residual_seats（那里记的是「已知是谁」），
+            # 没有这道闸它就会每轮被动观测都点一次头像 —— 真机 10-08 12:44~12:45
+            # 的 11 号位就是这样把 seat_inspect 打成每 3~5 秒一轮的刷屏死循环。
+            # 身份留空交给下一轮：读不出昵称只是「还不知道是谁」，不是「没人」。
+            last_probe = self._unknown_identity_probed_at.get(seat_num)
+            if (
+                last_probe is not None
+                and not self.cooldown_policy.is_unknown_probe_cooldown_expired(last_probe)
+            ):
+                continue
             pending.append((seat_num, desk, side))
 
         if not pending:
@@ -1427,6 +1475,11 @@ class SeatObservationManager(Singleton):
             for seat_num, desk, side in pending:
                 username = await self.inspect_occupant(desk, side, seat_num)
                 info = observed[seat_num][2]
+                # 弹窗没读出昵称：记下这次探测时刻，进入退避，挡住下一轮的重复弹窗
+                if not username:
+                    self._unknown_identity_probed_at[seat_num] = self.cooldown_policy.now()
+                else:
+                    self._unknown_identity_probed_at.pop(seat_num, None)
                 residual_name = residual_seats.get(seat_num)
                 if residual_name:
                     if not self._placed_elsewhere(residual_name, seat_num, observed):
