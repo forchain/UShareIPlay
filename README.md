@@ -27,9 +27,20 @@ Android automation framework that controls **Soul App** party rooms and **QQ Mus
 # 1. Install dependencies
 uv sync
 
-# 2. Configure per-machine settings (copy and edit)
-cp config.local.yaml.example config.local.yaml
-# → set device.name (ADB address), appium.host/port, soul.default_party_id, soul.room_owner
+# 2. Configure per-machine settings (optional override; gitignored)
+# config.local.yaml holds ONLY the fields that differ from config.yaml —
+# nested dicts merge per-key, lists are replaced wholesale.
+# An existing config.local.yaml is never truncated: edit it by hand instead.
+if [ -e config.local.yaml ]; then
+  echo "config.local.yaml already exists — edit it in place" >&2
+else
+  cat > config.local.yaml <<'EOF'
+device:
+  name: "192.168.1.100:5555"      # ADB address
+soul:
+  default_party_id: "FM00000000" # your Soul party room ID
+EOF
+fi
 
 # 3. Start Appium server (in separate terminal)
 ./appium.sh
@@ -39,19 +50,16 @@ cp config.local.yaml.example config.local.yaml
 # or: uv run ushareiplay
 ```
 
-### Option B: Ubuntu Linux One-Click Installer (Waydroid Virtual Audio Host)
+### Option B: One-Click Installer (Ubuntu Linux / macOS)
 
-For headless or virtualized deployments (e.g. Parallels ARM64 VM or Linux server), run the idempotent installer to provision the entire stack:
+Run the idempotent installer to provision the environment:
 
 ```bash
 bash install.sh
 ```
 
-This automatically configures:
-1. System packages, Node.js, Appium 2.x, and `uiautomator2` driver.
-2. Waydroid LineageOS container with QQ Music, Soul App, and Loopback Verifier.
-3. PipeWire virtual audio loopback (`ushareiplay_music_sink`) routing music directly into Soul's microphone.
-4. Persistent ADB port forwarding (port 5555) and Appium systemd background services.
+- **macOS**: Automatically verifies and installs Homebrew packages (`adb`, `jq`, `wget`), Astral `uv`, Node.js & Appium with `uiautomator2` driver, and Python virtual environment (`uv sync`).
+- **Ubuntu Linux**: Provisions the full stack including Waydroid LineageOS container, PipeWire audio loopback (`ushareiplay_music_sink`), persistent ADB forwarding, and background systemd services.
 
 See [docs/acceptance-one-click-install.md](docs/acceptance-one-click-install.md) and [docs/waydroid-virtual-audio.md](docs/waydroid-virtual-audio.md).
 

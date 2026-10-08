@@ -3,12 +3,24 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CFG="${ROOT_DIR}/config.local.yaml"
-SOURCE_CFG="${HOME}/github.com/forchain/UShareIPlay/config.local.yaml"
-EXAMPLE_CFG="${ROOT_DIR}/config.local.yaml.example"
 TARGET_VENV="${ROOT_DIR}/.venv"
 
 log() {
   printf '[run.sh] %s\n' "$*"
+}
+
+main_worktree_dir() {
+  # 主工作区就是首个 clone 所在目录：linked worktree 的 --git-common-dir 指向
+  # 主仓库的 .git，主工作区内则返回相对路径 ".git"。不硬编码仓库路径，与
+  # scripts/init_worktree.sh 使用同一套定位方式。
+  local common_dir=""
+  common_dir="$(git -C "${ROOT_DIR}" rev-parse --git-common-dir 2>/dev/null)" || return 1
+  case "${common_dir}" in
+    /*) ;;
+    *) common_dir="${ROOT_DIR}/${common_dir}" ;;
+  esac
+  [[ -d "${common_dir}/.." ]] || return 1
+  (cd "${common_dir}/.." && pwd)
 }
 
 link_main_branch_venv() {
@@ -47,17 +59,34 @@ link_main_branch_venv() {
 }
 
 ensure_config() {
-  if [[ ! -f "${TARGET_CFG}" ]]; then
-    if [[ -f "${SOURCE_CFG}" ]]; then
-      cp "${SOURCE_CFG}" "${TARGET_CFG}"
-      log "已从 ${SOURCE_CFG} 复制 config.local.yaml"
-    elif [[ -f "${EXAMPLE_CFG}" ]]; then
-      cp "${EXAMPLE_CFG}" "${TARGET_CFG}"
-      log "已从示例配置初始化 ${TARGET_CFG}"
-    else
-      log "警告: 未找到 config.local.yaml 或示例文件，将依赖默认 config.yaml"
-    fi
+  # config.yaml 是受版本管理的基准配置（同时充当示例）；config.local.yaml 为
+  # 可选的本地覆盖，仅需书写与 config.yaml 不同的字段。
+  # worktree 内不再各自复制一份，而是软链接到主工作区的 config.local.yaml，
+  # 与 scripts/init_worktree.sh 的策略一致：本机差异字段只写一份。
+  if [[ -f "${TARGET_CFG}" ]]; then
+    return 0
   fi
+  if [[ -e "${TARGET_CFG}" ]]; then
+    # 目录等既非普通文件也非软链接的目标，不要碰它。
+    log "提示: ${TARGET_CFG} 已存在且不是文件，将直接使用 ${ROOT_DIR}/config.yaml。"
+    return 0
+  fi
+
+  local main_dir=""
+  main_dir="$(main_worktree_dir)" || main_dir=""
+  if [[ -z "${main_dir}" || "${main_dir}" == "${ROOT_DIR}" ]]; then
+    log "提示: 未找到 ${TARGET_CFG}，将直接使用 ${ROOT_DIR}/config.yaml；如需覆盖本机差异字段，请手工创建 config.local.yaml。"
+    return 0
+  fi
+
+  local main_cfg="${main_dir}/config.local.yaml"
+  if [[ ! -f "${main_cfg}" ]]; then
+    log "提示: 主工作区 ${main_dir} 下没有 config.local.yaml，将直接使用 ${ROOT_DIR}/config.yaml。"
+    return 0
+  fi
+
+  ln -sfn "${main_cfg}" "${TARGET_CFG}"
+  log "已链接 config.local.yaml -> ${main_cfg}"
 }
 
 stop_bridge() {
@@ -406,4 +435,8 @@ main() {
   exit ${exit_code}
 }
 
-main "$@"
+# 仅在直接执行时运行 main()；被 `source` 时只加载函数，供测试调用
+# （例：source run.sh && ensure_config）。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

@@ -5,16 +5,15 @@ last-synced: 2026-09-23
 
 ## Overview
 
-All configuration lives in `config.yaml`. `ConfigLoader` loads it at startup and deep-merges a local override file `config.local.yaml` (gitignored) for per-machine or per-environment settings.
+All configuration lives in `config.yaml`, which is the committed baseline and the only reference example. `ConfigLoader` loads it at startup and deep-merges an optional local override file `config.local.yaml` (gitignored) for per-machine or per-environment settings.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
 | `ConfigLoader` | Loads `config.yaml`, deep-merges `config.local.yaml` if present |
-| `config.yaml` | Master configuration template (device, Appium, Soul App, QQ Music, commands, LLM, roles, sleep) |
-| `config.local.yaml` | Per-machine overrides (gitignored); contains only fields that differ from defaults |
-| `config.local.yaml.example` | Template demonstrating common override patterns |
+| `config.yaml` | Master baseline configuration (device, Appium, Soul App, QQ Music, commands, LLM, roles, sleep) — committed, and doubles as the worked example |
+| `config.local.yaml` | Optional per-machine overrides (gitignored); contains only fields that differ from `config.yaml` |
 
 ## How It Works
 
@@ -85,3 +84,4 @@ llm:
 - **New top-level section**: Add to `config.yaml`, access via `config['section']['key']` wherever the configuration dictionary is passed.
 - **New command override**: Add entry under `commands:` matching the `prefix`; only specify the fields you want to override (e.g. `level: 2`).
 - **Secrets & Credentials**: Always place API keys, private tokens, or room credentials in `config.local.yaml` rather than the committed `config.yaml`.
+- **Sharing it across worktrees**: `scripts/init_worktree.sh` links each worktree's `config.local.yaml` to the main repository's copy, so per-machine overrides are written once. `run.sh` performs the same link on startup. See `docs/worktree-init.md`.

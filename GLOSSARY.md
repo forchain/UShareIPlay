@@ -111,7 +111,7 @@ The intent translation boundary that resolves unstructured `@我` mentions into 
 _Avoid_: Chatbot, AI agent, prompt helper
 
 **One-Click Installer**:
-The idempotent provisioning boundary and entry point (`install.sh`) that establishes a complete UShareIPlay runtime on Ubuntu Linux. It bootstraps system prerequisites, clones/updates the repository, provisions the Virtual Audio Device and Host Audio Loopback, installs application packages, configures Appium background service, and registers Persistent ADB Port Forwarding.
+The idempotent provisioning boundary and entry point (`install.sh`) that establishes a complete UShareIPlay runtime on Ubuntu Linux and development/runtime environment on macOS. It bootstraps system prerequisites, clones/updates the repository, provisions the Virtual Audio Device and Host Audio Loopback (on Linux), installs application packages, configures Appium, and registers Persistent ADB Port Forwarding.
 _Avoid_: Setup helper, install script, deploy tool
 
 **Persistent ADB Port Forward**:
