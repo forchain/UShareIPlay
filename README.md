@@ -50,19 +50,16 @@ fi
 # or: uv run ushareiplay
 ```
 
-### Option B: Ubuntu Linux One-Click Installer (Waydroid Virtual Audio Host)
+### Option B: One-Click Installer (Ubuntu Linux / macOS)
 
-For headless or virtualized deployments (e.g. Parallels ARM64 VM or Linux server), run the idempotent installer to provision the entire stack:
+Run the idempotent installer to provision the environment:
 
 ```bash
 bash install.sh
 ```
 
-This automatically configures:
-1. System packages, Node.js, Appium 2.x, and `uiautomator2` driver.
-2. Waydroid LineageOS container with QQ Music, Soul App, and Loopback Verifier.
-3. PipeWire virtual audio loopback (`ushareiplay_music_sink`) routing music directly into Soul's microphone.
-4. Persistent ADB port forwarding (port 5555) and Appium systemd background services.
+- **macOS**: Automatically verifies and installs Homebrew packages (`adb`, `jq`, `wget`), Astral `uv`, Node.js & Appium with `uiautomator2` driver, and Python virtual environment (`uv sync`).
+- **Ubuntu Linux**: Provisions the full stack including Waydroid LineageOS container, PipeWire audio loopback (`ushareiplay_music_sink`), persistent ADB forwarding, and background systemd services.
 
 See [docs/acceptance-one-click-install.md](docs/acceptance-one-click-install.md) and [docs/waydroid-virtual-audio.md](docs/waydroid-virtual-audio.md).
 
