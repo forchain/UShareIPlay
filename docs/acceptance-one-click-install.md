@@ -24,7 +24,7 @@ Running `install.sh` executes end-to-end idempotent provisioning:
 2. **Repository & Dependencies**:
    - Clones / updates repository to target directory (default: `~/UShareIPlay`).
    - Generates `.venv` and synchronizes Python dependencies via `uv sync`.
-   - Initializes `config.local.yaml` from `config.local.yaml.example` if not present.
+   - Leaves configuration to the committed `config.yaml` (the single baseline/example); create the gitignored `config.local.yaml` yourself to override only the fields that differ.
 3. **Virtual Audio Device (Waydroid)**:
    - Configures binder kernel modules (`binder_linux`).
    - Installs and initializes Waydroid LineageOS image.

@@ -27,9 +27,15 @@ Android automation framework that controls **Soul App** party rooms and **QQ Mus
 # 1. Install dependencies
 uv sync
 
-# 2. Configure per-machine settings (copy and edit)
-cp config.local.yaml.example config.local.yaml
-# → set device.name (ADB address), appium.host/port, soul.default_party_id, soul.room_owner
+# 2. Configure per-machine settings (optional override; gitignored)
+# config.local.yaml holds ONLY the fields that differ from config.yaml —
+# nested dicts merge per-key, lists are replaced wholesale.
+cat > config.local.yaml <<'EOF'
+device:
+  name: "192.168.1.100:5555"      # ADB address
+soul:
+  default_party_id: "FM00000000" # your Soul party room ID
+EOF
 
 # 3. Start Appium server (in separate terminal)
 ./appium.sh
