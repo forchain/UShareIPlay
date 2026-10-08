@@ -218,12 +218,17 @@ class RoomProfileManager(Singleton):
                 return
 
             self.logger.info("Room info window is open, attempting to close via close_drawer UI action")
-            if self._require_driver().close_drawer():
+            driver = self._require_driver()
+            if driver.close_drawer() and not self.is_open():
                 self.logger.info("Successfully closed room info window via close_drawer")
                 return
 
             self.logger.warning("close_drawer did not close room info window, falling back to press_back")
-            self._require_driver().press_back()
+            driver.press_back()
+            if self.is_open():
+                self.logger.info("Room info window still visible after back, attempting final close")
+                if not driver.close_drawer():
+                    driver.press_back()
         except Exception as e:
             self.logger.warning(f"Error ensuring room info window closed: {e}")
 
@@ -679,10 +684,12 @@ class RoomProfileManager(Singleton):
                 self.logger.info(f"点击了自定义按钮 {customize}")
 
                 if not driver.replace_text(NOTICE_INPUT_KEY, notice):
+                    driver.click_element(NOTICE_CLOSE_KEY)
                     return {'error': 'Failed to find notice input'}
                 self.logger.info(f"输入了notice内容: {notice}")
 
                 if not driver.click_element(NOTICE_CONFIRM_KEY):
+                    driver.click_element(NOTICE_CLOSE_KEY)
                     return {'error': 'Failed to find confirm button'}
                 self.logger.info("点击了确认按钮")
 
@@ -821,9 +828,13 @@ class RoomProfileManager(Singleton):
             driver.click_element(customize)
 
             if not driver.replace_text(NOTICE_INPUT_KEY, default_notice, timeout=3):
+                driver.click_element(NOTICE_CLOSE_KEY)
                 return {'error': 'Failed to find notice input'}
 
-            driver.click_element(NOTICE_CONFIRM_KEY, timeout=3)
+            if not driver.click_element(NOTICE_CONFIRM_KEY, timeout=3):
+                driver.click_element(NOTICE_CLOSE_KEY)
+                return {'error': 'Failed to find confirm button'}
+
             driver.click_element(NOTICE_CLOSE_KEY, timeout=3)
 
             self.drafts.mark_attempted('notice')
@@ -1089,15 +1100,19 @@ class RoomProfileManager(Singleton):
         if finder is None:
             return None
         try:
-            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
-            dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
-            if dialog_element:
-                text = finder.get_element_text(dialog_element)
-                if isinstance(text, str) and text.strip():
-                    return text.strip()
+            # 只有在抽屉开着时，才优先检查抽屉内部的房名 ID (room_name_in_dialog / tv_room_name)。
+            # 若抽屉未打开，直接回退至主界面房名 ID，避免无意义的等待超时。
+            if self.is_open():
+                dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
+                if dialog_element:
+                    text = finder.get_element_text(dialog_element)
+                    if isinstance(text, str) and text.strip():
+                        return text.strip()
 
-            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
+            # 若抽屉未打开或未找到，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
             room_title_element = finder.try_find_element('chat_room_title', log=False)
+            if not room_title_element:
+                room_title_element = finder.try_find_element('room_name_in_dialog', log=False)
             if not room_title_element:
                 return None
             text = finder.get_element_text(room_title_element)
@@ -1230,6 +1245,7 @@ class RoomProfileManager(Singleton):
                     return {'error': 'Update failed - still in cooldown period'}
 
                 self.logger.warning(f'Unknown key: {probe}')
+                driver.click_element(TITLE_CLOSE_KEY)
                 self._clear_notice_restore()
                 return {'error': 'Failed to update title, unknown error'}
 

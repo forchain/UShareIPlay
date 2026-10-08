@@ -45,6 +45,19 @@ class AdminManager(Singleton):
             self._logger = getattr(self._handler, "logger", None) or logging.getLogger("AdminManager")
         return self._logger
 
+    def _close_user_profile_and_online_drawer(self):
+        """关闭用户资料卡和在线用户列表抽屉（防御性清理）"""
+        try:
+            if self.handler and hasattr(self.handler, "key_actions"):
+                self.handler.key_actions.press_back()
+        except Exception as e:
+            self.logger.warning(f"Error pressing back to dismiss user profile: {e}")
+        try:
+            if RecoveryManager.is_initialized():
+                RecoveryManager.instance().close_drawer('online_drawer')
+        except Exception as e:
+            self.logger.warning(f"Error closing online drawer: {e}")
+
     async def manage_admin(self, enable: bool, target_nickname: str):
         """
         管理管理员状态：在在线列表中打开目标用户资料页，再执行邀请/解除管理。
@@ -70,47 +83,50 @@ class AdminManager(Singleton):
         # 房间管理员按 UI 名字记账：麦位观测与 :info 都用 slot.username（分身名）比对。
         target_nickname = open_result.get('user') or visible_nickname
 
-        manager_invite = self.handler.element_finder.wait_for_element_clickable('manager_invite')
-        if not manager_invite:
-            return {'error': 'Failed to find manager invite button', 'user': target_nickname}
+        try:
+            manager_invite = self.handler.element_finder.wait_for_element_clickable('manager_invite')
+            if not manager_invite:
+                self._close_user_profile_and_online_drawer()
+                return {'error': 'Failed to find manager invite button', 'user': target_nickname}
 
-        recovery_manager = RecoveryManager.instance()
-        current_text = manager_invite.text
-        if enable:
-            if current_text == "解除管理":
+            recovery_manager = RecoveryManager.instance()
+            current_text = manager_invite.text
+            if enable:
+                if current_text == "解除管理":
+                    self.add_room_admin(target_nickname)
+                    self._close_user_profile_and_online_drawer()
+                    return {'error': '你已经是管理员了', 'user': target_nickname}
+            else:
+                if current_text == "管理邀请":
+                    self.remove_room_admin(target_nickname)
+                    self._close_user_profile_and_online_drawer()
+                    return {'error': '你还不是管理员', 'user': target_nickname}
+
+            manager_invite.click()
+            self.logger.info("Clicked manager invite button")
+
+            if enable:
+                confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_invite')
+                action = "Invited"
+            else:
+                confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_dismiss')
+                action = "Dismissed"
+
+            if not confirm_button:
+                self.logger.error(f"Failed to find {action} confirmation button for {target_nickname}")
+                self._close_user_profile_and_online_drawer()
+                return {'error': f'Failed to find {action} confirmation button', 'user': target_nickname}
+
+            confirm_button.click()
+            self.logger.info(f"Clicked {action} confirmation button")
+
+            if enable:
                 self.add_room_admin(target_nickname)
-                self.handler.key_actions.press_back()
-                recovery_manager.close_drawer('online_drawer')
-                return {'error': '你已经是管理员了', 'user': target_nickname}
-        else:
-            if current_text == "管理邀请":
+            else:
                 self.remove_room_admin(target_nickname)
-                self.handler.key_actions.press_back()
-                recovery_manager.close_drawer('online_drawer')
-                return {'error': '你还不是管理员', 'user': target_nickname}
 
-        manager_invite.click()
-        self.logger.info("Clicked manager invite button")
-
-        if enable:
-            confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_invite')
-            action = "Invited"
-        else:
-            confirm_button = self.handler.element_finder.wait_for_element_clickable('confirm_dismiss')
-            action = "Dismissed"
-
-        if not confirm_button:
-            self.logger.error(f"Failed to find {action} confirmation button for {target_nickname}")
-            return {'error': f'Failed to find {action} confirmation button', 'user': target_nickname}
-
-        confirm_button.click()
-        self.logger.info(f"Clicked {action} confirmation button")
-
-        if enable:
-            self.add_room_admin(target_nickname)
-        else:
-            self.remove_room_admin(target_nickname)
-
-        recovery_manager.close_drawer('online_drawer')
-
-        return {'user': target_nickname, 'action': action}
+            recovery_manager.close_drawer('online_drawer')
+            return {'user': target_nickname, 'action': action}
+        except Exception:
+            self._close_user_profile_and_online_drawer()
+            raise

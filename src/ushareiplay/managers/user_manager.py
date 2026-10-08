@@ -79,6 +79,14 @@ class UserManager(Singleton):
                 'user': nickname,
             }
 
+    def close_user_profile_and_online_drawer(self):
+        """确保用户资料卡和在线抽屉已关闭。"""
+        try:
+            self.handler.key_actions.press_back()
+        except Exception as e:
+            self.logger.warning(f"Error pressing back to close profile card: {e}")
+        self._close_online_drawer()
+
     def send_gift(self, nickname: str):
         """
         执行送礼流程：先在在线列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
@@ -93,54 +101,63 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        send_gift_btn = self.handler.element_finder.wait_for_element_clickable('send_gift')
-        if not send_gift_btn:
-            self.logger.info("未找到送礼物按钮")
-            return {'error': '未找到送礼物入口'}
+        try:
+            send_gift_btn = self.handler.element_finder.wait_for_element_clickable('send_gift')
+            if not send_gift_btn:
+                self.logger.info("未找到送礼物按钮")
+                self.close_user_profile_and_online_drawer()
+                return {'error': '未找到送礼物入口'}
 
-        self.handler.gesture_handler.click_element_at(send_gift_btn)
-        self.logger.info("已点击送礼物")
+            self.handler.gesture_handler.click_element_at(send_gift_btn)
+            self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.element_finder.wait_for_any_element(['give_gift', 'use_item'])
-        if not found_element:
-            self.logger.info("送礼界面未出现或超时")
-            return {'error': '送礼界面未出现'}
+            found_key, found_element = self.handler.element_finder.wait_for_any_element(['give_gift', 'use_item'])
+            if not found_element:
+                self.logger.info("送礼界面未出现或超时")
+                self.close_user_profile_and_online_drawer()
+                return {'error': '送礼界面未出现'}
 
-        luck_item = self.handler.element_finder.try_find_element('luck_item')
-        if not luck_item:
-            self.logger.warning('Failed to find gift')
-            self.handler.key_actions.press_back()
-            return {'error': 'Failed to find gift'}
-
-        gift_name = luck_item.text
-        if (parts := gift_name.split('x')) and len(parts) > 1:
-            gift_name = parts[0]
-
-        soul_power = self.handler.element_finder.try_find_element('soul_power')
-        soul_points = soul_power.text if soul_power else '0'
-
-        # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
-        if gift_name.strip() == YELLOW_DUCK_NAME:
-            self.handler.gesture_handler.click_element_at(luck_item)
-            self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
-            self._close_online_drawer()
-            return {'success': f'{gift_name} 送你啦'}
-
-        self.handler.gesture_handler.click_element_at(found_element)
-        self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
-
-        if found_key == 'use_item':
-            confirm_use = self.handler.element_finder.wait_for_element('confirm_use')
-            if not confirm_use:
+            luck_item = self.handler.element_finder.try_find_element('luck_item')
+            if not luck_item:
+                self.logger.warning('Failed to find gift')
                 self.handler.key_actions.press_back()
-                self.logger.warning("未找到确认使用按钮")
-                return {'error': '未找到确认使用按钮'}
+                self.close_user_profile_and_online_drawer()
+                return {'error': 'Failed to find gift'}
 
-            confirm_use.click()
-            self.logger.info("已点击确认使用")
+            gift_name = luck_item.text
+            if (parts := gift_name.split('x')) and len(parts) > 1:
+                gift_name = parts[0]
 
-        self._close_online_drawer()
-        return {'success': f'{gift_name} 送你啦'}
+            soul_power = self.handler.element_finder.try_find_element('soul_power')
+            soul_points = soul_power.text if soul_power else '0'
+
+            # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
+            if gift_name.strip() == YELLOW_DUCK_NAME:
+                self.handler.gesture_handler.click_element_at(luck_item)
+                self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
+                self.close_user_profile_and_online_drawer()
+                return {'success': f'{gift_name} 送你啦'}
+
+            self.handler.gesture_handler.click_element_at(found_element)
+            self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
+
+            if found_key == 'use_item':
+                confirm_use = self.handler.element_finder.wait_for_element('confirm_use')
+                if not confirm_use:
+                    self.handler.key_actions.press_back()
+                    self.logger.warning("未找到确认使用按钮")
+                    self.close_user_profile_and_online_drawer()
+                    return {'error': '未找到确认使用按钮'}
+
+                confirm_use.click()
+                self.logger.info("已点击确认使用")
+
+            self.close_user_profile_and_online_drawer()
+            return {'success': f'{gift_name} 送你啦'}
+        except Exception as e:
+            self.logger.error(f"送礼异常: {e}")
+            self.close_user_profile_and_online_drawer()
+            return {'error': f'送礼异常: {e}'}
 
     def send_private_message_to_user(self, nickname: str, message: str) -> bool:
         """
@@ -168,9 +185,11 @@ class UserManager(Singleton):
             )
             if not avatar:
                 self.logger.warning(f"未找到头像入口: {nickname}")
+                self.close_user_profile_and_online_drawer()
                 return False
             if not self.handler.gesture_handler.click_element_at(avatar, y_ratio=0.7):
                 self.logger.warning(f"点击头像入口失败: {nickname}")
+                self.close_user_profile_and_online_drawer()
                 return False
 
             private_chat_btn = self.handler.element_finder.wait_for_element_clickable(
@@ -179,6 +198,7 @@ class UserManager(Singleton):
             )
             if not private_chat_btn:
                 self.logger.warning(f"未找到私聊按钮: {nickname}")
+                self.close_user_profile_and_online_drawer()
                 return False
             private_chat_btn.click()
 
@@ -203,6 +223,7 @@ class UserManager(Singleton):
             return self._return_to_room_after_private_chat(nickname)
         except Exception as e:
             self.logger.error(f"私聊发送失败: {nickname}, error={e}")
+            self.close_user_profile_and_online_drawer()
             return False
 
     def _return_to_room_after_private_chat(self, nickname: str) -> bool:
