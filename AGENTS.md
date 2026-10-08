@@ -16,12 +16,17 @@ uv sync
 # Configure per-machine settings (optional override; gitignored)
 # config.local.yaml holds ONLY the fields that differ from config.yaml:
 # nested dicts merge per-key, lists are replaced wholesale.
-cat > config.local.yaml <<'EOF'
+# An existing config.local.yaml is never truncated: edit it by hand instead.
+if [ -e config.local.yaml ]; then
+  echo "config.local.yaml already exists — edit it in place" >&2
+else
+  cat > config.local.yaml <<'EOF'
 device:
   name: "192.168.1.100:5555"
 appium:
   host: "127.0.0.1"
 EOF
+fi
 
 # Start Appium server (separate terminal)
 ./appium.sh

@@ -185,7 +185,7 @@ else
       CONFLICTS="$(git -C "${WORKTREE_DIR}" diff --name-only --diff-filter=U)"
       if [[ -n "${CONFLICTS}" ]]; then
         err "conflicting files:"
-        printf '  %s\n' ${CONFLICTS} >&2
+        printf '  %s\n' "${CONFLICTS}" >&2
       fi
       err "resolving them manually would lose the script's safe-stop guarantee,"
       err "so the rebase is being aborted and ${CURRENT_BRANCH} is left at $(git -C "${WORKTREE_DIR}" rev-parse --short "${BEFORE_SHA}")"
