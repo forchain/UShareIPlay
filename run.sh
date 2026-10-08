@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CFG="${ROOT_DIR}/config.local.yaml"
 SOURCE_CFG="${HOME}/github.com/forchain/UShareIPlay/config.local.yaml"
-EXAMPLE_CFG="${ROOT_DIR}/config.local.yaml.example"
 TARGET_VENV="${ROOT_DIR}/.venv"
 
 log() {
@@ -47,17 +46,18 @@ link_main_branch_venv() {
 }
 
 ensure_config() {
-  if [[ ! -f "${TARGET_CFG}" ]]; then
-    if [[ -f "${SOURCE_CFG}" ]]; then
-      cp "${SOURCE_CFG}" "${TARGET_CFG}"
-      log "已从 ${SOURCE_CFG} 复制 config.local.yaml"
-    elif [[ -f "${EXAMPLE_CFG}" ]]; then
-      cp "${EXAMPLE_CFG}" "${TARGET_CFG}"
-      log "已从示例配置初始化 ${TARGET_CFG}"
-    else
-      log "警告: 未找到 config.local.yaml 或示例文件，将依赖默认 config.yaml"
-    fi
+  # config.yaml 是受版本管理的基准配置（同时充当示例）；config.local.yaml 为
+  # 可选的本地覆盖，仅需书写与 config.yaml 不同的字段。
+  if [[ -f "${TARGET_CFG}" ]]; then
+    return 0
   fi
+  if [[ -f "${SOURCE_CFG}" ]]; then
+    cp "${SOURCE_CFG}" "${TARGET_CFG}"
+    log "已从 ${SOURCE_CFG} 复制 config.local.yaml"
+    return 0
+  fi
+  log "提示: 未找到 ${TARGET_CFG}，将直接使用 ${ROOT_DIR}/config.yaml；如需覆盖本机差异字段，请手工创建 config.local.yaml。"
+  return 0
 }
 
 stop_bridge() {

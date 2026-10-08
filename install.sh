@@ -122,12 +122,8 @@ setup_python_project() {
   cd "${TARGET_DIR}"
   uv sync --quiet
 
-  if [[ ! -f "${TARGET_DIR}/config.local.yaml" ]]; then
-    if [[ -f "${TARGET_DIR}/config.local.yaml.example" ]]; then
-      cp "${TARGET_DIR}/config.local.yaml.example" "${TARGET_DIR}/config.local.yaml"
-      log_info "已从示例文件创建 config.local.yaml"
-    fi
-  fi
+  # config.yaml 为受版本管理的基准配置（同时充当示例）；config.local.yaml 为可选的
+  # 本地覆盖文件，安装器不再代为创建。
   log_succ "Python 运行环境与依赖配置完成。"
 }
 

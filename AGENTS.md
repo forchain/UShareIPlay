@@ -13,9 +13,15 @@ source .venv/bin/activate
 # Install / sync dependencies
 uv sync
 
-# Configure per-machine settings
-cp config.local.yaml.example config.local.yaml
-# → set device.name, appium.host/port, soul.default_party_id, soul.room_owner
+# Configure per-machine settings (optional override; gitignored)
+# config.local.yaml holds ONLY the fields that differ from config.yaml:
+# nested dicts merge per-key, lists are replaced wholesale.
+cat > config.local.yaml <<'EOF'
+device:
+  name: "192.168.1.100:5555"
+appium:
+  host: "127.0.0.1"
+EOF
 
 # Start Appium server (separate terminal)
 ./appium.sh
@@ -108,7 +114,7 @@ AppController
 - 80+ QQ Music UI element XPath selectors
 - Command templates with response/error message templates
 
-Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
+Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contain only the fields that differ from `config.yaml` — nested dicts are merged per-key, lists are replaced wholesale. `config.yaml` is the committed baseline and doubles as the worked example; there is no separate example file.
 
 ### Data Layer
 
