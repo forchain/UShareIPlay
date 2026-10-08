@@ -1,4 +1,5 @@
 import logging
+import time
 
 from ushareiplay.core.singleton import Singleton
 
@@ -22,16 +23,77 @@ class UserManager(Singleton):
             self._logger = getattr(self._handler, "logger", None) or logging.getLogger("UserManager")
         return self._logger
 
+    # 抽屉刚打开时 RecyclerView 还在首帧布局，等它稳定下来的上限
+    ONLINE_LIST_SETTLE_TIMEOUT: float = 2.0
+    ONLINE_LIST_SETTLE_INTERVAL: float = 0.25
+
+    def _seated_seat_number(self, nickname: str):
+        """这个人此刻是否在麦上；是则返回号位，否则 None。
+
+        麦位快照（SeatObservation 一直在维护的全量 1~12 号位）是房间里唯一
+        「谁在麦上」的可靠来源。昵称必须是房间里可见的分身名 —— 与下面的
+        在线列表查找同一个前提，调用方需先 `resolve_visible_username`。
+        """
+        if not nickname:
+            return None
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import (
+                SeatObservationManager,
+            )
+
+            if not SeatObservationManager.is_initialized():
+                return None
+            return SeatObservationManager.instance().get_all_seated_users().get(nickname)
+        except Exception:
+            return None
+
+    def _wait_for_online_list_settle(self) -> None:
+        """等在线列表渲染稳定后再开始搜索。
+
+        rvBannedUsers 是懒加载列表：抽屉刚打开时 RecyclerView 还在首帧布局，
+        这时候立刻下滑，连续两次读到的 page_source 一模一样，
+        `scroll_container_until_element` 就把这当成「已到达边界」直接放弃 ——
+        于是在列表里的人也报「未找到」（真机 10-08 12:53:32 送礼失败，
+        隔 1 秒同样的搜索却一眼命中）。先等它稳定，边界判定才有意义。
+        """
+        driver = getattr(self.handler, "driver", None)
+        if driver is None:
+            return
+        deadline = time.monotonic() + self.ONLINE_LIST_SETTLE_TIMEOUT
+        try:
+            previous = None
+            while time.monotonic() < deadline:
+                current = driver.page_source
+                if previous is not None and current == previous:
+                    return
+                previous = current
+                time.sleep(self.ONLINE_LIST_SETTLE_INTERVAL)
+        except Exception:
+            # 读不到 page_source 就按原样继续搜索，不因等待失败而放弃定位
+            return
+
     def open_user_profile_from_online_list(self, nickname: str):
         """
         在在线用户列表中查找指定用户并打开其资料页。
 
         Args:
-            nickname: 要查找的用户昵称。
+            nickname: 要查找的用户昵称（必须是房间里可见的分身名）。
 
         Returns:
             dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
         """
+        # 在麦的人不在在线列表里（Soul 的在线列表只列不在麦的用户）。
+        # 先问麦位快照：命中就如实说出他坐在哪，而不是让他在列表里空滚到边界
+        # 再报一句「列表里没有」—— 用户看不出麦上这个前提，只会不停重试。
+        seated_at = self._seated_seat_number(nickname)
+        if seated_at is not None:
+            self.logger.info(f"{nickname} 在 {seated_at} 号麦上，不走在线列表")
+            return {
+                'error': f'{nickname} 在 {seated_at} 号麦上（在线列表不含麦上用户）',
+                'user': nickname,
+                'seat': seated_at,
+            }
+
         user_count_elem = self.handler.element_finder.wait_for_element('user_count')
         if not user_count_elem:
             self.logger.warning("未找到在线用户人数")
@@ -50,6 +112,10 @@ class UserManager(Singleton):
                 'error': 'Failed to find online users container',
                 'user': nickname,
             }
+
+        # 抽屉刚打开，列表还在首帧布局：先等它稳定，否则第一次下滑就会被
+        # 判成「已到达边界」（见 _wait_for_online_list_settle）。
+        self._wait_for_online_list_settle()
 
         key, user_elem, _ = self.handler.gesture_handler.scroll_container_until_element(
             'online_user',
