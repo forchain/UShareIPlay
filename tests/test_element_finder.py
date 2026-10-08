@@ -149,7 +149,7 @@ def test_wait_for_any_element_timeout():
     key, elem = finder.wait_for_any_element(["party_back"], timeout=0.1)
     assert key is None
     assert elem is None
-    owner.logger.error.assert_called_once()
+    owner.logger.debug.assert_called_once()
 
 
 def test_wait_for_any_element_no_valid_keys():

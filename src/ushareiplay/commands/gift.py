@@ -21,4 +21,16 @@ class GiftCommand(BaseCommand):
         except Exception:
             pass  # 门面不可用时保留原名，由下游按身份匹配兜底
 
-        return UserManager.instance().send_gift(target_nickname)
+        candidate_names = set()
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            candidate_names = await UserDAO.get_identity_usernames(target_nickname)
+        except Exception:
+            pass
+        if target_nickname:
+            candidate_names.add(target_nickname)
+
+        try:
+            return UserManager.instance().send_gift(target_nickname, candidate_names=candidate_names)
+        except TypeError:
+            return UserManager.instance().send_gift(target_nickname)

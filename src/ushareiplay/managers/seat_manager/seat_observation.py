@@ -22,10 +22,14 @@ class SeatRescanCooldownPolicy:
     rescan_retry_cooldown: float = 30.0
     consistency_rescan_cooldown: float = 10.0
     residual_inspect_cooldown: float = 60.0
+    unresolved_inspect_cooldown: float = 30.0
     time_fn: Callable[[], float] = time.monotonic
 
     def is_residual_inspect_cooldown_expired(self, last_inspect_time: float) -> bool:
         return (self.now() - last_inspect_time) >= self.residual_inspect_cooldown
+
+    def is_unresolved_inspect_cooldown_expired(self, last_inspect_time: float) -> bool:
+        return (self.now() - last_inspect_time) >= self.unresolved_inspect_cooldown
 
     def get_cooldown(self, *, last_rescan_ok: bool, consistency_retry_due: bool) -> float:
         cooldown = self.rescan_cooldown if last_rescan_ok else self.rescan_retry_cooldown
@@ -77,6 +81,7 @@ class SeatObservationGateState:
     band_change_reason: Optional[str] = None
     residual_seats: Dict[int, str] = field(default_factory=dict)
     residual_seats_inspected_at: Dict[int, float] = field(default_factory=dict)
+    unresolved_seats_inspected_at: Dict[int, float] = field(default_factory=dict)
     last_scan_fingerprint: Optional[frozenset] = None
     consistency_retry_due: bool = False
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -244,6 +249,14 @@ class SeatObservationManager(Singleton):
     @_residual_seats_inspected_at.setter
     def _residual_seats_inspected_at(self, val: Dict[int, float]):
         self.gate_state.residual_seats_inspected_at = val
+
+    @property
+    def _unresolved_seats_inspected_at(self) -> Dict[int, float]:
+        return self.gate_state.unresolved_seats_inspected_at
+
+    @_unresolved_seats_inspected_at.setter
+    def _unresolved_seats_inspected_at(self, val: Dict[int, float]):
+        self.gate_state.unresolved_seats_inspected_at = val
 
     @property
     def _last_scan_fingerprint(self) -> Optional[frozenset]:
@@ -1332,10 +1345,12 @@ class SeatObservationManager(Singleton):
                     # 视口内明确读出非占座（面板已重绘），残留作废
                     del self._residual_seats[seat_num]
                     self._residual_seats_inspected_at.pop(seat_num, None)
+                    self._unresolved_seats_inspected_at.pop(seat_num, None)
                 elif info.get("username") and info["username"] != username:
                     # 视口内明确读出新用户，残留作废
                     del self._residual_seats[seat_num]
                     self._residual_seats_inspected_at.pop(seat_num, None)
+                    self._unresolved_seats_inspected_at.pop(seat_num, None)
             else:
                 # 视口外麦位：若该用户在快照中已不在任何麦位上，残留作废
                 if not any(s.occupied and s.username == username for s in self.seats.values()):
@@ -1390,6 +1405,7 @@ class SeatObservationManager(Singleton):
         pending = []
         for seat_num, (desk, side, info) in observed.items():
             if not info["occupied"] or info.get("username"):
+                self._unresolved_seats_inspected_at.pop(seat_num, None)
                 if info.get("occupied") and info.get("username") and info.get("label") == "管理":
                     self._record_room_admin(info["username"])
                 continue
@@ -1417,6 +1433,11 @@ class SeatObservationManager(Singleton):
                         info["is_owner"] = False
                 if info.get("label") == "管理":
                     self._record_room_admin(info["username"])
+                self._unresolved_seats_inspected_at.pop(seat_num, None)
+                continue
+            # 处于冷却期内的未识别麦位（例如头像弹窗超时或无用户名），避免频繁弹窗与抢占 UI 锁
+            last_unresolved = self._unresolved_seats_inspected_at.get(seat_num, 0.0)
+            if not self.cooldown_policy.is_unresolved_inspect_cooldown_expired(last_unresolved):
                 continue
             pending.append((seat_num, desk, side))
 
@@ -1437,13 +1458,16 @@ class SeatObservationManager(Singleton):
                     elif not username or username == residual_name:
                         self._mark_residual_seat(seat_num, info, residual_name)
                         self._residual_seats_inspected_at[seat_num] = self.cooldown_policy.now()
+                        self._unresolved_seats_inspected_at.pop(seat_num, None)
                         continue
                     else:
                         # 残留位上真坐了别人：作废残留记录，按正常落座处理
                         self._residual_seats.pop(seat_num, None)
                         self._residual_seats_inspected_at.pop(seat_num, None)
                 if not username:
+                    self._unresolved_seats_inspected_at[seat_num] = self.cooldown_policy.now()
                     continue
+                self._unresolved_seats_inspected_at.pop(seat_num, None)
                 # 弹窗读出的人本轮在别处有**读到的**证据：该位为换座后的残留渲染
                 # （ghost avatar）。一个人不能同时占两个位子，且弹窗证实头像是已落座
                 # 之人而非他人，故该位实为空座，清除占座标记，避免虚增在座人数引发

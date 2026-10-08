@@ -646,6 +646,22 @@ class SeatSubsystem:
             # Step 3: Iterate through all desks.
             # Optimization: only check desks with exactly one occupant, because
             # if both seats are occupied, we can't sit next to the target anyway.
+            # However, if target is seated at a full desk, report that they have no empty adjacent seat.
+            target_seated_full_desk = False
+            try:
+                from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+                obs = SeatObservationManager.instance()
+                for s_num, s_slot in obs.seats.items():
+                    if s_slot.occupied and s_slot.username:
+                        if await UserDAO.is_same_identity(target_username, s_slot.username):
+                            partner_num = s_num - 1 if s_num % 2 == 0 else s_num + 1
+                            partner_slot = obs.seats.get(partner_num)
+                            if partner_slot and partner_slot.occupied:
+                                target_seated_full_desk = True
+                            break
+            except Exception:
+                pass
+
             last_scrolled_row = -1
             for desk_index in range(len(seat_desks)):
                 row_index = desk_index // 2
@@ -665,6 +681,25 @@ class SeatSubsystem:
 
                 # Only proceed when exactly one seat is occupied on this desk
                 if len(occupied_sides) != 1:
+                    if len(occupied_sides) == 2:
+                        left_seat_num = desk_index * 2 + 1
+                        right_seat_num = desk_index * 2 + 2
+                        try:
+                            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+                            obs = SeatObservationManager.instance()
+                            for s_num in (left_seat_num, right_seat_num):
+                                s_slot = obs.seats.get(s_num)
+                                if s_slot and s_slot.occupied and s_slot.username:
+                                    if await UserDAO.is_same_identity(target_username, s_slot.username):
+                                        target_seated_full_desk = True
+                                        break
+                        except Exception:
+                            pass
+                        if not target_seated_full_desk:
+                            for side_info in (left, right):
+                                if side_info.get('label') and await UserDAO.is_same_identity(target_username, side_info['label']):
+                                    target_seated_full_desk = True
+                                    break
                     continue
 
                 side = occupied_sides[0]
@@ -727,6 +762,9 @@ class SeatSubsystem:
                     fresh_other_seat,
                     neighbor_label=actual_username
                 )
+
+            if target_seated_full_desk:
+                return {'error': f'User {target_username} has no empty adjacent seat'}
 
             return {'error': f'User {target_username} not found on any seat'}
 

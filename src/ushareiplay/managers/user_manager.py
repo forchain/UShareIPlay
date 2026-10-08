@@ -1,4 +1,5 @@
 import logging
+from typing import Iterable, Optional
 
 from ushareiplay.core.singleton import Singleton
 
@@ -22,15 +23,18 @@ class UserManager(Singleton):
             self._logger = getattr(self._handler, "logger", None) or logging.getLogger("UserManager")
         return self._logger
 
-    def open_user_profile_from_online_list(self, nickname: str):
+    def open_user_profile_from_online_list(
+        self, nickname: str, candidate_names: Optional[Iterable[str]] = None
+    ):
         """
         在在线用户列表中查找指定用户并打开其资料页。
 
         Args:
             nickname: 要查找的用户昵称。
+            candidate_names: 可选的候选别名集合（同一身份的其它分身名或主账号名）。
 
         Returns:
-            dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
+            dict: 成功时返回 {'user': actual_name}；失败时返回 {'error': str, 'user': nickname}。
         """
         user_count_elem = self.handler.element_finder.wait_for_element('user_count')
         if not user_count_elem:
@@ -51,12 +55,21 @@ class UserManager(Singleton):
                 'user': nickname,
             }
 
+        search_targets = set()
+        if candidate_names:
+            search_targets.update(candidate_names)
+        if nickname:
+            search_targets.add(nickname)
+        search_targets = {t.strip() for t in search_targets if t and t.strip()}
+
+        target_value = search_targets if search_targets else nickname
+
         key, user_elem, _ = self.handler.gesture_handler.scroll_container_until_element(
             'online_user',
             'online_users',
             'up',
             'text',
-            nickname,
+            target_value,
         )
 
         if not user_elem:
@@ -67,29 +80,33 @@ class UserManager(Singleton):
                 'user': nickname,
             }
 
+        actual_name = self.handler.element_finder.try_get_attribute(user_elem, 'text')
+        actual_name = actual_name.strip() if actual_name else nickname
+
         try:
             user_elem.click()
-            self.logger.info(f"Clicked user element for {nickname}")
-            return {'user': nickname}
+            self.logger.info(f"Clicked user element for {actual_name}")
+            return {'user': actual_name}
         except Exception as e:
             self.logger.error(f"Failed to click user element: {e}")
             self._close_online_drawer()
             return {
                 'error': 'Failed to click user element',
-                'user': nickname,
+                'user': actual_name,
             }
 
-    def send_gift(self, nickname: str):
+    def send_gift(self, nickname: str, candidate_names: Optional[Iterable[str]] = None):
         """
         执行送礼流程：先在在线列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
 
         Args:
             nickname: 要送礼的目标用户昵称。
+            candidate_names: 可选的候选别名集合。
 
         Returns:
             dict: 成功返回 {'success': str}；失败返回 {'error': str} 或 {'error': str, 'user': nickname}。
         """
-        open_result = self.open_user_profile_from_online_list(nickname)
+        open_result = self.open_user_profile_from_online_list(nickname, candidate_names=candidate_names)
         if 'error' in open_result:
             return open_result
 

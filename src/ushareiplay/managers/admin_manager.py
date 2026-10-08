@@ -63,8 +63,22 @@ class AdminManager(Singleton):
         except Exception:
             visible_nickname = target_nickname
 
+        candidate_names = set()
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+            candidate_names = await UserDAO.get_identity_usernames(target_nickname)
+        except Exception:
+            pass
+        if visible_nickname:
+            candidate_names.add(visible_nickname)
+
         user_manager = UserManager.instance()
-        open_result = user_manager.open_user_profile_from_online_list(visible_nickname)
+        try:
+            open_result = user_manager.open_user_profile_from_online_list(
+                visible_nickname, candidate_names=candidate_names
+            )
+        except TypeError:
+            open_result = user_manager.open_user_profile_from_online_list(visible_nickname)
         if 'error' in open_result:
             return open_result
         # 房间管理员按 UI 名字记账：麦位观测与 :info 都用 slot.username（分身名）比对。

@@ -204,6 +204,14 @@ class GestureHandler:
         # 收集所有找到的元素的 attribute 值列表
         attribute_values_list = []
         try:
+            target_set: Optional[Set[str]] = None
+            if attribute_value is not None:
+                if isinstance(attribute_value, (set, list, tuple)):
+                    target_set = {str(v).strip() for v in attribute_value if v is not None and str(v).strip()}
+                else:
+                    s = str(attribute_value).strip()
+                    target_set = {s} if s else None
+
             def snapshot() -> tuple[str, int]:
                 try:
                     page_source = self.driver.page_source or ""
@@ -229,8 +237,13 @@ class GestureHandler:
                     value = next((item for item in element_values if item and item != "null"), None)
                     if value is not None:
                         values.append(value)
-                    if attribute_value is None or attribute_value in element_values:
+                    if target_set is None:
                         matched = True
+                    else:
+                        for ev in element_values:
+                            if ev and ev.strip() in target_set:
+                                matched = True
+                                break
                 return values, matched
 
             page_source, prev_hash = snapshot()
@@ -251,7 +264,7 @@ class GestureHandler:
                 candidates = self.owner.element_finder.find_child_elements(
                     container, element_key
                 )
-                if attribute_value is None:
+                if target_set is None:
                     return candidates[0] if candidates else None
 
                 attrs = (
@@ -264,7 +277,7 @@ class GestureHandler:
                         value = self.owner.element_finder.try_get_attribute(
                             candidate, attr
                         )
-                        if value == attribute_value:
+                        if value and value.strip() in target_set:
                             return candidate
                 return None
 

@@ -2694,5 +2694,64 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
     assert "[6号: 管理(Chainer)]" in layout
 
 
+def test_seat_rescan_cooldown_policy_unresolved_cooldown():
+    policy = SeatRescanCooldownPolicy()
+    assert policy.unresolved_inspect_cooldown == 30.0
+    assert not policy.is_unresolved_inspect_cooldown_expired(policy.now() - 10.0)
+    assert policy.is_unresolved_inspect_cooldown_expired(policy.now() - 35.0)
+
+
+@pytest.mark.asyncio
+async def test_unresolved_seat_inspect_cooldown_prevents_looping():
+    """麦位占座但用户名读不到且头像弹窗失败时，进入 30s 冷却，避免死循环抢锁弹窗。"""
+    clock = FakeClock(100.0)
+    policy = SeatRescanCooldownPolicy(unresolved_inspect_cooldown=30.0, time_fn=clock)
+    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
+
+    inspect_calls = []
+
+    async def _mock_inspect(desk, side, seat_num):
+        inspect_calls.append(seat_num)
+        return None  # 弹窗超时或未读到用户名
+
+    manager.inspect_occupant = _mock_inspect
+
+    # 11 号位被占，但无用户名
+    dummy_desk = SimpleNamespace(location={"x": 0, "y": 0}, size={"width": 100, "height": 100})
+    observed = {
+        11: (dummy_desk, "left", {"occupied": True, "username": None, "label": ""}),
+    }
+
+    # 第一次 resolve：触发 inspect
+    await manager._resolve_usernames(observed, caller_holds_ui_session=True)
+    assert inspect_calls == [11]
+    assert 11 in manager._unresolved_seats_inspected_at
+    assert manager._unresolved_seats_inspected_at[11] == 100.0
+
+    # 5 秒后再次被动观测：处于冷却期，严禁重复 inspect
+    clock.advance(5.0)
+    observed2 = {
+        11: (dummy_desk, "left", {"occupied": True, "username": None, "label": ""}),
+    }
+    await manager._resolve_usernames(observed2, caller_holds_ui_session=True)
+    assert inspect_calls == [11]  # 仍为 1 次，未增加
+
+    # 35 秒后冷却到期：允许再次尝试
+    clock.advance(30.0)
+    async def _mock_inspect_success(desk, side, seat_num):
+        inspect_calls.append(seat_num)
+        return "Alice"
+
+    manager.inspect_occupant = _mock_inspect_success
+    observed3 = {
+        11: (dummy_desk, "left", {"occupied": True, "username": None, "label": ""}),
+    }
+    await manager._resolve_usernames(observed3, caller_holds_ui_session=True)
+    assert inspect_calls == [11, 11]
+    assert observed3[11][2]["username"] == "Alice"
+    # 成功解析后，从冷却记录中清除
+    assert 11 not in manager._unresolved_seats_inspected_at
+
+
 
 

@@ -375,7 +375,7 @@ class ElementFinder:
         try:
             return WebDriverWait(self.driver, timeout).until(_condition)
         except TimeoutException as e:
-            self.logger.error(
+            self.logger.debug(
                 f"wait_for_any_element: {element_keys} 超时未找到任何元素: {str(e)}"
             )
             return None, None

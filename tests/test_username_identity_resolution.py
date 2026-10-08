@@ -409,3 +409,67 @@ async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(a
     # 最终收起面板
     assert collapsed == [True]
 
+
+@pytest.mark.asyncio
+async def test_accompany_user_reports_no_empty_adjacent_seat_when_target_at_full_desk(alias_pair):
+    """当目标用户所在的桌位已满（2 人均在座）时，明确提示无空余相邻麦位，而非提示未找到用户。"""
+    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager, SeatSlot
+
+    desks = [
+        # desk 0 (1号、2号)
+        _desk(left_label="Other1", left_occupied=True, right_label="Other2", right_occupied=False),
+        # desk 1 (3号、4号): 3号为目标(AVATAR), 4号为群主(Joyer)，满桌
+        _desk(left_label=AVATAR, left_occupied=True, right_label="Joyer", right_occupied=True),
+    ]
+    handler = DummySeatHandler(desks, popup_name="Other1")
+    manager = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+
+    obs = SeatObservationManager.initialize(handler)
+    obs.seats[3] = SeatSlot(seat_number=3, occupied=True, username=AVATAR)
+    obs.seats[4] = SeatSlot(seat_number=4, occupied=True, username="Joyer")
+
+    result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
+    assert result == {"error": f"User {CANONICAL} has no empty adjacent seat"}
+
+
+@pytest.mark.asyncio
+async def test_open_user_profile_finds_user_matching_any_alias(alias_pair):
+    """在线列表展示的是当前分身名，即使传入主账号名或另一个分身名，通过 candidate_names 依然能命中。"""
+    from ushareiplay.managers.user_manager import UserManager
+
+    handler = MagicMock()
+    user_count_elem = MagicMock()
+    online_container = MagicMock()
+    matched_user_elem = MagicMock()
+
+    handler.element_finder.wait_for_element.side_effect = lambda key: {
+        "user_count": user_count_elem,
+        "online_users": online_container,
+    }.get(key)
+    handler.element_finder.try_get_attribute.side_effect = lambda elem, attr: (
+        AVATAR if elem is matched_user_elem and attr == "text" else None
+    )
+
+    searched_attribute_value = []
+
+    def mock_scroll_container(*args, **kwargs):
+        # 记录传入的搜索目标
+        target = args[4] if len(args) > 4 else kwargs.get("attribute_value")
+        searched_attribute_value.append(target)
+        return "online_user", matched_user_elem, [AVATAR]
+
+    handler.gesture_handler.scroll_container_until_element.side_effect = mock_scroll_container
+
+    mgr = UserManager.initialize(handler)
+    # 传入 CANONICAL，但在 candidate_names 中提供 AVATAR
+    candidates = await UserDAO.get_identity_usernames(CANONICAL)
+    res = mgr.open_user_profile_from_online_list(CANONICAL, candidate_names=candidates)
+
+    assert "error" not in res
+    assert res == {"user": AVATAR}
+    matched_user_elem.click.assert_called_once()
+    # 确保集合中包含了分身名与主账号名
+    assert isinstance(searched_attribute_value[0], set)
+    assert AVATAR in searched_attribute_value[0]
+    assert CANONICAL in searched_attribute_value[0]
+

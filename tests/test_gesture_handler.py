@@ -199,3 +199,37 @@ def test_scroll_container_returns_the_visible_element_matching_attribute_value()
 
     assert result[0] == "online_user"
     assert result[1] is outlier
+
+
+def test_scroll_container_matches_candidate_set_and_strips_whitespace():
+    driver = MagicMock()
+    driver.page_source = """
+        <hierarchy>
+          <node resource-id="online-name" text="  儿童不易~🐏🐏  " />
+          <node resource-id="online-name" text="Joyer" />
+        </hierarchy>
+    """
+    handler = _make_handler(driver)
+    handler.owner.config = {"elements": {"online_user": "online-name"}}
+    handler.owner.element_finder = MagicMock()
+    container = SimpleNamespace(
+        location={"x": 0, "y": 0},
+        size={"width": 100, "height": 100},
+    )
+    user_elem = MagicMock(text="  儿童不易~🐏🐏  ")
+    joyer = MagicMock(text="Joyer")
+    handler.owner.element_finder.wait_for_element_clickable.return_value = container
+    handler.owner.element_finder.find_child_elements.return_value = [user_elem, joyer]
+    handler.owner.element_finder.try_get_attribute.side_effect = (
+        lambda element, attribute: element.text if attribute == "text" else None
+    )
+
+    result = handler.scroll_container_until_element(
+        "online_user",
+        "online_users",
+        attribute_name="text",
+        attribute_value={"不约儿童🐏🐏", "儿童不易~🐏🐏"},
+    )
+
+    assert result[0] == "online_user"
+    assert result[1] is user_elem
