@@ -1101,9 +1101,15 @@ class RoomProfileManager(Singleton):
             return None
         try:
             # 只有在抽屉开着时，才优先检查抽屉内部的房名 ID (room_name_in_dialog / tv_room_name)。
-            # 若抽屉未打开，直接回退至主界面房名 ID，避免无意义的等待超时。
+            # 使用 try_find_element 避免无意义的 wait_for_element 告警日志。
             if self.is_open():
-                dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
+                dialog_element = finder.try_find_element('room_name_in_dialog', log=False)
+                if not dialog_element:
+                    for _ in range(4):
+                        time.sleep(0.5)
+                        dialog_element = finder.try_find_element('room_name_in_dialog', log=False)
+                        if dialog_element:
+                            break
                 if dialog_element:
                     text = finder.get_element_text(dialog_element)
                     if isinstance(text, str) and text.strip():
@@ -1215,9 +1221,11 @@ class RoomProfileManager(Singleton):
                 self.logger.info(f"Updating room title: {room_name}")
 
                 if not driver.replace_text(TITLE_INPUT_KEY, room_name):
+                    driver.click_element(TITLE_CLOSE_KEY)
                     return {'error': 'Failed to find title input'}
 
                 if not driver.click_element(TITLE_CONFIRM_KEY):
+                    driver.click_element(TITLE_CLOSE_KEY)
                     return {'error': 'Failed to find confirm button'}
 
                 # 等待提交落地

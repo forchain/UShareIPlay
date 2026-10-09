@@ -42,7 +42,8 @@ async def test_admin_failure_closes_user_profile_and_online_drawer():
         mock_cleanup.assert_called_once()
 
 
-def test_send_gift_failure_closes_user_profile_and_online_drawer():
+@pytest.mark.asyncio
+async def test_send_gift_failure_closes_user_profile_and_online_drawer():
     """当 send_gift 按钮未找到时，必须关闭已打开的用户资料卡和在线用户抽屉。"""
     handler = MagicMock()
     user_manager = UserManager.initialize(handler=handler)
@@ -59,7 +60,7 @@ def test_send_gift_failure_closes_user_profile_and_online_drawer():
     handler.element_finder.wait_for_element_clickable.return_value = None  # send_gift 按钮未找到
 
     with patch.object(user_manager, 'close_user_profile_and_online_drawer') as mock_cleanup:
-        res = user_manager.send_gift("Alice")
+        res = await user_manager.send_gift("Alice")
         assert 'error' in res
         mock_cleanup.assert_called_once()
 
@@ -143,3 +144,127 @@ def test_room_profile_ensure_closed_handles_residual_drawer():
     profile.ensure_closed()
     assert driver.close_drawer.call_count == 2
     assert driver.press_back.call_count == 1
+
+
+def test_room_profile_ensure_closed_handles_close_drawer_true_but_subdialog_remains():
+    """即使 close_drawer 返回 True，但由于子弹窗遮挡导致 is_open 仍为 True，必须继续按返回键并关闭残留抽屉。"""
+    driver = MagicMock()
+    # close_drawer 返回 True，但 is_open 依然为 True（子对话框仍在），press_back 后 is_open 依然为 True（抽屉主体还在），第二次 close_drawer 彻底关闭
+    driver.is_open.side_effect = [True, True, True, False]
+    driver.close_drawer.side_effect = [True, True]
+
+    handler = MagicMock()
+    handler.config = {'soul': {}}
+    profile = RoomProfileManager.initialize(
+        handler=handler,
+        drawer_driver=driver,
+    )
+
+    profile.ensure_closed()
+    assert driver.close_drawer.call_count == 2
+    assert driver.press_back.call_count == 1
+
+
+def test_dialog_keys_includes_all_subdialog_elements():
+    """DIALOG_KEYS 必须包含所有子弹窗及编辑层控件，避免 is_open 漏判。"""
+    from ushareiplay.managers.room_profile.driver import DIALOG_KEYS
+    expected_subdialog_keys = {
+        'edit_topic_confirm',
+        'edit_topic_input',
+        'close_notice',
+        'edit_notice_input',
+        'edit_notice_confirm',
+        'title_edit_input',
+        'title_edit_confirm',
+        'party_recommendation_close',
+        'party_recommendation_open',
+        'room_name_in_dialog',
+    }
+    assert expected_subdialog_keys.issubset(set(DIALOG_KEYS))
+
+
+def test_read_room_title_inside_drawer_uses_try_find_element():
+    """抽屉打开时读房名，优先使用 try_find_element('room_name_in_dialog', log=False) 且成功返回文本。"""
+    driver = MagicMock()
+    driver.is_open.return_value = True
+
+    handler = MagicMock()
+    handler.config = {'soul': {}}
+    dialog_elem = MagicMock()
+    handler.element_finder.try_find_element.side_effect = lambda key, **kw: (
+        dialog_elem if key == 'room_name_in_dialog' else None
+    )
+    handler.element_finder.get_element_text.return_value = "音乐｜自习时光"
+
+    profile = RoomProfileManager.initialize(
+        handler=handler,
+        drawer_driver=driver,
+    )
+
+    title = profile._read_room_title_text_from_ui()
+    assert title == "音乐｜自习时光"
+    # 确保没有调用 wait_for_element
+    assert handler.element_finder.wait_for_element.call_count == 0
+
+
+def test_is_chat_window_open_detects_input_drawer():
+    """当 input_box 不存在但 input_drawer 存在且可见时，is_chat_window_open 必须返回 True。"""
+    from ushareiplay.handlers.soul_handler import SoulHandler
+    handler = SoulHandler.__new__(SoulHandler)
+    handler.element_finder = MagicMock()
+
+    drawer_elem = MagicMock()
+    drawer_elem.is_displayed.return_value = True
+
+    def mock_try_find(key, **kw):
+        if key == 'input_drawer':
+            return drawer_elem
+        return None
+
+    handler.element_finder.try_find_element.side_effect = mock_try_find
+    assert handler.is_chat_window_open() is True
+
+
+def test_ensure_chat_window_closed_closes_input_drawer():
+    """当 input_drawer 存在时，ensure_chat_window_closed 会调用 RecoveryManager.close_drawer('input_drawer')。"""
+    from ushareiplay.handlers.soul_handler import SoulHandler
+    from ushareiplay.managers.recovery_manager import RecoveryManager
+
+    handler = SoulHandler.__new__(SoulHandler)
+    handler.logger = MagicMock()
+    handler.element_finder = MagicMock()
+    handler.gesture_handler = MagicMock()
+    handler.key_actions = MagicMock()
+
+    drawer_elem = MagicMock()
+    drawer_elem.is_displayed.return_value = True
+
+    drawer_state = {'open': True}
+
+    def mock_try_find(key, **kw):
+        if key == 'input_drawer' and drawer_state['open']:
+            return drawer_elem
+        return None
+
+    handler.element_finder.try_find_element.side_effect = mock_try_find
+    handler.element_finder.wait_for_element_disappear.return_value = True
+
+    rec_mock = MagicMock()
+
+    def mock_close_drawer(drawer_key):
+        if drawer_key == 'input_drawer':
+            drawer_state['open'] = False
+            return True
+        return False
+
+    rec_mock.close_drawer.side_effect = mock_close_drawer
+
+    RecoveryManager.reset_instance()
+    with patch.object(RecoveryManager, 'is_initialized', return_value=True), \
+         patch.object(RecoveryManager, 'instance', return_value=rec_mock):
+        closed = handler.ensure_chat_window_closed()
+        assert closed is True
+        rec_mock.close_drawer.assert_called_with('input_drawer')
+        assert handler.is_chat_window_open() is False
+
+

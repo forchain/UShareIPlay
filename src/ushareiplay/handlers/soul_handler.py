@@ -32,16 +32,25 @@ class SoulHandler(AppHandler, Singleton):
     def is_chat_window_open(self) -> bool:
         """检查聊天输入窗口是否打开/可见。
 
-        当 input_box (cn.soulapp.android:id/etInputView) 在界面呈现时，
+        当 input_box (cn.soulapp.android:id/etInputView) 或
+        input_drawer (cn.soulapp.android:id/clSecondContainer) 在界面呈现时，
         表示聊天窗口处于打开状态。
         """
         input_box = self.element_finder.try_find_element('input_box', log=False)
-        if not input_box:
-            return False
-        try:
-            return bool(input_box.is_displayed())
-        except Exception:
-            return False
+        if input_box:
+            try:
+                if input_box.is_displayed():
+                    return True
+            except Exception:
+                pass
+        input_drawer = self.element_finder.try_find_element('input_drawer', log=False)
+        if input_drawer:
+            try:
+                if input_drawer.is_displayed():
+                    return True
+            except Exception:
+                return True
+        return False
 
     def ensure_chat_window_closed(
         self, timeout: float = 1.0, max_back_attempts: int = 2, input_element=None
@@ -50,9 +59,10 @@ class SoulHandler(AppHandler, Singleton):
 
         输入消息后，若聊天窗口未正常关闭会遮挡公屏消息并阻塞后续消息检测。
         1. 若聊天窗口当前处于打开状态，首先尝试常规 UI 操作（点击输入框外部空白区域）；
-        2. 动态等待输入框消失（wait_for_element_disappear）；
-        3. 若仍未消失，以 press_back() 作为保底兜底（最多尝试 max_back_attempts 次，分别针对软键盘与输入弹窗）；
-        4. 确认输入框彻底不可见后返回 True。
+        2. 若为 input_drawer 抽屉，优先尝试 RecoveryManager.close_drawer；
+        3. 动态等待输入框/抽屉消失（wait_for_element_disappear）；
+        4. 若仍未消失，以 press_back() 作为保底兜底（最多尝试 max_back_attempts 次，分别针对软键盘与输入弹窗）；
+        5. 确认输入框与抽屉彻底不可见后返回 True。
         """
         if input_element is not None:
             try:
@@ -66,6 +76,15 @@ class SoulHandler(AppHandler, Singleton):
 
         self.logger.info("Chat window is open, attempting to close it")
 
+        input_drawer = self.element_finder.try_find_element('input_drawer', log=False)
+        if input_drawer:
+            try:
+                from ushareiplay.managers.recovery_manager import RecoveryManager
+                if RecoveryManager.is_initialized():
+                    RecoveryManager.instance().close_drawer('input_drawer')
+            except Exception as e:
+                self.logger.debug(f"Failed to close input_drawer via recovery manager: {e}")
+
         target_box = input_element or self.element_finder.try_find_element('input_box', log=False)
         if target_box:
             try:
@@ -77,20 +96,23 @@ class SoulHandler(AppHandler, Singleton):
 
         if hasattr(self.element_finder, 'wait_for_element_disappear'):
             if self.element_finder.wait_for_element_disappear('input_box', timeout=timeout, poll_frequency=0.1):
-                self.logger.info("Chat window closed successfully via click outside")
-                return True
+                if not self.is_chat_window_open():
+                    self.logger.info("Chat window closed successfully via click outside")
+                    return True
 
         for attempt in range(max_back_attempts):
             if not self.is_chat_window_open():
                 break
             self.logger.warning(
-                f"Input box still visible after click outside, pressing back to close chat window (attempt {attempt + 1}/{max_back_attempts})"
+                f"Chat window still visible after click outside, pressing back to close chat window (attempt {attempt + 1}/{max_back_attempts})"
             )
             self.key_actions.press_back()
             if hasattr(self.element_finder, 'wait_for_element_disappear'):
-                if self.element_finder.wait_for_element_disappear('input_box', timeout=timeout, poll_frequency=0.1):
-                    self.logger.info(f"Chat window closed successfully via press_back (attempt {attempt + 1})")
-                    return True
+                self.element_finder.wait_for_element_disappear('input_box', timeout=timeout, poll_frequency=0.1)
+                self.element_finder.wait_for_element_disappear('input_drawer', timeout=timeout, poll_frequency=0.1)
+            if not self.is_chat_window_open():
+                self.logger.info(f"Chat window closed successfully via press_back (attempt {attempt + 1})")
+                return True
 
         closed = not self.is_chat_window_open()
         if not closed:

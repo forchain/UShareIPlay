@@ -22,12 +22,24 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence
 
-# 窗口开着的证据：抽屉自身，或抽屉内任一控件。
+# 窗口开着的证据：抽屉自身、抽屉内任一控件或子弹窗/编辑层。
 DIALOG_KEYS = (
     'party_room_type_option',
     'party_recommendation_status',
+    'party_recommendation_close',
+    'party_recommendation_open',
     'edit_topic_entry',
+    'edit_topic_bg_entry',
+    'edit_topic_input',
+    'edit_topic_confirm',
     'edit_notice_entry',
+    'close_notice',
+    'edit_notice_input',
+    'edit_notice_confirm',
+    'title_edit_entry',
+    'title_edit_input',
+    'title_edit_confirm',
+    'room_name_in_dialog',
     'slide_drawer',
 )
 
