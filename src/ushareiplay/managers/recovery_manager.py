@@ -1,6 +1,16 @@
 import logging
 from ushareiplay.core.singleton import Singleton
 
+#: 抽屉本体 key → 该抽屉自带的关闭按钮 key（按优先级尝试）。
+#:
+#: 新版 Soul 的在线用户列表不再渲染 touch_close 遮罩，只有右上角的关闭按钮
+#: ivClose。仍按"点窗口上沿"关的话，会先在遮罩上白等 10 秒、再在 room_id 上白等
+#: 10 秒，最后只能 press_back 兜底 —— 一次关闭空转 20 秒还伴随两条告警。
+#: 房间信息抽屉已有同样处理，见 room_profile/driver.py 的 ROOM_INFO_CLOSE_KEYS。
+DRAWER_CLOSE_BUTTONS = {
+    "online_drawer": ("online_users_close", "close_button"),
+}
+
 
 class RecoveryManager(Singleton):
     """异常检测和恢复管理器，用于检测和处理各种异常情况"""
@@ -14,7 +24,10 @@ class RecoveryManager(Singleton):
     ) -> bool:
         """
         关闭抽屉式弹窗
-        
+
+        优先使用抽屉自带的关闭按钮（见 DRAWER_CLOSE_BUTTONS）；没有关闭按钮的
+        抽屉才退回「点击窗口上沿遮罩」的旧方式。
+
         Args:
             drawer_key: 抽屉元素的 key
             wait_element: 等待出现的界面元素，默认是 "room_id"
@@ -24,6 +37,9 @@ class RecoveryManager(Singleton):
             bool: 如果成功关闭返回 True，否则 False
         """
         try:
+            if self._close_via_close_button(drawer_key):
+                return True
+
             for attempt in range(1, max_attempts + 1):
                 # 使用 wait_for 获取可点击的元素
                 element = self.handler.element_finder.wait_for_element_clickable(drawer_key)
@@ -65,6 +81,51 @@ class RecoveryManager(Singleton):
         except Exception as e:
             self.logger.error(f"Error closing drawer {drawer_key}: {str(e)}")
             return False
+
+    def _close_via_close_button(self, drawer_key: str) -> bool:
+        """优先点击抽屉自带的关闭按钮关闭，不点击窗口上沿。
+
+        关闭按钮找不到时返回 False，交给调用方退回「点遮罩」的旧方式 —— 遮罩式
+        抽屉（输入框等）本身就没有关闭按钮，这条路径不能因此失效。
+
+        Args:
+            drawer_key: 抽屉元素的 key
+
+        Returns:
+            bool: 找到并点击了关闭按钮返回 True，否则 False
+        """
+        close_keys = DRAWER_CLOSE_BUTTONS.get(drawer_key)
+        if not close_keys:
+            return False
+
+        finder = self.handler.element_finder
+        for key in close_keys:
+            close_btn = None
+            try:
+                # 短超时：关闭按钮在弹窗打开时立即存在，等满默认 10 秒只会拖慢关窗
+                close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
+                if not close_btn:
+                    close_btn = finder.try_find_element(key, log=False)
+            except Exception as e:
+                self.logger.debug(f"Error looking for close button {key}: {e}")
+                continue
+
+            if not close_btn:
+                continue
+
+            try:
+                close_btn.click()
+                self.logger.info(f"Closed drawer {drawer_key} via close button: {key}")
+                if hasattr(finder, 'wait_for_element_disappear'):
+                    finder.wait_for_element_disappear(key, timeout=3.0, poll_frequency=0.1)
+                return True
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to close drawer {drawer_key} via close button {key}: {e}"
+                )
+                return False
+
+        return False
 
     def _is_drawer_visible(self, drawer_key: str) -> bool:
         element = self.handler.element_finder.try_find_element(drawer_key, log=False)
