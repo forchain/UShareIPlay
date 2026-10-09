@@ -86,6 +86,10 @@ def _build_fake_handler(clicks=None, swipes=None, backs=None, current_status_tex
                 return element_key, rec_status_elem, [current_status_text]
             return None, None, []
 
+        def click_element_at(self, element, **kwargs):
+            clicks.append(getattr(element, "key", "unknown"))
+            return True
+
     class FakeKeyActions:
         def press_back(self):
             backs.append("press_back")

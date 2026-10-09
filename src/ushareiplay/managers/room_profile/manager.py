@@ -1470,22 +1470,16 @@ class RoomProfileManager(Singleton):
 
         # 4. 点击推荐状态按钮，唤起选项弹窗
         click_status_ok = False
-        if hasattr(status_element, "click"):
+        if handler and hasattr(handler, "gesture_handler") and hasattr(handler.gesture_handler, "click_element_at") and status_element:
+            click_status_ok = handler.gesture_handler.click_element_at(status_element)
+        if not click_status_ok and driver and hasattr(driver, "click_element"):
+            click_status_ok = driver.click_element("party_recommendation_status", timeout=5)
+        if not click_status_ok and hasattr(status_element, "click"):
             try:
                 status_element.click()
                 click_status_ok = True
             except Exception:
                 click_status_ok = False
-        if not click_status_ok:
-            if driver and hasattr(driver, "click_element"):
-                click_status_ok = driver.click_element("party_recommendation_status")
-            elif handler and hasattr(handler, "element_finder"):
-                status_clickable = handler.element_finder.wait_for_element_clickable(
-                    "party_recommendation_status", timeout=5
-                )
-                if status_clickable:
-                    status_clickable.click()
-                    click_status_ok = True
 
         if not click_status_ok:
             self.logger.warning("Failed to click party_recommendation_status entry")
@@ -1501,9 +1495,14 @@ class RoomProfileManager(Singleton):
             option_clicked = driver.click_element(opt_key, timeout=5)
         elif handler and hasattr(handler, "element_finder"):
             opt_elem = handler.element_finder.wait_for_element_clickable(opt_key, timeout=5)
+            if not opt_elem:
+                opt_elem = handler.element_finder.wait_for_element(opt_key, timeout=5)
             if opt_elem:
-                opt_elem.click()
-                option_clicked = True
+                if hasattr(handler, "gesture_handler") and hasattr(handler.gesture_handler, "click_element_at"):
+                    option_clicked = handler.gesture_handler.click_element_at(opt_elem)
+                else:
+                    opt_elem.click()
+                    option_clicked = True
 
         if not option_clicked:
             self.logger.warning(f"Failed to find option for recommendation ({opt_key})")

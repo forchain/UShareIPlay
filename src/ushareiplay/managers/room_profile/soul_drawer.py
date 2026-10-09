@@ -55,14 +55,18 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         self._require_handler().key_actions.press_back()
 
     def click_element(self, key: str, *, timeout: int = 10) -> bool:
-        element = self._require_handler().element_finder.wait_for_element_clickable(
+        handler = self._require_handler()
+        element = handler.element_finder.wait_for_element_clickable(
             key, timeout=timeout
         )
         if not element:
+            element = handler.element_finder.wait_for_element(
+                key, timeout=timeout
+            )
+        if not element:
             return False
-        # Selenium 的 WebElement.click() 返回 None，因此不能拿它的返回值当布尔：
-        # 那样「点成功」与「点失败」在生产里无法区分，调用方会把每一次成功的
-        # 点击误判成「元素没找到」。点得到就报告成功。
+        if hasattr(handler, "gesture_handler"):
+            return bool(handler.gesture_handler.click_element_at(element))
         element.click()
         return True
 
