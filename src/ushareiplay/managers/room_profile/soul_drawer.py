@@ -1,7 +1,7 @@
 """生产适配器：把 `SoulHandler` 的 Appium 细节包成抽屉端口。
 
 这里的每一步都是抽屉 ritual 原有的那一行 —— 入口点击仍是 `ui_actions.switch_and_click`，
-正规关窗仍是 `RecoveryManager.close_drawer('slide_drawer')`，保底仍是 `key_actions.press_back`。
+正规关窗是点击专门的关闭按钮 (iv_close)，保底仍是 `key_actions.press_back`，绝不点击窗口上方。
 编辑字段用到的三个元素级原语则逐字对应原 `TopicManager._update_topic_ui` 里的
 `wait_for_element_clickable` / `wait_for_any_element` / `clear()+send_keys()`。
 
@@ -13,10 +13,10 @@
 
 from typing import Optional, Sequence
 
-from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.managers.room_profile.driver import (
     DIALOG_KEYS,
     DRAWER_KEY,
+    ROOM_INFO_CLOSE_KEYS,
     RoomProfileDrawerDriverPort,
 )
 
@@ -47,9 +47,32 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         )
 
     def close_drawer(self) -> bool:
-        if not RecoveryManager.is_initialized():
+        """关闭房间信息抽屉：点击专门的关闭按钮 (iv_close)，不点击窗口上方。"""
+        handler = self._handler
+        if handler is None:
             return False
-        return bool(RecoveryManager.instance().close_drawer(DRAWER_KEY))
+        finder = getattr(handler, "element_finder", None)
+        if finder is None:
+            return False
+
+        for key in ROOM_INFO_CLOSE_KEYS:
+            close_btn = None
+            if hasattr(finder, "wait_for_element_clickable"):
+                close_btn = finder.wait_for_element_clickable(key, timeout=2)
+            if not close_btn and hasattr(finder, "wait_for_element"):
+                close_btn = finder.wait_for_element(key, timeout=1)
+            if not close_btn and hasattr(finder, "try_find_element"):
+                close_btn = finder.try_find_element(key, log=False)
+
+            if close_btn:
+                close_btn.click()
+                if hasattr(finder, "wait_for_element_disappear"):
+                    finder.wait_for_element_disappear(
+                        key, timeout=3.0, poll_frequency=0.1
+                    )
+                return True
+
+        return False
 
     def press_back(self) -> None:
         self._require_handler().key_actions.press_back()

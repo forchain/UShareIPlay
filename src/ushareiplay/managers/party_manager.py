@@ -52,16 +52,8 @@ class PartyManager(Singleton):
         return self._room_profile_manager
 
     def _refresh_recommendation_state(self):
-        """把推荐分发的真实状态从抽屉读回来（推荐分发归房间档案模块所有）。
-
-        建房流程记录的推荐状态只是配置假设或创建表单的点击结果，不代表真实
-        房间状态；回房与建房之后都要用房间信息抽屉的真实 UI 刷新一次。组合根
-        还没注册房间档案模块时安静跳过 —— 那是接线问题，不是业务失败。
-        """
-        profile = self.room_profile_manager
-        if profile is None:
-            return None
-        return profile.ensure_synced_on_return()
+        """派对推荐状态已不在房间信息面板展示，仅在创建派对时配置。"""
+        return None
 
     @property
     def message_dispatch(self):
@@ -785,25 +777,12 @@ class PartyManager(Singleton):
             # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
             RoomState.instance().promote_to_host_room(self.handler.party_id)
 
-        # 建房流程记录的推荐状态只是配置假设（新房间默认"所有人"）或创建表单点击结果，
-        # 不代表真实房间状态；进入新房间后必须用房间信息窗口的真实 UI 刷新一次，
-        # 否则房间重启后 info 显示的推荐状态会与实际不一致（如实际"所有人"却记录为"关闭"）。
+        # 开派对时已根据配置设置派对推荐状态（RoomState.instance().recommendation_enabled），
+        # 房间信息面板已无该选项，故无需也不再从 UI 刷新推荐状态。
         if RoomState.is_initialized():
-            try:
-                RoomState.instance().recommendation_enabled = None
-                sync_res = self._refresh_recommendation_state()
-                refreshed = RoomState.instance().recommendation_enabled
-                if isinstance(sync_res, dict) and 'error' in sync_res:
-                    self.logger.warning(
-                        f"Recommendation refresh after party creation failed: {sync_res['error']}; "
-                        f"state left as {refreshed}, will re-sync on next info/return"
-                    )
-                else:
-                    self.logger.info(
-                        f"Recommendation state refreshed from UI after party creation: {refreshed}"
-                    )
-            except Exception as e:
-                self.logger.warning(f"Error refreshing recommendation after party creation: {e}")
+            self.logger.info(
+                f"Party recommendation configured during creation: {RoomState.instance().recommendation_enabled}"
+            )
 
         self.logger.info("派对创建成功，准备设置默认notice")
 

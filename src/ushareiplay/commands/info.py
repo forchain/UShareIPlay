@@ -63,12 +63,6 @@ class InfoCommand(BaseCommand):
         result["play_mode"] = music_handler.play_mode_key_to_name(play_mode_key) if music_handler else "未知"
 
         rec_status = info_manager.recommendation_enabled
-        if rec_status is None:
-            from ushareiplay.managers.room_profile import RoomProfileManager
-            if RoomProfileManager.is_initialized():
-                RoomProfileManager.instance().ensure_synced_on_return()
-                rec_status = info_manager.recommendation_enabled
-
         if rec_status is True:
             result["party_recommendation"] = "开放"
         elif rec_status is False:

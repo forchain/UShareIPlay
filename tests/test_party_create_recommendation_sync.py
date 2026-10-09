@@ -117,44 +117,29 @@ def create_sync_setup(monkeypatch, tmp_path):
     return party_manager, room_state, profile, calls
 
 
-async def test_after_party_created_refreshes_stale_closed_record_from_ui(create_sync_setup):
-    """房间重启后实际为"所有人"（开放），但记录残留"关闭"：创建房间时须按真实 UI 更新。"""
+async def test_after_party_created_retains_configured_recommendation_state(create_sync_setup):
+    """开派对时设置的推荐状态应保留，不再从 UI 刷新。"""
     party_manager, room_state, profile, calls = create_sync_setup
 
-    room_state.recommendation_enabled = False  # stale record from before the restart
-    profile._handler.element_finder.status_element = _Element(text="所有人")
+    room_state.recommendation_enabled = True
+    profile._handler.element_finder.status_element = _Element(text="关闭推荐分发")
 
     await party_manager._after_party_created()
 
     assert room_state.recommendation_enabled is True
-    # creation flow continues normally after the recommendation sync
+    assert profile._handler.element_finder.status_element.clicked is False
     assert calls["notice"] == 1
     assert calls["seat"] == 1
 
 
-async def test_after_party_created_overwrites_assumed_open_record_from_ui(create_sync_setup):
-    """配置假设新房间默认开放，但真实 UI 为"关闭推荐分发"时，创建后记录应为关闭。"""
+async def test_after_party_created_retains_disabled_recommendation_state(create_sync_setup):
+    """开派对时配置为关闭推荐，建房后仍保持关闭，不被抽屉 UI 覆盖。"""
     party_manager, room_state, profile, calls = create_sync_setup
 
-    room_state.recommendation_enabled = True  # blind assumption from create_party_recommendation=true
-    profile._handler.element_finder.status_element = _Element(text="关闭推荐分发")
+    room_state.recommendation_enabled = False
+    profile._handler.element_finder.status_element = _Element(text="所有人")
 
     await party_manager._after_party_created()
 
     assert room_state.recommendation_enabled is False
     assert calls["notice"] == 1
-
-
-async def test_after_party_created_leaves_record_unsynced_when_ui_unreadable(create_sync_setup):
-    """刷新失败时不得保留旧假设值：置为 None 让 info/回房时重新同步。"""
-    party_manager, room_state, profile, calls = create_sync_setup
-
-    room_state.recommendation_enabled = False  # stale/assumed record
-    profile._handler.element_finder.status_element = None  # UI read fails
-
-    await party_manager._after_party_created()
-
-    assert room_state.recommendation_enabled is None
-    # failure must not break the rest of the post-creation flow
-    assert calls["notice"] == 1
-    assert calls["seat"] == 1

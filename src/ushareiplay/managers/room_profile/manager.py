@@ -1336,87 +1336,16 @@ class RoomProfileManager(Singleton):
     # 「我现在就要开/关」。因此这里没有草稿、没有 PendingWrite、没有延迟。
 
     def set_recommendation(self, enabled: bool) -> Dict:
-        """在抽屉里切换推荐分发，当场生效。
-
-        抽屉的打开与关闭由本方法独占（原先 `commands/recommend.py` 自己开窗、
-        自己 `close_with_back`，是第五份打开副本）。**没有冷却**：重复下发与
-        第一次下发等价，`:recommend` 的回复因此立刻就能给出去。
-
-        `error_message` 原样传 `Failed to find room title`：这条文案原先由
-        `commands/recommend.py` 传进 `ensure_open`，再经 config.yaml 的
-        `设置派对推荐失败: {error}` 模板进用户的聊天窗口。一个字都不改。
-
-        选项层盖在抽屉之上，所以先 `close_with_back()` 收掉选项层，退出上下文
-        时再由 `ensure_closed()` 统一确认抽屉已经关好。
-        """
-        with self.with_window_open(error_message='Failed to find room title') as open_error:
-            if open_error:
-                return open_error
-
-            result = self.update_recommendation_ui(enabled)
-            self.close_with_back()
-            return result
+        """设置派对推荐状态已暂时停用（UI位置已改变，未来恢复）。"""
+        return {"error": "派对推荐设置已暂时停用"}
 
     def inspect_current_ui_status(self, wait: bool = False) -> Optional[bool]:
-        """读一次抽屉里推荐分发那一行的真实状态。
-
-        Args:
-            wait: 是否等状态字段渲染出来。只有「窗口刚被自己打开、紧接着就要
-                一次性改完所有字段」的全量审计才等；被动路径沿用非阻塞读 ——
-                布局里没有该字段时，等待会白等满整个超时。
-
-        Returns:
-            True = 显示「所有人」（开放），False = 显示「关闭推荐分发」，
-            None = 没定位到元素或不认识这段文案。
-        """
-        try:
-            text = self._read_drawer_row_text(RECOMMENDATION_STATUS_KEY, wait=wait)
-            if not text:
-                return None
-            if RECOMMENDATION_OPEN_TEXT in text:
-                return True
-            if RECOMMENDATION_CLOSED_TEXT in text:
-                return False
-            return None
-        except Exception:
-            self.logger.error(
-                f"Error inspecting recommendation UI status: {traceback.format_exc()}"
-            )
-            return None
+        """推荐分发已不在房间信息抽屉中展示。"""
+        return None
 
     def update_recommendation_ui(self, target_state: bool) -> Dict:
-        """抽屉已开着时把推荐分发切到目标状态。
-
-        整段复用端口已有的原语（等任意元素 / 点元素），没有为推荐分发增加任何
-        新原语，也没有在端口之外直接抓 Appium 元素。
-        """
-        if RoomState.in_guest_room():
-            return {"error": "他人房间模式下不可修改推荐状态"}
-
-        try:
-            current_status = self.inspect_current_ui_status()
-            if current_status == target_state:
-                self.room_state.recommendation_enabled = target_state
-                self.logger.info(
-                    f"Recommendation status is already target state ({target_state})"
-                )
-                return {"success": True, "recommendation_enabled": target_state}
-
-            driver = self._require_driver()
-            if not driver.click_element(RECOMMENDATION_STATUS_KEY):
-                return {"error": "Failed to find recommendation status entry"}
-            self.logger.info("Clicked recommendation status entry")
-
-            opt_key = RECOMMENDATION_OPTION_KEYS[target_state]
-            if not driver.click_element(opt_key):
-                return {"error": f"Failed to find option for recommendation ({opt_key})"}
-            self.logger.info(f"Clicked recommendation option ({opt_key})")
-
-            self.room_state.recommendation_enabled = target_state
-            return {"success": True, "recommendation_enabled": target_state}
-        except Exception:
-            self.logger.error(f"Error updating recommendation UI: {traceback.format_exc()}")
-            return {"error": "Error updating recommendation UI"}
+        """推荐分发已不在房间信息抽屉中展示。"""
+        return {"error": "派对推荐设置已暂时停用"}
 
     def ensure_synced_on_return(self) -> Dict:
         """回到/恢复房间或建房之后调用：状态未知就把整份房间档案核对一遍。
@@ -1439,16 +1368,12 @@ class RoomProfileManager(Singleton):
                 audit_opened = 'open' not in audit_result
             except Exception as e:
                 self.logger.warning(f"Error in room info audit: {e}")
-                ui_status = self.inspect_current_ui_status(wait=True)
-                if ui_status is not None:
-                    self.room_state.recommendation_enabled = ui_status
 
             # 只有抽屉真的被打开、并且此刻确实已经关掉，才说「已关窗」。打开失败时
             # 过去照样打这一句，那是一句假话，还会把真正的打开失败从日志里盖掉。
             if audit_opened and not self.is_open():
                 self.logger.info(
-                    "Closed room info window after reading recommendation status "
-                    "and auditing room attributes"
+                    "Closed room info window after auditing room attributes"
                 )
             return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
         except Exception:
@@ -1559,40 +1484,25 @@ class RoomProfileManager(Singleton):
     # ------------------------------------------------------------------
 
     def _sync_recommendation(self, wait: bool = False) -> Dict:
-        """读取真实推荐分发状态并纠正 RoomState 中的记录。
-
-        Args:
-            wait: 是否等状态字段渲染出来。只有「窗口刚被自己打开、紧接着就要
-                一次性改完所有字段」的全量审计才等；标题更新等被动路径沿用
-                原来的非阻塞读 —— 布局里没有该字段时，等待会白等满整个超时。
-        """
-        ui_status = self.inspect_current_ui_status(wait=wait)
-        if ui_status is not None and RoomState.is_initialized():
-            self.room_state.recommendation_enabled = ui_status
-        return {'success': True, 'status': ui_status}
+        """推荐分发已不在房间信息抽屉中展示。"""
+        return {'skipped': True, 'reason': 'ui_moved', 'status': self.room_state.recommendation_enabled}
 
     def _sync_room_type(self) -> Dict:
         """派对类型检查与修正（"闲聊唠嗑" -> "唱歌听歌"）。
 
-        同一个抽屉会话里的第二步，与推荐分发一起构成「先纠偏再编辑」的顺序。
+        抽屉会话里的第一步：先纠偏再编辑。
         """
         return self.sync_and_correct_room_type_if_dialog_open()
 
     def sync_while_open(self, wait: bool = False) -> Dict:
         """窗口已打开时的「先纠偏再编辑」顺序。
 
-        推荐分发状态与派对类型必须在任何字段编辑之前同步：编辑层（标题/话题/
-        公告）会改变抽屉内容，之后再读这两个状态已经不反映进入窗口时的真实值。
-        这个顺序原先只写在旧房名流程的方法体里，现在由本模块拥有，
+        派对类型必须在任何字段编辑之前同步：编辑层（标题/话题/
+        公告）会改变抽屉内容。
         `audit_and_repair()` 复用同一步骤。
-
-        Args:
-            wait: 是否等推荐状态字段渲染出来。被动路径（标题更新时窗口已开着）
-                保持原来的非阻塞读；`audit_and_repair()` 自己刚打开窗口，传 True。
         """
         results: Dict = {}
         for key, step in (
-            ('recommendation', lambda: self._sync_recommendation(wait)),
             ('room_type', self._sync_room_type),
         ):
             try:

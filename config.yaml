@@ -154,6 +154,7 @@ soul:
     title_edit_entry: "cn.soulapp.android:id/iv_edit"
     title_edit_input: "cn.soulapp.android:id/et_content"
     title_edit_confirm: "cn.soulapp.android:id/tv_confirm"
+    room_info_close: "cn.soulapp.android:id/iv_close" # 房间信息窗口关闭按钮
     go_back: "cn.soulapp.android:id/iv_back"
     go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
     user_count: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvUserCount" or @resource-id="cn.soulapp.android:id/tvOnlineCount"]' # 6人/1人在线

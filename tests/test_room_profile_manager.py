@@ -448,7 +448,7 @@ def test_the_separator_is_the_fullwidth_vertical_line_and_only_the_first_one_spl
 
 
 def test_the_batched_audit_syncs_before_editing_and_closes_the_drawer_last(monkeypatch):
-    """全量审计的顺序：开窗 -> 纠偏(推荐/类型) -> 编辑(房名/公告) -> 统一关窗。"""
+    """全量审计的顺序：开窗 -> 纠偏(类型) -> 编辑(房名/公告) -> 统一关窗。"""
     journal = []
     driver = InMemoryRoomProfileDrawerDriver(journal=journal)
     profile = _profile(driver, handler=_Handler())
@@ -458,13 +458,12 @@ def test_the_batched_audit_syncs_before_editing_and_closes_the_drawer_last(monke
 
     assert journal == [
         "drawer:open:chat_room_title",
-        "sync:recommendation",
         "sync:room_type",
         "sync:room_name",
         "sync:notice",
         "drawer:close",
     ]
-    assert set(results) == {"recommendation", "room_type", "room_name", "notice"}
+    assert set(results) == {"room_type", "room_name", "notice"}
     assert profile.pending_audit_retry is False
     assert driver.is_open() is False
 
@@ -536,6 +535,13 @@ def test_the_ownership_rule_holds_across_a_mixed_sequence_of_openers():
 
 def test_the_production_adapter_maps_the_port_onto_the_real_handler():
     from ushareiplay.managers.recovery_manager import RecoveryManager
+    class _Element:
+        def __init__(self):
+            self.clicked = False
+
+        def click(self):
+            self.clicked = True
+
     class _Finder:
         def __init__(self, present):
             self.present = present
@@ -543,7 +549,7 @@ def test_the_production_adapter_maps_the_port_onto_the_real_handler():
 
         def try_find_element(self, key, log=False):
             self.queries.append(key)
-            return object() if key in self.present else None
+            return _Element() if key in self.present else None
 
     class _Actions:
         def __init__(self):
@@ -560,7 +566,7 @@ def test_the_production_adapter_maps_the_port_onto_the_real_handler():
         def press_back(self):
             self.back_presses += 1
 
-    finder = _Finder({"slide_drawer"})
+    finder = _Finder({"slide_drawer", "room_info_close"})
     actions = _Actions()
     keys = _Keys()
     driver = SoulDrawerDriver(
@@ -576,16 +582,9 @@ def test_the_production_adapter_maps_the_port_onto_the_real_handler():
     }
     assert actions.clicks == [("chat_room_title", "Failed to find room title")]
 
-    closed = []
-    RecoveryManager._instance = SimpleNamespace(
-        close_drawer=lambda drawer_key, **_kw: closed.append(drawer_key) or True
-    )
-    RecoveryManager._singleton_initialized = True
-    try:
-        assert driver.close_drawer() is True
-    finally:
-        RecoveryManager.reset_instance()
-    assert closed == ["slide_drawer"]
+    # 关窗点击专门的关闭按钮 (iv_close)，不点击窗口上方
+    assert driver.close_drawer() is True
+    assert "room_info_close" in finder.queries
 
     driver.press_back()
     assert keys.back_presses == 1

@@ -87,7 +87,7 @@ def info_cmd_setup():
 
 
 @pytest.mark.asyncio
-async def test_info_command_fetches_recommendation_status_when_unknown(monkeypatch, info_cmd_setup):
+async def test_info_command_does_not_fetch_recommendation_from_drawer_when_unknown(monkeypatch, info_cmd_setup):
     cmd, room_state, info_manager = info_cmd_setup
     monkeypatch.setattr(
         "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
@@ -97,5 +97,13 @@ async def test_info_command_fetches_recommendation_status_when_unknown(monkeypat
     room_state.recommendation_enabled = None
     result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
 
+    assert result["party_recommendation"] == "未知"
+    assert room_state.recommendation_enabled is None
+
+    room_state.recommendation_enabled = True
+    result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
     assert result["party_recommendation"] == "开放"
-    assert room_state.recommendation_enabled is True
+
+    room_state.recommendation_enabled = False
+    result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
+    assert result["party_recommendation"] == "关闭"
