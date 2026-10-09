@@ -1415,9 +1415,11 @@ class RoomProfileManager(Singleton):
             # 等待设置容器渲染
             container_found = False
             if driver and hasattr(driver, "wait_for_any"):
-                container_found = bool(driver.wait_for_any(["party_setting_container"], timeout=5))
+                container_found = bool(driver.wait_for_any(["party_setting_title", "party_setting_container"], timeout=5))
             elif handler and hasattr(handler, "element_finder"):
-                container_found = bool(handler.element_finder.wait_for_element("party_setting_container", timeout=5))
+                elem = handler.element_finder.wait_for_element("party_setting_title", timeout=5) or \
+                       handler.element_finder.wait_for_element("party_setting_container", timeout=5)
+                container_found = bool(elem)
 
             if not container_found and not self._is_settings_open():
                 self.logger.warning("Failed to find party_setting_container after clicking party_setting_btn")
@@ -1520,14 +1522,16 @@ class RoomProfileManager(Singleton):
         if driver and hasattr(driver, "is_settings_open"):
             return driver.is_settings_open()
         if driver and hasattr(driver, "present"):
-            return "party_setting_container" in driver.present
+            return "party_setting_title" in driver.present or "party_setting_container" in driver.present
         if self.handler and hasattr(self.handler, "element_finder"):
-            elem = self.handler.element_finder.try_find_element("party_setting_container", log=False)
-            if elem:
-                try:
-                    return bool(elem.is_displayed())
-                except Exception:
-                    return True
+            for key in ("party_setting_title", "party_setting_container"):
+                elem = self.handler.element_finder.try_find_element(key, log=False)
+                if elem:
+                    try:
+                        if elem.is_displayed():
+                            return True
+                    except Exception:
+                        return True
         return False
 
     def _close_settings_window(self) -> None:
@@ -1567,6 +1571,11 @@ class RoomProfileManager(Singleton):
             True = 显示「所有人」（开放），False = 显示「关闭推荐分发」，
             None = 没定位到元素或不认识这段文案。
         """
+        if self._can_use_settings_for_recommendation():
+            # 新版 Soul 中推荐状态在设置中，抽屉中不再包含 party_recommendation_status。
+            # 直接返回已知的 recommendation_enabled，避免在抽屉审计时空等 10 秒超时。
+            return self.room_state.recommendation_enabled
+
         try:
             text = self._read_drawer_row_text(RECOMMENDATION_STATUS_KEY, wait=wait)
             if not text:

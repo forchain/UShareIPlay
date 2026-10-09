@@ -110,6 +110,7 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self._record("drawer:back")
         if self.back_closes:
             self.drawer_open = False
+            self.present.discard("party_setting_title")
             self.present.discard("party_setting_container")
 
     def click_element(self, key: str, *, timeout: int = 10) -> bool:
@@ -172,7 +173,7 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         return None, None, []
 
     def is_settings_open(self) -> bool:
-        return "party_setting_container" in self.present
+        return bool({"party_setting_title", "party_setting_container"} & self.present)
 
     def _record(self, event: str) -> None:
         if self.journal is not None:

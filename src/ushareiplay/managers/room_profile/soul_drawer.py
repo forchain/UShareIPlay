@@ -115,13 +115,15 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         handler = self._handler
         if handler is None:
             return False
-        elem = handler.element_finder.try_find_element("party_setting_container", log=False)
-        if not elem:
-            return False
-        try:
-            return bool(elem.is_displayed())
-        except Exception:
-            return True
+        for key in ("party_setting_title", "party_setting_container"):
+            elem = handler.element_finder.try_find_element(key, log=False)
+            if elem:
+                try:
+                    if elem.is_displayed():
+                        return True
+                except Exception:
+                    return True
+        return False
 
     def _require_handler(self):
         if self._handler is None:
