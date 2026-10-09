@@ -82,6 +82,7 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self.coordinate_clicks = []
         self.typed = []
         self.waits = []
+        self.swipes = []
 
     def is_open(self) -> bool:
         self.is_open_calls += 1
@@ -109,6 +110,7 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self._record("drawer:back")
         if self.back_closes:
             self.drawer_open = False
+            self.present.discard("party_setting_container")
 
     def click_element(self, key: str, *, timeout: int = 10) -> bool:
         if key not in self.present:
@@ -144,6 +146,33 @@ class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):
         self.typed.append((key, text))
         self._record(f"element:type:{key}")
         return True
+
+    def scroll_container_until_element(
+        self,
+        element_key: str,
+        container_key: str,
+        direction: str = "up",
+        attribute_name=None,
+        attribute_value=None,
+        max_swipes: int = 10,
+    ):
+        self.swipes.append((element_key, container_key, direction))
+        self._record(f"scroll:{container_key}:{direction}:{element_key}")
+        if element_key in self.present:
+            class _Elem:
+                text = getattr(self, "texts", {}).get(element_key, "")
+                def click(elem_self):
+                    self.clicks.append(element_key)
+                    self._record(f"element:click:{element_key}")
+                    if element_key in self.world_after_click:
+                        self.present = set(self.world_after_click[element_key])
+                    return True
+            elem = _Elem()
+            return element_key, elem, [elem.text]
+        return None, None, []
+
+    def is_settings_open(self) -> bool:
+        return "party_setting_container" in self.present
 
     def _record(self, event: str) -> None:
         if self.journal is not None:

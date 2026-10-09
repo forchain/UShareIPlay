@@ -11,7 +11,7 @@
 第一次成形时没有坐标原语，于是被悄悄退化成了中心点击；这里把它复原。
 """
 
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence, Tuple
 
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.managers.room_profile.driver import (
@@ -91,6 +91,37 @@ class SoulDrawerDriver(RoomProfileDrawerDriverPort):
         element.clear()
         element.send_keys(text)
         return True
+
+    def scroll_container_until_element(
+        self,
+        element_key: str,
+        container_key: str,
+        direction: str = "up",
+        attribute_name: Optional[str] = None,
+        attribute_value: Optional[str] = None,
+        max_swipes: int = 10,
+    ) -> Tuple[Optional[str], Optional[Any], list]:
+        handler = self._require_handler()
+        return handler.gesture_handler.scroll_container_until_element(
+            element_key,
+            container_key,
+            direction=direction,
+            attribute_name=attribute_name,
+            attribute_value=attribute_value,
+            max_swipes=max_swipes,
+        )
+
+    def is_settings_open(self) -> bool:
+        handler = self._handler
+        if handler is None:
+            return False
+        elem = handler.element_finder.try_find_element("party_setting_container", log=False)
+        if not elem:
+            return False
+        try:
+            return bool(elem.is_displayed())
+        except Exception:
+            return True
 
     def _require_handler(self):
         if self._handler is None:

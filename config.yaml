@@ -125,7 +125,9 @@ soul:
     party_type_chat: '//android.widget.TextView[@text="闲聊唠嗑"]'
     party_type_singing: '//android.widget.TextView[@text="唱歌听歌"]'
     party_room_type_option: "cn.soulapp.android:id/tv_type"
-    party_recommendation_status: "cn.soulapp.android:id/tv_private_title"
+    party_setting_btn: "cn.soulapp.android:id/partySettingBtn"
+    party_setting_container: '//android.widget.FrameLayout[@resource-id="cn.soulapp.android:id/flContainer"]'
+    party_recommendation_status: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRightHint" and (@text="所有人" or @text="关闭推荐分发")]'
     party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
     party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'
     create_party_button: '//android.widget.TextView[@text="创建房间"]'

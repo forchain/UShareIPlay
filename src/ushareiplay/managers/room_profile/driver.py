@@ -20,12 +20,11 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence, Tuple
 
 # 窗口开着的证据：抽屉自身，或抽屉内任一控件。
 DIALOG_KEYS = (
     'party_room_type_option',
-    'party_recommendation_status',
     'edit_topic_entry',
     'edit_notice_entry',
     'slide_drawer',
@@ -100,3 +99,19 @@ class RoomProfileDrawerDriverPort(ABC):
     @abstractmethod
     def replace_text(self, key: str, text: str, *, timeout: int = 10) -> bool:
         """清空输入框并键入 `text`；元素等不到则返回 False。"""
+
+    def scroll_container_until_element(
+        self,
+        element_key: str,
+        container_key: str,
+        direction: str = "up",
+        attribute_name: Optional[str] = None,
+        attribute_value: Optional[str] = None,
+        max_swipes: int = 10,
+    ) -> Tuple[Optional[str], Optional[Any], list]:
+        """在容器内滑动直到找到目标元素。"""
+        return None, None, []
+
+    def is_settings_open(self) -> bool:
+        """设置界面当前是否开着。"""
+        return False

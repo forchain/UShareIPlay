@@ -26,7 +26,7 @@ import logging
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Iterator, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -1336,19 +1336,19 @@ class RoomProfileManager(Singleton):
     # 「我现在就要开/关」。因此这里没有草稿、没有 PendingWrite、没有延迟。
 
     def set_recommendation(self, enabled: bool) -> Dict:
-        """在抽屉里切换推荐分发，当场生效。
+        """切换推荐分发，当场生效。
 
-        抽屉的打开与关闭由本方法独占（原先 `commands/recommend.py` 自己开窗、
-        自己 `close_with_back`，是第五份打开副本）。**没有冷却**：重复下发与
-        第一次下发等价，`:recommend` 的回复因此立刻就能给出去。
-
-        `error_message` 原样传 `Failed to find room title`：这条文案原先由
-        `commands/recommend.py` 传进 `ensure_open`，再经 config.yaml 的
-        `设置派对推荐失败: {error}` 模板进用户的聊天窗口。一个字都不改。
-
-        选项层盖在抽屉之上，所以先 `close_with_back()` 收掉选项层，退出上下文
-        时再由 `ensure_closed()` 统一确认抽屉已经关好。
+        在新版 Soul App 中，推荐设置从房间信息抽屉移动到了设置界面：
+        1. 检查客房守卫（他人房间模式下不可修改）。
+        2. 优先通过设置界面（party_setting_btn -> party_setting_container）进行设置。
+        3. 若设置按钮未配置或未找到，回退至既有抽屉会话尝试修改。
         """
+        if RoomState.in_guest_room():
+            return {"error": "他人房间模式下不可修改推荐状态"}
+
+        if self._can_use_settings_for_recommendation():
+            return self._set_recommendation_via_settings(enabled)
+
         with self.with_window_open(error_message='Failed to find room title') as open_error:
             if open_error:
                 return open_error
@@ -1356,6 +1356,204 @@ class RoomProfileManager(Singleton):
             result = self.update_recommendation_ui(enabled)
             self.close_with_back()
             return result
+
+    def _can_use_settings_for_recommendation(self) -> bool:
+        """判断是否可以使用设置界面修改推荐状态。"""
+        driver = self.drawer_driver
+        if driver is not None:
+            if hasattr(driver, "can_use_settings") and callable(driver.can_use_settings):
+                return driver.can_use_settings()
+            if hasattr(driver, "present") and (
+                "party_setting_btn" in driver.present
+                or "party_setting_container" in driver.present
+            ):
+                return True
+
+        if self.handler is not None:
+            config_elements = (getattr(self.handler, "config", None) or {}).get("elements") or {}
+            if "party_setting_btn" in config_elements:
+                finder = getattr(self.handler, "element_finder", None)
+                if finder is not None:
+                    if finder.try_find_element("party_setting_btn", log=False) or finder.try_find_element("party_setting_container", log=False):
+                        return True
+                    if not self.is_open():
+                        return True
+        return False
+
+    def _set_recommendation_via_settings(self, target_state: bool) -> Dict:
+        """通过房间设置界面修改推荐状态。
+
+        流程：
+        1. 点击设置按钮（party_setting_btn）。
+        2. 等待设置弹窗（party_setting_container）。
+        3. 向下翻页滚动，直到找到推荐状态按钮（party_recommendation_status）。
+        4. 检查当前状态：若已是目标状态，直接关窗返回成功。
+        5. 点击推荐状态按钮，在弹出的选项中点击目标选项（party_recommendation_open/party_recommendation_close）。
+        6. 按返回键关闭设置界面，并记录状态。
+        """
+        driver = self.drawer_driver
+        handler = self.handler
+
+        # 1. 打开设置界面（若尚未打开）
+        if not self._is_settings_open():
+            opened = False
+            if driver and hasattr(driver, "click_element"):
+                opened = driver.click_element("party_setting_btn")
+            elif handler and hasattr(handler, "element_finder"):
+                btn = handler.element_finder.wait_for_element_clickable("party_setting_btn", timeout=5)
+                if btn:
+                    try:
+                        btn.click()
+                        opened = True
+                    except Exception:
+                        opened = False
+
+            if not opened:
+                self.logger.warning("Failed to open party settings via party_setting_btn")
+                return {"error": "Failed to find party setting button"}
+
+            # 等待设置容器渲染
+            container_found = False
+            if driver and hasattr(driver, "wait_for_any"):
+                container_found = bool(driver.wait_for_any(["party_setting_container"], timeout=5))
+            elif handler and hasattr(handler, "element_finder"):
+                container_found = bool(handler.element_finder.wait_for_element("party_setting_container", timeout=5))
+
+            if not container_found and not self._is_settings_open():
+                self.logger.warning("Failed to find party_setting_container after clicking party_setting_btn")
+                self._close_settings_window()
+                return {"error": "Failed to find room settings container"}
+
+        # 2. 向下滚动容器直到找到推荐状态按钮
+        status_element = None
+        status_text = ""
+        if driver and hasattr(driver, "scroll_container_until_element"):
+            _, status_element, values = driver.scroll_container_until_element(
+                "party_recommendation_status",
+                "party_setting_container",
+                direction="up",
+                max_swipes=5,
+            )
+            if status_element:
+                status_text = self._get_element_text(status_element) or (values[0] if values else "")
+        elif handler and hasattr(handler, "gesture_handler"):
+            _, status_element, values = handler.gesture_handler.scroll_container_until_element(
+                "party_recommendation_status",
+                "party_setting_container",
+                direction="up",
+                max_swipes=5,
+            )
+            if status_element:
+                status_text = self._get_element_text(status_element) or (values[0] if values else "")
+
+        if not status_element:
+            self.logger.warning("Failed to find party_recommendation_status in settings container")
+            self._close_settings_window()
+            return {"error": "Failed to find recommendation status entry"}
+
+        # 3. 解析当前状态
+        current_status = None
+        if RECOMMENDATION_OPEN_TEXT in status_text:
+            current_status = True
+        elif RECOMMENDATION_CLOSED_TEXT in status_text:
+            current_status = False
+
+        if current_status == target_state:
+            self.room_state.recommendation_enabled = target_state
+            self.logger.info(
+                f"Recommendation status is already target state ({target_state})"
+            )
+            self._close_settings_window()
+            return {"success": True, "recommendation_enabled": target_state}
+
+        # 4. 点击推荐状态按钮，唤起选项弹窗
+        click_status_ok = False
+        if hasattr(status_element, "click"):
+            try:
+                status_element.click()
+                click_status_ok = True
+            except Exception:
+                click_status_ok = False
+        if not click_status_ok:
+            if driver and hasattr(driver, "click_element"):
+                click_status_ok = driver.click_element("party_recommendation_status")
+            elif handler and hasattr(handler, "element_finder"):
+                status_clickable = handler.element_finder.wait_for_element_clickable(
+                    "party_recommendation_status", timeout=5
+                )
+                if status_clickable:
+                    status_clickable.click()
+                    click_status_ok = True
+
+        if not click_status_ok:
+            self.logger.warning("Failed to click party_recommendation_status entry")
+            self._close_settings_window()
+            return {"error": "Failed to click recommendation status entry"}
+
+        self.logger.info("Clicked recommendation status entry")
+
+        # 5. 在选项弹窗中点击目标选项
+        opt_key = RECOMMENDATION_OPTION_KEYS[target_state]
+        option_clicked = False
+        if driver and hasattr(driver, "click_element"):
+            option_clicked = driver.click_element(opt_key, timeout=5)
+        elif handler and hasattr(handler, "element_finder"):
+            opt_elem = handler.element_finder.wait_for_element_clickable(opt_key, timeout=5)
+            if opt_elem:
+                opt_elem.click()
+                option_clicked = True
+
+        if not option_clicked:
+            self.logger.warning(f"Failed to find option for recommendation ({opt_key})")
+            self._close_settings_window()
+            return {"error": f"Failed to find option for recommendation ({opt_key})"}
+
+        self.logger.info(f"Clicked recommendation option ({opt_key})")
+        self.room_state.recommendation_enabled = target_state
+
+        # 6. 关闭设置界面
+        self._close_settings_window()
+        return {"success": True, "recommendation_enabled": target_state}
+
+    def _is_settings_open(self) -> bool:
+        driver = self.drawer_driver
+        if driver and hasattr(driver, "is_settings_open"):
+            return driver.is_settings_open()
+        if driver and hasattr(driver, "present"):
+            return "party_setting_container" in driver.present
+        if self.handler and hasattr(self.handler, "element_finder"):
+            elem = self.handler.element_finder.try_find_element("party_setting_container", log=False)
+            if elem:
+                try:
+                    return bool(elem.is_displayed())
+                except Exception:
+                    return True
+        return False
+
+    def _close_settings_window(self) -> None:
+        """关闭设置弹窗，确保返回房间主界面。"""
+        try:
+            self._press_back()
+            if self._is_settings_open():
+                self._press_back()
+        except Exception as e:
+            self.logger.warning(f"Error closing settings window: {e}")
+
+    def _press_back(self) -> None:
+        driver = self.drawer_driver
+        if driver and hasattr(driver, "press_back"):
+            driver.press_back()
+        elif self.handler and hasattr(self.handler, "key_actions"):
+            self.handler.key_actions.press_back()
+
+    def _get_element_text(self, element: Any) -> str:
+        if not element:
+            return ""
+        if self.handler and hasattr(self.handler, "element_finder"):
+            text = self.handler.element_finder.get_element_text(element)
+            if text:
+                return text.strip()
+        return (getattr(element, "text", "") or "").strip()
 
     def inspect_current_ui_status(self, wait: bool = False) -> Optional[bool]:
         """读一次抽屉里推荐分发那一行的真实状态。
