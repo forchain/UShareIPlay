@@ -6,11 +6,13 @@
 3. 当专注人数与可视在座人数背离时，主动展开面板全量重扫并立即收起恢复现场。
 """
 
-import re
 from typing import Optional
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationManager,
+    parse_focus_count_text,
+)
 from ushareiplay.state.room_state import RoomState
 
 # 顺序即 EventManager 的同轮分发顺序（见 _process_events_once）：必须先被动观测
@@ -42,23 +44,21 @@ class FocusCountEvent(BaseEvent):
                 if not wrapper:
                     return False
                 current_text = getattr(wrapper, "text", "") or ""
-                if not current_text:
-                    return False
 
-                match = re.search(r"(\d+)人专注中", current_text)
-                if not match:
-                    match = re.search(r"(\d+)", current_text)
-                if not match:
-                    return False
-
-                current_focus_count = int(match.group(1))
-
-                if self.previous_focus_count == current_focus_count:
+                current_focus_count = parse_focus_count_text(current_text)
+                if current_focus_count is None:
                     return False
 
                 before = self.previous_focus_count
                 self.previous_focus_count = current_focus_count
+                # 「人数没变」只该跳过背离判断，不能跳过缓存写入：RoomState.clear()
+                # 之后 previous 仍是有值的旧数字，于是每次都早退、缓存永远是空的，
+                # 日志就一直打「专注人数: 未知」（真机 10-10 01:49:30~01:50:32：
+                # 连扫 4~5 遍、零次座位更新，每行都写着未知）。
                 RoomState.instance().focus_count = current_focus_count
+
+                if before == current_focus_count:
+                    return False
 
                 # 检查是否发生人数与在座人数背离，触发主动展开探测
                 await self.observation.on_focus_count(before, current_focus_count)
@@ -68,9 +68,21 @@ class FocusCountEvent(BaseEvent):
                 if not desks:
                     return False
 
-                # 被动观测可视麦位
+                # 被动观测可视麦位。
+                # 分发顺序把 seat_desk 排在 focus_count 前面，所以首轮 previous 必然是
+                # None，这次观测会带着「未知」去对账 —— 而人数正是判断扫得对不对的
+                # 唯一硬依据。缓存空时补读一次界面，**读到了就立刻写回缓存**：
+                # 冷读只在进房/clear() 之后发生一次，不会变成每轮轮询都打 driver 的
+                # 无行为监控（AGENTS.md 日志铁律）。读不到就保持 None，不猜。
+                current_focus_count = self.previous_focus_count
+                if current_focus_count is None:
+                    current_focus_count = self.observation.read_focus_count_from_ui()
+                    if current_focus_count is not None:
+                        self.previous_focus_count = current_focus_count
+                        RoomState.instance().focus_count = current_focus_count
+
                 await self.observation.observe_visible_desks(
-                    desks, current_focus_count=self.previous_focus_count
+                    desks, current_focus_count=current_focus_count
                 )
 
             return False

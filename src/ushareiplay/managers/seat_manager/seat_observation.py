@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -12,6 +13,19 @@ from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
+
+# 专注人数文案：主形态「7人专注中」，兜底取任意数字（文案变形时不至于整个读不到）。
+# 事件链路与观测器的按需读共用这一份判法，两边对同一个界面的读数才不会打架。
+_FOCUS_COUNT_PATTERN = re.compile(r"(\d+)人专注中")
+_FOCUS_COUNT_FALLBACK_PATTERN = re.compile(r"(\d+)")
+
+
+def parse_focus_count_text(text: Optional[str]) -> Optional[int]:
+    """从 tvStudyRoomDesc 的文案里解析专注人数；读不出数字返回 None。"""
+    if not text:
+        return None
+    match = _FOCUS_COUNT_PATTERN.search(text) or _FOCUS_COUNT_FALLBACK_PATTERN.search(text)
+    return int(match.group(1)) if match else None
 
 
 @dataclass(frozen=True)
@@ -326,6 +340,34 @@ class SeatObservationManager(Singleton):
         self.seats = {i: SeatSlot(seat_number=i) for i in range(1, 13)}
         self.gate_state.reset()
         self.logger.info("Cleared seat observation snapshot")
+
+    def read_focus_count_from_ui(self) -> Optional[int]:
+        """按需读一次界面上的专注人数（tvStudyRoomDesc「N人专注中」）。
+
+        人数的缓存（`_last_focus_count` / `RoomState.focus_count`）**只由事件流
+        被动写入**，而 FocusCountEvent 在「人数没变」时直接早退。冷启动进房、
+        `RoomState.clear()` 之后、或 seat 事件先于 focus_count 事件到达时，缓存
+        就是空的 —— 于是日志打「专注人数: 未知」，更要命的是
+        `_verify_focus_consistency` 拿到 None 直接 return，唯一一次对账整个跳过
+        （真机 10-10 01:49:30~01:50:32：连扫 4~5 遍、零次座位更新，每行都写着未知）。
+
+        这个数字**一直在屏幕上**，是判断「这遍扫对没有」的唯一硬依据，所以允许
+        直接读。调用方必须已持有 ui_session —— 这是同步 driver 调用，与点头像
+        读弹窗同一类 UI 动作，无锁裸调会和 EventManager 的兜底 back 撞车。
+
+        读不到就返回 None：宁可继续显示「未知」，也不猜一个数去污染对账。
+        """
+        finder = getattr(self.handler, "element_finder", None)
+        if finder is None or not hasattr(finder, "try_find_element"):
+            return None
+        try:
+            element = finder.try_find_element("focus_count", log=False)
+        except Exception as e:
+            self.logger.debug(f"Failed to read focus count from UI: {e}")
+            return None
+        if element is None:
+            return None
+        return parse_focus_count_text(getattr(element, "text", ""))
 
     @asynccontextmanager
     async def _ui_session(self, reason: str):
@@ -2021,6 +2063,12 @@ class SeatObservationManager(Singleton):
 
         async with self._lock, self._ui_session("seat_expansion"):
             try:
+                # 人数是「这遍扫对没有」的唯一判据，而调用方带进来的值在冷启动/
+                # RoomState.clear() 之后是 None。这里已在 ui_session 内，可以安全地
+                # 按需补读一次界面 —— 读不到才继续用 None（保持「未知」而不是猜）。
+                if target_focus_count is None:
+                    target_focus_count = self.read_focus_count_from_ui()
+
                 # 用规范 helper：展开失败或桌位不足 6 张都返回 None，避免半截快照
                 seat_desks = await self.seat_ui.expand_and_find_desks()
                 if not seat_desks:
