@@ -115,14 +115,6 @@ class OnlineListScraper(Singleton):
         except Exception:
             pass
 
-        seated_users = set()
-        try:
-            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-            if SeatObservationManager.is_initialized():
-                seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
-        except Exception:
-            pass
-
         all_online_user_names = set()
         prev_size = 0
         no_new_rounds = 0
@@ -190,13 +182,9 @@ class OnlineListScraper(Singleton):
                 except Exception:
                     pass
 
-                # 停止条件 2：已收集总人数（抽屉名单 + 在麦名单）达到目标人数（更快结束）
-                current_total = len(all_online_user_names | seated_users)
-                if target_count is not None and current_total >= target_count:
-                    self.logger.info(
-                        f"Collected {current_total}/{target_count} users "
-                        f"(scraped {len(all_online_user_names)}, seated {len(seated_users)}), stop scrolling."
-                    )
+                # 停止条件 2：已收集人数达到目标人数（更快结束）
+                if target_count is not None and len(all_online_user_names) >= target_count:
+                    self.logger.info(f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling.")
                     break
 
                 # 停止条件 3：连续多轮无新增（兜底）
@@ -252,15 +240,6 @@ class OnlineListScraper(Singleton):
             if expected_count is None:
                 expected_count = RoomState.instance().user_count
 
-            # 获取当前在麦用户集合（Soul 在线用户抽屉通常不包含在麦用户）
-            seated_users = set()
-            try:
-                from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-                if SeatObservationManager.is_initialized():
-                    seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
-            except Exception:
-                pass
-
             # 第 1 次抓取
             user_names, detected_count = await self._scrape_online_user_names(expected_count)
             if user_names is None:
@@ -269,25 +248,14 @@ class OnlineListScraper(Singleton):
             if expected_count is None:
                 expected_count = detected_count
 
-            total_users = set(user_names) | seated_users
-
-            # 比对在线列表总人数（抽屉名单 + 在麦用户）与房间显示的在线人数
-            if expected_count is not None and len(total_users) != expected_count:
+            # 比对在线列表人数与房间显示的在线人数
+            if expected_count is not None and len(user_names) != expected_count:
                 self.logger.warning(
-                    f"Online users count mismatch: total {len(total_users)} "
-                    f"(scraped {len(user_names)}, seated {len(seated_users)}), "
+                    f"Online users count mismatch: scraped {len(user_names)}, "
                     f"expected {expected_count}. Retrying once..."
                 )
                 try:
                     await asyncio.sleep(0.4)
-                except Exception:
-                    pass
-
-                # 重新刷新在麦用户快照，防止刚才有人上下麦
-                try:
-                    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-                    if SeatObservationManager.is_initialized():
-                        seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
                 except Exception:
                     pass
 
@@ -298,15 +266,13 @@ class OnlineListScraper(Singleton):
                     if detected_count_retry is not None:
                         expected_count = detected_count_retry
 
-                total_users = set(user_names) | seated_users
-                if expected_count is not None and len(total_users) != expected_count:
+                if expected_count is not None and len(user_names) != expected_count:
                     self.logger.warning(
-                        f"Online users count still mismatched after retry: total {len(total_users)} "
-                        f"(scraped {len(user_names)}, seated {len(seated_users)}), "
+                        f"Online users count still mismatched after retry: scraped {len(user_names)}, "
                         f"expected {expected_count}. Proceeding with best-effort list."
                     )
 
-            PresenceTracker.instance().update_online_users(list(total_users))
+            PresenceTracker.instance().update_online_users(list(user_names))
             return True
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")

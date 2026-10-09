@@ -157,42 +157,6 @@ async def test_refresh_online_users_proceeds_with_best_effort_when_count_mismatc
 
 
 @pytest.mark.asyncio
-async def test_refresh_online_users_includes_seated_users(scraper, reset_singletons):
-    """在麦用户不在抽屉列表中时，应从 SeatObservationManager 汇总在麦用户，合并更新至 PresenceTracker 且计入人数校验。"""
-    room_state = RoomState.initialize()
-    room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    room_state.user_count = 2
-
-    presence_tracker = PresenceTracker.initialize()
-    presence_tracker._logger = SimpleNamespace(
-        info=lambda _msg: None,
-        debug=lambda _msg: None,
-        critical=lambda _msg: None,
-        error=lambda _msg: None,
-    )
-
-    call_count = 0
-
-    async def mock_scrape(expected_count):
-        nonlocal call_count
-        call_count += 1
-        return {"audience_user"}, 2  # 抽屉中只有未在麦的用户
-
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    SeatObservationManager.reset_instance()
-    mock_obs = SeatObservationManager.initialize()
-    mock_obs.get_all_seated_users = MagicMock(return_value={"seated_user": 1})
-
-    with patch.object(scraper, "_scrape_online_user_names", side_effect=mock_scrape):
-        result = await scraper.refresh_online_users()
-
-    # 1 抽屉 + 1 在麦 = 2，与 room_state.user_count 一致，无需重试
-    assert result is True
-    assert call_count == 1
-    assert presence_tracker.get_online_users() == {"audience_user", "seated_user"}
-
-
-@pytest.mark.asyncio
 async def test_refresh_online_users_respects_target_count_parameter(scraper, reset_singletons):
     """传入 target_count 时优先比对该参数。"""
     room_state = RoomState.initialize()
