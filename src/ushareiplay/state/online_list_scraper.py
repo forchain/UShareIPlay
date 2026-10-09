@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import re
 import traceback
-from typing import Optional
+from typing import Optional, Set, Tuple
 
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
@@ -27,64 +28,83 @@ class OnlineListScraper(Singleton):
     def handler(self):
         return self._handler
 
-    async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
-        """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
-        controller = getattr(self.handler, "controller", None)
-        if controller and hasattr(controller, "ui_session"):
-            session = controller.ui_session("event:refresh_online_users")
-            if hasattr(session, "__aenter__"):
-                async with session:
-                    return await self._do_refresh_online_users(target_count)
-        return await self._do_refresh_online_users(target_count)
-
-    async def _do_refresh_online_users(self, target_count: Optional[int] = None) -> bool:
+    def _close_online_users_dialog(self) -> None:
+        """关闭在线用户列表抽屉弹窗。"""
         try:
-            if target_count is None:
-                target_count = RoomState.instance().user_count
+            bottom_drawer = self.handler.element_finder.wait_for_element('bottom_drawer')
+            if bottom_drawer:
+                self.logger.info('Hide online users dialog')
+                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
+        except Exception as e:
+            self.logger.warning(f"Failed to hide online users dialog: {e}")
 
-            # 打开在线用户列表
-            user_count_elem = self.handler.element_finder.try_find_element('user_count', log=False)
-            if not user_count_elem:
-                self.logger.warning("user_count element not found, cannot refresh online users")
-                return False
+    async def _scrape_online_user_names(
+        self, target_count: Optional[int] = None
+    ) -> Tuple[Optional[Set[str]], Optional[int]]:
+        """打开在线用户列表抽屉，抓取在线用户并返回 (用户名集合, 探测到的人数)。
 
-            try:
-                user_count_elem.click()
-            except Exception as e:
-                self.logger.warning(f"Failed to click user_count element: {str(e)}")
-                return False
+        如果在打开前从 user_count 文本中解析出人数，返回为 detected_count。
+        """
+        user_count_elem = self.handler.element_finder.try_find_element('user_count', log=False)
+        if not user_count_elem:
+            self.logger.warning("user_count element not found, cannot refresh online users")
+            return None, None
 
-            self.logger.info("Clicked user count element")
+        detected_count = None
+        try:
+            text = getattr(user_count_elem, "text", None)
+            if text:
+                match = re.search(r'(\d+)', text)
+                if match:
+                    detected_count = int(match.group(1))
+        except Exception:
+            pass
 
-            online_container = self.handler.element_finder.wait_for_element('online_users')
-            if not online_container:
-                self.logger.error("Online users container not found")
-                return False
+        try:
+            user_count_elem.click()
+        except Exception as e:
+            self.logger.warning(f"Failed to click user_count element: {str(e)}")
+            return None, detected_count
 
-            all_online_user_names = set()
-            prev_size = 0
-            no_new_rounds = 0
-            max_no_new_rounds = 2
-            max_swipes = 50
+        self.logger.info("Clicked user count element")
 
-            # 预计算容器内滑动坐标：手指向上滑（列表向上滚动）
-            try:
-                loc = online_container.location
-                size = online_container.size
-                left = int(loc["x"])
-                top = int(loc["y"])
-                width = int(size["width"])
-                height = int(size["height"])
+        online_container = self.handler.element_finder.wait_for_element('online_users')
+        if not online_container:
+            self.logger.error("Online users container not found")
+            self._close_online_users_dialog()
+            return None, detected_count
 
-                swipe_x = left + int(width * 0.5)
-                start_y = top + int(height * 0.8)
-                end_y = top + int(height * 0.2)
-            except Exception:
-                self.logger.warning("Failed to compute container swipe coordinates, fallback to default swipe")
-                swipe_x = None
-                start_y = None
-                end_y = None
+        try:
+            await asyncio.sleep(0.4)
+        except Exception:
+            pass
 
+        all_online_user_names = set()
+        prev_size = 0
+        no_new_rounds = 0
+        max_no_new_rounds = 2
+        max_swipes = 50
+
+        # 预计算容器内滑动坐标：手指向上滑（列表向上滚动）
+        # 适当缩短滑动距离、放慢滑动时间，避免列表惯性飞滚跳过未渲染项
+        try:
+            loc = online_container.location
+            size = online_container.size
+            left = int(loc["x"])
+            top = int(loc["y"])
+            width = int(size["width"])
+            height = int(size["height"])
+
+            swipe_x = left + int(width * 0.5)
+            start_y = top + int(height * 0.75)
+            end_y = top + int(height * 0.30)
+        except Exception:
+            self.logger.warning("Failed to compute container swipe coordinates, fallback to default swipe")
+            swipe_x = None
+            start_y = None
+            end_y = None
+
+        try:
             for swipe_idx in range(max_swipes + 1):
                 visible_containers = self.handler.element_finder.find_child_elements(online_container, 'user_container')
                 if visible_containers:
@@ -147,28 +167,80 @@ class OnlineListScraper(Singleton):
 
                 try:
                     if swipe_x is not None:
-                        ok = self.handler.gesture_handler.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=400)
+                        # 降低翻页速度：持续时间从 400ms 提高到 800ms
+                        ok = self.handler.gesture_handler.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=800)
                         if not ok:
                             self.logger.warning("Swipe failed, stop scrolling online users.")
                             break
                     else:
-                        self.handler.gesture_handler.swipe(500, 1500, 500, 800, 600)
+                        self.handler.gesture_handler.swipe(500, 1500, 500, 900, 800)
                 except Exception as e:
                     self.logger.error(f"Error during swipe operation: {str(e)}")
                     break
 
                 try:
-                    await asyncio.sleep(0.35)
+                    # 延长翻页后等待时间，确保 RecyclerView 停稳并完成视图渲染
+                    await asyncio.sleep(0.6)
+                except Exception:
+                    pass
+        finally:
+            self._close_online_users_dialog()
+
+        return all_online_user_names, detected_count
+
+    async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
+        """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
+        controller = getattr(self.handler, "controller", None)
+        if controller and hasattr(controller, "ui_session"):
+            session = controller.ui_session("event:refresh_online_users")
+            if hasattr(session, "__aenter__"):
+                async with session:
+                    return await self._do_refresh_online_users(target_count)
+        return await self._do_refresh_online_users(target_count)
+
+    async def _do_refresh_online_users(self, target_count: Optional[int] = None) -> bool:
+        try:
+            expected_count = target_count
+            if expected_count is None:
+                expected_count = RoomState.instance().user_count
+
+            # 第 1 次抓取
+            user_names, detected_count = await self._scrape_online_user_names(expected_count)
+            if user_names is None:
+                return False
+
+            if expected_count is None:
+                expected_count = detected_count
+
+            # 比对在线列表人数与房间显示的在线人数
+            if expected_count is not None and len(user_names) != expected_count:
+                self.logger.warning(
+                    f"Online users count mismatch: scraped {len(user_names)}, "
+                    f"expected {expected_count}. Retrying once..."
+                )
+                try:
+                    await asyncio.sleep(0.4)
                 except Exception:
                     pass
 
-            PresenceTracker.instance().update_online_users(list(all_online_user_names))
+                # 重试第 2 次抓取
+                user_names_retry, detected_count_retry = await self._scrape_online_user_names(expected_count)
+                if user_names_retry is None:
+                    return False
 
-            bottom_drawer = self.handler.element_finder.wait_for_element('bottom_drawer')
-            if bottom_drawer:
-                self.logger.info('Hide online users dialog')
-                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
+                if detected_count_retry is not None:
+                    expected_count = detected_count_retry
 
+                if expected_count is not None and len(user_names_retry) != expected_count:
+                    self.logger.warning(
+                        f"Online users count still mismatched after retry: scraped {len(user_names_retry)}, "
+                        f"expected {expected_count}. Abandoning update."
+                    )
+                    return False
+
+                user_names = user_names_retry
+
+            PresenceTracker.instance().update_online_users(list(user_names))
             return True
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")
