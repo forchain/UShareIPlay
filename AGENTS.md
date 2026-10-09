@@ -146,6 +146,7 @@ Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contai
 ## Key Gotchas
 
 - **用户名参数铁律**：同一个人在 Soul UI 上是**可见昵称（分身名）**、在 DB 里是 **canonical 名（主账号名）**，两者字符串不同。任何以用户名作参数的命令（`:seat 3`、`:admin`、`:gift`、`:level`、事件钩子等），DB 侧用 canonical，**面向 UI 的查找必须先 `InfoManager.resolve_visible_username(...)`**；跨命名域比对只能用 `UserDAO.is_same_identity(...)`，严禁拿 canonical 名与 UI 文本做 `==`。详见 `docs/users.md` 的「两个命名域」。
+- **元素选择器单一事实源铁律（Single Source of Truth for Elements）**：`config.yaml` 是 UI 元素选择器（`elements`）的唯一权威定义，集中维护多版本兼容与联合 XPath（如 `user_count` 兼容 `tvUserCount` 与 `tvOnlineCount`）。`config.local.yaml` 仅用于机器级硬件与秘钥差异（`device.name`、`appium.host`、LLM Key 等），严禁在 `config.local.yaml` 中覆盖 `soul.elements` 或 `qq_music.elements`。私自覆盖会导致 UI 定位器降级为过时或单一 resource-id，引发事件无法触发、在线列表无法刷新（`/info` 显示「列表暂未更新」）、进退房事件失灵及麦位判定异常等隐蔽故障。
 
 ## Logging Policy (铁律)
 

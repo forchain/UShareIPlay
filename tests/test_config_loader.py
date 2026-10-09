@@ -134,3 +134,37 @@ def test_config_loader_loads_and_merges_local_yaml():
         assert loaded["commands"][1]["prefix"] == "seat"
         assert loaded["commands"][1]["description"] == "Seat new"
         assert loaded["commands"][1]["level"] == 1
+
+
+def test_config_loader_warns_on_elements_override(caplog):
+    import logging
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_path = os.path.join(tmpdir, "config.yaml")
+        local_path = os.path.join(tmpdir, "config.local.yaml")
+
+        base_yaml = {
+            "soul": {
+                "elements": {
+                    "user_count": "//android.widget.TextView[@resource-id='tv1' or @resource-id='tv2']",
+                }
+            }
+        }
+        local_yaml = {
+            "soul": {
+                "elements": {
+                    "user_count": "tv1",
+                }
+            }
+        }
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(base_yaml, f)
+        with open(local_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(local_yaml, f)
+
+        with caplog.at_level(logging.WARNING):
+            loaded = ConfigLoader.load_config(config_path)
+
+        assert loaded["soul"]["elements"]["user_count"] == "tv1"
+        assert any("config.local.yaml overrides 'soul.elements'" in record.message for record in caplog.records)

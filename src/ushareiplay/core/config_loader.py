@@ -1,5 +1,8 @@
+import logging
 import os
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def _deep_merge(base, override):
@@ -54,6 +57,23 @@ class ConfigLoader:
             with open(local_path, 'r', encoding='utf-8') as f:
                 local_config = yaml.safe_load(f)
             if local_config:
+                for section in ("soul", "qq_music"):
+                    sec_dict = local_config.get(section)
+                    if isinstance(sec_dict, dict) and "elements" in sec_dict:
+                        elements = sec_dict["elements"]
+                        keys = list(elements.keys()) if isinstance(elements, dict) else []
+                        logger.warning(
+                            "config.local.yaml overrides '%s.elements': %s. "
+                            "UI element selectors must remain in config.yaml to preserve multi-version compatibility.",
+                            section,
+                            keys,
+                        )
+                if "elements" in local_config and isinstance(local_config["elements"], dict):
+                    logger.warning(
+                        "config.local.yaml overrides 'elements': %s. "
+                        "UI element selectors must remain in config.yaml to preserve multi-version compatibility.",
+                        list(local_config["elements"].keys()),
+                    )
                 config = _deep_merge(config, local_config)
 
         return config
