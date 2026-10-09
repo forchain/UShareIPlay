@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
@@ -72,21 +73,19 @@ class AdminManager(Singleton):
 
         manager_invite = self.handler.element_finder.wait_for_element_clickable('manager_invite')
         if not manager_invite:
+            await self._close_profile(open_result)
             return {'error': 'Failed to find manager invite button', 'user': target_nickname}
 
-        recovery_manager = RecoveryManager.instance()
         current_text = manager_invite.text
         if enable:
             if current_text == "解除管理":
                 self.add_room_admin(target_nickname)
-                self.handler.key_actions.press_back()
-                recovery_manager.close_drawer('online_drawer')
+                await self._close_profile(open_result)
                 return {'error': '你已经是管理员了', 'user': target_nickname}
         else:
             if current_text == "管理邀请":
                 self.remove_room_admin(target_nickname)
-                self.handler.key_actions.press_back()
-                recovery_manager.close_drawer('online_drawer')
+                await self._close_profile(open_result)
                 return {'error': '你还不是管理员', 'user': target_nickname}
 
         manager_invite.click()
@@ -101,6 +100,7 @@ class AdminManager(Singleton):
 
         if not confirm_button:
             self.logger.error(f"Failed to find {action} confirmation button for {target_nickname}")
+            await self._close_profile(open_result)
             return {'error': f'Failed to find {action} confirmation button', 'user': target_nickname}
 
         confirm_button.click()
@@ -111,6 +111,23 @@ class AdminManager(Singleton):
         else:
             self.remove_room_admin(target_nickname)
 
-        recovery_manager.close_drawer('online_drawer')
+        await self._close_profile(open_result)
 
         return {'user': target_nickname, 'action': action}
+
+    async def _close_profile(self, open_result: Optional[dict] = None) -> None:
+        """关闭用户资料卡并在必要时恢复面板/抽屉状态。"""
+        if hasattr(self.handler, "key_actions"):
+            try:
+                self.handler.key_actions.press_back()
+            except Exception:
+                pass
+        recovery_manager = RecoveryManager.instance()
+        recovery_manager.close_drawer('online_drawer')
+        if open_result and open_result.get('source') == 'seat':
+            try:
+                from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+                driver = SeatPanelDriver(self.handler)
+                await driver.collapse()
+            except Exception as e:
+                self.logger.warning(f"Failed to collapse seat panel after profile action: {e}")

@@ -23,7 +23,7 @@ Soul 的在线用户列表**不包含在座的人**，所以只靠在线列表�
 12:53:32 送礼失败、12:53:39 同样的搜索却一眼命中。
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -248,3 +248,69 @@ async def test_identity_lookup_failure_falls_back_to_online_list(monkeypatch):
 
     assert "error" not in result
     handler.gesture_handler.scroll_container_until_element.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_open_user_profile_from_seat_success():
+    """在座用户有座位 UI 时：成功从座位打开资料卡，不触碰在线列表。"""
+    handler = MagicMock()
+    handler.logger = MagicMock()
+    handler.element_finder = MagicMock()
+    handler.gesture_handler = MagicMock()
+
+    manager = UserManager.initialize(handler)
+    _seat_user("Outlier", seat_number=12)
+
+    with patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver.reveal_seat", new_callable=AsyncMock) as mock_reveal, \
+         patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver._resolve_tap_target") as mock_resolve, \
+         patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver._tap_avatar") as mock_tap:
+        # 模拟 6 张桌位
+        mock_desks = [MagicMock() for _ in range(6)]
+        mock_reveal.return_value = mock_desks
+        mock_resolve.return_value = (MagicMock(), True)
+        mock_tap.return_value = True
+
+        name_elem = MagicMock()
+        name_elem.text = "Outlier"
+        handler.element_finder.wait_for_any_element.return_value = ("souler_name", name_elem)
+
+        result = await manager.open_user_profile("Outlier")
+
+        assert result == {"user": "Outlier", "seat": 12, "source": "seat"}
+        mock_reveal.assert_awaited_once_with(12)
+        mock_tap.assert_called_once()
+        handler.gesture_handler.scroll_container_until_element.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_gift_collapses_seat_panel_when_opened_from_seat():
+    """送礼给在座用户：送出后收起展开的座位面板。"""
+    handler = MagicMock()
+    handler.logger = MagicMock()
+    handler.element_finder = MagicMock()
+    handler.gesture_handler = MagicMock()
+
+    manager = UserManager.initialize(handler)
+
+    send_gift_btn = MagicMock()
+    found_elem = MagicMock()
+    luck_item = MagicMock()
+    luck_item.text = "小心心x1"
+    soul_power = MagicMock()
+    soul_power.text = "10"
+
+    handler.element_finder.wait_for_element_clickable.return_value = send_gift_btn
+    handler.element_finder.wait_for_any_element.return_value = ("give_gift", found_elem)
+    handler.element_finder.try_find_element.side_effect = lambda key: (
+        luck_item if key == "luck_item" else (soul_power if key == "soul_power" else None)
+    )
+
+    with patch.object(manager, "open_user_profile", new_callable=AsyncMock) as mock_open, \
+         patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver.collapse", new_callable=AsyncMock) as mock_collapse:
+        mock_open.return_value = {"user": "Outlier", "seat": 12, "source": "seat"}
+
+        result = await manager.send_gift("Outlier")
+
+        assert result == {"success": "小心心 送你啦"}
+        mock_collapse.assert_awaited_once()
+

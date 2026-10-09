@@ -217,3 +217,73 @@ async def test_admin_command_delegation():
         res = await cmd.process(msg, ["1", "Bob"])
         assert res == {"user": "Bob", "action": "Invited"}
         mock_manage.assert_awaited_once_with(True, "Bob")
+
+
+@pytest.mark.asyncio
+async def test_manage_admin_from_seat_invites_and_collapses_panel():
+    """在座用户被邀请管理：邀请成功后必须收起展开的座位面板。"""
+    manager = AdminManager.initialize()
+    mock_handler = MagicMock()
+    manager._handler = mock_handler
+    manager._logger = MagicMock()
+
+    mock_invite_elem = MagicMock()
+    mock_invite_elem.text = "管理邀请"
+    mock_confirm_elem = MagicMock()
+
+    mock_handler.element_finder.wait_for_element_clickable.side_effect = lambda key: (
+        mock_invite_elem if key == "manager_invite" else (
+            mock_confirm_elem if key == "confirm_invite" else None
+        )
+    )
+
+    with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
+         patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls, \
+         patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver.collapse", new_callable=AsyncMock) as mock_collapse:
+        mock_user_mgr = MagicMock()
+        mock_user_mgr.open_user_profile = AsyncMock(
+            return_value={"user": "Outlier", "seat": 12, "source": "seat"}
+        )
+        mock_user_mgr_cls.return_value = mock_user_mgr
+        mock_rec_mgr_cls.return_value = MagicMock()
+
+        result = await manager.manage_admin(enable=True, target_nickname="Outlier")
+
+        assert result == {"user": "Outlier", "action": "Invited"}
+        assert manager.is_room_admin("Outlier")
+        mock_invite_elem.click.assert_called_once()
+        mock_confirm_elem.click.assert_called_once()
+        mock_collapse.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_manage_admin_from_seat_already_admin_collapses_panel():
+    """在座用户已是管理：快速返回时也必须收起展开的座位面板。"""
+    manager = AdminManager.initialize()
+    mock_handler = MagicMock()
+    manager._handler = mock_handler
+    manager._logger = MagicMock()
+
+    mock_invite_elem = MagicMock()
+    mock_invite_elem.text = "解除管理"
+
+    mock_handler.element_finder.wait_for_element_clickable.side_effect = lambda key: (
+        mock_invite_elem if key == "manager_invite" else None
+    )
+
+    with patch("ushareiplay.managers.user_manager.UserManager.instance") as mock_user_mgr_cls, \
+         patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance") as mock_rec_mgr_cls, \
+         patch("ushareiplay.managers.seat_manager.seat_panel_driver.SeatPanelDriver.collapse", new_callable=AsyncMock) as mock_collapse:
+        mock_user_mgr = MagicMock()
+        mock_user_mgr.open_user_profile = AsyncMock(
+            return_value={"user": "Outlier", "seat": 12, "source": "seat"}
+        )
+        mock_user_mgr_cls.return_value = mock_user_mgr
+        mock_rec_mgr_cls.return_value = MagicMock()
+
+        result = await manager.manage_admin(enable=True, target_nickname="Outlier")
+
+        assert result == {"error": "你已经是管理员了", "user": "Outlier"}
+        mock_handler.key_actions.press_back.assert_called_once()
+        mock_collapse.assert_awaited_once()
+

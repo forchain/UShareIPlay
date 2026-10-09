@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -111,32 +112,131 @@ class UserManager(Singleton):
             # 读不到 page_source 就按原样继续搜索，不因等待失败而放弃定位
             return
 
+    async def open_user_profile_from_seat(self, seat_number: int, nickname: str = None) -> dict:
+        """从座位展开面板并点击在座用户头像打开资料卡。
+
+        在座用户不在 Soul 在线用户列表内，必须通过点击其所在座位打开名片。
+        """
+        if not self.handler:
+            return {
+                'error': f'{nickname} 在 {seat_number} 号座位上（在线列表不含在座用户）',
+                'user': nickname,
+                'seat': seat_number,
+            }
+
+        try:
+            from ushareiplay.managers.seat_manager.seat_panel_driver import (
+                AvatarTapPolicy,
+                SeatPanelDriver,
+            )
+
+            driver = SeatPanelDriver(self.handler)
+            desks = await driver.reveal_seat(seat_number)
+            if not desks:
+                self.logger.warning(f"未能展开座位面板定位 {seat_number} 号座位")
+                return {
+                    'error': f'{nickname} 在 {seat_number} 号座位上（在线列表不含在座用户）',
+                    'user': nickname,
+                    'seat': seat_number,
+                }
+
+            # 重新获取当前页面桌位，避免滚动后句柄失效
+            finder = getattr(self.handler, "element_finder", None)
+            if finder and hasattr(finder, "find_elements"):
+                try:
+                    fresh_desks = finder.find_elements("seat_desk")
+                    if fresh_desks and len(fresh_desks) == len(desks):
+                        desks = fresh_desks
+                except Exception:
+                    pass
+
+            desk_index = (seat_number - 1) // 2
+            if desk_index >= len(desks):
+                return {
+                    'error': f'{nickname} 在 {seat_number} 号座位上（桌位不存在）',
+                    'user': nickname,
+                    'seat': seat_number,
+                }
+
+            desk = desks[desk_index]
+            side = 'left' if seat_number % 2 == 1 else 'right'
+
+            target_element, should_tap = driver._resolve_tap_target(
+                desk, side, AvatarTapPolicy.STATE_THEN_SEAT
+            )
+            if not should_tap or not driver._tap_avatar(desk, side, target_element):
+                return {
+                    'error': f'{nickname} 在 {seat_number} 号座位上（点击头像失败）',
+                    'user': nickname,
+                    'seat': seat_number,
+                }
+
+            await asyncio.sleep(0.3)
+
+            name_elem = None
+            if finder:
+                try:
+                    _key, name_elem = finder.wait_for_any_element(
+                        list(driver.SEAT_CARD_EVIDENCE_KEYS), timeout=2.0
+                    )
+                except Exception:
+                    name_elem = None
+
+            card_opened = name_elem is not None or driver.card_still_present()
+            if not card_opened and finder:
+                if finder.try_find_element("manager_invite", log=False) or finder.try_find_element("send_gift", log=False):
+                    card_opened = True
+
+            if not card_opened:
+                return {
+                    'error': f'{nickname} 在 {seat_number} 号座位上（资料卡未弹出）',
+                    'user': nickname,
+                    'seat': seat_number,
+                }
+
+            opened_name = nickname
+            if name_elem and hasattr(name_elem, "text") and name_elem.text:
+                opened_name = name_elem.text.strip() or nickname
+
+            self.logger.info(f"成功从 {seat_number} 号座位打开 {opened_name} 的资料卡")
+            return {
+                'user': opened_name or nickname,
+                'seat': seat_number,
+                'source': 'seat',
+            }
+        except Exception as e:
+            self.logger.error(f"从座位打开资料卡异常: {e}")
+            return {
+                'error': f'{nickname} 在 {seat_number} 号座位上（{e}）',
+                'user': nickname,
+                'seat': seat_number,
+            }
+
     async def open_user_profile(self, nickname: str):
         """身份感知的资料页定位入口（在线列表 + 座位）。
 
-        异步调用方（:gift / :admin）走这里：先用 `is_same_identity` 按身份问座位
-        快照，再决定要不要落到在线列表。`open_user_profile_from_online_list`
-        只能做字符串比对，多分身同在线时会漏判（见 _find_seated_user）。
+        异步调用方（:gift / :admin）走这里：
+        1. 先用 `is_same_identity` 按身份问座位快照；
+        2. 若在座，优先尝试从座位展开面板并打开其资料卡（在线列表不含在座用户）；
+        3. 若不在座，走在线列表打开资料页。
         """
         seated = await self._find_seated_user(nickname)
         if seated is not None:
             seat_number, seated_name = seated
             self.logger.info(
-                f"{nickname} 在 {seat_number} 号座位上（{seated_name}），不走在线列表"
+                f"{nickname} 在 {seat_number} 号座位上（{seated_name}），从座位打开资料卡"
             )
-            return {
-                'error': f'{seated_name} 在 {seat_number} 号座位上（在线列表不含在座用户）',
-                'user': seated_name,
-                'seat': seat_number,
-            }
+            return await self.open_user_profile_from_seat(seat_number, seated_name)
+
         return self.open_user_profile_from_online_list(nickname)
 
-    def open_user_profile_from_online_list(self, nickname: str):
+    def open_user_profile_from_online_list(self, nickname: str, skip_seated_check: bool = False):
         """
         在在线用户列表中查找指定用户并打开其资料页。
 
         Args:
             nickname: 要查找的用户昵称（房间里的可见名或同身份的任何分身名）。
+            skip_seated_check: 是否跳过在座检查（从座位查找回退时跳过）。
 
         Returns:
             dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
@@ -144,14 +244,15 @@ class UserManager(Singleton):
         # 在座的人不在在线列表里（Soul 的在线列表只列不在座位的用户）。
         # 这里只能做等值比对：同步调用方（私聊）拿不到身份判定。
         # 多分身同在线的场景由异步入口 open_user_profile 负责。
-        seated_at = self._exact_seated_seat_number(nickname)
-        if seated_at is not None:
-            self.logger.info(f"{nickname} 在 {seated_at} 号座位上，不走在线列表")
-            return {
-                'error': f'{nickname} 在 {seated_at} 号座位上（在线列表不含在座用户）',
-                'user': nickname,
-                'seat': seated_at,
-            }
+        if not skip_seated_check:
+            seated_at = self._exact_seated_seat_number(nickname)
+            if seated_at is not None:
+                self.logger.info(f"{nickname} 在 {seated_at} 号座位上，不走在线列表")
+                return {
+                    'error': f'{nickname} 在 {seated_at} 号座位上（在线列表不含在座用户）',
+                    'user': nickname,
+                    'seat': seated_at,
+                }
 
         user_count_elem = self.handler.element_finder.wait_for_element('user_count')
         if not user_count_elem:
@@ -248,7 +349,14 @@ class UserManager(Singleton):
         if gift_name.strip() == YELLOW_DUCK_NAME:
             self.handler.gesture_handler.click_element_at(luck_item)
             self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
-            self._close_online_drawer()
+            if open_result.get('source') == 'seat':
+                try:
+                    from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+                    await SeatPanelDriver(self.handler).collapse()
+                except Exception:
+                    pass
+            else:
+                self._close_online_drawer()
             return {'success': f'{gift_name} 送你啦'}
 
         self.handler.gesture_handler.click_element_at(found_element)
@@ -264,7 +372,14 @@ class UserManager(Singleton):
             confirm_use.click()
             self.logger.info("已点击确认使用")
 
-        self._close_online_drawer()
+        if open_result.get('source') == 'seat':
+            try:
+                from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+                await SeatPanelDriver(self.handler).collapse()
+            except Exception:
+                pass
+        else:
+            self._close_online_drawer()
         return {'success': f'{gift_name} 送你啦'}
 
     def send_private_message_to_user(self, nickname: str, message: str) -> bool:
