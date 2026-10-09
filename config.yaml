@@ -209,6 +209,7 @@ soul:
     h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
     group_back: "cn.soulapp.android:id/fans_back" # 关闭我的派对群页面
     online_drawer: "cn.soulapp.android:id/touch_close" # 在线用户抽屉
+    online_users_close: "cn.soulapp.android:id/ivClose" # 在线用户列表关闭按钮
     slide_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉/派对
     input_drawer: "cn.soulapp.android:id/clSecondContainer" # 输入框抽屉
     room_id: "cn.soulapp.android:id/tvRoomId"

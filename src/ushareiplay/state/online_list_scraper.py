@@ -29,14 +29,50 @@ class OnlineListScraper(Singleton):
         return self._handler
 
     def _close_online_users_dialog(self) -> None:
-        """关闭在线用户列表抽屉弹窗。"""
+        """关闭在线用户列表弹窗。
+
+        优先点击专门的关闭按钮（ivClose），避免按抽屉遮罩点击导致无法关闭；
+        若未找到关闭按钮，使用 press_back 作为第一保底；
+        最后保留旧版抽屉遮罩点击作为兜底。
+        """
+        finder = getattr(self.handler, "element_finder", None)
+        if finder:
+            for key in ('online_users_close', 'close_button'):
+                try:
+                    close_btn = None
+                    if hasattr(finder, "wait_for_element_clickable"):
+                        close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
+                    if not close_btn and hasattr(finder, "try_find_element"):
+                        close_btn = finder.try_find_element(key, log=False)
+
+                    if close_btn:
+                        self.logger.info(f"Close online users dialog via close button ({key})")
+                        close_btn.click()
+                        if hasattr(finder, "wait_for_element_disappear"):
+                            finder.wait_for_element_disappear(key, timeout=2.0, poll_frequency=0.1)
+                        return
+                except Exception as e:
+                    self.logger.debug(f"Error checking/clicking close button {key}: {e}")
+
         try:
-            bottom_drawer = self.handler.element_finder.wait_for_element('bottom_drawer')
-            if bottom_drawer:
-                self.logger.info('Hide online users dialog')
-                self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
+            # 优先使用 press_back 兜底（Soul 对所有弹窗均响应 back 键退出）
+            key_actions = getattr(self.handler, "key_actions", None)
+            if key_actions and hasattr(key_actions, "press_back"):
+                self.logger.info("Close online users dialog via press_back")
+                key_actions.press_back()
+                return
         except Exception as e:
-            self.logger.warning(f"Failed to hide online users dialog: {e}")
+            self.logger.warning(f"Error pressing back to close online users dialog: {e}")
+
+        try:
+            # 兼容旧逻辑：点击抽屉上方遮罩
+            if finder and hasattr(finder, "try_find_element"):
+                bottom_drawer = finder.try_find_element('bottom_drawer', log=False)
+                if bottom_drawer:
+                    self.logger.info('Hide online users dialog via drawer mask click')
+                    self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
+        except Exception as e:
+            self.logger.warning(f"Failed to hide online users dialog via drawer mask: {e}")
 
     async def _scrape_online_user_names(
         self, target_count: Optional[int] = None
@@ -76,6 +112,14 @@ class OnlineListScraper(Singleton):
 
         try:
             await asyncio.sleep(0.4)
+        except Exception:
+            pass
+
+        seated_users = set()
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+            if SeatObservationManager.is_initialized():
+                seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
         except Exception:
             pass
 
@@ -146,9 +190,13 @@ class OnlineListScraper(Singleton):
                 except Exception:
                     pass
 
-                # 停止条件 2：已收集人数达到目标人数（更快结束）
-                if target_count is not None and len(all_online_user_names) >= target_count:
-                    self.logger.info(f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling.")
+                # 停止条件 2：已收集总人数（抽屉名单 + 在麦名单）达到目标人数（更快结束）
+                current_total = len(all_online_user_names | seated_users)
+                if target_count is not None and current_total >= target_count:
+                    self.logger.info(
+                        f"Collected {current_total}/{target_count} users "
+                        f"(scraped {len(all_online_user_names)}, seated {len(seated_users)}), stop scrolling."
+                    )
                     break
 
                 # 停止条件 3：连续多轮无新增（兜底）
@@ -204,6 +252,15 @@ class OnlineListScraper(Singleton):
             if expected_count is None:
                 expected_count = RoomState.instance().user_count
 
+            # 获取当前在麦用户集合（Soul 在线用户抽屉通常不包含在麦用户）
+            seated_users = set()
+            try:
+                from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+                if SeatObservationManager.is_initialized():
+                    seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
+            except Exception:
+                pass
+
             # 第 1 次抓取
             user_names, detected_count = await self._scrape_online_user_names(expected_count)
             if user_names is None:
@@ -212,10 +269,13 @@ class OnlineListScraper(Singleton):
             if expected_count is None:
                 expected_count = detected_count
 
-            # 比对在线列表人数与房间显示的在线人数
-            if expected_count is not None and len(user_names) != expected_count:
+            total_users = set(user_names) | seated_users
+
+            # 比对在线列表总人数（抽屉名单 + 在麦用户）与房间显示的在线人数
+            if expected_count is not None and len(total_users) != expected_count:
                 self.logger.warning(
-                    f"Online users count mismatch: scraped {len(user_names)}, "
+                    f"Online users count mismatch: total {len(total_users)} "
+                    f"(scraped {len(user_names)}, seated {len(seated_users)}), "
                     f"expected {expected_count}. Retrying once..."
                 )
                 try:
@@ -223,24 +283,30 @@ class OnlineListScraper(Singleton):
                 except Exception:
                     pass
 
+                # 重新刷新在麦用户快照，防止刚才有人上下麦
+                try:
+                    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+                    if SeatObservationManager.is_initialized():
+                        seated_users = set(SeatObservationManager.instance().get_all_seated_users().keys())
+                except Exception:
+                    pass
+
                 # 重试第 2 次抓取
                 user_names_retry, detected_count_retry = await self._scrape_online_user_names(expected_count)
-                if user_names_retry is None:
-                    return False
+                if user_names_retry is not None:
+                    user_names = user_names_retry
+                    if detected_count_retry is not None:
+                        expected_count = detected_count_retry
 
-                if detected_count_retry is not None:
-                    expected_count = detected_count_retry
-
-                if expected_count is not None and len(user_names_retry) != expected_count:
+                total_users = set(user_names) | seated_users
+                if expected_count is not None and len(total_users) != expected_count:
                     self.logger.warning(
-                        f"Online users count still mismatched after retry: scraped {len(user_names_retry)}, "
-                        f"expected {expected_count}. Abandoning update."
+                        f"Online users count still mismatched after retry: total {len(total_users)} "
+                        f"(scraped {len(user_names)}, seated {len(seated_users)}), "
+                        f"expected {expected_count}. Proceeding with best-effort list."
                     )
-                    return False
 
-                user_names = user_names_retry
-
-            PresenceTracker.instance().update_online_users(list(user_names))
+            PresenceTracker.instance().update_online_users(list(total_users))
             return True
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")

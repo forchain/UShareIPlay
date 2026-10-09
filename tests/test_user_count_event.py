@@ -175,3 +175,70 @@ async def test_user_count_fallback_after_consecutive_failures():
         assert room_state.user_count == 5
 
 
+@pytest.mark.asyncio
+async def test_user_count_refreshes_when_presence_is_empty_even_if_count_matches():
+    """即使 room_state.user_count 与当前人数一致，如果在线列表 PresenceTracker 为空，仍应触发抓取刷新。"""
+    mock_handler = MagicMock()
+    mock_handler.logger = MagicMock()
+    event = UserCountEvent(handler=mock_handler)
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
+
+    from ushareiplay.state.room_state import RoomState
+    from ushareiplay.state.presence_tracker import PresenceTracker
+    from ushareiplay.state.online_list_scraper import OnlineListScraper
+
+    RoomState.reset_instance()
+    PresenceTracker.reset_instance()
+    OnlineListScraper.reset_instance()
+
+    room_state = RoomState.initialize()
+    room_state._logger = MagicMock()
+    room_state.user_count = 5  # 人数与当前一致
+
+    presence_tracker = PresenceTracker.initialize()
+    presence_tracker._logger = MagicMock()
+    # presence_tracker._online_users 为空
+
+    scraper = OnlineListScraper.initialize()
+    scraper._logger = MagicMock()
+
+    with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh:
+        result = await event.handle("user_count", mock_wrapper)
+        assert mock_refresh.call_count == 1, "Should trigger refresh when presence list is empty"
+
+
+@pytest.mark.asyncio
+async def test_user_count_skips_when_presence_exists_and_count_matches():
+    """当人数未变化且 PresenceTracker 已有数据时，跳过刷新。"""
+    mock_handler = MagicMock()
+    mock_handler.logger = MagicMock()
+    event = UserCountEvent(handler=mock_handler)
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
+
+    from ushareiplay.state.room_state import RoomState
+    from ushareiplay.state.presence_tracker import PresenceTracker
+    from ushareiplay.state.online_list_scraper import OnlineListScraper
+
+    RoomState.reset_instance()
+    PresenceTracker.reset_instance()
+    OnlineListScraper.reset_instance()
+
+    room_state = RoomState.initialize()
+    room_state._logger = MagicMock()
+    room_state.user_count = 5
+
+    presence_tracker = PresenceTracker.initialize()
+    presence_tracker._logger = MagicMock()
+    presence_tracker.update_online_users(["alice", "bob", "cathy", "david", "eva"])
+
+    scraper = OnlineListScraper.initialize()
+    scraper._logger = MagicMock()
+
+    with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh:
+        result = await event.handle("user_count", mock_wrapper)
+        assert mock_refresh.call_count == 0, "Should skip refresh when presence exists and count matches"
+
+
+

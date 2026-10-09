@@ -126,8 +126,8 @@ async def test_refresh_online_users_retries_and_succeeds_when_second_attempt_mat
 
 
 @pytest.mark.asyncio
-async def test_refresh_online_users_aborts_when_count_still_mismatches_after_retry(scraper, reset_singletons):
-    """当重试后人数依然对不上时，放弃本次更新，不更新 PresenceTracker 并返回 False。"""
+async def test_refresh_online_users_proceeds_with_best_effort_when_count_mismatches_after_retry(scraper, reset_singletons):
+    """当重试后人数依然对不上时，以最大努力将抓取到的名单更新至 PresenceTracker，不抛弃数据，并返回 True。"""
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     room_state.user_count = 2
@@ -150,10 +150,46 @@ async def test_refresh_online_users_aborts_when_count_still_mismatches_after_ret
     with patch.object(scraper, "_scrape_online_user_names", side_effect=mock_scrape):
         result = await scraper.refresh_online_users()
 
-    assert result is False
+    assert result is True
     assert call_count == 2
-    # 未更新在线用户集合
-    assert presence_tracker.get_online_users() == set()
+    # 更新已抓取到的在线用户
+    assert presence_tracker.get_online_users() == {"alice"}
+
+
+@pytest.mark.asyncio
+async def test_refresh_online_users_includes_seated_users(scraper, reset_singletons):
+    """在麦用户不在抽屉列表中时，应从 SeatObservationManager 汇总在麦用户，合并更新至 PresenceTracker 且计入人数校验。"""
+    room_state = RoomState.initialize()
+    room_state._logger = SimpleNamespace(info=lambda _msg: None)
+    room_state.user_count = 2
+
+    presence_tracker = PresenceTracker.initialize()
+    presence_tracker._logger = SimpleNamespace(
+        info=lambda _msg: None,
+        debug=lambda _msg: None,
+        critical=lambda _msg: None,
+        error=lambda _msg: None,
+    )
+
+    call_count = 0
+
+    async def mock_scrape(expected_count):
+        nonlocal call_count
+        call_count += 1
+        return {"audience_user"}, 2  # 抽屉中只有未在麦的用户
+
+    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+    SeatObservationManager.reset_instance()
+    mock_obs = SeatObservationManager.initialize()
+    mock_obs.get_all_seated_users = MagicMock(return_value={"seated_user": 1})
+
+    with patch.object(scraper, "_scrape_online_user_names", side_effect=mock_scrape):
+        result = await scraper.refresh_online_users()
+
+    # 1 抽屉 + 1 在麦 = 2，与 room_state.user_count 一致，无需重试
+    assert result is True
+    assert call_count == 1
+    assert presence_tracker.get_online_users() == {"audience_user", "seated_user"}
 
 
 @pytest.mark.asyncio
@@ -180,5 +216,29 @@ async def test_refresh_online_users_respects_target_count_parameter(scraper, res
 
     assert result is True
     assert presence_tracker.get_online_users() == {"alice"}
+
+
+def test_close_online_users_dialog_clicks_close_button(scraper):
+    """在线人物列表有关闭按钮 (ivClose) 时，优先点击关闭按钮关闭弹窗。"""
+    close_btn = MagicMock()
+    scraper._handler.element_finder.wait_for_element_clickable.side_effect = lambda key, **kwargs: (
+        close_btn if key == "online_users_close" else None
+    )
+
+    scraper._close_online_users_dialog()
+
+    close_btn.click.assert_called_once()
+
+
+def test_close_online_users_dialog_fallback_to_press_back(scraper):
+    """当未找到关闭按钮时，第一保底为调用 key_actions.press_back()。"""
+    scraper._handler.element_finder.wait_for_element_clickable.return_value = None
+    scraper._handler.element_finder.try_find_element.return_value = None
+    scraper._handler.key_actions.press_back = MagicMock()
+
+    scraper._close_online_users_dialog()
+
+    scraper._handler.key_actions.press_back.assert_called_once()
+
 
 
