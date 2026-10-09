@@ -20,7 +20,7 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 
 同一个人同时有两个名字，而且它们是不相同的字符串：
 
-- **可见昵称（分身名）** — Soul UI 唯一渲染出来的名字：麦位头像卡片、在线列表、聊天行、私聊入口都按它找人。分身（小号）与主账号在 UI 上是两个可见昵称。
+- **可见昵称（分身名）** — Soul UI 唯一渲染出来的名字：座位头像卡片、在线列表、聊天行、私聊入口都按它找人。分身（小号）与主账号在 UI 上是两个可见昵称。
 - **canonical 名（主账号名）** — `UserDAO.get_or_create` 把任意别名解析后的规范记录名；所有 ID 绑定的配置（enter/exit/return/receive/focus 钩子、座位预约、私有关键词、用户记忆、等级）都挂在它上面。
 
 **规则**：任何以用户名作参数的命令，DB 侧继续用 canonical，**面向 Soul UI 的查找必须先解析成当前可见昵称**；跨命名域的比对必须按身份判定，禁止 `==` 字符串相等。把 canonical 名直接拿去和 UI 文本比较必然永不相等 —— 这就是 `:seat 3` 在专注钩子里报 `User <主账号名> not found on any seat`（2026-09-30）的根因。
@@ -30,11 +30,11 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 | 接缝 | 用途 |
 |---|---|
 | `UserDAO.get_identity_usernames(name)` | 同一身份（主账号 + 全部分身）的昵称集合，**不写库**，陌生名字不会建记录 |
-| `UserDAO.is_same_identity(requested, observed)` | 调用方给的名字与 UI 读到的名字是否同一人（麦位弹窗、卡片证据等逐条比对） |
-| `InfoManager.resolve_visible_username(name)` | 解析成房间里当前可见的分身名（在线列表、资料页、麦位靶子） |
+| `UserDAO.is_same_identity(requested, observed)` | 调用方给的名字与 UI 读到的名字是否同一人（座位弹窗、卡片证据等逐条比对） |
+| `InfoManager.resolve_visible_username(name)` | 解析成房间里当前可见的分身名（在线列表、资料页、座位靶子） |
 | `InfoManager.is_user_or_avatar_online(name)` | 任意分身在线即视为在线 |
 
-已按此规则接线的用户名参数入口：`:seat 3 [user]`（命令层解析可见名 + 座位层按身份匹配）、`:admin 1|0 [user]`（在线列表按可见名打开资料页，房间管理员也以可见名记账，供麦位观测与 `:info` 比对）、`:gift [user]`、Seat Event Hooks 的 `{seat}`/`{action}` 取值（观测键是分身名）。
+已按此规则接线的用户名参数入口：`:seat 3 [user]`（命令层解析可见名 + 座位层按身份匹配）、`:admin 1|0 [user]`（在线列表按可见名打开资料页，房间管理员也以可见名记账，供座位观测与 `:info` 比对）、`:gift [user]`、Seat Event Hooks 的 `{seat}`/`{action}` 取值（观测键是分身名）。
 
 纯 DB 侧的入口无需额外解析，`UserDAO` 的 canonical 解析已经保证同一身份：`:level [user] [n]`、`:enter/:exit/:return/:receive/:focus add`、`:alias`。
 
@@ -96,7 +96,7 @@ Users can register automated commands (`:enter`, `:exit`, `:return`, `:receive`,
 | `focus` | 1 | `[add\|del\|list\|clear] [cmd]` | Register personal automated command to run on study room focus count updates |
 | `gift` | 5 | `[<user>]` | Send a gift to a user (falls back to yellow duck); defaults to caller if omitted |
 
-`<user>` 参数既可以写分身名也可以写主账号名：DB 侧归属一律解析到 canonical，面向 Soul UI 的操作（在线列表、资料页、麦位）自动解析成房间里当前可见的昵称。
+`<user>` 参数既可以写分身名也可以写主账号名：DB 侧归属一律解析到 canonical，面向 Soul UI 的操作（在线列表、资料页、座位）自动解析成房间里当前可见的昵称。
 
 ## Data Model
 

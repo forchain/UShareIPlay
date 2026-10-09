@@ -1,7 +1,7 @@
-"""座位面板的 UI 驱动：面板状态、展开/收起、整排滚动、麦位头像弹窗的安全生命周期。
+"""座位面板的 UI 驱动：面板状态、展开/收起、整排滚动、座位头像弹窗的安全生命周期。
 
 原先这些动作散在三个单例里（`SeatUIManager` 管面板，`SeatObservationManager` 管
-麦位弹窗，`SeatCheckManager` 又自己展开一次），每个调用点各自决定「要不要点展开
+座位弹窗，`SeatCheckManager` 又自己展开一次），每个调用点各自决定「要不要点展开
 按钮」「读不到昵称时要不要按返回」。本模块把它们收成一处，调用方只表达意图。
 
 它刻意是**普通可注入对象**，不是单例：没有全局状态，handler 与协作者都由构造注入，
@@ -32,14 +32,14 @@ from ushareiplay.core.element_wrapper import ElementWrapper
 EXPAND_LABEL = "展开"
 COLLAPSE_LABEL = "收起"
 
-# 麦位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
+# 座位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
 # 与 room_profile.driver.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
 SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
 
 EXPAND_SEATS_KEY = "expand_seats"
 SEAT_DESK_KEY = "seat_desk"
 
-# 面板展开/收起都有动画，读桌位与点麦位都得等它稳定下来。
+# 面板展开/收起都有动画，读桌位与点座位都得等它稳定下来。
 PANEL_SETTLE_SECONDS = 0.5
 # 展开后必须完整渲染出 6 张桌位（两列三排）才认为面板真的开了。
 EXPECTED_DESK_COUNT = 6
@@ -53,7 +53,7 @@ SEAT_CARD_DISMISS_SETTLE_SECONDS = 0.2
 
 @dataclass
 class SeatCardView:
-    """一次麦位头像点名的读数结果。
+    """一次座位头像点名的读数结果。
 
     Attributes:
         opened: 弹窗确实开着（读到昵称节点，或超时后卡片仍在屏幕上）。
@@ -67,7 +67,7 @@ class SeatCardView:
 
 
 class AvatarTapPolicy(str, Enum):
-    """点名某个麦位头像时的点击目标策略。
+    """点名某个座位头像时的点击目标策略。
 
     三条调用链要的是三件**不同**的事，所以按名字表达，不是一个布尔开关：
 
@@ -178,7 +178,7 @@ class SeatPanelDriver:
 
         展开/收起共用同一个按钮，靠按钮文本区分：文本不是目标关键字说明面板已经
         在另一种状态（或文本认不出来），此时任何一次点击都不可预测 —— 展开按钮上
-        多点一下就是点进了第一个麦位。
+        多点一下就是点进了第一个座位。
         """
         button = self._expand_button()
         if not button:
@@ -234,7 +234,7 @@ class SeatPanelDriver:
         """展开面板并重扫出全部 6 张桌位；面板没真开就返回 None。
 
         展开后必须数齐 6 张桌位才算数：只渲染出一部分说明面板还在动画里或根本没
-        开，拿半张面板读麦位会把「没渲染出来」误判成空位。
+        开，拿半张面板读座位会把「没渲染出来」误判成空位。
         """
         if not await self.expand():
             return None
@@ -295,8 +295,8 @@ class SeatPanelDriver:
     def scroll_to_row(self, desk_index: int, seat_desks=None, duration: int = 100) -> bool:
         """把目标桌位所在的那一排滚进视口；已经在中间排则不动。
 
-        一张桌位两个麦位、每排两张桌位，所以排号是 desk_index // 2。开屏可见的是
-        第 2 排（desk 2/3），滚它只会把已经读到的麦位晃走 —— 所以中间排直接返回。
+        一张桌位两个座位、每排两张桌位，所以排号是 desk_index // 2。开屏可见的是
+        第 2 排（desk 2/3），滚它只会把已经读到的座位晃走 —— 所以中间排直接返回。
 
         Args:
             desk_index: 0..5 的桌位序号。
@@ -343,13 +343,13 @@ class SeatPanelDriver:
         return True
 
     async def reveal_seat(self, seat_number: int, duration: int = 100) -> Optional[list]:
-        """展开面板并把某个麦位所在的那一排滚进视口，返回桌位列表。
+        """展开面板并把某个座位所在的那一排滚进视口，返回桌位列表。
 
         这是「读某个号位」的标准前置动作：面板收起时桌位根本没渲染，号位读不到。
-        麦位号 1..12 映射到 desk_index = (seat_number - 1) // 2。
+        座位号 1..12 映射到 desk_index = (seat_number - 1) // 2。
         """
         if not isinstance(seat_number, int) or not 1 <= seat_number <= self.SEAT_COUNT:
-            self.logger.warning(f"麦位号 {seat_number} 不在 1..{self.SEAT_COUNT} 内，拒绝展开面板")
+            self.logger.warning(f"座位号 {seat_number} 不在 1..{self.SEAT_COUNT} 内，拒绝展开面板")
             return None
 
         desks = await self.expand_and_find_desks()
@@ -389,7 +389,7 @@ class SeatPanelDriver:
             yield
 
     # ------------------------------------------------------------------
-    # 麦位头像弹窗：点名、取证、安全关窗
+    # 座位头像弹窗：点名、取证、安全关窗
     # ------------------------------------------------------------------
 
     def _element_selector(self, element_key: str) -> Optional[str]:
@@ -423,7 +423,7 @@ class SeatPanelDriver:
 
         selector = self._element_selector(element_key)
         if selector is None:
-            self.logger.debug(f"没有为麦位元素 '{element_key}' 配置选择器")
+            self.logger.debug(f"没有为座位元素 '{element_key}' 配置选择器")
             return None
 
         if isinstance(desk, ElementWrapper):
@@ -442,7 +442,7 @@ class SeatPanelDriver:
         return finder.find_child_element(desk, element_key, log_failure=False)
 
     def _tap_avatar(self, desk, side: str, target_element) -> bool:
-        """点开麦位头像弹窗。
+        """点开座位头像弹窗。
 
         raw WebElement 直接点；ElementWrapper 的 click() 取不到真实元素（子元素
         wrapper 没有 element key，get_web_element() 返回 None 且静默 False），
@@ -528,7 +528,7 @@ class SeatPanelDriver:
     async def avatar_card(
         self, desk, side: str, seat_number: int, *, tap_target: AvatarTapPolicy = AvatarTapPolicy.STATE_THEN_SEAT
     ):
-        """点开某个麦位的头像弹窗，读一次昵称，然后保证关回座位面板。
+        """点开某个座位的头像弹窗，读一次昵称，然后保证关回座位面板。
 
         调用方拿到的 `card.opened` 说明「弹窗是不是真的开着」，`card.name` 是读到的
         昵称（读不到就是 None，把「身份未知」留给下一轮）。无论上下文里是否抛错，
@@ -599,7 +599,7 @@ class SeatPanelDriver:
 
             if not card.opened:
                 # 超时不等于没开：卡片可能刚过超时才渲染出来。留在屏幕上的卡片会
-                # 挡住后面的麦位读数，甚至被下一个号位读成自己的占座人。
+                # 挡住后面的座位读数，甚至被下一个号位读成自己的占座人。
                 card.opened = self.card_still_present()
 
             yield card
@@ -612,9 +612,9 @@ class SeatPanelDriver:
                 self.logger.warning(f"Seat {seat_number}: dismissing seat card failed: {e}")
 
     async def read_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
-        """点开麦位弹窗读用户昵称；只有弹窗真的开了才按 back 关它。
+        """点开座位弹窗读用户昵称；只有弹窗真的开了才按 back 关它。
 
-        昵称不在麦位 DOM 里（普通用户的 TvLabelH 渲染的是麦位编号），它是「占座但
+        昵称不在座位 DOM 里（普通用户的 TvLabelH 渲染的是座位编号），它是「占座但
         身份未知」的唯一读数手段。读不到就返回 None，绝不拿一次盲按 back 去赌。
         """
         async with self.avatar_card(desk, side, seat_number) as card:

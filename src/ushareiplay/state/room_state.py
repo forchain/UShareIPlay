@@ -228,7 +228,7 @@ class RoomState(Singleton):
             if SeatObservationManager.is_initialized():
                 SeatObservationManager.instance().clear()
         except Exception as e:
-            # 换房后麦位快照没清掉会拿上一间房的数据做 diff，不能静默吞掉
+            # 换房后座位快照没清掉会拿上一间房的数据做 diff，不能静默吞掉
             self.logger.error(f"Failed to clear seat observation on room clear: {e}")
         self._clear_room_scoped_runtime()
         self.logger.info("Cleared room state")

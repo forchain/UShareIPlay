@@ -145,13 +145,14 @@ Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contai
 
 ## Key Gotchas
 
+- **座位与麦位术语铁律（Party Seat vs Mic）**：派对房间内的 1~12 号位置是**座位（Seat / 在座）**，与「上麦」没有任何关系；Soul 在线用户列表不包含在座用户。只有开麦说话的才叫**麦位（Mic）/ 上麦（On-Mic）**（例如公屏「XXX 已上麦」通知、切歌防啸叫的 `PlaybackMuting`）。日志、报错提示、提示文案与代码注释严禁把 1~12 号座位叫作「麦位」，严禁把在座用户说成「在麦上/上麦」（如「在 11 号麦上」是错误术语，必须表述为「在 11 号座位上」）。
 - **用户名参数铁律**：同一个人在 Soul UI 上是**可见昵称（分身名）**、在 DB 里是 **canonical 名（主账号名）**，两者字符串不同。任何以用户名作参数的命令（`:seat 3`、`:admin`、`:gift`、`:level`、事件钩子等），DB 侧用 canonical，**面向 UI 的查找必须先 `InfoManager.resolve_visible_username(...)`**；跨命名域比对只能用 `UserDAO.is_same_identity(...)`，严禁拿 canonical 名与 UI 文本做 `==`。详见 `docs/users.md` 的「两个命名域」。
-- **元素选择器单一事实源铁律（Single Source of Truth for Elements）**：`config.yaml` 是 UI 元素选择器（`elements`）的唯一权威定义，集中维护多版本兼容与联合 XPath（如 `user_count` 兼容 `tvUserCount` 与 `tvOnlineCount`）。`config.local.yaml` 仅用于机器级硬件与秘钥差异（`device.name`、`appium.host`、LLM Key 等），严禁在 `config.local.yaml` 中覆盖 `soul.elements` 或 `qq_music.elements`。私自覆盖会导致 UI 定位器降级为过时或单一 resource-id，引发事件无法触发、在线列表无法刷新（`/info` 显示「列表暂未更新」）、进退房事件失灵及麦位判定异常等隐蔽故障。
+- **元素选择器单一事实源铁律（Single Source of Truth for Elements）**：`config.yaml` 是 UI 元素选择器（`elements`）的唯一权威定义，集中维护多版本兼容与联合 XPath（如 `user_count` 兼容 `tvUserCount` 与 `tvOnlineCount`）。`config.local.yaml` 仅用于机器级硬件与秘钥差异（`device.name`、`appium.host`、LLM Key 等），严禁在 `config.local.yaml` 中覆盖 `soul.elements` 或 `qq_music.elements`。私自覆盖会导致 UI 定位器降级为过时或单一 resource-id，引发事件无法触发、在线列表无法刷新（`/info` 显示「列表暂未更新」）、进退房事件失灵及座位判定异常等隐蔽故障。
 
 ## Logging Policy (铁律)
 
-**全局铁律**：严禁在循环监控、轮询、周期性检测（如麦位观测、UI 锁获取/释放、心跳巡检等）中输出无行为触发的监控日志。
-- **只有触发了具体行为才输出日志**：例如检测到麦位/用户变更、解析并执行命令、进入/离开房间、发起弹窗交互或出现异常/错误时，才允许输出日志。
+**全局铁律**：严禁在循环监控、轮询、周期性检测（如座位观测、UI 锁获取/释放、心跳巡检等）中输出无行为触发的监控日志。
+- **只有触发了具体行为才输出日志**：例如检测到座位/用户变更、解析并执行命令、进入/离开房间、发起弹窗交互或出现异常/错误时，才允许输出日志。
 - **禁止在日常轮询中刷屏**：常规空转巡检、定时扫描、锁的常规获取与释放等内部机制，严禁使用 INFO/CRITICAL 等级别打印无动作的监控日志（仅可在排查问题时置于 DEBUG 级别），保持控制台与运行时日志整洁。
 
 ## OpenSpec Workflow

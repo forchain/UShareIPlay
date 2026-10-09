@@ -8,7 +8,7 @@
     collapse: Collapsed seat panel
     Failed to apply for seat, because User 不约儿童🐏🐏 not found on any seat
 
-而同一次运行的座次表里，这个人明明在麦上（5 号桌右位 = 10 号位），
+而同一次运行的座次表里，这个人明明在座（5 号桌右位 = 10 号座位），
 且左边（9 号位群主）同样有人：
 
     第三排: [9号: 群主(Joyer)] [10号: 管理(不约儿童🐏🐏)] | [11号: 已占用] [12号: 管理]

@@ -223,7 +223,7 @@ class SeatSubsystem:
     # 预约数据（ReservationManager 合并进来）
     # ------------------------------------------------------------------
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
-        """给用户预留一个麦位。"""
+        """给用户预留一个座位。"""
         try:
             self.handler.logger.info(f"Starting seat reservation process for user {username} on seat {seat_number}")
 
@@ -276,7 +276,7 @@ class SeatSubsystem:
             return {'error': f'Failed to reserve seat: {str(e)}'}
 
     async def remove_user_reservation(self, username: str) -> dict:
-        """删除某个用户的麦位预留（纯数据操作）。"""
+        """删除某个用户的座位预留（纯数据操作）。"""
         try:
             # Get or create user first
             user = await UserDAO.get_or_create(username)
@@ -301,7 +301,7 @@ class SeatSubsystem:
     # 进房检查与占座人清退（SeatCheckManager 合并进来）
     # ------------------------------------------------------------------
     async def check_seats_on_entry(self, username: str = None):
-        """用户进房/回房时检查其预留麦位。"""
+        """用户进房/回房时检查其预留座位。"""
         # 两个前提必须分开判：handler 缺席时 `self.handler.logger` 本身就是
         # AttributeError，原先合并成一条会把「没注入」变成「崩」。
         if self.handler is None:
@@ -391,7 +391,7 @@ class SeatSubsystem:
         desk_index = (seat_number - 1) // 2
         desk = seat_desks[desk_index]
 
-        # 麦位 DOM 上的占用判据（label 节点）仍由本模块自己读：它决定「要不要点开
+        # 座位 DOM 上的占用判据（label 节点）仍由本模块自己读：它决定「要不要点开
         # 名片」，与名片本身无关。
         seat_element = self.handler.element_finder.find_child_element(desk, f'{side}_seat')
         seat_label = self.handler.element_finder.find_child_element(seat_element, f'{side}_label')
@@ -708,13 +708,13 @@ class SeatSubsystem:
                         f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
                     )
 
-                    # 麦位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
+                    # 座位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
                     # 按身份匹配，命中后一律使用 UI 可见名字继续后续动作。
                     if not await UserDAO.is_same_identity(target_username, actual_username):
                         # 不是目标：名片已由驱动按证据关掉，继续看下一张桌位/下一侧
                         continue
 
-                    # 命中目标：名片同样已关好，接着检查旁边的麦位
+                    # 命中目标：名片同样已关好，接着检查旁边的座位
                     # Check if the adjacent seat is available
                     if other_seat['occupied']:
                         return {'error': f'User {target_username} has no empty adjacent seat'}
