@@ -28,6 +28,7 @@ class TimerManager(Singleton):
         self._running = False
         self._task = None
         self._initialized = False
+        self._paused = False
 
     @property
     def handler(self):
@@ -41,6 +42,50 @@ class TimerManager(Singleton):
 
     def is_running(self) -> bool:
         return self._running
+
+    def is_paused(self) -> bool:
+        return self._paused
+
+    def pause(self):
+        """暂停定时器检查与触发"""
+        self._paused = True
+        self.logger.info("Timer manager paused")
+
+    async def resume(self):
+        """恢复定时器检查与触发，并跳过暂停期间积压的重复定时器"""
+        self._paused = False
+        await self._skip_expired_repeat_timers()
+        self.logger.info("Timer manager resumed")
+
+    async def _skip_expired_repeat_timers(self):
+        """恢复时跳过暂停期间已过期的重复定时器，避免立即堆叠触发历史任务"""
+        now = datetime.now()
+        for key, timer_data in list(self._timers.items()):
+            if not isinstance(timer_data, dict):
+                continue
+            if not timer_data.get('repeat') or not timer_data.get('target_time'):
+                continue
+            nt_str = timer_data.get('next_trigger')
+            if not nt_str:
+                continue
+            try:
+                nt = datetime.fromisoformat(nt_str)
+                if nt <= now:
+                    try:
+                        target_time_obj = datetime.strptime(timer_data['target_time'], '%H:%M').time()
+                        new_nt = datetime.combine(now.date(), target_time_obj)
+                        if new_nt <= now:
+                            new_nt += timedelta(days=1)
+                        timer_data['next_trigger'] = new_nt.isoformat()
+                        try:
+                            await TimerDAO.update_next_trigger(key, new_nt)
+                        except Exception:
+                            pass
+                        self.logger.info(f"Timer {key} skipped backlog during pause, rescheduled to {new_nt}")
+                    except ValueError:
+                        pass
+            except (ValueError, TypeError):
+                pass
 
     async def start(self):
         """启动异步循环"""
@@ -65,6 +110,7 @@ class TimerManager(Singleton):
     async def stop(self):
         """停止异步循环"""
         self._running = False
+        self._paused = False
         if self._task:
             self._task.cancel()
             try:
@@ -86,6 +132,10 @@ class TimerManager(Singleton):
 
         while self._running:
             try:
+                if self._paused:
+                    await asyncio.sleep(1)
+                    continue
+
                 current_time = datetime.now()
                 loop_count += 1
 
@@ -124,6 +174,9 @@ class TimerManager(Singleton):
     async def _trigger_timer(self, timer_key: str, timer_data: dict):
         """触发并添加消息到队列"""
         try:
+            if self._paused:
+                return
+
             message = timer_data['message']
             self.logger.info(f"Timer {timer_key} triggered: {message}")
 

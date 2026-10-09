@@ -1,3 +1,4 @@
+import asyncio
 import queue
 import traceback
 from dataclasses import dataclass
@@ -173,9 +174,37 @@ class RuntimeInputPipeline:
 
     async def _handle_meta_command(self, message: str, source: str) -> bool:
         """处理 `!stop` / `!timer` / `!dump`；返回 True 表示已被消费。"""
-        if message == '!stop':
+        if message in ('!stop', 'stop'):
             self.paused = not self.paused
             self.logger.critical(f'paused: {self.paused}')
+            timer_mgr = self.timer_manager
+            if timer_mgr is None:
+                from ushareiplay.managers.timer_manager import TimerManager
+                if getattr(TimerManager, "_instance", None):
+                    timer_mgr = TimerManager.instance()
+            if timer_mgr:
+                if self.paused:
+                    if hasattr(timer_mgr, "pause"):
+                        timer_mgr.pause()
+                else:
+                    if hasattr(timer_mgr, "resume"):
+                        res = timer_mgr.resume()
+                        if asyncio.iscoroutine(res):
+                            await res
+            return True
+
+        if self.paused and message in ('!start', 'start'):
+            self.paused = False
+            self.logger.critical(f'paused: {self.paused}')
+            timer_mgr = self.timer_manager
+            if timer_mgr is None:
+                from ushareiplay.managers.timer_manager import TimerManager
+                if getattr(TimerManager, "_instance", None):
+                    timer_mgr = TimerManager.instance()
+            if timer_mgr and hasattr(timer_mgr, "resume"):
+                res = timer_mgr.resume()
+                if asyncio.iscoroutine(res):
+                    await res
             return True
 
         if message == '!timer':
