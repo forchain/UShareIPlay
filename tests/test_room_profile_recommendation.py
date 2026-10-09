@@ -138,116 +138,35 @@ def _recommendation_driver(**kwargs):
 # --------------------------------------------------------------------------
 
 
-def test_set_recommendation_closes_recommendation_in_one_drawer_session():
-    """一次开关 = 一次抽屉会话：开窗 -> 点状态行 -> 点选项 -> 收选项层 -> 关窗。"""
-    journal = []
-    driver = _recommendation_driver(journal=journal)
-    screen = _Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})
-    profile = _profile(driver, _Handler(screen))
-    room_state = RoomState.initialize()
-
-    result = profile.set_recommendation(False)
-
-    assert result == {"success": True, "recommendation_enabled": False}
-    assert room_state.recommendation_enabled is False
-    assert driver.clicks == ["party_recommendation_status", "party_recommendation_close"]
-    # 开一次窗 -> 点状态行 -> 点选项 -> 收一次选项层；抽屉随即确认关好，不再多按返回。
-    assert journal == [
-        "drawer:open:chat_room_title",
-        "element:click:party_recommendation_status",
-        "element:click:party_recommendation_close",
-        "drawer:back",
-    ]
-    assert driver.is_open() is False
-
-
-def test_set_recommendation_opens_recommendation_when_the_room_shows_it_closed():
+def test_set_recommendation_is_temporarily_disabled():
+    """设置派对推荐状态已暂时停用，不执行抽屉动作。"""
     RoomState.initialize()
-    driver = _recommendation_driver()
-    screen = _Screen(DRAWER_SCREEN, {"party_recommendation_status": CLOSED_TEXT})
-    profile = _profile(driver, _Handler(screen))
-
-    assert profile.set_recommendation(True) == {"success": True, "recommendation_enabled": True}
-    assert driver.clicks == ["party_recommendation_status", "party_recommendation_open"]
-
-
-def test_set_recommendation_applies_immediately_every_time_and_never_queues_a_draft():
-    """推荐分发没有预算：连着两次都当场生效，草稿库里不多出一个待写入值。"""
-    RoomState.initialize()
-    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {})))
-
-    for enabled in (False, True, False):
-        assert "error" not in profile.set_recommendation(enabled)
-
-    # 草稿库只有话题 / 公告 / 房名三个字段 —— 推荐分发根本没有自己的预算。
-    assert list(profile.drafts.fields()) == ["topic", "notice", "title"]
-    assert [profile.drafts.pending(f) for f in profile.drafts.fields()] == [None, None, None]
-    # 冷却闸门对它不存在：can_apply_now 恒为真，没有任何字段被 mark_attempted。
-    assert all(profile.drafts.can_apply_now(f) for f in profile.drafts.fields())
-
-
-def test_set_recommendation_does_nothing_when_the_room_is_already_in_that_state():
-    """已经在目标状态：一个点击都不该发生。"""
-    RoomState.initialize()
-    driver = _recommendation_driver()
-    screen = _Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})
-    profile = _profile(driver, _Handler(screen))
-
-    assert profile.set_recommendation(True) == {"success": True, "recommendation_enabled": True}
-    assert driver.clicks == []
-
-
-def test_set_recommendation_keeps_the_legacy_open_failure_text():
-    """开不了窗时 `:recommend` 的报错文案一个字都不许变。
-
-    这条文案原先由 `commands/recommend.py` 传进 `ensure_open`，回复模板是
-    `设置派对推荐失败: {error}`，因此必须由本方法原样交出。
-    """
-    driver = InMemoryRoomProfileDrawerDriver(fail_for=("chat_room_title", "room_topic"))
-    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})))
-
-    assert profile.set_recommendation(False) == {"error": "Failed to find room title"}
-    assert driver.clicks == [], "开不了窗就不该去点选项"
-
-
-def test_set_recommendation_is_refused_in_a_guest_room():
-    room_state = RoomState.initialize()
-    room_state.is_guest_room = True
     driver = _recommendation_driver()
     profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})))
 
-    assert profile.set_recommendation(True) == {"error": "他人房间模式下不可修改推荐状态"}
+    result = profile.set_recommendation(True)
+    assert result == {"error": "派对推荐设置已暂时停用"}
     assert driver.clicks == []
+    assert driver.opened_entries == []
 
 
-# --------------------------------------------------------------------------
-# 推荐分发的状态读取与被动纠偏
-# --------------------------------------------------------------------------
+def test_inspecting_the_recommendation_status_returns_none():
+    """推荐状态已不在房间信息面板展示。"""
+    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
+
+    assert profile.inspect_current_ui_status() is None
 
 
-@pytest.mark.parametrize(
-    "text,expected",
-    [
-        (OPEN_TEXT, True),
-        (CLOSED_TEXT, False),
-        ("", None),
-        ("看不懂的文案", None),
-    ],
-)
-def test_inspecting_the_recommendation_status_reads_the_drawer_row(text, expected):
-    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": text})))
-
-    assert profile.inspect_current_ui_status() is expected
-
-
-def test_syncing_the_recommendation_writes_the_real_ui_state_back_to_room_state():
-    """纠偏：UI 上是"关闭"就往 RoomState 回写 False，而不是保留建房时的假设。"""
+def test_sync_while_open_does_not_sync_recommendation():
+    """打开抽屉时不再获取/纠偏推荐状态。"""
     room_state = RoomState.initialize()
     room_state.recommendation_enabled = True
     profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": CLOSED_TEXT})))
 
-    assert profile.sync_while_open()["recommendation"] == {"success": True, "status": False}
-    assert room_state.recommendation_enabled is False
+    results = profile.sync_while_open()
+    assert "recommendation" not in results
+    assert "room_type" in results
+    assert room_state.recommendation_enabled is True
 
 
 def test_ensure_synced_on_return_does_not_touch_the_drawer_when_the_state_is_known():
@@ -270,10 +189,9 @@ def test_ensure_synced_on_return_audits_the_room_when_the_state_is_unknown():
 
     result = profile.ensure_synced_on_return()
 
-    assert result == {"success": True, "recommendation_enabled": True}
-    assert room_state.recommendation_enabled is True
+    assert result == {"success": True, "recommendation_enabled": None}
     assert driver.opened_entries == ["chat_room_title"]
-    # 全量纠偏只**读**推荐分发那一行：审计不该顺手把开关点一遍。
+    # 抽屉全量审计不再读/点推荐分发那一行
     assert "party_recommendation_status" not in driver.clicks
     assert "party_recommendation_open" not in driver.clicks
     assert "party_recommendation_close" not in driver.clicks
@@ -412,23 +330,13 @@ def _full_drawer_screen():
 
 
 @pytest.mark.asyncio
-async def test_room_creation_batches_every_correction_into_one_drawer_session():
-    """建房后的全量纠偏**只开一次抽屉**：推荐、类型、房名、公告在同一次会话里。
-
-    这就是 spec 用户故事 #10 / #11 要的批处理：`PartyManager._after_party_created`
-    原本自己去开窗做推荐刷新，随后每个字段各自开一次；现在整条链路只有一次
-    `drawer:open` 和一次 `drawer:close`。
-    """
+async def test_room_creation_does_not_open_drawer_for_recommendation():
+    """建房后不再开抽屉刷新推荐（推荐仅在建房时设置）。"""
     journal = []
     screen = _full_drawer_screen()
     driver = InMemoryRoomProfileDrawerDriver(
         journal=journal,
         present=screen.present,
-        world_after_click={
-            "party_room_type_option": screen.present | {SINGING_TYPE_KEY},
-            "edit_notice_entry": screen.present
-            | {"close_notice", "customize_notice_button", "edit_notice_input", "edit_notice_confirm"},
-        },
     )
     profile = _profile(driver, _Handler(screen))
     room_state = RoomState.initialize()
@@ -440,31 +348,14 @@ async def test_room_creation_batches_every_correction_into_one_drawer_session():
 
     await party._after_party_created()
 
-    # 批处理的证据：整个建房序列里只有一次打开、一次关闭。
-    assert journal.count("drawer:open:chat_room_title") == 1, journal
-    assert [e for e in journal if e.startswith("drawer:close")] == ["drawer:close"], journal
-    # 顺序：开窗 -> 纠偏 -> 编辑 -> 统一关窗；没有任何一次重复开窗。
-    assert journal == [
-        "drawer:open:chat_room_title",
-        "element:click:party_room_type_option",
-        "element:click:party_type_singing",
-        "element:click:edit_notice_entry",
-        "element:click:customize_notice_button",
-        "element:type:edit_notice_input",
-        "element:click:edit_notice_confirm",
-        "element:click:close_notice",
-        "drawer:close",
-    ], journal
-    # 真实状态从 UI 读回来了（不是建房时的假设）。
-    assert room_state.recommendation_enabled is True
-    assert profile.last_audit_results["recommendation"] == {"success": True, "status": True}
-    assert profile.last_audit_results["room_type"] == {"success": True, "switched": True}
-    assert driver.is_open() is False
+    # 建房时设置的推荐状态保留，无需也不再为了推荐开抽屉
+    assert room_state.recommendation_enabled is False
+    assert journal.count("drawer:open:chat_room_title") == 0
 
 
 @pytest.mark.asyncio
-async def test_re_entering_the_room_audits_in_one_drawer_session_too():
-    """回房（`join_party` 里的 `ensure_synced_on_return`）同样只开一次抽屉。"""
+async def test_re_entering_the_room_does_not_open_drawer_for_recommendation():
+    """回房时不再因为推荐状态未知而开抽屉读推荐。"""
     journal = []
     screen = _full_drawer_screen()
     screen.present.add("party_back")
@@ -477,23 +368,21 @@ async def test_re_entering_the_room_audits_in_one_drawer_session_too():
     party._handler = _room_lifecycle_handler(screen, profile)
     party._logger = MagicMock()
 
-    # 点「回到房间」那一支：它必须自己去把推荐分发的真实状态读回来。
+    # 点「回到房间」那一支：不应再为了推荐分发开抽屉
     assert await party.join_party() is True
 
-    assert journal.count("drawer:open:chat_room_title") == 1, journal
-    assert [e for e in journal if e.startswith("drawer:close")] == ["drawer:close"], journal
-    assert room_state.recommendation_enabled is True
+    assert journal.count("drawer:open:chat_room_title") == 0
 
 
 def test_the_audit_result_keys_are_unchanged():
-    """审计结果的四个键是既有接口，#393 之后仍然是这四个。"""
+    """审计结果包含当前在抽屉中的三个字段键。"""
     screen = _full_drawer_screen()
     driver = InMemoryRoomProfileDrawerDriver(present=screen.present)
     profile = _profile(driver, _Handler(screen))
 
     results = profile.audit_and_repair()
 
-    assert set(results) == {"recommendation", "room_type", "room_name", "notice"}
+    assert set(results) == {"room_type", "room_name", "notice"}
 
 
 # --------------------------------------------------------------------------
@@ -565,7 +454,7 @@ class _CommandRuntime:
 
 
 @pytest.mark.asyncio
-async def test_recommend_command_delegates_the_toggle_to_the_room_profile_manager():
+async def test_recommend_command_is_temporarily_disabled():
     from ushareiplay.commands.recommend import RecommendCommand
 
     driver = _recommendation_driver()
@@ -578,13 +467,13 @@ async def test_recommend_command_delegates_the_toggle_to_the_room_profile_manage
     cmd = RecommendCommand(_CommandRuntime(handler))
     result = await cmd.do_process(SimpleNamespace(nickname="Console"), ["off"])
 
-    assert result == {"status": "关闭"}
-    assert room_state.recommendation_enabled is False
-    assert driver.clicks == ["party_recommendation_status", "party_recommendation_close"]
+    assert result == {"error": "派对推荐功能已暂时停用"}
+    assert driver.opened_entries == []
+    assert driver.clicks == []
 
 
 @pytest.mark.asyncio
-async def test_recommend_command_toggles_when_given_no_argument():
+async def test_recommend_command_disabled_when_given_no_argument():
     from ushareiplay.commands.recommend import RecommendCommand
 
     driver = _recommendation_driver()
@@ -596,22 +485,7 @@ async def test_recommend_command_toggles_when_given_no_argument():
     cmd = RecommendCommand(_CommandRuntime(handler))
     result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
 
-    assert result == {"status": "开放"}
-
-
-@pytest.mark.asyncio
-async def test_recommend_command_keeps_its_argument_error_and_never_opens_the_drawer():
-    from ushareiplay.commands.recommend import RecommendCommand
-
-    driver = _recommendation_driver()
-    handler = _Handler(_Screen(DRAWER_SCREEN, {}))
-    _profile(driver, handler)
-    RoomState.initialize()
-
-    cmd = RecommendCommand(_CommandRuntime(handler))
-    result = await cmd.do_process(SimpleNamespace(nickname="Console"), ["也许"])
-
-    assert result == {"error": '未知参数 "也许", 请使用 on/off 或 开启/关闭'}
+    assert result == {"error": "派对推荐功能已暂时停用"}
     assert driver.opened_entries == []
 
 

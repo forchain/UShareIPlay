@@ -592,8 +592,6 @@ class AppController(Singleton):
         while self.is_running:
             try:
                 self._drain_agent_command_spool()
-                if self._runtime_queue_drainer:
-                    await self._runtime_queue_drainer.drain()
                 # Check for console input (高优先级，在事件管理器前处理)
                 await self.runtime_input.drain()
 
@@ -601,6 +599,9 @@ class AppController(Singleton):
                     # 暂停时这里会连着下一圈：让出时间片，否则空转烧满一颗核
                     await asyncio.sleep(0)
                     continue
+
+                if self._runtime_queue_drainer:
+                    await self._runtime_queue_drainer.drain()
 
                 outcome = await self.event_manager.process_current_screen()
                 if outcome["page_source"]:

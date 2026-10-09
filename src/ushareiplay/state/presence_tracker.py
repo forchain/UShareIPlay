@@ -63,7 +63,7 @@ class PresenceTracker(Singleton):
             # Update the set
             self._online_users = new_users_set
             self.logger.info(f"Updated online users list: {len(self._online_users)} users")
-            self.logger.debug(f"Online users: {', '.join(sorted(self._online_users))}")
+            self.logger.info(f"Online users: {', '.join(sorted(self._online_users))}")
         except Exception:
             self.logger.error(f"Error updating online users: {traceback.format_exc()}")
 

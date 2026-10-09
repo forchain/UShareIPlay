@@ -54,7 +54,7 @@ async def test_focus_count_change_user_isolation():
 
 @pytest.mark.asyncio
 async def test_focus_count_change_macro_substitution():
-    await FocusEventDao.create("Charlie", ":say {username} 坐到了 {seat} 号麦位 ({action})")
+    await FocusEventDao.create("Charlie", ":say {username} 坐到了 {seat} 号座位 ({action})")
 
     mock_handler = MagicMock()
     mock_handler.logger = MagicMock()
@@ -73,7 +73,7 @@ async def test_focus_count_change_macro_substitution():
     msgs = await queue.get_all_messages()
     msg = list(msgs.values())[0]
     assert msg.nickname == "Charlie"
-    assert msg.content == ":say Charlie 坐到了 5 号麦位 (sit_down)"
+    assert msg.content == ":say Charlie 坐到了 5 号座位 (sit_down)"
 
 
 @pytest.mark.asyncio

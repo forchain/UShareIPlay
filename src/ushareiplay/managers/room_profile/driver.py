@@ -25,7 +25,6 @@ from typing import Optional, Sequence
 # 窗口开着的证据：抽屉自身，或抽屉内任一控件。
 DIALOG_KEYS = (
     'party_room_type_option',
-    'party_recommendation_status',
     'edit_topic_entry',
     'edit_notice_entry',
     'slide_drawer',
@@ -35,8 +34,11 @@ DIALOG_KEYS = (
 # room_topic 指向同一个抽屉，作为兜底。
 DEFAULT_ENTRY_KEYS = ('chat_room_title', 'room_topic')
 
-#: 抽屉本体在 config.yaml 里的 key，也是正规关窗操作的目标。
+#: 抽屉本体在 config.yaml 里的 key。
 DRAWER_KEY = 'slide_drawer'
+
+#: 房间信息抽屉专门的关闭按钮 (iv_close)，不点击窗口上方。
+ROOM_INFO_CLOSE_KEYS = ('room_info_close', 'close_button_1')
 
 
 class RoomProfileDrawerDriverPort(ABC):

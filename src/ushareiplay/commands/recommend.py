@@ -22,6 +22,14 @@ class RecommendCommand(BaseCommand):
         if not self.handler.key_actions.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
 
+        # 派对推荐状态设置功能暂时停用（UI位置已改变，未来会恢复）
+        return {'error': '派对推荐功能已暂时停用'}
+
+    async def _legacy_do_process(self, message_info, parameters):
+        """保留的原处理逻辑，未来 UI 恢复后重新启用。"""
+        if not self.handler.key_actions.switch_to_app():
+            return {'error': 'Failed to switch to Soul app'}
+
         profile = self.room_profile_manager
         current_status = profile.recommendation_enabled
 

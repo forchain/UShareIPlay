@@ -5,9 +5,11 @@
 """
 
 import re
+import time
 
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.state.room_state import RoomState
+from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 
 
@@ -17,6 +19,7 @@ class UserCountEvent(BaseEvent):
     def __init__(self, handler, runtime=None):
         super().__init__(handler, runtime)
         self._consecutive_refresh_failures = 0
+        self._last_refresh_attempt = 0.0
 
     async def handle(self, key: str, element_wrapper):
         """
@@ -52,14 +55,30 @@ class UserCountEvent(BaseEvent):
 
             # 更新 RoomState 中的在线人数
             room_state = RoomState.instance()
-            if user_count == room_state.user_count:
+            has_presence = False
+            try:
+                if PresenceTracker.is_initialized():
+                    has_presence = bool(PresenceTracker.instance().get_online_users())
+            except Exception:
+                pass
+            now = time.time()
+
+            # 人数未变且已有在线列表，无需重复刷新
+            if user_count == room_state.user_count and has_presence:
                 return False
+
+            # 人数未变但在线列表为空（初次启动或此前失败），限制重试间隔至少 5 秒，避免频繁打扰 UI
+            if user_count == room_state.user_count and not has_presence:
+                if now - self._last_refresh_attempt < 5.0:
+                    return False
 
             if self.is_ui_busy():
                 self.logger.debug(
                     f"UI is busy, deferring online users refresh for user_count={user_count}"
                 )
                 return False
+
+            self._last_refresh_attempt = now
 
             success = await OnlineListScraper.instance().refresh_online_users(target_count=user_count)
             if success:

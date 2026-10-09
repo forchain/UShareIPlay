@@ -538,7 +538,7 @@ class SeatObservationManager(Singleton):
         return "\n".join(lines)
 
     def get_user_seat(self, username: str) -> Optional[int]:
-        """查询用户当前所占麦位号（1..12），若不在麦上则返回 None。"""
+        """查询用户当前所占座位号（1..12），若不在座位上则返回 None。"""
         if not username:
             return None
         for num, slot in self.seats.items():
@@ -547,7 +547,7 @@ class SeatObservationManager(Singleton):
         return None
 
     def get_all_seated_users(self) -> Dict[str, int]:
-        """返回当前所有在座用户及其麦位号映射 {username: seat_number}。"""
+        """返回当前所有在座用户及其座位号映射 {username: seat_number}。"""
         seated = {}
         for num, slot in self.seats.items():
             if slot.occupied and slot.username:
@@ -1899,9 +1899,9 @@ class SeatObservationManager(Singleton):
     async def _scan_all_rows_expanded(self, initial_desks: list) -> Dict[int, Tuple[any, str, dict]]:
         """
         在展开状态下执行双向全量扫描：
-        1. 滑到第一排（Row 0），观测前两排（1~8号麦位）并解析未识别昵称；
-        2. 滑到第三排（Row 2），观测后两排（5~12号麦位）并解析未识别昵称；
-        3. 合并两次观测结果，确保 1~12 号麦位全部完整覆盖，最后滑回第一排复位。
+        1. 滑到第一排（Row 0），观测前两排（1~8号座位）并解析未识别昵称；
+        2. 滑到第三排（Row 2），观测后两排（5~12号座位）并解析未识别昵称；
+        3. 合并两次观测结果，确保 1~12 号座位全部完整覆盖，最后滑回第一排复位。
         """
         observed_all: Dict[int, Tuple[any, str, dict]] = {}
 
@@ -2008,7 +2008,7 @@ class SeatObservationManager(Singleton):
 
     async def expand_rescan_and_collapse(self, target_focus_count: int) -> bool:
         """
-        主动展开面板 -> 全量双向重扫 12 个麦位（滑到顶扫前两排，滑到底扫后两排） -> 复位并收起。
+        主动展开面板 -> 全量双向重扫 12 个座位（滑到顶扫前两排，滑到底扫后两排） -> 复位并收起。
         """
         if not self.handler:
             return False
@@ -2036,13 +2036,13 @@ class SeatObservationManager(Singleton):
                         f"Seat expansion unavailable; rescanning {len(seat_desks)} on-screen desks"
                     )
 
-                # 双向扫描覆盖全部 3 排麦位（顶部前两排与底部后两排）
+                # 双向扫描覆盖全部 3 排座位（顶部前两排与底部后两排）
                 observed = await self._scan_all_rows_expanded(seat_desks)
                 if not observed:
                     return False
 
                 old_slots = {k: v.copy() for k, v in self.seats.items()}
-                # 权威路径：两个相位把 12 个麦位都读过，明确空座即可判下座
+                # 权威路径：两个相位把 12 个座位都读过，明确空座即可判下座
                 self._apply_snapshot(observed)
                 self._last_rescan_ok = True
 

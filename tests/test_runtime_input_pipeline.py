@@ -34,10 +34,22 @@ class _Logger:
 class _TimerManager:
     def __init__(self, running=False):
         self.running = running
+        self.paused = False
         self.calls = []
 
     def is_running(self):
         return self.running
+
+    def is_paused(self):
+        return self.paused
+
+    def pause(self):
+        self.calls.append("pause")
+        self.paused = True
+
+    async def resume(self):
+        self.calls.append("resume")
+        self.paused = False
 
     async def start(self):
         self.calls.append("start")
@@ -46,6 +58,7 @@ class _TimerManager:
     async def stop(self):
         self.calls.append("stop")
         self.running = False
+
 
 
 def _pipeline(items=(), timer_manager=None, dump_artifacts=None, owner="Joyer"):
@@ -181,6 +194,36 @@ async def test_stop_toggles_pause_without_queueing_anything():
     pipeline.input_queue.put({"content": "!stop", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is False
+
+
+@pytest.mark.asyncio
+async def test_stop_pauses_and_resumes_timer_manager():
+    timer = _TimerManager(running=True)
+    pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}], timer_manager=timer)
+
+    assert pipeline.paused is True
+    assert timer.calls == ["pause"]
+    assert timer.is_paused() is True
+
+    pipeline.input_queue.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
+    assert timer.calls == ["pause", "resume"]
+    assert timer.is_paused() is False
+
+
+@pytest.mark.asyncio
+async def test_bare_stop_and_start_toggle_pause():
+    timer = _TimerManager(running=True)
+    pipeline, _screen, _logger = await _drain([{"content": "stop", "source": "console"}], timer_manager=timer)
+
+    assert pipeline.paused is True
+    assert timer.calls == ["pause"]
+
+    pipeline.input_queue.put({"content": "start", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
+    assert timer.calls == ["pause", "resume"]
 
 
 @pytest.mark.asyncio

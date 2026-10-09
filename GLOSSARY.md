@@ -18,6 +18,14 @@ _Avoid_: Seat poller, desk scraper, seat clicker
 User-configured commands that automatically execute via `:focus add` when a specific user's seat/focus state changes (taking a seat, leaving a seat, or relocating to another seat). Triggers are isolated to the specific user whose occupancy changed and never fire for unrelated occupants. Hook commands substitute `{username}`, `{seat}` (the new seat, for a relocation) and `{action}` — one of `sit_down`, `leave_seat`, `move_seat`.
 _Avoid_: Seat trigger, seat callback script
 
+**Party Seat (座位)**:
+One of the 12 numbered seating positions across 6 desks in a Soul App party room where users can sit (`sit_down`, `leave_seat`, `move_seat`). Seated occupants do not appear in the room's online user list. Sitting in a party seat is spatial occupancy and has no relation to microphone or voice activity.
+_Avoid_: Mic spot, mic position, on-mic, 麦位, 在麦, 上麦 (when referring to being seated)
+
+**Microphone State / On-Mic (麦位 / 上麦)**:
+The active voice broadcast state when a user unmutes to speak or is announced by the room as speaking (e.g. system notification "XXX 已上麦" triggering `PlaybackMuting`). Only users who have unmuted to speak occupy a microphone state.
+_Avoid_: Calling a party seat a mic spot (麦位), calling sitting down getting on mic (上麦)
+
 **User Naming Domains**:
 The two names one person carries: the **visible name** (分身名) — the only nickname Soul App renders in the room (seat avatar card, online list, chat line) — and the **canonical name** (主账号名) — the `users.username` record that `UserDAO` transparently resolves every alias to, and the identity that all ID-bound configuration hangs on (event hooks, seat reservations, keywords, memory, levels). A Soul-visible name and a canonical name are different strings for the same person, so any username parameter must be resolved by naming domain before use: canonical for DB reads/writes, visible for every Soul UI lookup, and identity-based (never string equality) when a UI-read name is compared with a caller-supplied one.
 _Avoid_: nickname mismatch workaround, alias string hack, display-name fudge

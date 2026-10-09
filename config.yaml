@@ -154,6 +154,7 @@ soul:
     title_edit_entry: "cn.soulapp.android:id/iv_edit"
     title_edit_input: "cn.soulapp.android:id/et_content"
     title_edit_confirm: "cn.soulapp.android:id/tv_confirm"
+    room_info_close: "cn.soulapp.android:id/iv_close" # 房间信息窗口关闭按钮
     go_back: "cn.soulapp.android:id/iv_back"
     go_back_1: '//android.widget.ImageButton[@content-desc="返回"]'
     user_count: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvUserCount" or @resource-id="cn.soulapp.android:id/tvOnlineCount"]' # 6人/1人在线
@@ -208,6 +209,7 @@ soul:
     h5_back: "cn.soulapp.android:id/h5_title_back" # 关闭H5页面
     group_back: "cn.soulapp.android:id/fans_back" # 关闭我的派对群页面
     online_drawer: "cn.soulapp.android:id/touch_close" # 在线用户抽屉
+    online_users_close: "cn.soulapp.android:id/ivClose" # 在线用户列表关闭按钮
     slide_drawer: "cn.soulapp.android:id/slide_bar" # 分享至好友抽屉/派对
     input_drawer: "cn.soulapp.android:id/clSecondContainer" # 输入框抽屉
     room_id: "cn.soulapp.android:id/tvRoomId"
@@ -458,7 +460,7 @@ commands:
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
     level: 1
-    description: "派对麦位管理。参数: [0 | 1 <麦位> | 2 <麦位> | 3 [昵称] | 4 [麦位]]，无参自动为房主寻找可用麦位并落座，0=取消自身麦位预约，1=预约指定麦位(1-12)，2=直接落座指定麦位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下麦(无参抱房主，带麦位抱该位)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2"
+    description: "派对座位管理。参数: [0 | 1 <座位号> | 2 <座位号> | 3 [昵称] | 4 [座位号]]，无参自动为房主寻找可用座位并落座，0=取消自身座位预约，1=预约指定座位(1-12)，2=直接落座指定座位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下座(无参抱房主，带座位号抱该位)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2"
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
