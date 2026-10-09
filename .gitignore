@@ -10,6 +10,8 @@ tools/loopback-verifier/build/*
 tools/loopback-verifier/debug.keystore
 config/keywords.yaml
 config.local.yaml
+# backups written by scripts/init_worktree.sh --force; they hold the same secrets
+config.local.yaml.bak.*
 .agent/
 .claude/worktrees/
 .claude/projects/
@@ -18,3 +20,4 @@ config.local.yaml
 *.log
 .antigravitycli
 .orca
+.DS_Store

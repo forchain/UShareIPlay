@@ -1,4 +1,5 @@
 import logging
+import time
 
 from ushareiplay.core.singleton import Singleton
 
@@ -22,16 +23,136 @@ class UserManager(Singleton):
             self._logger = getattr(self._handler, "logger", None) or logging.getLogger("UserManager")
         return self._logger
 
+    # 抽屉刚打开时 RecyclerView 还在首帧布局，等它稳定下来的上限
+    ONLINE_LIST_SETTLE_TIMEOUT: float = 2.0
+    ONLINE_LIST_SETTLE_INTERVAL: float = 0.25
+
+    def _exact_seated_seat_number(self, nickname: str):
+        """等值比对查麦位快照：昵称本身就是麦位上那个名字时返回号位，否则 None。
+
+        同步调用方（私聊）只能走这条；跨命名域的身份判定见 _find_seated_user。
+        """
+        if not nickname:
+            return None
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import (
+                SeatObservationManager,
+            )
+
+            if not SeatObservationManager.is_initialized():
+                return None
+            return SeatObservationManager.instance().get_all_seated_users().get(nickname)
+        except Exception:
+            return None
+
+    async def _find_seated_user(self, nickname: str):
+        """这个人此刻是否在麦上；是则返回 (号位, 麦位上真正可见的名字)，否则 None。
+
+        麦位快照（SeatObservation 一直在维护的全量 1~12 号位）是房间里唯一
+        「谁在麦上」的可靠来源。
+
+        **必须按身份判定，不能拿昵称和麦位文本做 ==**：一个人可以同时开着多个
+        分身（真机：`儿童不易~🐏🐏` 与 `不约儿童🐏🐏` 同属 canonical 1999），
+        而 `resolve_visible_username` 在多个分身在线时按 `sorted()[0]` 取一个 ——
+        选中的那个未必是在麦的那个。真机 10-08 15:05:25 就是这么漏判的：
+        传入「不约儿童🐏🐏」，解析成「儿童不易~🐏🐏」（不在麦），于是
+        麦位短路没命中，又回到在线列表里空滚，报出旧的
+        `User not found in online users list`。这里改用
+        `UserDAO.is_same_identity` 跨命名域判定（AGENTS.md 用户名参数铁律）。
+        """
+        if not nickname:
+            return None
+        try:
+            from ushareiplay.managers.seat_manager.seat_observation import (
+                SeatObservationManager,
+            )
+
+            if not SeatObservationManager.is_initialized():
+                return None
+            seated = SeatObservationManager.instance().get_all_seated_users()
+        except Exception:
+            return None
+
+        if nickname in seated:
+            return seated[nickname], nickname
+
+        try:
+            from ushareiplay.dal.user_dao import UserDAO
+
+            for seated_name, seat_number in seated.items():
+                if await UserDAO.is_same_identity(nickname, seated_name):
+                    return seat_number, seated_name
+        except Exception:
+            return None
+        return None
+
+    def _wait_for_online_list_settle(self) -> None:
+        """等在线列表渲染稳定后再开始搜索。
+
+        rvBannedUsers 是懒加载列表：抽屉刚打开时 RecyclerView 还在首帧布局，
+        这时候立刻下滑，连续两次读到的 page_source 一模一样，
+        `scroll_container_until_element` 就把这当成「已到达边界」直接放弃 ——
+        于是在列表里的人也报「未找到」（真机 10-08 12:53:32 送礼失败，
+        隔 1 秒同样的搜索却一眼命中）。先等它稳定，边界判定才有意义。
+        """
+        driver = getattr(self.handler, "driver", None)
+        if driver is None:
+            return
+        deadline = time.monotonic() + self.ONLINE_LIST_SETTLE_TIMEOUT
+        try:
+            previous = None
+            while time.monotonic() < deadline:
+                current = driver.page_source
+                if previous is not None and current == previous:
+                    return
+                previous = current
+                time.sleep(self.ONLINE_LIST_SETTLE_INTERVAL)
+        except Exception:
+            # 读不到 page_source 就按原样继续搜索，不因等待失败而放弃定位
+            return
+
+    async def open_user_profile(self, nickname: str):
+        """身份感知的资料页定位入口（在线列表 + 麦位）。
+
+        异步调用方（:gift / :admin）走这里：先用 `is_same_identity` 按身份问麦位
+        快照，再决定要不要落到在线列表。`open_user_profile_from_online_list`
+        只能做字符串比对，多分身同在线时会漏判（见 _find_seated_user）。
+        """
+        seated = await self._find_seated_user(nickname)
+        if seated is not None:
+            seat_number, seated_name = seated
+            self.logger.info(
+                f"{nickname} 在 {seat_number} 号麦上（{seated_name}），不走在线列表"
+            )
+            return {
+                'error': f'{seated_name} 在 {seat_number} 号麦上（在线列表不含麦上用户）',
+                'user': seated_name,
+                'seat': seat_number,
+            }
+        return self.open_user_profile_from_online_list(nickname)
+
     def open_user_profile_from_online_list(self, nickname: str):
         """
         在在线用户列表中查找指定用户并打开其资料页。
 
         Args:
-            nickname: 要查找的用户昵称。
+            nickname: 要查找的用户昵称（房间里的可见名或同身份的任何分身名）。
 
         Returns:
             dict: 成功时返回 {}；失败时返回 {'error': str, 'user': nickname}。
         """
+        # 在麦的人不在在线列表里（Soul 的在线列表只列不在麦的用户）。
+        # 这里只能做等值比对：同步调用方（私聊）拿不到身份判定。
+        # 多分身同在线的场景由异步入口 open_user_profile 负责。
+        seated_at = self._exact_seated_seat_number(nickname)
+        if seated_at is not None:
+            self.logger.info(f"{nickname} 在 {seated_at} 号麦上，不走在线列表")
+            return {
+                'error': f'{nickname} 在 {seated_at} 号麦上（在线列表不含麦上用户）',
+                'user': nickname,
+                'seat': seated_at,
+            }
+
         user_count_elem = self.handler.element_finder.wait_for_element('user_count')
         if not user_count_elem:
             self.logger.warning("未找到在线用户人数")
@@ -50,6 +171,10 @@ class UserManager(Singleton):
                 'error': 'Failed to find online users container',
                 'user': nickname,
             }
+
+        # 抽屉刚打开，列表还在首帧布局：先等它稳定，否则第一次下滑就会被
+        # 判成「已到达边界」（见 _wait_for_online_list_settle）。
+        self._wait_for_online_list_settle()
 
         key, user_elem, _ = self.handler.gesture_handler.scroll_container_until_element(
             'online_user',
@@ -87,7 +212,7 @@ class UserManager(Singleton):
             self.logger.warning(f"Error pressing back to close profile card: {e}")
         self._close_online_drawer()
 
-    def send_gift(self, nickname: str):
+    async def send_gift(self, nickname: str):
         """
         执行送礼流程：先在在线列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
 
@@ -97,7 +222,7 @@ class UserManager(Singleton):
         Returns:
             dict: 成功返回 {'success': str}；失败返回 {'error': str} 或 {'error': str, 'user': nickname}。
         """
-        open_result = self.open_user_profile_from_online_list(nickname)
+        open_result = await self.open_user_profile(nickname)
         if 'error' in open_result:
             return open_result
 
@@ -174,6 +299,7 @@ class UserManager(Singleton):
         """
         try:
             self.handler.key_actions.switch_to_app()
+            # 同步链路：只能做等值比对的麦位短路，身份判定留给异步入口
             open_result = self.open_user_profile_from_online_list(nickname)
             if 'error' in open_result:
                 self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")

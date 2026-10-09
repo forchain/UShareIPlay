@@ -663,70 +663,76 @@ class SeatSubsystem:
                 if right.get('occupied'):
                     occupied_sides.append('right')
 
-                # Only proceed when exactly one seat is occupied on this desk
-                if len(occupied_sides) != 1:
+                # 两侧都占座的桌位不能整张跳过：目标很可能就坐在其中一侧。
+                # 原来只查「恰好只坐了一个人」的桌位，于是与别人同坐一桌的人
+                # 从来没被点名过，最后报出与事实相反的「not found on any seat」
+                # （真机 10-08 12:53:25：目标明明在 10 号位，9 号位群主占着另一侧）。
+                # 多点一次头像是弹窗的代价，而谎报「找不到」会让人反复重试。
+                if not occupied_sides:
                     continue
 
-                side = occupied_sides[0]
-                other_side = 'right' if side == 'left' else 'left'
-                seat = desk_info[side]
-                other_seat = desk_info[other_side]
+                for side in occupied_sides:
+                    other_side = 'right' if side == 'left' else 'left'
+                    seat = desk_info[side]
+                    other_seat = desk_info[other_side]
 
-                # Skip owner seat
-                if seat.get('is_owner'):
-                    continue
+                    # Skip owner seat
+                    if seat.get('is_owner'):
+                        continue
 
-                seat_number = desk_index * 2 + (1 if side == 'left' else 2)
+                    seat_number = desk_index * 2 + (1 if side == 'left' else 2)
 
-                # 点头像、读昵称、关掉弹窗整段交给 SeatPanelDriver：派对房间里一次盲按
-                # back 就是退出派对房间，只有驱动才有资格按下那一次 back，而且必须
-                # 在弹窗此刻确实还在屏幕上时才按。子系统自己不再碰任何弹窗动作。
-                # tap_target=STATE_ONLY：这条链路读的是 ClState 名片，ClState 缺席
-                # 时一次都别点 —— 迁移前是 `state_element` 为空直接跳过整张桌位。
-                # 退到 seat 节点会凭空点出一张没有证据支持的 UserView 名片。
-                async with self.panel_driver.avatar_card(
-                    desk, side, seat_number, tap_target=AvatarTapPolicy.STATE_ONLY
-                ) as card:
-                    if card.opened:
-                        self.handler.logger.info(
-                            f"Checked {side} seat at desk {desk_index + 1} to check user"
+                    # 点头像、读昵称、关掉弹窗整段交给 SeatPanelDriver：派对房间里一次盲按
+                    # back 就是退出派对房间，只有驱动才有资格按下那一次 back，而且必须
+                    # 在弹窗此刻确实还在屏幕上时才按。子系统自己不再碰任何弹窗动作。
+                    # tap_target=STATE_ONLY：这条链路读的是 ClState 名片，ClState 缺席
+                    # 时一次都别点 —— 迁移前是 `state_element` 为空直接跳过整张桌位。
+                    # 退到 seat 节点会凭空点出一张没有证据支持的 UserView 名片。
+                    async with self.panel_driver.avatar_card(
+                        desk, side, seat_number, tap_target=AvatarTapPolicy.STATE_ONLY
+                    ) as card:
+                        if card.opened:
+                            self.handler.logger.info(
+                                f"Checked {side} seat at desk {desk_index + 1} to check user"
+                            )
+                        actual_username = card.name
+
+                    # 读不到昵称＝没有可关的弹窗，也不是「不是那个人」，留给下一轮桌面
+                    if not actual_username:
+                        self.handler.logger.warning(
+                            f"No user name found for {side} seat at desk {desk_index + 1}"
                         )
-                    actual_username = card.name
+                        continue
 
-                # 读不到昵称＝没有可关的弹窗，也不是「不是那个人」，留给下一轮桌面
-                if not actual_username:
-                    self.handler.logger.warning(f"No user name found for {side} seat at desk {desk_index + 1}")
-                    continue
+                    self.handler.logger.info(
+                        f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
+                    )
 
-                self.handler.logger.info(
-                    f"Found user '{actual_username}' at desk {desk_index + 1}, {side} side"
-                )
+                    # 麦位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
+                    # 按身份匹配，命中后一律使用 UI 可见名字继续后续动作。
+                    if not await UserDAO.is_same_identity(target_username, actual_username):
+                        # 不是目标：名片已由驱动按证据关掉，继续看下一张桌位/下一侧
+                        continue
 
-                # 麦位弹窗里是 Soul UI 的可见名字（分身名），调用方给的可能是主账号名：
-                # 按身份匹配，命中后一律使用 UI 可见名字继续后续动作。
-                if not await UserDAO.is_same_identity(target_username, actual_username):
-                    # 不是目标：名片已由驱动按证据关掉，继续看下一张桌位
-                    continue
+                    # 命中目标：名片同样已关好，接着检查旁边的麦位
+                    # Check if the adjacent seat is available
+                    if other_seat['occupied']:
+                        return {'error': f'User {target_username} has no empty adjacent seat'}
 
-                # 命中目标：名片同样已关好，接着检查旁边的麦位
-                # Check if the adjacent seat is available
-                if other_seat['occupied']:
-                    return {'error': f'User {target_username} has no empty adjacent seat'}
+                    # Sit next to the target user
+                    self.handler.logger.info(
+                        f"Sitting next to {actual_username} at desk {desk_index + 1}, {other_seat['side']} side"
+                    )
 
-                # Sit next to the target user
-                self.handler.logger.info(
-                    f"Sitting next to {actual_username} at desk {desk_index + 1}, {other_seat['side']} side"
-                )
+                    # Re-collect desk info to get fresh element references after popup interaction
+                    desk_info = self._collect_desk_info(desk)
+                    fresh_other_seat = desk_info[other_side]
 
-                # Re-collect desk info to get fresh element references after popup interaction
-                desk_info = self._collect_desk_info(desk)
-                fresh_other_seat = desk_info[other_side]
-
-                return self._take_seat(
-                    desk_index,
-                    fresh_other_seat,
-                    neighbor_label=actual_username
-                )
+                    return self._take_seat(
+                        desk_index,
+                        fresh_other_seat,
+                        neighbor_label=actual_username
+                    )
 
             return {'error': f'User {target_username} not found on any seat'}
 

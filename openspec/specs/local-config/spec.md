@@ -35,10 +35,3 @@ The file `config.local.yaml` SHALL be listed in `.gitignore` and MUST NOT be com
 #### Scenario: gitignore entry present
 - **WHEN** `.gitignore` is inspected
 - **THEN** it SHALL contain an entry matching `config.local.yaml`
-
-### Requirement: Example local config file provided
-An example file `config.local.yaml.example` SHALL exist in the project root, demonstrating common override fields (device name, Appium host/port, party ID) with placeholder values.
-
-#### Scenario: Example file exists and is valid YAML
-- **WHEN** `config.local.yaml.example` is parsed as YAML
-- **THEN** it SHALL parse without errors and contain at least one commented or placeholder override entry

@@ -323,7 +323,8 @@ async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_
     opened = []
 
     class FakeUserManager:
-        def open_user_profile_from_online_list(self, nickname):
+        # manage_admin 走异步的身份感知入口 open_user_profile
+        async def open_user_profile(self, nickname):
             opened.append(nickname)
             return {"user": nickname} if nickname == AVATAR else {
                 "error": "User not found in online users list", "user": nickname
@@ -345,7 +346,8 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
     sent = []
 
     class FakeUserManager:
-        def send_gift(self, nickname):
+        # send_gift 是异步的（内部要按身份问麦位快照）
+        async def send_gift(self, nickname):
             sent.append(nickname)
             return {"success": f"已送给 {nickname}"}
 

@@ -13,9 +13,20 @@ source .venv/bin/activate
 # Install / sync dependencies
 uv sync
 
-# Configure per-machine settings
-cp config.local.yaml.example config.local.yaml
-# → set device.name, appium.host/port, soul.default_party_id, soul.room_owner
+# Configure per-machine settings (optional override; gitignored)
+# config.local.yaml holds ONLY the fields that differ from config.yaml:
+# nested dicts merge per-key, lists are replaced wholesale.
+# An existing config.local.yaml is never truncated: edit it by hand instead.
+if [ -e config.local.yaml ]; then
+  echo "config.local.yaml already exists — edit it in place" >&2
+else
+  cat > config.local.yaml <<'EOF'
+device:
+  name: "192.168.1.100:5555"
+appium:
+  host: "127.0.0.1"
+EOF
+fi
 
 # Start Appium server (separate terminal)
 ./appium.sh
@@ -25,6 +36,18 @@ cp config.local.yaml.example config.local.yaml
 ./run.sh
 # or: uv run ushareiplay
 ```
+
+### Working in a git worktree
+
+After `git worktree add`, run `./scripts/init_worktree.sh` from inside the new worktree. It
+locates the main worktree, fast-forwards local `main` from `origin/main` (main is checked out
+there, so it is advanced in place rather than by fetching into it), rebases the worktree branch
+onto the new main (aborting safely on conflict), and links the main repo's
+`config.local.yaml`. See `docs/worktree-init.md`.
+
+No path is ever hardcoded: the main worktree is found via `git rev-parse --git-common-dir`.
+`run.sh` links the same `config.local.yaml` on startup, so the bot still gets its per-machine
+overrides in a fresh worktree even without running the script.
 
 ### Running tests
 
@@ -108,7 +131,7 @@ AppController
 - 80+ QQ Music UI element XPath selectors
 - Command templates with response/error message templates
 
-Local overrides go in `config.local.yaml` (gitignored). See `config.local.yaml.example`.
+Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contain only the fields that differ from `config.yaml` — nested dicts are merged per-key, lists are replaced wholesale. `config.yaml` is the committed baseline and doubles as the worked example; there is no separate example file.
 
 ### Data Layer
 
