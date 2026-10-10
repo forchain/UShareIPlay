@@ -1190,9 +1190,16 @@ class SeatObservationManager(Singleton):
         其余任何变更都说明影响可能落在看不见的麦位上 —— 既不能凭一个局部读数写快照
         （会推出错误的座位信息），也不能当作没发生（那是漏检）：必须全量扫描一遍取
         最新信息。四种"去向不明"的情形都会进 fingerprint：
-        disappear（有人从这个位子消失，去哪不知道）、appear（有人凭空出现在这个位子，
+        disappear（有人从这个位子消失，去哪不知道）、appear（有人出现在这个位子 ——
+        不管是原先空着，还是此前只落了「占座、身份未知」而本轮才读出是谁 ——
         或者这个人还在快照别处占着座）、swap（同一个位子换人，两边来去都不知道）、
         contested（本轮弹窗把快照挂在这个位子的人指到了别处，这里的身份已无证据）。
+
+        「占座、身份未知」是落座后的视口同步（`sync_current_viewport`）直接写进快照
+        的形态，它不走去向闸。本轮才补上的身份必须补走一遍：真机 10-10 18:47-18:48
+        的 4 号位就是这样 —— 落座重读先把它写成「已占用」，下一轮弹窗读出 Chainer 时
+        快照里那个位子**已经**是占座态，于是绕过了「这个人还在 11 号位坐着」的判据，
+        同一个名字被写进第二个号位（4/11 两个 Chainer，在座 6 对着专注 5）。
         """
         writable: Set[int] = set()
         clearable: Set[int] = set()
@@ -1211,7 +1218,10 @@ class SeatObservationManager(Singleton):
                 continue
             if info["occupied"]:
                 new_user = info.get("username")
-                if not old.occupied:
+                # 「这个位子上出现了某个人」有两种形态：快照里本来是空座，或此前只落了
+                # 占座、没有身份（视口同步直接写的那种）。后者不能当「补个昵称」静默
+                # 落账 —— 同一个人可能刚从看不见的位子换过来，旧位去向不明。
+                if not old.occupied or (new_user and not old.username):
                     appears[seat_num] = new_user
                 elif old.username and new_user and old.username != new_user:
                     unexplained.add((seat_num, "swap"))
