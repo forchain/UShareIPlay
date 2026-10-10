@@ -583,7 +583,7 @@ class SeatSubsystem:
 
                 companion_candidate = self._select_companion_candidate(desk_info)
                 if companion_candidate:
-                    return self._take_seat(
+                    return await self._take_seat(
                         desk_index,
                         companion_candidate['seat'],
                         neighbor_label=companion_candidate['neighbor_label']
@@ -613,7 +613,7 @@ class SeatSubsystem:
                     # If refreshing fails, log but continue with original candidate
                     self.handler.logger.warning(f"Failed to refresh seat element before taking seat: {str(e)}")
 
-                return self._take_seat(
+                return await self._take_seat(
                     first_empty_candidate['desk_index'],
                     first_empty_candidate['seat']
                 )
@@ -728,7 +728,7 @@ class SeatSubsystem:
                     desk_info = self._collect_desk_info(desk)
                     fresh_other_seat = desk_info[other_side]
 
-                    return self._take_seat(
+                    return await self._take_seat(
                         desk_index,
                         fresh_other_seat,
                         neighbor_label=actual_username
@@ -881,11 +881,52 @@ class SeatSubsystem:
     def _build_scan_order(self, total_count, start_index):
         return [(start_index + offset) % total_count for offset in range(total_count)]
 
-    def _take_seat(self, desk_index, seat_info, neighbor_label=None):
+    async def _refresh_snapshot_after_seating(self, desk_index: int) -> None:
+        """刚坐下之后按需重读一次视口，让座次表立刻反映刚落座的事实。
+
+        `/seat` 走的是 `find_owner_seat` / `accompany_user` -> `_take_seat`，而这条
+        路径**从不写快照**：座次表于是把命令执行前的旧读数原样打出来（真机
+        10-10 17:36:29 —— 机器人已在 desk 1 右位落座，1/2 号位仍写着空闲，
+        机器人还挂在 9 号位）。`:seat 2 <n>` 那条路径有 `mark_owner_seated` 兜底，
+        `/seat` 没有。
+
+        相位（band）必须由刚落座的号位推出，不能留空：房间里只有空座才渲染数字
+        编号，占座渲染身份文字（群主/管理），空座干脆没有 label 节点 ——
+        `band=None` 时全屏读不出任何锚点，`sync_current_viewport` 直接返回空
+        （实测：同一份真机形状 page_source，band=None -> 0 个号位，
+        band='top' -> 1~8 号）。判定规则与 `sit_at_specific_seat` 一致：
+        第三排滚到底部，其余夹在顶部。
+
+        读的是界面事实而不是补一个昵称：读不到就保持原快照，绝不用猜的身份污染
+        座次表（与 `read_focus_count_from_ui` 同一取数原则）。刷新失败绝不能让
+        已经成功的落座变成失败。
+        """
+        obs = self.observation
+        if obs is None:
+            return
+        try:
+            # 调用方已持有命令派发链的 ui_lock；ui_session 可重入，这里是显式声明
+            # 本方法自己也要 UI 独占（观测层的读盘约定，见 _verify_focus_consistency）。
+            async with self._ui_session("seat_snapshot_refresh"):
+                await obs.sync_current_viewport(
+                    band="bottom" if desk_index // 2 == 2 else "top"
+                )
+        except Exception as e:
+            self.logger.warning(f"Seat snapshot refresh after seating failed: {e}")
+
+    async def _take_seat(self, desk_index, seat_info, neighbor_label=None):
         if self.handler is None or not seat_info or not seat_info.get('element'):
             return {'error': 'Seat element not available'}
 
         try:
+            # 旧位号从占座游标算，不猜身份：滚出视口的旧位视口刷新看不见，
+            # 必须由这里显式腾空，否则快照会同时记着新旧两个位。
+            previous_seat = None
+            if self.current_side:
+                previous_seat = self.current_desk_index * 2 + (
+                    1 if self.current_side == 'left' else 2
+                )
+
             seat_info['element'].click()
             if neighbor_label:
                 self.handler.logger.info(
@@ -900,6 +941,11 @@ class SeatSubsystem:
             if result.get('success'):
                 self.current_desk_index = desk_index
                 self.current_side = seat_info['side']
+                new_seat = desk_index * 2 + (1 if seat_info['side'] == 'left' else 2)
+                obs = self.observation
+                if obs is not None and previous_seat and previous_seat != new_seat:
+                    obs.release_bot_seat(previous_seat)
+                await self._refresh_snapshot_after_seating(desk_index)
             return result
 
         except Exception:

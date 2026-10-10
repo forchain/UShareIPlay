@@ -2279,6 +2279,28 @@ class SeatObservationManager(Singleton):
 
             return observed
 
+    def release_bot_seat(self, seat_number: Optional[int]) -> None:
+        """机器人腾空它自己刚离开的号位（换座，不是新增）。
+
+        视口刷新只能改它**看得见**的号位：滚出视口的旧位不会被清（这是
+        `_judge_empty` 的「看不见 ≠ 空座」铁律）。可机器人换座时旧位恰恰是
+        确定空了的 —— 依据不是猜身份，而是子系统自己的占座游标
+        （`current_desk_index` / `current_side`）。
+
+        不清的后果不只是座次表多一行：快照里的在座人数会比专注人数多一个，
+        下一轮 `_verify_focus_consistency` 立刻判成不自洽，白白触发一次
+        全量重扫（真机 10-10 17:36 之后 /info 仍显示 Joyer(2号) 同源）。
+        """
+        if not seat_number or not (1 <= seat_number <= 12):
+            return
+        slot = self.seats.get(seat_number)
+        if slot is None or not slot.occupied:
+            return
+        slot.occupied = False
+        slot.username = None
+        slot.label = ""
+        slot.is_owner = False
+
     def mark_owner_seated(self, seat_number: int, username: Optional[str] = None) -> None:
         """确认就座后立即写入快照、更新基准并标记已对账。
 
