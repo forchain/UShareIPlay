@@ -2279,8 +2279,8 @@ class SeatObservationManager(Singleton):
 
             return observed
 
-    def release_bot_seat(self, seat_number: Optional[int]) -> None:
-        """机器人腾空它自己刚离开的号位（换座，不是新增）。
+    def release_bot_seat(self, seat_number: Optional[int]) -> bool:
+        """机器人腾空它自己刚离开的号位（换座，不是新增）。返回旧位上是否真记着人。
 
         视口刷新只能改它**看得见**的号位：滚出视口的旧位不会被清（这是
         `_judge_empty` 的「看不见 ≠ 空座」铁律）。可机器人换座时旧位恰恰是
@@ -2292,24 +2292,38 @@ class SeatObservationManager(Singleton):
         全量重扫（真机 10-10 17:36 之后 /info 仍显示 Joyer(2号) 同源）。
         """
         if not seat_number or not (1 <= seat_number <= 12):
-            return
+            return False
         slot = self.seats.get(seat_number)
         if slot is None or not slot.occupied:
-            return
+            return False
         slot.occupied = False
         slot.username = None
         slot.label = ""
         slot.is_owner = False
+        return True
 
-    def mark_owner_seated(self, seat_number: int, username: Optional[str] = None) -> None:
+    def mark_owner_seated(
+        self, seat_number: int, username: Optional[str] = None, *, relocated: bool = False
+    ) -> None:
         """确认就座后立即写入快照、更新基准并标记已对账。
 
         换座不是新增：房主原本就有位子时（真机 09-28 18:07:08，:seat 2 11 是
         10→11 的移动），必须先腾出旧位子，且专注人数不变 —— 房间里的硬数字只认
         人头，不认位移。旧实现无条件 +1 且不清旧位：同一个人占两座、RoomState
         凭空 1→2，下一轮被动观测拿真实读数（1）一比就判成背离，引爆整轮全量重扫。
+
+        `relocated` 必须由调用方声明，不能在这里推断：`/seat` 换座那条路径
+        （`find_owner_seat` / `accompany_user` -> `_take_seat`）在重读界面之前就
+        按占座游标腾掉了旧位子，快照里「本来就坐着人」的证据已经没了 —— 再拿
+        `stale` 去数，一次位移会被误判成新增人头。
         """
         owner_username = username or self._owner_nickname() or "群主"
+        target_slot = self.seats.get(seat_number)
+        already_here = bool(
+            target_slot
+            and target_slot.occupied
+            and (target_slot.is_owner or target_slot.username in {owner_username, "群主"})
+        )
 
         stale = [
             num
@@ -2342,7 +2356,8 @@ class SeatObservationManager(Singleton):
                 current = None
 
         if current is not None:
-            new_count = current if stale else current + 1
+            head_count_unchanged = bool(stale) or relocated or already_here
+            new_count = current if head_count_unchanged else current + 1
         else:
             new_count = sum(1 for s in self.seats.values() if s.occupied)
 

@@ -897,9 +897,11 @@ class SeatSubsystem:
         band='top' -> 1~8 号）。判定规则与 `sit_at_specific_seat` 一致：
         第三排滚到底部，其余夹在顶部。
 
-        读的是界面事实而不是补一个昵称：读不到就保持原快照，绝不用猜的身份污染
-        座次表（与 `read_focus_count_from_ui` 同一取数原则）。刷新失败绝不能让
-        已经成功的落座变成失败。
+        读的是界面事实而不是补一个昵称：别人的号位读不到就保持原快照，绝不用猜的
+        身份污染座次表（与 `read_focus_count_from_ui` 同一取数原则）。刷新失败绝不能
+        让已经成功的落座变成失败。
+        机器人自己的新号位不归这里管 —— 那一个有占座游标作依据，由调用方在重读之后
+        用 `mark_owner_seated(relocated=...)` 落账，不能指望面板刚好重绘完。
         """
         obs = self.observation
         if obs is None:
@@ -943,9 +945,18 @@ class SeatSubsystem:
                 self.current_side = seat_info['side']
                 new_seat = desk_index * 2 + (1 if seat_info['side'] == 'left' else 2)
                 obs = self.observation
+                relocated = False
                 if obs is not None and previous_seat and previous_seat != new_seat:
-                    obs.release_bot_seat(previous_seat)
+                    relocated = obs.release_bot_seat(previous_seat)
                 await self._refresh_snapshot_after_seating(desk_index)
+                if obs is not None:
+                    # 新号位是游标给出的事实：确认键按下去了，机器人就坐在这一号位上。
+                    # 界面那一次重读只能算确认，不能当唯一来源 —— Soul 常在确认落座
+                    # 之后才重绘面板，撞上还没重绘的那一次，旧位已按游标腾空、新位又
+                    # 读成空座，机器人就从整张座次表上消失（真机 10-10 18:11:07：
+                    # 1/11 号位同时写着空闲，在座 3 对不上专注 4，而这笔差额要等到
+                    # 专注人数下次变化才可能被 `_reconcile_focus_count` 发现）。
+                    obs.mark_owner_seated(new_seat, relocated=relocated)
             return result
 
         except Exception:
