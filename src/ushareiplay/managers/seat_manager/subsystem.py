@@ -881,7 +881,9 @@ class SeatSubsystem:
     def _build_scan_order(self, total_count, start_index):
         return [(start_index + offset) % total_count for offset in range(total_count)]
 
-    async def _refresh_snapshot_after_seating(self, desk_index: int) -> None:
+    async def _refresh_snapshot_after_seating(
+        self, desk_index: int, released_seat: Optional[int] = None
+    ) -> None:
         """刚坐下之后按需重读一次视口，让座次表立刻反映刚落座的事实。
 
         `/seat` 走的是 `find_owner_seat` / `accompany_user` -> `_take_seat`，而这条
@@ -911,7 +913,8 @@ class SeatSubsystem:
             # 本方法自己也要 UI 独占（观测层的读盘约定，见 _verify_focus_consistency）。
             async with self._ui_session("seat_snapshot_refresh"):
                 await obs.sync_current_viewport(
-                    band="bottom" if desk_index // 2 == 2 else "top"
+                    band="bottom" if desk_index // 2 == 2 else "top",
+                    released_seat=released_seat,
                 )
         except Exception as e:
             self.logger.warning(f"Seat snapshot refresh after seating failed: {e}")
@@ -945,10 +948,15 @@ class SeatSubsystem:
                 self.current_side = seat_info['side']
                 new_seat = desk_index * 2 + (1 if seat_info['side'] == 'left' else 2)
                 obs = self.observation
+                released_seat = previous_seat if previous_seat != new_seat else None
                 relocated = False
-                if obs is not None and previous_seat and previous_seat != new_seat:
-                    relocated = obs.release_bot_seat(previous_seat)
-                await self._refresh_snapshot_after_seating(desk_index)
+                if released_seat and obs is not None:
+                    relocated = obs.release_bot_seat(released_seat)
+                if released_seat:
+                    self.handler.logger.info(
+                        f"Bot relocated from seat {released_seat} to seat {new_seat}"
+                    )
+                await self._refresh_snapshot_after_seating(desk_index, released_seat=released_seat)
                 if obs is not None:
                     # 新号位是游标给出的事实：确认键按下去了，机器人就坐在这一号位上。
                     # 界面那一次重读只能算确认，不能当唯一来源 —— Soul 常在确认落座

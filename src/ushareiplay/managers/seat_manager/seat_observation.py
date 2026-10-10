@@ -2220,13 +2220,19 @@ class SeatObservationManager(Singleton):
         )
 
     async def sync_current_viewport(
-        self, band: Optional[str] = None, page_source: Optional[str] = None
+        self,
+        band: Optional[str] = None,
+        page_source: Optional[str] = None,
+        *,
+        released_seat: Optional[int] = None,
     ) -> Dict[int, Tuple[any, str, dict]]:
         """从 driver.page_source 提取可见桌位，按滚动相位映射并同步 DOM 证据至快照。
 
         Args:
             band: 已知滚动相位（"top" / "bottom"）。
             page_source: 可选页面 XML 字符串；若为 None 则从 driver.page_source 获取。
+            released_seat: 机器人刚按占座游标腾空的旧位。面板未重绘时它仍渲染群主，
+                这份读数是过期的，不能把机器人写回旧位。
 
         Returns:
             observed: {seat_number: (desk, side, info)}，本轮视口中识别出的麦位及读数。
@@ -2257,6 +2263,11 @@ class SeatObservationManager(Singleton):
 
         async with self._lock:
             observed = self._read_visible_seats(desk_wrappers, band=band)
+            if released_seat in observed and observed[released_seat][2].get("is_owner"):
+                self.logger.debug(
+                    f"Ignoring stale owner render on released seat {released_seat}"
+                )
+                observed.pop(released_seat)
             if not observed:
                 return {}
 
