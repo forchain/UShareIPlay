@@ -1190,9 +1190,16 @@ class SeatObservationManager(Singleton):
         其余任何变更都说明影响可能落在看不见的麦位上 —— 既不能凭一个局部读数写快照
         （会推出错误的座位信息），也不能当作没发生（那是漏检）：必须全量扫描一遍取
         最新信息。四种"去向不明"的情形都会进 fingerprint：
-        disappear（有人从这个位子消失，去哪不知道）、appear（有人凭空出现在这个位子，
+        disappear（有人从这个位子消失，去哪不知道）、appear（有人出现在这个位子 ——
+        不管是原先空着，还是此前只落了「占座、身份未知」而本轮才读出是谁 ——
         或者这个人还在快照别处占着座）、swap（同一个位子换人，两边来去都不知道）、
         contested（本轮弹窗把快照挂在这个位子的人指到了别处，这里的身份已无证据）。
+
+        「占座、身份未知」是落座后的视口同步（`sync_current_viewport`）直接写进快照
+        的形态，它不走去向闸。本轮才补上的身份必须补走一遍：真机 10-10 18:47-18:48
+        的 4 号位就是这样 —— 落座重读先把它写成「已占用」，下一轮弹窗读出 Chainer 时
+        快照里那个位子**已经**是占座态，于是绕过了「这个人还在 11 号位坐着」的判据，
+        同一个名字被写进第二个号位（4/11 两个 Chainer，在座 6 对着专注 5）。
         """
         writable: Set[int] = set()
         clearable: Set[int] = set()
@@ -1211,7 +1218,10 @@ class SeatObservationManager(Singleton):
                 continue
             if info["occupied"]:
                 new_user = info.get("username")
-                if not old.occupied:
+                # 「这个位子上出现了某个人」有两种形态：快照里本来是空座，或此前只落了
+                # 占座、没有身份（视口同步直接写的那种）。后者不能当「补个昵称」静默
+                # 落账 —— 同一个人可能刚从看不见的位子换过来，旧位去向不明。
+                if not old.occupied or (new_user and not old.username):
                     appears[seat_num] = new_user
                 elif old.username and new_user and old.username != new_user:
                     unexplained.add((seat_num, "swap"))
@@ -1555,14 +1565,52 @@ class SeatObservationManager(Singleton):
                 stale_seat = inherited_claims.pop(username, None)
                 if stale_seat is not None and stale_seat != seat_num:
                     claimed.discard(username)
-                    stale_info = observed[stale_seat][2]
+                    stale_desk, stale_side, stale_info = observed[stale_seat]
                     stale_info["username"] = None
                     stale_info["identity_contested"] = username
                     self.logger.warning(
                         f"Seat {seat_num}: popup identifies {username!r}; seat {stale_seat} only "
                         f"inherited them from the previous snapshot, so the move is unresolved "
-                        f"there and the full rescan decides"
+                        f"there — re-inspecting before treating it as residual"
                     )
+                    # 真机 10-10 19:58：Outlier 2→3 时 2 号已坐上 Chainer。若只标
+                    # contested 交给权威重扫按残留清空、不再点 2 号头像，新人从账上
+                    # 消失（专注 5 / 在座 4）。换座旧位必须再弹窗：别人留下，原主人
+                    # 才按残留清。
+                    replacement = await self.inspect_occupant(
+                        stale_desk, stale_side, stale_seat
+                    )
+                    if replacement and replacement != username:
+                        if replacement in read_claims:
+                            # 读到的人也在别处有本轮证据：这里仍是幽灵渲染
+                            self._mark_residual_seat(stale_seat, stale_info, username)
+                            self._residual_seats_inspected_at[stale_seat] = (
+                                self.cooldown_policy.now()
+                            )
+                        else:
+                            stale_info["username"] = replacement
+                            stale_info.pop("identity_contested", None)
+                            claimed.add(replacement)
+                            read_claims[replacement] = stale_seat
+                            if not stale_info.get("label") or (
+                                stale_info.get("label") or ""
+                            ).isdigit():
+                                if self._is_known_owner(replacement):
+                                    stale_info["label"] = "群主"
+                                    stale_info["is_owner"] = True
+                                elif self._is_known_room_admin(replacement):
+                                    stale_info["label"] = "管理"
+                                    stale_info["is_owner"] = False
+                            if stale_info.get("label") == "管理":
+                                self._record_room_admin(replacement)
+                    elif replacement == username:
+                        # 弹窗仍是换座者本人：确认旧位是残留渲染
+                        self._mark_residual_seat(stale_seat, stale_info, username)
+                        self._residual_seats_inspected_at[stale_seat] = (
+                            self.cooldown_policy.now()
+                        )
+                    # replacement is None：保留 DOM 占座 + contested，交给 _apply_snapshot
+                    # —— 不许在没证据时把可能的新人抹成空座。
                 info["username"] = username
                 claimed.add(username)
                 read_claims[username] = seat_num
@@ -1638,22 +1686,33 @@ class SeatObservationManager(Singleton):
         for seat_num, (desk, side, info) in observed.items():
             slot = self.seats[seat_num]
             if info.get("identity_contested") and clearable is None:
-                # 权威路径（全量重扫读过全部麦位）：这个位子本轮没有自己的身份证据，
-                # 而快照挂在它上面的人已被弹窗落在别处 —— 它就是换座后的残留渲染。
-                # 留着不改就等于一人两座，在座数凭空 +1，下一轮专注人数对账又要重扫。
+                contested_name = str(info.get("identity_contested") or "")
+                # 权威路径：换座者已在别处落账。旧位是否为空，只认前面弹窗复检的结论
+                # （_mark_residual_seat 已把 occupied 打成 False）。若 DOM 仍占座且复检
+                # 没认出原主人，就不能当残留清空 —— 真机 10-10 19:58 的 Chainer 就是
+                # 被这道「默认清空」从账上抹掉的。
+                if info.get("is_empty") or not info.get("occupied"):
+                    self.logger.warning(
+                        f"Seat {seat_num}: residual render after an in-viewport move, clearing "
+                        f"(the occupant is accounted for on another seat this round)"
+                    )
+                    slot.occupied = False
+                    slot.username = None
+                    slot.label = info.get("label", "")
+                    slot.is_owner = False
+                    info["occupied"] = False
+                    info["is_empty"] = True
+                    self._residual_seats[seat_num] = contested_name
+                    self._residual_seats_inspected_at[seat_num] = self.cooldown_policy.now()
+                    continue
                 self.logger.warning(
-                    f"Seat {seat_num}: residual render after an in-viewport move, clearing "
-                    f"(the occupant is accounted for on another seat this round)"
+                    f"Seat {seat_num}: contested after {contested_name!r} moved elsewhere, "
+                    f"but occupancy remains unresolved — keeping seat occupied without identity"
                 )
-                slot.occupied = False
+                slot.occupied = True
                 slot.username = None
                 slot.label = info.get("label", "")
                 slot.is_owner = False
-                info["occupied"] = False
-                info["is_empty"] = True
-                # 记下这笔残留：下一轮它还渲染成占座，不能再跟真正的落座处抢身份
-                self._residual_seats[seat_num] = str(info.get("identity_contested") or "")
-                self._residual_seats_inspected_at[seat_num] = self.cooldown_policy.now()
                 continue
             if info["occupied"]:
                 username = info.get("username")
@@ -2210,13 +2269,19 @@ class SeatObservationManager(Singleton):
         )
 
     async def sync_current_viewport(
-        self, band: Optional[str] = None, page_source: Optional[str] = None
+        self,
+        band: Optional[str] = None,
+        page_source: Optional[str] = None,
+        *,
+        released_seat: Optional[int] = None,
     ) -> Dict[int, Tuple[any, str, dict]]:
         """从 driver.page_source 提取可见桌位，按滚动相位映射并同步 DOM 证据至快照。
 
         Args:
             band: 已知滚动相位（"top" / "bottom"）。
             page_source: 可选页面 XML 字符串；若为 None 则从 driver.page_source 获取。
+            released_seat: 机器人刚按占座游标腾空的旧位。面板未重绘时它仍渲染群主，
+                这份读数是过期的，不能把机器人写回旧位。
 
         Returns:
             observed: {seat_number: (desk, side, info)}，本轮视口中识别出的麦位及读数。
@@ -2247,6 +2312,11 @@ class SeatObservationManager(Singleton):
 
         async with self._lock:
             observed = self._read_visible_seats(desk_wrappers, band=band)
+            if released_seat in observed and observed[released_seat][2].get("is_owner"):
+                self.logger.debug(
+                    f"Ignoring stale owner render on released seat {released_seat}"
+                )
+                observed.pop(released_seat)
             if not observed:
                 return {}
 
@@ -2279,15 +2349,51 @@ class SeatObservationManager(Singleton):
 
             return observed
 
-    def mark_owner_seated(self, seat_number: int, username: Optional[str] = None) -> None:
+    def release_bot_seat(self, seat_number: Optional[int]) -> bool:
+        """机器人腾空它自己刚离开的号位（换座，不是新增）。返回旧位上是否真记着人。
+
+        视口刷新只能改它**看得见**的号位：滚出视口的旧位不会被清（这是
+        `_judge_empty` 的「看不见 ≠ 空座」铁律）。可机器人换座时旧位恰恰是
+        确定空了的 —— 依据不是猜身份，而是子系统自己的占座游标
+        （`current_desk_index` / `current_side`）。
+
+        不清的后果不只是座次表多一行：快照里的在座人数会比专注人数多一个，
+        下一轮 `_verify_focus_consistency` 立刻判成不自洽，白白触发一次
+        全量重扫（真机 10-10 17:36 之后 /info 仍显示 Joyer(2号) 同源）。
+        """
+        if not seat_number or not (1 <= seat_number <= 12):
+            return False
+        slot = self.seats.get(seat_number)
+        if slot is None or not slot.occupied:
+            return False
+        slot.occupied = False
+        slot.username = None
+        slot.label = ""
+        slot.is_owner = False
+        return True
+
+    def mark_owner_seated(
+        self, seat_number: int, username: Optional[str] = None, *, relocated: bool = False
+    ) -> None:
         """确认就座后立即写入快照、更新基准并标记已对账。
 
         换座不是新增：房主原本就有位子时（真机 09-28 18:07:08，:seat 2 11 是
         10→11 的移动），必须先腾出旧位子，且专注人数不变 —— 房间里的硬数字只认
         人头，不认位移。旧实现无条件 +1 且不清旧位：同一个人占两座、RoomState
         凭空 1→2，下一轮被动观测拿真实读数（1）一比就判成背离，引爆整轮全量重扫。
+
+        `relocated` 必须由调用方声明，不能在这里推断：`/seat` 换座那条路径
+        （`find_owner_seat` / `accompany_user` -> `_take_seat`）在重读界面之前就
+        按占座游标腾掉了旧位子，快照里「本来就坐着人」的证据已经没了 —— 再拿
+        `stale` 去数，一次位移会被误判成新增人头。
         """
         owner_username = username or self._owner_nickname() or "群主"
+        target_slot = self.seats.get(seat_number)
+        already_here = bool(
+            target_slot
+            and target_slot.occupied
+            and (target_slot.is_owner or target_slot.username in {owner_username, "群主"})
+        )
 
         stale = [
             num
@@ -2320,7 +2426,8 @@ class SeatObservationManager(Singleton):
                 current = None
 
         if current is not None:
-            new_count = current if stale else current + 1
+            head_count_unchanged = bool(stale) or relocated or already_here
+            new_count = current if head_count_unchanged else current + 1
         else:
             new_count = sum(1 for s in self.seats.values() if s.occupied)
 
