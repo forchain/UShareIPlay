@@ -269,3 +269,21 @@ def test_send_message_placeholder_treated_as_unentered():
     assert "click:button_send" not in events
     assert handler.is_chat_window_open() is False
 
+
+def test_ensure_chat_window_closed_with_stale_element():
+    from selenium.common.exceptions import StaleElementReferenceException
+
+    events = []
+    handler, finder = _make_handler(events, chat_open=True, disappear_on_click=True)
+
+    class _StaleElement:
+        def is_displayed(self):
+            raise StaleElementReferenceException("Cached element does not exist in DOM")
+
+    stale_elem = _StaleElement()
+    # ensure_chat_window_closed should safely ignore the stale element and re-query from finder
+    assert handler.ensure_chat_window_closed(input_element=stale_elem) is True
+    assert any("click_element_at:input_box" in ev for ev in events)
+    assert handler.is_chat_window_open() is False
+
+
