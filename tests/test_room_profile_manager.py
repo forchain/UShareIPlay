@@ -10,6 +10,7 @@
 （`InMemoryRoomProfileDrawerDriver`）足够，且离线可跑。
 """
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -297,9 +298,16 @@ def test_each_field_has_its_own_cooldown_budget():
 
 
 def test_remaining_minutes_truncates_the_same_way_the_three_legacy_managers_did():
-    """刚推进时钟就报 9 分钟 —— int() 向下截断，与原先三份实现一致。"""
+    """刚推进时钟就报 9 分钟 —— int() 向下截断，与原先三份实现一致。
+
+    时钟显式往前挪 30 秒再推进。原先直接 `mark_attempted("title")` 再读，两次背靠背的
+    `datetime.now()` 会落在同一个时钟刻度上（本机实测约 68% 的概率），此时
+    `int(600 / 60)` 恰好等于 10，这条断言就随机翻红 —— 它考的是截断语义，不该取决于
+    两次取时钟之间有没有恰好过去一微秒。30 秒落在 (0, 60) 区间内，稳定得到 9，
+    且仍然考的是 `int()` 向下截断本身。
+    """
     drafts = ProfileDraftStore()
-    drafts.mark_attempted("title")
+    drafts.mark_attempted("title", now=datetime.now() - timedelta(seconds=30))
 
     assert drafts.remaining_minutes("title") == 9
 

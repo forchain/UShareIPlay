@@ -172,7 +172,7 @@ class _RecordingDispatch:
     def send_screen_message(self, message, silent=False):
         self.screen_messages.append((_without_timestamp(message), silent))
 
-    def send_for_message_info(self, message_info, response, silent=False):
+    async def send_for_message_info(self, message_info, response, silent=False):
         self.command_outputs.append(
             (message_info.nickname, response, message_info.private_reply, silent)
         )

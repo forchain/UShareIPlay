@@ -55,7 +55,7 @@ class _Recorder:
         # The "[time] cmd ..." progress indicator; recorded opaquely.
         self.events.append("screen")
 
-    def send_for_message_info(self, message_info, response, silent=False):
+    async def send_for_message_info(self, message_info, response, silent=False):
         self.events.append(f"notify:{response}")
 
 

@@ -12,10 +12,10 @@
 __event__ = "DrawerElementsEvent"
 __elements__ = [
     "input_drawer",
-    # 可以根据需要添加其他抽屉式弹窗元素
-    # 'party_restore_drawer',
-    # 'bottom_drawer_1',
-    # 'online_drawer',
+    # 其他抽屉式弹窗元素按需加入。注意：在线用户抽屉（'online_drawer'）**不要**加
+    # 回来 —— 它的生命周期归 OnlineDrawerManager 管，事件层去「顺手关掉」它会和会话
+    # 的归属规则打架（会话正在用它开着的抽屉读名单，见 online_drawer/manager.py）。
+    # 其他 key 原来就注释在下面，需要时照旧打开。
 ]
 
 from ushareiplay.core.base_event import BaseEvent

@@ -1,0 +1,513 @@
+"""In-memory 在线用户抽屉驱动 —— 抽屉 UI 端口的离线替身。
+
+抽屉这一层唯一的外部依赖是 Soul App 的真实屏幕，这里整块换掉：
+
+| 真实依赖 | 替身 |
+|---|---|
+| `element_finder.try_find_element('online_users')`（抽屉是否开着） | `is_open`，只读内存里的开关 |
+| `try_find_element('user_count')` + `click()` | `open`：成功就真的把内存里的开关置上 |
+| `wait_for_element_clickable('online_users_close'/'close_button')` | `close`：按脚本决定成功与否 |
+| `wait_for_element('online_users')` + 落定静默 | `wait_for_settle`：容器缺席即返回 False |
+| `gesture_handler.swipe(...)` + 滑后停稳 | `scroll_container`：把窗口沿成员列表往后挪一页 |
+| `find_child_elements('user_container')` → `online_user` / `follow_state` | `find_member_row`：按昵称在**当前窗口**里找 |
+| `try_find_element('user_count').text` + 正则 | `read_online_count`：如实报出控件上写的数字 |
+| `find_child_elements('user_container')` 整页遍历 | `visible_member_rows`：整页行一次读回 |
+| `try_find_element('no_more_data').is_displayed()` | `is_at_end`：滑到最后一行之后提示才亮 |
+
+因此「只在抽屉是自己打开的时候才关」「正文抛异常时照样收尾」「关不掉只记警告不抛」
+这类断言，考的是 `OnlineDrawerManager` 自己做的决策，而不是任何 UI 时序。
+
+屏幕本身由 `members`（房间里有哪些在线用户）与 `page_size`（一次渲染几行）描述：
+真实 Appium 里列表要靠滑才往下出，这里用 `scroll_offset` 表示已经滑过了多少行 ——
+`find_member_row` 与 `visible_member_rows` 只看当前窗口这一条，就是生产端「只查已
+渲染的行」的等价物。每次成功 `open()` 都会把窗口拨回第一页：列表没法往回滚，这正是
+重试必须换一个**新会话**的原因。
+
+脚本化失败：`open_fails` / `close_fails` / `settle_fails` / `container_missing` /
+`swipe_fails` 让每一条异常安全路径都能被确定性地走到；`end_hint=False` 则描述一个
+永远滑不到底的列表。
+
+#435 追加的「资料卡 + 私聊」这半张屏幕也整块换掉：卡片状态由 `card_open` 与
+`card_fails` 描述，私聊那几步由 `chat_steps_fails`（哪一步会失败）与
+`room_entry_key` / `room_return_fails`（回房间会落在哪个入口）描述。这样「每条失败
+路径都一定回到房间」这类断言，考的是 `UserManager` 自己的编排，而不是任何 UI 时序。
+**注意这里同样没有 `card:back`** —— 端口里根本没有盲按返回这个原语。
+
+#438 再追加盖在资料卡之上的「送礼弹窗」：弹窗状态由 `gift_popup_open` /
+`confirm_pending` 描述，弹窗内容由 `gift_action_key`（商店礼物走赠送、背包道具走使用）
+与 `gift_name` / `gift_soul_power` 描述，`gift_steps_fails`（哪一步会失败，见 `GIFT_STEPS`）
+与 `dismiss_gift_fails` 让每一条异常安全路径都能被确定性地走到。于是「每条路径都把弹窗
+和抽屉收干净」这类断言，考的是 `UserManager` 的收尾编排。
+**这里同样没有 `gift:back`** —— 收不掉的弹窗只允许保持原状并记警告。
+
+#439 再追加资料卡上的「房管」半张屏幕：卡片上的开关由 `admin_invite_label` 描述（`None`
+就是卡片根本没渲染这枚控件），确认框由 `admin_confirm_pending` 描述，
+`admin_steps_fails`（哪一步会失败，见 `ADMIN_STEPS`）与 `dismiss_admin_fails` 让每一条
+异常安全路径都能被确定性地走到。于是「房管的每条路径都把确认框与抽屉收干净」这类断言，
+考的是 `AdminManager` 的编排。
+**这里同样没有 `admin:back`** —— 收不掉的确认框只允许保持原状并记警告。
+"""
+
+from typing import Optional
+
+from ushareiplay.managers.online_drawer.driver import (
+    ADMIN_ACTION_INVITE,
+    ADMIN_LABEL_DISMISS,
+    ADMIN_LABEL_INVITE,
+    DEFAULT_SCROLL_DURATION_MS,
+    DEFAULT_SETTLE_TIMEOUT,
+    GIFT_ACTION_GIVE,
+    GIFT_ACTION_USE,
+    MemberRow,
+    OnlineDrawerDriverPort,
+)
+
+#: 私聊流程的步骤顺序。`chat_steps_fails` 里出现哪一个，那一步就失败。
+CHAT_STEPS = ("home", "chat_page", "type", "submit")
+
+#: 送礼流程的步骤顺序。`gift_steps_fails` 里出现哪一个，那一步就失败。
+GIFT_STEPS = ("entry", "popup", "item", "action", "confirm")
+
+#: 房管流程的步骤顺序。`admin_steps_fails` 里出现哪一个，那一步就失败。
+ADMIN_STEPS = ("invite", "confirm")
+
+
+class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
+    """把抽屉的开关状态与在线名单放在内存里的 UI 端口替身。
+
+    Args:
+        members: 房间里的在线用户，按列表顺序。元素是昵称字符串，或
+            `(昵称, 关注关系文案)` 二元组。
+        page_size: 一页渲染几行。`None` 表示全部一次渲染完，滚动永远滑不动。
+        online_count: 「N 人在线」控件上的数字。`None` 表示那个控件没有人数。
+        drawer_open: 初始状态。True 表示「外层流程已经打开了抽屉」。
+        open_fails: 点入口打不开抽屉。
+        close_fails: 关闭按钮点不到（模拟两个 `ivClose` 都没渲染出来）。
+        settle_fails: 抽屉开了但容器等不到 / 落定失败。
+        container_missing: 容器一律读不到（`is_open` 恒为 False）。
+        swipe_fails: 滑动手势失败（既没有位移也没有新内容）。
+        end_hint: 列表滑到最后一行之后，「没有更多了」提示是否会显示。
+        card_fails: 点开在线用户行之后资料卡弹不出来。
+        dismiss_fails: 资料卡的关闭按钮点不到（`ivClose` 缺位）。
+        chat_steps_fails: 私聊流程里会失败的步骤，取值见 `CHAT_STEPS`。
+        room_entry_key: 回房间时会命中的入口 key，默认 `private_room_entry`。
+        room_return_fails: 回房间这一步失败（三个入口都读不到）。
+        gift_action_key: 送礼弹窗上此刻是「赠送」还是「使用」，取值见 `GIFT_ACTION_*`。
+        gift_name: 弹窗里当前选中礼物的原始文案（可以带 `x<件数>` 后缀）。
+        gift_soul_power: 灵魂力读数，`None` 表示那个控件没渲染。
+        gift_steps_fails: 送礼流程里会失败的步骤，取值见 `GIFT_STEPS`。
+        dismiss_gift_fails: 送礼弹窗的页内关闭按钮点不到。
+        admin_invite_label: 资料卡上房管开关此刻写的文案（`ADMIN_LABEL_*`）；`None` 表示
+            卡片根本没渲染这枚控件。
+        admin_steps_fails: 房管流程里会失败的步骤，取值见 `ADMIN_STEPS`。
+        dismiss_admin_fails: 房管确认框的页内关闭按钮点不到。
+        journal: 可选的共享事件流。每次动作追加一条 `drawer:open` /
+            `drawer:settle` / `drawer:rows:<行数>` / `drawer:scroll` /
+            `drawer:find:<昵称>` / `drawer:close` / `card:open:<昵称>` /
+            `card:dismiss` / `chat:home` / `chat:page` / `chat:type` /
+            `chat:submit` / `room:return` / `gift:entry` / `gift:popup:<动作>` /
+            `gift:item:<显示名>` / `gift:power:<读数>` / `gift:click:item` /
+            `gift:click:action:<动作>` / `gift:confirm` / `gift:dismiss` /
+            `admin:label:<文案>` / `admin:click:invite` /
+            `admin:confirm:<动作>` / `admin:dismiss`，
+            用来断言动作的先后顺序。
+            **注意：这里没有 `drawer:back`、`gift:back`，也没有 `admin:back`** ——
+            端口里根本没有盲按返回这个原语。
+
+    Attributes:
+        scroll_offset: 已经滑过的行数，即当前窗口的起点。
+        open_calls / close_calls / settle_calls: 各自被调用的次数。
+        rows_reads / at_end_reads: 整页行读数与到底判定的次数。
+        scroll_durations: 每次滑动的时长，用于断言用的是慢滑而不是惯性飞滚。
+        card_open: 资料卡此刻是否盖在抽屉上。
+        chat_reached: 已经成功走到哪一步私聊。
+        typed_messages: 提交出去的文字，按顺序。
+        room_returns: 回房间的次数与每次落在哪个入口。
+        gift_popup_open: 送礼弹窗此刻是否还盖在资料卡上。
+        confirm_pending: 「使用」之后那道确认框是否正等着被点。
+        gift_item_clicks / gift_action_clicks: 被点过的礼物与动作按钮，按顺序。
+        admin_confirm_pending: 房管确认框此刻是否正等着被点掉。
+        admin_invite_clicks / admin_confirm_actions: 被点过的房管开关与被确认的动作，按顺序。
+    """
+
+    def __init__(
+        self,
+        *,
+        members=(),
+        page_size=None,
+        online_count=None,
+        drawer_open=False,
+        open_fails=False,
+        close_fails=False,
+        settle_fails=False,
+        container_missing=False,
+        swipe_fails=False,
+        end_hint=True,
+        card_fails=False,
+        dismiss_fails=False,
+        chat_steps_fails=(),
+        room_entry_key="private_room_entry",
+        room_return_fails=False,
+        gift_action_key=GIFT_ACTION_GIVE,
+        gift_name="初级福袋x2",
+        gift_soul_power=None,
+        gift_steps_fails=(),
+        dismiss_gift_fails=False,
+        admin_invite_label=ADMIN_LABEL_INVITE,
+        admin_steps_fails=(),
+        dismiss_admin_fails=False,
+        journal=None,
+    ):
+        self.members = [self._as_member(m) for m in members]
+        self.page_size = page_size
+        self.online_count = online_count
+        self.drawer_open = bool(drawer_open)
+        self.open_fails = open_fails
+        self.close_fails = close_fails
+        self.settle_fails = settle_fails
+        self.container_missing = container_missing
+        self.swipe_fails = swipe_fails
+        self.end_hint = end_hint
+        self.card_fails = card_fails
+        self.dismiss_fails = dismiss_fails
+        self.chat_steps_fails = tuple(chat_steps_fails)
+        self.room_entry_key = room_entry_key
+        self.room_return_fails = room_return_fails
+        self.gift_action_key = gift_action_key
+        self.gift_name = gift_name
+        self.gift_soul_power = gift_soul_power
+        self.gift_steps_fails = tuple(gift_steps_fails)
+        self.dismiss_gift_fails = dismiss_gift_fails
+        self.admin_invite_label = admin_invite_label
+        self.admin_steps_fails = tuple(admin_steps_fails)
+        self.dismiss_admin_fails = dismiss_admin_fails
+        self.journal = journal
+
+        self.scroll_offset = 0
+        self.open_calls = 0
+        self.close_calls = 0
+        self.settle_calls = 0
+        self.rows_reads = 0
+        self.at_end_reads = 0
+        self.scroll_durations = []
+        self.card_open = False
+        self.chat_reached = None
+        self.typed_messages = []
+        self.room_returns = []
+        self.gift_popup_open = False
+        self.confirm_pending = False
+        self.gift_item_clicks = []
+        self.gift_action_clicks = []
+        self.admin_confirm_pending = False
+        self.admin_invite_clicks = []
+        self.admin_confirm_actions = []
+
+    async def is_open(self) -> bool:
+        if self.container_missing:
+            return False
+        return self.drawer_open
+
+    async def open(self, *, error_message: str) -> dict:
+        self.open_calls += 1
+        self._record("drawer:open")
+        if self.open_fails:
+            return {'error': error_message}
+        self.drawer_open = True
+        # 真机上重新打开抽屉，列表是从第一页开始的 —— 而列表没法往回滚，这正是
+        # 抓取重试必须换一个**新会话**的原因。
+        self.scroll_offset = 0
+        return {}
+
+    async def close(self) -> bool:
+        self.close_calls += 1
+        if self.close_fails:
+            return False
+        self._record("drawer:close")
+        self.drawer_open = False
+        # 卡片是盖在抽屉上的，抽屉关掉卡片自然也不在了 —— 生产端共用同一个 ivClose。
+        self.card_open = False
+        return True
+
+    async def wait_for_settle(self, *, timeout: int = DEFAULT_SETTLE_TIMEOUT) -> bool:
+        self.settle_calls += 1
+        if self.settle_fails or self.container_missing:
+            return False
+        self._record("drawer:settle")
+        return True
+
+    async def scroll_container(
+        self, *, duration_ms: int = DEFAULT_SCROLL_DURATION_MS
+    ) -> bool:
+        self.scroll_durations.append(duration_ms)
+        if self.page_size is None:
+            # 全部一次渲染完：滑不动，和生产端滑到列表底部的效果一致。
+            return False
+        if self.swipe_fails:
+            # 手势本身失败（没有位移也没有新内容），和生产端手势报错同义。
+            self._record("drawer:scroll:fails")
+            return False
+        next_offset = self.scroll_offset + self.page_size
+        if next_offset >= len(self.members):
+            # 列表到底：手势照样滑得动，只是内容不再前进。内容不动 → 引擎会看到
+            # 「连续几轮没有新人」并自行收尾。
+            self._record("drawer:scroll:end")
+            return True
+        self.scroll_offset = next_offset
+        self._record("drawer:scroll")
+        return True
+
+    async def find_member_row(self, visible_username: str) -> Optional[MemberRow]:
+        # 只查当前窗口：找不到就是找不到，翻页是调用方的循环决策。
+        for name, follow_state in self.visible_members():
+            if name == visible_username:
+                self._record(f"drawer:find:{name}")
+                return MemberRow(visible_name=name, follow_state=follow_state)
+        self._record(f"drawer:miss:{visible_username}")
+        return None
+
+    async def read_online_count(self) -> Optional[int]:
+        # 「N 人在线」控件上的数字：None 表示那个控件压根没有人数。
+        self._record(f"drawer:count:{self.online_count}")
+        return self.online_count
+
+    async def visible_member_rows(self) -> list:
+        self.rows_reads += 1
+        rows = [
+            MemberRow(visible_name=name, follow_state=follow_state)
+            for name, follow_state in self.visible_members()
+        ]
+        self._record(f"drawer:rows:{len(rows)}")
+        return rows
+
+    async def is_at_end(self) -> bool:
+        self.at_end_reads += 1
+        if not self.end_hint:
+            return False
+        if self.page_size is None:
+            return True
+        return self.scroll_offset + self.page_size >= len(self.members)
+
+    # ------------------------------------------------------------------
+    # 资料卡与私聊（#435）
+    # ------------------------------------------------------------------
+
+    async def open_member_profile(self, visible_username: str) -> bool:
+        # 先在当前窗口里找到人，再「点一下」：翻页仍然是调用方的循环决策。
+        for name, _follow_state in self.visible_members():
+            if name == visible_username:
+                if self.card_fails:
+                    self._record("card:open:fails")
+                    return False
+                self.card_open = True
+                self.chat_reached = None
+                # 换了一张卡片，上一张的确认框自然不在了。
+                self.admin_confirm_pending = False
+                self._record(f"card:open:{name}")
+                return True
+        self._record(f"card:miss:{visible_username}")
+        return False
+
+    async def is_profile_card_open(self) -> bool:
+        return self.card_open
+
+    async def dismiss_profile_card(self) -> bool:
+        if not self.card_open:
+            # 幂等：卡片本来就没开着，「已经在房间里」就是收好了。
+            self._record("card:dismiss:none")
+            return True
+        if self.dismiss_fails:
+            self._record("card:dismiss:fails")
+            return False
+        self.card_open = False
+        self.drawer_open = False
+        self._record("card:dismiss")
+        return True
+
+    async def open_member_home(self) -> bool:
+        if not self.card_open:
+            return False
+        return self._advance_chat("home")
+
+    async def open_private_chat_page(self) -> bool:
+        if self.chat_reached != "home":
+            return False
+        return self._advance_chat("chat_page")
+
+    async def type_private_message(self, text: str) -> bool:
+        if self.chat_reached != "chat_page":
+            return False
+        if not self._advance_chat("type"):
+            return False
+        self.typed_messages.append(text)
+        return True
+
+    async def submit_private_message(self) -> bool:
+        if self.chat_reached != "type":
+            return False
+        return self._advance_chat("submit")
+
+    async def return_to_room(self) -> bool:
+        if self.room_return_fails:
+            self._record("room:return:fails")
+            return False
+        self._record(f"room:return:{self.room_entry_key}")
+        self.room_returns.append(self.room_entry_key)
+        # 回到房间意味着抽屉与资料卡都不在了；`item_left_back` 要点两下才能落回房间。
+        self.drawer_open = False
+        self.card_open = False
+        return True
+
+    def _advance_chat(self, step: str) -> bool:
+        """推进私聊流程；脚本里点名失败的步骤在这里停住。"""
+        if step in self.chat_steps_fails:
+            self._record(f"chat:{step}:fails")
+            return False
+        self.chat_reached = step
+        self._record(f"chat:{step}")
+        return True
+
+    # ------------------------------------------------------------------
+    # 送礼（#438）
+    # ------------------------------------------------------------------
+
+    async def open_gift_entry(self) -> bool:
+        if not self.card_open or "entry" in self.gift_steps_fails:
+            self._record("gift:entry:fails")
+            return False
+        self.gift_popup_open = True
+        self.confirm_pending = False
+        self._record("gift:entry")
+        return True
+
+    async def gift_popup_action(self) -> Optional[str]:
+        if not self.gift_popup_open or "popup" in self.gift_steps_fails:
+            self._record("gift:popup:fails")
+            return None
+        self._record(f"gift:popup:{self.gift_action_key}")
+        return self.gift_action_key
+
+    async def read_gift_item_name(self) -> Optional[str]:
+        if not self.gift_popup_open or "item" in self.gift_steps_fails:
+            self._record("gift:item:fails")
+            return None
+        # 与生产端同形：`高级福袋x2` 的件数后缀在这里就摘掉，读回去的是显示名。
+        parts = self.gift_name.split("x")
+        name = parts[0] if len(parts) > 1 else self.gift_name
+        self._record(f"gift:item:{name}")
+        return name
+
+    async def read_gift_soul_power(self) -> Optional[str]:
+        self._record(f"gift:power:{self.gift_soul_power}")
+        return self.gift_soul_power
+
+    async def click_gift_item(self) -> bool:
+        if not self.gift_popup_open:
+            self._record("gift:click:item:fails")
+            return False
+        self.gift_item_clicks.append(self.gift_name)
+        # 小黄鸭点一下即送，弹窗自己就走了。
+        self.gift_popup_open = False
+        self._record("gift:click:item")
+        return True
+
+    async def click_gift_action(self) -> bool:
+        if not self.gift_popup_open or "action" in self.gift_steps_fails:
+            self._record("gift:click:action:fails")
+            return False
+        self.gift_action_clicks.append(self.gift_action_key)
+        self._record(f"gift:click:action:{self.gift_action_key}")
+        if self.gift_action_key == GIFT_ACTION_USE:
+            # 背包道具点「使用」之后弹窗还在，前头多一道确认框。
+            self.confirm_pending = True
+        else:
+            self.gift_popup_open = False
+        return True
+
+    async def confirm_gift_use(self) -> bool:
+        if not self.confirm_pending or "confirm" in self.gift_steps_fails:
+            self._record("gift:confirm:fails")
+            return False
+        self.confirm_pending = False
+        self.gift_popup_open = False
+        self._record("gift:confirm")
+        return True
+
+    async def dismiss_gift_popup(self) -> bool:
+        if not self.gift_popup_open:
+            # 幂等：弹窗本来就没开着，「收好了」与「没有弹窗」是同一件事。
+            self._record("gift:dismiss:none")
+            return True
+        if self.dismiss_gift_fails:
+            self._record("gift:dismiss:fails")
+            return False
+        self.gift_popup_open = False
+        self.confirm_pending = False
+        self._record("gift:dismiss")
+        return True
+
+    # ------------------------------------------------------------------
+    # 房管（#439）
+    # ------------------------------------------------------------------
+
+    async def read_admin_invite_label(self) -> Optional[str]:
+        # 卡片上根本没有这枚控件就报 None，调用方据此走「找不到管理按钮」那条路径。
+        if self.admin_invite_label is None:
+            self._record("admin:label:fails")
+            return None
+        self._record(f"admin:label:{self.admin_invite_label}")
+        return self.admin_invite_label
+
+    async def click_admin_invite(self) -> bool:
+        if not self.card_open or self.admin_invite_label is None or "invite" in self.admin_steps_fails:
+            self._record("admin:click:invite:fails")
+            return False
+        # 点下去只是把确认框叫起来：角色本身要等确认框里点掉才真的变。
+        self.admin_confirm_pending = True
+        self.admin_invite_clicks.append(self.admin_invite_label)
+        self._record("admin:click:invite")
+        return True
+
+    async def confirm_admin_action(self, action: str) -> bool:
+        if not self.admin_confirm_pending or "confirm" in self.admin_steps_fails:
+            self._record("admin:confirm:fails")
+            return False
+        self.admin_confirm_pending = False
+        self.admin_confirm_actions.append(action)
+        # 确认之后开关文案才翻面 —— 真机上角色是在确认这一瞬间变的。
+        self.admin_invite_label = (
+            ADMIN_LABEL_DISMISS if action == ADMIN_ACTION_INVITE else ADMIN_LABEL_INVITE
+        )
+        self._record(f"admin:confirm:{action}")
+        return True
+
+    async def dismiss_admin_confirm(self) -> bool:
+        if not self.admin_confirm_pending:
+            # 幂等：确认框本来就没开着，「收好了」与「没有弹窗」是同一件事。
+            self._record("admin:dismiss:none")
+            return True
+        if self.dismiss_admin_fails:
+            self._record("admin:dismiss:fails")
+            return False
+        self.admin_confirm_pending = False
+        self._record("admin:dismiss")
+        return True
+
+    def visible_members(self):
+        """当前这一页渲染出来的成员，按列表顺序。"""
+        if self.page_size is None:
+            return list(self.members)
+        end = self.scroll_offset + self.page_size
+        return list(self.members[self.scroll_offset:end])
+
+    @staticmethod
+    def _as_member(member):
+        """成员可以是裸昵称，也可以是带关注关系的二元组。"""
+        if isinstance(member, (tuple, list)):
+            name = member[0]
+            follow_state = member[1] if len(member) > 1 else None
+            return (name, follow_state)
+        return (member, None)
+
+    def _record(self, event: str) -> None:
+        if self.journal is not None:
+            self.journal.append(event)

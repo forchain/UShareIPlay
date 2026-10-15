@@ -14,7 +14,6 @@ Soul UI 只暴露当前在房间里可见的名字（分身名），而 DB 侧 `
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,11 +25,14 @@ from ushareiplay.dal.focus_event_dao import FocusEventDao
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.models.user import User
 from ushareiplay.state.presence_tracker import PresenceTracker
+from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 CANONICAL = "不约儿童~𝓨o🐏🐏"  # 主账号：DB 里 canonical 记录的 username
 AVATAR = "不约儿童🐏🐏"  # 分身：Soul UI / 麦位上真正显示的名字
@@ -308,59 +310,72 @@ async def test_resolve_visible_username_returns_the_name_soul_shows(alias_pair):
 
 @pytest.mark.asyncio
 async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_pair):
+    """canonical 名进来，抽屉里点开的是分身名那一行，登记也记分身名。
+
+    #439 起这一步解析发生在**抽屉会话**里（`OnlineDrawerManager.resolve_visible_username`
+    接的是 `InfoManager.resolve_visible_username`），命令层与 `AdminManager` 都不再自己
+    解析一次。因此这里驱动真实的房管流程：在线名单里只有分身名，canonical 名在抽屉里
+    是找不到人的 —— 解析错一次这条断言就会失败。
+    """
     PresenceTracker.instance()._online_users = {AVATAR}
-    manager = AdminManager.initialize()
-    manager._handler = MagicMock()
-    manager._logger = MagicMock()
 
-    invite = MagicMock()
-    invite.text = "管理邀请"
-    confirm = MagicMock()
-    manager._handler.element_finder.wait_for_element_clickable.side_effect = lambda key: (
-        invite if key == "manager_invite" else (confirm if key == "confirm_invite" else None)
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=[AVATAR], journal=journal)
+    OnlineDrawerManager.reset_instance()
+    OnlineDrawerManager.initialize(
+        handler=SimpleNamespace(logger=None, controller=None),
+        driver=driver,
+        name_resolver=InfoManager.instance().resolve_visible_username,
     )
-
-    opened = []
-
-    class FakeUserManager:
-        # manage_admin 走异步的身份感知入口 open_user_profile
-        async def open_user_profile(self, nickname):
-            opened.append(nickname)
-            return {"user": nickname} if nickname == AVATAR else {
-                "error": "User not found in online users list", "user": nickname
-            }
-
-    with patch("ushareiplay.managers.user_manager.UserManager.instance", return_value=FakeUserManager()), \
-         patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance", return_value=MagicMock()):
+    manager = AdminManager.initialize(SimpleNamespace(logger=None))
+    try:
         result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
+    finally:
+        OnlineDrawerManager.reset_instance()
 
-    assert opened == [AVATAR]
+    assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
     assert result == {"user": AVATAR, "action": "Invited"}
     # 麦位观测用 UI 名字标注管理员，因此登记也必须是分身名
     assert manager.is_room_admin(AVATAR)
+    assert driver.drawer_open is False
 
 
 @pytest.mark.asyncio
 async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
-    PresenceTracker.instance()._online_users = {AVATAR}
-    sent = []
+    """:gift 收到 canonical 名，真正被点开资料的必须是房间里可见的分身名。
 
-    class FakeUserManager:
-        # send_gift 是异步的（内部要按身份问麦位快照）
-        async def send_gift(self, nickname):
-            sent.append(nickname)
-            return {"success": f"已送给 {nickname}"}
+    #438 起这一步解析发生在**抽屉会话**里（`OnlineDrawerManager.resolve_visible_username`
+    接的是 `InfoManager.resolve_visible_username`），命令层不再自己解析一次。因此这里驱动
+    真实的送礼流程：在线名单里只有分身名，canonical 名在抽屉里是找不到人的 —— 解析错一次
+    这条断言就会失败。
+    """
+    PresenceTracker.instance()._online_users = {AVATAR}
+
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=[AVATAR], gift_name="小黄鸭x1", journal=journal)
+    UserManager.reset_instance()
+    OnlineDrawerManager.reset_instance()
+    OnlineDrawerManager.initialize(
+        handler=SimpleNamespace(logger=None, controller=None),
+        driver=driver,
+        name_resolver=InfoManager.instance().resolve_visible_username,
+    )
+    UserManager.initialize(SimpleNamespace(logger=None))
 
     controller = DummyController()
     command = GiftCommand(controller)
-
-    with patch("ushareiplay.commands.gift.UserManager.instance", return_value=FakeUserManager()):
+    try:
         result = await command.do_process(
             MessageInfo(content=f":gift {CANONICAL}", nickname="群主"), [CANONICAL]
         )
+    finally:
+        UserManager.reset_instance()
+        OnlineDrawerManager.reset_instance()
 
-    assert sent == [AVATAR]
-    assert result == {"success": f"已送给 {AVATAR}"}
+    assert result == {"success": "小黄鸭 送你啦"}
+    assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
+    assert driver.gift_item_clicks == ["小黄鸭x1"]
+    assert driver.drawer_open is False and driver.card_open is False
 
 
 # ---------------------------------------------------------------------------

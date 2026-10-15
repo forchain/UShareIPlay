@@ -462,10 +462,14 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
 
     # `message_dispatch` is a read-only property, so the outbound seam is swapped
     # at the singleton seam. It is not what this test is about; keep it inert.
+    # 私聊出口是异步的（#435）：抽屉会话是 async context manager。
+    async def _inert_noop(*_a, **_k):
+        return None
+
     def _inert_dispatch():
         dispatch = SimpleNamespace(
             send_screen_message=lambda *_a, **_k: None,
-            send_for_message_info=lambda *_a, **_k: None,
+            send_for_message_info=_inert_noop,
         )
         dispatch.bind_handler = lambda _handler: dispatch
         return dispatch
