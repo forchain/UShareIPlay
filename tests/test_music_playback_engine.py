@@ -1,7 +1,8 @@
 """Ticket #380: 深度播放引擎 `MusicManager.play()` 的离线测试。
 
-测试面只有一个：`MusicManager.play(request)`。守护、静音、UI 编排、房间同步
-四段流水线都通过这个入口观察 —— 内部点击顺序、坐标、helper 名字都不出现在断言里。
+测试面只有 `MusicManager.play(request)` 与它的调用方 `:play <song>`。守护、静音、
+UI 编排、房间同步四段流水线都通过这两个入口观察 —— 内部点击顺序、坐标、helper
+名字都不出现在断言里。
 
 外部依赖全部是内存替身（`tests/fakes/in_memory_music_driver.py`），因此
 pytest 无需 Android 设备、Appium 服务或真实 `dumpsys` 即可跑完。
@@ -16,6 +17,7 @@ from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.models import (
     PlaybackMode,
     PlaybackRequest,
+    PlaybackResult,
     PlaybackStatus,
     PlaybackTrack,
 )
@@ -139,10 +141,12 @@ async def test_play_starts_the_requested_mode_and_reports_the_track(initialized_
 
     assert result.status is PlaybackStatus.STARTED
     assert result.track.song == "青花瓷 周杰伦"
+    # #421 起 `playlist` 是常驻键（五个 "{playlist}" 模板靠它才不会 KeyError）
     assert result.as_response() == {
         "song": "青花瓷 周杰伦",
         "singer": "song-歌手",
         "album": "",
+        "playlist": "",
     }
     assert [r.mode for r in engine.driver.requests] == [PlaybackMode.SONG]
 
@@ -413,4 +417,214 @@ async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
         "song": "青花瓷",
         "singer": "song-歌手",
         "album": "",
+        "playlist": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Slice 5: 回复格式元数据
+# ---------------------------------------------------------------------------
+
+
+async def test_as_response_carries_the_playlist_observed_in_the_ui(initialized_test_singletons):
+    """`{playlist}` 是 fav/singer/playlist/radio/album 的 response_template 形状。
+
+    这五个命令尚未迁移，但 `as_response()` 要先能产出它们的形状，否则它们迁移时
+    仍要各自手拼 dict —— 形状收敛就只做了一半。
+    """
+    result = PlaybackResult(
+        status=PlaybackStatus.STARTED,
+        track=PlaybackTrack("起风了", "买辣椒也用券", "起风了"),
+        playlist="起风了 · 热门",
+    )
+
+    assert result.as_response() == {
+        "song": "起风了",
+        "singer": "买辣椒也用券",
+        "album": "起风了",
+        "playlist": "起风了 · 热门",
+    }
+
+
+async def test_as_response_always_carries_the_playlist_key(initialized_test_singletons):
+    """`playlist` 必须是**常驻**键，而不是「有才给」。
+
+    `CommandManager` 用 `response_template.format(**result)` 渲染回复，且这一步不在
+    try/except 里：缺键就是 `KeyError` 直接冲出 `process_command`，用户收不到任何
+    回复。fav/singer/playlist/radio/album 五个模板恰好是纯 `"{playlist}"`
+    （见 tests/test_playlist_response_format.py），它们一旦改走 `as_response()`，
+    「有时候不给 playlist」就等于线上静默失联。
+    """
+    result = PlaybackResult(
+        status=PlaybackStatus.STARTED, track=PlaybackTrack("青花瓷", "周杰伦", "我很忙")
+    )
+
+    assert result.as_response() == {
+        "song": "青花瓷",
+        "singer": "周杰伦",
+        "album": "我很忙",
+        "playlist": "",
+    }
+
+
+async def test_as_response_merges_the_optional_fields(initialized_test_singletons):
+    """`:play` 的模板还引用 `{release_date}`，它在老歌过滤阶段才被填上。"""
+    result = PlaybackResult(
+        status=PlaybackStatus.STARTED,
+        track=PlaybackTrack("如风", "王菲", "十万个为什么"),
+        extra={"release_date": "1993-09-07"},
+    )
+
+    assert result.as_response() == {
+        "song": "如风",
+        "singer": "王菲",
+        "album": "十万个为什么",
+        "playlist": "",
+        "release_date": "1993-09-07",
+    }
+
+
+async def test_play_forwards_the_response_metadata_observed_in_the_ui(
+    initialized_test_singletons,
+):
+    """驱动在 UI 层读到的事实（歌单名、发行日期）要一路带到命令层的回复里。
+
+    发行日期尤其关键：它在老歌过滤阶段就地补在曲目 dict 上，迁移前 `:play`
+    返回的正是那个 dict，所以回复里一直有它。丢掉会让模板渲染出一个空日期。
+    """
+    engine = _build_engine(
+        driver=InMemoryMusicUIDriver(
+            playlists={PlaybackMode.SONG: "如风 · 王菲精选"},
+        )
+    )
+    engine.driver.start_playback = lambda request: PlaybackOutcome.started(
+        PlaybackTrack("如风", "王菲", "十万个为什么"),
+        playlist="如风 · 王菲精选",
+        extra={"release_date": "1993-09-07"},
+    )
+
+    result = await engine.manager.play(PlaybackRequest.song("如风 王菲", requester="小明"))
+
+    assert result.as_response() == {
+        "song": "如风",
+        "singer": "王菲",
+        "album": "十万个为什么",
+        "playlist": "如风 · 王菲精选",
+        "release_date": "1993-09-07",
+    }
+
+
+async def test_play_result_is_immutable_after_construction(initialized_test_singletons):
+    """冻结 dataclass 只挡住属性重绑，挡不住 dict 内部的 mutating。"""
+    source = {"release_date": "1993-09-07"}
+    result = PlaybackResult(
+        status=PlaybackStatus.STARTED, track=PlaybackTrack("如风", "王菲", "碟"), extra=source
+    )
+    source["release_date"] = "1999-01-01"
+
+    with pytest.raises(TypeError):
+        result.extra["release_date"] = "2000-01-01"
+    assert result.as_response()["release_date"] == "1993-09-07"
+
+# ---------------------------------------------------------------------------
+# Slice 6: `:play <song>` 命令迁移（#421）
+# ---------------------------------------------------------------------------
+
+
+def _make_play_command():
+    """`:play` 命令 + 只提供 nickname 的消息。
+
+    handler 只在收藏/电台分支被用到（#425 之前），因此这里给一个空壳即可 ——
+    单曲分支的断言不该被 handler 的 UI 替身污染。
+    """
+    from ushareiplay.commands.play import PlayCommand
+
+    handler = SimpleNamespace(logger=MagicMock())
+    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=handler)
+    return PlayCommand(controller)
+
+
+def _sender(nickname):
+    return SimpleNamespace(nickname=nickname)
+
+
+async def test_play_command_delegates_the_song_to_the_engine(initialized_test_singletons):
+    engine = _build_engine()
+
+    result = await _make_play_command().do_process(_sender("小明"), ["青花瓷", "周杰伦"])
+
+    assert result == {
+        "song": "青花瓷 周杰伦",
+        "singer": "song-歌手",
+        "album": "",
+        "playlist": "",
+    }
+    assert [r.mode for r in engine.driver.requests] == [PlaybackMode.SONG]
+
+
+async def test_play_command_credits_the_requester_in_the_room(initialized_test_singletons):
+    """`:play` 的请求者要写进房间的 `player_name`，与收藏/电台分支同一套身份。"""
+    engine = _build_engine()
+
+    await _make_play_command().do_process(_sender("小明"), ["稻香"])
+
+    assert engine.driver.requests[0].requester == "小明"
+    assert engine.info.player_name == "小明"
+
+
+async def test_play_command_reports_a_rejected_switch_without_muting_or_ui(
+    initialized_test_singletons,
+):
+    """被守护拒绝时房间不该听见任何变化 —— 麦克风没动，歌也没切。
+
+    这正是把 `:play` 的命令级静音撤掉的理由：命令级闭麦发生在守护之前，
+    于是「小红正在播放歌单，请等待」这句回复之前已经闭过一次麦。
+    """
+    engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
+
+    result = await _make_play_command().do_process(_sender("小明"), ["稻香"])
+
+    assert result == {"error": "小红 正在播放歌单，请等待"}
+    assert engine.driver.requests == []
+    assert engine.journal == []
+
+
+async def test_play_command_lets_the_engine_own_the_mic_lifecycle(initialized_test_singletons):
+    """守护放行后，麦克风生命周期由引擎的 `PlaybackMuting` 负责，且顺序不变。"""
+    engine = _build_engine()
+
+    await _make_play_command().do_process(_sender("小明"), ["青花瓷"])
+
+    assert engine.journal == ["mute", "ui:song", "restore"]
+    assert engine.probe.waits == ["青花瓷"]
+
+
+async def test_command_manager_does_not_mute_for_the_song_branch(initialized_test_singletons):
+    """命令级静音守卫要在点歌分支上完全让路，否则闭麦会提前到守护之前。"""
+    from ushareiplay.managers.command_manager import CommandManager
+
+    engine = _build_engine()
+
+    with CommandManager.instance().playback_muting_guard(
+        _make_play_command(), {"parameters": ["青花瓷", "周杰伦"]}
+    ):
+        pass
+
+    assert engine.journal == []
+
+
+@pytest.mark.parametrize("parameters", [[], ["?"]])
+async def test_command_manager_keeps_muting_the_unmigrated_branches(
+    parameters, initialized_test_singletons
+):
+    """收藏与电台分支归 #425 迁移到引擎前，它们的命令级静音保护必须原样保留。"""
+    from ushareiplay.managers.command_manager import CommandManager
+
+    engine = _build_engine()
+
+    with CommandManager.instance().playback_muting_guard(
+        _make_play_command(), {"parameters": parameters}
+    ):
+        pass
+
+    assert engine.journal == ["mute", "restore"]

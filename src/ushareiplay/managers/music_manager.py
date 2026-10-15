@@ -220,13 +220,20 @@ class MusicManager(Singleton):
                     status=PlaybackStatus.STARTED,
                     track=outcome.track,
                     error=adopt_error.get("error"),
+                    playlist=outcome.playlist or request.playlist,
+                    extra=outcome.extra,
                 )
 
             self.logger.info(
                 f"Playback started: mode={request.mode.value}, "
                 f"song={outcome.track.song}, requester={request.requester}"
             )
-            return PlaybackResult(status=PlaybackStatus.STARTED, track=outcome.track)
+            return PlaybackResult(
+                status=PlaybackStatus.STARTED,
+                track=outcome.track,
+                playlist=outcome.playlist or request.playlist,
+                extra=outcome.extra,
+            )
 
     @staticmethod
     def _song_key(song_info) -> str:

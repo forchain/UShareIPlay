@@ -182,18 +182,34 @@ class CommandManager(Singleton):
     def _playback_muting():
         return PlaybackMuting.instance()
 
+    @staticmethod
+    def _declares_playback_muting(command) -> bool:
+        """该命令是否声明参与播放静音保护。
+
+        读的是类属性而不是方法存在性：这里的 command 只要求「命令形状」（有
+        `process()` 与 `playback_muting`），不少调用方与测试传的是鸭子类型替身，
+        没有 `BaseCommand` 的方法。判定按能力回退，不要求替身补全整个基类。
+        """
+        return bool(getattr(command, "playback_muting", False))
+
     @contextmanager
     def playback_muting_guard(self, command, command_info):
         """播放类命令的静音保护上下文。
 
         未声明 playback_muting 的命令不触碰麦克风；声明了则闭麦执行命令，
         公屏通知发送完毕后等待底层播放就绪再开麦。
+
+        命令可用 `playback_muting_applies(parameters)` 按本次调用再判一次：一个命令里
+        只有部分播放路径迁到 `MusicManager.play()` 时，已迁移的那条由引擎在守护通过后
+        自己闭麦 —— 命令级闭麦发生在守护之前，只会让被拒绝的切歌也响一次静音。
         """
-        if not getattr(command, "playback_muting", False):
+        parameters = command_info.get("parameters") or []
+        applies = getattr(command, "playback_muting_applies", None)
+        should_mute = applies(parameters) if callable(applies) else self._declares_playback_muting(command)
+        if not should_mute:
             yield
             return
 
-        parameters = command_info.get("parameters") or []
         with self._playback_muting().guard(
             expected_song=command.playback_expected_song(parameters)
         ):
