@@ -1,0 +1,123 @@
+"""用户事件钩子的事件类型注册表。
+
+这是 5 类事件（进入 / 离开 / 返回 / 收礼物 / 专注人数联动）**唯一**的参数化
+事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径与入队前的
+宏展开策略都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在
+`EVENT_HOOK_SPECS` 里加一条。
+
+刻意保留的一处非对称：**用户解析口径按事件类型逐条声明**，不是全局默认。收礼物
+命令（`receive`）历史上走 alias-group —— 主账号下发的命令，用任意分身名都要能查
+到；其余事件走 single-id，只认 canonical 主账号。二者混用会让 `clear` 误删别人
+的命令，所以这里是显式字段而不是「默认值 + 例外」。
+"""
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Awaitable, Callable, Optional
+
+from ushareiplay.managers.user_event_hooks.macros import expand_seat_macros
+from ushareiplay.models.enter_event import EnterEvent
+from ushareiplay.models.exit_event import ExitEvent
+from ushareiplay.models.focus_event import FocusEvent
+from ushareiplay.models.receive_event import ReceiveEvent
+from ushareiplay.models.return_event import ReturnEvent
+
+#: 事件类型取值，同时也是各命令的前缀词根。
+ENTER = "enter"
+EXIT = "exit"
+RETURN = "return"
+RECEIVE = "receive"
+FOCUS = "focus"
+
+
+class Resolution(Enum):
+    """`get_by_username` / `delete_all_by_username` 认哪些 DB 用户 id。"""
+
+    #: 只认 canonical 主账号解析出的那一个 id。
+    SINGLE_ID = "single_id"
+    #: 认 canonical 主账号 + 全部分身 + 原始名这一整组 id。
+    ALIAS_GROUP = "alias_group"
+
+
+SINGLE_ID = Resolution.SINGLE_ID
+ALIAS_GROUP = Resolution.ALIAS_GROUP
+
+#: 用户配置的钩子命令必须以这些前缀之一开头。
+COMMAND_PREFIXES = (":", "：", "/", "／")
+
+#: 入队前的宏展开策略：`(命令原文, 钩子归属人, 事件上下文) -> 替换后的命令原文`。
+#: 声明在注册表里而不是让引擎按 `event_type` 分支，新增宏族只改这一处。
+MacroExpander = Callable[[str, str, dict], Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class UserEventHookSpec:
+    """一类事件钩子的全部可变参数。"""
+
+    event_type: str
+    model: type
+    prefix: str
+    noun: str
+    error_message: str
+    prefix_example: str
+    resolution: Resolution
+    #: 入队前要展开的宏策略；`None` = 原样入队。目前只有专注人数联动带宏
+    #: （`{username}` / `{seat}` / `{action}`），见 `macros.py`。
+    macros: Optional[MacroExpander] = None
+
+
+EVENT_HOOK_SPECS = {
+    ENTER: UserEventHookSpec(
+        event_type=ENTER,
+        model=EnterEvent,
+        prefix=":enter",
+        noun="进入命令",
+        error_message="处理进入命令时出错",
+        prefix_example='":play 歌曲名"',
+        resolution=SINGLE_ID,
+    ),
+    EXIT: UserEventHookSpec(
+        event_type=EXIT,
+        model=ExitEvent,
+        prefix=":exit",
+        noun="离开命令",
+        error_message="处理离开命令时出错",
+        prefix_example='":play 歌曲名"',
+        resolution=SINGLE_ID,
+    ),
+    RETURN: UserEventHookSpec(
+        event_type=RETURN,
+        model=ReturnEvent,
+        prefix=":return",
+        noun="返回命令",
+        error_message="处理返回命令时出错",
+        prefix_example='":play 歌曲名"',
+        resolution=SINGLE_ID,
+    ),
+    RECEIVE: UserEventHookSpec(
+        event_type=RECEIVE,
+        model=ReceiveEvent,
+        prefix=":receive",
+        noun="收礼物命令",
+        error_message="处理收礼物命令时出错",
+        prefix_example='":say 谢谢"',
+        # 主账号配置的收礼物命令，对该账号的任意分身都要生效。
+        resolution=ALIAS_GROUP,
+    ),
+    FOCUS: UserEventHookSpec(
+        event_type=FOCUS,
+        model=FocusEvent,
+        prefix=":focus",
+        noun="专注人数联动命令",
+        error_message="处理专注人数命令时出错",
+        prefix_example='":play 歌曲名"',
+        resolution=SINGLE_ID,
+        # 座位观测是这一族宏唯一的数据源，键名见 macros.SEAT_INFO_CTX_KEY。
+        macros=expand_seat_macros,
+    ),
+}
+
+
+def spec_for(event_type: str) -> UserEventHookSpec:
+    """取事件类型的注册项。未知事件类型直接 KeyError，不做静默兜底。"""
+    return EVENT_HOOK_SPECS[event_type]

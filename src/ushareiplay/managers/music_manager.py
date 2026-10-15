@@ -12,6 +12,7 @@ from ushareiplay.managers.playback.models import (
     PLAY_MODE_INDEX_BY_KEY,
     PLAY_MODE_INVALID_PARAMETER_ERROR,
     PLAY_MODE_NAMES,
+    PlaybackMode,
     PlaybackRequest,
     PlaybackResult,
     PlaybackStatus,
@@ -424,11 +425,16 @@ class MusicManager(Singleton):
                     error=outcome.error,
                 )
 
+            topic = (
+                None
+                if request.mode is PlaybackMode.SONG
+                else (outcome.topic or outcome.track.queue_line)
+            )
             adopt_error = self.playlist_adoption.adopt(
                 request.requester,
                 mode=request.mode.value,
                 title=outcome.title or request.room_title,
-                topic=outcome.topic or outcome.track.queue_line,
+                topic=topic,
                 playlist=outcome.playlist or request.playlist,
             )
             if adopt_error:
