@@ -13,10 +13,6 @@ OPEN_DRAWER_ERROR = 'Failed to open online users list'
 #: 抽屉开了却没落定时的报错。刻意与上一句分开：旧实现里这就是两条不同的路径。
 FIND_DRAWER_ERROR = 'Failed to find online users container'
 
-#: 最多翻多少页去找一个人。上限与在线名单抓取同源：别把一次定位变成无上限轮询；
-#: 翻满仍找不到就如实回报「未找到」，要不要再来一次由调用方决定。
-MAX_SEARCH_SWIPES = 50
-
 
 class UserManager(Singleton):
     """在在线用户列表中查找指定用户并打开其资料页
@@ -93,7 +89,7 @@ class UserManager(Singleton):
             # 拿去比 UI 文本永远不相等。
             visible_name = await drawer.resolve_visible_username(nickname)
 
-            if not await self._find_member_in_drawer(driver, visible_name):
+            if not await drawer.find_member_in_drawer(visible_name):
                 self.logger.warning(f"未找到用户 {visible_name}")
                 return {
                     'error': 'User not found in online users list',
@@ -107,28 +103,6 @@ class UserManager(Singleton):
             self.logger.info(f"Clicked user element for {visible_name}")
             handover.release()
             return {'user': nickname}
-
-    async def _find_member_in_drawer(self, driver, visible_name: str) -> bool:
-        """在抽屉里一页一页找某个昵称：翻到底提示、滑不动或滑满为止。
-
-        「找不到就再滑一页」是循环决策，因此留在引擎这一侧；端口只负责把「此刻屏幕上
-        有哪些行」如实读回来。抽屉刚打开时列表还在首帧布局，这一段等待住在适配器的
-        `wait_for_settle` 里。
-        """
-        for _ in range(MAX_SEARCH_SWIPES + 1):
-            if await driver.find_member_row(visible_name) is not None:
-                return True
-
-            if await driver.is_at_end():
-                self.logger.info("Detected no_more_data, stop searching online users.")
-                return False
-
-            if not await driver.scroll_container():
-                self.logger.warning("Swipe failed, stop searching online users.")
-                return False
-
-        self.logger.warning(f"Reached max_swipes, stop searching for {visible_name}.")
-        return False
 
     async def close_user_profile(self) -> None:
         """把交接出去的资料卡收回房间。
@@ -258,7 +232,7 @@ class UserManager(Singleton):
                     return False
 
                 visible_name = await drawer.resolve_visible_username(nickname)
-                if not await self._find_member_in_drawer(driver, visible_name):
+                if not await drawer.find_member_in_drawer(visible_name):
                     self.logger.warning(f"未找到用户 {visible_name}")
                     return False
                 if not await driver.open_member_profile(visible_name):

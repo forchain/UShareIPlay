@@ -42,6 +42,10 @@ DEFAULT_OPEN_ERROR = 'Failed to open online users drawer'
 #: 调用方重试有意义；后者连容器都没出现，重试之前应该先确认自己还在房间里。
 DEFAULT_SETTLE_ERROR = 'Online users drawer did not settle'
 
+#: 最多翻多少页去找一个人。上限与在线名单抓取同源：别把一次定位变成无上限轮询；
+#: 翻满仍找不到就如实回报「未找到」，要不要再来一次由调用方决定。
+MAX_SEARCH_SWIPES = 50
+
 
 class Handover:
     """一次抽屉会话里的**交接**信号。
@@ -274,6 +278,41 @@ class OnlineDrawerManager(Singleton):
     # ------------------------------------------------------------------
     # 命名域
     # ------------------------------------------------------------------
+
+    async def find_member_in_drawer(self, visible_name: str) -> bool:
+        """在抽屉里一页一页找某个昵称：翻到底提示、滑不动或滑满为止。
+
+        这一段循环此前在 `UserManager` 与 `AdminManager` 里各抄了一份逐字相同的实现，
+        送礼物 / 私聊 / 房管三处调用点各走一份（#440）。两份抄写意味着改翻页上限要改
+        三处、漏一处就在真机上翻到天荒地老 —— 所以它归这次抽屉会话的唯一所有者：
+        翻到哪一页、翻够几页、什么时候如实回报「未找到」都是**会话的决策**，端口只负责
+        如实回答「此刻屏幕上有哪些行」。
+
+        抽屉刚打开时列表还在首帧布局，那段等待住在适配器的 `wait_for_settle` 里。
+
+        Args:
+            visible_name: **UI 可见昵称**（分身名），不是 DB 里的 canonical 名。
+                调用方必须先过一次 `resolve_visible_username`。
+
+        Returns:
+            找到返回 True；到底提示出现、手势滑不动、或翻满 `MAX_SEARCH_SWIPES`
+            都如实回报 False。
+        """
+        driver = self._require_driver()
+        for _ in range(MAX_SEARCH_SWIPES + 1):
+            if await driver.find_member_row(visible_name) is not None:
+                return True
+
+            if await driver.is_at_end():
+                self.logger.info("Detected no_more_data, stop searching online users.")
+                return False
+
+            if not await driver.scroll_container():
+                self.logger.warning("Swipe failed, stop searching online users.")
+                return False
+
+        self.logger.warning(f"Reached max_swipes, stop searching for {visible_name}.")
+        return False
 
     async def resolve_visible_username(self, username: str) -> str:
         """把任意命名域的名字解析成 Soul UI 上可见的昵称（分身名）。

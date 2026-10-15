@@ -30,9 +30,6 @@ OPEN_DRAWER_ERROR = 'Failed to open online users list'
 #: 改掉聊天气泡里的措辞。
 FIND_DRAWER_ERROR = 'Failed to find online users container'
 
-#: 最多翻多少页去找一个人。与在线名单抓取、资料页流程同源：别把一次定位变成无上限轮询。
-MAX_SEARCH_SWIPES = 50
-
 #: 两条成功路径的 `action` 文案，会原样进聊天气泡，迁移不是重写。
 ACTION_INVITE = 'Invited'
 ACTION_DISMISS = 'Dismissed'
@@ -126,7 +123,7 @@ class AdminManager(Singleton):
             # 拿去比 UI 文本永远不相等。解析器抛错就按原名找，与旧实现在这里的兜底一致。
             visible_name = await self._resolve_visible_name(drawer, target_nickname)
 
-            if not await self._find_member_in_drawer(driver, visible_name):
+            if not await drawer.find_member_in_drawer(visible_name):
                 self.logger.warning(f"未找到用户 {visible_name}")
                 return {
                     'error': 'User not found in online users list',
@@ -156,28 +153,6 @@ class AdminManager(Singleton):
             return await drawer.resolve_visible_username(nickname)
         except Exception:
             return nickname
-
-    async def _find_member_in_drawer(self, driver, visible_name: str) -> bool:
-        """在抽屉里一页一页找某个昵称：翻到底提示、滑不动或滑满为止。
-
-        「找不到就再滑一页」是循环决策，因此留在这一侧；端口只负责把「此刻屏幕上有哪些
-        行」如实读回来。抽屉刚打开时列表还在首帧布局，那段等待住在适配器的
-        `wait_for_settle` 里。
-        """
-        for _ in range(MAX_SEARCH_SWIPES + 1):
-            if await driver.find_member_row(visible_name) is not None:
-                return True
-
-            if await driver.is_at_end():
-                self.logger.info("Detected no_more_data, stop searching online users.")
-                return False
-
-            if not await driver.scroll_container():
-                self.logger.warning("Swipe failed, stop searching online users.")
-                return False
-
-        self.logger.warning(f"Reached max_swipes, stop searching for {visible_name}.")
-        return False
 
     async def _toggle_on_card(self, driver, enable: bool, target_nickname: str) -> dict:
         """已经在资料卡上：读开关文案 -> 判幂等 -> 点开关 -> 点确认。
