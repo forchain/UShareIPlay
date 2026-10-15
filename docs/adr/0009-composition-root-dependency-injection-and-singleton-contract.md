@@ -67,10 +67,22 @@ Accepted
 | 时点 | 具体单例类 | 扣掉两个 handler 单例 |
 |---|---|---|
 | 本 ADR 引入时（`95a219a`，2026-10-01） | 37 | **35** ← 第 21 行的来源 |
-| 今日 | 33 | **31** |
+| 今日 | 34 | **32** |
 
 差额的来龙去脉：#395 / #400 / #401 删掉了四个座位内部单例（`SeatUIManager`、
 `SeatCheckManager`、`ReservationManager`、`SeatingManager`），同期没有新增任何单例，
 35 → 31。新增的 `SeatSubsystem` 与 `SeatPanelDriver` **刻意不是单例**（前者由组合根
 构造并持有一个实例，后者是无全局状态的普通可注入对象），所以它们不进这个数 —— 这是
 本契约想要的形态，不是缺口。
+
+### 2026-10-15 —— #428 新增 `OnlineDrawerManager`（+1）
+
+spec #426 拆出的第一个 ticket #428 交付了在线用户抽屉深模块 `OnlineDrawerManager`：
+它是一次抽屉会话（打开、落定、找人、收尾）的唯一所有者，并持有一个
+`OnlineDrawerDriverPort` 适配器。它**是**单例 —— 全进程只需要知道「现在抽屉是不是我
+开的」这一件事，这与 `RoomProfileManager` 的形状完全一致，因此按本契约注册为受保护
+单例：33 → 34，31 → 32。
+
+同一次新增里的 `SoulOnlineDrawerDriver` 与 `InMemoryOnlineDrawerDriver` **刻意不是
+单例**：前者是无全局状态的构造注入适配器，后者是测试替身，两者都可并存多实例 ——
+与上面 `SeatSubsystem` / `SeatPanelDriver` 的处理一致，不进这个数。

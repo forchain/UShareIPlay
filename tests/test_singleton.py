@@ -132,6 +132,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.mic_manager import MicManager
     from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.managers.online_drawer import OnlineDrawerManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_adoption import PlaylistAdoption
@@ -175,6 +176,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         MemoryManager,
         SeatManager,
         SeatObservationManager,
+        OnlineDrawerManager,
     ]
 
     for cls in all_protected_classes:
