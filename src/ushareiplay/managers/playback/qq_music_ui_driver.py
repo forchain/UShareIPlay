@@ -15,11 +15,23 @@ import logging
 
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
+    PLAY_MODE_NAMES,
     PlaybackMode,
+    PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
     PlaybackTrack,
 )
+from ushareiplay.managers.playback.player_page import (
+    PLAY_MODE_ELEMENT_KEYS,
+    ensure_player_page,
+)
+
+# 播放页元素 key → 模式 key。与 `player_page` 里的私有映射同向，但驱动要自己
+# 反查点击后的模式，因此这里按公开常量重新推导，不去 import 对方的下划线名字。
+_MODE_KEY_BY_ELEMENT_KEY = {
+    element_key: mode_key for mode_key, element_key in PLAY_MODE_ELEMENT_KEYS.items()
+}
 
 
 class QQMusicUIDriver(MusicUIDriverPort):
@@ -106,6 +118,73 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """
         release_date = (playing_info.get("release_date") or "").strip()
         return {"release_date": release_date} if release_date else {}
+
+    # ------------------------------------------------------------------
+    # 播放模式切换（#423）
+    # ------------------------------------------------------------------
+
+    def set_play_mode(self, target_mode: str) -> PlayModeOutcome:
+        """切到 `target_mode` 并返回播放页上真正点亮的那一档。
+
+        参数归一化与「已经在目标模式就别动 UI」的短路都在
+        `MusicManager.set_play_mode()` 里；这里只负责播放页的实际动作。
+        """
+        try:
+            return self._switch_play_mode(target_mode)
+        except Exception as exc:
+            # 端口约定：UI 层失败一律以返回值汇报。让异常冲出这里，
+            # 调用方只会看到一个没有本地化说明的 AttributeError。
+            self.logger.warning(f"切换播放模式失败: {target_mode}: {exc}")
+            return PlayModeOutcome.failed(f"切换模式失败: {exc}")
+
+    def _switch_play_mode(self, target_mode: str) -> PlayModeOutcome:
+        handler = self._handler
+        entry = ensure_player_page(handler, logger=self.logger)
+        if not entry.ok:
+            return PlayModeOutcome.failed(entry.error)
+
+        observed = entry.mode_key
+        self._note_play_mode(observed, reason="mode_ui_detect")
+
+        if observed == target_mode:
+            return PlayModeOutcome.switched(target_mode, already_target=True)
+
+        element_key = PLAY_MODE_ELEMENT_KEYS[target_mode]
+        mode_keys = list(PLAY_MODE_ELEMENT_KEYS.values())
+
+        # 最多点两次：模式按钮的第一次点击有时落在切页动画上，没切过去。
+        # 每次点击后都重读播放页 —— 只有重读才知道到底切没切，不能凭「点了就当成了」。
+        for attempt in range(2):
+            if not handler.gesture_handler.click_element_at(entry.element):
+                self.logger.warning(
+                    f"切换播放模式第 {attempt + 1} 次点击未生效，继续重试"
+                )
+            else:
+                found_key, found_element = handler.element_finder.wait_for_any_element(mode_keys)
+                if not found_key or not found_element:
+                    self.logger.warning("切换后未找到播放模式元素，继续重试")
+                else:
+                    observed = _MODE_KEY_BY_ELEMENT_KEY.get(found_key, "unknown")
+                    self._note_play_mode(observed, reason="mode_ui_detect_after_click")
+                    if observed == target_mode:
+                        return PlayModeOutcome.switched(target_mode)
+
+        return PlayModeOutcome.failed(
+            f"FAIL: 无法切换到目标模式，请检查播放状态"
+            f"（target={PLAY_MODE_NAMES.get(target_mode, target_mode)}, "
+            f"actual={PLAY_MODE_NAMES.get(observed, observed)}）",
+            mode=observed,
+        )
+
+    def _note_play_mode(self, mode_key: str, reason: str) -> None:
+        """把播放页上观察到的模式写回 handler 缓存；写失败不该阻断切换本身。"""
+        if not mode_key or mode_key == "unknown":
+            return
+        note = getattr(self._handler, "note_play_mode", None)
+        if note is not None:
+            note(mode_key, reason)
+        else:
+            setattr(self._handler, "play_mode_key", mode_key)
 
     def _quality_check(self, playing_info: dict) -> None:
         """把解析出的曲目交给老歌过滤；失败不应阻断播放本身。"""

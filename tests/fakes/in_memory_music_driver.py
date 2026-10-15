@@ -4,7 +4,7 @@
 
 | 真实依赖 | 替身 |
 |---|---|
-| Appium UI（查歌、切 tab、点播放全部） | `InMemoryMusicUIDriver`，按模式返回脚本化结果 |
+| Appium UI（查歌、切 tab、点播放全部、切换播放模式） | `InMemoryMusicUIDriver`，按模式返回脚本化结果 |
 | MediaSession 就绪（`dumpsys media_session`） | 测试模块内的 `_ReadinessProbe`，无需睡眠即可判定就绪 |
 | 麦克风 UI（`MicManager`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
 
@@ -14,6 +14,9 @@
 
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
+    NO_PLAYING_MUSIC_ERROR,
+    PLAY_MODE_NAMES,
+    PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
     PlaybackTrack,
@@ -31,13 +34,33 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         titles: 模式 → UI 上读到的房间标题。未列出时沿用请求的 `room_title`。
         playlists: 模式 → UI 上读到的完整歌单名。未列出时沿用请求的 `playlist`。
         journal: 可选的共享事件流。填入后每次驱动 UI 会追加 `"ui:<模式>"`，
-            用来与麦克风的开闭麦事件交错断言「先闭麦、再动 UI、最后开麦」。
+            切换播放模式时追加 `"mode:<目标模式>"`，用来与麦克风的开闭麦事件
+            交错断言「先闭麦、再动 UI、最后开麦」。
+        play_mode: 播放页上当前点亮的播放模式 key（#423）。默认 `list`。
+        no_music: 没有音乐在放 —— 任何模式切换都返回「现在没有播放音乐」。
+        play_mode_failures: 目标模式 → 该次切换的失败原因，用于注入错误。
+        stuck_play_mode: 点击模式按钮不改变模式（模拟切换没生效、重试耗尽）。
 
     Attributes:
         requests: 引擎驱动过的请求，按顺序记录。被守护拒绝的请求不会出现在这里。
+        play_mode: 当前点亮着的模式 key，会随成功的切换改变。
+        play_mode_requests: 每次 `set_play_mode()` 的目标 key，按顺序记录。
+        play_mode_clicks: 真正点过模式按钮的次数（本来就在目标模式时不点）。
     """
 
-    def __init__(self, tracks=None, failures=None, topics=None, titles=None, playlists=None, journal=None):
+    def __init__(
+        self,
+        tracks=None,
+        failures=None,
+        topics=None,
+        titles=None,
+        playlists=None,
+        journal=None,
+        play_mode="list",
+        no_music=False,
+        play_mode_failures=None,
+        stuck_play_mode=False,
+    ):
         self.tracks = dict(tracks or {})
         self.failures = dict(failures or {})
         self.topics = dict(topics or {})
@@ -45,6 +68,13 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         self.playlists = dict(playlists or {})
         self.journal = journal
         self.requests = []
+
+        self.play_mode = play_mode
+        self.no_music = no_music
+        self.play_mode_failures = dict(play_mode_failures or {})
+        self.stuck_play_mode = stuck_play_mode
+        self.play_mode_requests = []
+        self.play_mode_clicks = 0
 
     def start_playback(self, request: PlaybackRequest) -> PlaybackOutcome:
         self.requests.append(request)
@@ -62,6 +92,33 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
             topic=self.topics.get(request.mode),
             playlist=self.playlists.get(request.mode),
         )
+
+    def set_play_mode(self, target_mode: str) -> PlayModeOutcome:
+        """脚本化的播放模式切换：状态留在替身上，失败按注入的脚本走。"""
+        self.play_mode_requests.append(target_mode)
+        if self.journal is not None:
+            self.journal.append(f"mode:{target_mode}")
+
+        if self.no_music:
+            return PlayModeOutcome.failed(NO_PLAYING_MUSIC_ERROR)
+        if target_mode in self.play_mode_failures:
+            return PlayModeOutcome.failed(self.play_mode_failures[target_mode])
+
+        if self.play_mode == target_mode:
+            # 播放页上本来就是这一档：没有点击发生。
+            return PlayModeOutcome.switched(self.play_mode, already_target=True)
+
+        self.play_mode_clicks += 1
+        if self.stuck_play_mode:
+            return PlayModeOutcome.failed(
+                f"FAIL: 无法切换到目标模式，请检查播放状态"
+                f"（target={PLAY_MODE_NAMES.get(target_mode, target_mode)}, "
+                f"actual={PLAY_MODE_NAMES.get(self.play_mode, self.play_mode)}）",
+                mode=self.play_mode,
+            )
+
+        self.play_mode = target_mode
+        return PlayModeOutcome.switched(self.play_mode)
 
     @staticmethod
     def _synthesized_track(request: PlaybackRequest) -> PlaybackTrack:

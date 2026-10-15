@@ -15,6 +15,7 @@ from ushareiplay.managers.playback.models import (
     PlaybackMode,
     PlaybackRequest,
 )
+from ushareiplay.managers.playback.player_page import PLAY_MODE_ELEMENT_KEYS
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 
 
@@ -293,3 +294,132 @@ def test_composition_root_injects_the_production_driver(initialized_test_singlet
     ui_driver = MusicManager.instance().ui_driver
     assert isinstance(ui_driver, QQMusicUIDriver)
     assert ui_driver._handler is controller.music_handler
+
+
+# ---------------------------------------------------------------------------
+# 播放模式切换（#423 收窄到端口上的第二个方法）
+# ---------------------------------------------------------------------------
+
+
+class _ModePageHandler:
+    """播放页模式切换用的 handler 表面。
+
+    `mode_sequence` 是每次重新读取播放页时依次观察到的模式 key 序列 —— 用它
+    模拟「点一次没切过去、再点一次才切过去」。
+    """
+
+    def __init__(self, mode_sequence=("list",), clickable=True, switched=False):
+        self.logger = SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        )
+        self.mode_sequence = list(mode_sequence)
+        self.clicks = 0
+        self.reads = 0
+        self.play_mode_key = "unknown"
+        self.switched = switched
+        self.key_actions = SimpleNamespace(
+            switch_to_app=lambda: True, press_back=lambda: None
+        )
+        self.gesture_handler = SimpleNamespace(click_element_at=self._click)
+        self._element_finder = SimpleNamespace(wait_for_any_element=self._wait_any)
+        self._clickable = clickable
+
+    def _click(self, _element):
+        self.clicks += 1
+        self.switched = True
+        return self._clickable
+
+    def _wait_any(self, keys):
+        self.reads += 1
+        index = min(self.reads - 1, len(self.mode_sequence) - 1)
+        mode_key = self.mode_sequence[index]
+        if mode_key is None:
+            return None, None
+        # `ensure_player_page` 谈的是元素 key（config.yaml 的 qq_music.elements），
+        # 模式 key → 元素 key 的映射由 player_page 单点维护，替身不自己另编一套。
+        return PLAY_MODE_ELEMENT_KEYS[mode_key], _Element()
+
+    @property
+    def element_finder(self):
+        return self._element_finder
+
+    def note_play_mode(self, mode_key, reason=""):
+        self.play_mode_key = mode_key
+
+
+def test_driver_reports_already_on_target_without_clicking_the_mode_button(
+    initialized_test_singletons,
+):
+    """本来就是目标模式时一个点击都不该发生 —— 每次 `:mode` 都白点一下是骚扰。"""
+    handler = _ModePageHandler(mode_sequence=["single"])
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert (outcome.ok, outcome.mode, outcome.already_target) == (True, "single", True)
+    assert handler.clicks == 0
+
+
+def test_driver_clicks_the_mode_button_until_the_page_shows_the_target(
+    initialized_test_singletons,
+):
+    """第一次点击没生效时重读播放页并重试，而不是立刻报失败。"""
+    handler = _ModePageHandler(mode_sequence=["list", "list", "single"])
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert (outcome.ok, outcome.mode, outcome.already_target) == (True, "single", False)
+    assert handler.clicks == 2
+
+
+def test_driver_records_the_observed_mode_into_the_room_cache(initialized_test_singletons):
+    handler = _ModePageHandler(mode_sequence=["single"])
+
+    QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert handler.play_mode_key == "single"
+
+
+def test_driver_fails_when_nothing_is_playing(initialized_test_singletons):
+    handler = _ModePageHandler(mode_sequence=[None])
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert outcome.ok is False
+    assert handler.clicks == 0
+
+
+def test_driver_fails_after_both_attempts_miss_the_target(initialized_test_singletons):
+    """两次都没切过去是真实的失败，不能报成功 —— 房间会显示一个不成立的模式。"""
+    handler = _ModePageHandler(mode_sequence=["list", "list", "list"])
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert outcome.ok is False
+    assert outcome.mode == "list"
+    assert handler.clicks == 2
+
+
+def test_driver_reports_a_click_that_the_ui_refuses(initialized_test_singletons):
+    """`click_element_at` 返回 False 时继续重试，两次都失败才报错。"""
+    handler = _ModePageHandler(mode_sequence=["list", "list", "list"], clickable=False)
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert outcome.ok is False
+    assert handler.clicks == 2
+
+
+def test_driver_reports_a_mode_switch_exception_instead_of_raising(initialized_test_singletons):
+    handler = _ModePageHandler()
+    handler.gesture_handler.click_element_at = _ExplodingClick()
+
+    outcome = QQMusicUIDriver(handler).set_play_mode("single")
+
+    assert outcome.ok is False
+
+
+class _ExplodingClick:
+    def click_element_at(self, _element):
+        raise RuntimeError("session terminated")

@@ -9,6 +9,7 @@ from selenium.common import StaleElementReferenceException
 
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.playback.models import PLAY_MODE_NAMES
 
 
 # 在导入后设置种子
@@ -25,14 +26,14 @@ class QQMusicHandler(AppHandler, Singleton):
 
     @staticmethod
     def play_mode_key_to_name(key: str) -> str:
-        return {
-            'list': '顺序播放',
-            'single': '单曲循环',
-            'random': '随机播放',
-            'unknown': '未知',
-        }.get(key, '未知')
+        return PLAY_MODE_NAMES.get(key, PLAY_MODE_NAMES['unknown'])
 
-    def _update_play_mode_key(self, new_key: str, reason: str):
+    def note_play_mode(self, new_key: str, reason: str):
+        """记录当前播放模式 —— 驱动与 MusicManager 更新缓存的公开入口。
+
+        Appium 细节止步于端口之后，但「房间现在显示的是哪个模式」是共享状态：
+        `/info`、关键词广播、歌单自愈都读它，所以写入走这里而不是各写各的。
+        """
         if not new_key:
             return
         if new_key not in ('unknown', 'list', 'single', 'random'):
@@ -43,6 +44,10 @@ class QQMusicHandler(AppHandler, Singleton):
                 f"play_mode_key updated: {self.play_mode_key} -> {new_key} (reason={reason})"
             )
         self.play_mode_key = new_key
+
+    def _update_play_mode_key(self, new_key: str, reason: str):
+        """模块内部自愈路径保留的私有别名（见歌单读取），外部一律调 `note_play_mode`。"""
+        self.note_play_mode(new_key, reason)
 
     @staticmethod
     def _normalize_song_title(title: str) -> str:
