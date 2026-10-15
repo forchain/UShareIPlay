@@ -21,6 +21,7 @@ from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
 
@@ -580,7 +581,11 @@ class CommandManager(Singleton):
 
     async def notify_user_return(self, username: str):
         """
-        Notify all commands when a user returns（用户重新打开 app 返回派对）
+        Notify when a user returns（用户重新打开 app 返回派对）
+
+        该用户配置的返回命令由 UserEventHooks 统一入队（入队而非直接执行，队列在
+        drain 时才展开 `{user_name}` 宏）。`:seat` 命令自己也实现了 `user_return`
+        做座位复核，仍走属性名分发，直到 #436 收掉这层分发。
 
         Args:
             username: Username of the user who returned
@@ -591,27 +596,29 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 
-        for module in self.get_command_modules().values():
+        await UserEventHooks.instance().fire(RETURN, username)
+
+        for name, module in self.get_command_modules().items():
+            if name == 'return':
+                # 已由上面的 UserEventHooks.fire 入队，再调一次会重复发命令。
+                continue
             try:
                 if hasattr(module.command, 'user_return'):
                     await module.command.user_return(username)
             except Exception:
                 self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
 
-
     async def notify_gift_receive(self, username: str):
         """
-        Notify all commands when a gift or heat contribution is received
+        Notify when a gift or heat contribution is received
+
+        该用户配置的收礼物命令由 UserEventHooks 统一入队。刻意**不**调度记忆整合
+        —— 与 notify_user_return 的差异是历史有意为之，不要"顺手修好"。
 
         Args:
             username: Username of the user who sent the gift
         """
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_gift_receive'):
-                    await module.command.user_gift_receive(username)
-            except Exception:
-                self.logger.error(f"Error in command user_gift_receive: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(RECEIVE, username)
 
     async def notify_focus_count_change(
         self,
