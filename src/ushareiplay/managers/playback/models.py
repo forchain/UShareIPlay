@@ -84,13 +84,29 @@ class PlaybackStatus(str, Enum):
     FAILED = "failed"
 
 
+class PlaybackVariant(str, Enum):
+    """同一种播放模式内部的几种取法（#425）。
+
+    模式说的是「要播什么」，形态说的是「怎么取」。收藏页有三条差别很大的 UI 通路 ——
+    全部播放、筛选后播放、收藏内搜索后播放 —— 它们是同一种模式下的不同取法，不是三种
+    模式：把收藏拆成三个模式会让 `list_mode` 里出现房间从未有过的取值。
+    """
+
+    ALL = "all"
+    FILTER = "filter"
+    SEARCH = "search"
+
+
 @dataclass(frozen=True)
 class PlaybackRequest:
     """一次播放意图。
 
     Attributes:
         mode: 播放模式，决定驱动端口走哪条 UI 编排。
-        query: 搜索词（单曲点播、歌单、歌手、专辑都用它）。
+        query: 搜索词（单曲点播、歌单、歌手、专辑都用它）。收藏形态下是筛选关键字
+            或搜索词 —— 调用方给的字面量，页面标题由驱动观察后回填。
+        variant: 模式内部的取法，目前只有 FAVORITES 有多形态（见 `PlaybackVariant`）。
+            关键字仍走 `query`，形态只回答「这些字怎么用」。
         channel: 电台频道（daily/guess/sleep/radar/collection），仅 RADIO 模式使用。
         requester: 触发播放的用户名，写入房间的 `player_name`。
         room_title: 要采纳的房间标题（如 "O Station"）；驱动若观察到更准确的值则以其为准。
@@ -103,6 +119,7 @@ class PlaybackRequest:
     requester: Optional[str] = None
     room_title: Optional[str] = None
     playlist: Optional[str] = None
+    variant: Optional[PlaybackVariant] = None
 
     @property
     def expected_song(self) -> Optional[str]:
@@ -117,6 +134,43 @@ class PlaybackRequest:
     def song(cls, query, requester=None, **kwargs) -> "PlaybackRequest":
         """`:play <query>` —— 单曲点播。"""
         return cls(mode=PlaybackMode.SONG, query=query, requester=requester, **kwargs)
+
+    @classmethod
+    def favorites(
+        cls,
+        query=None,
+        *,
+        variant: PlaybackVariant = PlaybackVariant.ALL,
+        requester=None,
+        **kwargs,
+    ) -> "PlaybackRequest":
+        """`:fav` / `:play ""` —— 收藏（#425）。
+
+        Args:
+            query: 筛选关键字（`:fav type 粤语`）或搜索词（`:fav search 谢安琪`）。
+                全部播放时留空。
+            variant: 三种取法之一。缺省即「播放全部收藏」。
+            requester: 触发者，写入房间的 `player_name`。
+
+        房间标题与歌单名不作为参数传进来：粤语在房间里叫「粤音」这类映射是 UI 侧
+        才成立的事实，由驱动观察后回填 `PlaybackOutcome.title` / `.playlist`。
+        """
+        return cls(
+            mode=PlaybackMode.FAVORITES,
+            query=query,
+            variant=variant,
+            requester=requester,
+            **kwargs,
+        )
+
+    @classmethod
+    def radar(cls, requester=None, **kwargs) -> "PlaybackRequest":
+        """`:play ?` —— 雷达电台流量（#425）。
+
+        雷达只有一种取法，因此不带 `query` / `variant`：要选频道那是 `:radio` 的事
+        （RADIO 模式，`#431`），与这里的「打开雷达电台」不是一回事。
+        """
+        return cls(mode=PlaybackMode.RADAR, requester=requester, **kwargs)
 
 
 @dataclass(frozen=True)
