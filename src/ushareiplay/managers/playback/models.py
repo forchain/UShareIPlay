@@ -118,6 +118,13 @@ class PlaybackRequest:
         """`:play <query>` —— 单曲点播。"""
         return cls(mode=PlaybackMode.SONG, query=query, requester=requester, **kwargs)
 
+    # 刻意**不**提供 `.playlist()` 构造器：`playlist` 已经是本类的一个字段（要写进
+    # 房间的 `current_playlist_name`），同名 classmethod 会顶掉 dataclass 生成的类级
+    # 默认值，于是 `request.playlist` 对未显式赋值的实例返回的是那个方法本身 ——
+    # `MusicManager.play()` 的 `outcome.playlist or request.playlist` 就会把一个绑定
+    # 方法当成歌单名传给房间。歌单模式因此直接构造：
+    #     PlaybackRequest(mode=PlaybackMode.PLAYLIST, query=..., requester=...)
+
 
 @dataclass(frozen=True)
 class PlaybackTrack:

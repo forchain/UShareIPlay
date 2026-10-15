@@ -6,7 +6,8 @@
 收藏、切前台、认播放页、点按钮、滚菜单），因此断言考的是「驱动怎么编排」而不是
 「Appium 点了哪个坐标」。
 
-按 #421 的分工，本驱动只实现 `PlaybackMode.SONG`；其余模式归 #425/#431/#434/#437。
+`start_playback` 已实现的模式是 `PlaybackMode.SONG`（#421）与 `PlaybackMode.PLAYLIST`
+（#434）；其余模式归 #425/#431/#437。
 伴奏的两条 UI 通路（#427）都收在 `set_accompaniment` 后面：页上直接开关，以及
 K歌入口只在「更多」菜单里那条要滚动着找的路。
 """
@@ -30,7 +31,11 @@ from ushareiplay.managers.playback.player_page import (
     ACCOMPANIMENT_SWITCH_KEY,
     PLAY_MODE_ELEMENT_KEYS,
 )
-from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+from ushareiplay.managers.playback.qq_music_ui_driver import (
+    PLAY_ALL_KEYS,
+    PLAYLIST_RESULT_KEYS,
+    QQMusicUIDriver,
+)
 
 
 class _Element:
@@ -93,7 +98,7 @@ class _QQMusicHandlerFake:
 
 
 def test_driver_refuses_a_mode_it_does_not_implement_yet(initialized_test_singletons):
-    """#425/#431/#434/#437 之前，非单曲模式必须响亮失败，而不是静默「播放成功」。"""
+    """#425/#431/#437 之前，非单曲、非歌单的模式必须响亮失败，而不是静默「播放成功」。"""
     handler = _QQMusicHandlerFake(playing_info={"song": "任意", "singer": "某", "album": "碟"})
 
     outcome = QQMusicUIDriver(handler).start_playback(
@@ -106,7 +111,13 @@ def test_driver_refuses_a_mode_it_does_not_implement_yet(initialized_test_single
     assert handler.prepared_queries == []
 
 
-@pytest.mark.parametrize("mode", [m for m in PlaybackMode if m is not PlaybackMode.SONG])
+# 已由 #421（单曲点播）与 #434（歌单）交付的模式；其余模式仍未实现。
+IMPLEMENTED_MODES = (PlaybackMode.SONG, PlaybackMode.PLAYLIST)
+
+
+@pytest.mark.parametrize(
+    "mode", [m for m in PlaybackMode if m not in IMPLEMENTED_MODES]
+)
 def test_driver_reports_every_unimplemented_mode_as_failed(mode, initialized_test_singletons):
     handler = _QQMusicHandlerFake(playing_info={"song": "任意", "singer": "某", "album": "碟"})
 
@@ -759,3 +770,267 @@ def test_driver_reports_a_lyrics_search_exception_instead_of_raising(initialized
 
     assert outcome.ok is False
     assert "session terminated" in outcome.error
+
+
+# ---------------------------------------------------------------------------
+# 歌单播放（#434：`:playlist <query>` 收在 start_playback 里，不拓宽端口）
+# ---------------------------------------------------------------------------
+
+
+class _Row(_Element):
+    """歌单详情页里的一行：第一列歌名、第二列歌手。"""
+
+    def __init__(self, text):
+        super().__init__()
+        self.text = text
+
+
+class _TrackItem:
+    """`result_item` 容器：按 LinearLayout 分列，第一列是歌名、第二列是歌手。"""
+
+    def __init__(self, rows):
+        self._rows = [_Row(text) for text in rows]
+        self.lookups = []
+
+    def find_elements(self, by, value):
+        self.lookups.append((by, value))
+        return self._rows
+
+
+def _playlist_request(query, requester="小明"):
+    """构造歌单模式的请求。
+
+    刻意直接构造而不是调 `PlaybackRequest.playlist(...)`：本数据类的 `playlist`
+    是**字段**（写进房间 `current_playlist_name` 的那个），同名 classmethod 会顶掉
+    字段的类级默认值。命令层因此也只能直接构造。
+    """
+    return PlaybackRequest(
+        mode=PlaybackMode.PLAYLIST, query=query, requester=requester
+    )
+
+
+class _PlaylistHandler:
+    """歌单播放用的 handler 表面。
+
+    旋钮对应这条编排上每个可能失败的关节：`query_found`（搜得到吗）、
+    `tab_available`（切得到歌单分类吗）、`found_key`（结果页认出的是歌单卡片还是
+    「没有找到」提示）、`play_all_key`（认出的播放全部按钮）、`playlist_info`
+    （点完播放全部之后读回来的队列）。
+
+    替身只实现被驱动的编排真正触达的方法：驱动多走一步（例如忘了点播放全部就
+    读队列），这里就会以 AttributeError 暴露出来。
+    """
+
+    def __init__(
+        self,
+        *,
+        playlist_name="学习|英语",
+        query_found=True,
+        tab_available=True,
+        found_key="playlist_result",
+        first_track=("似是故人来", "梅艳芳"),
+        play_all_key="play_all",
+        playlist_info=None,
+    ):
+        self.logger = SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        )
+        self.playlist_name = playlist_name
+        self.query_found = query_found
+        self.tab_available = tab_available
+        self.found_key = found_key
+        self.play_all_key = play_all_key
+        self.track_item = None if first_track is None else _TrackItem(list(first_track))
+        self.playlist_info = (
+            {"playlist": "似是故人来 - 梅艳芳\n如风 - 王菲"}
+            if playlist_info is None
+            else playlist_info
+        )
+
+        self.queries = []
+        self.card = _TextElement(playlist_name)
+        self.play_button = _Element()
+        self.result_card = _Element()
+        self.result_card.text = playlist_name
+        self.queue_reads = 0
+
+        self._element_finder = SimpleNamespace(
+            wait_for_any_element=self._wait_any,
+            try_find_element=self._try_find,
+        )
+
+    @property
+    def element_finder(self):
+        return self._element_finder
+
+    def query_music(self, query):
+        self.queries.append(query)
+        return "search_box" if self.query_found else None
+
+    def _wait_any(self, keys):
+        if keys == PLAYLIST_RESULT_KEYS:
+            return self.found_key, self.result_card if self.found_key != "not_found" else _Element()
+        if keys == PLAY_ALL_KEYS:
+            return self.play_all_key, self.play_button if self.play_all_key else None
+        raise AssertionError(f"unexpected keys: {keys}")
+
+    def _try_find(self, key):
+        if key == "result_item":
+            return self.track_item
+        raise AssertionError(f"unexpected key: {key}")
+
+    def get_playlist_info(self):
+        self.queue_reads += 1
+        return self.playlist_info
+
+
+@pytest.fixture
+def playlist_tab(initialized_test_singletons):
+    """脚本化的分类 tab 选择：驱动只看到 True/False，这里负责记录与注入。"""
+    from ushareiplay.managers.music_manager import MusicManager
+
+    class _TabSelection:
+        def __init__(self):
+            self.calls = []
+            self.available = True
+
+        def __call__(self, name, **kwargs):
+            self.calls.append(name)
+            return self.available
+
+    tabs = _TabSelection()
+    MusicManager.initialize().select_tab = tabs
+    return tabs
+
+
+def test_driver_walks_the_whole_playlist_flow_and_reports_what_it_saw(
+    initialized_test_singletons, playlist_tab
+):
+    """查歌 → 切歌单分类 → 点卡片 → 点播放全部 → 读队列，一步都不能少。"""
+    handler = _PlaylistHandler()
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is True
+    assert handler.queries == ["学习"]
+    assert playlist_tab.calls == ["playlist"]
+    assert handler.result_card.clicks == 1
+    assert handler.play_button.clicks == 1
+    assert handler.queue_reads == 1
+
+
+def test_driver_hands_the_engine_the_room_title_topic_and_playlist_it_parsed(
+    initialized_test_singletons, playlist_tab
+):
+    """`PlaybackOutcome` 上的三项都是 UI 上读到的事实：房名/话题归一歌单名，歌单名原样。"""
+    handler = _PlaylistHandler(playlist_name="学习|英语")
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert (outcome.title, outcome.topic, outcome.playlist) == ("学习", "英语", "学习|英语")
+
+
+def test_driver_carries_the_queue_text_the_reply_renders(
+    initialized_test_singletons, playlist_tab
+):
+    """`:playlist` 的回复模板是纯 `{playlist}`，它渲染的必须是播放队列本身。
+
+    因此走 `extra` 而不是 `PlaybackOutcome.playlist`：后者写进房间的
+    `current_playlist_name`，要保持歌单卡片上的原文，不是队列行。
+    """
+    handler = _PlaylistHandler(playlist_info={"playlist": "似是故人来 - 梅艳芳\n如风 - 王菲"})
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.extra["playlist"] == "似是故人来 - 梅艳芳\n如风 - 王菲"
+
+
+def test_driver_falls_back_to_the_playlist_name_when_the_queue_cannot_be_read(
+    initialized_test_singletons, playlist_tab
+):
+    """读不到队列是正常结局：歌已经在放，回复退回歌单名，而不是整条失败。"""
+    handler = _PlaylistHandler(playlist_info={"error": "No songs found in playlist"})
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is True
+    assert outcome.extra["playlist"] == "学习|英语"
+
+
+def test_driver_reports_a_missing_match_instead_of_starting_anything(
+    initialized_test_singletons, playlist_tab
+):
+    """「没有找到与…」是与「播放全部按钮不见了」不同的两件事，都不该响一次播放。"""
+    handler = _PlaylistHandler(found_key="not_found")
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("不存在的歌单", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert "不存在的歌单" in outcome.error
+    assert handler.play_button.clicks == 0
+
+
+def test_driver_reports_a_missing_play_all_button(initialized_test_singletons, playlist_tab):
+    """认出了歌单却没有「播放全部」：点开了详情页但一首都没放，如实报失败。"""
+    handler = _PlaylistHandler(play_all_key=None)
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert handler.queue_reads == 0
+
+
+def test_driver_reports_a_playlist_search_that_found_nothing(initialized_test_singletons, playlist_tab):
+    """`query_music` 返回 None（搜索框都没进去）时连歌单分类都不该切。"""
+    handler = _PlaylistHandler(query_found=False)
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert playlist_tab.calls == []
+
+
+def test_driver_reports_a_playlist_flow_exception_instead_of_raising(initialized_test_singletons, playlist_tab):
+    handler = _PlaylistHandler()
+
+    def _boom(_keys):
+        raise RuntimeError("session terminated")
+
+    handler._element_finder.wait_for_any_element = _boom
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert "session terminated" in outcome.error
+
+
+def test_driver_reports_the_missing_playlist_tab(initialized_test_singletons, playlist_tab):
+    """切不到歌单分类是用户能据以行动的失败：回「找不到歌单分类」，而不是静默继续。"""
+    playlist_tab.available = False
+    handler = _PlaylistHandler()
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert playlist_tab.calls == ["playlist"]
+    assert handler.result_card.clicks == 0

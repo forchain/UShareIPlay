@@ -15,6 +15,10 @@ import logging
 import time
 from html import unescape
 
+from appium.webdriver.common.appiumby import AppiumBy
+
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.helpers.playlist_parser import PlaylistParser
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
     ACCOMPANIMENT_DISABLED_ERROR,
@@ -43,6 +47,19 @@ from ushareiplay.managers.playback.player_page import (
 # 切到歌词分类后等页面重排的秒数。取自迁移前 LyricsCommand 的既有等待。
 LYRICS_TAB_SETTLE_SECONDS = 0.2
 
+# 歌单搜索结果页上「这是歌单卡片」与「搜了个空」的区别点（config.yaml 的
+# qq_music.elements）。合成一个列表而不是各判各的：任一先出现即停，避免先等满
+# 一个元素的超时再等第二个。
+PLAYLIST_RESULT_KEYS = ["playlist_result", "not_found"]
+
+# 「播放全部」在不同版本/不同页面下有三套文案，因此走三 key 兜底。
+PLAY_ALL_KEYS = ["play_all", "play_all_playlist", "play_all_compact"]
+
+# 歌单详情页第一行（歌名/歌手）按列拆开读：列容器与列内文字都是原生控件，没有
+# 独立 resource-id，只能按类名逐列取。
+LINEAR_LAYOUT_CLASS = "android.widget.LinearLayout"
+TEXT_VIEW_CLASS = "android.widget.TextView"
+
 # 播放页元素 key → 模式 key。与 `player_page` 里的私有映射同向，但驱动要自己
 # 反查点击后的模式，因此这里按公开常量重新推导，不去 import 对方的下划线名字。
 _MODE_KEY_BY_ELEMENT_KEY = {
@@ -70,13 +87,13 @@ class QQMusicUIDriver(MusicUIDriverPort):
         实现只读模式与查询词：请求者身份属于引擎的守护职责，不该出现在 UI 层
         （见 `MusicUIDriverPort.start_playback` 的约定）。
         """
-        if request.mode is not PlaybackMode.SONG:
-            # #425/#431/#434/#437 各自交付一种模式。未实现就响亮失败 ——
-            # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
-            return PlaybackOutcome.failed(
-                f"暂不支持的播放模式：{request.mode.value}"
-            )
-        return self._play_song(request.query)
+        if request.mode is PlaybackMode.SONG:
+            return self._play_song(request.query)
+        if request.mode is PlaybackMode.PLAYLIST:
+            return self._play_playlist(request.query)
+        # #425/#431/#437 各自交付其余模式。未实现就响亮失败 ——
+        # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
+        return PlaybackOutcome.failed(f"暂不支持的播放模式：{request.mode.value}")
 
     def _play_song(self, query: str) -> PlaybackOutcome:
         """`:play <query>` 的 UI 编排：查歌 → 点第一首 → 收藏 → 质量过滤。
@@ -134,6 +151,154 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """
         release_date = (playing_info.get("release_date") or "").strip()
         return {"release_date": release_date} if release_date else {}
+
+    # ------------------------------------------------------------------
+    # 歌单播放（#434）
+    # ------------------------------------------------------------------
+
+    def _play_playlist(self, query: str) -> PlaybackOutcome:
+        """`:playlist <query>` 的 UI 编排：搜歌单 → 点开 → 播放全部 → 读队列。
+
+        与单曲点播不同，这条编排的产物是**一个列表**而不是一首歌：房间标题与话题
+        来自歌单卡片上的名字（`PlaylistParser` 按 `｜`/方括号/破折号…的优先级拆
+        成主副标题），完整歌单名写进 `current_playlist_name`，而给用户看的回复是
+        点完「播放全部」之后队列里真正的歌。
+
+        这里同样不等播放就绪 —— 那件事归引擎（`MusicManager.play()` 经
+        `PlaybackMuting.guard` 轮询 MediaSession）。
+
+        Returns:
+            成功为 `PlaybackOutcome.started(...)`；失败一律以返回值汇报。
+        """
+        try:
+            return self._run_playlist_flow(query)
+        except Exception as exc:
+            # 带上原始原因：Appium 的失败原因（会话断开、控件不可交互……）互相之间
+            # 完全不同，只报「歌单播放失败」会让线上问题无从区分。
+            self.logger.warning(f"播放歌单失败: {query}: {exc}")
+            return PlaybackOutcome.failed(f"Failed to play playlist: {query}: {exc}")
+
+    def _run_playlist_flow(self, query: str) -> PlaybackOutcome:
+        handler = self._handler
+
+        if not handler.query_music(query):
+            self.logger.warning("Failed to query music in playlist")
+            return PlaybackOutcome.failed("Failed to query music playlist")
+
+        if not self._select_category_tab("playlist"):
+            self.logger.warning("Failed to find playlist tab")
+            return PlaybackOutcome.failed("Failed to find playlist tab")
+        self.logger.info("Selected playlist tab")
+
+        result_key, result = handler.element_finder.wait_for_any_element(
+            PLAYLIST_RESULT_KEYS
+        )
+        if not result_key or result_key == "not_found" or not result:
+            self.logger.warning(f"Failed to find playlist result with query {query}")
+            return PlaybackOutcome.failed(f"Failed to find playlist with query {query}")
+
+        result.click()
+        self.logger.info("Selected playlist result")
+
+        # 歌单名先整份留住：解析只用来切房名/话题，写进房间的「当前歌单」必须是
+        # 卡片上的原文，拆过之后就再也拼不回去了。
+        playlist_name = result.text or ""
+        subject, topic = PlaylistParser().parse_playlist_name(playlist_name)
+        song_name, singer_name = self._read_first_track()
+
+        # 解析不出主副标题时退回歌单里的第一行：宁可让房间显示一句歌名/歌手，
+        # 也不要留下一个空标题 —— 空标题会让房间沿用上一首歌单的话题。
+        if not subject:
+            self.logger.warning("Failed to parse playlist name")
+            subject = singer_name
+        if not topic:
+            topic = song_name
+
+        _, play_button = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
+        if not play_button:
+            self.logger.warning("Failed to find play all button (album or playlist)")
+            return PlaybackOutcome.failed("Failed to find play all button")
+
+        play_button.click()
+        self.logger.info("Selected play all button")
+
+        return PlaybackOutcome.started(
+            PlaybackTrack(song=song_name, singer=singer_name),
+            title=subject,
+            topic=topic,
+            playlist=playlist_name,
+            extra={"playlist": self._read_queue_text(fallback=playlist_name)},
+        )
+
+    def _read_first_track(self) -> tuple:
+        """读歌单详情页第一行的（歌名, 歌手）。
+
+        两者都是可有可无的兜底来源，因此这一段任何一步读不出来都退化成空串，
+        不让一个可选的补充信息变成整条歌单播放的失败。
+
+        Returns:
+            `(歌名, 歌手)`，任一读不到时该位为空串。
+        """
+        try:
+            item = self._handler.element_finder.try_find_element("result_item")
+            if not item:
+                return "", ""
+            rows = item.find_elements(AppiumBy.CLASS_NAME, LINEAR_LAYOUT_CLASS)
+            if not rows:
+                return "", ""
+            song = self._read_cell_text(rows[0])
+            singer = self._read_cell_text(rows[1]) if len(rows) > 1 else ""
+            return song, singer
+        except Exception as exc:
+            self.logger.warning(f"读取歌单第一行失败: {exc}")
+            return "", ""
+
+    @staticmethod
+    def _read_cell_text(row) -> str:
+        """取一列里的文字；列内没有 TextView 时如实回空串。"""
+        try:
+            cell = row.find_element(AppiumBy.CLASS_NAME, TEXT_VIEW_CLASS)
+            return (cell.text or "").strip()
+        except Exception:
+            return ""
+
+    def _read_queue_text(self, fallback: str) -> str:
+        """读点完「播放全部」之后的播放队列，作为给用户的回复正文。
+
+        读不到队列不是失败：歌已经在放了，把失败报给用户会让人以为歌没响。因此
+        退回歌单名，并按 warning 记一笔（与迁移前命令层的同一时刻、同一兜底）。
+
+        Args:
+            fallback: 队列读不出来时改用的歌单名。
+
+        Returns:
+            队列文本，或兜底的 `fallback`。
+        """
+        playlist_text, _, error = get_playlist_text_and_first_song(
+            self._handler.get_playlist_info()
+        )
+        if error:
+            self.logger.warning(
+                f"Failed to read playlist after playback started: {error}"
+            )
+            return fallback
+        return playlist_text
+
+    @staticmethod
+    def _select_category_tab(tab_name: str) -> bool:
+        """切到搜索结果的分类页。tab 选择是 `MusicManager` 上的既有委派，不重写一遍。
+
+        与 `_select_lyrics_tab` 同样在函数体内 import：`music_manager` 顶层会 import
+        本模块，静态 import 会形成 `driver → music_manager → driver` 的循环引用
+        （模块 docstring 里那个环同型）。
+        """
+        try:
+            from ushareiplay.managers.music_manager import MusicManager
+
+            return bool(MusicManager.instance().select_tab(tab_name))
+        except Exception as exc:
+            logging.getLogger("QQMusicUIDriver").warning(f"切换{tab_name}分类失败: {exc}")
+            return False
 
     # ------------------------------------------------------------------
     # 播放模式切换（#423）
@@ -335,7 +500,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         if not handler.query_music(query):
             return LyricsOutcome.failed(f'Failed to find song matching "{query}"')
 
-        if not self._select_lyrics_tab():
+        if not self._select_category_tab("lyrics"):
             return LyricsOutcome.failed("Failed to select lyrics tab")
 
         # 切 tab 后页面要重排，等分类结果稳定再读歌词
@@ -347,17 +512,6 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
         element.click()
         return LyricsOutcome.found(unescape(element.text or ""))
-
-    @staticmethod
-    def _select_lyrics_tab() -> bool:
-        """切到歌词分类。tab 选择是 `MusicManager` 上的既有委派，不重写一遍。"""
-        try:
-            from ushareiplay.managers.music_manager import MusicManager
-
-            return bool(MusicManager.instance().select_tab("lyrics"))
-        except Exception as exc:
-            logging.getLogger("QQMusicUIDriver").warning(f"切换歌词分类失败: {exc}")
-            return False
 
     def _quality_check(self, playing_info: dict) -> None:
         """把解析出的曲目交给老歌过滤；失败不应阻断播放本身。"""
