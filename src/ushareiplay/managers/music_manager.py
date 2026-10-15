@@ -7,6 +7,9 @@ from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.managers.playback.models import (
+    PLAY_MODE_BY_INDEX,
+    PLAY_MODE_INDEX_BY_KEY,
+    PLAY_MODE_NAMES,
     PlaybackRequest,
     PlaybackResult,
     PlaybackStatus,
@@ -111,6 +114,104 @@ class MusicManager(Singleton):
             direction=direction,
             max_swipes=max_swipes,
         )
+
+    # ------------------------------------------------------------------
+    # 播放模式（#423）
+    # ------------------------------------------------------------------
+
+    @property
+    def play_mode_key(self) -> str:
+        """记录在案的当前播放模式 key；没有记录时为 `unknown`。
+
+        这份缓存只有一个写入口（`_record_play_mode`），因此它与房间里的显示
+        不会各说各话。缓存只用来判断「已经是目标模式」，不作为 UI 事实 ——
+        真要确认，驱动会在切换时重读一次播放页。
+        """
+        return getattr(self.music_handler, "play_mode_key", None) or "unknown"
+
+    @staticmethod
+    def _normalize_play_mode(mode) -> Optional[str]:
+        """把 `0/1/-1`、`'0'/'1'/'-1'` 与 `list/single/random` 归一成同一个 key。
+
+        Returns:
+            `list`/`single`/`random` 之一；无法识别时返回 None。
+        """
+        if isinstance(mode, bool):
+            return None
+        if isinstance(mode, int):
+            return PLAY_MODE_BY_INDEX.get(mode)
+        if isinstance(mode, str):
+            text = mode.strip()
+            if text in PLAY_MODE_INDEX_BY_KEY:
+                return text
+            if text.lstrip("+") in {"0", "1", "-1"}:
+                return PLAY_MODE_BY_INDEX[int(text)]
+        return None
+
+    def _record_play_mode(self, mode_key: str, reason: str) -> None:
+        """把 UI 上观察到的模式写回房间缓存（驱动私有方法之外的唯一公开入口）。"""
+        note = getattr(self.music_handler, "note_play_mode", None)
+        if note is not None:
+            note(mode_key, reason)
+        elif self.music_handler is not None:
+            setattr(self.music_handler, "play_mode_key", mode_key)
+
+    async def set_play_mode(self, mode) -> dict:
+        """切换房间播放模式 —— 播放模式相关的唯一入口。
+
+        命令层只负责把参数原样递进来，并原样返回这里的回复（`success`/`mode`/
+        `message`/`error` 的用户可见文案与迁移前一致）。
+
+        Args:
+            mode: 目标模式。`0`/`1`/`-1` 与 `list`/`single`/`random` 都认。
+
+        Returns:
+            切换成功为 `{'success': True, 'mode': '单曲循环', 'message': ...}`；
+            已经在目标模式时 `message` 是「已经是…模式」。失败为 `{'error': ...}`，
+            包括没有音乐在放的「现在没有播放音乐，无法切换模式」。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是切换失败，
+                不该让命令层把它当成切换失败回复给用户。
+        """
+        target_key = self._normalize_play_mode(mode)
+        if target_key is None:
+            return {"error": "Invalid mode parameter, must be 0, 1 or -1"}
+
+        mode_name = PLAY_MODE_NAMES[target_key]
+        if self.play_mode_key == target_key:
+            # 已经是目标模式：不动 UI，也不必再问驱动确认。
+            return {
+                "success": True,
+                "mode": mode_name,
+                "message": f"已经是{mode_name}模式",
+            }
+
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.set_play_mode() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        outcome = driver.set_play_mode(target_key)
+
+        # 失败也要如实记下观察到的模式：驱动可能已经看清了播放页，只是没能切过去。
+        if outcome.mode and outcome.mode != "unknown":
+            self._record_play_mode(outcome.mode, reason="mode_ui_detect")
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        message = (
+            f"已经是{mode_name}模式"
+            if outcome.already_target
+            else f"成功切换到{mode_name}模式"
+        )
+        self.logger.info(
+            f"Play mode switched: target={target_key}, observed={outcome.mode}, "
+            f"already_target={outcome.already_target}"
+        )
+        return {"success": True, "mode": mode_name, "message": message}
 
     # ------------------------------------------------------------------
     # 深度播放引擎（#379）

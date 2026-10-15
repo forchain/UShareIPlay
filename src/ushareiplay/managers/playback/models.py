@@ -16,6 +16,22 @@ from enum import Enum
 from typing import Optional
 
 
+# 播放模式的词表：命令参数 ↔ 记录在案的 key ↔ 面向用户的名称。
+# 三处（:mode 命令、MusicManager、QQMusicHandler 的缓存）共用这一份定义，
+# 免得「参数怎么写」和「房间里怎么显示」各说各话。
+PLAY_MODE_BY_INDEX = {0: "list", 1: "single", -1: "random"}
+PLAY_MODE_INDEX_BY_KEY = {"list": 0, "single": 1, "random": -1}
+PLAY_MODE_NAMES = {
+    "list": "顺序播放",
+    "single": "单曲循环",
+    "random": "随机播放",
+    "unknown": "未知",
+}
+
+# 没有音乐在放时统一回给用户的那句话（`ModeCommand` 的用户可见契约之一）。
+NO_PLAYING_MUSIC_ERROR = "现在没有播放音乐，无法切换模式"
+
+
 class PlaybackMode(str, Enum):
     """房间支持的全部播放意图。
 
@@ -183,3 +199,33 @@ class PlaybackResult:
                 "album": self.track.album,
             }
         return {"error": self.error}
+
+
+@dataclass(frozen=True)
+class PlayModeOutcome:
+    """驱动端口切换播放模式后的观察结果（#423）。
+
+    与 `PlaybackOutcome` 分开：切换模式不产生曲目、不换歌，也就不该拖着
+    歌名歌手那一整套字段 —— `mode` 是 UI 上真正点亮着的那档模式。
+
+    Attributes:
+        ok: UI 编排是否走通（含「本来就已经是目标模式」这种成功）。
+        mode: 观察到的当前模式 key（`list`/`single`/`random`）；不知道时为 `unknown`。
+            失败时若驱动已经看见了当前模式，也会如实填上，让房间缓存不与 UI 脱节。
+        error: 失败原因（本地化），仅 `ok=False` 时有意义。
+        already_target: 进入播放页后发现本来就是目标模式 —— 区别于「点了一下才切过去」，
+            两者的用户可见措辞不同（「已经是…」vs「成功切换到…」）。
+    """
+
+    ok: bool
+    mode: str = "unknown"
+    error: Optional[str] = None
+    already_target: bool = False
+
+    @classmethod
+    def switched(cls, mode: str, *, already_target: bool = False) -> "PlayModeOutcome":
+        return cls(ok=True, mode=mode, already_target=already_target)
+
+    @classmethod
+    def failed(cls, error: str, *, mode: str = "unknown") -> "PlayModeOutcome":
+        return cls(ok=False, error=error, mode=mode)

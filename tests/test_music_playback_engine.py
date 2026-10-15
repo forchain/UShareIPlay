@@ -311,6 +311,9 @@ async def test_play_restores_the_microphone_when_the_ui_work_raises(initialized_
         def start_playback(self, request):
             raise RuntimeError("UI connection severed")
 
+        def set_play_mode(self, target_mode):
+            raise AssertionError("本用例不碰播放模式")
+
     engine = _build_engine(driver=_ExplodingDriver())
 
     with pytest.raises(RuntimeError, match="UI connection severed"):
