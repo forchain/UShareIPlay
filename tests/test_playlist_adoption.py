@@ -107,6 +107,14 @@ def test_adopt_skips_empty_title_and_topic(adoption):
     assert adoption._room_profile.topics == []
 
 
+def test_adopt_skips_topic_for_song_mode(adoption):
+    """单曲模式不更改房间话题。"""
+    adoption.adopt(requester="张三", mode="song", topic="晴天 - 周杰伦")
+    assert adoption._room_profile.topics == []
+    assert adoption._music.list_mode == "song"
+    assert adoption._info.player_name == "张三"
+
+
 def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
     """写序是接口的一部分：Soul 侧写入失败时，房间对「谁在放、什么类型」的认知仍然正确。"""
     adoption._room_profile.title_result = {"error": "Cannot switch to Soul app"}

@@ -17,10 +17,18 @@ from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.managers.user_event_hooks import (
+    ENTER,
+    EXIT,
+    FOCUS,
+    RECEIVE,
+    RETURN,
+    UserEventHooks,
+)
+from ushareiplay.managers.user_event_hooks.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
 
@@ -182,18 +190,34 @@ class CommandManager(Singleton):
     def _playback_muting():
         return PlaybackMuting.instance()
 
+    @staticmethod
+    def _declares_playback_muting(command) -> bool:
+        """该命令是否声明参与播放静音保护。
+
+        读的是类属性而不是方法存在性：这里的 command 只要求「命令形状」（有
+        `process()` 与 `playback_muting`），不少调用方与测试传的是鸭子类型替身，
+        没有 `BaseCommand` 的方法。判定按能力回退，不要求替身补全整个基类。
+        """
+        return bool(getattr(command, "playback_muting", False))
+
     @contextmanager
     def playback_muting_guard(self, command, command_info):
         """播放类命令的静音保护上下文。
 
         未声明 playback_muting 的命令不触碰麦克风；声明了则闭麦执行命令，
         公屏通知发送完毕后等待底层播放就绪再开麦。
+
+        命令可用 `playback_muting_applies(parameters)` 按本次调用再判一次：一个命令里
+        只有部分播放路径迁到 `MusicManager.play()` 时，已迁移的那条由引擎在守护通过后
+        自己闭麦 —— 命令级闭麦发生在守护之前，只会让被拒绝的切歌也响一次静音。
         """
-        if not getattr(command, "playback_muting", False):
+        parameters = command_info.get("parameters") or []
+        applies = getattr(command, "playback_muting_applies", None)
+        should_mute = applies(parameters) if callable(applies) else self._declares_playback_muting(command)
+        if not should_mute:
             yield
             return
 
-        parameters = command_info.get("parameters") or []
         with self._playback_muting().guard(
             expected_song=command.playback_expected_song(parameters)
         ):
@@ -507,60 +531,59 @@ class CommandManager(Singleton):
         return success_count
 
     def get_command_modules(self):
-        """获取所有已加载的命令模块"""
+        """获取所有已加载的命令模块。
+
+        用户事件分发自 #436 起不再遍历这里 —— 事件走 `UserEventHooks` 直接路由，
+        座位复核是显式调用。保留本方法是因为它仍是公开的模块清单接口（外部排查 /
+        工具脚本读它），`self.command_modules` 本身也仍由加载器维护。
+        """
         return self.command_modules
 
     async def notify_user_leave(self, username: str):
         """
         Notify all commands when a user leaves.
-        For avatar users (with canonical mapping), only triggers when ALL aliases
-        of the same canonical user are offline.
+
+        全分身离线判定、canonical 主账号名解析与记忆沉淀调度都已下沉到
+        `UserEventHooks.fire(EXIT, ...)`（#429）：只有当该用户的全部分身都不在
+        在线列表里时才会触发，且一律以主账号名下发。
 
         Args:
             username: Username of the user who left
         """
+        await UserEventHooks.instance().fire(EXIT, username)
+
+    async def _check_seats_on_entry(self, username: str, event_label: str):
+        """用户进入/返回派对时复核**座位**（#436 从 `:seat` 的反射钩子提上来）。
+
+        这不是用户事件钩子，是副作用订阅者：`:enter` / `:return` 只会把用户配置的
+        命令投进队列，谁都不会顺带看一眼座位。因此座位复核必须显式调，否则删掉
+        反射分发后进入/返回时的座位检查会**静默**停掉 —— 没有报错，只是座位再也不
+        自动认领。反射分发本身不会回来：#436 已删掉按属性名找钩子的那条路径，
+        再挂回去等于把它原样恢复。
+
+        下面的 `SeatManager` 是延迟导入，**环的另一端是 `SeatObservationManager`**：
+        它为了触发专注人数联动，在 `seat_manager/seat_observation.py` 里反过来延迟
+        导入 `CommandManager` 并调 `notify_focus_count_change`（ADR-0009 §4：懒加载
+        严格限定于真循环依赖）。两侧因此都不能在模块顶层互相 import。
+
+        他人房间（`RoomState.in_guest_room()`）不碰座位；异常在这里就地吞掉并记日志 ——
+        一个用户的座位复核失败不该带崩整条事件链。
+        """
+        if RoomState.in_guest_room():
+            return
         try:
-            all_avatars = await UserDAO.get_all_avatar_usernames(username)
-            online_users = InfoManager.instance().get_online_users()
-            still_online = all_avatars & online_users
+            from ushareiplay.managers.seat_manager import SeatManager
 
-            if still_online:
-                self.logger.info(
-                    f"User leave skipped for '{username}': "
-                    f"avatars still online: {still_online}"
-                )
-                return
-
-            # 以主账号 canonical username 触发退出事件
-            raw_user = await UserDAO.get_or_create_raw(username)
-            canonical_user = await UserDAO.resolve_canonical(raw_user)
-            canonical_username = canonical_user.username
-
-            self.logger.info(
-                f"All avatars offline for '{username}' → triggering user_leave "
-                f"as canonical '{canonical_username}'"
-            )
-
-            # Schedule memory consolidation for the leaving user (canonical)
-            try:
-                if MemoryManager.is_initialized():
-                    MemoryManager.instance().schedule_consolidation_user(canonical_username)
-            except Exception:
-                self.logger.warning(f"Failed to schedule memory consolidation for user_leave '{canonical_username}'")
-
-            for module in self.get_command_modules().values():
-                try:
-                    if hasattr(module.command, 'user_leave'):
-                        await module.command.user_leave(canonical_username)
-                except Exception:
-                    self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
-
+            await SeatManager.instance().check_seats_on_entry(username)
         except Exception:
-            self.logger.error(f"Error in notify_user_leave: {traceback.format_exc()}")
+            self.logger.error(f"Error checking seats on {event_label}: {traceback.format_exc()}")
 
     async def notify_user_enter(self, username: str):
         """
-        Notify all commands when a user enters
+        Notify when a user enters
+
+        该用户配置的进入命令由 UserEventHooks 统一入队；座位复核是显式调用，不走
+        属性名分发（#436）。
 
         Args:
             username: Username of the user who entered
@@ -571,16 +594,15 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
 
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_enter'):
-                    await module.command.user_enter(username)
-            except Exception:
-                self.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(ENTER, username)
+        await self._check_seats_on_entry(username, "user_enter")
 
     async def notify_user_return(self, username: str):
         """
-        Notify all commands when a user returns（用户重新打开 app 返回派对）
+        Notify when a user returns（用户重新打开 app 返回派对）
+
+        该用户配置的返回命令由 UserEventHooks 统一入队（入队而非直接执行，队列在
+        drain 时才展开 `{user_name}` 宏）。座位复核同样提为显式调用（#436）。
 
         Args:
             username: Username of the user who returned
@@ -591,27 +613,20 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_return'):
-                    await module.command.user_return(username)
-            except Exception:
-                self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
-
+        await UserEventHooks.instance().fire(RETURN, username)
+        await self._check_seats_on_entry(username, "user_return")
 
     async def notify_gift_receive(self, username: str):
         """
-        Notify all commands when a gift or heat contribution is received
+        Notify when a gift or heat contribution is received
+
+        该用户配置的收礼物命令由 UserEventHooks 统一入队。刻意**不**调度记忆整合
+        —— 与 notify_user_return 的差异是历史有意为之，不要"顺手修好"。
 
         Args:
             username: Username of the user who sent the gift
         """
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_gift_receive'):
-                    await module.command.user_gift_receive(username)
-            except Exception:
-                self.logger.error(f"Error in command user_gift_receive: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(RECEIVE, username)
 
     async def notify_focus_count_change(
         self,
@@ -621,7 +636,12 @@ class CommandManager(Singleton):
         seat_info: dict | None = None,
     ):
         """
-        Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) or seats change.
+        Notify when 专注人数 (focus_count / tvStudyRoomDesc) or seats change.
+
+        `changed_users` 的三态原样透传给 `fire`，**不可归一**：
+        - `None` = 触发者未知，回退为所有已配置用户的联动命令；
+        - `[]`   = 本次没有用户变更，一条都不发；
+        - `[...]` = 只发名单里这些人的。
 
         Args:
             before: Previous parsed count, or None on first observation
@@ -629,11 +649,8 @@ class CommandManager(Singleton):
             changed_users: Specific users whose seat/focus status changed, or None for all
             seat_info: Optional dictionary mapping username to seat details
         """
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, "focus_count_change"):
-                    await module.command.focus_count_change(
-                        before, after, changed_users=changed_users, seat_info=seat_info
-                    )
-            except Exception:
-                self.logger.error(f"Error in command focus_count_change: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(
+            FOCUS,
+            ctx={"before": before, "after": after, SEAT_INFO_CTX_KEY: seat_info or {}},
+            usernames=changed_users,
+        )

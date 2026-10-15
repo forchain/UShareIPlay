@@ -35,6 +35,7 @@ from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
@@ -446,6 +447,7 @@ class AppController(Singleton):
             from ushareiplay.managers.room_profile import RoomProfileManager
             from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
+            from ushareiplay.managers.user_event_hooks import UserEventHooks
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             from ushareiplay.state.playlist_state import PlaylistState
@@ -467,7 +469,9 @@ class AppController(Singleton):
             MessageManager.initialize(self.soul_handler)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_manager = MicManager.initialize(self.soul_handler)
-            self.music_manager = MusicManager.initialize()
+            self.music_manager = MusicManager.initialize(
+                ui_driver=QQMusicUIDriver(self.music_handler)
+            )
             self.register_driver_subscriber(self.music_manager)
             self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
             self.recovery_manager = RecoveryManager.instance()
@@ -490,6 +494,9 @@ class AppController(Singleton):
             )
             AdminManager.initialize(self.soul_handler)
             KeywordManager.initialize(self.soul_handler)
+            # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
+            # 这一个模块里，各命令文件只是薄适配器（#422）。
+            UserEventHooks.initialize(self.soul_handler)
             from ushareiplay.managers.memory_manager import MemoryManager
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()

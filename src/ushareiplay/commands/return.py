@@ -1,13 +1,12 @@
 """
-用户返回命令 - 配置用户返回派对时自动执行的命令
+`:return` 命令：用户事件钩子深度模块的薄适配器。
 
-与 enter 命令逻辑一致，支持数据库配置返回事件行为。
-当用户重新打开 app 返回派对时（服务器保留会话的“返回”场景）触发。
+当用户重新打开 app 返回派对时（服务器保留会话的“返回”场景）触发该用户配置的
+返回命令。shlex 解析、前缀校验与全部文案都在 `UserEventHooks` 内部。
 """
-import traceback
-import shlex
+
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.dal.return_dao import ReturnDao
+from ushareiplay.managers.user_event_hooks import RETURN, UserEventHooks
 
 
 class ReturnCommand(BaseCommand):
@@ -15,95 +14,16 @@ class ReturnCommand(BaseCommand):
     error_message = '处理返回命令时出错'
 
     async def do_process(self, message_info, parameters):
-        """Process return command
-
-        Args:
-            message_info: MessageInfo object
-            parameters: List of parameters
-
-        Returns:
-            dict: Result with success message or error
-        """
-        try:
-            original_content = message_info.content
-            parts = original_content.split(None, 1)
-            if len(parts) < 2:
-                return {'error': '缺少参数。使用: :return [add|del|list|clear]'}
-
-            params = shlex.split(parts[1])
-        except ValueError:
-            return {'error': '参数格式错误，带空格的参数请使用引号包裹'}
-
-        if not params:
-            return {'error': '缺少参数。使用: :return [add|del|list|clear]'}
-
-        operation = params[0]
-        username = message_info.nickname
-
-        if operation == 'add':
-            if len(params) < 2:
-                return {'error': '缺少命令内容。使用: :return add "命令内容"'}
-
-            cmd_text = params[1]
-            if not cmd_text.startswith((':', '：', '/', '／')):
-                return {'error': '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
-
-            await ReturnDao.create(username, cmd_text)
-            return {'message': f'已添加返回命令: {cmd_text}'}
-
-        elif operation == 'del':
-            if len(params) < 2:
-                return {'error': '缺少命令ID。使用: :return del <id>'}
-
-            try:
-                command_id = int(params[1])
-            except ValueError:
-                return {'error': '命令ID必须是数字'}
-
-            deleted = await ReturnDao.delete_by_id(command_id)
-            if deleted:
-                return {'message': f'已删除命令 ID: {command_id}'}
-            return {'error': f'未找到命令 ID: {command_id}'}
-
-        elif operation == 'list':
-            commands = await ReturnDao.get_by_username(username)
-            if not commands:
-                return {'message': '您还没有设置任何返回命令'}
-
-            message_lines = ['您的返回命令列表:']
-            for cmd in commands:
-                message_lines.append(f'  [{cmd.id}] {cmd.command}')
-            return {'message': '\n'.join(message_lines)}
-
-        elif operation == 'clear':
-            count = await ReturnDao.delete_all_by_username(username)
-            if count > 0:
-                return {'message': f'已清除 {count} 个返回命令'}
-            return {'message': '您没有任何返回命令需要清除'}
-
-        else:
-            return {'error': f'未知操作: {operation}。使用: :return [add|del|list|clear]'}
+        """配置用户返回派对时要执行的命令。解析与渲染都在 UserEventHooks 内部。"""
+        return await UserEventHooks.instance().execute_crud(
+            RETURN, message_info.nickname, message_info.content
+        )
 
     async def user_return(self, username: str):
-        """用户返回派对时调用（与 user_enter 逻辑一致，从数据库读取并执行该用户的返回命令）"""
-        try:
-            commands = await ReturnDao.get_by_username(username)
-            if not commands:
-                return
+        """用户返回派对时，把该用户配置的返回命令投进队列。
 
-            self.handler.logger.info(f"User {username} returned, executing {len(commands)} return command(s)")
-
-            from ushareiplay.core.message_queue import MessageQueue
-            from ushareiplay.models.message_info import MessageInfo
-
-            message_queue = MessageQueue.instance()
-            for cmd in commands:
-                message_info = MessageInfo(
-                    content=cmd.command,
-                    nickname=username
-                )
-                await message_queue.put_message(message_info)
-                self.handler.logger.info(f"Queued return command [{cmd.id}] for {username}: {cmd.command}")
-
-        except Exception as e:
-            self.handler.log_error(f"Error in return user_return: {traceback.format_exc()}")
+        方法保留：它是命令层的事件接缝，测试直接调它断言入队结果。生产触发不再走
+        按属性名分发（#436 已删）—— `CommandManager.notify_user_return` 直接调
+        `UserEventHooks.fire`。
+        """
+        await UserEventHooks.instance().fire(RETURN, username)
