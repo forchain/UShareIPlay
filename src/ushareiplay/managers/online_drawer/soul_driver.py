@@ -30,6 +30,10 @@ import re
 from typing import Optional
 
 from ushareiplay.managers.online_drawer.driver import (
+    ADMIN_CONFIRM_CLOSE_KEYS,
+    ADMIN_CONFIRM_KEYS,
+    ADMIN_CONTROL_TIMEOUT,
+    ADMIN_INVITE_KEY,
     AVATAR_CLICK_Y_RATIO,
     CLOSE_KEYS,
     DEFAULT_SCROLL_DURATION_MS,
@@ -648,6 +652,135 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
         if finder is None:
             return None
         for key in GIFT_ACTION_KEYS:
+            try:
+                if finder.try_find_element(key, log=False):
+                    return key
+            except Exception:
+                continue
+        return None
+
+    # ------------------------------------------------------------------
+    # 房管（#439）
+    # ------------------------------------------------------------------
+
+    async def read_admin_invite_label(self) -> Optional[str]:
+        """读房管开关的文案；按钮没渲染出来返回 None。
+
+        等待沿用旧 `AdminManager` 的那一次 `wait_for_element_clickable('manager_invite')`：
+        读不到正是「没有这枚按钮」那条失败路径，等一下是值得的。
+        """
+        finder = self._finder()
+        if finder is None:
+            return None
+        try:
+            invite = finder.wait_for_element_clickable(
+                ADMIN_INVITE_KEY, timeout=ADMIN_CONTROL_TIMEOUT
+            )
+        except Exception as e:
+            self._log_warning(f"等房管开关出错: {e}")
+            return None
+        if not invite:
+            return None
+        try:
+            return invite.text
+        except Exception as e:
+            self._log_warning(f"读房管开关文案出错: {e}")
+            return None
+
+    async def click_admin_invite(self) -> bool:
+        """点房管开关。
+
+        刻意**不再等一次**：文案刚才是靠等出来的，按钮此刻就在页面上，再等一遍只是在白
+        费 `wait_for_element_clickable` 的默认超时。
+        """
+        finder = self._finder()
+        if finder is None:
+            return False
+        try:
+            invite = finder.try_find_element(ADMIN_INVITE_KEY, log=False)
+        except Exception as e:
+            self._log_warning(f"找房管开关出错: {e}")
+            return False
+        if not invite:
+            return False
+        try:
+            invite.click()
+            return True
+        except Exception as e:
+            self._log_warning(f"点击房管开关失败: {e}")
+            return False
+
+    async def confirm_admin_action(self, action: str) -> bool:
+        """等确认框弹出，点掉它里面对应动作的按钮。
+
+        沿用旧实现的两步原样：`wait_for_element_clickable(key)` 等它弹出来，再对它自己
+        `.click()`（不是坐标点击 —— 确认框是系统弹出的对话框，按钮位置由系统定死）。
+        """
+        key = ADMIN_CONFIRM_KEYS.get(action)
+        if key is None:
+            return False
+        finder = self._finder()
+        if finder is None:
+            return False
+        try:
+            confirm = finder.wait_for_element_clickable(key, timeout=ADMIN_CONTROL_TIMEOUT)
+        except Exception as e:
+            self._log_warning(f"等房管确认框出错: {e}")
+            return False
+        if not confirm:
+            return False
+        try:
+            confirm.click()
+            return True
+        except Exception as e:
+            self._log_warning(f"点击房管确认框 {key} 失败: {e}")
+            return False
+
+    async def dismiss_admin_confirm(self) -> bool:
+        """确认框没被点掉时，按顺序试页内 X 收掉它。"""
+        finder = self._finder()
+        gesture = self._gesture()
+        if finder is None or gesture is None:
+            return False
+        marker = self._admin_confirm_marker()
+        if marker is None:
+            # 幂等：确认框本来就没开着，这一步已经完成了。
+            return True
+
+        for key in ADMIN_CONFIRM_CLOSE_KEYS:
+            try:
+                close_btn = None
+                if hasattr(finder, "wait_for_element_clickable"):
+                    close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
+                if not close_btn and hasattr(finder, "try_find_element"):
+                    close_btn = finder.try_find_element(key, log=False)
+                if not close_btn:
+                    continue
+                if not gesture.click_element_at(close_btn):
+                    self._log_warning(f"点击房管确认框关闭按钮 {key} 失败")
+                    continue
+                # 关掉了不能就算数：按确认框自己的按钮确认它真的走了，否则调用方会把
+                # 一个还悬着的弹窗当成已经收拾干净。
+                if hasattr(finder, "wait_for_element_disappear"):
+                    finder.wait_for_element_disappear(
+                        marker, timeout=ADMIN_CONTROL_TIMEOUT, poll_frequency=0.1
+                    )
+                if self._admin_confirm_marker() is None:
+                    return True
+            except Exception as e:
+                self._log_warning(f"收房管确认框时 {key} 出错: {e}")
+        return False
+
+    def _admin_confirm_marker(self) -> Optional[str]:
+        """房管确认框此刻盖着的话报出它的按钮 key，没盖着返回 None。
+
+        与 `_gift_popup_marker` 同理：确认框没有自己的容器控件，能证明「它还在」的就是
+        那两个互斥的动作按钮 —— 它们也是旧实现分别等的那两个 key。
+        """
+        finder = self._finder()
+        if finder is None:
+            return None
+        for key in ADMIN_CONFIRM_KEYS.values():
             try:
                 if finder.try_find_element(key, log=False):
                     return key

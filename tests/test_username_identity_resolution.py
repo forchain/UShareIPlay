@@ -14,7 +14,6 @@ Soul UI 只暴露当前在房间里可见的名字（分身名），而 DB 侧 `
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -311,36 +310,34 @@ async def test_resolve_visible_username_returns_the_name_soul_shows(alias_pair):
 
 @pytest.mark.asyncio
 async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_pair):
+    """canonical 名进来，抽屉里点开的是分身名那一行，登记也记分身名。
+
+    #439 起这一步解析发生在**抽屉会话**里（`OnlineDrawerManager.resolve_visible_username`
+    接的是 `InfoManager.resolve_visible_username`），命令层与 `AdminManager` 都不再自己
+    解析一次。因此这里驱动真实的房管流程：在线名单里只有分身名，canonical 名在抽屉里
+    是找不到人的 —— 解析错一次这条断言就会失败。
+    """
     PresenceTracker.instance()._online_users = {AVATAR}
-    manager = AdminManager.initialize()
-    manager._handler = MagicMock()
-    manager._logger = MagicMock()
 
-    invite = MagicMock()
-    invite.text = "管理邀请"
-    confirm = MagicMock()
-    manager._handler.element_finder.wait_for_element_clickable.side_effect = lambda key: (
-        invite if key == "manager_invite" else (confirm if key == "confirm_invite" else None)
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=[AVATAR], journal=journal)
+    OnlineDrawerManager.reset_instance()
+    OnlineDrawerManager.initialize(
+        handler=SimpleNamespace(logger=None, controller=None),
+        driver=driver,
+        name_resolver=InfoManager.instance().resolve_visible_username,
     )
-
-    opened = []
-
-    class FakeUserManager:
-        # manage_admin 走异步的身份感知入口 open_user_profile
-        async def open_user_profile(self, nickname):
-            opened.append(nickname)
-            return {"user": nickname} if nickname == AVATAR else {
-                "error": "User not found in online users list", "user": nickname
-            }
-
-    with patch("ushareiplay.managers.user_manager.UserManager.instance", return_value=FakeUserManager()), \
-         patch("ushareiplay.managers.recovery_manager.RecoveryManager.instance", return_value=MagicMock()):
+    manager = AdminManager.initialize(SimpleNamespace(logger=None))
+    try:
         result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
+    finally:
+        OnlineDrawerManager.reset_instance()
 
-    assert opened == [AVATAR]
+    assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
     assert result == {"user": AVATAR, "action": "Invited"}
     # 麦位观测用 UI 名字标注管理员，因此登记也必须是分身名
     assert manager.is_room_admin(AVATAR)
+    assert driver.drawer_open is False
 
 
 @pytest.mark.asyncio

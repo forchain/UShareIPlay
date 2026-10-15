@@ -212,6 +212,26 @@ class OnlineDrawerManager(Singleton):
             # 收尾失败不能让调用方的正常结果变成异常（同 `close_profile_card` 的理由）。
             self.logger.warning(f"[online_drawer] 收送礼弹窗时出错: {e}")
 
+    async def dismiss_admin_confirm(self) -> None:
+        """交接的另一半之一：把盖在资料卡上的房管确认框收掉。
+
+        与送礼弹窗同一套规矩 —— 持 UI 独占锁、只在弹窗真的悬着时才动手、收不掉就记
+        一条警告并保持原状，绝不盲按返回。房管流程（#439）用它替掉旧实现那两处
+        `press_back()`：盲按返回会把确认框收掉，顺手把资料卡与抽屉留在屏幕上。
+        """
+        try:
+            async with self._ui_session("online_drawer:dismiss_admin_confirm"):
+                driver = self._require_driver()
+                if not await driver.dismiss_admin_confirm():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过页内关闭键收起房管确认框，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 房管确认框已收起")
+        except Exception as e:
+            # 收尾失败不能让调用方的正常结果变成异常（同 `close_profile_card` 的理由）。
+            self.logger.warning(f"[online_drawer] 收房管确认框时出错: {e}")
+
     @asynccontextmanager
     async def _ui_session(self, reason: str):
         """持有 UI 独占锁。
