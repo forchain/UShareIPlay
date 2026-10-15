@@ -51,6 +51,11 @@ class TitleCommand(BaseCommand):
     def update(self):
         """Check and update title periodically with simple retry logic."""
         try:
+            # 兜底接地：进程重启时人已经坐在房里，`join_party` 那条线一次都不会走，
+            # 房名就永远读不回来（`:theme` 只能报「当前标题: 未设置」）。这一句是
+            # 只读且有守卫的：已经接地就立刻返回，一个 UI 调用都不发生。
+            self.room_profile_manager.ensure_synced_on_return()
+
             result = self.room_profile_manager.update_title()
             if not result.get('ui_updated'):
                 return
