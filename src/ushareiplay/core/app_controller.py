@@ -35,6 +35,7 @@ from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
@@ -468,7 +469,9 @@ class AppController(Singleton):
             MessageManager.initialize(self.soul_handler)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_manager = MicManager.initialize(self.soul_handler)
-            self.music_manager = MusicManager.initialize()
+            self.music_manager = MusicManager.initialize(
+                ui_driver=QQMusicUIDriver(self.music_handler)
+            )
             self.register_driver_subscriber(self.music_manager)
             self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
             self.recovery_manager = RecoveryManager.instance()

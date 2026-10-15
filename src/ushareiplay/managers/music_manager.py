@@ -7,6 +7,11 @@ from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.managers.playback.models import (
+    ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
+    PLAY_MODE_BY_INDEX,
+    PLAY_MODE_INDEX_BY_KEY,
+    PLAY_MODE_INVALID_PARAMETER_ERROR,
+    PLAY_MODE_NAMES,
     PlaybackRequest,
     PlaybackResult,
     PlaybackStatus,
@@ -111,6 +116,223 @@ class MusicManager(Singleton):
             direction=direction,
             max_swipes=max_swipes,
         )
+
+    # ------------------------------------------------------------------
+    # 播放模式（#423）
+    # ------------------------------------------------------------------
+
+    @property
+    def play_mode_key(self) -> str:
+        """记录在案的当前播放模式 key；没有记录时为 `unknown`。
+
+        写入口不止一处，但都归 `QQMusicHandler.note_play_mode()`：本类的
+        `_record_play_mode()`（切换后按 UI 观察结果记账）、生产驱动的
+        `_note_play_mode()`（切换前后两次观察），以及 `QQMusicHandler` 读歌单时
+        发现漂移的自愈路径。这个缓存只用来判断「已经是目标模式」，不作为 UI 事实
+        —— 真要确认，驱动会在切换时重读一次播放页。
+        """
+        return getattr(self.music_handler, "play_mode_key", None) or "unknown"
+
+    @staticmethod
+    def _normalize_play_mode(mode) -> Optional[str]:
+        """把 `0/1/-1`、`'0'/'1'/'-1'` 与 `list/single/random` 归一成同一个 key。
+
+        Returns:
+            `list`/`single`/`random` 之一；无法识别时返回 None。
+        """
+        if isinstance(mode, bool):
+            return None
+        if isinstance(mode, int):
+            return PLAY_MODE_BY_INDEX.get(mode)
+        if isinstance(mode, str):
+            text = mode.strip()
+            if text in PLAY_MODE_INDEX_BY_KEY:
+                return text
+            if text.lstrip("+") in {"0", "1", "-1"}:
+                return PLAY_MODE_BY_INDEX[int(text)]
+        return None
+
+    def _record_play_mode(self, mode_key: str, reason: str) -> None:
+        """把 UI 上观察到的模式写回房间缓存。
+
+        写入一律走 `QQMusicHandler.note_play_mode()` 的既有契约（那条路会校验
+        key 并在变化时记日志），不再自己 `setattr` 兜一份 —— 绕过校验会让非法 key
+        悄悄进缓存，而缓存是 `/info`、关键词广播与歌单自愈都要读的共享状态。
+        """
+        if self.music_handler is not None:
+            self.music_handler.note_play_mode(mode_key, reason)
+
+    async def set_play_mode(self, mode) -> dict:
+        """切换房间播放模式 —— 播放模式相关的唯一入口。
+
+        命令层只负责把参数原样递进来，并原样返回这里的回复（`success`/`mode`/
+        `message`/`error` 的用户可见文案与迁移前一致）。
+
+        Args:
+            mode: 目标模式。`0`/`1`/`-1` 与 `list`/`single`/`random` 都认。
+
+        Returns:
+            切换成功为 `{'success': True, 'mode': '单曲循环', 'message': ...}`；
+            已经在目标模式时 `message` 是「已经是…模式」。失败为 `{'error': ...}`，
+            包括没有音乐在放的「现在没有播放音乐，无法切换模式」。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是切换失败，
+                不该让命令层把它当成切换失败回复给用户。
+        """
+        target_key = self._normalize_play_mode(mode)
+        if target_key is None:
+            return {"error": PLAY_MODE_INVALID_PARAMETER_ERROR}
+
+        mode_name = PLAY_MODE_NAMES[target_key]
+        if self.play_mode_key == target_key:
+            # 已经是目标模式：不动 UI，也不必再问驱动确认。
+            return {
+                "success": True,
+                "mode": mode_name,
+                "message": f"已经是{mode_name}模式",
+            }
+
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.set_play_mode() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        outcome = driver.set_play_mode(target_key)
+
+        # 失败也要如实记下观察到的模式：驱动可能已经看清了播放页，只是没能切过去。
+        if outcome.mode and outcome.mode != "unknown":
+            self._record_play_mode(outcome.mode, reason="mode_ui_detect")
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        message = (
+            f"已经是{mode_name}模式"
+            if outcome.already_target
+            else f"成功切换到{mode_name}模式"
+        )
+        # 本来就是目标模式时一个点击都没发生，按铁律不记「切换成功」的日志
+        # （与 `set_accompaniment` 同一把尺子）。
+        if not outcome.already_target:
+            self.logger.info(
+                f"Play mode switched: target={target_key}, observed={outcome.mode}, "
+                f"already_target={outcome.already_target}"
+            )
+        return {"success": True, "mode": mode_name, "message": message}
+
+    # ------------------------------------------------------------------
+    # 歌词（#430）
+    # ------------------------------------------------------------------
+
+    def query_lyrics(self, query: Optional[str] = None) -> dict:
+        """取歌词原文 —— 歌词取法的唯一入口。
+
+        命令层只负责把查询词原样递进来、以及把拿到的原文折行分组发公屏；查歌、
+        切歌词 tab、点开结果、读 DOM、解 HTML 实体全在 `ui_driver` 那边。
+
+        Args:
+            query: 搜索词。留空则兜底成当前正在放的这首
+                （`get_playback_info()` 的「歌名 歌手 专辑」），
+                因此 `:lyrics` 不带参数就能问「现在这首什么词」。
+
+        Returns:
+            取到为 `{'lyrics': <歌词原文>}`；没找到、切不到歌词 tab 或读不出文字
+            时为 `{'error': <原因>}` —— 都是正常结局，不抛异常，房间据此回复即可。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是「没有歌词」，
+                不该让命令层把它当成取词失败回复给用户。
+        """
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.query_lyrics() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        text = (query or "").strip()
+        if not text:
+            info = self.get_playback_info() or {}
+            if "error" in info:
+                self.logger.error("Lyrics lookup skipped: playback info unavailable")
+                return {"error": "Failed to get playback info"}
+            text = " ".join(
+                str(info.get(key) or "")
+                for key in ("song", "singer", "album")
+            ).strip()
+            self.logger.info(f"Using current song info as lyrics query: {text}")
+
+        outcome = driver.query_lyrics(text)
+        if not outcome.ok:
+            self.logger.error(f"Lyrics lookup failed: query={text}, error={outcome.error}")
+            return {"error": outcome.error}
+
+        self.logger.info(f"Lyrics found: query={text}, characters={len(outcome.text)}")
+        return {"lyrics": outcome.text}
+
+    # ------------------------------------------------------------------
+    # 伴奏开关（#427）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_accompaniment(enable) -> Optional[bool]:
+        """把 `1/0`、`'1'/'0'` 与 `True/False` 归一成同一个布尔值。
+
+        Returns:
+            `True`/`False` 之一；无法识别时返回 None。
+
+        注意 `isinstance(True, int)` 为真，因此先挡掉布尔，否则 `1` 会被
+        当成整数、`True` 落到别的分支上去。
+        """
+        if isinstance(enable, bool):
+            return enable
+        if isinstance(enable, int) and enable in (0, 1):
+            return bool(enable)
+        if isinstance(enable, str) and enable.strip() in {"0", "1"}:
+            return enable.strip() == "1"
+        return None
+
+    async def set_accompaniment(self, enable) -> dict:
+        """开关房间的伴唱/伴奏模式 —— 伴奏相关的唯一入口。
+
+        命令层只负责把参数原样递进来，并原样返回这里的回复
+        （`{'enabled': 'on'|'off'}` 与迁移前一致）。
+
+        Args:
+            enable: 目标状态。`1`/`True` 开伴唱（伴奏），`0`/`False` 回到原唱。
+
+        Returns:
+            切换成功为 `{'enabled': 'on'}` 或 `{'enabled': 'off'}`；失败为
+            `{'error': ...}`，包括没有音乐在放的「没有播放音乐，无法切换伴奏模式」。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是切换失败，
+                不该让命令层把它当成切换失败回复给用户。
+        """
+        target = self._normalize_accompaniment(enable)
+        if target is None:
+            return {"error": ACCOMPANIMENT_INVALID_PARAMETER_ERROR}
+
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.set_accompaniment() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        outcome = driver.set_accompaniment(target)
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        # 本来就是目标状态时没有任何点击发生，按铁律不记日志。
+        if not outcome.already_target:
+            self.logger.info(
+                f"Accompaniment toggled: target={'on' if target else 'off'}, "
+                f"observed={'on' if outcome.enabled else 'off'}"
+            )
+        return {"enabled": "on" if target else "off"}
 
     # ------------------------------------------------------------------
     # 深度播放引擎（#379）
@@ -220,13 +442,20 @@ class MusicManager(Singleton):
                     status=PlaybackStatus.STARTED,
                     track=outcome.track,
                     error=adopt_error.get("error"),
+                    playlist=outcome.playlist or request.playlist,
+                    extra=outcome.extra,
                 )
 
             self.logger.info(
                 f"Playback started: mode={request.mode.value}, "
                 f"song={outcome.track.song}, requester={request.requester}"
             )
-            return PlaybackResult(status=PlaybackStatus.STARTED, track=outcome.track)
+            return PlaybackResult(
+                status=PlaybackStatus.STARTED,
+                track=outcome.track,
+                playlist=outcome.playlist or request.playlist,
+                extra=outcome.extra,
+            )
 
     @staticmethod
     def _song_key(song_info) -> str:
