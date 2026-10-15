@@ -1,109 +1,47 @@
-from appium.webdriver.common.appiumby import AppiumBy
-
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
-from ushareiplay.helpers.playlist_parser import PlaylistParser
+from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
+
 
 class PlaylistCommand(BaseCommand):
+    """`:playlist <query>` 切到某个歌单；裸 `:playlist` 查询当前队列。
+
+    两条路径的语义不同，因此共用一个命令类，但只有一条参与播放静音：
+
+    - **带查询词** —— 一次真正的切歌，交给 `MusicManager.play()`：守护、静音、
+      房间同步都由引擎流水线负责，命令层不再自己守护、自己采纳。
+    - **不带查询词** —— 纯读取当前播放队列。不切歌、不采纳、不碰麦克风。
+
+    Elements 与选择器一律来自 `config.yaml` 的 `qq_music.elements`；歌单搜索、
+    点卡片、播放全部等 UI 编排归 `QQMusicUIDriver`（见 `playback/`）。
+    """
+
     playback_muting = True
     handler_attr = 'music_handler'
 
+    def playback_muting_applies(self, parameters) -> bool:
+        """只有带查询词的那条路径参与命令级闭麦。
+
+        带参数时这条路径已迁进 `MusicManager.play()`，由引擎在守护通过之后自己
+        闭麦；命令级闭麦发生在守护之前，只会让「被守护拒绝的那一次」也响一次
+        无来由的静音（见 `BaseCommand.playback_muting_applies`）。
+
+        不带参数是纯查询：一个字都不该被切，也不该占用麦克风。
+        """
+        return bool(parameters) and bool(getattr(self, "playback_muting", False))
+
     async def do_process(self, message_info, parameters):
-        query = ' '.join(parameters)
+        if not parameters:
+            # 只读路径：直接读队列，不构造播放请求、不进引擎。
+            return self.handler.get_playlist_info()
 
-        if len(parameters) == 0:
-            playing_info = self.handler.get_playlist_info()
-        else:
-            # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
-            config = getattr(self.controller, "config", None)
-            protection_error = await self.playlist_adoption.guard_switch(
-                message_info.nickname, config=config
+        result = await self.music_manager.play(
+            # 直接构造而非 `PlaybackRequest.playlist(...)`：`playlist` 已是该数据类
+            # 的字段（写进房间的 `current_playlist_name`），同名 classmethod 会顶掉
+            # 字段的类级默认值，让 `request.playlist` 变成一个绑定方法。
+            PlaybackRequest(
+                mode=PlaybackMode.PLAYLIST,
+                query=' '.join(parameters),
+                requester=message_info.nickname,
             )
-            if protection_error:
-                self.handler.logger.info(
-                    f"{message_info.nickname} 尝试播放歌单，但 {self.info_manager.player_name} 正在播放"
-                )
-                return protection_error
-
-            playing_info = self.play_playlist(query, message_info.nickname)
-
-        return playing_info
-
-    def play_playlist(self, query: str, requester=None):
-        if not self.handler.query_music(query):
-            self.handler.logger.error('Failed to query music in playlist')
-            return {
-                'error': 'Failed to query music playlist',
-            }
-
-        if not self.music_manager.select_tab('playlist'):
-            self.handler.logger.error('Failed to find playlist tab')
-            return {
-                'error': 'Failed to find playlist tab',
-            }
-        self.handler.logger.info("Selected playlist tab")
-
-        key, element = self.handler.element_finder.wait_for_any_element(['playlist_result', 'not_found'])
-        if not key or key == 'not_found':
-            self.handler.logger.error(f"Failed to find playlist result with query {query}")
-            return {
-                'error': f'Failed to find playlist with query {query}',
-            }
-
-        result = element
-        result.click()
-        self.handler.logger.info("Selected playlist result")
-
-        playlist = result.text
-        original_playlist_name = playlist  # Store complete original name before parsing
-        parser = PlaylistParser()
-
-        subject, topic = parser.parse_playlist_name(playlist)
-
-        result_item = self.handler.element_finder.try_find_element('result_item')
-        song_name = None
-        singer_name = None
-        if result_item:
-            elements = result_item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.LinearLayout')
-            if elements:
-                song_name = elements[0].find_element(AppiumBy.CLASS_NAME, 'android.widget.TextView')
-                if len(elements) > 1:
-                    singer_name = elements[1].find_element(AppiumBy.CLASS_NAME, 'android.widget.TextView')
-
-        if not subject:
-            self.handler.logger.warning('Failed to parse playlist name')
-            if singer_name:
-                subject = singer_name.text
-
-        if not topic:
-            self.handler.logger.info('Failed to parse playlist topic')
-            if song_name:
-                topic = song_name.text
-
-        key, play_button = self.handler.element_finder.wait_for_any_element(['play_all', 'play_all_playlist', 'play_all_compact'])
-        if not play_button:
-            self.handler.logger.error("Failed to find play all button (album or playlist)")
-            return {
-                'error': 'Failed to find play all button',
-            }
-
-        play_button.click()
-        self.handler.logger.info("Selected play all button")
-
-        playlist_info = self.handler.get_playlist_info()
-        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
-        if error:
-            self.handler.logger.warning(f"Failed to read playlist after playback started: {error}")
-            playlist_text = original_playlist_name
-
-        self.playlist_adoption.adopt(
-            requester=requester,
-            mode='playlist',
-            title=subject,
-            topic=topic,
-            playlist=original_playlist_name,
         )
-
-        return {
-            'playlist': playlist_text,
-        }
+        return result.as_response()

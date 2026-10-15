@@ -1,91 +1,36 @@
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
 
 
 class AlbumCommand(BaseCommand):
-    playback_muting = True
+    """`:album [query]` —— 播某张专辑；不带参数时播「现在这首所在的专辑」。
+
+    整条编排交给 `MusicManager.play()`：搜专辑、切专辑分类、点专辑卡、点「播放
+    全部」、读队列都在 `QQMusicUIDriver`（见 `playback/`），守护、静音与房间同步
+    由引擎的同一条流水线负责。
+
+    空查询词原样递进去：由驱动读当前播放再拼成 QQ Music 认得的检索词。命令层若
+    自己读一次播放信息，同一次播放就会被读两遍，而那份「现在在放什么」在两次
+    读取之间随时可能已经变了。
+
+    因此本命令不再声明 `playback_muting`，也没有 `playback_muting_applies()`：
+    命令级闭麦发生在守护之前，被守护拒绝的切歌也会在房间里响一次无来由的静音
+    （ADR-0007 把闭麦的边界定在真正的切歌过程上，那正是引擎守卫管的事）。
+
+    Elements 与选择器一律来自 `config.yaml` 的 `qq_music.elements`。
+    """
+
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
-        query = ' '.join(parameters)
-
-        # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
-        config = getattr(self.controller, "config", None)
-        protection_error = await self.playlist_adoption.guard_switch(
-            message_info.nickname, config=config
-        )
-        if protection_error:
-            self.handler.logger.info(
-                f"{message_info.nickname} 尝试播放专辑，但 {self.info_manager.player_name} 正在播放"
+        result = await self.music_manager.play(
+            # 直接构造而非 `PlaybackRequest.album(...)`：构造器名一旦与本数据类
+            # 的字段同名就会顶掉字段的类级默认值，让 `request.<字段>` 变成一个
+            # 绑定方法。专辑只需要「模式 + 查询词 + 请求者」三样。
+            PlaybackRequest(
+                mode=PlaybackMode.ALBUM,
+                query=' '.join(parameters),
+                requester=message_info.nickname,
             )
-            return protection_error
-
-        info = self.play_album(query, message_info.nickname)
-        return info
-
-    def play_album(self, query, requester=None):
-        if query == "":
-            info = MusicManager.instance().get_playback_info()
-            if not info:
-                self.handler.logger.error(f"Failed to get playback info with query {query}")
-                return {'error': f'Failed to get playback info'}
-            query = f'{info["song"]} {info["singer"]} {info["album"]}'
-        if not self.handler.query_music(query):
-            self.handler.logger.error(f"Failed to query music with query {query}")
-            return {
-                'error': 'Failed to query album',
-            }
-        if not self.music_manager.select_tab('album'):
-            self.handler.logger.error(f"Failed to select album tab with query {query}")
-            return {
-                'error': 'Failed to select album tab',
-            }
-
-        key, element = self.handler.element_finder.wait_for_any_element(['album_result', 'not_found'])
-        if not key or key == 'not_found':
-            self.handler.logger.error(f"Not found album result with query {query}")
-            return {
-                'error': f'Failed to find album result with query {query}',
-            }
-        album_result = self.handler.element_finder.find_elements('album_result')
-        if len(album_result) < 2:
-            self.handler.logger.error(f"Failed to find album result with query {query}")
-            return {
-                'error': 'Failed to find album result',
-            }
-        album_name =  album_result[0]
-        album_singer = album_result[1]
-        topic = album_name.text
-        title = album_singer.text
-
-        album_name.click()
-        self.handler.logger.info("album name clicked")
-
-        key, play_button = self.handler.element_finder.wait_for_any_element(['play_all'])
-        if not play_button:
-            self.handler.logger.error(f"Failed to find play button for query {query}")
-            return {'error': 'Failed to find play button'}
-
-        play_button.click()
-        self.handler.logger.info("play button clicked")
-
-        playlist_info = self.handler.get_playlist_info()
-        playlist_text, _, error = get_playlist_text_and_first_song(playlist_info)
-        if error:
-            self.handler.logger.warning(f"Failed to read album playlist after playback started: {error}")
-            playlist_text = f"{title} - {topic}"
-
-        self.handler.key_actions.press_back()
-
-        self.playlist_adoption.adopt(
-            requester=requester,
-            mode='album',
-            title=title,
-            topic=topic,
-            playlist=f"{title} - {topic}",
         )
-
-        return {
-            'playlist': playlist_text
-        }
+        return result.as_response()

@@ -12,6 +12,7 @@
 推荐分发不在本模块：它没有冷却，是一次性的开关，#393 处理。
 """
 
+import math
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -26,6 +27,14 @@ TITLE_COOLDOWN_MINUTES = 10
 
 #: 草稿库拥有的字段，顺序即默认冷却表里的顺序。
 FIELDS = ('topic', 'notice', 'title')
+
+#: 两次「开始一次抽屉写入」之间的最小间隔（秒）。
+#:
+#: 三个字段各有各的预算（5 / 15 / 10 分钟），但 Soul 限制的是**房间信息面板的
+#: 编辑动作**本身：话题刚落地 6 秒再去改房名，提交就被判「改得太频繁」。被拒一次
+#: 的代价是一整个字段周期（房名 = 10 分钟静默），所以宁可在这里多等 60 秒 ——
+#: 相对字段预算是零头，却能把「承诺 soon -> 被拒 -> 罚 10 分钟」换成「下一拍写成功」。
+SURFACE_SPACING_SECONDS = 60
 
 
 class ProfileDraftStore:
@@ -97,12 +106,49 @@ class ProfileDraftStore:
         self._write(field).clear()
 
     # ------------------------------------------------------------------
-    # 冷却
+    # 冷却：两个问题分开答
     # ------------------------------------------------------------------
 
+    def surface_last_touched(self, now: Optional[datetime] = None) -> Optional[datetime]:
+        """三个字段里**最近**一次真正动手写抽屉的时刻（没写过则 None）。"""
+        stamps = [w.last_attempt_at for w in self._writes.values() if w.last_attempt_at]
+        return max(stamps) if stamps else None
+
+    def spacing_remaining_seconds(self, now: Optional[datetime] = None) -> float:
+        """距离抽屉表面安静下来还差多少秒 —— 表面是一块，不分字段。"""
+        last = self.surface_last_touched(now)
+        if last is None:
+            return 0.0
+        reference = now or datetime.now()
+        elapsed = (reference - last).total_seconds()
+        return max(0.0, SURFACE_SPACING_SECONDS - elapsed)
+
     def can_apply_now(self, field: str) -> bool:
-        """从未尝试过、或已过冷却时长时为 True。"""
+        """该字段**自己的**预算够不够：从未尝试过、或已过冷却时长时为 True。
+
+        这只回答「字段自己的 5/15/10 分钟到了没」。抽屉**会话内部**的连带动作
+        （房名写入顺手把被冲掉的公告当场补回去，用户故事 #6）问的是这个问题 ——
+        它不开新的写入会话，因此不该被表面节奏闸拦去排队。
+        要「开始一次新的抽屉写入」，请问 `can_start_write()`。
+        """
         return self._write(field).can_apply_now()
+
+    def can_start_write(self, field: str, now: Optional[datetime] = None) -> bool:
+        """现在能不能**开始**一次该字段的抽屉写入：字段预算 + 抽屉表面都安静。"""
+        if not self._write(field).can_apply_now():
+            return False
+        return self.spacing_remaining_seconds(now) <= 0.0
+
+    def minutes_until_write(self, field: str, now: Optional[datetime] = None) -> int:
+        """距离真的能写还差几分钟：字段预算与抽屉表面里更晚的那一个。
+
+        字段预算那一半沿用 `PendingWrite.remaining_minutes()` 的 `int()` 向下截断
+        （ADR-0009 要求逐字一致）；表面那一半向上取整，因为 0 会被读成「马上就能写」，
+        而那正是被拒一次的起点。
+        """
+        budget = self._write(field).remaining_minutes()
+        spacing = self.spacing_remaining_seconds(now)
+        return max(budget, math.ceil(spacing / 60) if spacing > 0 else 0)
 
     def remaining_minutes(self, field: str) -> int:
         """距离可写入还差多少分钟（未冷却时为 0）。"""

@@ -82,6 +82,8 @@ class RoomState(Singleton):
         """设置房间ID"""
         if self._room_id != value:
             self.logger.info(f"Room ID updated: {self._room_id} -> {value}")
+            # 房间一换，上一间房读回来的房名/主题就成了旧值。
+            self._invalidate_room_profile_ui_state()
         self._room_id = value
 
     def _get_state_file_path(self) -> Path:
@@ -230,8 +232,26 @@ class RoomState(Singleton):
         except Exception as e:
             # 换房后座位快照没清掉会拿上一间房的数据做 diff，不能静默吞掉
             self.logger.error(f"Failed to clear seat observation on room clear: {e}")
+        self._invalidate_room_profile_ui_state()
         self._clear_room_scoped_runtime()
         self.logger.info("Cleared room state")
+
+    def _invalidate_room_profile_ui_state(self) -> None:
+        """作废房间档案里「从 UI 读回来」的那份事实。
+
+        `RoomProfileManager.ensure_synced_on_return()` 用 `is_initialized` 判断
+        「这一间房读过没有」。换房 / 退房时不把它退回 False，新房间就会沿用上间房
+        的房名，而且再也读不回真值。延迟 import：`room_profile` 顶层就 import
+        本模块。
+        """
+        from ushareiplay.managers.room_profile import RoomProfileManager
+
+        try:
+            if RoomProfileManager.is_initialized():
+                RoomProfileManager.instance().invalidate_ui_state()
+        except Exception as e:
+            # 档案没作废 = 新房间继续沿用旧房名，不能静默吞掉。
+            self.logger.error(f"Failed to invalidate room profile on room change: {e}")
 
     def _clear_room_scoped_runtime(self) -> None:
         """随房间一起作废的运行期状态：上麦触发的播放静音保护动态开启。

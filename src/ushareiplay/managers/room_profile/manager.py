@@ -12,6 +12,7 @@
         <每个字段只做自己的编辑>
 
     results = RoomProfileManager.instance().audit_and_repair()   # 一次性全量检查与修正
+    RoomProfileManager.instance().ensure_synced_on_return()  # 回房/建房后把真实房名读回来（只读，不开窗）
 
 `with_window_open()` 只在「窗口是它打开的」时候负责关窗；窗口本来就开着时
 （例如被外层流程打开），退出后保持原状，让外层决定何时关。
@@ -25,6 +26,7 @@ import asyncio
 import logging
 import time
 import traceback
+from datetime import datetime, timedelta
 from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
@@ -38,6 +40,11 @@ from ushareiplay.managers.room_profile.driver import (
     RoomProfileDrawerDriverPort,
 )
 from ushareiplay.state.room_state import RoomState
+
+#: 没读到真实房名时，下一次尝试接地的间隔（秒）。接地挂在心跳上、每拍都走，
+#: 而那次判定读最坏要等 `room_name_in_dialog` 两秒 —— 读不到就得退避，否则每拍
+#: 给监控循环白加两秒。换房会清掉退避（见 `invalidate_ui_state`）。
+GROUNDING_RETRY_SECONDS = 60
 
 #: 话题的打开入口。话题原先点的是黑板上的 `room_topic`，而不是抽屉默认的
 #: `chat_room_title`；两者指向同一个抽屉，但入口保持不变。
@@ -114,6 +121,8 @@ class RoomProfileManager(Singleton):
         self._current_theme = None
         self.current_title = None
         self.is_initialized = False
+        # 接地读的退避时刻：读不到就别每拍都吃一次 2 秒的元素等待（心跳是每拍都走的）。
+        self._last_grounding_attempt_at = None
         self.pending_ui_update = False
         self.title_settle_seconds = TITLE_SETTLE_SECONDS
         # 改房名会把公告冲成系统默认文案：这里只负责**判定**并记下上一条，
@@ -319,7 +328,8 @@ class RoomProfileManager(Singleton):
             'remaining_time': None,
         }
         if self.drafts.has_pending('topic'):
-            result['remaining_time'] = self.drafts.remaining_minutes('topic')
+            # 对外报的是「真的还能等多久」，所以抽屉表面的节奏也要算进来。
+            result['remaining_time'] = self.drafts.minutes_until_write('topic')
         return result
 
     def set_topic(self, topic: str, requester: str = None) -> Dict:
@@ -345,13 +355,13 @@ class RoomProfileManager(Singleton):
         new_topic = clean_banner_text(topic, TOPIC_MAX_LENGTH)
         self.drafts.set_pending('topic', new_topic)
 
-        if self.drafts.can_apply_now('topic'):
+        if self.drafts.can_start_write('topic'):
             self.logger.info(
                 f'Topic {new_topic} queued by {requester or "system"}, will be updated soon'
             )
             return {'topic': f'{new_topic}. Topic will update soon'}
 
-        remaining_minutes = self.drafts.remaining_minutes('topic')
+        remaining_minutes = self.drafts.minutes_until_write('topic')
         self.logger.info(
             f'Topic {new_topic} queued by {requester or "system"} '
             f'will be updated in {remaining_minutes} minutes'
@@ -375,7 +385,8 @@ class RoomProfileManager(Singleton):
         if not topic:
             return {'skipped': 'no_pending_topic'}
 
-        if not self.drafts.can_apply_now('topic'):
+        # 表面正热就别去开这个头：一次被拒要罚一整个字段周期，多等 60 秒买得到。
+        if not self.drafts.can_start_write('topic'):
             return {'skipped': 'cooldown'}
 
         self.logger.info(f'Attempting to update topic to {topic}')
@@ -499,7 +510,7 @@ class RoomProfileManager(Singleton):
         收成一处：两处的差别只在**排队的时机**（`set_notice` 先排队再问冷却，
         `restore_notice` 只在冷却中才排队），返回面本身没有理由分叉。
         """
-        remaining_minutes = self.drafts.remaining_minutes('notice')
+        remaining_minutes = self.drafts.minutes_until_write('notice')
         return {
             'cooldown': True,
             'remaining_minutes': remaining_minutes,
@@ -527,7 +538,7 @@ class RoomProfileManager(Singleton):
 
         self.drafts.set_pending('notice', notice)
 
-        if not self.drafts.can_apply_now('notice'):
+        if not self.drafts.can_start_write('notice'):
             result = self._notice_cooldown_result(notice)
             self.logger.info(
                 f"Notice queued by {requester or 'system'} but in cooldown, "
@@ -564,7 +575,7 @@ class RoomProfileManager(Singleton):
         if not notice:
             return {'skipped': 'no_pending_notice'}
 
-        if not self.drafts.can_apply_now('notice'):
+        if not self.drafts.can_start_write('notice'):
             return {'skipped': 'cooldown'}
 
         self.logger.info(f'Attempting to set notice to: {notice}')
@@ -866,8 +877,8 @@ class RoomProfileManager(Singleton):
         new_title = clean_banner_text(title, TITLE_MAX_LENGTH)
         self.drafts.set_pending('title', new_title)
 
-        if not self.drafts.can_apply_now('title'):
-            remaining_minutes = self.drafts.remaining_minutes('title')
+        if not self.drafts.can_start_write('title'):
+            remaining_minutes = self.drafts.minutes_until_write('title')
             self.logger.info(
                 f'Title {new_title} queued by {requester or "system"} '
                 f'will be updated in {remaining_minutes} minutes'
@@ -977,10 +988,16 @@ class RoomProfileManager(Singleton):
         return self.drafts.pending('title')
 
     def can_update_now(self):
+        """房名**自己**的 10 分钟预算够不够（不含抽屉表面节奏）。"""
         return self.drafts.can_apply_now('title')
 
     def get_remaining_cooldown_minutes(self):
-        return self.drafts.remaining_minutes('title')
+        """距离房名真的能写还差几分钟：字段预算与抽屉表面里更晚的那一个。
+
+        `:theme` / `:title` 的「剩余更新时间」读的是这个数 —— 报 0 会被读成
+        「马上就能写」，而那正是撞上一次被拒、再被罚 10 分钟的起点。
+        """
+        return self.drafts.minutes_until_write('title')
 
     def has_pending_ui_update(self):
         return self.pending_ui_update
@@ -1027,7 +1044,10 @@ class RoomProfileManager(Singleton):
     # ------------------------------------------------------------------
 
     def initialize_from_ui(self) -> Dict:
-        """冷启动时从抽屉读一次真实房名，填出 `(主题, 标题)`。
+        """从 UI 读一次真实房名，填出 `(主题, 标题)`。
+
+        抽屉开着就读抽屉里那一行，没开就读主界面的 `chat_room_title`（判定读，
+        不开窗、不点击）—— 回房/建房后的接地走的就是这条只读路径。
 
         有主题在排队时**不**用 UI 覆盖主题 —— 那会顶掉用户刚下的指令。
         """
@@ -1053,6 +1073,29 @@ class RoomProfileManager(Singleton):
         self.is_initialized = True
         self.logger.info(f'Initialized title from UI (no theme): {room_title_text}')
         return {'success': True, 'title': room_title_text, 'initialized': True}
+
+    def _in_grounding_backoff(self) -> bool:
+        """上一次接地尝试失败后，`GROUNDING_RETRY_SECONDS` 之内不再重试。"""
+        if self._last_grounding_attempt_at is None:
+            return False
+        deadline = self._last_grounding_attempt_at + timedelta(seconds=GROUNDING_RETRY_SECONDS)
+        return datetime.now() < deadline
+
+    def invalidate_ui_state(self) -> None:
+        """作废「从 UI 读回来」的那份事实：换房 / 建房之后必须重新接地。
+
+        房名、主题都是**这一间房**的 UI 事实，房间一换就成了上一间房的旧值。
+        `is_initialized` 回到 False，`ensure_synced_on_return` 的守卫才放得开
+        新房间去重读一次；否则「已经读过了」会把旧房名一路带进新房间。
+
+        冷却预算与排队中的草稿**不动**：那是用户刚下的指令与 Soul 侧的写入节奏，
+        与「读到过什么」不是一回事。
+        """
+        self.current_title = None
+        self._current_theme = None
+        self.is_initialized = False
+        # 换房 = 重新欠一次接地，退避计时器不得把新房间一起挡住。
+        self._last_grounding_attempt_at = None
 
     def _parse_title_from_ui(self):
         """没初始化过时的一次兜底读。半角 `|` 也认 —— 既有实现如此。"""
@@ -1135,7 +1178,7 @@ class RoomProfileManager(Singleton):
         if not self.drafts.has_pending('title') and not self.pending_ui_update:
             return {'skipped': True, 'reason': 'no pending update'}
 
-        if not self.can_update_now():
+        if not self.drafts.can_start_write('title'):
             return {'cooldown': True, 'remaining_minutes': self.get_remaining_cooldown_minutes()}
 
         title_to_update = self.get_title_to_update()
@@ -1348,37 +1391,47 @@ class RoomProfileManager(Singleton):
         return {"error": "派对推荐设置已暂时停用"}
 
     def ensure_synced_on_return(self) -> Dict:
-        """回到/恢复房间或建房之后调用：状态未知就把整份房间档案核对一遍。
+        """回房 / 进房 / 建房之后，把房间档案的 UI 事实**读**回来。
 
-        窗口的打开/关闭与窗口内各类字段的审计顺序归本模块所有；本方法只负责
-        「要不要做」的决策 —— 已经有记录就不开窗，免得每次回房都白开一次抽屉。
+        本方法只负责「要不要读」的决策：这一间房已经读过真实房名就直接跳过，
+        免得每次回房都白读一次。
+
+        守卫问的是**本模块自己知不知道**（`is_initialized`），不是推荐状态记没记过：
+        #413 之后推荐那一行已经不在抽屉里，`recommendation_enabled` 在建房时就被写成
+        非 None，拿它当守卫等于把接地永久短路 —— 房名、主题再也读不回真实值，
+        `current_title` 停在 None，`:theme` 只能说「当前标题: 未设置」，房名写入
+        被 Soul 拒绝时连兜底都没有。
+
+        **不开抽屉**：`initialize_from_ui` 优先读抽屉里的房名，抽屉没开时回落到主
+        界面那一行 `chat_room_title` 的文本，一个点击都不发生 —— 与 #413「不再为了
+        推荐开抽屉」的契约一致。公告纠偏与派对类型纠偏也不必在这里重做：它们本来就
+        跑在每一次抽屉写入会话里（`sync_while_open`）。
+
+        读不到（房名那一行还没渲染出来）不算接地：保持未初始化，下一次回房再读。
         """
         if RoomState.in_guest_room():
             return {"skipped": True, "reason": "guest_room"}
 
-        if self.room_state.recommendation_enabled is not None:
-            return {"skipped": True, "reason": "already_saved"}
+        if self.is_initialized:
+            return {"skipped": True, "reason": "already_initialized"}
 
+        if self._in_grounding_backoff():
+            # 上一次没读到，退避期内不再重复读：这条是被心跳每拍调的。
+            return {"skipped": True, "reason": "grounding_backoff"}
+
+        self._last_grounding_attempt_at = datetime.now()
         try:
-            audit_opened = True
-            try:
-                audit_result = self.audit_and_repair()
-                # audit_and_repair 在「打开就失败」时返回 {'open': ...}，那时抽屉
-                # 从来没被打开过，也就没什么可关的。
-                audit_opened = 'open' not in audit_result
-            except Exception as e:
-                self.logger.warning(f"Error in room info audit: {e}")
-
-            # 只有抽屉真的被打开、并且此刻确实已经关掉，才说「已关窗」。打开失败时
-            # 过去照样打这一句，那是一句假话，还会把真正的打开失败从日志里盖掉。
-            if audit_opened and not self.is_open():
-                self.logger.info(
-                    "Closed room info window after auditing room attributes"
-                )
-            return {"success": True, "recommendation_enabled": self.room_state.recommendation_enabled}
+            result = self.initialize_from_ui()
         except Exception:
-            self.logger.error(f"Error in ensure_synced_on_return: {traceback.format_exc()}")
-            return {"error": "Error during active recommendation sync"}
+            self.logger.error(f"Error in room profile grounding: {traceback.format_exc()}")
+            return {"error": "Error during room profile grounding"}
+
+        if 'error' in result:
+            # 没读到真实房名就别声称接地：保持未初始化，下一次回房再读一次。
+            self.logger.warning(f"Room profile not grounded, will retry on next return: {result['error']}")
+            return result
+
+        return {"success": True, "initialized": self.is_initialized}
 
     # ------------------------------------------------------------------
     # 派对类型：抽屉里的第三行（#393）
