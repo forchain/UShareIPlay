@@ -454,8 +454,10 @@ def test_radar_reports_a_failure_when_the_radar_tab_is_missing(initialized_test_
     assert "radar" in outcome.error.lower()
 
 
-@pytest.mark.parametrize("mode", [PlaybackMode.PLAYLIST, PlaybackMode.SINGER, PlaybackMode.ALBUM, PlaybackMode.RADIO])
+@pytest.mark.parametrize("mode", [PlaybackMode.SINGER, PlaybackMode.ALBUM])
 def test_modes_belonging_to_other_tickets_still_fail_loudly(mode, initialized_test_singletons):
+    # PLAYLIST（#434）与 RADIO（#431）已各自交付，它们的编排测试见
+    # tests/test_playlist_command_migration.py 与 tests/test_radio_seam.py。
     handler = _QQMusicHandlerFake(queue=QUEUE_TEXT)
 
     outcome = _driver(handler).start_playback(

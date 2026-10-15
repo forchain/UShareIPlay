@@ -254,14 +254,15 @@ PLAYBACK_COMMANDS = [
     ("playlist", "PlaylistCommand"),
     ("album", "AlbumCommand"),
     ("singer", "SingerCommand"),
-    ("radio", "RadioCommand"),
 ]
 
 # #425：`:play` 三条分支与整个 `:fav` 都迁进了 `MusicManager.play()`，麦克风
 # 生命周期由引擎的守卫按切歌边界接管，命令层不再声明参与。
+# #431：`:radio` 的五个频道同样搬进了驱动，迁法相同。
 ENGINE_OWNED_PLAYBACK_COMMANDS = [
     ("play", "PlayCommand"),
     ("fav", "FavCommand"),
+    ("radio", "RadioCommand"),
 ]
 
 

@@ -7,9 +7,9 @@
 「Appium 点了哪个坐标」。
 
 `start_playback` 已实现的模式：`SONG`（#421）、`FAVORITES` 与 `RADAR`（#425）、
-`PLAYLIST`（#434）；`SINGER` / `ALBUM`（#437）与 `RADIO`（#431）仍未交付。
-各模式的编排测试见 `tests/test_favorites_radar_seam.py` 与
-`tests/test_playlist_seam.py`。
+`PLAYLIST`（#434）、`RADIO`（#431）；`SINGER` / `ALBUM`（#437）仍未交付。
+`FAVORITES` / `RADAR` / `RADIO` 的编排测试见
+`tests/test_favorites_radar_seam.py` 与 `tests/test_radio_seam.py`。
 伴奏的两条 UI 通路（#427）都收在 `set_accompaniment` 后面：页上直接开关，以及
 K歌入口只在「更多」菜单里那条要滚动着找的路。
 """
