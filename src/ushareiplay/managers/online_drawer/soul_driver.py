@@ -12,6 +12,10 @@
 刻意**不移植**旧实现里的 `press_back` 与遮罩点击两段兜底：盲按返回会误退出派对
 房间（spec #426 问题陈述 #1），而 `ivClose` 已经是确定可用的手势。旧路径保持原样
 不动，等 #440 收口时统一退役。
+
+#435 追加的资料卡与私聊那几步同样不是新设计的交互，而是把旧 `UserManager` 的裸
+Appium 调用原样搬进来：点头像的 `y_ratio=0.7`、私聊各步 5 秒、找返回入口 3 秒、以及
+`item_left_back` 之后补一下标题栏返回，都是旧实现里真机调出来的既有值，逐字保留。
 """
 
 import asyncio
@@ -19,6 +23,7 @@ import re
 from typing import Optional
 
 from ushareiplay.managers.online_drawer.driver import (
+    AVATAR_CLICK_Y_RATIO,
     CLOSE_KEYS,
     DEFAULT_SCROLL_DURATION_MS,
     DEFAULT_SETTLE_TIMEOUT,
@@ -26,10 +31,20 @@ from ushareiplay.managers.online_drawer.driver import (
     ENTRY_KEY,
     ONLINE_CONTAINER_KEY,
     POST_SCROLL_SETTLE_SECONDS,
+    PRIVATE_CHAT_BUTTON_KEY,
+    PRIVATE_CHAT_TIMEOUT,
+    PRIVATE_MESSAGE_INPUT_KEY,
+    PRIVATE_MESSAGE_SEND_KEY,
+    PROFILE_CARD_AVATAR_KEY,
+    PROFILE_CARD_NICKNAME_KEY,
+    PROFILE_CARD_TIMEOUT,
+    ROOM_ENTRY_KEYS,
+    ROOM_RETURN_TIMEOUT,
     ROW_CONTAINER_KEY,
     ROW_FOLLOW_STATE_KEY,
     ROW_NAME_KEY,
     SETTLE_SECONDS,
+    TITLEBAR_BACK_KEY,
     MemberRow,
     OnlineDrawerDriverPort,
 )
@@ -263,13 +278,219 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
         except Exception:
             return False
 
+    # ------------------------------------------------------------------
+    # 资料卡与私聊（#435）
+    # ------------------------------------------------------------------
+
+    async def open_member_profile(self, visible_username: str) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+
+        row = self._find_row_element(finder, visible_username)
+        if row is None:
+            self._log_warning(f"在线用户抽屉里找不到 {visible_username} 那一行")
+            return False
+
+        try:
+            row.click()
+        except Exception as e:
+            self._log_warning(f"点击 {visible_username} 的在线用户行失败: {e}")
+            return False
+
+        # 点了不算开：资料卡是弹出动画，不等它出现在页面上就往下走，下一步读到的还是
+        # 抽屉那一帧，调用方会把「卡片没弹出来」误当成正常继续。
+        if not self._wait_for_profile_card(finder):
+            self._log_warning(f"点击 {visible_username} 后资料卡没有出现")
+            return False
+        return True
+
+    async def is_profile_card_open(self) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+        try:
+            card = finder.try_find_element(PROFILE_CARD_NICKNAME_KEY, log=False)
+            return bool(card) and bool(card.is_displayed())
+        except Exception:
+            return False
+
+    async def dismiss_profile_card(self) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+        if not await self.is_profile_card_open():
+            # 本来就没有卡片悬着：已经在房间里了，这一步是幂等的。
+            return True
+
+        handler = self._handler
+        gesture = getattr(handler, "gesture_handler", None) if handler else None
+        if gesture is None or not hasattr(gesture, "click_element_at"):
+            self._log_warning("缺少手势处理器，无法收起资料卡")
+            return False
+
+        # 卡片与抽屉共用 ivClose，所以这里复用抽屉的关闭键组而不是另找一套手势 ——
+        # 这也顺带保证了这里永远不会出现盲按返回。
+        for key in CLOSE_KEYS:
+            try:
+                close_btn = None
+                if hasattr(finder, "wait_for_element_clickable"):
+                    close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
+                if not close_btn and hasattr(finder, "try_find_element"):
+                    close_btn = finder.try_find_element(key, log=False)
+                if not close_btn:
+                    continue
+                if not gesture.click_element_at(close_btn):
+                    self._log_warning(f"点击资料卡关闭按钮 {key} 失败")
+                    continue
+                # 关掉了不能就算数：必须确认卡片真的走了，否则调用方会把一张悬着的卡片
+                # 当成已经收拾干净。
+                if hasattr(finder, "wait_for_element_disappear"):
+                    finder.wait_for_element_disappear(
+                        PROFILE_CARD_NICKNAME_KEY, timeout=PROFILE_CARD_TIMEOUT, poll_frequency=0.1
+                    )
+                if not await self.is_profile_card_open():
+                    return True
+            except Exception as e:
+                self._log_warning(f"收起资料卡时 {key} 出错: {e}")
+        return False
+
+    async def open_member_home(self) -> bool:
+        finder = self._finder()
+        handler = self._handler
+        gesture = getattr(handler, "gesture_handler", None) if handler else None
+        if finder is None or gesture is None or not hasattr(gesture, "click_element_at"):
+            return False
+        avatar = finder.wait_for_element_clickable(
+            PROFILE_CARD_AVATAR_KEY, timeout=PRIVATE_CHAT_TIMEOUT
+        )
+        if not avatar:
+            return False
+        return bool(gesture.click_element_at(avatar, y_ratio=AVATAR_CLICK_Y_RATIO))
+
+    async def open_private_chat_page(self) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+        chat_btn = finder.wait_for_element_clickable(
+            PRIVATE_CHAT_BUTTON_KEY, timeout=PRIVATE_CHAT_TIMEOUT
+        )
+        if not chat_btn:
+            return False
+        try:
+            chat_btn.click()
+            return True
+        except Exception as e:
+            self._log_warning(f"点击私聊按钮失败: {e}")
+            return False
+
+    async def type_private_message(self, text: str) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+        input_box = finder.wait_for_element_clickable(
+            PRIVATE_MESSAGE_INPUT_KEY, timeout=PRIVATE_CHAT_TIMEOUT
+        )
+        if not input_box:
+            return False
+        try:
+            input_box.send_keys(text)
+            return True
+        except Exception as e:
+            self._log_warning(f"在私聊输入框输入文字失败: {e}")
+            return False
+
+    async def submit_private_message(self) -> bool:
+        finder = self._finder()
+        if finder is None:
+            return False
+        send_button = finder.wait_for_element_clickable(
+            PRIVATE_MESSAGE_SEND_KEY, timeout=PRIVATE_CHAT_TIMEOUT
+        )
+        if not send_button:
+            return False
+        try:
+            send_button.click()
+            return True
+        except Exception as e:
+            self._log_warning(f"点击私聊发送按钮失败: {e}")
+            return False
+
+    async def return_to_room(self) -> bool:
+        finder = self._finder()
+        if finder is None or not hasattr(finder, "wait_for_any_element"):
+            return False
+        try:
+            _key, entry = finder.wait_for_any_element(
+                list(ROOM_ENTRY_KEYS), timeout=ROOM_RETURN_TIMEOUT
+            )
+        except Exception as e:
+            self._log_warning(f"找返回房间入口出错: {e}")
+            return False
+        if not entry:
+            return False
+        try:
+            entry.click()
+        except Exception as e:
+            self._log_warning(f"点击返回房间入口失败: {e}")
+            return False
+
+        if _key != "item_left_back":
+            return True
+
+        # 个性主页左上角的返回点完只退掉主页这一层，还要再点一次标题栏返回才落回房间。
+        titlebar_back = None
+        if hasattr(finder, "wait_for_element_clickable"):
+            titlebar_back = finder.wait_for_element_clickable(
+                TITLEBAR_BACK_KEY, timeout=ROOM_RETURN_TIMEOUT
+            )
+        if not titlebar_back:
+            return False
+        try:
+            titlebar_back.click()
+            return True
+        except Exception as e:
+            self._log_warning(f"点击标题栏返回失败: {e}")
+            return False
+
+    def _find_row_element(self, finder, visible_username: str):
+        """在当前已渲染的行里找昵称匹配的那一行，返回**行元素**本身。
+
+        与 `find_member_row` 分开是因为两者要的不是一个东西：那里要的是读数（值），
+        这里要的是「可点的那一行」。行元素只在这个方法里活一次 —— 出去了就交给 click()。
+        """
+        container = finder.try_find_element(ONLINE_CONTAINER_KEY, log=False)
+        if not container:
+            return None
+        for row in finder.find_child_elements(container, ROW_CONTAINER_KEY):
+            try:
+                name_elem = finder.find_child_element(row, ROW_NAME_KEY)
+                if not name_elem:
+                    continue
+                # 只按 UI 上显示的昵称匹配：canonical 名在这里永远不相等。
+                if (name_elem.text or "") == visible_username:
+                    return row
+            except Exception:
+                # 滑动途中行会失效是常态，读坏就跳过这一行。
+                continue
+        return None
+
+    def _wait_for_profile_card(self, finder) -> bool:
+        """等资料卡出现（按它自己的昵称元素判据）。"""
+        try:
+            card = finder.wait_for_element(
+                PROFILE_CARD_NICKNAME_KEY, timeout=PROFILE_CARD_TIMEOUT
+            )
+            return bool(card)
+        except Exception:
+            return False
+
     def _finder(self):
         """handler / element_finder 任一缺席都退化成「App 不可用」。"""
         handler = self._handler
         if handler is None:
             return None
         return getattr(handler, "element_finder", None)
-
     def _swipe_geometry(self, container):
         """容器内滑动的起止坐标：手指从 0.75 高度划到 0.30 高度。
 

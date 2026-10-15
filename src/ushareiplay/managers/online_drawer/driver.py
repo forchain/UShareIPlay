@@ -64,6 +64,45 @@ SETTLE_SECONDS = 0.4
 #: 滑完之后等列表停稳的静默（秒），同样是为了别读到滑动途中的画面。
 POST_SCROLL_SETTLE_SECONDS = 0.6
 
+# ---------------------------------------------------------------------------
+# 资料卡与私聊（#435）
+# ---------------------------------------------------------------------------
+#
+# 资料卡是抽屉**之上**的一层弹窗：点开在线用户抽屉里的某一行，卡片就盖在抽屉上。
+# 它与抽屉共用同一个 `ivClose` 关闭按钮（见上面的 `CLOSE_KEYS`），所以「收起资料卡」
+# 与「关掉抽屉」在物理上是同一个手势 —— 而且是**唯一**可用的那一个：这里同样没有
+# 盲按返回，卡片关不掉就只能记警告保持原状。
+
+#: 卡片上的昵称，用作「资料卡还在不在」的判据。
+#:
+#: 刻意不用「送礼物」「管理邀请」这类按钮：它们对某些账号根本不渲染，拿一个可能缺席
+#: 的按钮当标志，会把「卡片已经收好了」误判成「卡片还悬着」。
+PROFILE_CARD_NICKNAME_KEY = 'sender_nickname'
+
+#: 卡片上的头像。它同时是「点头像进入该用户主页」的入口。
+PROFILE_CARD_AVATAR_KEY = 'sender_avatar'
+
+#: 用户主页上的「私聊」按钮，以及私聊页的输入框与发送按钮。
+PRIVATE_CHAT_BUTTON_KEY = 'private_chat_button'
+PRIVATE_MESSAGE_INPUT_KEY = 'private_message_input'
+PRIVATE_MESSAGE_SEND_KEY = 'private_message_send'
+
+#: 回到派对房间的入口，按优先级尝试。`item_left_back` 是个性主页左上角的返回，点完
+#: 还要再点一次标题栏返回才落回房间（见 `return_to_room`）。
+ROOM_ENTRY_KEYS = ('private_room_entry', 'floating_entry', 'item_left_back')
+
+#: 点了 `item_left_back` 之后要补的那一下标题栏返回。
+TITLEBAR_BACK_KEY = 'titlebar_back_ivbtn'
+
+#: 头像点击的纵向比例。沿用旧实现的 0.7：卡片上的头像是圆图，点正中会落在圆外的空白
+#: 边距里 —— 这是真机调出来的值，迁移时逐字保留，不顺手改成 0.5。
+AVATAR_CLICK_Y_RATIO = 0.7
+
+#: 等资料卡弹出、私聊各步、找返回入口的等待上限（秒）。分别沿用旧实现的 5 / 5 / 3 秒。
+PROFILE_CARD_TIMEOUT = 5
+PRIVATE_CHAT_TIMEOUT = 5
+ROOM_RETURN_TIMEOUT = 3
+
 
 @dataclass(frozen=True)
 class MemberRow:
@@ -175,5 +214,86 @@ class OnlineDrawerDriverPort(ABC):
 
         只判「用户看得见」：提示元素留在 dump 里不等于它渲染出来了。这里也只回答
         「到没到」，要不要就此停下是调用方的循环决策。
+        """
+
+    # ------------------------------------------------------------------
+    # 资料卡（#435）
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def open_member_profile(self, visible_username: str) -> bool:
+        """在**当前已渲染**的行里点昵称那一行，把资料卡打开。
+
+        「找行」与「点行」必须是一次手势，不能拆开：`find_member_row` 交回来的是
+        `MemberRow` 这样的**值**，抽屉里的行活不过一次滚动，把行元素跨过 await 点带到
+        点下去那一刻，等的是 `StaleElementReferenceException`。同理也不自己滚 ——
+        「找不到就再滑一页」仍是调用方的循环决策。
+
+        Args:
+            visible_username: **UI 可见昵称**（分身名）。canonical 名在这里永远找不到人。
+
+        Returns:
+            卡片是否真的出现了。没找到那一行、或点了卡片没弹出来，都返回 False ——
+            调用方据此走自己的失败路径，**不要**接着往下点资料卡上的东西。
+        """
+
+    @abstractmethod
+    async def is_profile_card_open(self) -> bool:
+        """资料卡此刻是否还盖在抽屉上。"""
+
+    @abstractmethod
+    async def dismiss_profile_card(self) -> bool:
+        """把资料卡收回房间，点的是它与抽屉共用的 `ivClose`。
+
+        卡片本来就没开着时直接返回 True（幂等）：「已经回到房间」和「收好了」是同一件
+        事，调用方不必先问一遍。
+
+        Returns:
+            卡片确实不在了返回 True；关闭按钮点不到、卡片赖着不走返回 False，让**调用方**
+            记警告 —— 这里同样没有第二条兜底手势，见模块开头的「为什么没有 press_back」。
+        """
+
+    # ------------------------------------------------------------------
+    # 私聊（#435）
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def open_member_home(self) -> bool:
+        """点资料卡上的头像，进入该用户主页。
+
+        点的是**卡片**上的头像，因此调用方要先确认卡片是自己的；这一步之后页面已经换掉，
+        资料卡不在屏幕上了。
+        """
+
+    @abstractmethod
+    async def open_private_chat_page(self) -> bool:
+        """点用户主页上的「私聊」按钮，进入与该用户的私聊页。"""
+
+    @abstractmethod
+    async def type_private_message(self, text: str) -> bool:
+        """在私聊输入框里输入文字（不发送）。
+
+        与发送分成两个原语：输入框读不到和发送按钮读不到是两件事，调用方给它们的
+        报错文案也不一样。
+        """
+
+    @abstractmethod
+    async def submit_private_message(self) -> bool:
+        """点私聊页的发送按钮，把输入框里的文字发出去。"""
+
+    @abstractmethod
+    async def return_to_room(self) -> bool:
+        """回到派对房间，只用页面上指得出来的入口。
+
+        依次找 `ROOM_ENTRY_KEYS`：私聊页顶上挂着「回到房间」的动画按钮，房间里常驻的
+        `floating_entry`，以及个性主页左上角的 `item_left_back`（这个要点两下，见下）。
+
+        刻意**不**提供退回房间的第二条路径。这里已经是「不在房间里」的状态，盲按返回
+        会退到上一个页面甚至退出派对房间（spec #426 问题陈述 #1）；宁可让调用方记一条
+        警告，下一轮恢复流程去收拾。
+
+        Returns:
+            回到房间了返回 True；三个入口都读不到、或 `item_left_back` 之后没等到标题栏
+            返回，返回 False。
         """
 

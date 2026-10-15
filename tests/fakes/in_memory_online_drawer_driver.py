@@ -26,6 +26,12 @@
 脚本化失败：`open_fails` / `close_fails` / `settle_fails` / `container_missing` /
 `swipe_fails` 让每一条异常安全路径都能被确定性地走到；`end_hint=False` 则描述一个
 永远滑不到底的列表。
+
+#435 追加的「资料卡 + 私聊」这半张屏幕也整块换掉：卡片状态由 `card_open` 与
+`card_fails` 描述，私聊那几步由 `chat_steps_fails`（哪一步会失败）与
+`room_entry_key` / `room_return_fails`（回房间会落在哪个入口）描述。这样「每条失败
+路径都一定回到房间」这类断言，考的是 `UserManager` 自己的编排，而不是任何 UI 时序。
+**注意这里同样没有 `card:back`** —— 端口里根本没有盲按返回这个原语。
 """
 
 from typing import Optional
@@ -36,6 +42,9 @@ from ushareiplay.managers.online_drawer.driver import (
     MemberRow,
     OnlineDrawerDriverPort,
 )
+
+#: 私聊流程的步骤顺序。`chat_steps_fails` 里出现哪一个，那一步就失败。
+CHAT_STEPS = ("home", "chat_page", "type", "submit")
 
 
 class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
@@ -53,9 +62,16 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         container_missing: 容器一律读不到（`is_open` 恒为 False）。
         swipe_fails: 滑动手势失败（既没有位移也没有新内容）。
         end_hint: 列表滑到最后一行之后，「没有更多了」提示是否会显示。
+        card_fails: 点开在线用户行之后资料卡弹不出来。
+        dismiss_fails: 资料卡的关闭按钮点不到（`ivClose` 缺位）。
+        chat_steps_fails: 私聊流程里会失败的步骤，取值见 `CHAT_STEPS`。
+        room_entry_key: 回房间时会命中的入口 key，默认 `private_room_entry`。
+        room_return_fails: 回房间这一步失败（三个入口都读不到）。
         journal: 可选的共享事件流。每次动作追加一条 `drawer:open` /
             `drawer:settle` / `drawer:rows:<行数>` / `drawer:scroll` /
-            `drawer:find:<昵称>` / `drawer:close`，用来断言动作的先后顺序。
+            `drawer:find:<昵称>` / `drawer:close` / `card:open:<昵称>` /
+            `card:dismiss` / `chat:home` / `chat:page` / `chat:type` /
+            `chat:submit` / `room:return`，用来断言动作的先后顺序。
             **注意：这里没有 `drawer:back`** —— 端口里根本没有盲按返回这个原语。
 
     Attributes:
@@ -63,6 +79,10 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         open_calls / close_calls / settle_calls: 各自被调用的次数。
         rows_reads / at_end_reads: 整页行读数与到底判定的次数。
         scroll_durations: 每次滑动的时长，用于断言用的是慢滑而不是惯性飞滚。
+        card_open: 资料卡此刻是否盖在抽屉上。
+        chat_reached: 已经成功走到哪一步私聊。
+        typed_messages: 提交出去的文字，按顺序。
+        room_returns: 回房间的次数与每次落在哪个入口。
     """
 
     def __init__(
@@ -78,6 +98,11 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         container_missing=False,
         swipe_fails=False,
         end_hint=True,
+        card_fails=False,
+        dismiss_fails=False,
+        chat_steps_fails=(),
+        room_entry_key="private_room_entry",
+        room_return_fails=False,
         journal=None,
     ):
         self.members = [self._as_member(m) for m in members]
@@ -90,6 +115,11 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.container_missing = container_missing
         self.swipe_fails = swipe_fails
         self.end_hint = end_hint
+        self.card_fails = card_fails
+        self.dismiss_fails = dismiss_fails
+        self.chat_steps_fails = tuple(chat_steps_fails)
+        self.room_entry_key = room_entry_key
+        self.room_return_fails = room_return_fails
         self.journal = journal
 
         self.scroll_offset = 0
@@ -99,6 +129,10 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.rows_reads = 0
         self.at_end_reads = 0
         self.scroll_durations = []
+        self.card_open = False
+        self.chat_reached = None
+        self.typed_messages = []
+        self.room_returns = []
 
     async def is_open(self) -> bool:
         if self.container_missing:
@@ -122,6 +156,8 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
             return False
         self._record("drawer:close")
         self.drawer_open = False
+        # 卡片是盖在抽屉上的，抽屉关掉卡片自然也不在了 —— 生产端共用同一个 ivClose。
+        self.card_open = False
         return True
 
     async def wait_for_settle(self, *, timeout: int = DEFAULT_SETTLE_TIMEOUT) -> bool:
@@ -182,6 +218,83 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         if self.page_size is None:
             return True
         return self.scroll_offset + self.page_size >= len(self.members)
+
+    # ------------------------------------------------------------------
+    # 资料卡与私聊（#435）
+    # ------------------------------------------------------------------
+
+    async def open_member_profile(self, visible_username: str) -> bool:
+        # 先在当前窗口里找到人，再「点一下」：翻页仍然是调用方的循环决策。
+        for name, _follow_state in self.visible_members():
+            if name == visible_username:
+                if self.card_fails:
+                    self._record("card:open:fails")
+                    return False
+                self.card_open = True
+                self.chat_reached = None
+                self._record(f"card:open:{name}")
+                return True
+        self._record(f"card:miss:{visible_username}")
+        return False
+
+    async def is_profile_card_open(self) -> bool:
+        return self.card_open
+
+    async def dismiss_profile_card(self) -> bool:
+        if not self.card_open:
+            # 幂等：卡片本来就没开着，「已经在房间里」就是收好了。
+            self._record("card:dismiss:none")
+            return True
+        if self.dismiss_fails:
+            self._record("card:dismiss:fails")
+            return False
+        self.card_open = False
+        self.drawer_open = False
+        self._record("card:dismiss")
+        return True
+
+    async def open_member_home(self) -> bool:
+        if not self.card_open:
+            return False
+        return self._advance_chat("home")
+
+    async def open_private_chat_page(self) -> bool:
+        if self.chat_reached != "home":
+            return False
+        return self._advance_chat("chat_page")
+
+    async def type_private_message(self, text: str) -> bool:
+        if self.chat_reached != "chat_page":
+            return False
+        if not self._advance_chat("type"):
+            return False
+        self.typed_messages.append(text)
+        return True
+
+    async def submit_private_message(self) -> bool:
+        if self.chat_reached != "type":
+            return False
+        return self._advance_chat("submit")
+
+    async def return_to_room(self) -> bool:
+        if self.room_return_fails:
+            self._record("room:return:fails")
+            return False
+        self._record(f"room:return:{self.room_entry_key}")
+        self.room_returns.append(self.room_entry_key)
+        # 回到房间意味着抽屉与资料卡都不在了；`item_left_back` 要点两下才能落回房间。
+        self.drawer_open = False
+        self.card_open = False
+        return True
+
+    def _advance_chat(self, step: str) -> bool:
+        """推进私聊流程；脚本里点名失败的步骤在这里停住。"""
+        if step in self.chat_steps_fails:
+            self._record(f"chat:{step}:fails")
+            return False
+        self.chat_reached = step
+        self._record(f"chat:{step}")
+        return True
 
     def visible_members(self):
         """当前这一页渲染出来的成员，按列表顺序。"""

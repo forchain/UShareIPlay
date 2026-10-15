@@ -251,7 +251,7 @@ class _Recorder:
     def send_screen_message(self, _message, silent=False):
         self.events.append("screen")
 
-    def send_for_message_info(self, _message_info, response, silent=False):
+    async def send_for_message_info(self, _message_info, response, silent=False):
         self.events.append(f"notify:{response}")
 
 

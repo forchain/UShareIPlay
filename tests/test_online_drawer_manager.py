@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.managers.online_drawer import (
+    Handover,
     OnlineDrawerDriverPort,
     OnlineDrawerManager,
     SoulOnlineDrawerDriver,
@@ -372,6 +373,15 @@ PORT_METHODS = (
     "read_online_count",
     "visible_member_rows",
     "is_at_end",
+    # #435 资料页与私信要的八步：卡片开/判/收，私聊导航三步，加回房间。
+    "open_member_profile",
+    "is_profile_card_open",
+    "dismiss_profile_card",
+    "open_member_home",
+    "open_private_chat_page",
+    "type_private_message",
+    "submit_private_message",
+    "return_to_room",
 )
 
 ADAPTER_CLASSES = (SoulOnlineDrawerDriver, InMemoryOnlineDrawerDriver)
@@ -412,9 +422,13 @@ class _StubElement:
         self.size = size or {"width": 0, "height": 0}
         self.displayed = displayed
         self.clicked = False
+        self.typed = []
 
     def click(self):
         self.clicked = True
+
+    def send_keys(self, text):
+        self.typed.append(text)
 
     def is_displayed(self):
         return self.displayed
@@ -423,9 +437,11 @@ class _StubElement:
 class _StubFinder:
     """按元素 key 服务的屏幕替身，并记录每次查找。"""
 
-    def __init__(self, screen=None, children=None):
+    def __init__(self, screen=None, children=None, any_element=(None, None), elements_stay=False):
         self.screen = screen or {}
         self.children = children or {}
+        self.any_element = any_element
+        self.elements_stay = elements_stay
         self.looked_up = []
 
     def try_find_element(self, key, log=False, clickable=False):
@@ -441,7 +457,15 @@ class _StubFinder:
         return self.screen.get(key)
 
     def wait_for_element_disappear(self, key, timeout=10, poll_frequency=None):
-        pass
+        # 真机上「等元素消失」就是元素不再出现在 dump 里，替身照此把它从屏上摘掉，
+        # 好让「关掉了」这件事在后面的断言里是真的，而不是替身自己声称的。
+        # `elements_stay=True` 描述「点了也赖着不走」的那种卡片。
+        if not self.elements_stay:
+            self.screen.pop(key, None)
+        return True
+
+    def wait_for_any_element(self, element_keys, timeout=10):
+        return self.any_element
 
     def find_child_elements(self, parent, key):
         return list(self.children.get((parent, key), []))
@@ -453,10 +477,15 @@ class _StubFinder:
 class _StubGesture:
     def __init__(self, works=True):
         self.swipes = []
+        self.clicks = []
         self.works = works
 
     def swipe(self, x1, y1, x2, y2, duration_ms=600):
         self.swipes.append((x1, y1, x2, y2, duration_ms))
+        return self.works
+
+    def click_element_at(self, element, x_ratio=0.5, y_ratio=0.5, x_offset=0, y_offset=0):
+        self.clicks.append((element, y_ratio))
         return self.works
 
 
@@ -594,6 +623,15 @@ async def test_production_adapter_fails_gracefully_without_a_handler():
     assert await driver.read_online_count() is None
     assert await driver.visible_member_rows() == []
     assert await driver.is_at_end() is False
+    # #435 的资料卡与私聊那八步同理：离线装配与半启动状态下都要能问出答案。
+    assert await driver.open_member_profile("链子") is False
+    assert await driver.is_profile_card_open() is False
+    assert await driver.dismiss_profile_card() is False
+    assert await driver.open_member_home() is False
+    assert await driver.open_private_chat_page() is False
+    assert await driver.type_private_message("你好") is False
+    assert await driver.submit_private_message() is False
+    assert await driver.return_to_room() is False
 
 
 # ---------------------------------------------------------------------------
@@ -713,3 +751,351 @@ async def test_in_memory_is_at_end_follows_the_end_of_the_list():
     await never.scroll_container()
     assert await never.is_at_end() is False
 
+
+
+# ---------------------------------------------------------------------------
+# #435 追加的资料卡与私聊原语：手势必须与旧 UserManager 的裸调用逐字一致
+# ---------------------------------------------------------------------------
+
+
+def _screen_with_card(card_present=True):
+    """一张已经打开的资料卡：抽屉行、卡片昵称、卡片头像与 ivClose 都在屏上。"""
+    container = _StubElement()
+    row = _StubElement()
+    screen = {"online_users": container, "online_users_close": _StubElement()}
+    children = {
+        (container, "user_container"): [row],
+        (row, "online_user"): _StubElement(text="链子"),
+    }
+    if card_present:
+        screen["sender_nickname"] = _StubElement(text="链子")
+        screen["sender_avatar"] = _StubElement()
+    finder = _StubFinder(screen=screen, children=children)
+    return finder, row, container
+
+
+async def test_production_open_member_profile_clicks_the_row_and_waits_for_the_card():
+    """「找行 + 点行」是一次手势：点完必须等到卡片真的出现才算开。
+
+    不等的话，紧接着读到的还是抽屉那一帧，调用方会把「卡片没弹出来」当成正常继续，
+    于是后面每一步都点在错误的页面上。
+    """
+    finder, row, _container = _screen_with_card(card_present=False)
+    finder.screen["sender_nickname"] = _StubElement(text="链子")
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.open_member_profile("链子") is True
+    assert row.clicked is True
+    assert "sender_nickname" in finder.looked_up, "点了之后要等卡片出现"
+
+
+async def test_production_open_member_profile_reports_failure_when_the_card_never_appears():
+    """点了却没弹出卡片：如实返回 False，调用方据此走自己的失败路径。"""
+    finder, row, _container = _screen_with_card(card_present=False)
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.open_member_profile("链子") is False
+    assert row.clicked is True
+
+
+async def test_production_open_member_profile_reports_failure_when_the_row_is_absent():
+    """这一行压根没渲染出来：不点任何东西，直接 False（翻页是调用方的循环决策）。"""
+    finder, row, _container = _screen_with_card()
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.open_member_profile("查无此人") is False
+    assert row.clicked is False
+
+
+async def test_production_profile_card_presence_is_judged_by_its_own_nickname():
+    """卡片在不在看它自己的昵称元素：送礼物/管理邀请这类按钮对某些账号不渲染，
+    拿一个可能缺席的按钮当标志会把「已经收好」误判成「还悬着」。"""
+    shown = _screen_with_card()[0]
+    assert await _make_soul_adapter(shown).is_profile_card_open() is True
+
+    hidden = _StubFinder(screen={"sender_nickname": _StubElement(displayed=False)})
+    assert await _make_soul_adapter(hidden).is_profile_card_open() is False
+    assert await _make_soul_adapter(_StubFinder(screen={})).is_profile_card_open() is False
+
+
+async def test_production_dismiss_profile_card_clicks_iv_close_and_never_presses_back():
+    """收起卡片 = 点它与抽屉共用的 ivClose；`key_actions` 就在旁边也不会被碰。"""
+    finder, _row, _container = _screen_with_card()
+    close_btn = finder.screen["online_users_close"]
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.dismiss_profile_card() is True
+    assert gesture.clicks == [(close_btn, 0.5)], "点的是 ivClose，不是别的东西"
+    assert "sender_nickname" not in finder.screen, "卡片要真的不在了才算收好"
+
+
+async def test_production_dismiss_profile_card_is_idempotent_when_no_card_is_out():
+    """卡片本来就没开着就是幂等的：「已经在房间里」和「收好了」是同一件事。"""
+    finder, _row, _container = _screen_with_card(card_present=False)
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.dismiss_profile_card() is True
+    assert gesture.clicks == [], "没有卡片就不该有任何点击"
+
+
+async def test_production_dismiss_profile_card_reports_false_when_the_card_will_not_go():
+    """关闭按钮点得到、点了卡片还在：返回 False，让调用方记警告。
+
+    这里同样没有第二条兜底手势 —— 绝不拿派对房间去赌一次 press_back。
+    """
+    finder, _row, _container = _screen_with_card()
+    finder.screen.pop("online_users_close")
+    finder.screen["close_button"] = _StubElement()  # 点得到，但卡片赖着不走
+    finder.elements_stay = True
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.dismiss_profile_card() is False
+
+
+async def test_production_dismiss_profile_card_reports_false_when_no_close_button_exists():
+    """两个关闭按钮都没渲染出来：如实 False。"""
+    finder, _row, _container = _screen_with_card()
+    finder.screen.pop("online_users_close")
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.dismiss_profile_card() is False
+
+
+async def test_production_open_member_home_clicks_the_card_avatar_at_the_kept_ratio():
+    """点头像进主页，纵向比例仍是旧实现真机调出来的 0.7，不顺手改成正中。"""
+    finder, _row, _container = _screen_with_card()
+    gesture = _StubGesture()
+    avatar = finder.screen["sender_avatar"]
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.open_member_home() is True
+    assert gesture.clicks == [(avatar, 0.7)]
+
+
+async def test_production_open_member_home_reports_failure_when_the_avatar_is_absent():
+    """头像读不到：返回 False，调用方负责回房间。"""
+    finder, _row, _container = _screen_with_card()
+    del finder.screen["sender_avatar"]
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.open_member_home() is False
+
+
+async def test_production_private_chat_steps_use_their_own_element_keys():
+    """私聊三步各按各的 key：主页私聊按钮 -> 输入框 -> 发送按钮。"""
+    chat_btn = _StubElement()
+    input_box = _StubElement()
+    send_btn = _StubElement()
+    finder = _StubFinder(
+        screen={
+            "private_chat_button": chat_btn,
+            "private_message_input": input_box,
+            "private_message_send": send_btn,
+        }
+    )
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.open_private_chat_page() is True
+    assert await driver.type_private_message("你好") is True
+    assert await driver.submit_private_message() is True
+
+    assert chat_btn.clicked is True
+    assert input_box.typed == ["你好"]
+    assert send_btn.clicked is True
+
+
+async def test_production_private_chat_steps_report_false_when_a_key_is_missing():
+    """输入框与发送按钮是两件事：少哪一个就各自失败，调用方给它们不同的报错文案。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.open_private_chat_page() is False
+    assert await driver.type_private_message("你好") is False
+    assert await driver.submit_private_message() is False
+
+
+async def test_production_return_to_room_uses_the_first_entry_that_appears():
+    """回房间只点页面上指得出来的入口；私聊页那个动画按钮优先级最高。"""
+    entry = _StubElement()
+    finder = _StubFinder(any_element=("private_room_entry", entry))
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.return_to_room() is True
+    assert entry.clicked is True
+
+
+async def test_production_return_to_room_adds_the_titlebar_back_after_item_left_back():
+    """个性主页左上角的返回点完只退掉主页这一层，还要再点一次标题栏返回。"""
+    left_back = _StubElement()
+    titlebar_back = _StubElement()
+    finder = _StubFinder(
+        screen={"titlebar_back_ivbtn": titlebar_back},
+        any_element=("item_left_back", left_back),
+    )
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.return_to_room() is True
+    assert left_back.clicked is True
+    assert titlebar_back.clicked is True
+
+
+async def test_production_return_to_room_reports_false_when_the_titlebar_back_is_missing():
+    """点了主页返回却等不到标题栏返回：如实 False，让调用方记警告。"""
+    finder = _StubFinder(any_element=("item_left_back", _StubElement()))
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.return_to_room() is False
+
+
+async def test_production_return_to_room_reports_false_when_no_entry_appears():
+    """三个入口都读不到：不换成盲按返回，如实 False。"""
+    driver = _make_soul_adapter(_StubFinder(any_element=(None, None)))
+
+    assert await driver.return_to_room() is False
+
+
+# ---------------------------------------------------------------------------
+# 交接（#435）：资料页流程把抽屉连同资料卡交给调用方
+# ---------------------------------------------------------------------------
+
+
+async def test_handover_keeps_the_drawer_open_only_after_release():
+    """release() 之后抽屉留在屏上：资料页流程的产物就是那张卡片。
+
+    卡片与抽屉共用 ivClose，这时收尾等于把刚交出去的东西拆掉。
+    """
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=["小明"], journal=journal)
+    manager = _make_manager(driver)
+    handover = Handover()
+
+    async with manager.drawer_session(reason="user:open_profile", handover=handover) as open_error:
+        assert open_error is None
+        await driver.open_member_profile("小明")
+        handover.release()
+
+    assert journal == ["drawer:open", "drawer:settle", "card:open:小明"]
+    assert driver.drawer_open is True
+    assert driver.card_open is True
+
+
+async def test_session_still_closes_when_the_body_returns_early_without_releasing():
+    """没 release 就中途 return：照常收尾。
+
+    这正是「交接不能用布尔开关」的道理 —— 开关只能整段会话生效，失败路径会被一起
+    跳过收尾，把抽屉悬在屏幕上。
+    """
+    driver = InMemoryOnlineDrawerDriver(members=["小明"])
+    manager = _make_manager(driver)
+    handover = Handover()
+
+    async with manager.drawer_session(reason="user:open_profile", handover=handover):
+        return {"error": "User not found in online users list"}
+
+    assert handover.released is False
+    assert driver.drawer_open is False
+
+
+async def test_session_closes_a_released_drawer_when_the_body_raises():
+    """release() 之后正文抛异常：照样收尾。交接只发生在成功路径上。"""
+    driver = InMemoryOnlineDrawerDriver(members=["小明"])
+    manager = _make_manager(driver)
+    handover = Handover()
+
+    with pytest.raises(RuntimeError, match="正文炸了"):
+        async with manager.drawer_session(reason="user:open_profile", handover=handover):
+            handover.release()
+            raise RuntimeError("正文炸了")
+
+    assert driver.drawer_open is False
+
+
+async def test_handover_is_optional_and_defaults_to_the_original_behaviour():
+    """不传 Handover 就是本模块的原始行为：退出即收尾。"""
+    driver = InMemoryOnlineDrawerDriver(members=["小明"])
+    manager = _make_manager(driver)
+
+    async with manager.drawer_session(reason="user:legacy"):
+        pass
+
+    assert driver.drawer_open is False
+
+
+async def test_settle_failure_can_report_the_callers_own_wording():
+    """落定失败与打不开失败在调用方面前是两句话，别被统一入口改成同一句。"""
+    driver = InMemoryOnlineDrawerDriver(members=["小明"], settle_fails=True)
+    manager = _make_manager(driver)
+
+    async with manager.drawer_session(
+        reason="user:open_profile",
+        error_message="Failed to open online users list",
+        settle_error_message="Failed to find online users container",
+    ) as open_error:
+        assert open_error == {"error": "Failed to find online users container"}
+
+    assert driver.drawer_open is False
+
+
+async def test_close_profile_card_dismisses_the_card_that_is_out():
+    """交接的另一半：把悬着的卡片收回房间。"""
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=["小明"], journal=journal)
+    manager = _make_manager(driver)
+    handover = Handover()
+
+    async with manager.drawer_session(reason="user:open_profile", handover=handover) as open_error:
+        assert open_error is None
+        await driver.open_member_profile("小明")
+        handover.release()
+
+    assert driver.card_open is True, "卡片已经交给调用方了"
+
+    await manager.close_profile_card()
+
+    assert driver.card_open is False
+    assert driver.drawer_open is False
+    assert "card:dismiss" in journal
+
+
+async def test_close_profile_card_does_nothing_when_no_card_is_out():
+    """没有卡片悬着：不夺归属、不去关一个本来就没打开的抽屉。"""
+    driver = InMemoryOnlineDrawerDriver(members=["小明"])
+    manager = _make_manager(driver)
+
+    await manager.close_profile_card()
+
+    assert driver.close_calls == 0
+    assert driver.drawer_open is False
+
+
+async def test_close_profile_card_logs_and_swallows_a_card_that_will_not_close(caplog):
+    """关不掉卡片：记警告、保持原状，绝不把异常抛给调用方，也绝不盲按返回。"""
+    driver = InMemoryOnlineDrawerDriver(members=["小明"], dismiss_fails=True)
+    manager = _make_manager(driver)
+    await driver.open(error_message="打不开")
+    await driver.open_member_profile("小明")
+
+    with caplog.at_level(logging.WARNING):
+        await manager.close_profile_card()
+
+    assert any("未能通过 ivClose 收起资料卡" in r.message for r in caplog.records)
+    assert driver.card_open is True
+
+
+async def test_profile_and_chat_steps_never_emit_a_back_press():
+    """资料卡与私聊的每一步都在事件流里排着队，里面不该出现一次盲按返回。"""
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(members=["小明"], journal=journal)
+    manager = _make_manager(driver)
+
+    async with manager.drawer_session(reason="user:private_message", handover=Handover()) as err:
+        assert err is None
+        await driver.open_member_profile("小明")
+        await driver.open_member_home()
+        await driver.open_private_chat_page()
+        await driver.type_private_message("你好")
+        await driver.submit_private_message()
+        await driver.return_to_room()
+
+    assert not any("back" in event for event in journal), journal

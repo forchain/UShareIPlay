@@ -1,13 +1,28 @@
 import logging
-import time
 
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.online_drawer import Handover, OnlineDrawerManager
 
 YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
 
+#: 打不开在线用户抽屉时的报错。沿用旧 `UserManager` 的原话，以免统一入口改掉聊天气泡
+#: 里的文案。
+OPEN_DRAWER_ERROR = 'Failed to open online users list'
+
+#: 抽屉开了却没落定时的报错。刻意与上一句分开：旧实现里这就是两条不同的路径。
+FIND_DRAWER_ERROR = 'Failed to find online users container'
+
+#: 最多翻多少页去找一个人。上限与在线名单抓取同源：别把一次定位变成无上限轮询；
+#: 翻满仍找不到就如实回报「未找到」，要不要再来一次由调用方决定。
+MAX_SEARCH_SWIPES = 50
+
 
 class UserManager(Singleton):
-    """在在线用户列表中查找指定用户并打开其资料页"""
+    """在在线用户列表中查找指定用户并打开其资料页
+
+    #435 起全部经由 `OnlineDrawerManager` 的抽屉会话进出抽屉：抽屉的开关、落定、翻页
+    与关闭手势都在端口后面的适配器里，这里只剩「找谁」「找到之后做什么」这些判断。
+    """
 
     def __init__(self, handler=None):
         self._handler = handler
@@ -23,99 +38,104 @@ class UserManager(Singleton):
             self._logger = getattr(self._handler, "logger", None) or logging.getLogger("UserManager")
         return self._logger
 
-    # 抽屉刚打开时 RecyclerView 还在首帧布局，等它稳定下来的上限
-    ONLINE_LIST_SETTLE_TIMEOUT: float = 2.0
-    ONLINE_LIST_SETTLE_INTERVAL: float = 0.25
+    @property
+    def drawer(self):
+        """在线用户抽屉会话的唯一所有者。
 
-    def _wait_for_online_list_settle(self) -> None:
-        """等在线列表渲染稳定后再开始搜索。
-
-        rvBannedUsers 是懒加载列表：抽屉刚打开时 RecyclerView 还在首帧布局，
-        这时候立刻下滑，连续两次读到的 page_source 一模一样，
-        `scroll_container_until_element` 就把这当成「已到达边界」直接放弃 ——
-        于是在列表里的人也报「未找到」（真机 10-08 12:53:32 送礼失败，
-        隔 1 秒同样的搜索却一眼命中）。先等它稳定，边界判定才有意义。
+        单例只查不建（ADR-0009，组合根装配）：拿不到就让整条定位链路显式失败，
+        而不是悄悄退回裸 Appium 操作 —— 那正是 #428 之前的状态。
         """
-        driver = getattr(self.handler, "driver", None)
-        if driver is None:
-            return
-        deadline = time.monotonic() + self.ONLINE_LIST_SETTLE_TIMEOUT
-        try:
-            previous = None
-            while time.monotonic() < deadline:
-                current = driver.page_source
-                if previous is not None and current == previous:
-                    return
-                previous = current
-                time.sleep(self.ONLINE_LIST_SETTLE_INTERVAL)
-        except Exception:
-            # 读不到 page_source 就按原样继续搜索，不因等待失败而放弃定位
-            return
+        return OnlineDrawerManager.instance()
 
     async def open_user_profile(self, nickname: str):
-        """打开目标用户的资料页（统一从在线用户列表查找）。"""
-        return self.open_user_profile_from_online_list(nickname)
+        """打开目标用户的资料页（统一从在线用户列表查找）。
 
-    def open_user_profile_from_online_list(self, nickname: str):
+        Args:
+            nickname: 目标用户。DB 的 canonical 名（主账号）或 Soul UI 可见昵称
+                （分身名）都可以：两个命名域的解析在内部完成，调用方不必知道自己
+                手里的是哪一个。
+        """
+        return await self.open_user_profile_from_online_list(nickname)
+
+    async def open_user_profile_from_online_list(self, nickname: str):
         """
         在在线用户列表中查找指定用户并打开其资料页。
 
+        全程在一个抽屉会话里：会话负责打开并等列表落定；这里负责翻页找人、点开资料卡。
+        找不到人、卡片弹不出来、或会话自己打不开抽屉时，会话都会把抽屉收干净。
+
+        成功时**不**收尾：抽屉连同资料卡一起交给调用方（送礼 / 房管要在卡片上继续
+        操作），调用方用 `close_user_profile()` 收。这条交接由 `Handover` 显式声明，
+        而不是给会话一个布尔开关 —— 开关只能整段会话生效，于是「没找到人就中途
+        return」的失败路径也会被一起跳过收尾，抽屉就悬在屏幕上了。
+
         Args:
-            nickname: 要查找的用户昵称。
+            nickname: 要查找的用户，canonical 名或分身名都可以。
 
         Returns:
             dict: 成功时返回 {'user': nickname}；失败时返回 {'error': str, 'user': nickname}。
         """
-        user_count_elem = self.handler.element_finder.wait_for_element('user_count')
-        if not user_count_elem:
-            self.logger.warning("未找到在线用户人数")
-            return {
-                'error': 'Failed to open online users list',
-                'user': nickname,
-            }
+        drawer = self.drawer
+        driver = drawer.driver
+        handover = Handover()
 
-        user_count_elem.click()
-        self.logger.info("Opened online users list")
+        async with drawer.drawer_session(
+            reason=f"user:open_profile:{nickname}",
+            error_message=OPEN_DRAWER_ERROR,
+            settle_error_message=FIND_DRAWER_ERROR,
+            handover=handover,
+        ) as open_error:
+            if open_error:
+                return {'error': open_error['error'], 'user': nickname}
 
-        online_container = self.handler.element_finder.wait_for_element('online_users')
-        if not online_container:
-            self.logger.warning("未找到在线用户列表")
-            return {
-                'error': 'Failed to find online users container',
-                'user': nickname,
-            }
+            # 先解析命名域再进 UI 搜索：抽屉里只有可见昵称能定位到人，canonical 名直接
+            # 拿去比 UI 文本永远不相等。
+            visible_name = await drawer.resolve_visible_username(nickname)
 
-        # 抽屉刚打开，列表还在首帧布局：先等它稳定，否则第一次下滑就会被
-        # 判成「已到达边界」（见 _wait_for_online_list_settle）。
-        self._wait_for_online_list_settle()
+            if not await self._find_member_in_drawer(driver, visible_name):
+                self.logger.warning(f"未找到用户 {visible_name}")
+                return {
+                    'error': 'User not found in online users list',
+                    'user': nickname,
+                }
 
-        key, user_elem, _ = self.handler.gesture_handler.scroll_container_until_element(
-            'online_user',
-            'online_users',
-            'up',
-            'text',
-            nickname,
-        )
+            if not await driver.open_member_profile(visible_name):
+                self.logger.error(f"Failed to click user element: {visible_name}")
+                return {'error': 'Failed to click user element', 'user': nickname}
 
-        if not user_elem:
-            self.logger.warning(f"未找到用户 {nickname}")
-            self._close_online_drawer()
-            return {
-                'error': 'User not found in online users list',
-                'user': nickname,
-            }
-
-        try:
-            user_elem.click()
-            self.logger.info(f"Clicked user element for {nickname}")
+            self.logger.info(f"Clicked user element for {visible_name}")
+            handover.release()
             return {'user': nickname}
-        except Exception as e:
-            self.logger.error(f"Failed to click user element: {e}")
-            self._close_online_drawer()
-            return {
-                'error': 'Failed to click user element',
-                'user': nickname,
-            }
+
+    async def _find_member_in_drawer(self, driver, visible_name: str) -> bool:
+        """在抽屉里一页一页找某个昵称：翻到底提示、滑不动或滑满为止。
+
+        「找不到就再滑一页」是循环决策，因此留在引擎这一侧；端口只负责把「此刻屏幕上
+        有哪些行」如实读回来。抽屉刚打开时列表还在首帧布局，这一段等待住在适配器的
+        `wait_for_settle` 里。
+        """
+        for _ in range(MAX_SEARCH_SWIPES + 1):
+            if await driver.find_member_row(visible_name) is not None:
+                return True
+
+            if await driver.is_at_end():
+                self.logger.info("Detected no_more_data, stop searching online users.")
+                return False
+
+            if not await driver.scroll_container():
+                self.logger.warning("Swipe failed, stop searching online users.")
+                return False
+
+        self.logger.warning(f"Reached max_swipes, stop searching for {visible_name}.")
+        return False
+
+    async def close_user_profile(self) -> None:
+        """把交接出去的资料卡收回房间。
+
+        资料卡与抽屉共用同一个 `ivClose`，所以这一步同时也是「回到房间」；收不掉就
+        保持原状并记一条警告，绝不盲按返回 —— 那会连派对房间一起退掉。
+        """
+        await self.drawer.close_profile_card()
 
     async def send_gift(self, nickname: str):
         """
@@ -161,7 +181,7 @@ class UserManager(Singleton):
         if gift_name.strip() == YELLOW_DUCK_NAME:
             self.handler.gesture_handler.click_element_at(luck_item)
             self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
-            self._close_online_drawer()
+            await self.close_user_profile()
             return {'success': f'{gift_name} 送你啦'}
 
         self.handler.gesture_handler.click_element_at(found_element)
@@ -177,10 +197,10 @@ class UserManager(Singleton):
             confirm_use.click()
             self.logger.info("已点击确认使用")
 
-        self._close_online_drawer()
+        await self.close_user_profile()
         return {'success': f'{gift_name} 送你啦'}
 
-    def send_private_message_to_user(self, nickname: str, message: str) -> bool:
+    async def send_private_message_to_user(self, nickname: str, message: str) -> bool:
         """
         向指定用户发送私聊消息。
 
@@ -189,90 +209,72 @@ class UserManager(Singleton):
         2. 点击头像进入主页
         3. 点击私聊按钮进入私聊页
         4. 输入并发送消息
-        5. 返回聊天室（优先 lottie_in_party，兜底 floating_entry）
+        5. 返回聊天室（私聊页的返回入口优先，兜底房间悬浮入口与主页返回）
+
+        全程在一个抽屉会话里，且**保证**回到房间：资料卡与私聊页面上的任何一步失败，
+        收尾都会走页面自己的返回入口，不盲按返回（盲按返回会连派对房间一起退掉）。
 
         任意一步失败返回 False，不抛异常。
         """
         try:
             self.handler.key_actions.switch_to_app()
-            open_result = self.open_user_profile_from_online_list(nickname)
-            if 'error' in open_result:
-                self.logger.warning(f"打开用户资料页失败: {nickname}, error={open_result['error']}")
-                return False
+            drawer = self.drawer
+            driver = drawer.driver
+            handover = Handover()
 
-            avatar = self.handler.element_finder.wait_for_element_clickable(
-                'sender_avatar',
-                timeout=5,
-            )
-            if not avatar:
-                self.logger.warning(f"未找到头像入口: {nickname}")
-                return False
-            if not self.handler.gesture_handler.click_element_at(avatar, y_ratio=0.7):
-                self.logger.warning(f"点击头像入口失败: {nickname}")
-                return False
+            async with drawer.drawer_session(
+                reason=f"user:private_message:{nickname}",
+                error_message=OPEN_DRAWER_ERROR,
+                settle_error_message=FIND_DRAWER_ERROR,
+                handover=handover,
+            ) as open_error:
+                if open_error:
+                    self.logger.warning(
+                        f"打开用户资料页失败: {nickname}, error={open_error['error']}"
+                    )
+                    return False
 
-            private_chat_btn = self.handler.element_finder.wait_for_element_clickable(
-                'private_chat_button',
-                timeout=5,
-            )
-            if not private_chat_btn:
-                self.logger.warning(f"未找到私聊按钮: {nickname}")
-                return False
-            private_chat_btn.click()
+                visible_name = await drawer.resolve_visible_username(nickname)
+                if not await self._find_member_in_drawer(driver, visible_name):
+                    self.logger.warning(f"未找到用户 {visible_name}")
+                    return False
+                if not await driver.open_member_profile(visible_name):
+                    self.logger.warning(f"打开用户资料页失败: {nickname}")
+                    return False
 
-            input_box = self.handler.element_finder.wait_for_element_clickable(
-                'private_message_input',
-                timeout=5,
-            )
-            if not input_box:
-                self.logger.warning(f"未找到私聊输入框: {nickname}")
-                return False
-            input_box.send_keys(message)
-
-            send_button = self.handler.element_finder.wait_for_element_clickable(
-                'private_message_send',
-                timeout=5,
-            )
-            if not send_button:
-                self.logger.warning(f"未找到私聊发送按钮: {nickname}")
-                return False
-            send_button.click()
-
-            return self._return_to_room_after_private_chat(nickname)
+                # 卡片已经交到自己手里：接下来每一条失败路径都要自己回房间。
+                handover.release()
+                return await self._private_message_on_card(driver, nickname, message)
         except Exception as e:
             self.logger.error(f"私聊发送失败: {nickname}, error={e}")
             return False
 
-    def _return_to_room_after_private_chat(self, nickname: str) -> bool:
-        """私聊发送后返回聊天室。"""
+    async def _private_message_on_card(self, driver, nickname: str, message: str) -> bool:
+        """已经在资料卡上：点头像进主页 -> 私聊 -> 输入 -> 发送 -> 回房间。
+
+        回房间放在 `finally` 里：消息发没发出去都要回，否则屏幕上会留下一张资料卡或一个
+        私聊页，下一次盲按返回就会把它们连同房间一起带走。返回值同时要求「发出去了」与
+        「回到房间了」—— 与旧实现一致，回不去就算这次私聊没成。
+        """
+        sent = False
         try:
-            _key, entry = self.handler.element_finder.wait_for_any_element(
-                ['private_room_entry', 'floating_entry', 'item_left_back'],
-                timeout=3,
-            )
-            if entry:
-                entry.click()
-                if _key == 'item_left_back':
-                    titlebar_back = self.handler.element_finder.wait_for_element_clickable(
-                        'titlebar_back_ivbtn',
-                        timeout=3,
-                    )
-                    if titlebar_back:
-                        titlebar_back.click()
-                        return True
-
-                    self.logger.warning(f"点击左侧返回后未找到用户主页返回按钮: {nickname}")
-                    return False
-
-                return True
-
-            self.logger.warning(f"未找到返回聊天室入口: {nickname}")
-            return False
+            if not await driver.open_member_home():
+                self.logger.warning(f"未找到头像入口: {nickname}")
+                return False
+            if not await driver.open_private_chat_page():
+                self.logger.warning(f"未找到私聊按钮: {nickname}")
+                return False
+            if not await driver.type_private_message(message):
+                self.logger.warning(f"未找到私聊输入框: {nickname}")
+                return False
+            if not await driver.submit_private_message():
+                self.logger.warning(f"未找到私聊发送按钮: {nickname}")
+                return False
+            sent = True
         except Exception as e:
-            self.logger.error(f"返回聊天室失败: {nickname}, error={e}")
-            return False
-
-    def _close_online_drawer(self):
-        """关闭在线用户抽屉"""
-        recovery_manager = self.handler.controller.recovery_manager
-        recovery_manager.close_drawer('online_drawer')
+            self.logger.error(f"私聊发送失败: {nickname}, error={e}")
+        finally:
+            if not await driver.return_to_room():
+                self.logger.warning(f"未找到返回聊天室入口: {nickname}")
+                sent = False
+        return sent

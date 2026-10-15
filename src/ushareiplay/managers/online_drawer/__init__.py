@@ -5,8 +5,8 @@
 `resolve_visible_username(...)` 把 DB 的 canonical 名换成 UI 上可见的昵称。
 
 Appium 手势、元素 key、坐标与落定时间都在这个子包内部；旧实现在各自的后续 ticket
-里迁移过来之前保持原样可用（在线名单抓取已于 #432 迁入，`UserManager` / 送礼 / 房管
-等仍待各自 ticket）。
+里迁移过来之前保持原样可用（在线名单抓取已于 #432 迁入，资料页与私信已于 #435 迁入，
+送礼 / 房管等仍待各自 ticket）。
 """
 
 from ushareiplay.managers.online_drawer.driver import (
@@ -20,7 +20,7 @@ from ushareiplay.managers.online_drawer.driver import (
     MemberRow,
     OnlineDrawerDriverPort,
 )
-from ushareiplay.managers.online_drawer.manager import OnlineDrawerManager
+from ushareiplay.managers.online_drawer.manager import Handover, OnlineDrawerManager
 from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "ROW_CONTAINER_KEY",
     "ROW_FOLLOW_STATE_KEY",
     "ROW_NAME_KEY",
+    "Handover",
     "MemberRow",
     "OnlineDrawerDriverPort",
     "OnlineDrawerManager",

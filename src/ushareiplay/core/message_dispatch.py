@@ -71,10 +71,10 @@ class MessageDispatch(Singleton):
         )
         return result
 
-    def send_private_message(self, nickname: str, message: str) -> bool:
+    async def send_private_message(self, nickname: str, message: str) -> bool:
         """Send a private reply and record its outcome without logging its contents."""
         try:
-            sent = self.user_manager.send_private_message_to_user(nickname, message)
+            sent = await self.user_manager.send_private_message_to_user(nickname, message)
             if not sent:
                 self.handler.logger.warning(f"Private reply dropped for {nickname}: send failed")
             self._emit(
@@ -95,10 +95,11 @@ class MessageDispatch(Singleton):
             )
             return False
 
-    def send_for_message_info(self, message_info, response: str, silent: bool = False):
+    async def send_for_message_info(self, message_info, response: str, silent: bool = False):
         """Route command output according to the requester's private-reply preference."""
         if not response:
             return None
         if getattr(message_info, "private_reply", False):
-            return self.send_private_message(message_info.nickname, response)
+            # 私聊要经抽屉会话进出，因此这条分支是异步的（#435）；公屏那条仍是同步的。
+            return await self.send_private_message(message_info.nickname, response)
         return self.send_screen_message(response, silent=silent)
