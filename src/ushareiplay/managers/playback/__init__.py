@@ -12,6 +12,7 @@ from ushareiplay.managers.playback.models import (
     PlaybackResult,
     PlaybackStatus,
     PlaybackTrack,
+    PlaybackVariant,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "PlaybackResult",
     "PlaybackStatus",
     "PlaybackTrack",
+    "PlaybackVariant",
 ]

@@ -622,11 +622,16 @@ async def test_command_manager_does_not_mute_for_the_song_branch(initialized_tes
     assert engine.journal == []
 
 
-@pytest.mark.parametrize("parameters", [[], ["?"]])
-async def test_command_manager_keeps_muting_the_unmigrated_branches(
+@pytest.mark.parametrize("parameters", [[], ["?"], ["稻香"]])
+async def test_command_manager_never_mutes_for_play(
     parameters, initialized_test_singletons
 ):
-    """收藏与电台分支归 #425 迁移到引擎前，它们的命令级静音保护必须原样保留。"""
+    """#425 之后 `:play` 的三条分支都归引擎管，命令级静音守卫一律让路。
+
+    收藏（`:play ""`）与雷达（`:play ?`）原本靠命令级静音兜着切歌；它们迁进
+    `MusicManager.play()` 之后这条保护就是重复的 —— 命令级闭麦发生在守护之前，
+    被守护拒绝的切歌也会在房间里响一次无来由的静音。
+    """
     from ushareiplay.managers.command_manager import CommandManager
 
     engine = _build_engine()
@@ -636,4 +641,4 @@ async def test_command_manager_keeps_muting_the_unmigrated_branches(
     ):
         pass
 
-    assert engine.journal == ["mute", "restore"]
+    assert engine.journal == []

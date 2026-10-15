@@ -6,7 +6,9 @@
 收藏、切前台、认播放页、点按钮、滚菜单），因此断言考的是「驱动怎么编排」而不是
 「Appium 点了哪个坐标」。
 
-按 #421 的分工，本驱动只实现 `PlaybackMode.SONG`；其余模式归 #425/#431/#434/#437。
+按 #421 的分工，本驱动先只实现 `PlaybackMode.SONG`；#425 补上 `FAVORITES`（三种取法）
+与 `RADAR`，#431/#434/#437 各自交付剩下几种模式，模式覆盖见
+`tests/test_favorites_radar_seam.py`。
 伴奏的两条 UI 通路（#427）都收在 `set_accompaniment` 后面：页上直接开关，以及
 K歌入口只在「更多」菜单里那条要滚动着找的路。
 """
@@ -93,20 +95,27 @@ class _QQMusicHandlerFake:
 
 
 def test_driver_refuses_a_mode_it_does_not_implement_yet(initialized_test_singletons):
-    """#425/#431/#434/#437 之前，非单曲模式必须响亮失败，而不是静默「播放成功」。"""
+    """#431/#434/#437 之前，非单曲/收藏/雷达的模式必须响亮失败，而不是静默「播放成功」。"""
     handler = _QQMusicHandlerFake(playing_info={"song": "任意", "singer": "某", "album": "碟"})
 
     outcome = QQMusicUIDriver(handler).start_playback(
-        PlaybackRequest(mode=PlaybackMode.RADAR, channel="sleep", requester="小明")
+        PlaybackRequest(mode=PlaybackMode.PLAYLIST, query="任意", requester="小明")
     )
 
     assert outcome.ok is False
-    assert "radar" in outcome.error
+    assert "playlist" in outcome.error
     # 一个 UI 动作都不该发生：驱动连 handler 都没碰
     assert handler.prepared_queries == []
 
 
-@pytest.mark.parametrize("mode", [m for m in PlaybackMode if m is not PlaybackMode.SONG])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        m
+        for m in PlaybackMode
+        if m not in (PlaybackMode.SONG, PlaybackMode.FAVORITES, PlaybackMode.RADAR)
+    ],
+)
 def test_driver_reports_every_unimplemented_mode_as_failed(mode, initialized_test_singletons):
     handler = _QQMusicHandlerFake(playing_info={"song": "任意", "singer": "某", "album": "碟"})
 

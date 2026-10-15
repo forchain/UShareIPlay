@@ -250,13 +250,18 @@ def test_playback_command_without_expected_song_still_guards_microphone(monkeypa
 # --------------------------------------------------------------------------
 
 PLAYBACK_COMMANDS = [
-    ("play", "PlayCommand"),
     ("skip", "SkipCommand"),
     ("playlist", "PlaylistCommand"),
     ("album", "AlbumCommand"),
     ("singer", "SingerCommand"),
-    ("fav", "FavCommand"),
     ("radio", "RadioCommand"),
+]
+
+# #425：`:play` 三条分支与整个 `:fav` 都迁进了 `MusicManager.play()`，麦克风
+# 生命周期由引擎的守卫按切歌边界接管，命令层不再声明参与。
+ENGINE_OWNED_PLAYBACK_COMMANDS = [
+    ("play", "PlayCommand"),
+    ("fav", "FavCommand"),
 ]
 
 
@@ -267,6 +272,23 @@ def test_playback_commands_declare_muting_participation(module_name, class_name)
 
     assert command_class.playback_muting is True
     assert not hasattr(command_class, "requires_mic")
+
+
+@pytest.mark.parametrize("module_name,class_name", ENGINE_OWNED_PLAYBACK_COMMANDS)
+def test_commands_migrated_into_the_engine_do_not_mute_at_command_level(
+    module_name, class_name
+):
+    """命令级闭麦发生在守护之前，被守护拒绝的切歌也会响一次无来由的静音。
+
+    迁到引擎后由 `MusicManager.play()` 在守护通过后自己闭麦（ADR-0007），命令层
+    再声明一次只会把静音包两遍。
+    """
+    module = importlib.import_module(f"ushareiplay.commands.{module_name}")
+    command_class = getattr(module, class_name)
+
+    assert command_class.playback_muting is False
+    # 逐分支判定静音归属的钩子也随之失去存在理由（基类的默认实现直接读类属性）
+    assert "playback_muting_applies" not in vars(command_class)
 
 
 def test_next_command_does_not_participate_in_muting():

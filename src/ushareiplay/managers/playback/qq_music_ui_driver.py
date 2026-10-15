@@ -12,9 +12,15 @@
 """
 
 import logging
+import re
 import time
 from html import unescape
+from typing import Callable, Optional
 
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
+
+from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
     ACCOMPANIMENT_DISABLED_ERROR,
@@ -23,6 +29,7 @@ from ushareiplay.managers.playback.models import (
     AccompanimentOutcome,
     LyricsOutcome,
     PlaybackMode,
+    PlaybackVariant,
     PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
@@ -43,11 +50,44 @@ from ushareiplay.managers.playback.player_page import (
 # 切到歌词分类后等页面重排的秒数。取自迁移前 LyricsCommand 的既有等待。
 LYRICS_TAB_SETTLE_SECONDS = 0.2
 
+# 房间广播名。收藏三种形态共用一个默认站名；筛选/搜索时才按关键字改名。
+FAVOURITES_DEFAULT_NAME = "O Station"
+RADAR_ROOM_TITLE = "O Radio"
+
+# 收藏筛选关键字 → 房间标题。粤语/英语用简称，房间名更短。
+# 标题与 current_playlist_name 同源，因此只在这里映射一次。
+_FAVOURITE_FILTER_TITLES = {
+    "粤语": "粤音",
+    "英语": "英乐",
+}
+
+# 收藏页筛选器里的筛选项与确认按钮，文案都由用户关键字拼出来
+# （`TextView[@text="粤语"]` / `确定（12首）`），`config.yaml` 的
+# `qq_music.elements` 装不下这种动态文案 —— 元素单一事实源铁律管的是稳定控件，
+# 拼出来的文案只能按 XPath 现拼。下面两处是本模块仅有的 raw XPath。
+FAVOURITE_CONFIRM_XPATH = (
+    '//android.widget.TextView[starts-with(@text,"确定（") and contains(@text,"首）")]'
+)
+FAVOURITE_COUNT_PATTERN = re.compile(r"确定（(\d+)首）")
+
+# 选完筛选项到确认按钮刷新、确认后回到收藏列表，各等一次页面重排。
+FAVOURITE_FILTER_SETTLE_SECONDS = 0.25
+FAVOURITE_CONFIRM_SETTLE_SECONDS = 0.35
+
 # 播放页元素 key → 模式 key。与 `player_page` 里的私有映射同向，但驱动要自己
 # 反查点击后的模式，因此这里按公开常量重新推导，不去 import 对方的下划线名字。
 _MODE_KEY_BY_ELEMENT_KEY = {
     element_key: mode_key for mode_key, element_key in PLAY_MODE_ELEMENT_KEYS.items()
 }
+
+
+def favourite_filter_title(keyword: str) -> str:
+    """收藏筛选关键字 → 房间标题（也是该歌单的广播名）。
+
+    这个映射跟着「筛选」这个 UI 形态一起搬进驱动：只有驱动知道当前请求走的是筛选，
+    命令层不该反过来替 UI 决定房间该叫什么。
+    """
+    return _FAVOURITE_FILTER_TITLES.get(keyword, keyword or FAVOURITES_DEFAULT_NAME)
 
 
 class QQMusicUIDriver(MusicUIDriverPort):
@@ -70,13 +110,15 @@ class QQMusicUIDriver(MusicUIDriverPort):
         实现只读模式与查询词：请求者身份属于引擎的守护职责，不该出现在 UI 层
         （见 `MusicUIDriverPort.start_playback` 的约定）。
         """
-        if request.mode is not PlaybackMode.SONG:
-            # #425/#431/#434/#437 各自交付一种模式。未实现就响亮失败 ——
-            # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
-            return PlaybackOutcome.failed(
-                f"暂不支持的播放模式：{request.mode.value}"
-            )
-        return self._play_song(request.query)
+        if request.mode is PlaybackMode.SONG:
+            return self._play_song(request.query)
+        if request.mode is PlaybackMode.FAVORITES:
+            return self._play_favourites(request)
+        if request.mode is PlaybackMode.RADAR:
+            return self._play_radar()
+        # #431/#434/#437 各自交付剩下几种模式。未实现就响亮失败 ——
+        # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
+        return PlaybackOutcome.failed(f"暂不支持的播放模式：{request.mode.value}")
 
     def _play_song(self, query: str) -> PlaybackOutcome:
         """`:play <query>` 的 UI 编排：查歌 → 点第一首 → 收藏 → 质量过滤。
@@ -134,6 +176,331 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """
         release_date = (playing_info.get("release_date") or "").strip()
         return {"release_date": release_date} if release_date else {}
+
+    # ------------------------------------------------------------------
+    # 收藏播放（#425）
+    #
+    # 收藏有三条 UI 通路：全部播放、筛选后播放、收藏内搜索后播放。三条共用
+    # 「进收藏页 → 触发播放 → 读队列 → 回首页」的骨架，只有中间那一步不同 ——
+    # 因此形态由 `PlaybackRequest.variant` 决定，骨架只写一遍。
+    # ------------------------------------------------------------------
+
+    def _play_favourites(self, request: PlaybackRequest) -> PlaybackOutcome:
+        """`:fav` / `:play ""` —— 收藏的三种取法共用一条骨架。"""
+        try:
+            return self._favourites_flow(request)
+        except Exception as exc:
+            # 端口约定：UI 层失败一律以返回值汇报，让引擎据此跳过就绪等待并立即恢复开麦。
+            self.logger.warning(f"播放收藏失败: {request.variant}: {exc}")
+            return PlaybackOutcome.failed(f"Failed to play favourites: {exc}")
+
+    def _favourites_flow(self, request: PlaybackRequest) -> PlaybackOutcome:
+        handler = self._handler
+        variant = request.variant or PlaybackVariant.ALL
+
+        if not handler.key_actions.switch_to_app():
+            return PlaybackOutcome.failed("Cannot switch to qq music")
+        self.logger.info("已切到 QQ 音乐，准备进入收藏页")
+
+        entry_error = handler.open_favorites_entry()
+        if entry_error:
+            return PlaybackOutcome.failed(entry_error.get("error") or "Cannot open favourites")
+
+        count = None
+        if variant is PlaybackVariant.SEARCH:
+            # 搜索这条路自己点「全部播放」：它要的是搜索结果那一栏的按钮，
+            # 而不是收藏页顶部的那个。
+            search_error = self._search_within_favourites(request.query or "")
+            if search_error:
+                return PlaybackOutcome.failed(search_error)
+        else:
+            if variant is PlaybackVariant.FILTER:
+                error, count = self._apply_favourite_filter(request.query or "")
+                if error:
+                    return PlaybackOutcome.failed(error)
+            play_error = self._click_play_all()
+            if play_error:
+                return PlaybackOutcome.failed(play_error)
+
+        track = self._first_result_track()
+        room_name = self._favourites_room_name(variant, request.query)
+        playlist_text, first_line, queue_error = get_playlist_text_and_first_song(
+            handler.get_playlist_info()
+        )
+        if queue_error:
+            # 歌已经在放了，读不到歌单只该降级、不该把播放收回去。
+            self.logger.warning(f"播放已开始但读不到收藏歌单: {queue_error}")
+            playlist_text = room_name
+            first_line = None
+
+        # 先回 QQ 音乐首页，引擎随后才去 Soul 改标题/话题 —— 顺序反了会让
+        # Soul 的弹窗盖在收藏页上。
+        handler.navigate_to_home()
+        self.logger.info("收藏已开始播放，已回到 QQ 音乐首页，等待引擎同步房间")
+
+        extra = {"playlist": playlist_text}
+        if count is not None:
+            extra["count"] = count
+        return PlaybackOutcome.started(
+            track,
+            title=room_name,
+            topic=self._favourites_topic(variant, request.query, first_line, track),
+            playlist=room_name,
+            extra=extra,
+        )
+
+    def _click_play_all(self) -> Optional[str]:
+        """点「全部播放」。返回错误说明；成功为 None。"""
+        play_all = self._handler.element_finder.wait_for_element_clickable("play_all")
+        if not play_all:
+            return "Cannot find play all button"
+        play_all.click()
+        self.logger.info("已点击「全部播放」")
+        return None
+
+    def _first_result_track(self) -> PlaybackTrack:
+        """收藏列表首行的歌名/歌手。
+
+        `result_item` 是一行的容器：第 0 个 TextView 是序号或操作按钮，第 1 个是歌名，
+        第 2 个是歌手。行还没排版完就少于三个，此时当作读不到，让队列首行顶上。
+        """
+        result_item = self._handler.element_finder.try_find_element("result_item")
+        if not result_item:
+            return PlaybackTrack()
+        text_views = result_item.find_elements(
+            AppiumBy.CLASS_NAME, "android.widget.TextView"
+        )
+        if len(text_views) < 3:
+            return PlaybackTrack()
+        return PlaybackTrack(song=text_views[1].text, singer=text_views[2].text)
+
+    @staticmethod
+    def _favourites_room_name(
+        variant: PlaybackVariant, query: Optional[str]
+    ) -> str:
+        """这一路收藏在房间里叫什么（同时也是要广播的歌单名）。"""
+        if variant is PlaybackVariant.FILTER:
+            return favourite_filter_title(query or "")
+        if variant is PlaybackVariant.SEARCH:
+            return query or FAVOURITES_DEFAULT_NAME
+        return FAVOURITES_DEFAULT_NAME
+
+    @staticmethod
+    def _favourites_topic(
+        variant: PlaybackVariant,
+        query: Optional[str],
+        first_line: Optional[str],
+        track: PlaybackTrack,
+    ) -> str:
+        """房间话题 = 这次真正开始放的那首歌。
+
+        收藏内搜索是「搜一批、播一批」，话题报歌名即可（迁移前的既有约定：行首的
+        `歌名 - 歌手` 只取歌名）；全部播放与筛选则报队列首行，带上歌手更好认。
+        """
+        if variant is PlaybackVariant.SEARCH:
+            if not first_line:
+                return query or FAVOURITES_DEFAULT_NAME
+            return first_line.split(" - ")[0].strip() or track.song
+        return first_line or track.song
+
+    def _apply_favourite_filter(self, keyword: str):
+        """新版「筛选歌曲」页：点筛选 → 点关键字 → 点「确定（n首）」。
+
+        Returns:
+            `(错误说明, 命中首数)`；成功时错误为 None，首数读不到时为 None。
+        """
+        filter_favourite = self._handler.element_finder.wait_for_element_clickable(
+            "filter_favourite"
+        )
+        if not filter_favourite:
+            return "Cannot find filter button", None
+        filter_favourite.click()
+        self.logger.info("已打开收藏筛选")
+
+        option = self._xpath_with_stale_retry(
+            self._textview_text_xpath(keyword),
+            f"Favourite filter option '{keyword}'",
+            self._click_element,
+        )
+        if option is None:
+            return f"找不到筛选项: {keyword}", None
+        self.logger.info(f"已选择筛选项: {keyword}")
+
+        # 等「确定（n首）」按新的命中数刷新出来再点。
+        time.sleep(FAVOURITE_FILTER_SETTLE_SECONDS)
+
+        confirm_text = []
+
+        def _read_then_click(element):
+            # 先读文案再点：点下去之后按钮文案可能就变了，首数就再也读不到。
+            confirm_text.append((element.text or "").strip())
+            element.click()
+            return element
+
+        confirm = self._xpath_with_stale_retry(
+            FAVOURITE_CONFIRM_XPATH, "Favourite filter confirm button", _read_then_click
+        )
+        if confirm is None:
+            return "Cannot find confirm button: 确定（xxx首）", None
+        self.logger.info("已确认收藏筛选条件")
+
+        # 确认后要退回收藏列表，等页面重排再读首行。
+        time.sleep(FAVOURITE_CONFIRM_SETTLE_SECONDS)
+        matched = FAVOURITE_COUNT_PATTERN.search(confirm_text[0]) if confirm_text else None
+        return None, int(matched.group(1)) if matched else None
+
+    def _search_within_favourites(self, keyword: str) -> Optional[str]:
+        """收藏页内搜索：滑出搜索框 → 粘关键字 → 点「全部播放」。
+
+        Returns:
+            失败时的错误说明；成功为 None。
+        """
+        handler = self._handler
+
+        play_all = handler.element_finder.wait_for_element_clickable("play_all")
+        if not play_all:
+            return "Cannot find play all button"
+
+        # 搜索框藏在「全部播放」那一栏的下方：按它的高度往下滚一次才会露脸。
+        location = play_all.location
+        size = play_all.size
+        center_x = int(location["x"] + size["width"] * 0.5)
+        center_y = int(location["y"] + size["height"] * 0.5)
+        handler.gesture_handler.swipe(
+            center_x,
+            center_y,
+            center_x,
+            center_y + max(60, int(size["height"])),
+            duration_ms=260,
+        )
+
+        search_box = handler.element_finder.wait_for_element_clickable("search_box")
+        if not search_box:
+            return "Cannot find search box in favourites"
+        search_box.click()
+
+        if not handler.element_finder.wait_for_element("favourite_search"):
+            return "Cannot find favourite search"
+
+        handler.key_actions.set_clipboard_text(keyword)
+        handler.key_actions.paste_text()
+        self.logger.info(f"已在收藏内搜索: {keyword}")
+
+        play_search = handler.element_finder.wait_for_element_clickable(
+            "play_favourite_search"
+        )
+        if not play_search:
+            return "Cannot find play_favourite_search button"
+        play_search.click()
+        self.logger.info("已播放收藏内的搜索结果")
+        return None
+
+    def _xpath_with_stale_retry(
+        self,
+        xpath: str,
+        description: str,
+        handle: Callable,
+        timeout: int = 8,
+        max_attempts: int = 3,
+    ):
+        """按 XPath 反复重新定位元素并交给 `handle` 处理，直到处理成功或超时。
+
+        为什么必须重新定位而不是拿一个句柄点到底：筛选项与确认按钮点下去之后页面会
+        重排，句柄随即变 stale，拿着旧句柄再点只会静默失败。`handle` 返回值即本方法
+        返回值，调用方因此能同时拿到「点没点到」与「点上之后读到了什么」。
+
+        Returns:
+            `handle` 的返回值；元素始终找不到则返回 None。
+        """
+        deadline = time.time() + timeout
+        stale_attempts = 0
+        while time.time() < deadline:
+            try:
+                element = self._handler.driver.find_element(AppiumBy.XPATH, xpath)
+                if not (element.is_displayed() and element.is_enabled()):
+                    time.sleep(0.2)
+                    continue
+                return handle(element)
+            except StaleElementReferenceException:
+                stale_attempts += 1
+                if stale_attempts >= max_attempts:
+                    raise
+                self.logger.warning(
+                    f"{description} element stale before click, refinding "
+                    f"({stale_attempts}/{max_attempts})"
+                )
+                time.sleep(0.2)
+            except NoSuchElementException:
+                time.sleep(0.2)
+        return None
+
+    @staticmethod
+    def _click_element(element):
+        """点掉元素并把它交还给调用方 —— `handle` 约定的返回形状。"""
+        element.click()
+        return element
+
+    @staticmethod
+    def _textview_text_xpath(text_value: str) -> str:
+        """拼出 `android.widget.TextView[@text=...]` 的 XPath。
+
+        关键字是用户原样输入的，可能带引号 —— 直接塞进双引号属性值会让整条 XPath
+        语法失效，因此按 XPath 的转义规则换一种引号，实在都装不下才用 `concat`。
+        """
+        if '"' not in text_value:
+            return f'//android.widget.TextView[@text="{text_value}"]'
+        if "'" not in text_value:
+            return f"//android.widget.TextView[@text='{text_value}']"
+        parts = text_value.split('"')
+        concat_parts = []
+        for index, part in enumerate(parts):
+            if part:
+                concat_parts.append(f'"{part}"')
+            if index != len(parts) - 1:
+                concat_parts.append("'\"'")
+        return f"//android.widget.TextView[@text=concat({', '.join(concat_parts)})]"
+
+    # ------------------------------------------------------------------
+    # 雷达电台（#425）
+    # ------------------------------------------------------------------
+
+    def _play_radar(self) -> PlaybackOutcome:
+        """`:play ?` —— 回首页、点开雷达电台，让电台自己开始播。
+
+        与收藏不同：雷达是一路持续流，点进 `radar_nav` 就等于开了播，页面上没有
+        「播放全部」可点，所以这里不再读队列 —— 读到的队列是电台的历史列表，不是
+        这次要广播的歌单。
+        """
+        try:
+            return self._radar_flow()
+        except Exception as exc:
+            self.logger.warning(f"打开雷达电台失败: {exc}")
+            return PlaybackOutcome.failed(f"Failed to start radar: {exc}")
+
+    def _radar_flow(self) -> PlaybackOutcome:
+        handler = self._handler
+        if not handler.key_actions.switch_to_app():
+            return PlaybackOutcome.failed("Cannot switch to qq music")
+        self.logger.info("已切到 QQ 音乐，准备打开雷达电台")
+
+        handler.navigate_to_home()
+
+        radar_nav = handler.element_finder.try_find_element("radar_nav", log=False)
+        if not radar_nav:
+            return PlaybackOutcome.failed("Cannot find radar_nav")
+        radar_nav.click()
+        self.logger.info("已进入雷达电台")
+
+        song = handler.element_finder.wait_for_element_clickable("radar_song")
+        singer = handler.element_finder.wait_for_element_clickable("radar_singer")
+        song_text = song.text if song else "Unknown"
+        singer_text = singer.text if singer else "Unknown"
+
+        return PlaybackOutcome.started(
+            PlaybackTrack(song=song_text, singer=singer_text),
+            title=RADAR_ROOM_TITLE,
+            topic=song_text,
+        )
 
     # ------------------------------------------------------------------
     # 播放模式切换（#423）
