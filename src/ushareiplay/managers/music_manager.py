@@ -214,6 +214,56 @@ class MusicManager(Singleton):
         return {"success": True, "mode": mode_name, "message": message}
 
     # ------------------------------------------------------------------
+    # 歌词（#430）
+    # ------------------------------------------------------------------
+
+    def query_lyrics(self, query: Optional[str] = None) -> dict:
+        """取歌词原文 —— 歌词取法的唯一入口。
+
+        命令层只负责把查询词原样递进来、以及把拿到的原文折行分组发公屏；查歌、
+        切歌词 tab、点开结果、读 DOM、解 HTML 实体全在 `ui_driver` 那边。
+
+        Args:
+            query: 搜索词。留空则兜底成当前正在放的这首
+                （`get_playback_info()` 的「歌名 歌手 专辑」），
+                因此 `:lyrics` 不带参数就能问「现在这首什么词」。
+
+        Returns:
+            取到为 `{'lyrics': <歌词原文>}`；没找到、切不到歌词 tab 或读不出文字
+            时为 `{'error': <原因>}` —— 都是正常结局，不抛异常，房间据此回复即可。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是「没有歌词」，
+                不该让命令层把它当成取词失败回复给用户。
+        """
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.query_lyrics() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        text = (query or "").strip()
+        if not text:
+            info = self.get_playback_info() or {}
+            if "error" in info:
+                self.logger.error("Lyrics lookup skipped: playback info unavailable")
+                return {"error": "Failed to get playback info"}
+            text = " ".join(
+                str(info.get(key) or "")
+                for key in ("song", "singer", "album")
+            ).strip()
+            self.logger.info(f"Using current song info as lyrics query: {text}")
+
+        outcome = driver.query_lyrics(text)
+        if not outcome.ok:
+            self.logger.error(f"Lyrics lookup failed: query={text}, error={outcome.error}")
+            return {"error": outcome.error}
+
+        self.logger.info(f"Lyrics found: query={text}, characters={len(outcome.text)}")
+        return {"lyrics": outcome.text}
+
+    # ------------------------------------------------------------------
     # 深度播放引擎（#379）
     #
     # 全部播放模式共用的一条流水线：守护 → 静音 → UI → 房间同步。
