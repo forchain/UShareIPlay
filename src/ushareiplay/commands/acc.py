@@ -2,6 +2,15 @@ from ushareiplay.core.base_command import BaseCommand
 
 
 class AccompanimentCommand(BaseCommand):
+    """`:acc 1|0` —— QQ音乐 K歌伴唱/伴奏模式开关。
+
+    命令层只做参数校验并转交 `MusicManager.set_accompaniment()`：播放页怎么进、
+    开关是页上直接点还是要进「更多」菜单里滚动着找，都是 UI 层的事（#427）。
+
+    `:acc 1` 开伴唱（伴奏）、`:acc 0` 回到原唱；非 `1` 的参数按 `0` 处理，
+    这条解析契约自迁移以来没有变过。
+    """
+
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
@@ -12,95 +21,4 @@ class AccompanimentCommand(BaseCommand):
             }
 
         enable = parameters[0] == '1'
-        # Toggle accompaniment mode
-        return self.toggle_accompaniment(enable)
-
-    def toggle_accompaniment(self, enable):
-        """Toggle accompaniment mode
-        Args:
-            enable: bool, True to enable, False to disable
-        Returns:
-            dict: {'enabled': 'on'/'off'}
-        """
-        if not self.handler.key_actions.switch_to_app():
-            return {'error': 'Failed to switch to QQ Music app'}
-        self.handler.logger.info("Switched to QQ Music app")
-
-        self.handler.key_actions.press_back()
-        # 1. 查找四个控件中的任意一个，找不到说明没有在播放
-        found_key, found_element = self.handler.element_finder.wait_for_any_element([
-            'accompaniment_text_off', 'accompaniment_text_on', 'playing_bar', 'more_entry'
-        ])
-
-        if not found_element:
-            self.handler.logger.warning("No music playing detected")
-            return {'error': 'No music playing, cannot toggle accompaniment mode'}
-
-        # 2. 判断找到的是哪种元素并处理
-        if found_key == 'playing_bar':
-            # 找到播放条，需要进入播放页面
-            self.handler.logger.info("Found playing bar, clicking to enter playing page")
-            if not self.handler.gesture_handler.click_element_at(found_element):
-                return {'error': 'Failed to click playing bar'}
-
-            found_key, found_element = self.handler.element_finder.wait_for_any_element([
-                'accompaniment_text_off', 'accompaniment_text_on', 'more_entry'
-            ])
-
-            if not found_element:
-                return {'error': 'Failed to find accompaniment controls after entering playing page'}
-
-        # 3. 如果找到的是accompaniment_switch，说明此前还没激活过伴唱模式
-        if found_key == 'more_entry':
-
-            accompaniment_switch = self.handler.element_finder.try_find_element('accompaniment_switch')
-            # if disabled, return
-            if accompaniment_switch and accompaniment_switch.get_attribute('enabled') == 'false':
-                return {'error': 'Accompaniment mode is disabled'}
-
-            self.handler.logger.info("Found accompaniment more menu entry, activating accompaniment mode")
-            if not self.handler.gesture_handler.click_element_at(found_element):
-                return {'error': 'Failed to click accompaniment switch'}
-
-            # 查找伴唱菜单
-            button_key, found_button, _ = self.handler.gesture_handler.scroll_container_until_element('accompaniment_menu',
-                                                                                   'menu_container')
-            if found_button is None:
-                return {'error': 'Failed to find accompaniment menu'}
-            found_button.click()
-            self.handler.logger.info("Clicked accompaniment menu")
-
-            # 查找伴唱状态按钮
-            button_key, found_button = self.handler.element_finder.wait_for_any_element([
-                'accompaniment_button_on', 'accompaniment_button_off'
-            ])
-
-            if not found_button:
-                return {'error': 'Failed to find accompaniment menu'}
-
-            # 根据找到的按钮类型确定当前状态
-            current_state = button_key == 'accompaniment_button_on'  # True表示已开启
-
-            if enable != current_state:
-                # 需要切换状态，直接点击找到的按钮
-                if not self.handler.gesture_handler.click_element_at(found_button):
-                    return {'error': 'Failed to toggle accompaniment state'}
-                self.handler.logger.info(f"Toggled accompaniment state to {'on' if enable else 'off'}")
-            else:
-                self.handler.logger.info(f"Accompaniment state already {'on' if enable else 'off'}, no action needed")
-            self.handler.key_actions.press_back()
-
-        # 4. 如果找到的是accompaniment_text_off或accompaniment_text_on，说明已经开启过伴奏模式
-        else:
-            # 根据找到的文本类型确定当前状态
-            current_state = found_key == 'accompaniment_text_on'  # True表示已开启
-
-            if enable != current_state:
-                # 需要切换状态，直接点击找到的元素
-                if not self.handler.gesture_handler.click_element_at(found_element):
-                    return {'error': f"Failed to {'enable' if enable else 'disable'} accompaniment mode"}
-                self.handler.logger.info(f"{'Enabled' if enable else 'Disabled'} accompaniment mode")
-            else:
-                self.handler.logger.info(f"Accompaniment mode already {'on' if enable else 'off'}, no action needed")
-
-        return {'enabled': 'on' if enable else 'off'}
+        return await self.music_manager.set_accompaniment(enable)

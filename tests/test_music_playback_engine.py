@@ -314,6 +314,9 @@ async def test_play_restores_the_microphone_when_the_ui_work_raises(initialized_
         def set_play_mode(self, target_mode):
             raise AssertionError("本用例不碰播放模式")
 
+        def set_accompaniment(self, enable):
+            raise AssertionError("本用例不碰伴奏")
+
         def query_lyrics(self, query):
             raise AssertionError("本用例不碰歌词")
 

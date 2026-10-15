@@ -12,10 +12,16 @@
 元素 key 全部来自 `config.yaml` 的 `qq_music.elements`（唯一权威），本模块
 只出现 key、不出现 XPath。复用方拿到 `PlayerPageEntry.element` 后即可继续点
 模式按钮，无需重新探测页面。
+
+「站在播放页上」的证据并不是模式按钮本身 —— 伴奏（#427）认的是伴唱开关或
+「更多」入口，歌词（#430）认的又是别的东西。因此这段仪式把那份证据交给调用方
+用 `on_page_keys` 指进来，前置动作（切前台、返回、找播放条、必要时点进去）始终
+只有这一份。同理，「没有音乐在放」这句话各命令措辞不同，由 `no_music_error`
+带进来，仪式本身不替用户决定怎么措辞。
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from ushareiplay.managers.playback.models import NO_PLAYING_MUSIC_ERROR
 
@@ -25,6 +31,14 @@ PLAY_MODE_ELEMENT_KEYS = {
     "single": "play_mode_single",
     "random": "play_mode_random",
 }
+
+# 伴奏（#427）用来认出「已经在播放页上」的元素：播放页上直接显示的伴唱状态
+# 文案，或者需要再点开的「更多」入口。两种并存说明这一版 App 已经激活过伴唱。
+ACCOMPANIMENT_ON_PAGE_KEYS = (
+    "accompaniment_text_off",
+    "accompaniment_text_on",
+    "more_entry",
+)
 
 # 探测「在不在播放页」的元素 key：底部播放条说明有音乐但不在播放页，
 # 模式按钮说明已经在播放页。一个都找不到就是没有音乐在放。
@@ -53,19 +67,31 @@ class PlayerPageEntry:
     error: Optional[str] = None
 
 
-def ensure_player_page(handler, logger=None) -> PlayerPageEntry:
-    """确保站在 QQ Music 播放页上，并交出当前模式按钮。
+def ensure_player_page(
+    handler,
+    logger=None,
+    *,
+    on_page_keys: Optional[Sequence[str]] = None,
+    no_music_error: Optional[str] = None,
+) -> PlayerPageEntry:
+    """确保站在 QQ Music 播放页上，并交出调用方要认的那个控件。
 
     Args:
         handler: `QQMusicHandler`（或其替身）。只需要 `key_actions`、
             `element_finder`、`gesture_handler` 三个协作者。
         logger: 可选的日志器，缺省用 `handler.logger`。只在真的发生动作时记日志 ——
             已经站在播放页上是一次空转，不该留下日志。
+        on_page_keys: 认出「已经在播放页上」的元素 key。缺省是模式按钮（#423 的
+            行为）；伴奏传 `ACCOMPANIMENT_ON_PAGE_KEYS`。
+        no_music_error: 一个都探不到时回给用户的话。缺省是播放模式那句。
 
     Returns:
         `PlayerPageEntry` —— 成功时带上模式 key 与按钮元素；失败时带上本地化原因。
     """
     logger = logger if logger is not None else getattr(handler, "logger", None)
+
+    page_keys = tuple(on_page_keys) if on_page_keys else tuple(PLAY_MODE_ELEMENT_KEYS.values())
+    no_music_error = no_music_error or NO_PLAYING_MUSIC_ERROR
 
     if not handler.key_actions.switch_to_app():
         if logger:
@@ -75,12 +101,12 @@ def ensure_player_page(handler, logger=None) -> PlayerPageEntry:
     handler.key_actions.press_back()
 
     found_key, found_element = handler.element_finder.wait_for_any_element(
-        list(PLAYER_PAGE_PROBE_KEYS)
+        list(("playing_bar",) + page_keys)
     )
     if not found_key or not found_element:
         if logger:
             logger.info("未找到播放模式相关元素，说明现在没有播放音乐")
-        return PlayerPageEntry(ok=False, error=NO_PLAYING_MUSIC_ERROR)
+        return PlayerPageEntry(ok=False, error=no_music_error)
 
     if found_key == "playing_bar":
         if logger:
@@ -88,8 +114,7 @@ def ensure_player_page(handler, logger=None) -> PlayerPageEntry:
         if not handler.gesture_handler.click_element_at(found_element):
             return PlayerPageEntry(ok=False, error="FAIL: 点击 playing_bar 进入播放页失败")
 
-        mode_keys = list(PLAY_MODE_ELEMENT_KEYS.values())
-        found_key, found_element = handler.element_finder.wait_for_any_element(mode_keys)
+        found_key, found_element = handler.element_finder.wait_for_any_element(list(page_keys))
         if not found_key or not found_element:
             return PlayerPageEntry(
                 ok=False, error="FAIL: 点击 playing_bar 后仍未找到播放模式控制元素"

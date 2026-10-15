@@ -7,6 +7,7 @@ from typing import Optional
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.managers.playback.models import (
+    ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
     PLAY_MODE_BY_INDEX,
     PLAY_MODE_INDEX_BY_KEY,
     PLAY_MODE_NAMES,
@@ -262,6 +263,68 @@ class MusicManager(Singleton):
 
         self.logger.info(f"Lyrics found: query={text}, characters={len(outcome.text)}")
         return {"lyrics": outcome.text}
+
+    # ------------------------------------------------------------------
+    # 伴奏开关（#427）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_accompaniment(enable) -> Optional[bool]:
+        """把 `1/0`、`'1'/'0'` 与 `True/False` 归一成同一个布尔值。
+
+        Returns:
+            `True`/`False` 之一；无法识别时返回 None。
+
+        注意 `isinstance(True, int)` 为真，因此先挡掉布尔，否则 `1` 会被
+        当成整数、`True` 落到别的分支上去。
+        """
+        if isinstance(enable, bool):
+            return enable
+        if isinstance(enable, int) and enable in (0, 1):
+            return bool(enable)
+        if isinstance(enable, str) and enable.strip() in {"0", "1"}:
+            return enable.strip() == "1"
+        return None
+
+    async def set_accompaniment(self, enable) -> dict:
+        """开关房间的伴唱/伴奏模式 —— 伴奏相关的唯一入口。
+
+        命令层只负责把参数原样递进来，并原样返回这里的回复
+        （`{'enabled': 'on'|'off'}` 与迁移前一致）。
+
+        Args:
+            enable: 目标状态。`1`/`True` 开伴唱（伴奏），`0`/`False` 回到原唱。
+
+        Returns:
+            切换成功为 `{'enabled': 'on'}` 或 `{'enabled': 'off'}`；失败为
+            `{'error': ...}`，包括没有音乐在放的「没有播放音乐，无法切换伴奏模式」。
+
+        Raises:
+            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是切换失败，
+                不该让命令层把它当成切换失败回复给用户。
+        """
+        target = self._normalize_accompaniment(enable)
+        if target is None:
+            return {"error": ACCOMPANIMENT_INVALID_PARAMETER_ERROR}
+
+        driver = self.ui_driver
+        if driver is None:
+            raise RuntimeError(
+                "MusicManager.set_accompaniment() requires a MusicUIDriverPort adapter; "
+                "construct MusicManager with ui_driver=... at the composition root."
+            )
+
+        outcome = driver.set_accompaniment(target)
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        # 本来就是目标状态时没有任何点击发生，按铁律不记日志。
+        if not outcome.already_target:
+            self.logger.info(
+                f"Accompaniment toggled: target={'on' if target else 'off'}, "
+                f"observed={'on' if outcome.enabled else 'off'}"
+            )
+        return {"enabled": "on" if target else "off"}
 
     # ------------------------------------------------------------------
     # 深度播放引擎（#379）
