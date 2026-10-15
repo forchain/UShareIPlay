@@ -5,6 +5,8 @@ from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.commands.playlist import PlaylistCommand
 from ushareiplay.commands.album import AlbumCommand
 from ushareiplay.commands.singer import SingerCommand
+from ushareiplay.commands.play import PlayCommand
+from ushareiplay.managers.playback.models import PlaybackMode
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -424,3 +426,63 @@ async def test_normal_user_can_play_when_admin_or_owner_is_playing(
     res = await command.do_process(msg, ["用户点歌"])
     assert "error" not in res
 
+
+
+# ---------------------------------------------------------------------------
+# 守护的边界：只有歌单受保护，单曲不受保护
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_single_song_playback_does_not_protect_the_room(
+    clean_info_manager, playback_engine
+):
+    """普通用户单点一首歌之后，别人照样能点自己的那一首。
+
+    线上事故（2026-10-15 22:34）：半點心 22:28 单点《心深伤透 陈奕迅》，不约儿童
+    随后单点《重口味》被回以「半點心 正在播放歌单，请等待」—— 可房间里根本
+    没有歌单在放。守护保护的是「某位普通用户正在放的歌单」，单曲不在其列。
+    """
+    info_manager = clean_info_manager
+    info_manager.update_online_users(["半點心", "不约儿童", "Joyer"])
+
+    command = PlayCommand(MagicMock())
+
+    first = await command.do_process(
+        MessageInfo(content="/play 心深伤透 陈奕迅", nickname="半點心"),
+        ["心深伤透", "陈奕迅"],
+    )
+    assert "error" not in first, first
+    assert info_manager.player_name == "半點心"
+    assert playback_engine.requests[0].mode is PlaybackMode.SONG
+
+    second = await command.do_process(
+        MessageInfo(content="/play 重口味", nickname="不约儿童"), ["重口味"]
+    )
+    assert "error" not in second, f"单曲播放不该被歌单守护拦住：{second}"
+    assert len(playback_engine.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_playlist_playback_still_protects_against_a_single_song(
+    clean_info_manager, playback_engine
+):
+    """反向兜底：普通用户正在放歌单时，别人的单曲点播仍然要被拦下。
+
+    放开单曲不等于取消守护 —— 这条断言保证修复不会把歌单一起放倒。
+    """
+    info_manager = clean_info_manager
+    info_manager.update_online_users(["半點心", "不约儿童", "Joyer"])
+
+    await PlaylistCommand(MagicMock()).do_process(
+        MessageInfo(content="/playlist 流行歌单", nickname="半點心"), ["流行歌单"]
+    )
+    assert info_manager.player_name == "半點心"
+    assert playback_engine.requests[0].mode is PlaybackMode.PLAYLIST
+
+    res = await PlayCommand(MagicMock()).do_process(
+        MessageInfo(content="/play 重口味", nickname="不约儿童"), ["重口味"]
+    )
+    assert res == {"error": "半點心 正在播放歌单，请等待"}
+    # 被拦下的这一次不该动过 UI
+    assert len(playback_engine.requests) == 1
