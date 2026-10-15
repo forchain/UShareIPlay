@@ -34,7 +34,6 @@ from ushareiplay.managers.user_event_hooks.registry import (
     SINGLE_ID,
     Resolution,
     UserEventHookSpec,
-    all_event_types,
     spec_for,
 )
 
@@ -52,6 +51,5 @@ __all__ = [
     "UserEventHookDAO",
     "UserEventHookSpec",
     "UserEventHooks",
-    "all_event_types",
     "spec_for",
 ]

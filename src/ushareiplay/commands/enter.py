@@ -17,7 +17,8 @@ class EnterCommand(BaseCommand):
     async def user_enter(self, username: str):
         """有人进入派对：把他配置的进入命令投进队列。
 
-        方法名保留是因为 CommandManager 按属性名分发；实现已全部下沉到
-        UserEventHooks。
+        方法保留：它是命令层的事件接缝，覆盖 `BaseCommand.user_enter` 的 no-op 契约，
+        测试也直接调它断言入队结果。生产触发不再走按属性名分发（#436 已删）——
+        `CommandManager.notify_user_enter` 直接调 `UserEventHooks.fire`。
         """
         await UserEventHooks.instance().fire(ENTER, username)

@@ -17,8 +17,9 @@ class ExitCommand(BaseCommand):
     async def user_leave(self, username: str):
         """有人离开派对：把他配置的离开命令投进队列。
 
-        方法名保留是因为 CommandManager 按属性名分发；实现已全部下沉到
-        UserEventHooks。多分身离线判定与主账号名解析也在那里面完成 —— 到这里
+        方法保留：它是命令层的事件接缝，测试直接调它断言入队结果。生产触发不再走
+        按属性名分发（#436 已删）—— `CommandManager.notify_user_leave` 直接调
+        `UserEventHooks.fire`。多分身离线判定与主账号名解析也在那里面完成 —— 到这里
         触发时，`username` 已是 canonical 主账号名。
         """
         await UserEventHooks.instance().fire(EXIT, username)

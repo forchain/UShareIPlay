@@ -27,8 +27,11 @@ class FocusCommand(BaseCommand):
     ):
         """专注人数变化或特定用户**座位**变动时执行。
 
-        方法名保留是因为 CommandManager 按属性名分发；方法体只剩参数转译：选人、
-        `{username}` / `{seat}` / `{action}` 宏展开与入队都在 UserEventHooks 内部。
+        方法保留：它是命令层的事件接缝，测试直接调它断言入队结果。生产触发不再走
+        按属性名分发（#436 已删）—— `SeatObservationManager` 调
+        `CommandManager.notify_focus_count_change`，后者直接调 `UserEventHooks.fire`。
+        方法体只剩参数转译：选人、`{username}` / `{seat}` / `{action}` 宏展开与入队都在
+        UserEventHooks 内部。
 
         Args:
             before: 上一次读到的人数，首次观测为 `None`。

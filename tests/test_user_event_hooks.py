@@ -72,12 +72,12 @@ async def drain_messages():
 
 
 @pytest.mark.parametrize(
-    "event_type,model_name,prefix,noun,error_message,example,hook_method",
+    "event_type,model_name,prefix,noun,error_message,example",
     [
-        (ENTER, "EnterEvent", ":enter", "进入命令", "处理进入命令时出错", '":play 歌曲名"', "user_enter"),
-        (EXIT, "ExitEvent", ":exit", "离开命令", "处理离开命令时出错", '":play 歌曲名"', "user_leave"),
-        (RETURN, "ReturnEvent", ":return", "返回命令", "处理返回命令时出错", '":play 歌曲名"', "user_return"),
-        (RECEIVE, "ReceiveEvent", ":receive", "收礼物命令", "处理收礼物命令时出错", '":say 谢谢"', "user_gift_receive"),
+        (ENTER, "EnterEvent", ":enter", "进入命令", "处理进入命令时出错", '":play 歌曲名"'),
+        (EXIT, "ExitEvent", ":exit", "离开命令", "处理离开命令时出错", '":play 歌曲名"'),
+        (RETURN, "ReturnEvent", ":return", "返回命令", "处理返回命令时出错", '":play 歌曲名"'),
+        (RECEIVE, "ReceiveEvent", ":receive", "收礼物命令", "处理收礼物命令时出错", '":say 谢谢"'),
         (
             FOCUS,
             "FocusEvent",
@@ -85,12 +85,11 @@ async def drain_messages():
             "专注人数联动命令",
             "处理专注人数命令时出错",
             '":play 歌曲名"',
-            "focus_count_change",
         ),
     ],
 )
 def test_registry_is_complete_for_every_event_type(
-    event_type, model_name, prefix, noun, error_message, example, hook_method
+    event_type, model_name, prefix, noun, error_message, example
 ):
     spec = spec_for(event_type)
     assert spec.model.__name__ == model_name
@@ -98,7 +97,6 @@ def test_registry_is_complete_for_every_event_type(
     assert spec.noun == noun
     assert spec.error_message == error_message
     assert spec.prefix_example == example
-    assert spec.hook_method == hook_method
 
 
 def test_registry_rejects_unknown_event_type():
@@ -412,7 +410,7 @@ async def test_enter_command_is_a_thin_adapter(db_init, hooks):
 
 @pytest.mark.asyncio
 async def test_enter_command_user_enter_delegates_to_fire(db_init, hooks):
-    """`user_enter` 仍是命令上的可调用钩子（CommandManager 直接按属性名分发）。"""
+    """`user_enter` 仍是命令上的可调用钩子（事件接缝，测试直接调用它）。"""
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play 起风了"')
 
     command = EnterCommand(make_controller())

@@ -22,7 +22,8 @@ class ReceiveCommand(BaseCommand):
     async def user_gift_receive(self, username: str):
         """用户送礼或投喂热度时，把该用户配置的收礼物命令投进队列。
 
-        方法名保留是因为 `CommandManager.notify_gift_receive` 与测试直接按属性名调用；
-        实现已全部下沉到 UserEventHooks。
+        方法保留：它是命令层的事件接缝，测试直接调它断言入队结果。生产触发不再走
+        按属性名分发（#436 已删）—— `CommandManager.notify_gift_receive` 直接调
+        `UserEventHooks.fire`。
         """
         await UserEventHooks.instance().fire(RECEIVE, username)

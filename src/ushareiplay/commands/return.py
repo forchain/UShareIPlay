@@ -22,7 +22,8 @@ class ReturnCommand(BaseCommand):
     async def user_return(self, username: str):
         """用户返回派对时，把该用户配置的返回命令投进队列。
 
-        方法名保留是因为 `CommandManager.notify_user_return` 按属性名分发；实现已
-        全部下沉到 UserEventHooks。
+        方法保留：它是命令层的事件接缝，测试直接调它断言入队结果。生产触发不再走
+        按属性名分发（#436 已删）—— `CommandManager.notify_user_return` 直接调
+        `UserEventHooks.fire`。
         """
         await UserEventHooks.instance().fire(RETURN, username)

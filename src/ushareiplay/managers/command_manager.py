@@ -558,10 +558,16 @@ class CommandManager(Singleton):
         这不是用户事件钩子，是副作用订阅者：`:enter` / `:return` 只会把用户配置的
         命令投进队列，谁都不会顺带看一眼座位。因此座位复核必须显式调，否则删掉
         反射分发后进入/返回时的座位检查会**静默**停掉 —— 没有报错，只是座位再也不
-        自动认领。
+        自动认领。反射分发本身不会回来：#436 已删掉按属性名找钩子的那条路径，
+        再挂回去等于把它原样恢复。
 
-        客房守卫与迁移前 `commands/seat.py` 的写法保持一致：他人房间不碰座位。异常
-        在这里就地吞掉并记日志，一个用户的座位复核失败不该带崩整条事件链。
+        下面的 `SeatManager` 是延迟导入，**环的另一端是 `SeatObservationManager`**：
+        它为了触发专注人数联动，在 `seat_manager/seat_observation.py` 里反过来延迟
+        导入 `CommandManager` 并调 `notify_focus_count_change`（ADR-0009 §4：懒加载
+        严格限定于真循环依赖）。两侧因此都不能在模块顶层互相 import。
+
+        他人房间（`RoomState.in_guest_room()`）不碰座位；异常在这里就地吞掉并记日志 ——
+        一个用户的座位复核失败不该带崩整条事件链。
         """
         if RoomState.in_guest_room():
             return

@@ -1,8 +1,8 @@
 """用户事件钩子的事件类型注册表。
 
 这是 5 类事件（进入 / 离开 / 返回 / 收礼物 / 专注人数联动）**唯一**的参数化
-事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径、入队前的
-宏展开策略与旧钩子方法名都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在
+事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径与入队前的
+宏展开策略都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在
 `EVENT_HOOK_SPECS` 里加一条。
 
 刻意保留的一处非对称：**用户解析口径按事件类型逐条声明**，不是全局默认。收礼物
@@ -61,9 +61,6 @@ class UserEventHookSpec:
     error_message: str
     prefix_example: str
     resolution: Resolution
-    #: 迁移前 `CommandManager.notify_*` 按属性名分发的旧钩子方法名。保留在注册表里，
-    #: 是为了让后续接入方知道每个事件类型原先挂在哪个方法上。
-    hook_method: str
     #: 入队前要展开的宏策略；`None` = 原样入队。目前只有专注人数联动带宏
     #: （`{username}` / `{seat}` / `{action}`），见 `macros.py`。
     macros: Optional[MacroExpander] = None
@@ -78,7 +75,6 @@ EVENT_HOOK_SPECS = {
         error_message="处理进入命令时出错",
         prefix_example='":play 歌曲名"',
         resolution=SINGLE_ID,
-        hook_method="user_enter",
     ),
     EXIT: UserEventHookSpec(
         event_type=EXIT,
@@ -88,7 +84,6 @@ EVENT_HOOK_SPECS = {
         error_message="处理离开命令时出错",
         prefix_example='":play 歌曲名"',
         resolution=SINGLE_ID,
-        hook_method="user_leave",
     ),
     RETURN: UserEventHookSpec(
         event_type=RETURN,
@@ -98,7 +93,6 @@ EVENT_HOOK_SPECS = {
         error_message="处理返回命令时出错",
         prefix_example='":play 歌曲名"',
         resolution=SINGLE_ID,
-        hook_method="user_return",
     ),
     RECEIVE: UserEventHookSpec(
         event_type=RECEIVE,
@@ -109,7 +103,6 @@ EVENT_HOOK_SPECS = {
         prefix_example='":say 谢谢"',
         # 主账号配置的收礼物命令，对该账号的任意分身都要生效。
         resolution=ALIAS_GROUP,
-        hook_method="user_gift_receive",
     ),
     FOCUS: UserEventHookSpec(
         event_type=FOCUS,
@@ -119,7 +112,6 @@ EVENT_HOOK_SPECS = {
         error_message="处理专注人数命令时出错",
         prefix_example='":play 歌曲名"',
         resolution=SINGLE_ID,
-        hook_method="focus_count_change",
         # 座位观测是这一族宏唯一的数据源，键名见 macros.SEAT_INFO_CTX_KEY。
         macros=expand_seat_macros,
     ),
@@ -129,8 +121,3 @@ EVENT_HOOK_SPECS = {
 def spec_for(event_type: str) -> UserEventHookSpec:
     """取事件类型的注册项。未知事件类型直接 KeyError，不做静默兜底。"""
     return EVENT_HOOK_SPECS[event_type]
-
-
-def all_event_types():
-    """全部已注册的事件类型。"""
-    return tuple(EVENT_HOOK_SPECS)
