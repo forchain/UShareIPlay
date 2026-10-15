@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -263,19 +263,63 @@ async def test_guest_room_blocks_all_seat_manager_actions():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_seat_command_user_enter():
-    from ushareiplay.commands.seat import SeatCommand
+async def test_guest_room_blocks_seat_check_on_enter_and_return():
+    """客房里进入/返回都不复核**座位**。
 
-    room_state = RoomState.instance()
-    room_state.is_guest_room = True
+    #436 之前这条守卫挂在 `:seat` 命令的 `user_enter` / `user_return` 钩子上，靠
+    `CommandManager` 按属性名反射分发。反射分发收掉后座位复核改由 `notify_*` 显式
+    调用，守卫也跟着搬过来 —— 这里钉的是新缝上的同一件事。
+    """
+    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.managers.seat_manager import SeatManager
 
-    fake_controller = SimpleNamespace(soul_handler=HandlerStub(config={}), music_handler=None)
-    seat_cmd = SeatCommand(fake_controller)
+    RoomState.instance().is_guest_room = True
 
-    with patch("ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry", new_callable=AsyncMock) as mock_check:
-        await seat_cmd.user_enter("Alice")
-        await seat_cmd.user_return("Alice")
-        mock_check.assert_not_awaited()
+    SeatManager.reset_instance()
+    SeatManager.initialize()
+    cm = CommandManager.initialize()
+
+    with patch(
+        "ushareiplay.managers.user_event_hooks.UserEventHooks.instance"
+    ) as hooks, patch(
+        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
+        new_callable=AsyncMock,
+    ) as mock_check:
+        hooks.return_value.fire = AsyncMock(return_value=0)
+        await cm.notify_user_enter("Alice")
+        await cm.notify_user_return("Alice")
+
+    mock_check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_host_room_checks_seats_on_enter_and_return():
+    """本房进入/返回都要复核座位。
+
+    这条是 #436 的**回归哨**：座位复核原本是 `:seat` 命令的一个副作用订阅者，只靠
+    反射分发连到事件上。反射删掉而显式调用忘了补，进入/返回时的座位自动认领会
+    静默失效 —— 不报错，只是座位再也不动了。
+    """
+    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.managers.seat_manager import SeatManager
+
+    RoomState.instance().is_guest_room = False
+
+    SeatManager.reset_instance()
+    SeatManager.initialize()
+    cm = CommandManager.initialize()
+
+    with patch(
+        "ushareiplay.managers.user_event_hooks.UserEventHooks.instance"
+    ) as hooks, patch(
+        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
+        new_callable=AsyncMock,
+    ) as mock_check:
+        hooks.return_value.fire = AsyncMock(return_value=0)
+        await cm.notify_user_enter("Alice")
+        await cm.notify_user_return("Bob")
+
+    assert mock_check.await_args_list == [call("Alice"), call("Bob")]
 
 
 @pytest.mark.asyncio

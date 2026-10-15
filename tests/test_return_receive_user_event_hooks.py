@@ -6,13 +6,14 @@
    一字不变 —— 文案的事实源在 `registry`，命令层只是转发。
 2. 收礼物命令的 alias-group 解析在新路径上仍然成立：主账号配的命令，用分身名既
    查得到也触发得到。返回命令走 single-id，两者不共用口径。
-3. 事件侧只入队一次 —— 既不能漏发，也不能因为属性名分发还在就重复发；同时
-   `:seat` 自己的 `user_return` 座位复核不能被这次迁移顺手干掉（#436 才收）。
+3. 事件侧只入队一次 —— 既不能漏发，也不能因为属性名分发还在就重复发；`:seat`
+   原本挂在 `user_return` 上的座位复核不能被顺手干掉（#436 把它收成 `notify_*` 里的
+   显式调用，这里跟着验新缝）。
 """
 
 import importlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -30,6 +31,7 @@ from ushareiplay.dal.return_dao import ReturnDao
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.memory_manager import MemoryManager
+from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
 from ushareiplay.models import User
 from ushareiplay.models.message_info import MessageInfo
@@ -261,7 +263,7 @@ async def test_hook_methods_enqueue_through_message_queue(db_init):
 
 
 @pytest.mark.asyncio
-async def test_notify_user_return_enqueues_once_and_keeps_seat_dispatch(db_init):
+async def test_notify_user_return_enqueues_once_and_checks_seats(db_init):
     cmd = ReturnCommand(MagicMock())
     await cmd.do_process(
         MessageInfo(content=':return add ":play 稻香"', nickname="Bob"), []
@@ -270,24 +272,22 @@ async def test_notify_user_return_enqueues_once_and_keeps_seat_dispatch(db_init)
     cm = CommandManager.instance()
     cm._logger = _logger_stub()
 
-    seat_hook = AsyncMock()
-    return_hook = AsyncMock()
-    cm.command_modules["seat"] = SimpleNamespace(
-        command=SimpleNamespace(user_return=seat_hook)
-    )
-    cm.command_modules["return"] = SimpleNamespace(
-        command=SimpleNamespace(user_return=return_hook)
-    )
+    SeatManager.reset_instance()
+    SeatManager.initialize()
 
     await MessageQueue.instance().clear_queue()
-    await cm.notify_user_return("Bob")
+    with patch(
+        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
+        new_callable=AsyncMock,
+    ) as seat_check:
+        await cm.notify_user_return("Bob")
 
     queued = await _drain()
     assert [m.content for m in queued] == [":play 稻香"]
 
-    # seat 的座位复核仍走属性名分发；return 自己的钩子已由 fire() 接管，再调一次会重复发
-    seat_hook.assert_awaited_once_with("Bob")
-    return_hook.assert_not_awaited()
+    # 返回命令只入队一次；座位复核仍会发生 —— #436 起它是 notify_* 里的显式调用，
+    # 不再靠遍历命令模块按属性名找到 `:seat` 的 user_return 钩子。
+    seat_check.assert_awaited_once_with("Bob")
 
 
 @pytest.mark.asyncio

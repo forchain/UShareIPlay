@@ -20,7 +20,15 @@ from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.sleep_manager import SleepManager
-from ushareiplay.managers.user_event_hooks import EXIT, RECEIVE, RETURN, UserEventHooks
+from ushareiplay.managers.user_event_hooks import (
+    ENTER,
+    EXIT,
+    FOCUS,
+    RECEIVE,
+    RETURN,
+    UserEventHooks,
+)
+from ushareiplay.managers.user_event_hooks.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
 
@@ -507,7 +515,12 @@ class CommandManager(Singleton):
         return success_count
 
     def get_command_modules(self):
-        """获取所有已加载的命令模块"""
+        """获取所有已加载的命令模块。
+
+        用户事件分发自 #436 起不再遍历这里 —— 事件走 `UserEventHooks` 直接路由，
+        座位复核是显式调用。保留本方法是因为它仍是公开的模块清单接口（外部排查 /
+        工具脚本读它），`self.command_modules` 本身也仍由加载器维护。
+        """
         return self.command_modules
 
     async def notify_user_leave(self, username: str):
@@ -523,9 +536,32 @@ class CommandManager(Singleton):
         """
         await UserEventHooks.instance().fire(EXIT, username)
 
+    async def _check_seats_on_entry(self, username: str, event_label: str):
+        """用户进入/返回派对时复核**座位**（#436 从 `:seat` 的反射钩子提上来）。
+
+        这不是用户事件钩子，是副作用订阅者：`:enter` / `:return` 只会把用户配置的
+        命令投进队列，谁都不会顺带看一眼座位。因此座位复核必须显式调，否则删掉
+        反射分发后进入/返回时的座位检查会**静默**停掉 —— 没有报错，只是座位再也不
+        自动认领。
+
+        客房守卫与迁移前 `commands/seat.py` 的写法保持一致：他人房间不碰座位。异常
+        在这里就地吞掉并记日志，一个用户的座位复核失败不该带崩整条事件链。
+        """
+        if RoomState.in_guest_room():
+            return
+        try:
+            from ushareiplay.managers.seat_manager import SeatManager
+
+            await SeatManager.instance().check_seats_on_entry(username)
+        except Exception:
+            self.logger.error(f"Error checking seats on {event_label}: {traceback.format_exc()}")
+
     async def notify_user_enter(self, username: str):
         """
-        Notify all commands when a user enters
+        Notify when a user enters
+
+        该用户配置的进入命令由 UserEventHooks 统一入队；座位复核是显式调用，不走
+        属性名分发（#436）。
 
         Args:
             username: Username of the user who entered
@@ -536,20 +572,15 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
 
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, 'user_enter'):
-                    await module.command.user_enter(username)
-            except Exception:
-                self.logger.error(f"Error in command user_enter: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(ENTER, username)
+        await self._check_seats_on_entry(username, "user_enter")
 
     async def notify_user_return(self, username: str):
         """
         Notify when a user returns（用户重新打开 app 返回派对）
 
         该用户配置的返回命令由 UserEventHooks 统一入队（入队而非直接执行，队列在
-        drain 时才展开 `{user_name}` 宏）。`:seat` 命令自己也实现了 `user_return`
-        做座位复核，仍走属性名分发，直到 #436 收掉这层分发。
+        drain 时才展开 `{user_name}` 宏）。座位复核同样提为显式调用（#436）。
 
         Args:
             username: Username of the user who returned
@@ -561,16 +592,7 @@ class CommandManager(Singleton):
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 
         await UserEventHooks.instance().fire(RETURN, username)
-
-        for name, module in self.get_command_modules().items():
-            if name == 'return':
-                # 已由上面的 UserEventHooks.fire 入队，再调一次会重复发命令。
-                continue
-            try:
-                if hasattr(module.command, 'user_return'):
-                    await module.command.user_return(username)
-            except Exception:
-                self.logger.error(f"Error in command user_return: {traceback.format_exc()}")
+        await self._check_seats_on_entry(username, "user_return")
 
     async def notify_gift_receive(self, username: str):
         """
@@ -592,7 +614,12 @@ class CommandManager(Singleton):
         seat_info: dict | None = None,
     ):
         """
-        Notify all commands when 专注人数 (focus_count / tvStudyRoomDesc) or seats change.
+        Notify when 专注人数 (focus_count / tvStudyRoomDesc) or seats change.
+
+        `changed_users` 的三态原样透传给 `fire`，**不可归一**：
+        - `None` = 触发者未知，回退为所有已配置用户的联动命令；
+        - `[]`   = 本次没有用户变更，一条都不发；
+        - `[...]` = 只发名单里这些人的。
 
         Args:
             before: Previous parsed count, or None on first observation
@@ -600,11 +627,8 @@ class CommandManager(Singleton):
             changed_users: Specific users whose seat/focus status changed, or None for all
             seat_info: Optional dictionary mapping username to seat details
         """
-        for module in self.get_command_modules().values():
-            try:
-                if hasattr(module.command, "focus_count_change"):
-                    await module.command.focus_count_change(
-                        before, after, changed_users=changed_users, seat_info=seat_info
-                    )
-            except Exception:
-                self.logger.error(f"Error in command focus_count_change: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(
+            FOCUS,
+            ctx={"before": before, "after": after, SEAT_INFO_CTX_KEY: seat_info or {}},
+            usernames=changed_users,
+        )

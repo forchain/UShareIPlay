@@ -1,50 +1,45 @@
-from typing import Optional, List
+"""`ReturnDao` —— 「返回」命令的向后兼容垫片（#436）。
+
+实现在 `UserEventHookDAO`，事件类型与口径来自 `registry.EVENT_HOOK_SPECS`。
+这里只保留旧的类名与方法签名。
+
+返回命令走 **single-id** 口径（只认 canonical 主账号）。
+
+同 `EnterDao`：旧 `delete_all_by_username` 的 `filter(user__id=…)` + `.delete()`
+缺陷由 `UserEventHookDAO` 的外键列过滤修掉，`:return clear` 恢复可用。
+"""
+
+from typing import List, Optional
+
+from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
+from ushareiplay.managers.user_event_hooks.registry import RETURN
 from ushareiplay.models.return_event import ReturnEvent
-from ushareiplay.dal.user_dao import UserDAO
 
 
 class ReturnDao:
+    """`UserEventHookDAO` 在「返回」事件上的兼容门面。"""
+
     @staticmethod
     async def create(username: str, command: str) -> ReturnEvent:
-        """Create a new return command"""
-        user = await UserDAO.get_or_create(username=username)
-        return await ReturnEvent.create(
-            user=user,
-            command=command
-        )
+        """为用户新建一条返回命令"""
+        return await UserEventHookDAO.create(RETURN, username, command)
 
     @staticmethod
     async def get_by_username(username: str) -> List[ReturnEvent]:
-        """Get all return commands for a user
-        Returns:
-            List[ReturnEvent]: List of return commands ordered by id
-        """
-        effective_user = await UserDAO.get_or_create(username=username)
-        return await ReturnEvent.filter(user__id=effective_user.id).order_by('id').prefetch_related('user')
+        """取该用户的全部返回命令（按 id 升序）"""
+        return await UserEventHookDAO.get_by_username(RETURN, username)
 
     @staticmethod
     async def get_by_id(command_id: int) -> Optional[ReturnEvent]:
-        """Get return command by ID"""
-        return await ReturnEvent.get_or_none(id=command_id).prefetch_related('user')
+        """按 id 取单条返回命令"""
+        return await UserEventHookDAO.get_by_id(RETURN, command_id)
 
     @staticmethod
     async def delete_by_id(command_id: int) -> bool:
-        """Delete a return command by ID
-        Returns:
-            bool: True if a command was deleted, False otherwise
-        """
-        command = await ReturnEvent.get_or_none(id=command_id)
-        if command:
-            await command.delete()
-            return True
-        return False
+        """按 id 删单条返回命令，返回是否真的删掉了"""
+        return await UserEventHookDAO.delete_by_id(RETURN, command_id)
 
     @staticmethod
     async def delete_all_by_username(username: str) -> int:
-        """Delete all return commands for a user
-        Returns:
-            int: Number of commands deleted
-        """
-        effective_user = await UserDAO.get_or_create(username=username)
-        deleted_count = await ReturnEvent.filter(user__id=effective_user.id).delete()
-        return deleted_count
+        """清空该用户的全部返回命令，返回删除条数"""
+        return await UserEventHookDAO.delete_all_by_username(RETURN, username)
