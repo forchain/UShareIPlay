@@ -10,6 +10,7 @@ from ushareiplay.managers.playback.models import (
     ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
     PLAY_MODE_BY_INDEX,
     PLAY_MODE_INDEX_BY_KEY,
+    PLAY_MODE_INVALID_PARAMETER_ERROR,
     PLAY_MODE_NAMES,
     PlaybackRequest,
     PlaybackResult,
@@ -124,9 +125,11 @@ class MusicManager(Singleton):
     def play_mode_key(self) -> str:
         """记录在案的当前播放模式 key；没有记录时为 `unknown`。
 
-        这份缓存只有一个写入口（`_record_play_mode`），因此它与房间里的显示
-        不会各说各话。缓存只用来判断「已经是目标模式」，不作为 UI 事实 ——
-        真要确认，驱动会在切换时重读一次播放页。
+        写入口不止一处，但都归 `QQMusicHandler.note_play_mode()`：本类的
+        `_record_play_mode()`（切换后按 UI 观察结果记账）、生产驱动的
+        `_note_play_mode()`（切换前后两次观察），以及 `QQMusicHandler` 读歌单时
+        发现漂移的自愈路径。这个缓存只用来判断「已经是目标模式」，不作为 UI 事实
+        —— 真要确认，驱动会在切换时重读一次播放页。
         """
         return getattr(self.music_handler, "play_mode_key", None) or "unknown"
 
@@ -150,12 +153,14 @@ class MusicManager(Singleton):
         return None
 
     def _record_play_mode(self, mode_key: str, reason: str) -> None:
-        """把 UI 上观察到的模式写回房间缓存（驱动私有方法之外的唯一公开入口）。"""
-        note = getattr(self.music_handler, "note_play_mode", None)
-        if note is not None:
-            note(mode_key, reason)
-        elif self.music_handler is not None:
-            setattr(self.music_handler, "play_mode_key", mode_key)
+        """把 UI 上观察到的模式写回房间缓存。
+
+        写入一律走 `QQMusicHandler.note_play_mode()` 的既有契约（那条路会校验
+        key 并在变化时记日志），不再自己 `setattr` 兜一份 —— 绕过校验会让非法 key
+        悄悄进缓存，而缓存是 `/info`、关键词广播与歌单自愈都要读的共享状态。
+        """
+        if self.music_handler is not None:
+            self.music_handler.note_play_mode(mode_key, reason)
 
     async def set_play_mode(self, mode) -> dict:
         """切换房间播放模式 —— 播放模式相关的唯一入口。
@@ -177,7 +182,7 @@ class MusicManager(Singleton):
         """
         target_key = self._normalize_play_mode(mode)
         if target_key is None:
-            return {"error": "Invalid mode parameter, must be 0, 1 or -1"}
+            return {"error": PLAY_MODE_INVALID_PARAMETER_ERROR}
 
         mode_name = PLAY_MODE_NAMES[target_key]
         if self.play_mode_key == target_key:
@@ -208,10 +213,13 @@ class MusicManager(Singleton):
             if outcome.already_target
             else f"成功切换到{mode_name}模式"
         )
-        self.logger.info(
-            f"Play mode switched: target={target_key}, observed={outcome.mode}, "
-            f"already_target={outcome.already_target}"
-        )
+        # 本来就是目标模式时一个点击都没发生，按铁律不记「切换成功」的日志
+        # （与 `set_accompaniment` 同一把尺子）。
+        if not outcome.already_target:
+            self.logger.info(
+                f"Play mode switched: target={target_key}, observed={outcome.mode}, "
+                f"already_target={outcome.already_target}"
+            )
         return {"success": True, "mode": mode_name, "message": message}
 
     # ------------------------------------------------------------------

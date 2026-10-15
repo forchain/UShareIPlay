@@ -1,10 +1,14 @@
 """生产 `QQMusicUIDriver` 的离线测试。
 
-测试面只有端口方法 `QQMusicUIDriver.start_playback(request)`。QQMusicHandler 由测试
-模块内的假替身提供 —— 替身只暴露驱动真正调用的那几个 UI 方法（查歌、点第一首、
-播放页收藏），因此断言考的是「驱动怎么编排」而不是「Appium 点了哪个坐标」。
+测试面是端口上的四个方法：`start_playback(request)`、`set_play_mode(target)`、
+`set_accompaniment(enable)` 与 `query_lyrics(query)`。QQMusicHandler 由测试模块内
+的假替身提供 —— 替身只暴露驱动真正调用的那几个 UI 方法（查歌、点第一首、播放页
+收藏、切前台、认播放页、点按钮、滚菜单），因此断言考的是「驱动怎么编排」而不是
+「Appium 点了哪个坐标」。
 
 按 #421 的分工，本驱动只实现 `PlaybackMode.SONG`；其余模式归 #425/#431/#434/#437。
+伴奏的两条 UI 通路（#427）都收在 `set_accompaniment` 后面：页上直接开关，以及
+K歌入口只在「更多」菜单里那条要滚动着找的路。
 """
 
 from types import SimpleNamespace
@@ -12,10 +16,20 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.managers.playback.models import (
+    ACCOMPANIMENT_DISABLED_ERROR,
+    NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     PlaybackMode,
     PlaybackRequest,
 )
-from ushareiplay.managers.playback.player_page import PLAY_MODE_ELEMENT_KEYS
+from ushareiplay.managers.playback.player_page import (
+    ACCOMPANIMENT_MENU_CONTAINER_KEY,
+    ACCOMPANIMENT_MENU_KEY,
+    ACCOMPANIMENT_MORE_ENTRY_KEY,
+    ACCOMPANIMENT_ON_PAGE_KEYS,
+    ACCOMPANIMENT_STATE_KEYS,
+    ACCOMPANIMENT_SWITCH_KEY,
+    PLAY_MODE_ELEMENT_KEYS,
+)
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 
 
@@ -423,6 +437,226 @@ def test_driver_reports_a_mode_switch_exception_instead_of_raising(initialized_t
 class _ExplodingClick:
     def click_element_at(self, _element):
         raise RuntimeError("session terminated")
+
+
+# ---------------------------------------------------------------------------
+# 伴奏开关（#427 的两条通路收在同一个端口方法后面）
+# ---------------------------------------------------------------------------
+
+
+class _SwitchElement:
+    """K歌入口元素：`enabled` 属性决定伴奏模式有没有被激活。"""
+
+    def __init__(self, enabled="true"):
+        self._enabled = enabled
+
+    def get_attribute(self, name):
+        assert name == "enabled", f"K歌入口只该被问 enabled，实际问的是 {name}"
+        return self._enabled
+
+
+class _AccompanimentHandler:
+    """伴奏开关用的 handler 表面。
+
+    `found_key` 是进播放页后认出的那个控件：`accompaniment_text_off` 是页上直接有
+    开关的那一版 App，`more_entry` 是 K歌入口只在「更多」菜单里的那一版。
+    `state_key` 是菜单打开后亮着「伴唱已开启/已关闭」的那枚状态按钮；
+    `menu_found=False` 模拟菜单项滚不出来，`playing=False` 模拟没有音乐在放。
+
+    替身刻意只实现被驱动的编排真正触达的方法：驱动多走一步（比如忘了按返回键
+    收起菜单），这里就会以 AttributeError 暴露出来。
+    """
+
+    def __init__(
+        self,
+        found_key=ACCOMPANIMENT_MORE_ENTRY_KEY,
+        *,
+        state_key="accompaniment_button_off",
+        switch_enabled="true",
+        menu_found=True,
+        playing=True,
+    ):
+        self.logger = SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        )
+        self.found_key = found_key
+        self.found_element = _Element()
+        self.switch_element = _SwitchElement(switch_enabled)
+        self.menu_element = _Element()
+        self.state_key = state_key
+        self.state_element = _Element()
+        self.menu_found = menu_found
+        self.playing = playing
+        self.clicks = []
+        self.switch_lookups = []
+        self.scrolls = []
+        self.state_lookups = []
+        self.backs = 0
+        self.switched_to_app = False
+        self.key_actions = SimpleNamespace(
+            switch_to_app=self._switch_to_app, press_back=self._press_back
+        )
+        self.gesture_handler = SimpleNamespace(
+            click_element_at=self._click_at,
+            scroll_container_until_element=self._scroll_until,
+        )
+        self._element_finder = SimpleNamespace(
+            wait_for_any_element=self._wait_any,
+            try_find_element=self._try_find,
+        )
+
+    @property
+    def element_finder(self):
+        return self._element_finder
+
+    def _switch_to_app(self):
+        self.switched_to_app = True
+        return True
+
+    def _press_back(self):
+        self.backs += 1
+
+    def _wait_any(self, keys):
+        if ACCOMPANIMENT_MORE_ENTRY_KEY in keys:
+            # 「站在播放页上」的那次探测：认出声称控件或「更多」入口。
+            if not self.playing:
+                return None, None
+            return self.found_key, self.found_element
+        # 菜单打开后认伴唱开/关的那枚状态按钮。
+        self.state_lookups.append(tuple(keys))
+        return self.state_key, self.state_element
+
+    def _try_find(self, key):
+        self.switch_lookups.append(key)
+        return self.switch_element
+
+    def _click_at(self, element):
+        self.clicks.append(element)
+        return True
+
+    def _scroll_until(self, element_key, container_key, *args, **kwargs):
+        self.scrolls.append((element_key, container_key))
+        if not self.menu_found:
+            return None, None, []
+        return element_key, self.menu_element, []
+
+
+def test_driver_walks_the_more_menu_path_and_toggles_the_switch(initialized_test_singletons):
+    """K歌入口只在「更多」菜单里：整条导航都得真的走一遍，替身才谈得上验证。"""
+    handler = _AccompanimentHandler(
+        found_key=ACCOMPANIMENT_MORE_ENTRY_KEY,
+        state_key="accompaniment_button_off",
+    )
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert (outcome.ok, outcome.enabled, outcome.already_target) == (True, True, False)
+    # 进播放页的仪式、点「更多」、滚菜单、点菜单项、拨开关、收起菜单，一样不少。
+    assert handler.switched_to_app is True
+    assert handler.switch_lookups == [ACCOMPANIMENT_SWITCH_KEY]
+    assert handler.scrolls == [(ACCOMPANIMENT_MENU_KEY, ACCOMPANIMENT_MENU_CONTAINER_KEY)]
+    assert handler.menu_element.clicks == 1
+    assert handler.clicks == [handler.found_element, handler.state_element]
+    assert handler.state_lookups == [ACCOMPANIMENT_STATE_KEYS]
+    # 仪式自己按一次、收起菜单再按一次；菜单不收起会一直挡着后面的 UI。
+    assert handler.backs == 2
+
+
+def test_driver_leaves_the_menu_alone_when_the_switch_is_already_where_it_should_be(
+    initialized_test_singletons,
+):
+    """菜单里本来就是伴唱已开启：拨动按钮不点，但菜单照样要收起。"""
+    handler = _AccompanimentHandler(
+        found_key=ACCOMPANIMENT_MORE_ENTRY_KEY,
+        state_key="accompaniment_button_on",
+    )
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert (outcome.ok, outcome.enabled, outcome.already_target) == (True, True, True)
+    assert handler.clicks == [handler.found_element]
+    assert handler.backs == 2
+
+
+def test_driver_refuses_an_accompaniment_switch_that_the_app_greyed_out(
+    initialized_test_singletons,
+):
+    """K歌入口整体灰掉：伴奏模式压根没被激活，如实回那句既有文案，一个点击都不发生。"""
+    handler = _AccompanimentHandler(
+        found_key=ACCOMPANIMENT_MORE_ENTRY_KEY, switch_enabled="false"
+    )
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert outcome.ok is False
+    assert outcome.error == ACCOMPANIMENT_DISABLED_ERROR
+    assert ACCOMPANIMENT_DISABLED_ERROR == "Accompaniment mode is disabled"
+    assert handler.switch_lookups == [ACCOMPANIMENT_SWITCH_KEY]
+    assert handler.clicks == []
+    assert handler.scrolls == []
+
+
+def test_driver_toggles_the_direct_switch_without_opening_the_menu(initialized_test_singletons):
+    """播放页上直接显示伴唱状态：点那行文案即切换，不必进「更多」菜单。"""
+    handler = _AccompanimentHandler(found_key="accompaniment_text_off")
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert (outcome.ok, outcome.enabled, outcome.already_target) == (True, True, False)
+    assert handler.clicks == [handler.found_element]
+    assert handler.scrolls == []
+
+
+def test_driver_does_not_click_the_direct_switch_when_it_already_matches(
+    initialized_test_singletons,
+):
+    """本来就是目标状态：一个点击都不该发生（否则每次 `:acc 1` 都白点一下）。"""
+    handler = _AccompanimentHandler(found_key="accompaniment_text_on")
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert (outcome.ok, outcome.enabled, outcome.already_target) == (True, True, True)
+    assert handler.clicks == []
+
+
+def test_driver_reports_the_accompaniment_no_music_wording(initialized_test_singletons):
+    """同一个「没有音乐在放」，伴奏那句英文文案一个字都不能改。"""
+    handler = _AccompanimentHandler(playing=False)
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert outcome.ok is False
+    assert outcome.error == NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR
+    assert NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR == (
+        "No music playing, cannot toggle accompaniment mode"
+    )
+    assert handler.clicks == []
+
+
+def test_driver_probes_the_accompaniment_keys_rather_than_the_play_mode_ones(
+    initialized_test_singletons,
+):
+    """伴奏认「已经在播放页上」的证据与播放模式不同：认错 key 会一直报「没在放歌」。"""
+    handler = _AccompanimentHandler()
+
+    QQMusicUIDriver(handler).set_accompaniment(True)
+
+    probed = handler.state_lookups[0]
+    assert probed == ACCOMPANIMENT_STATE_KEYS
+    assert set(ACCOMPANIMENT_ON_PAGE_KEYS) & set(probed) == set()
+
+
+def test_driver_reports_an_accompaniment_switch_exception_instead_of_raising(
+    initialized_test_singletons,
+):
+    handler = _AccompanimentHandler()
+    handler.gesture_handler.click_element_at = _ExplodingClick()
+
+    outcome = QQMusicUIDriver(handler).set_accompaniment(True)
+
+    assert outcome.ok is False
 
 
 # ---------------------------------------------------------------------------

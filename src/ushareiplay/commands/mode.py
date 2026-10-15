@@ -1,4 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.managers.playback.models import PLAY_MODE_INVALID_PARAMETER_ERROR
 
 
 class ModeCommand(BaseCommand):
@@ -16,10 +17,12 @@ class ModeCommand(BaseCommand):
             return {
                 'error': 'Missing mode parameter'
             }
-        mode, err = self.coerce_int(parameters[0], error='Invalid mode parameter, must be 0, 1 or -1')
+        mode, err = self.coerce_int(
+            parameters[0], error=PLAY_MODE_INVALID_PARAMETER_ERROR
+        )
         if err or mode not in [0, 1, -1]:
             return {
-                'error': 'Invalid mode parameter, must be 0, 1 or -1'
+                'error': PLAY_MODE_INVALID_PARAMETER_ERROR
             }
 
         return await self.music_manager.set_play_mode(mode)

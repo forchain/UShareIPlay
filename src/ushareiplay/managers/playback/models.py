@@ -45,6 +45,8 @@ PLAY_MODE_NAMES = {
 
 # 没有音乐在放时统一回给用户的那句话（`ModeCommand` 的用户可见契约之一）。
 NO_PLAYING_MUSIC_ERROR = "现在没有播放音乐，无法切换模式"
+# `:mode` 参数既不是 0/1/-1 时的那句（命令层与 MusicManager 共用同一份文案）。
+PLAY_MODE_INVALID_PARAMETER_ERROR = "Invalid mode parameter, must be 0, 1 or -1"
 
 # 伴奏开关（#427）的用户可见契约文案。与上面那句刻意不同：这是迁移前就存在的
 # 英文原文，房间里的人一直读到它，改字等于改掉既有的用户可见行为。

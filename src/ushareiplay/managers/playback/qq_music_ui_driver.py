@@ -17,7 +17,10 @@ from html import unescape
 
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
+    ACCOMPANIMENT_DISABLED_ERROR,
+    NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     PLAY_MODE_NAMES,
+    AccompanimentOutcome,
     LyricsOutcome,
     PlaybackMode,
     PlayModeOutcome,
@@ -26,6 +29,13 @@ from ushareiplay.managers.playback.models import (
     PlaybackTrack,
 )
 from ushareiplay.managers.playback.player_page import (
+    ACCOMPANIMENT_MENU_CONTAINER_KEY,
+    ACCOMPANIMENT_MENU_KEY,
+    ACCOMPANIMENT_MORE_ENTRY_KEY,
+    ACCOMPANIMENT_ON_PAGE_KEYS,
+    ACCOMPANIMENT_STATE_KEYS,
+    ACCOMPANIMENT_SWITCH_KEY,
+    ACCOMPANIMENT_TEXT_ON_KEY,
     PLAY_MODE_ELEMENT_KEYS,
     ensure_player_page,
 )
@@ -191,6 +201,113 @@ class QQMusicUIDriver(MusicUIDriverPort):
             note(mode_key, reason)
         else:
             setattr(self._handler, "play_mode_key", mode_key)
+
+    # ------------------------------------------------------------------
+    # 伴奏开关（#427）
+    # ------------------------------------------------------------------
+
+    def set_accompaniment(self, enable: bool) -> AccompanimentOutcome:
+        """把伴唱开关拨到 `enable`，返回播放页上最终的开合状态。
+
+        参数归一化在 `MusicManager.set_accompaniment()` 里；这里只负责播放页上的
+        实际动作。两条 UI 通路 —— 播放页上直接有开关，或 K歌入口只在「更多」菜单
+        里、得滚动着找 —— 都关在这一个端口方法后面，调用方看到的是同一个结果。
+        """
+        try:
+            return self._switch_accompaniment(enable)
+        except Exception as exc:
+            # 端口约定：UI 层失败一律以返回值汇报。
+            self.logger.warning(f"切换伴奏模式失败: {enable}: {exc}")
+            return AccompanimentOutcome.failed(f"切换伴奏模式失败: {exc}")
+
+    def _switch_accompaniment(self, enable: bool) -> AccompanimentOutcome:
+        handler = self._handler
+        entry = ensure_player_page(
+            handler,
+            logger=self.logger,
+            on_page_keys=ACCOMPANIMENT_ON_PAGE_KEYS,
+            no_music_error=NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
+        )
+        if not entry.ok:
+            return AccompanimentOutcome.failed(entry.error)
+
+        if entry.element_key == ACCOMPANIMENT_MORE_ENTRY_KEY:
+            return self._toggle_accompaniment_via_menu(entry.element, enable)
+        return self._toggle_accompaniment_direct(entry.element_key, entry.element, enable)
+
+    def _toggle_accompaniment_direct(
+        self, element_key: str, element, enable: bool
+    ) -> AccompanimentOutcome:
+        """播放页上直接显示伴唱状态：点那行文案即切换。
+
+        Args:
+            element_key: 认出的那个文案 key（`accompaniment_text_on`/`_off`），
+                当前开关状态就由它决定。
+            element: 该文案元素，点它即切换。
+            enable: 目标状态。
+
+        Returns:
+            `AccompanimentOutcome.switched(enable)`；本来就是目标状态时
+            `already_target=True` 且一个点击都不发生。
+        """
+        current = element_key == ACCOMPANIMENT_TEXT_ON_KEY
+        if current == enable:
+            # 页上本来就是这个状态：不点，也不留「切换成功」的痕迹。
+            return AccompanimentOutcome.switched(current, already_target=True)
+
+        if not self._handler.gesture_handler.click_element_at(element):
+            return AccompanimentOutcome.failed(
+                f"Failed to {'enable' if enable else 'disable'} accompaniment mode",
+                enabled=current,
+            )
+        self.logger.info(f"{'Enabled' if enable else 'Disabled'} accompaniment mode")
+        return AccompanimentOutcome.switched(enable)
+
+    def _toggle_accompaniment_via_menu(self, more_entry, enable: bool) -> AccompanimentOutcome:
+        """K歌入口只在「更多」菜单里：进菜单、滚动找到菜单项、点开、再拨开关。
+
+        这一条通路比页上直接开关多三步导航，元素 key 全部来自
+        `config.yaml` 的 `qq_music.elements`（本模块只出现 key、不出现 XPath）。
+        """
+        handler = self._handler
+
+        # K歌入口整体灰掉说明伴奏模式压根没被激活，此时无从开关。
+        switch = handler.element_finder.try_find_element(ACCOMPANIMENT_SWITCH_KEY)
+        if switch is not None and switch.get_attribute("enabled") == "false":
+            return AccompanimentOutcome.failed(ACCOMPANIMENT_DISABLED_ERROR)
+
+        self.logger.info("找到伴奏更多菜单入口，进入伴奏设置")
+        if not handler.gesture_handler.click_element_at(more_entry):
+            return AccompanimentOutcome.failed("Failed to click accompaniment switch")
+
+        # 菜单项在滚动列表里未必露脸，滚到它为止。
+        _, menu_item, _ = handler.gesture_handler.scroll_container_until_element(
+            ACCOMPANIMENT_MENU_KEY, ACCOMPANIMENT_MENU_CONTAINER_KEY
+        )
+        if menu_item is None:
+            return AccompanimentOutcome.failed("Failed to find accompaniment menu")
+        menu_item.click()
+        self.logger.info("已点开伴奏菜单")
+
+        state_key, state_button = handler.element_finder.wait_for_any_element(
+            list(ACCOMPANIMENT_STATE_KEYS)
+        )
+        if not state_button:
+            return AccompanimentOutcome.failed("Failed to find accompaniment menu")
+
+        current = state_key == "accompaniment_button_on"
+        if current != enable:
+            if not handler.gesture_handler.click_element_at(state_button):
+                return AccompanimentOutcome.failed(
+                    "Failed to toggle accompaniment state", enabled=current
+                )
+            self.logger.info(
+                f"Toggled accompaniment state to {'on' if enable else 'off'}"
+            )
+        # 菜单是盖在播放页上的弹层：不按返回键会一直挡着后面的 UI。
+        handler.key_actions.press_back()
+
+        return AccompanimentOutcome.switched(enable, already_target=current == enable)
 
     # ------------------------------------------------------------------
     # 歌词查询（#430）

@@ -180,7 +180,9 @@ async def test_set_play_mode_rejects_unknown_targets_without_touching_the_ui(ini
         assert engine.cache.notes == []
 
 
-async def test_set_play_mode_without_a_driver_raises_an_assembly_error(initialized_test_singletons):
+async def test_set_play_mode_without_a_driver_raises_an_assembly_error(
+    initialized_test_singletons,
+):
     """尚未装配 UI 驱动是装配错误，不能伪装成「切换失败」回复给用户。
 
     #421 把生产适配器接到组合根之后，这条路径才第一次被真正走到。
@@ -189,6 +191,36 @@ async def test_set_play_mode_without_a_driver_raises_an_assembly_error(initializ
 
     with pytest.raises(RuntimeError, match="MusicUIDriverPort"):
         await manager.set_play_mode(1)
+
+
+async def test_set_play_mode_only_logs_when_a_switch_actually_happened(
+    initialized_test_singletons,
+):
+    """铁律：空转不刷屏。缓存说是 list、播放页其实已经是 single 时，一条日志都不该有。
+
+    与伴奏那条（`test_accompaniment_seam`）同一把尺子：缓存与播放页不一致是常事，
+    此时零点击 —— 记一条「Play mode switched」会把空转说成切换。
+    """
+    logs = []
+
+    already_on = _build_manager(
+        driver=InMemoryMusicUIDriver(play_mode="single"),
+        play_mode_key="list",
+    )
+    already_on.manager.logger = SimpleNamespace(
+        info=logs.append, warning=logs.append, error=logs.append
+    )
+    await already_on.manager.set_play_mode(1)
+    assert logs == []
+
+    MusicManager.reset_instance()
+    toggled = _build_manager(play_mode_key="list")
+    toggled.manager.logger = SimpleNamespace(
+        info=logs.append, warning=logs.append, error=logs.append
+    )
+    await toggled.manager.set_play_mode(-1)
+    assert len(logs) == 1
+    assert "target=random" in logs[0]
 
 
 # ---------------------------------------------------------------------------
