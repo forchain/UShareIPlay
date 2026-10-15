@@ -252,17 +252,17 @@ def test_playback_command_without_expected_song_still_guards_microphone(monkeypa
 PLAYBACK_COMMANDS = [
     ("skip", "SkipCommand"),
     ("playlist", "PlaylistCommand"),
-    ("album", "AlbumCommand"),
-    ("singer", "SingerCommand"),
 ]
 
 # #425：`:play` 三条分支与整个 `:fav` 都迁进了 `MusicManager.play()`，麦克风
 # 生命周期由引擎的守卫按切歌边界接管，命令层不再声明参与。
-# #431：`:radio` 的五个频道同样搬进了驱动，迁法相同。
+# #431/#434/#437：`:radio`、`:playlist <query>`、`:singer`、`:album` 同样搬进了驱动，迁法相同。
 ENGINE_OWNED_PLAYBACK_COMMANDS = [
     ("play", "PlayCommand"),
     ("fav", "FavCommand"),
     ("radio", "RadioCommand"),
+    ("album", "AlbumCommand"),
+    ("singer", "SingerCommand"),
 ]
 
 
