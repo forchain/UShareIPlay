@@ -4,8 +4,9 @@
 在抽屉开着的情况下做事，以及在任何按名字找人的动作之前调用
 `resolve_visible_username(...)` 把 DB 的 canonical 名换成 UI 上可见的昵称。
 
-Appium 手势、元素 key、坐标与落定时间都在这个子包内部；旧实现（`OnlineListScraper`
-等）在各自的后续 ticket 里迁移过来之前保持原样可用。
+Appium 手势、元素 key、坐标与落定时间都在这个子包内部；旧实现在各自的后续 ticket
+里迁移过来之前保持原样可用（在线名单抓取已于 #432 迁入，`UserManager` / 送礼 / 房管
+等仍待各自 ticket）。
 """
 
 from ushareiplay.managers.online_drawer.driver import (

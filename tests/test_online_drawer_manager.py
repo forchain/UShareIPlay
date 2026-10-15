@@ -368,6 +368,10 @@ PORT_METHODS = (
     "wait_for_settle",
     "scroll_container",
     "find_member_row",
+    # #432 在线名单抓取要的三条读数：人数、整页行、到底提示。
+    "read_online_count",
+    "visible_member_rows",
+    "is_at_end",
 )
 
 ADAPTER_CLASSES = (SoulOnlineDrawerDriver, InMemoryOnlineDrawerDriver)
@@ -402,14 +406,18 @@ def test_both_adapters_have_identical_signatures_to_the_port(method_name):
 class _StubElement:
     """最小 WebElement 替身：只带适配器真正读得到的属性。"""
 
-    def __init__(self, text="", location=None, size=None):
+    def __init__(self, text="", location=None, size=None, displayed=True):
         self.text = text
         self.location = location or {"x": 0, "y": 0}
         self.size = size or {"width": 0, "height": 0}
+        self.displayed = displayed
         self.clicked = False
 
     def click(self):
         self.clicked = True
+
+    def is_displayed(self):
+        return self.displayed
 
 
 class _StubFinder:
@@ -582,3 +590,126 @@ async def test_production_adapter_fails_gracefully_without_a_handler():
     assert await driver.wait_for_settle() is False
     assert await driver.scroll_container() is False
     assert await driver.find_member_row("链子") is None
+    # #432 起在线名单抓取还需要的三个读数，同样必须能问出答案。
+    assert await driver.read_online_count() is None
+    assert await driver.visible_member_rows() == []
+    assert await driver.is_at_end() is False
+
+
+# ---------------------------------------------------------------------------
+# #432 追加的三个读数：人数、整页行、到底提示
+# ---------------------------------------------------------------------------
+
+
+async def test_production_read_online_count_parses_the_first_digit_run():
+    """「N 人在线」控件里的第一段数字就是房间报的在线人数。
+
+    正则解析属于 Appium 文本细节，止步在适配器：引擎拿到的是 int 或 None，
+    不该知道控件文案长什么样。
+    """
+    driver = _make_soul_adapter(_StubFinder(screen={"user_count": _StubElement(text="6人在线")}))
+
+    assert await driver.read_online_count() == 6
+
+
+async def test_production_read_online_count_is_none_when_unreadable():
+    """控件读不到、或文案里根本没有数字时都是 None —— 没有人数不等于人数为 0。"""
+    assert await _make_soul_adapter(_StubFinder(screen={})).read_online_count() is None
+    assert (
+        await _make_soul_adapter(
+            _StubFinder(screen={"user_count": _StubElement(text="在线")})
+        ).read_online_count()
+        is None
+    )
+
+
+async def test_in_memory_read_online_count_returns_the_screened_count():
+    """替身如实报告房间里那个控件写了多少人；控件不存在时是 None。"""
+    assert await InMemoryOnlineDrawerDriver(online_count=6).read_online_count() == 6
+    assert await InMemoryOnlineDrawerDriver(online_count=None).read_online_count() is None
+
+
+async def test_production_visible_member_rows_reads_every_rendered_row():
+    """整页行一次读回：昵称与关注关系都在适配器里取好，行对象不外泄。"""
+    rows = [_StubElement(), _StubElement()]
+    alice = _StubElement(text="alice")
+    bob = _StubElement(text="bob")
+    bob_follow = _StubElement(text="我关注的")
+    container = _StubElement()
+    finder = _StubFinder(
+        screen={"online_users": container},
+        children={
+            (container, "user_container"): rows,
+            (rows[0], "online_user"): alice,
+            (rows[0], "follow_state"): _StubElement(text="密友"),
+            (rows[1], "online_user"): bob,
+            (rows[1], "follow_state"): bob_follow,
+        },
+    )
+    driver = _make_soul_adapter(finder)
+
+    read = await driver.visible_member_rows()
+
+    assert [row.visible_name for row in read] == ["alice", "bob"]
+    assert [row.follow_state for row in read] == ["密友", "我关注的"]
+
+
+async def test_production_visible_member_rows_skips_broken_rows_and_missing_containers():
+    """读坏的单行不影响整页（滑动中行会失效是常态）；容器读不到就是空页。"""
+    good_row = _StubElement()
+    container = _StubElement()
+    finder = _StubFinder(
+        screen={"online_users": container},
+        children={
+            (container, "user_container"): [_StubElement(), good_row],
+            (good_row, "online_user"): _StubElement(text="小明"),
+        },
+    )
+    driver = _make_soul_adapter(finder)
+
+    read = await driver.visible_member_rows()
+
+    assert [row.visible_name for row in read] == ["小明"]
+    assert read[0].follow_state is None
+    assert await _make_soul_adapter(_StubFinder(screen={})).visible_member_rows() == []
+
+
+async def test_in_memory_visible_member_rows_only_returns_the_current_page():
+    """替身只给当前窗口的行：翻页是引擎的循环决策，不在读数里偷做。"""
+    driver = InMemoryOnlineDrawerDriver(
+        members=[("alice", "密友"), ("bob", None), ("cathy", "关注了我")], page_size=2
+    )
+
+    assert [row.visible_name for row in await driver.visible_member_rows()] == ["alice", "bob"]
+    await driver.scroll_container()
+    assert [row.visible_name for row in await driver.visible_member_rows()] == ["cathy"]
+
+
+async def test_production_is_at_end_requires_the_hint_to_be_displayed():
+    """到底提示必须是**已显示**的：元素还留在 dump 里不代表用户看得见它。"""
+    shown = _StubElement(text="没有更多了")
+    hidden = _StubElement(text="没有更多了", displayed=False)
+
+    assert await _make_soul_adapter(
+        _StubFinder(screen={"no_more_data": shown})
+    ).is_at_end() is True
+    assert await _make_soul_adapter(
+        _StubFinder(screen={"no_more_data": hidden})
+    ).is_at_end() is False
+    assert await _make_soul_adapter(_StubFinder(screen={})).is_at_end() is False
+
+
+async def test_in_memory_is_at_end_follows_the_end_of_the_list():
+    """滑到最后一行之后到底提示才亮；`end_hint=False` 的列表永远不到底。"""
+    driver = InMemoryOnlineDrawerDriver(members=["alice", "bob", "cathy"], page_size=2)
+
+    assert await driver.is_at_end() is False
+    await driver.scroll_container()
+    assert await driver.is_at_end() is True
+
+    never = InMemoryOnlineDrawerDriver(
+        members=["alice", "bob", "cathy"], page_size=2, end_hint=False
+    )
+    await never.scroll_container()
+    assert await never.is_at_end() is False
+

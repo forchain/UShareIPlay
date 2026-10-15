@@ -48,7 +48,7 @@ ROW_FOLLOW_STATE_KEY = 'follow_state'
 #: 沿用既有实现的历史包袱；按顺序试完就是这里的全部「安全兜底」——没有第三个手势。
 CLOSE_KEYS = ('online_users_close', 'close_button')
 
-#: 列表到底的提示。滚动终点判定是调用方的循环决策，这里只保证 key 可取。
+#: 列表到底的提示。`is_at_end` 负责判它显不显示，要不要就此停下仍是调用方的循环决策。
 END_OF_LIST_KEY = 'no_more_data'
 
 #: 滑动时长（毫秒）。沿用既有实现的 800ms：默认的快滑会让 RecyclerView 惯性飞滚，
@@ -142,3 +142,38 @@ class OnlineDrawerDriverPort(ABC):
                 调用方必须先用 `OnlineDrawerManager.resolve_visible_username` 解析，
                 拿 canonical 名直接比 UI 文本永远不相等。
         """
+
+    @abstractmethod
+    async def read_online_count(self) -> Optional[int]:
+        """读房间里「N 人在线」那个控件，报出它写的在线人数。
+
+        必须在**抽屉打开之前**读：抽屉一旦盖上来，这个控件就被挡住了。它是抓取结果
+        的**期望值**，用来和列表里真抓到的行数对账。
+
+        Returns:
+            文案里第一段数字解析出的 int；控件读不到、文案里没有数字、或者压根没有
+            App 时一律返回 None —— 「读不到人数」和「人数为 0」必须分得开，否则会把
+            对账变成拿 0 去比。
+        """
+
+    @abstractmethod
+    async def visible_member_rows(self) -> list:
+        """当前屏幕**已渲染**的整页在线用户，每行带昵称与关注关系。
+
+        一次读回整页，因为翻页判据是「这一页有没有带来新的人」，逐行问端口等于把
+        Appium 的多次 dump 搬进引擎。同样**不自己滚**：滑不滑、什么时候停都是
+        `OnlineDrawerManager` 的循环决策。
+
+        Returns:
+            `MemberRow` 列表（空列表表示这一页还没有行）。读坏的单行被跳过，不影响
+            整页；元素对象一个也不外泄。
+        """
+
+    @abstractmethod
+    async def is_at_end(self) -> bool:
+        """列表是否已经到底（`no_more_data` 提示已显示）。
+
+        只判「用户看得见」：提示元素留在 dump 里不等于它渲染出来了。这里也只回答
+        「到没到」，要不要就此停下是调用方的循环决策。
+        """
+
