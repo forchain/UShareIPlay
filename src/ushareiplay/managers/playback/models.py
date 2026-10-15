@@ -31,6 +31,14 @@ PLAY_MODE_NAMES = {
 # 没有音乐在放时统一回给用户的那句话（`ModeCommand` 的用户可见契约之一）。
 NO_PLAYING_MUSIC_ERROR = "现在没有播放音乐，无法切换模式"
 
+# 伴奏开关（#427）的用户可见契约文案。与上面那句刻意不同：这是迁移前就存在的
+# 英文原文，房间里的人一直读到它，改字等于改掉既有的用户可见行为。
+NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR = "No music playing, cannot toggle accompaniment mode"
+# K歌入口整体灰掉时的那句：伴奏模式压根没被激活，无从开关。
+ACCOMPANIMENT_DISABLED_ERROR = "Accompaniment mode is disabled"
+# `:acc` 参数既不是 1 也不是 0 时的那句。
+ACCOMPANIMENT_INVALID_PARAMETER_ERROR = "Invalid accompaniment parameter, must be 1 or 0"
+
 
 class PlaybackMode(str, Enum):
     """房间支持的全部播放意图。
@@ -229,3 +237,35 @@ class PlayModeOutcome:
     @classmethod
     def failed(cls, error: str, *, mode: str = "unknown") -> "PlayModeOutcome":
         return cls(ok=False, error=error, mode=mode)
+
+
+@dataclass(frozen=True)
+class AccompanimentOutcome:
+    """驱动端口切换伴唱开关后的观察结果（#427）。
+
+    与 `PlayModeOutcome` 同构，只是观察的对象从「模式 key」换成一个开关：
+    伴奏是 on/off，不是一档名字，因此这里存布尔而不是字符串。
+
+    两条 UI 通路（播放页上直接开关、更多菜单里滚动出来的菜单项）都收敛到
+    这一种结果 —— 调用方只关心「最后是不是开着」，不关心走的哪条路。
+
+    Attributes:
+        ok: UI 编排是否走通（含「本来就已经是目标状态」这种成功）。
+        enabled: 观察到的伴唱状态；不知道时为 None。
+        error: 失败原因（本地化），仅 `ok=False` 时有意义。
+        already_target: 进播放页后发现本来就是目标状态 —— 区别于「点了一下才
+            切过去」，前者一个点击都没发生，不该留下「切换成功」的痕迹。
+    """
+
+    ok: bool
+    enabled: Optional[bool] = None
+    error: Optional[str] = None
+    already_target: bool = False
+
+    @classmethod
+    def switched(cls, enabled: bool, *, already_target: bool = False) -> "AccompanimentOutcome":
+        return cls(ok=True, enabled=enabled, already_target=already_target)
+
+    @classmethod
+    def failed(cls, error: str, *, enabled: Optional[bool] = None) -> "AccompanimentOutcome":
+        return cls(ok=False, error=error, enabled=enabled)

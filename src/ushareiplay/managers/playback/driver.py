@@ -11,10 +11,12 @@
 `start_playback` —— 查歌、切分类 tab、点结果、点播放全部、读队列行都是该动作内部
 的实现细节，不必为它们各开一个方法。
 
-切换播放模式（#423）是另一个动作，因此端口从「只有一个方法」变成两个：
+切换播放模式（#423）是另一个动作，因此端口从「只有一个方法」变成两个；伴奏开关
+（#427）同理再加一个：
 
     start_playback(request)  一次播放意图的 UI 编排
     set_play_mode(target)    播放模式的切换与当前模式读取
+    set_accompaniment(on)    伴唱开关的拨动与最终状态读取
 
 判断该不该进第二个方法的界线是：这件事换一套 UI（别的音乐 App、假的内存替身）要不要
 换一份实现？要，就属于端口；不要，就属于方法内部。加播放模式、加队列操作会继续变宽，
@@ -24,6 +26,7 @@
 from abc import ABC, abstractmethod
 
 from ushareiplay.managers.playback.models import (
+    AccompanimentOutcome,
     PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
@@ -63,4 +66,23 @@ class MusicUIDriverPort(ABC):
             `PlayModeOutcome.switched(mode)`；进入播放页后发现本来就是目标模式时
             用 `already_target=True`。没有音乐在放、或点不动，返回
             `PlayModeOutcome.failed(<本地化原因>)`。不应抛出 UI 层异常。
+        """
+
+    @abstractmethod
+    def set_accompaniment(self, enable: bool) -> AccompanimentOutcome:
+        """把伴唱开关拨到 `enable` 并返回 UI 上最终的开合状态。
+
+        实现方自己负责的前置与分支：确保站在播放页上（见
+        `ushareiplay.managers.playback.player_page.ensure_player_page`）、认出走的是
+        哪条路（播放页上直接开关，还是「更多」菜单里滚动出来的菜单项）、必要时
+        开合、再读一次确认真的拨过去了。命令层看不到这些，也不该看到。
+
+        Args:
+            enable: `True` 开、伴唱（伴奏），`False` 关、回到原唱。参数校验与
+                归一化由 `MusicManager.set_accompaniment()` 完成，实现只管执行。
+
+        Returns:
+            `AccompanimentOutcome.switched(enable)`；进播放页后发现本来就是目标状态时
+            用 `already_target=True`。没有音乐在放、K歌入口灰掉、或点不动，返回
+            `AccompanimentOutcome.failed(<本地化原因>)`。不应抛出 UI 层异常。
         """
