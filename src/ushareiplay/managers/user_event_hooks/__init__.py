@@ -14,7 +14,8 @@
 shlex 解析、前缀校验（`:` `：` `/` `／`）、四个子动作（`add`/`del`/`list`/`clear`）、
 五类事件各自的文案、以及「收礼物命令按 alias-group、其余按 single-id 解析用户」这条
 容易踩坑的非对称规则，都在这个子包内部。`registry.py` 是事件类型的唯一事实源，
-`dao.py` 是参数化持久化，`manager.py` 是上面两个入口。
+`dao.py` 是参数化持久化，`manager.py` 是上面两个入口，`gates.py` 是事件前置判定
+（多分身离线聚合），目前只有「离开」用到。
 """
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO

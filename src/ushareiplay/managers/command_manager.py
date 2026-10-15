@@ -17,11 +17,10 @@ from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.sleep_manager import SleepManager
-from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
+from ushareiplay.managers.user_event_hooks import EXIT, RECEIVE, RETURN, UserEventHooks
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
 
@@ -514,50 +513,15 @@ class CommandManager(Singleton):
     async def notify_user_leave(self, username: str):
         """
         Notify all commands when a user leaves.
-        For avatar users (with canonical mapping), only triggers when ALL aliases
-        of the same canonical user are offline.
+
+        全分身离线判定、canonical 主账号名解析与记忆沉淀调度都已下沉到
+        `UserEventHooks.fire(EXIT, ...)`（#429）：只有当该用户的全部分身都不在
+        在线列表里时才会触发，且一律以主账号名下发。
 
         Args:
             username: Username of the user who left
         """
-        try:
-            all_avatars = await UserDAO.get_all_avatar_usernames(username)
-            online_users = InfoManager.instance().get_online_users()
-            still_online = all_avatars & online_users
-
-            if still_online:
-                self.logger.info(
-                    f"User leave skipped for '{username}': "
-                    f"avatars still online: {still_online}"
-                )
-                return
-
-            # 以主账号 canonical username 触发退出事件
-            raw_user = await UserDAO.get_or_create_raw(username)
-            canonical_user = await UserDAO.resolve_canonical(raw_user)
-            canonical_username = canonical_user.username
-
-            self.logger.info(
-                f"All avatars offline for '{username}' → triggering user_leave "
-                f"as canonical '{canonical_username}'"
-            )
-
-            # Schedule memory consolidation for the leaving user (canonical)
-            try:
-                if MemoryManager.is_initialized():
-                    MemoryManager.instance().schedule_consolidation_user(canonical_username)
-            except Exception:
-                self.logger.warning(f"Failed to schedule memory consolidation for user_leave '{canonical_username}'")
-
-            for module in self.get_command_modules().values():
-                try:
-                    if hasattr(module.command, 'user_leave'):
-                        await module.command.user_leave(canonical_username)
-                except Exception:
-                    self.logger.error(f"Error in command user_leave: {traceback.format_exc()}")
-
-        except Exception:
-            self.logger.error(f"Error in notify_user_leave: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(EXIT, username)
 
     async def notify_user_enter(self, username: str):
         """

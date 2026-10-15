@@ -8,6 +8,7 @@ from typing import List, Optional
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
+from ushareiplay.managers.user_event_hooks.gates import GATES
 from ushareiplay.managers.user_event_hooks.registry import COMMAND_PREFIXES, spec_for
 from ushareiplay.models.message_info import MessageInfo
 
@@ -36,6 +37,9 @@ class UserEventHooks(Singleton):
             self._handler.log_error(message)
         else:
             logger.error(message)
+
+    def _log_warning(self, message: str):
+        (self._logger or logging.getLogger("user_event_hooks")).warning(message)
 
     async def execute_crud(self, event_type: str, username: str, raw_content: str) -> dict:
         """执行一条 `:enter` / `:exit` / `:return` / `:receive` / `:focus` 配置命令。
@@ -128,16 +132,28 @@ class UserEventHooks(Singleton):
             ctx: 事件的实时上下文（专注人数前后值等），只用于日志。
 
         Returns:
-            int: 实际入队的命令条数。
+            int: 实际入队的命令条数。被事件闸门拦下时返回 0。
         """
         spec = spec_for(event_type)
         ctx = ctx or {}
 
         try:
-            if username is None:
+            # 事件闸门（`gates.py`）：判断这次事件该不该触发，并给出触发目标的名字。
+            # 「离开」事件的闸门会检查该用户的全部分身是否都已离线，并解析成主账号名；
+            # 没有闸门的事件类型拿到原样的 username，行为与收拢前一致。
+            target = username
+            gate = GATES.get(event_type)
+            if gate is not None and username is not None:
+                target = await gate(
+                    username, log_info=self._log_info, log_warning=self._log_warning
+                )
+                if target is None:
+                    return 0
+
+            if target is None:
                 commands = await UserEventHookDAO.get_all_ordered(event_type)
             else:
-                commands = await UserEventHookDAO.get_by_username(event_type, username)
+                commands = await UserEventHookDAO.get_by_username(event_type, target)
 
             if not commands:
                 return 0
@@ -147,11 +163,11 @@ class UserEventHooks(Singleton):
             for cmd in commands:
                 # 入队而不是直接执行：队列在 drain 时才展开 `{user_name}` 宏，
                 # 绕过队列会悄悄丢掉这个宏。
-                target = username if username is not None else cmd.user.username
-                await queue.put_message(MessageInfo(content=cmd.command, nickname=target))
+                nickname = target if target is not None else cmd.user.username
+                await queue.put_message(MessageInfo(content=cmd.command, nickname=nickname))
                 queued += 1
 
-            scope = username if username is not None else "全部用户"
+            scope = target if target is not None else "全部用户"
             self._log_info(
                 f"{spec.noun}触发 (ctx={ctx or '无'}), 为 {scope} 入队 {queued} 条命令"
             )
