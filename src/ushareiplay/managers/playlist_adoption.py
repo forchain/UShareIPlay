@@ -39,7 +39,7 @@ def primary_topic(text: Optional[str]) -> str:
 
     这个函数是「歌曲文案 → 话题」的唯一规则。QQ 音乐电台副标题（`guess_topic` /
     `daily_topic` / `collection_topic`）用的是另一套裸连字符约定，由
-    `RadioCommand._extract_primary_topic` 单独解析，不在此处复用 —— 两类文本
+    `QQMusicUIDriver._radio_subtitle_topic` 单独解析，不在此处复用 —— 两类文本
     的约定不同，混用会把其中一类解析错。
     """
     text = (text or "").strip()

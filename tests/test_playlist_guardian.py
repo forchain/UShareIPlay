@@ -61,7 +61,9 @@ def clean_info_manager():
 
 
 @pytest.mark.asyncio
-async def test_radio_empty_params_blocked_when_user_is_playing(clean_info_manager):
+async def test_radio_empty_params_blocked_when_user_is_playing(
+    clean_info_manager, music_engine
+):
     """
     当正常用户正在播放歌单且在线时，定时器或其他人触发无参数的 /radio 命令，
     必须被歌单守护拦截，不得顶掉当前用户的歌单。
@@ -87,11 +89,15 @@ async def test_radio_empty_params_blocked_when_user_is_playing(clean_info_manage
     res = await command.do_process(msg, [])
     assert isinstance(res, dict)
     assert res.get("error") == "不约儿童🐏🐏 正在播放歌单，请等待"
+    # #431 之后守护归引擎：被拦下时连播放请求都没发出，更谈不上动 UI。
+    assert music_engine.requests == []
     mock_controller.music_handler.navigate_to_home.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(clean_info_manager):
+async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
+    clean_info_manager, music_engine
+):
     """
     当当前播放者是 Timer 或系统管理员（如 Joyer）时，整点定时器触发 /radio 应该被允许执行。
     """
@@ -111,17 +117,20 @@ async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(clean_i
     }
 
     command = RadioCommand(mock_controller)
-    command._handle_collection = MagicMock(return_value={"playlist": "测试电台"})
-
     msg = MessageInfo(content="/radio", nickname="Timer")
+
     res = await command.do_process(msg, [])
 
-    assert res == {"playlist": "测试电台"}
-    command._handle_collection.assert_called_once_with(msg)
+    assert "error" not in res
+    # 裸 `:radio` 放行后落到精选频道。
+    assert len(music_engine.requests) == 1
+    assert music_engine.requests[0].channel == "collection"
 
 
 @pytest.mark.asyncio
-async def test_playlist_guardian_protects_with_avatar_online(user_db, clean_info_manager):
+async def test_playlist_guardian_protects_with_avatar_online(
+    user_db, clean_info_manager, music_engine
+):
     """
     测试守护者本人昵称不在房间，但其分身仍在房间时，歌单仍受到守护。
     """
@@ -153,7 +162,9 @@ async def test_playlist_guardian_protects_with_avatar_online(user_db, clean_info
 
 
 @pytest.mark.asyncio
-async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(user_db, clean_info_manager):
+async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
+    user_db, clean_info_manager, music_engine
+):
     """
     测试守护者用分身切歌时，不应被自己守护的歌单拦截。
     """
@@ -176,17 +187,19 @@ async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(user
     }
 
     command = RadioCommand(mock_controller)
-    command._handle_collection = MagicMock(return_value={"playlist": "新电台"})
 
     # 分身发出的切歌命令
     msg = MessageInfo(content="/radio", nickname="儿童不易~🐏🐏")
     res = await command.do_process(msg, [])
-    assert res == {"playlist": "新电台"}
-    command._handle_collection.assert_called_once_with(msg)
+    assert "error" not in res
+    assert len(music_engine.requests) == 1
+    assert music_engine.requests[0].requester == "儿童不易~🐏🐏"
 
 
 @pytest.mark.asyncio
-async def test_playlist_guardian_released_when_all_avatars_leave(user_db, clean_info_manager):
+async def test_playlist_guardian_released_when_all_avatars_leave(
+    user_db, clean_info_manager, music_engine
+):
     """
     当守护者及其所有分身均离开房间后，守护解除，定时器可以切歌。
     """
@@ -210,22 +223,21 @@ async def test_playlist_guardian_released_when_all_avatars_leave(user_db, clean_
     }
 
     command = RadioCommand(mock_controller)
-    command._handle_collection = MagicMock(return_value={"playlist": "新电台"})
 
     msg = MessageInfo(content="/radio", nickname="Timer")
     res = await command.do_process(msg, [])
-    assert res == {"playlist": "新电台"}
-    command._handle_collection.assert_called_once_with(msg)
+    assert "error" not in res
+    assert len(music_engine.requests) == 1
 
 
 @pytest.fixture
-def playlist_engine(clean_info_manager):
-    """:playlist 切歌路径的引擎台：真守护（InfoManager）+ 内存 UI 驱动。
+def music_engine(clean_info_manager):
+    """切歌路径的引擎台：真守护（InfoManager）+ 内存 UI 驱动。
 
-    #434 之后 `:playlist <query>` 走 `MusicManager.play()`，守护因而由引擎调
-    `PlaylistAdoption.guard_switch`。这里只把 UI 换成内存替身 —— 守护判定仍然
-    是真的 `InfoManager.check_playlist_protection`，因此这些用例考的是「守护还
-    管不管得住」，不是「命令层有没有再自己判一次」。
+    #434 的 `:playlist <query>` 与 #431 的 `:radio` 都走 `MusicManager.play()`，
+    守护因而由引擎调 `PlaylistAdoption.guard_switch`。这里只把 UI 换成内存替身 ——
+    守护判定仍然是真的 `InfoManager.check_playlist_protection`，因此这些用例考的
+    是「守护还管不管得住」，不是「命令层有没有再自己判一次」。
     """
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -254,7 +266,7 @@ def playlist_engine(clean_info_manager):
 
 
 @pytest.mark.asyncio
-async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, playlist_engine):
+async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, music_engine):
     info_manager = clean_info_manager
     info_manager.player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
@@ -268,7 +280,7 @@ async def test_playlist_command_blocked_when_other_user_playing(clean_info_manag
     res = await command.do_process(msg, ["周杰伦"])
     assert res == {"error": "不约儿童🐏🐏 正在播放歌单，请等待"}
     # 被守护拦下时一个 UI 动作都不该发生
-    assert playlist_engine.requests == []
+    assert music_engine.requests == []
 
 
 @pytest.mark.asyncio
@@ -342,7 +354,7 @@ async def test_allowed_commands_hand_the_requester_to_the_play_step(
 
 @pytest.mark.asyncio
 async def test_playlist_hands_the_requester_to_the_playback_engine(
-    clean_info_manager, playlist_engine
+    clean_info_manager, music_engine
 ):
     """`:playlist <query>` 迁移进引擎后，请求者在 `PlaybackRequest.requester` 上。"""
     clean_info_manager.player_name = None
@@ -354,13 +366,13 @@ async def test_playlist_hands_the_requester_to_the_playback_engine(
 
     await command.do_process(MessageInfo(content="/playlist 流行歌单", nickname="张三"), ["流行歌单"])
 
-    assert len(playlist_engine.requests) == 1
-    assert playlist_engine.requests[0].requester == "张三"
+    assert len(music_engine.requests) == 1
+    assert music_engine.requests[0].requester == "张三"
     assert clean_info_manager.player_name == "张三", "请求者最终写进房间播放者"
 
 
 @pytest.mark.asyncio
-async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, playlist_engine):
+async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, music_engine):
     """
     当普通用户正在播放且在线时，管理员（Outlier/Chainer）、房主（Joyer）以及控制台（Console）
     可以突破守护，执行切歌操作。
@@ -402,7 +414,7 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
 
 @pytest.mark.asyncio
 async def test_normal_user_can_play_when_admin_or_owner_is_playing(
-    clean_info_manager, playlist_engine
+    clean_info_manager, music_engine
 ):
     """
     当管理员（Outlier）或房主（Joyer）正在播放歌单时，无需保护，普通用户点歌可自由切入。
