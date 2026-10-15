@@ -11,13 +11,16 @@ spec #426 记的问题是这份抽屉「无人认领」：`OnlineListScraper`、
             return open_error
         <只在会话里做要做的动作>
 
-三条归属规则，全部由这里保证：
+四条归属规则，全部由这里保证：
 
 1. **只关自己打开的那一次。** 进场时抽屉已经开着（被外层流程打开），本会话不夺取
    归属，退出后保持原状，让外层决定何时关。
 2. **一定会收尾。** 正文抛异常也照样关，然后让异常继续往外走。
 3. **绝不盲按返回。** 收尾只用 `ivClose`；连它都点不到时记一条警告、保持原状，
    而不是拿派对房间去赌一次 `press_back`（端口里根本没有这个原语）。
+4. **交接是显式的。** 资料页流程（#435）的成功产物是抽屉之上的资料卡，因此它用
+   `Handover` 把抽屉交出去；没有 `release()` 的任何路径（含中途 return 与抛异常）
+   一律照常收尾。
 
 在线名单抓取（#432）、资料页与私信（#435）、送礼（#438）、房管（#439）都只经由
 这个会话进出抽屉；Appium 细节、坐标与落定时间全在端口后面的适配器里。
@@ -38,6 +41,31 @@ DEFAULT_OPEN_ERROR = 'Failed to open online users drawer'
 #: 抽屉开了但没落定时的默认报错文案。与「打不开」分开表述：前者抽屉多半还开着，
 #: 调用方重试有意义；后者连容器都没出现，重试之前应该先确认自己还在房间里。
 DEFAULT_SETTLE_ERROR = 'Online users drawer did not settle'
+
+
+class Handover:
+    """一次抽屉会话里的**交接**信号。
+
+    会话打开的抽屉默认在退出时收掉。但资料页流程（#435）的成功产物恰恰是抽屉之上的
+    那层资料卡 —— 卡片与抽屉共用同一个 `ivClose`，此时收尾等于把刚交出去的东西拆掉。
+    正文调用 `release()` 把抽屉连同资料卡一起交给调用方，收尾责任随之转移，调用方
+    用 `close_profile_card()` / `return_to_room()` 收。
+
+    刻意做成一个显式对象，而不是一个布尔开关：开关只能整段会话生效，于是「没找到人
+    就中途 return」这类**失败**路径也会被跳过收尾，把抽屉悬在屏幕上 —— 而悬着的抽屉
+    下一次盲按返回就会把房间一起带走（spec #426 问题陈述 #1）。
+    """
+
+    def __init__(self):
+        self._released = False
+
+    def release(self) -> None:
+        """声明「抽屉与资料卡归调用方了」，本会话不再收尾。"""
+        self._released = True
+
+    @property
+    def released(self) -> bool:
+        return self._released
 
 
 class OnlineDrawerManager(Singleton):
@@ -82,7 +110,12 @@ class OnlineDrawerManager(Singleton):
 
     @asynccontextmanager
     async def drawer_session(
-        self, reason: str = "", *, error_message: Optional[str] = None
+        self,
+        reason: str = "",
+        *,
+        error_message: Optional[str] = None,
+        settle_error_message: Optional[str] = None,
+        handover: Optional[Handover] = None,
     ):
         """抽屉开着的异步上下文：需要时才打开，且只关掉自己打开的那一次。
 
@@ -90,6 +123,12 @@ class OnlineDrawerManager(Singleton):
             reason: UI 独占锁的持有理由，写进锁的调试日志，便于排障时看清是谁在
                 占着屏幕。
             error_message: 打不开时返回给调用方的文案。
+            settle_error_message: 抽屉开了却没落定时的文案。与「打不开」分开传入，
+                因为调用方面向用户的报错里这两句本来就不一样，合并会改掉聊天气泡里
+                的话。
+            handover: 可选的交接信号。正文调用 `handover.release()` 时，本会话不再
+                收尾，把打开的抽屉交给调用方；没有 `release()`（含中途 return 与抛
+                异常）时照常收尾。传 `None`（默认）就是本模块的原始行为。
 
         Yields:
             error dict（抽屉不可用）或 None（会话已就绪）。失败时**不会** yield 一个
@@ -122,13 +161,36 @@ class OnlineDrawerManager(Singleton):
                     f"[online_drawer] {reason or 'session'} 抽屉打开后未能落定，收尾关闭"
                 )
                 await self._ensure_closed()
-                yield {'error': error_message or DEFAULT_SETTLE_ERROR}
+                yield {'error': settle_error_message or error_message or DEFAULT_SETTLE_ERROR}
                 return
 
             try:
                 yield None
-            finally:
+            except BaseException:
+                # 抛异常一律收尾：交接只发生在正文的成功路径上，抛出来的一律不算。
                 await self._ensure_closed()
+                raise
+            if handover is None or not handover.released:
+                await self._ensure_closed()
+
+    async def close_profile_card(self) -> None:
+        """交接的另一半：把资料卡连同抽屉收回房间。
+
+        不夺取归属 —— 只在卡片真的悬着时才动手，且用端口自己的手势收。收不掉就记一条
+        警告并保持原状，交给下一轮恢复流程，绝不盲按返回。
+        """
+        try:
+            async with self._ui_session("online_drawer:close_profile_card"):
+                driver = self._require_driver()
+                if not await driver.dismiss_profile_card():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过 ivClose 收起资料卡，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 资料卡已收起")
+        except Exception as e:
+            # 收尾失败不能让调用方的正常结果变成异常（同 `_ensure_closed` 的理由）。
+            self.logger.warning(f"[online_drawer] 收起资料卡时出错: {e}")
 
     @asynccontextmanager
     async def _ui_session(self, reason: str):

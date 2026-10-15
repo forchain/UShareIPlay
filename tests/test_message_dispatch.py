@@ -32,7 +32,8 @@ class _UserManager:
     def __init__(self):
         self.sent = []
 
-    def send_private_message_to_user(self, nickname, message):
+    # 私聊经抽屉会话进出，因此这条出口是异步的（#435）。
+    async def send_private_message_to_user(self, nickname, message):
         self.sent.append((nickname, message))
         return True
 
@@ -94,16 +95,17 @@ def test_send_screen_message_emits_failure_before_reraising_ui_error():
     ]
 
 
-def test_private_and_message_info_routing_keep_private_replies_private():
+@pytest.mark.asyncio
+async def test_private_and_message_info_routing_keep_private_replies_private():
     dispatch, runtime = _make_dispatch()
 
-    assert dispatch.send_private_message("Alice", "private") is True
-    assert dispatch.send_for_message_info(
+    assert await dispatch.send_private_message("Alice", "private") is True
+    assert await dispatch.send_for_message_info(
         MessageInfo(content="$demo", nickname="Bob", private_reply=True),
         "reply",
         silent=True,
     ) is True
-    dispatch.send_for_message_info(
+    await dispatch.send_for_message_info(
         MessageInfo(content=":demo", nickname="Carol"), "public"
     )
 
@@ -122,11 +124,16 @@ def test_private_and_message_info_routing_keep_private_replies_private():
     ]
 
 
-def test_private_message_emits_failed_result_when_user_manager_returns_false():
+@pytest.mark.asyncio
+async def test_private_message_emits_failed_result_when_user_manager_returns_false():
     dispatch, runtime = _make_dispatch()
-    dispatch.user_manager.send_private_message_to_user = lambda _nickname, _message: False
 
-    assert dispatch.send_private_message("Alice", "private") is False
+    async def _dropped(_nickname, _message):
+        return False
+
+    dispatch.user_manager.send_private_message_to_user = _dropped
+
+    assert await dispatch.send_private_message("Alice", "private") is False
     assert runtime.events == [
         (
             "message.dispatch.private",

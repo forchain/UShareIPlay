@@ -491,7 +491,8 @@ class CommandManager(Singleton):
                         with self.playback_muting_guard(command, command_info):
                             response = await self.process_command(command, message_info, command_info)
                             if response:
-                                self.message_dispatch.send_for_message_info(
+                                # 私聊回复要经抽屉会话进出，因此这条出口是异步的（#435）。
+                                await self.message_dispatch.send_for_message_info(
                                     message_info, response, silent=silent
                                 )
                         success_count += 1
