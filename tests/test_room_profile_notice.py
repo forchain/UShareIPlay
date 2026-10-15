@@ -149,9 +149,13 @@ def test_set_notice_reports_the_remaining_cooldown_and_still_remembers_the_draft
 
 
 def test_the_notice_budget_is_not_shared_with_the_topic():
-    """冷却是「每个字段一份」，写话题不该让公告排队。"""
+    """冷却是「每个字段一份」：话题的 5 分钟用掉了，公告照样立刻写。
+
+    话题记在两分钟前 —— 自己的 5 分钟还没到期，但抽屉表面（60 秒）安静了。
+    表面节奏是另一个问题，见 `test_room_profile_surface_spacing.py`。
+    """
     profile = _profile(_driver())
-    profile.drafts.mark_attempted("topic")
+    profile.drafts.mark_attempted("topic", now=datetime.now() - timedelta(minutes=2))
 
     result = profile.set_notice("今晚八点开播")
 

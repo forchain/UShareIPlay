@@ -360,8 +360,16 @@ def test_set_topic_reports_the_remaining_cooldown_once_the_budget_is_spent():
 
 
 def test_set_notice_queues_against_its_own_slower_budget():
+    """公告的 15 分钟预算是它**自己**的：房名还在冷却，公告照写。
+
+    房名记在两分钟前 —— 它自己的 10 分钟还没到期，但抽屉表面（60 秒）早就安静了。
+    「字段各记一份预算」与「抽屉是一块共享表面」是两件事，后者由
+    `test_room_profile_surface_spacing.py` 单独钉住。
+    """
+    from datetime import datetime, timedelta
+
     profile = RoomProfileManager.initialize()
-    profile.drafts.mark_attempted("title")
+    profile.drafts.mark_attempted("title", now=datetime.now() - timedelta(minutes=2))
 
     result = profile.set_notice("今晚八点开播")
 

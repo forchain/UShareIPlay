@@ -51,9 +51,24 @@ class PartyManager(Singleton):
             self._room_profile_manager = RoomProfileManager.instance()
         return self._room_profile_manager
 
-    def _refresh_recommendation_state(self):
-        """派对推荐状态已不在房间信息面板展示，仅在创建派对时配置。"""
-        return None
+    def _sync_room_profile_from_ui(self):
+        """回房 / 进房 / 建房之后，把整份房间档案接回真实 UI。
+
+        #413 停用抽屉里的推荐读写时，这条线被顺手做成了空壳：它原本是
+        `RoomProfileManager.ensure_synced_on_return()` 唯一的生产调用点，往下是
+        `initialize_from_ui`。空壳一留，房名（主题｜标题）再也读不回真实值 ——
+        `current_title` 停在 None，`:theme` 只能说「当前标题: 未设置」，房名写入
+        被 Soul 拒绝时连兜底都没有。
+
+        推荐那一行确实不用再碰（UI 已移除）；这里恢复的是**档案接地**，而且是一
+        次只读（读主界面 `chat_room_title` 那一行），不为任何字段开抽屉 —— 与 #413
+        「不再为了推荐开抽屉」的契约一致。组合根还没装配房间档案模块时安静跳过 ——
+        那是接线问题，不是业务失败。
+        """
+        profile = self.room_profile_manager
+        if profile is None:
+            return None
+        return profile.ensure_synced_on_return()
 
     @property
     def message_dispatch(self):
@@ -540,7 +555,7 @@ class PartyManager(Singleton):
             if party_back_elem:
                 if self._click_element_safe(party_back_elem, 'party_back'):
                     self.logger.info("Clicked back to party (dialog was already visible)")
-                    self._refresh_recommendation_state()
+                    self._sync_room_profile_from_ui()
                     return True
 
             if not self._enter_party_hall_from_home():
@@ -552,7 +567,7 @@ class PartyManager(Singleton):
             self.handler.party_id = None
 
             if self._search_and_try_enter_existing_party():
-                self._refresh_recommendation_state()
+                self._sync_room_profile_from_ui()
                 return True
 
             if not self._create_party_flow():
@@ -777,8 +792,10 @@ class PartyManager(Singleton):
             # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
             RoomState.instance().promote_to_host_room(self.handler.party_id)
 
-        # 开派对时已根据配置设置派对推荐状态（RoomState.instance().recommendation_enabled），
-        # 房间信息面板已无该选项，故无需也不再从 UI 刷新推荐状态。
+        # 新房间的房名/主题在 UI 上只有一份，建房后必须把它读回来一次。
+        # 推荐状态已不在面板展示、不再刷新，但那不再是「不接地」的理由。
+        self._sync_room_profile_from_ui()
+
         if RoomState.is_initialized():
             self.logger.info(
                 f"Party recommendation configured during creation: {RoomState.instance().recommendation_enabled}"

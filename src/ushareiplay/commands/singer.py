@@ -1,94 +1,32 @@
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
 
 
 class SingerCommand(BaseCommand):
-    playback_muting = True
+    """`:singer <query>` —— 播某个歌手的歌。
+
+    整条编排交给 `MusicManager.play()`：搜歌手、首页快捷键或歌手分类兜底、点
+    「播放全部」、读队列都在 `QQMusicUIDriver`（见 `playback/`），守护、静音与
+    房间同步由引擎的同一条流水线负责。
+
+    因此本命令不再声明 `playback_muting`，也没有 `playback_muting_applies()`：
+    命令级闭麦发生在守护之前，被守护拒绝的切歌也会在房间里响一次无来由的静音
+    （ADR-0007 把闭麦的边界定在真正的切歌过程上，那正是引擎守卫管的事）。
+
+    Elements 与选择器一律来自 `config.yaml` 的 `qq_music.elements`。
+    """
+
     handler_attr = 'music_handler'
 
     async def do_process(self, message_info, parameters):
-        query = " ".join(parameters)
-
-        # 歌单守护检查：若当前播放者不是管理员且仍在房间（含分身），阻断切歌
-        config = getattr(self.controller, "config", None)
-        protection_error = await self.playlist_adoption.guard_switch(
-            message_info.nickname, config=config
-        )
-        if protection_error:
-            self.handler.logger.info(
-                f"{message_info.nickname} 尝试播放歌手歌单，但 {self.info_manager.player_name} 正在播放"
+        result = await self.music_manager.play(
+            # 直接构造而非 `PlaybackRequest.singer(...)`：构造器名一旦与本数据类
+            # 的字段同名就会顶掉字段的类级默认值，让 `request.<字段>` 变成一个
+            # 绑定方法。歌手/专辑只需要「模式 + 查询词 + 请求者」三样。
+            PlaybackRequest(
+                mode=PlaybackMode.SINGER,
+                query=' '.join(parameters),
+                requester=message_info.nickname,
             )
-            return protection_error
-
-        info = self.play_singer(query, message_info.nickname)
-        return info
-
-    def play_singer(self, query: str, requester=None):
-        from_key = self.handler.query_music(query)
-        if not from_key:
-            return {
-                "error": f"Failed to query singer {query}",
-            }
-
-        play_singer = None
-        singer_name = 'Unknown'
-        if from_key == "home_nav":
-            key, element = self.handler.element_finder.wait_for_any_element(["music_tabs", "not_found"], timeout=5)
-            if key and key != "not_found":
-                if play_singer_elem := self.handler.element_finder.try_find_element("play_singer_1"):
-                    play_singer = play_singer_elem
-                    if singer_name_attr := self.handler.element_finder.try_get_attribute(play_singer, "content-desc"):
-                        singer_name = singer_name_attr.split(': ')[1]
-                        singer_name = singer_name.split('的歌曲')[0]
-                elif play_singer_elem := self.handler.element_finder.try_find_element("play_singer"):
-                    play_singer = play_singer_elem
-                    if singer_name_element := self.handler.element_finder.try_find_element("singer_name"):
-                        singer_name = singer_name_element.text
-
-        if play_singer:
-            play_singer.click()
-            self.handler.logger.info("Selected singer play")
-        else:
-            if not self.music_manager.select_tab("singer"):
-                self.handler.logger.error(f"Failed to select singer tab with query {query}")
-                return {
-                    'error': f'not found singer with query {query}',
-                }
-            key, element = self.handler.element_finder.wait_for_any_element(["singer_result", "not_found"])
-            if not key or key == "not_found":
-                self.handler.logger.error(f'not found singer with query {query}')
-                return {
-                    'error': f'not found singer with query {query}',
-                }
-            singer_result = element
-
-            singer_result.click()
-            self.handler.logger.info("Selected singer result")
-            singer_name = singer_result.text
-
-            play_button = self.handler.element_finder.wait_for_element_clickable("play_all")
-            if not play_button:
-                self.handler.logger.error("Cannot find play singer button")
-                return {"error": "Failed to find play button"}
-            play_button.click()
-
-            self.handler.logger.info("Clicked play singer result")
-
-        # Get playlist info from UI instead of ADB
-        playing_info = self.handler.get_playlist_info()
-        playlist_text, first_song, error = get_playlist_text_and_first_song(playing_info)
-        if error:
-            self.handler.logger.warning(f"Failed to read singer playlist after playback started: {error}")
-            playlist_text = singer_name
-            first_song = None
-
-        # 播放队列首行是「歌名 - 歌手」，话题归一化交给 PlaylistAdoption
-        self.playlist_adoption.adopt(
-            requester=requester,
-            mode="singer",
-            title=singer_name,
-            topic=first_song or singer_name,
-            playlist=singer_name,
         )
-
-        return {"playlist": playlist_text}
+        return result.as_response()

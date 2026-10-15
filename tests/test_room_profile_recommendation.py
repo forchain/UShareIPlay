@@ -169,30 +169,50 @@ def test_sync_while_open_does_not_sync_recommendation():
     assert room_state.recommendation_enabled is True
 
 
-def test_ensure_synced_on_return_does_not_touch_the_drawer_when_the_state_is_known():
-    """状态已记录就没有「要做」的事：一个抽屉动作都不该发生。"""
+def test_ensure_synced_on_return_does_not_touch_the_drawer_once_the_profile_is_grounded():
+    """档案已经从 UI 读回过真实值就没有「要做」的事：一个抽屉动作都不该发生。"""
     room_state = RoomState.initialize()
     room_state.recommendation_enabled = False
     driver = _recommendation_driver()
     profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
+    profile.is_initialized = True  # 这一间房已经读过真实房名
 
-    assert profile.ensure_synced_on_return() == {"skipped": True, "reason": "already_saved"}
+    assert profile.ensure_synced_on_return() == {"skipped": True, "reason": "already_initialized"}
     assert driver.opened_entries == []
     assert room_state.recommendation_enabled is False
 
 
-def test_ensure_synced_on_return_audits_the_room_when_the_state_is_unknown():
+def test_a_known_recommendation_state_does_not_short_circuit_the_grounding():
+    """#413 之后推荐那一行不在抽屉里，`recommendation_enabled` 恒为 True/False。
+
+    它再也不能当「档案已知」的守卫 —— 那会把 `initialize_from_ui` 永久短路，
+    `current_title` 停在 None，`:theme` 只能说「当前标题: 未设置」。这里那块屏幕
+    故意没有可读的房名：要钉的是「它真的去读了」，而不是「读到了什么」。
+    """
     room_state = RoomState.initialize()
-    room_state.recommendation_enabled = None
+    room_state.recommendation_enabled = True
     driver = _recommendation_driver()
     profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
 
     result = profile.ensure_synced_on_return()
 
-    assert result == {"success": True, "recommendation_enabled": None}
-    assert driver.opened_entries == ["chat_room_title"]
-    # 抽屉全量审计不再读/点推荐分发那一行
-    assert "party_recommendation_status" not in driver.clicks
+    assert result.get("skipped") is not True, "推荐状态已知不得成为跳过的理由"
+    assert "error" in result, "读不到真实房名就不许假装接地"
+    assert profile.is_initialized is False
+
+
+def test_grounding_the_room_name_does_not_cost_a_drawer_session():
+    """#413 的契约：回房接地不开抽屉 —— 读主界面那一行 `chat_room_title` 就够。"""
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = True
+    driver = _recommendation_driver()
+    screen = _Screen(DRAWER_SCREEN + ("chat_room_title",), {"chat_room_title": "听歌｜Lofi Girl"})
+    profile = _profile(driver, _Handler(screen))
+
+    assert profile.ensure_synced_on_return() == {"success": True, "initialized": True}
+    assert profile.get_current_title() == "Lofi Girl"
+    assert driver.opened_entries == [], "接地不该花一次抽屉会话"
+    assert driver.clicks == []
     assert "party_recommendation_open" not in driver.clicks
     assert "party_recommendation_close" not in driver.clicks
 
@@ -615,24 +635,34 @@ def test_a_failed_open_never_claims_the_room_info_window_was_closed():
     handler = _Handler(_Screen(DRAWER_SCREEN, {"party_room_type_option": SINGING_TYPE_TEXT}))
     profile = _profile(driver, handler)
 
-    profile.ensure_synced_on_return()
+    profile.audit_and_repair()
 
-    assert not any("Closed room info window" in line for line in _info_lines(handler)), (
-        f"打开失败时不得声称关过窗：{_info_lines(handler)}"
+    assert not any("Room info audit completed" in line for line in _info_lines(handler)), (
+        f"抽屉根本没打开，不得声称在窗口里核对完成：{_info_lines(handler)}"
     )
 
 
-def test_a_real_audit_still_claims_the_window_was_closed():
-    """反过来钉住：真的走完一次审计并关窗时，这句 INFO 不得被一起删掉。"""
+def test_a_real_audit_still_claims_it_ran_in_an_open_window():
+    """反过来钉住：真的走完一次抽屉审计时，这句「在窗口里核对完成」不得被删掉。
+
+    改挂在 `audit_and_repair` 上：回房接地（`ensure_synced_on_return`）自 #413 的契约
+    起根本不开窗，因此「窗开过、也关掉了」这句话只由全量审计来说。
+    """
     room_state = RoomState.initialize()
     room_state.recommendation_enabled = None
     driver = _recommendation_driver()
-    handler = _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT}))
+    # 审计要真的成功才算数：抽屉里那一行房名读得到，room_name 步骤才不带 error。
+    handler = _Handler(
+        _Screen(
+            DRAWER_SCREEN + ("room_name_in_dialog",),
+            {"party_recommendation_status": OPEN_TEXT, "room_name_in_dialog": "听歌｜Lofi Girl"},
+        )
+    )
     profile = _profile(driver, handler)
 
-    profile.ensure_synced_on_return()
+    profile.audit_and_repair()
 
-    assert any("Closed room info window" in line for line in _info_lines(handler))
+    assert any("Room info audit completed successfully" in line for line in _info_lines(handler))
     assert driver.is_open() is False
 
 
