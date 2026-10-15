@@ -4,7 +4,7 @@
 
 | 真实依赖 | 替身 |
 |---|---|
-| Appium UI（查歌、切 tab、点播放全部、切换播放模式） | `InMemoryMusicUIDriver`，按模式返回脚本化结果 |
+| Appium UI（查歌、切 tab、点播放全部、切换播放模式、读歌词） | `InMemoryMusicUIDriver`，按模式/查询词返回脚本化结果 |
 | MediaSession 就绪（`dumpsys media_session`） | 测试模块内的 `_ReadinessProbe`，无需睡眠即可判定就绪 |
 | 麦克风 UI（`MicManager`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
 
@@ -16,6 +16,7 @@ from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
     NO_PLAYING_MUSIC_ERROR,
     PLAY_MODE_NAMES,
+    LyricsOutcome,
     PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
@@ -40,12 +41,17 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         no_music: 没有音乐在放 —— 任何模式切换都返回「现在没有播放音乐」。
         play_mode_failures: 目标模式 → 该次切换的失败原因，用于注入错误。
         stuck_play_mode: 点击模式按钮不改变模式（模拟切换没生效、重试耗尽）。
+        lyrics: 查询词 → 该词命中的歌词原文（#430）。未列出的查询词回落到
+            `_synthesized_lyrics`，让「忘了配歌词」不会静默变成一条空歌词。
+        lyrics_failures: 查询词 → 该次取歌词的失败原因，用于注入错误。
+        not_found_lyrics: 任何查询都取不到歌词（模拟搜得到歌、却翻不到歌词）。
 
     Attributes:
         requests: 引擎驱动过的请求，按顺序记录。被守护拒绝的请求不会出现在这里。
         play_mode: 当前点亮着的模式 key，会随成功的切换改变。
         play_mode_requests: 每次 `set_play_mode()` 的目标 key，按顺序记录。
         play_mode_clicks: 真正点过模式按钮的次数（本来就在目标模式时不点）。
+        lyrics_requests: 每次 `query_lyrics()` 的查询词，按顺序记录。
     """
 
     def __init__(
@@ -60,6 +66,9 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         no_music=False,
         play_mode_failures=None,
         stuck_play_mode=False,
+        lyrics=None,
+        lyrics_failures=None,
+        not_found_lyrics=False,
     ):
         self.tracks = dict(tracks or {})
         self.failures = dict(failures or {})
@@ -75,6 +84,11 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         self.stuck_play_mode = stuck_play_mode
         self.play_mode_requests = []
         self.play_mode_clicks = 0
+
+        self.lyrics = dict(lyrics or {})
+        self.lyrics_failures = dict(lyrics_failures or {})
+        self.not_found_lyrics = not_found_lyrics
+        self.lyrics_requests = []
 
     def start_playback(self, request: PlaybackRequest) -> PlaybackOutcome:
         self.requests.append(request)
@@ -119,6 +133,35 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
 
         self.play_mode = target_mode
         return PlayModeOutcome.switched(self.play_mode)
+
+    def query_lyrics(self, query: str) -> LyricsOutcome:
+        """脚本化的取歌词：查过什么、翻没翻到，都留在替身上可断言。"""
+        self.lyrics_requests.append(query)
+        if self.journal is not None:
+            self.journal.append(f"lyrics:{query}")
+
+        failure = self.lyrics_failures.get(query)
+        if failure:
+            return LyricsOutcome.failed(failure)
+
+        if self.not_found_lyrics:
+            return LyricsOutcome.failed(f'No lyrics found for "{query}"')
+
+        text = self.lyrics.get(query)
+        if text is None:
+            text = self._synthesized_lyrics(query)
+        if not text:
+            return LyricsOutcome.failed(f'No lyrics found for "{query}"')
+        return LyricsOutcome.found(text)
+
+    @staticmethod
+    def _synthesized_lyrics(query: str) -> str:
+        """没有脚本时，用查询词本身造出可辨识的歌词。
+
+        让「测试没配歌词就静默返回空文本」不可能发生 —— 那会让断言变得空洞
+        （任何 `ok=True` 都成立）。
+        """
+        return f"（{query} 的歌词）"
 
     @staticmethod
     def _synthesized_track(request: PlaybackRequest) -> PlaybackTrack:

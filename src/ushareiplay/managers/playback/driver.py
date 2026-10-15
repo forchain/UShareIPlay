@@ -16,14 +16,20 @@
     start_playback(request)  一次播放意图的 UI 编排
     set_play_mode(target)    播放模式的切换与当前模式读取
 
-判断该不该进第二个方法的界线是：这件事换一套 UI（别的音乐 App、假的内存替身）要不要
-换一份实现？要，就属于端口；不要，就属于方法内部。加播放模式、加队列操作会继续变宽，
+取歌词（#430）是第三个动作。歌词来自「搜一首歌 → 点歌词 tab → 读结果」这条
+搜索链路，因此它的 UI 编排与上面两条都不同：
+
+    query_lyrics(query)      查歌、选歌词 tab、读 DOM 文字并解开 HTML 实体
+
+判断该不该进新方法的界线是：这件事换一套 UI（别的音乐 App、假的内存替身）要不要
+换一份实现？要，就属于端口；不要，就属于方法内部。加队列操作会继续变宽，
 这是有意的 —— 收窄端口换来的是「命令层能离线测」，代价只是适配器多写几个方法。
 """
 
 from abc import ABC, abstractmethod
 
 from ushareiplay.managers.playback.models import (
+    LyricsOutcome,
     PlayModeOutcome,
     PlaybackOutcome,
     PlaybackRequest,
@@ -63,4 +69,29 @@ class MusicUIDriverPort(ABC):
             `PlayModeOutcome.switched(mode)`；进入播放页后发现本来就是目标模式时
             用 `already_target=True`。没有音乐在放、或点不动，返回
             `PlayModeOutcome.failed(<本地化原因>)`。不应抛出 UI 层异常。
+        """
+
+    @abstractmethod
+    def query_lyrics(self, query: str) -> LyricsOutcome:
+        """查 `query` 的歌词原文并交出来。
+
+        实现方自己负责的前置动作：把 QQ Music 拉到前台、执行搜索、用
+        `MusicManager.instance().select_tab("lyrics")` 选到歌词分类、点开结果项、
+        读 DOM 文字并 `html.unescape` 解开 HTML 实体。命令层看不到这些，也不该看到。
+
+        注意实现**不要**复用
+        `ushareiplay.managers.playback.player_page.ensure_player_page`：那是播放页
+        的进入仪式（按返回键 + 认 `playing_bar`/模式按钮），而歌词走的是搜索结果的
+        分类页，按返回键只会退回上一页；而且「现在没在放歌」对按搜索取歌词并不是
+        前提，用播放页那套探测反而会给出误导性的错误。歌词只需要「切前台」这一个
+        公共前置动作。
+
+        Args:
+            query: 搜索词。查询词兜底（无参数时问当前正在放的这首）由
+                `MusicManager.query_lyrics()` 完成，实现只管按词执行。
+
+        Returns:
+            取到为 `LyricsOutcome.found(<歌词原文>)`；搜不到、切不到歌词 tab 或
+            读不出文字时为 `LyricsOutcome.failed(<原因>)`。不应抛出 UI 层异常 ——
+            「没有歌词」是正常结局，要让命令层据此回复房间而不是崩掉。
         """
