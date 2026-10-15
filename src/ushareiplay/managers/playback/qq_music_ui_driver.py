@@ -1041,13 +1041,11 @@ class QQMusicUIDriver(MusicUIDriverPort):
         subject, topic = PlaylistParser().parse_playlist_name(playlist_name)
         song_name, singer_name = self._read_first_track()
 
-        # 解析不出主副标题时退回歌单里的第一行：宁可让房间显示一句歌名/歌手，
-        # 也不要留下一个空标题 —— 空标题会让房间沿用上一首歌单的话题。
+        # 解析不出主标题时退回详情页的歌手列：宁可让房间显示一句歌手，
+        # 也不要留下一个空标题 —— 空标题会让房间沿用上一首歌单的房名。
         if not subject:
             self.logger.warning("Failed to parse playlist name")
             subject = singer_name
-        if not topic:
-            topic = song_name
 
         _, play_button = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
         if not play_button:
@@ -1057,12 +1055,25 @@ class QQMusicUIDriver(MusicUIDriverPort):
         play_button.click()
         self.logger.info("Selected play all button")
 
+        playlist_text, first_line = self._read_queue(fallback=playlist_name)
+
+        # 话题兜底依次落到详情页第一行、播放队列首行。详情页那一次是点完卡片
+        # 在页面跳转中抢读的，随时可能静默落空；播放已经开始，队列首行才是这一
+        # 次切歌实际放出来的第一行。两档都空时 `adopt` 会整个跳过 `set_topic`
+        # —— 房间沿用旧话题、连 next topic 都不排，必须如实留下一条 warning。
+        if not topic:
+            topic = song_name or (first_line or "")
+        if not topic:
+            self.logger.warning(
+                f"歌单话题无从解析，房间将沿用旧话题: {playlist_name}"
+            )
+
         return PlaybackOutcome.started(
             PlaybackTrack(song=song_name, singer=singer_name),
             title=subject,
             topic=topic,
             playlist=playlist_name,
-            extra={"playlist": self._read_queue_text(fallback=playlist_name)},
+            extra={"playlist": playlist_text},
         )
 
     def _read_first_track(self) -> tuple:
@@ -1096,11 +1107,6 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return (cell.text or "").strip()
         except Exception:
             return ""
-
-    def _read_queue_text(self, fallback: str) -> str:
-        """读点完「播放全部」之后的播放队列，作为给用户的回复正文。"""
-        playlist_text, _ = self._read_queue(fallback)
-        return playlist_text
 
     def _read_queue(self, fallback: str) -> tuple:
         """读点完「播放全部」之后的播放队列，回 `(队列文本, 队列首行)`。

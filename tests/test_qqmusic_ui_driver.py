@@ -797,6 +797,9 @@ class _Row(_Element):
         super().__init__()
         self.text = text
 
+    def find_element(self, by, value):
+        return self
+
 
 class _TrackItem:
     """`result_item` 容器：按 LinearLayout 分列，第一列是歌名、第二列是歌手。"""
@@ -978,6 +981,50 @@ def test_driver_falls_back_to_the_playlist_name_when_the_queue_cannot_be_read(
 
     assert outcome.ok is True
     assert outcome.extra["playlist"] == "学习|英语"
+
+
+def test_driver_falls_the_topic_back_to_the_queue_first_line(
+    initialized_test_singletons, playlist_tab
+):
+    """歌单名拆不出话题、详情页第一行又抢读落空时，话题兜底必须落到队列首行。
+
+    线上复现（10-15 电台接歌单）：`:playlist 开车去旅行` 的名字没有分隔符拆不出
+    话题，详情页的第一行是在页面跳转中抢读的、静默为空 —— 话题变成空串后
+    `adopt` 整个跳过 `set_topic`，房间既不改话题也不排 next topic，连冷却排队
+    的机会都没有。播放已经开始，队列首行是最可靠的事实来源——读得到就必须
+    接住，不能让它在只取回复文本的路径里被丢掉。
+    """
+    handler = _PlaylistHandler(
+        playlist_name="开车去旅行",
+        first_track=None,
+        playlist_info={"playlist": "Long Live - Taylor Swift/Paula Fernandes\n如风 - 王菲"},
+    )
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("开车去旅行", requester="小明")
+    )
+
+    assert outcome.ok is True
+    assert outcome.title == "开车去旅行"
+    assert outcome.topic == "Long Live - Taylor Swift/Paula Fernandes"
+
+
+def test_driver_prefers_the_detail_first_line_over_the_queue_for_the_topic(
+    initialized_test_singletons, playlist_tab
+):
+    """详情页读到了第一行就用它当话题兜底，队列首行只在它落空时才顶上。"""
+    handler = _PlaylistHandler(
+        playlist_name="开车去旅行",
+        first_track=("似是故人来", "梅艳芳"),
+        playlist_info={"playlist": "似是故人来 - 梅艳芳\n如风 - 王菲"},
+    )
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("开车去旅行", requester="小明")
+    )
+
+    assert outcome.ok is True
+    assert outcome.topic == "似是故人来"
 
 
 def test_driver_reports_a_missing_match_instead_of_starting_anything(
