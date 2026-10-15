@@ -166,3 +166,47 @@ async def test_guard_switch_forwards_to_the_protection_check(adoption):
         "Timer", config={"soul": {}}
     )
     assert result == {"error": "被守护"}
+
+
+@pytest.mark.asyncio
+async def test_guard_switch_releases_the_room_after_a_single_song(adoption):
+    """单曲点播不受守护：房间里放的是别人点的一首歌时，谁都能接着切歌。
+
+    守护此时连角色策略都不该问 ——「半點心 正在播放歌单，请等待」这句回复在
+    单曲之后根本就是假话（2026-10-15 线上：一次 `:play` 之后全房点不动歌）。
+    """
+    adoption._music.list_mode = "song"
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch("不约儿童")
+
+    assert result is None
+    adoption._info.check_playlist_protection.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode", ["favorites", "radar", "playlist", "singer", "album", "radio"]
+)
+async def test_guard_switch_asks_the_role_policy_for_continuous_queues(adoption, mode):
+    """连续队列（收藏/雷达/歌单/歌手/专辑/电台）照旧受守护：放开单曲不等于取消守护。"""
+    adoption._music.list_mode = mode
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch("不约儿童")
+
+    assert result == {"error": "被守护"}
+
+
+@pytest.mark.asyncio
+async def test_guard_switch_keeps_protection_when_the_playback_mode_is_unknown(adoption):
+    """播放类型缺失时保持守护 —— 只有明确知道「现在是单曲」才放开。"""
+    adoption._music.list_mode = None
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch("不约儿童")
+
+    assert result == {"error": "被守护"}

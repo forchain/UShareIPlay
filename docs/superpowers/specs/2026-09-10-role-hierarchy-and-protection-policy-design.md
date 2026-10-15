@@ -69,6 +69,22 @@ Currently, administrator names (`{"Joyer", "Timer", "Outlier", "Chainer", "Conso
     - If current player (or any avatar) is still online:
       - If `caller_nickname` is a system user (Timer, Agent) or normal user: Deny with protection error.
     - If current player and all avatars have left the room: Allow.
+
+  **Amendment (2026-10-15) — the matrix above is only the second question.** It assumes
+  something worth protecting is already playing, which the code never verified: `PlaylistAdoption.adopt()`
+  writes `player_name` for *every* playback mode, including `:play <song>` single requests. So one
+  attendee requesting one song locked the whole room with "X 正在播放歌单，请等待" while no playlist
+  existed (observed 2026-10-15 22:34: a single-song request at 22:28 blocked another attendee's
+  `:play` six minutes later).
+  - `PlaylistAdoption.guard_switch(caller)` now asks two questions in order:
+    1. **Is the current playback protected at all?** Read the adopted `list_mode`; single-song
+       playback (`PlaybackMode.SONG`, see `UNPROTECTED_PLAYBACK_MODES`) is never protected, because
+       a single request is one song, not a queue someone is working through. Continuous queues
+       (favorites / radar / playlist / singer / album / radio) are. Unknown/missing mode stays
+       protected: the exemption requires knowing that the current playback is a single song.
+    2. **Does the caller have the authority to switch?** The role matrix above, unchanged.
+  - Consequence: the role matrix is only consulted for playlist-like playback, so no rule in it
+    loosens or tightens; a single-song request still cannot interrupt an attendee's playlist.
 - **Sleep Protection Behavior Matrix**:
   - In `CommandManager.process_command`:
     - Command level bypass: Administrators, Room Owner, and configured System Users bypass command level restrictions.
