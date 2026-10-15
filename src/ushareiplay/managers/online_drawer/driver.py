@@ -149,6 +149,54 @@ PRIVATE_CHAT_TIMEOUT = 5
 ROOM_RETURN_TIMEOUT = 3
 
 
+# ---------------------------------------------------------------------------
+# 房管（#439）
+# ---------------------------------------------------------------------------
+#
+# 房管开关是资料卡上的**一枚**控件：文案是「管理邀请」时点下去是邀请，是「解除管理」
+# 时点下去是解除。因此「现在是不是房管」这个判断必须由 `OnlineDrawerManager` 拿着
+# 文案去做，端口只负责读出文案、只负责点下去 —— 把这个判断塞进端口，就等于让 App 的
+# 控件词汇渗进引擎层，而它本来该由聊天命令的那句「已经 / 还不是管理员」来决定。
+#
+# 确认框是盖在资料卡**之上**的一层弹窗，所以收尾要与 #438 的送礼弹窗一样按相反顺序
+# 分层收：先收确认框，再收资料卡（收卡片时抽屉一起收）。
+
+#: 资料卡上的房管开关（邀请与解除管理共用同一枚控件）。
+ADMIN_INVITE_KEY = 'manager_invite'
+
+#: 房管开关此刻写的两种文案。App 的文案保持原样，不在这里翻成布尔值：它们既进判断
+#: 分支，也会被逐字抄进聊天回复，保持一处定义才不会在 App 改文案时漏改一处。
+ADMIN_LABEL_INVITE = '管理邀请'      # 现在还不是房管，点下去是邀请
+ADMIN_LABEL_DISMISS = '解除管理'     # 现在已经是房管，点下去是解除
+
+#: `confirm_admin_action` 的两个取值。与 `GIFT_ACTION_*` 同一个理由用常量：这两个
+#: key 同时出现在端口签名、适配器的按钮映射与引擎的分支判断里，共用一份定义才不会
+#: 在 App 改 key 时漏改一处。
+ADMIN_ACTION_INVITE = 'invite'
+ADMIN_ACTION_DISMISS = 'dismiss'
+
+#: 确认框里两个动作各自的按钮。刻意不用 key 列表而用映射：邀请与解除在 App 上**不是**
+#: 同一个控件（`confirm_dismiss` 只认文案「确认解除」），所以「点哪个按钮」取决于调用
+#: 方要做哪个动作 —— 这是引擎的判断，而「这个动作对应哪个 resource-id」是 App 的事。
+ADMIN_CONFIRM_KEYS = {
+    ADMIN_ACTION_INVITE: 'confirm_invite',
+    ADMIN_ACTION_DISMISS: 'confirm_dismiss',
+}
+
+#: 确认框可能悬着时，按顺序试完为止的页内 X。
+#:
+#: 刻意与 `GIFT_POPUP_CLOSE_KEYS` 取同样的两个 key：`config.yaml` 里目前**没有**房管
+#: 确认框专属的关闭键，而 #438 已经确认过这一对在真机上确实能收掉弹窗。这里另起一个名字
+#: 而不是直接复用那个常量，是为了让两条流程在真机上验出各自的键之后可以各改各的，
+#: 不用回头去动对方已经验过的值。
+ADMIN_CONFIRM_CLOSE_KEYS = ('close_button_1', 'close_button')
+
+#: 房管各步的等待上限（秒）：等开关可点、等确认框出现、等确认框消失。逐字沿用旧
+#: `AdminManager` 里 `wait_for_element_clickable` / `wait_for_element_disappear` 的默认
+#: 10 秒，不收紧 —— 真机上这些等待本来就踩过线。
+ADMIN_CONTROL_TIMEOUT = 10
+
+
 @dataclass(frozen=True)
 class MemberRow:
     """在线用户列表里一行的**驱动中立**读数。
@@ -415,5 +463,60 @@ class OnlineDrawerDriverPort(ABC):
         弹窗本来就没开着时直接返回 True（幂等）：「没有弹窗」与「收好了」是同一件事，
         调用方不必先问一遍。收不掉就返回 False 让**调用方**记警告 —— 这里同样没有第二条
         兜底手势，见模块开头的「为什么这个端口里没有 press_back」。
+        """
+
+    # ------------------------------------------------------------------
+    # 房管（#439）
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def read_admin_invite_label(self) -> Optional[str]:
+        """读资料卡上房管开关此刻写的文案（`ADMIN_LABEL_INVITE` / `ADMIN_LABEL_DISMISS`）。
+
+        「这个人现在是不是房管」这个判断由**调用方**拿着文案去做：把它折成布尔值塞进
+        端口，就等于让 App 的控件词汇替聊天命令决定「已经 / 还不是管理员」那句话说给谁
+        听，而那正是 #426 里决策该待的地方。
+
+        等待放在这一侧而不是「点」那一侧：旧实现在这里就是一次
+        `wait_for_element_clickable('manager_invite')`，读不到正是「没有这枚按钮」那条
+        失败路径，读到之后那一次点击不必再等一遍。
+
+        Returns:
+            开关上的原文；卡片上根本没有这枚控件返回 None。
+        """
+
+    @abstractmethod
+    async def click_admin_invite(self) -> bool:
+        """点资料卡上的房管开关（邀请与解除管理是同一枚控件）。
+
+        不负责判断该不该点：那是调用方读完文案之后的决定。这里只负责把「点下去」这件
+        物理动作做完，并如实回报点没点着。
+
+        Returns:
+            点到了返回 True；控件不在页面上、或点击抛错返回 False。
+        """
+
+    @abstractmethod
+    async def confirm_admin_action(self, action: str) -> bool:
+        """等确认框出来并点掉它里面对应 `action` 的按钮。
+
+        Args:
+            action: `ADMIN_ACTION_INVITE` 或 `ADMIN_ACTION_DISMISS`。传动作而不是传元素
+                key：调用方知道自己要邀请还是要解除，而「这个动作对应哪个控件」是 App
+                的词汇，留在适配器里（`ADMIN_CONFIRM_KEYS`）。
+
+        Returns:
+            点到了返回 True；确认框没弹出来、或按钮点不到返回 False，让调用方报出
+            「没找到确认按钮」—— 旧实现里这正是那一步失败时的原话。
+        """
+
+    @abstractmethod
+    async def dismiss_admin_confirm(self) -> bool:
+        """把可能悬着的房管确认框收掉，按 `ADMIN_CONFIRM_CLOSE_KEYS` 的顺序试完为止。
+
+        幂等：确认框本来就没开着时直接返回 True（「没有弹窗」与「收好了」是同一件事）。
+        收不掉返回 False 让**调用方**记警告并保持原状 —— 这里同样没有盲按返回兜底，见
+        模块开头的「为什么这个端口里没有 press_back」：旧实现在这两条幂等分支上正是用
+        `key_actions.press_back()` 收场，而它会误退出派对房间（spec #426 问题陈述 #1）。
         """
 

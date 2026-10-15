@@ -391,6 +391,12 @@ PORT_METHODS = (
     "click_gift_action",
     "confirm_gift_use",
     "dismiss_gift_popup",
+    # #439 房管要的四个原语：开关文案、开关、确认框、收确认框。刻意没有「盲按返回」
+    # 那一档 —— 端口里不存在这个原语，收不掉只允许记警告保持原状。
+    "read_admin_invite_label",
+    "click_admin_invite",
+    "confirm_admin_action",
+    "dismiss_admin_confirm",
 )
 
 ADAPTER_CLASSES = (SoulOnlineDrawerDriver, InMemoryOnlineDrawerDriver)

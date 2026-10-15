@@ -39,11 +39,21 @@
 与 `dismiss_gift_fails` 让每一条异常安全路径都能被确定性地走到。于是「每条路径都把弹窗
 和抽屉收干净」这类断言，考的是 `UserManager` 的收尾编排。
 **这里同样没有 `gift:back`** —— 收不掉的弹窗只允许保持原状并记警告。
+
+#439 再追加资料卡上的「房管」半张屏幕：卡片上的开关由 `admin_invite_label` 描述（`None`
+就是卡片根本没渲染这枚控件），确认框由 `admin_confirm_pending` 描述，
+`admin_steps_fails`（哪一步会失败，见 `ADMIN_STEPS`）与 `dismiss_admin_fails` 让每一条
+异常安全路径都能被确定性地走到。于是「房管的每条路径都把确认框与抽屉收干净」这类断言，
+考的是 `AdminManager` 的编排。
+**这里同样没有 `admin:back`** —— 收不掉的确认框只允许保持原状并记警告。
 """
 
 from typing import Optional
 
 from ushareiplay.managers.online_drawer.driver import (
+    ADMIN_ACTION_INVITE,
+    ADMIN_LABEL_DISMISS,
+    ADMIN_LABEL_INVITE,
     DEFAULT_SCROLL_DURATION_MS,
     DEFAULT_SETTLE_TIMEOUT,
     GIFT_ACTION_GIVE,
@@ -57,6 +67,9 @@ CHAT_STEPS = ("home", "chat_page", "type", "submit")
 
 #: 送礼流程的步骤顺序。`gift_steps_fails` 里出现哪一个，那一步就失败。
 GIFT_STEPS = ("entry", "popup", "item", "action", "confirm")
+
+#: 房管流程的步骤顺序。`admin_steps_fails` 里出现哪一个，那一步就失败。
+ADMIN_STEPS = ("invite", "confirm")
 
 
 class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
@@ -84,16 +97,22 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         gift_soul_power: 灵魂力读数，`None` 表示那个控件没渲染。
         gift_steps_fails: 送礼流程里会失败的步骤，取值见 `GIFT_STEPS`。
         dismiss_gift_fails: 送礼弹窗的页内关闭按钮点不到。
+        admin_invite_label: 资料卡上房管开关此刻写的文案（`ADMIN_LABEL_*`）；`None` 表示
+            卡片根本没渲染这枚控件。
+        admin_steps_fails: 房管流程里会失败的步骤，取值见 `ADMIN_STEPS`。
+        dismiss_admin_fails: 房管确认框的页内关闭按钮点不到。
         journal: 可选的共享事件流。每次动作追加一条 `drawer:open` /
             `drawer:settle` / `drawer:rows:<行数>` / `drawer:scroll` /
             `drawer:find:<昵称>` / `drawer:close` / `card:open:<昵称>` /
             `card:dismiss` / `chat:home` / `chat:page` / `chat:type` /
             `chat:submit` / `room:return` / `gift:entry` / `gift:popup:<动作>` /
             `gift:item:<显示名>` / `gift:power:<读数>` / `gift:click:item` /
-            `gift:click:action:<动作>` / `gift:confirm` / `gift:dismiss`，
+            `gift:click:action:<动作>` / `gift:confirm` / `gift:dismiss` /
+            `admin:label:<文案>` / `admin:click:invite` /
+            `admin:confirm:<动作>` / `admin:dismiss`，
             用来断言动作的先后顺序。
-            **注意：这里没有 `drawer:back`，也没有 `gift:back`** —— 端口里根本没有盲按
-            返回这个原语。
+            **注意：这里没有 `drawer:back`、`gift:back`，也没有 `admin:back`** ——
+            端口里根本没有盲按返回这个原语。
 
     Attributes:
         scroll_offset: 已经滑过的行数，即当前窗口的起点。
@@ -107,6 +126,8 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         gift_popup_open: 送礼弹窗此刻是否还盖在资料卡上。
         confirm_pending: 「使用」之后那道确认框是否正等着被点。
         gift_item_clicks / gift_action_clicks: 被点过的礼物与动作按钮，按顺序。
+        admin_confirm_pending: 房管确认框此刻是否正等着被点掉。
+        admin_invite_clicks / admin_confirm_actions: 被点过的房管开关与被确认的动作，按顺序。
     """
 
     def __init__(
@@ -132,6 +153,9 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         gift_soul_power=None,
         gift_steps_fails=(),
         dismiss_gift_fails=False,
+        admin_invite_label=ADMIN_LABEL_INVITE,
+        admin_steps_fails=(),
+        dismiss_admin_fails=False,
         journal=None,
     ):
         self.members = [self._as_member(m) for m in members]
@@ -154,6 +178,9 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.gift_soul_power = gift_soul_power
         self.gift_steps_fails = tuple(gift_steps_fails)
         self.dismiss_gift_fails = dismiss_gift_fails
+        self.admin_invite_label = admin_invite_label
+        self.admin_steps_fails = tuple(admin_steps_fails)
+        self.dismiss_admin_fails = dismiss_admin_fails
         self.journal = journal
 
         self.scroll_offset = 0
@@ -171,6 +198,9 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.confirm_pending = False
         self.gift_item_clicks = []
         self.gift_action_clicks = []
+        self.admin_confirm_pending = False
+        self.admin_invite_clicks = []
+        self.admin_confirm_actions = []
 
     async def is_open(self) -> bool:
         if self.container_missing:
@@ -270,6 +300,8 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
                     return False
                 self.card_open = True
                 self.chat_reached = None
+                # 换了一张卡片，上一张的确认框自然不在了。
+                self.admin_confirm_pending = False
                 self._record(f"card:open:{name}")
                 return True
         self._record(f"card:miss:{visible_username}")
@@ -411,6 +443,53 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.gift_popup_open = False
         self.confirm_pending = False
         self._record("gift:dismiss")
+        return True
+
+    # ------------------------------------------------------------------
+    # 房管（#439）
+    # ------------------------------------------------------------------
+
+    async def read_admin_invite_label(self) -> Optional[str]:
+        # 卡片上根本没有这枚控件就报 None，调用方据此走「找不到管理按钮」那条路径。
+        if self.admin_invite_label is None:
+            self._record("admin:label:fails")
+            return None
+        self._record(f"admin:label:{self.admin_invite_label}")
+        return self.admin_invite_label
+
+    async def click_admin_invite(self) -> bool:
+        if not self.card_open or self.admin_invite_label is None or "invite" in self.admin_steps_fails:
+            self._record("admin:click:invite:fails")
+            return False
+        # 点下去只是把确认框叫起来：角色本身要等确认框里点掉才真的变。
+        self.admin_confirm_pending = True
+        self.admin_invite_clicks.append(self.admin_invite_label)
+        self._record("admin:click:invite")
+        return True
+
+    async def confirm_admin_action(self, action: str) -> bool:
+        if not self.admin_confirm_pending or "confirm" in self.admin_steps_fails:
+            self._record("admin:confirm:fails")
+            return False
+        self.admin_confirm_pending = False
+        self.admin_confirm_actions.append(action)
+        # 确认之后开关文案才翻面 —— 真机上角色是在确认这一瞬间变的。
+        self.admin_invite_label = (
+            ADMIN_LABEL_DISMISS if action == ADMIN_ACTION_INVITE else ADMIN_LABEL_INVITE
+        )
+        self._record(f"admin:confirm:{action}")
+        return True
+
+    async def dismiss_admin_confirm(self) -> bool:
+        if not self.admin_confirm_pending:
+            # 幂等：确认框本来就没开着，「收好了」与「没有弹窗」是同一件事。
+            self._record("admin:dismiss:none")
+            return True
+        if self.dismiss_admin_fails:
+            self._record("admin:dismiss:fails")
+            return False
+        self.admin_confirm_pending = False
+        self._record("admin:dismiss")
         return True
 
     def visible_members(self):
