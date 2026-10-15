@@ -280,3 +280,33 @@ class PlayModeOutcome:
     @classmethod
     def failed(cls, error: str, *, mode: str = "unknown") -> "PlayModeOutcome":
         return cls(ok=False, error=error, mode=mode)
+
+
+@dataclass(frozen=True)
+class LyricsOutcome:
+    """驱动端口取回歌词后的观察结果（#430）。
+
+    与 `PlaybackOutcome` / `PlayModeOutcome` 分开：歌词既不产生曲目也不换歌，
+    唯一的产物是「读到的歌词原文」—— HTML 实体是否解开、切了哪个 tab、点没点
+    结果项，都是 UI 侧的事，不该冒到命令层。
+
+    原文（而非分组后的几段）是有意的：折行宽度与分段条数属于房间里的排版约定，
+    随 `config.yaml` 变化，留在命令层才是对的；驱动只负责如实交出读到的文字。
+
+    Attributes:
+        ok: 是否取到了歌词。搜不到歌词是 `ok=False` 的正常结局，不是异常。
+        text: 歌词原文；`ok=False` 时为空串。
+        error: 失败原因（本地化/沿用既有文案），仅 `ok=False` 时有意义。
+    """
+
+    ok: bool
+    text: str = ""
+    error: Optional[str] = None
+
+    @classmethod
+    def found(cls, text: str) -> "LyricsOutcome":
+        return cls(ok=True, text=text)
+
+    @classmethod
+    def failed(cls, error: str) -> "LyricsOutcome":
+        return cls(ok=False, error=error)

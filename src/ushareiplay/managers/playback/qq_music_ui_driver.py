@@ -12,10 +12,13 @@
 """
 
 import logging
+import time
+from html import unescape
 
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import (
     PLAY_MODE_NAMES,
+    LyricsOutcome,
     PlaybackMode,
     PlayModeOutcome,
     PlaybackOutcome,
@@ -26,6 +29,9 @@ from ushareiplay.managers.playback.player_page import (
     PLAY_MODE_ELEMENT_KEYS,
     ensure_player_page,
 )
+
+# 切到歌词分类后等页面重排的秒数。取自迁移前 LyricsCommand 的既有等待。
+LYRICS_TAB_SETTLE_SECONDS = 0.2
 
 # 播放页元素 key → 模式 key。与 `player_page` 里的私有映射同向，但驱动要自己
 # 反查点击后的模式，因此这里按公开常量重新推导，不去 import 对方的下划线名字。
@@ -185,6 +191,56 @@ class QQMusicUIDriver(MusicUIDriverPort):
             note(mode_key, reason)
         else:
             setattr(self._handler, "play_mode_key", mode_key)
+
+    # ------------------------------------------------------------------
+    # 歌词查询（#430）
+    # ------------------------------------------------------------------
+
+    def query_lyrics(self, query: str) -> LyricsOutcome:
+        """查 `query` 的歌词原文。
+
+        刻意**不**复用 `ensure_player_page()`：那是播放页的进入仪式（按返回键 +
+        认 `playing_bar`/模式按钮），而歌词走的是搜索结果的分类页，按返回键只会
+        退回上一页；「现在没在放歌」对按搜索取歌词也不是前提。歌词只需要
+        「切前台」这一个公共前置动作。
+        """
+        try:
+            return self._query_lyrics(query)
+        except Exception as exc:
+            self.logger.warning(f"查询歌词失败: {query}: {exc}")
+            return LyricsOutcome.failed(f"Failed to query lyrics: {exc}")
+
+    def _query_lyrics(self, query: str) -> LyricsOutcome:
+        handler = self._handler
+        if not handler.key_actions.switch_to_app():
+            return LyricsOutcome.failed("Failed to switch to music app")
+
+        if not handler.query_music(query):
+            return LyricsOutcome.failed(f'Failed to find song matching "{query}"')
+
+        if not self._select_lyrics_tab():
+            return LyricsOutcome.failed("Failed to select lyrics tab")
+
+        # 切 tab 后页面要重排，等分类结果稳定再读歌词
+        time.sleep(LYRICS_TAB_SETTLE_SECONDS)
+
+        key, element = handler.element_finder.wait_for_any_element(["lyrics_text", "not_found"])
+        if not key or key == "not_found" or not element:
+            return LyricsOutcome.failed(f'No lyrics found for "{query}"')
+
+        element.click()
+        return LyricsOutcome.found(unescape(element.text or ""))
+
+    @staticmethod
+    def _select_lyrics_tab() -> bool:
+        """切到歌词分类。tab 选择是 `MusicManager` 上的既有委派，不重写一遍。"""
+        try:
+            from ushareiplay.managers.music_manager import MusicManager
+
+            return bool(MusicManager.instance().select_tab("lyrics"))
+        except Exception as exc:
+            logging.getLogger("QQMusicUIDriver").warning(f"切换歌词分类失败: {exc}")
+            return False
 
     def _quality_check(self, playing_info: dict) -> None:
         """把解析出的曲目交给老歌过滤；失败不应阻断播放本身。"""

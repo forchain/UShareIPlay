@@ -1,10 +1,7 @@
 from ushareiplay.core.base_command import BaseCommand
 from datetime import datetime, timedelta
-import time
 from langdetect import detect_langs
 import langdetect
-from html import unescape
-from ushareiplay.managers.music_manager import MusicManager
 
 # 在导入后设置种子
 langdetect.DetectorFactory.seed = 0
@@ -42,55 +39,27 @@ def wrap_line_at_spaces(line: str, max_width: int) -> str:
 
 
 class LyricsCommand(BaseCommand):
+    # 派发走 Soul 公屏，`message_dispatch` 绑定的是 soul_handler
     handler_attr = 'soul_handler'
 
     def query_lyrics(self, query, group_num=0):
-        """Query lyrics for current song
+        """取歌词并按房间里的排版约定分组。
+
+        取歌词本身是 `MusicManager` 背后的 UI 接缝的事（#430）：切前台、查歌、
+        切歌词 tab、读 DOM、解 HTML 实体都在那边，这里一个 UI 动作都不做。
+
         Args:
-            query: str, lyrics to search for
+            query: str, 歌词搜索词；空串表示「问当前正在放的这首」
             group_num: int, number of groups to force
         Returns:
-            dict: Result with lyrics groups or error
+            dict: `{'groups': [...]}` 或 `{'error': ...}`（原样透出接缝的错误）
         """
-        # Make sure we're in the music app
-        if not self.music_handler.key_actions.switch_to_app():
-            return {'error': 'Failed to switch to music app'}
-            
-        # If no query provided, construct from current playing info
-        if query == "":
-            # Get current playing info
-            info = MusicManager.instance().get_playback_info()
-            if 'error' in info:
-                return {'error': 'Failed to get playback info'}
-            
-            # Construct search query from current song
-            query = f'{info["song"]} {info["singer"]} {info["album"]}'
-            self.handler.logger.info(f"Using current song info as query: {query}")
-        
-        # Search for the song
-        if not self.music_handler.query_music(query):
-            self.handler.logger.error(f"Failed to query music with query {query}")
-            return {'error': f'Failed to find song matching "{query}"'}
-        
-        # Select lyrics tab after finding the song
-        if not self.music_manager.select_tab("lyrics"):
-            return {'error': 'Failed to select lyrics tab'}
-        # 切 tab 后页面要重排，等分类结果稳定再读歌词
-        time.sleep(0.2)
-            
-        # Get lyrics text
-        key, element = self.music_handler.element_finder.wait_for_any_element(['lyrics_text', 'not_found'])
-        if not key or key == 'not_found':
-            self.music_handler.logger.error(f"Failed to find lyrics with query {query}")
-            return {'error': f'No lyrics found for "{query}"'}
+        result = self.music_manager.query_lyrics(query) or {}
+        if 'error' in result:
+            return result
 
-        lyrics_text = element
-        lyrics_text.click()
+        lyrics_content = result.get('lyrics', '')
 
-        # Process lyrics - handle HTML entities
-        lyrics_content = lyrics_text.text
-        lyrics_content = unescape(lyrics_content)  # Unescape HTML entities
-        
         lyrics_cfg = (self.controller.config or {}).get("lyrics") or {}
         line_max_width = int(lyrics_cfg.get("line_max_width", 18))
 

@@ -423,3 +423,105 @@ def test_driver_reports_a_mode_switch_exception_instead_of_raising(initialized_t
 class _ExplodingClick:
     def click_element_at(self, _element):
         raise RuntimeError("session terminated")
+
+
+# ---------------------------------------------------------------------------
+# 歌词查询（#430 收窄到端口上的第三个方法）
+# ---------------------------------------------------------------------------
+
+
+class _LyricsHandler:
+    """歌词查询用的 handler 表面。
+
+    `lyrics_text` 模拟 DOM 里读到的原文，故意带 HTML 实体：解不开就会把
+    `&amp;` 原样发进房间公屏。
+    """
+
+    def __init__(self, found=True, text="第一行&amp;第二行<br>第三行"):
+        self.logger = SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        )
+        self.found = found
+        self.text = text
+        self.switched_to_app = False
+        self.queries = []
+        self.key_actions = SimpleNamespace(switch_to_app=self._switch)
+        self._element_finder = SimpleNamespace(wait_for_any_element=self._wait_any)
+
+    def _switch(self):
+        self.switched_to_app = True
+        return True
+
+    def _wait_any(self, keys):
+        if not self.found:
+            return "not_found", _Element()
+        return "lyrics_text", _TextElement(self.text)
+
+    @property
+    def element_finder(self):
+        return self._element_finder
+
+    def query_music(self, query):
+        self.queries.append(query)
+        return "search_box"
+
+
+class _TextElement(_Element):
+    def __init__(self, text):
+        super().__init__()
+        self.text = text
+
+
+@pytest.fixture
+def lyrics_tab(initialized_test_singletons):
+    """记录歌词分类 tab 的选择结果，避免测试真的去切 tab。"""
+    from ushareiplay.managers.music_manager import MusicManager
+
+    calls = []
+    manager = MusicManager.initialize()
+    manager.select_tab = lambda name, **kwargs: calls.append(name) or True
+    return calls
+
+
+def test_driver_unescapes_html_entities_in_the_lyrics(initialized_test_singletons, lyrics_tab):
+    handler = _LyricsHandler()
+
+    outcome = QQMusicUIDriver(handler).query_lyrics("青花瓷")
+
+    assert (outcome.ok, outcome.text) == (True, "第一行&第二行<br>第三行")
+
+
+def test_driver_brings_the_app_forward_before_searching(initialized_test_singletons, lyrics_tab):
+    handler = _LyricsHandler()
+
+    QQMusicUIDriver(handler).query_lyrics("青花瓷")
+
+    assert handler.switched_to_app is True
+    assert handler.queries == ["青花瓷"]
+    assert lyrics_tab == ["lyrics"]
+
+
+def test_driver_reports_no_lyrics_as_a_clean_failure(initialized_test_singletons, lyrics_tab):
+    """没有歌词是正常结局，必须是可回复的 `failed`，不是异常。"""
+    handler = _LyricsHandler(found=False)
+
+    outcome = QQMusicUIDriver(handler).query_lyrics("青花瓷")
+
+    assert outcome.ok is False
+    assert "青花瓷" in outcome.error
+
+
+def test_driver_reports_a_lyrics_search_exception_instead_of_raising(initialized_test_singletons, lyrics_tab):
+    handler = _LyricsHandler()
+
+    def _boom(_query):
+        raise RuntimeError("session terminated")
+
+    handler.query_music = _boom
+
+    outcome = QQMusicUIDriver(handler).query_lyrics("青花瓷")
+
+    assert outcome.ok is False
+    assert "session terminated" in outcome.error
