@@ -2,6 +2,7 @@ import logging
 
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.online_drawer import Handover, OnlineDrawerManager
+from ushareiplay.managers.online_drawer.driver import GIFT_ACTION_USE
 
 YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
 
@@ -139,10 +140,15 @@ class UserManager(Singleton):
 
     async def send_gift(self, nickname: str):
         """
-        执行送礼流程：先在在线列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
+        执行送礼流程：先在在线用户列表中打开目标用户资料页，再点击送礼物并执行赠送/使用/背包逻辑。
+
+        #438 起弹窗那几步全部经由抽屉端口：什么时候点、点哪一个、要不要收弹窗都是这里
+        的判断，Appium 的键与坐标全在适配器里。资料页由 `open_user_profile` 通过
+        `Handover` 交过来，本方法负责把交接到的两层弹窗都收干净。
 
         Args:
-            nickname: 要送礼的目标用户昵称。
+            nickname: 要送礼的目标用户。canonical 名（主账号）或分身名都可以，两个命名
+                域的解析在 `open_user_profile` 内部完成。
 
         Returns:
             dict: 成功返回 {'success': str}；失败返回 {'error': str} 或 {'error': str, 'user': nickname}。
@@ -151,54 +157,71 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        send_gift_btn = self.handler.element_finder.wait_for_element_clickable('send_gift')
-        if not send_gift_btn:
+        try:
+            return await self._gift_on_card(self.drawer.driver)
+        finally:
+            # 收尾放在 finally：送成了、送挂了、还是中途抛了异常，弹窗与资料卡都不能留在
+            # 屏幕上 —— 悬着的抽屉下一次盲按返回就会把派对房间一起带走。
+            await self._close_gift_overlays()
+
+    async def _gift_on_card(self, driver):
+        """已经在资料卡上：点送礼物 -> 读弹窗 -> 送出。
+
+        报错文案逐字沿用旧实现：这些字符串会原样进聊天气泡，迁移不是重写。
+        """
+        if not await driver.open_gift_entry():
             self.logger.info("未找到送礼物按钮")
             return {'error': '未找到送礼物入口'}
 
-        self.handler.gesture_handler.click_element_at(send_gift_btn)
         self.logger.info("已点击送礼物")
 
-        found_key, found_element = self.handler.element_finder.wait_for_any_element(['give_gift', 'use_item'])
-        if not found_element:
+        action = await driver.gift_popup_action()
+        if action is None:
             self.logger.info("送礼界面未出现或超时")
             return {'error': '送礼界面未出现'}
 
-        luck_item = self.handler.element_finder.try_find_element('luck_item')
-        if not luck_item:
+        gift_name = await driver.read_gift_item_name()
+        if gift_name is None:
             self.logger.warning('Failed to find gift')
-            self.handler.key_actions.press_back()
             return {'error': 'Failed to find gift'}
-
-        gift_name = luck_item.text
-        if (parts := gift_name.split('x')) and len(parts) > 1:
-            gift_name = parts[0]
-
-        soul_power = self.handler.element_finder.try_find_element('soul_power')
-        soul_points = soul_power.text if soul_power else '0'
 
         # 礼物列表兜底：背包为空时展示礼物列表，小黄鸭不会默认选中，直接点击即送出，无需点"赠送"
         if gift_name.strip() == YELLOW_DUCK_NAME:
-            self.handler.gesture_handler.click_element_at(luck_item)
+            await driver.click_gift_item()
             self.logger.info(f"已点击{YELLOW_DUCK_NAME}，送出后关闭在线列表")
-            await self.close_user_profile()
             return {'success': f'{gift_name} 送你啦'}
 
-        self.handler.gesture_handler.click_element_at(found_element)
+        # 灵魂力读数挪到小黄鸭那一条之后：它只出现在下面那行日志里，而小黄鸭那条日志
+        # 根本不用它 —— 在真机上那是一次白等的 dump。
+        soul_power = await driver.read_gift_soul_power()
+        soul_points = soul_power if soul_power is not None else '0'
+
+        # 点击失败只记警告不改道：旧实现在这里本来就不看点击结果，引入新的错误分支会
+        # 改掉聊天气泡里的文案，而收尾已经由 `_close_gift_overlays` 兜住了。
+        if not await driver.click_gift_action():
+            self.logger.warning("点击赠送/使用按钮失败")
+
         self.logger.info(f"已点击赠送, gift_name: {gift_name} soul_points: {soul_points}")
 
-        if found_key == 'use_item':
-            confirm_use = self.handler.element_finder.wait_for_element('confirm_use')
-            if not confirm_use:
-                self.handler.key_actions.press_back()
+        if action == GIFT_ACTION_USE:
+            if not await driver.confirm_gift_use():
                 self.logger.warning("未找到确认使用按钮")
                 return {'error': '未找到确认使用按钮'}
 
-            confirm_use.click()
             self.logger.info("已点击确认使用")
 
-        await self.close_user_profile()
         return {'success': f'{gift_name} 送你啦'}
+
+    async def _close_gift_overlays(self) -> None:
+        """送完（或送挂）都按**相反顺序**分层收：先收送礼弹窗，再收资料卡连同抽屉。
+
+        旧实现在两条失败路径上用 `key_actions.press_back()` 收弹窗，收掉的那层之下还
+        悬着资料卡与抽屉 —— 而悬着的抽屉下一次盲按返回就会连派对房间一起带走
+        （spec #426 问题陈述 #1）。这里两层都走页内手势，弹窗收不掉就只记警告，保持
+        原状交给下一轮恢复流程。
+        """
+        await self.drawer.dismiss_gift_popup()
+        await self.close_user_profile()
 
     async def send_private_message_to_user(self, nickname: str, message: str) -> bool:
         """

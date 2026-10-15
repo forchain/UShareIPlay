@@ -382,6 +382,15 @@ PORT_METHODS = (
     "type_private_message",
     "submit_private_message",
     "return_to_room",
+    # #438 送礼要的八步：进弹窗、判弹窗、读礼物名与灵魂力、点礼物/动作、确认、收弹窗。
+    "open_gift_entry",
+    "gift_popup_action",
+    "read_gift_item_name",
+    "read_gift_soul_power",
+    "click_gift_item",
+    "click_gift_action",
+    "confirm_gift_use",
+    "dismiss_gift_popup",
 )
 
 ADAPTER_CLASSES = (SoulOnlineDrawerDriver, InMemoryOnlineDrawerDriver)
@@ -1099,3 +1108,180 @@ async def test_profile_and_chat_steps_never_emit_a_back_press():
         await driver.return_to_room()
 
     assert not any("back" in event for event in journal), journal
+
+
+# ---------------------------------------------------------------------------
+# 生产适配器：送礼那几步（#438）
+# ---------------------------------------------------------------------------
+
+
+async def test_production_open_gift_entry_clicks_the_send_gift_control():
+    """进送礼弹窗就一个手势：点资料卡上的「送礼物」。"""
+    entry = _StubElement()
+    finder = _StubFinder(screen={"send_gift": entry})
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.open_gift_entry() is True
+    assert finder.looked_up == ["send_gift"]
+    assert [element for element, _ratio in gesture.clicks] == [entry]
+
+
+async def test_production_open_gift_entry_reports_false_when_the_entry_is_absent():
+    """资料卡没有渲染这个入口：返回 False，调用方给「未找到送礼物入口」。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.open_gift_entry() is False
+
+
+@pytest.mark.parametrize(
+    "key, expected",
+    [("give_gift", "give_gift"), ("use_item", "use_item")],
+)
+async def test_production_gift_popup_action_reports_which_button_is_up(key, expected):
+    """弹窗是否起来与起来的是哪一个，都由 `wait_for_any_element` 那一对 key 回答。"""
+    finder = _StubFinder(any_element=(key, _StubElement()))
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.gift_popup_action() == expected
+
+
+async def test_production_gift_popup_action_is_none_when_the_popup_never_shows():
+    """两个动作按钮都没出现 = 弹窗没起来，如实 None，绝不换成盲按返回。"""
+    driver = _make_soul_adapter(_StubFinder(any_element=(None, None)))
+
+    assert await driver.gift_popup_action() is None
+
+
+async def test_production_read_gift_item_name_strips_the_count_suffix():
+    """`高级福袋x2` 读回来是 `高级福袋`：件数不该出现在「XX 送你啦」里。"""
+    finder = _StubFinder(screen={"luck_item": _StubElement(text="高级福袋x2")})
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.read_gift_item_name() == "高级福袋"
+
+
+async def test_production_read_gift_item_name_keeps_a_name_without_a_count():
+    """没有件数后缀的名字原样返回，不为了「拆一下」而改写文案。"""
+    finder = _StubFinder(screen={"luck_item": _StubElement(text="小黄鸭")})
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.read_gift_item_name() == "小黄鸭"
+
+
+async def test_production_read_gift_item_name_is_none_when_the_control_is_absent():
+    """读不到选中礼物：None，调用方走「Failed to find gift」并负责收尾。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.read_gift_item_name() is None
+
+
+async def test_production_read_gift_soul_power_is_none_but_does_not_raise_when_absent():
+    """灵魂力只是日志里的一行读数，读不到不该让一次送礼失败。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.read_gift_soul_power() is None
+
+    finder = _StubFinder(screen={"soul_power": _StubElement(text="+12灵魂力")})
+    assert await _make_soul_adapter(finder).read_gift_soul_power() == "+12灵魂力"
+
+
+async def test_production_click_gift_item_and_action_use_their_own_keys():
+    """小黄鸭点礼物本身，动作按钮点赠送/使用：三个手势各按各的 key。"""
+    item = _StubElement()
+    give = _StubElement()
+    finder = _StubFinder(
+        screen={"luck_item": item, "give_gift": give}, any_element=("give_gift", give)
+    )
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.click_gift_item() is True
+    assert await driver.click_gift_action() is True
+    assert [element for element, _ratio in gesture.clicks] == [item, give]
+    assert [key for key in finder.looked_up if key in ("luck_item", "give_gift")] == [
+        "luck_item",
+        "give_gift",
+    ]
+
+
+async def test_production_confirm_gift_use_clicks_the_confirm_control():
+    """点完「使用」那道确认框要等出来再点：确认按钮是弹出来的，不是常驻的。"""
+    confirm = _StubElement()
+    finder = _StubFinder(screen={"confirm_use": confirm})
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.confirm_gift_use() is True
+    assert confirm.clicked is True
+    assert finder.looked_up == ["confirm_use"]
+
+
+async def test_production_confirm_gift_use_reports_false_when_it_never_shows():
+    """确认框等不到：False，调用方收干净并给「未找到确认使用按钮」。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.confirm_gift_use() is False
+
+
+async def test_production_dismiss_gift_popup_clicks_an_in_page_close_and_never_presses_back():
+    """收弹窗走页内 X，`_ExplodingKeyActions` 会在任何一次盲按返回上当场失败。"""
+    close_btn = _StubElement()
+    finder = _StubFinder(
+        screen={"close_button_1": close_btn, "give_gift": _StubElement()},
+    )
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.dismiss_gift_popup() is True
+    assert [element for element, _ratio in gesture.clicks] == [close_btn]
+
+
+async def test_production_dismiss_gift_popup_falls_back_to_the_second_close_key():
+    """第一个 X 点不到就试第二个，按顺序试完为止。"""
+    close_btn = _StubElement()
+    finder = _StubFinder(
+        screen={"close_button": close_btn, "use_item": _StubElement()}
+    )
+    gesture = _StubGesture()
+    driver = _make_soul_adapter(finder, gesture)
+
+    assert await driver.dismiss_gift_popup() is True
+    assert [element for element, _ratio in gesture.clicks] == [close_btn]
+
+
+async def test_production_dismiss_gift_popup_is_idempotent_when_no_popup_is_out():
+    """弹窗本来就没开着：幂等 True，调用方不必先问一遍。"""
+    driver = _make_soul_adapter(_StubFinder(screen={}))
+
+    assert await driver.dismiss_gift_popup() is True
+
+
+async def test_production_dismiss_gift_popup_reports_false_when_the_popup_stays_out():
+    """两个 X 都点掉、弹窗还在：如实 False 让调用方记警告，保持原状等下一轮恢复。"""
+    finder = _StubFinder(screen={"give_gift": _StubElement()}, elements_stay=True)
+    driver = _make_soul_adapter(finder)
+
+    assert await driver.dismiss_gift_popup() is False
+
+
+async def test_gift_steps_never_emit_a_back_press_in_the_production_adapter():
+    """生产适配器把整条送礼链路走一遍，`key_actions` 里那个会炸的 press_back 一次都不该被叫。"""
+    item = _StubElement()
+    give = _StubElement()
+    close_btn = _StubElement()
+    finder = _StubFinder(
+        screen={
+            "send_gift": item,
+            "luck_item": _StubElement(text="小黄鸭x1"),
+            "give_gift": give,
+            "close_button_1": close_btn,
+        },
+        any_element=("give_gift", give),
+    )
+    driver = _make_soul_adapter(finder)
+
+    await driver.open_gift_entry()
+    assert await driver.gift_popup_action() == "give_gift"
+    assert await driver.read_gift_item_name() == "小黄鸭"
+    await driver.click_gift_item()
+    await driver.dismiss_gift_popup()
