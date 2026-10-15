@@ -80,6 +80,22 @@ FAVOURITE_CONFIRM_SETTLE_SECONDS = 0.35
 # 一个元素的超时再等第二个。
 PLAYLIST_RESULT_KEYS = ["playlist_result", "not_found"]
 
+# 歌手/专辑的搜索结果页上「这是一条结果」与「搜了个空」的区别点，与歌单同理：
+# 合成一个列表而不是各判各的，任一先出现即停。
+SINGER_RESULT_KEYS = ["singer_result", "not_found"]
+ALBUM_RESULT_KEYS = ["album_result", "not_found"]
+
+# 首页那张「播放歌手: X 的歌曲」的前提是首页歌手区已经排好版。排不出来就只能
+# 退回分类页那条路，因此等它只是探路，认出来也不代表就点它。
+SINGER_SHORTCUT_KEYS = ["music_tabs", "not_found"]
+
+# 首页快捷键的 `content-desc` 里固定的两段包装：`播放歌手: <歌手名>的歌曲`。
+SINGER_CONTENT_DESC_SEPARATOR = ": "
+SINGER_CONTENT_DESC_SUFFIX = "的歌曲"
+
+# 歌手名读不出来时房间里也不该出现空白标题，用迁移前就有的 Unknown 顶上。
+UNKNOWN_SINGER_NAME = "Unknown"
+
 # 「播放全部」在不同版本/不同页面下有三套文案，因此走三 key 兜底。
 PLAY_ALL_KEYS = ["play_all", "play_all_playlist", "play_all_compact"]
 
@@ -93,6 +109,21 @@ TEXT_VIEW_CLASS = "android.widget.TextView"
 _MODE_KEY_BY_ELEMENT_KEY = {
     element_key: mode_key for mode_key, element_key in PLAY_MODE_ELEMENT_KEYS.items()
 }
+
+
+def _singer_name_from_content_desc(content_desc: Optional[str]) -> str:
+    """首页歌手卡的 `content-desc` → 歌手名。
+
+    文案形如「播放歌手: 张天赋的歌曲」，由 QQ Music 自己拼：中间那段是歌手名，
+    两头是固定包装，拆掉就得到房间该显示的名字。
+
+    拆不出来（文案变了、控件没给属性）时回 Unknown 而不是让异常冒到命令层：
+    房名难看只是不好看，卡片照样能点出播放。
+    """
+    if not content_desc or SINGER_CONTENT_DESC_SEPARATOR not in content_desc:
+        return UNKNOWN_SINGER_NAME
+    name = content_desc.split(SINGER_CONTENT_DESC_SEPARATOR, 1)[1]
+    return name.split(SINGER_CONTENT_DESC_SUFFIX)[0].strip() or UNKNOWN_SINGER_NAME
 
 
 def favourite_filter_title(keyword: str) -> str:
@@ -132,7 +163,11 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return self._play_radar()
         if request.mode is PlaybackMode.PLAYLIST:
             return self._play_playlist(request.query)
-        # #431/#437 各自交付剩下几种模式。未实现就响亮失败 ——
+        if request.mode is PlaybackMode.SINGER:
+            return self._play_singer(request.query)
+        if request.mode is PlaybackMode.ALBUM:
+            return self._play_album(request.query)
+        # RADIO（#431）尚未交付。未实现就响亮失败 ——
         # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
         return PlaybackOutcome.failed(f"暂不支持的播放模式：{request.mode.value}")
 
@@ -628,26 +663,31 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return ""
 
     def _read_queue_text(self, fallback: str) -> str:
-        """读点完「播放全部」之后的播放队列，作为给用户的回复正文。
+        """读点完「播放全部」之后的播放队列，作为给用户的回复正文。"""
+        playlist_text, _ = self._read_queue(fallback)
+        return playlist_text
+
+    def _read_queue(self, fallback: str) -> tuple:
+        """读点完「播放全部」之后的播放队列，回 `(队列文本, 队列首行)`。
 
         读不到队列不是失败：歌已经在放了，把失败报给用户会让人以为歌没响。因此
-        退回歌单名，并按 warning 记一笔（与迁移前命令层的同一时刻、同一兜底）。
+        退回 `fallback`，并按 warning 记一笔（与迁移前命令层的同一时刻、同一兜底）。
 
         Args:
-            fallback: 队列读不出来时改用的歌单名。
+            fallback: 队列读不出来时改用的名字。
 
         Returns:
-            队列文本，或兜底的 `fallback`。
+            `(队列文本或兜底值, 队列首行)`；读不到队列时首行为 None。
         """
-        playlist_text, _, error = get_playlist_text_and_first_song(
+        playlist_text, first_line, error = get_playlist_text_and_first_song(
             self._handler.get_playlist_info()
         )
         if error:
             self.logger.warning(
                 f"Failed to read playlist after playback started: {error}"
             )
-            return fallback
-        return playlist_text
+            return fallback, None
+        return playlist_text, first_line
 
     @staticmethod
     def _select_category_tab(tab_name: str) -> bool:
@@ -664,6 +704,220 @@ class QQMusicUIDriver(MusicUIDriverPort):
         except Exception as exc:
             logging.getLogger("QQMusicUIDriver").warning(f"切换{tab_name}分类失败: {exc}")
             return False
+
+    # ------------------------------------------------------------------
+    # 歌手播放（#437）
+    #
+    # 歌手有两条差别很大的 UI 通路：首页上那张「播放歌手: X 的歌曲」的卡点一下
+    # 就等于播他全部；页面上没有那张卡时才退回分类页，点开歌手再点「播放全部」。
+    # 两条通路的产物相同（一个歌手的歌单），因此骨架只写一遍。
+    # ------------------------------------------------------------------
+
+    def _play_singer(self, query: str) -> PlaybackOutcome:
+        """`:singer <query>` 的 UI 编排。"""
+        try:
+            return self._run_singer_flow(query)
+        except Exception as exc:
+            # 带上原始原因：Appium 的失败原因（会话断开、控件不可交互……）互相之间
+            # 完全不同，只报「歌手播放失败」会让线上问题无从区分。
+            self.logger.warning(f"播放歌手歌单失败: {query}: {exc}")
+            return PlaybackOutcome.failed(f"Failed to play singer: {query}: {exc}")
+
+    def _run_singer_flow(self, query: str) -> PlaybackOutcome:
+        from_key = self._handler.query_music(query)
+        if not from_key:
+            self.logger.warning(f"Failed to query singer {query}")
+            return PlaybackOutcome.failed(f"Failed to query singer {query}")
+
+        shortcut = self._singer_shortcut(from_key)
+        if shortcut is not None:
+            button, singer_name = shortcut
+            button.click()
+            self.logger.info(f"已通过首页快捷键开始播放歌手: {singer_name}")
+        else:
+            error, singer_name = self._singer_from_tab(query)
+            if error:
+                return PlaybackOutcome.failed(error)
+
+        # 先读曲目再读队列：读队列要拉起播放队列面板，面板盖住列表之后
+        # `result_item` 就找不到了。
+        song, singer = self._read_first_track()
+        queue_text, first_line = self._read_queue(fallback=singer_name)
+
+        return PlaybackOutcome.started(
+            PlaybackTrack(song=song, singer=singer),
+            title=singer_name,
+            # 队列首行形如「歌名 - 歌手」，`PlaylistAdoption` 按 " - " 取歌名做话题。
+            topic=first_line or singer_name,
+            playlist=singer_name,
+            extra={"playlist": queue_text},
+        )
+
+    def _singer_shortcut(self, from_key: Optional[str]):
+        """首页上的歌手快捷键。返回 None 表示这条捷径走不通，该走分类页。
+
+        只在 `query_music` 从首页进搜索时才试：那张卡只在首页上，从搜索框进去的
+        搜索结果页根本没有它，硬找只会白等一次超时。
+
+        Returns:
+            `(可点的快捷键元素, 歌手名)`；页面上没有快捷键时为 None。
+        """
+        if from_key != "home_nav":
+            return None
+
+        finder = self._handler.element_finder
+        key, _ = finder.wait_for_any_element(SINGER_SHORTCUT_KEYS, timeout=5)
+        if not key or key == "not_found":
+            return None
+
+        shortcut = finder.try_find_element("play_singer_1")
+        if shortcut is not None:
+            # 新版卡片把歌手名写在 content-desc 里，点之前先读出来当房名。
+            content_desc = finder.try_get_attribute(shortcut, "content-desc")
+            return shortcut, _singer_name_from_content_desc(content_desc)
+
+        # 老版本只有一张没有文案的按钮，歌手名在旁边另一个控件上。
+        legacy = finder.try_find_element("play_singer")
+        if legacy is not None:
+            name_element = finder.try_find_element("singer_name")
+            name = (name_element.text or "").strip() if name_element else ""
+            return legacy, name or UNKNOWN_SINGER_NAME
+        return None
+
+    def _singer_from_tab(self, query: str) -> tuple:
+        """分类页那条路：切歌手 tab → 点歌手 → 点播放全部。
+
+        Returns:
+            `(错误说明, 歌手名)`；成功时错误为 None。
+        """
+        if not self._select_category_tab("singer"):
+            self.logger.warning(f"Failed to select singer tab with query {query}")
+            return f"not found singer with query {query}", UNKNOWN_SINGER_NAME
+
+        key, element = self._handler.element_finder.wait_for_any_element(
+            SINGER_RESULT_KEYS
+        )
+        if not key or key == "not_found" or not element:
+            self.logger.warning(f"not found singer with query {query}")
+            return f"not found singer with query {query}", UNKNOWN_SINGER_NAME
+
+        element.click()
+        singer_name = (element.text or "").strip() or UNKNOWN_SINGER_NAME
+        self.logger.info(f"已点开歌手: {singer_name}")
+
+        # 与收藏/歌单共用同一次「播放全部」点击：认不出按钮就是认不出，三条
+        # 通路对这件事没有各自的看法。
+        play_error = self._click_play_all()
+        if play_error:
+            return play_error, singer_name
+        return None, singer_name
+
+    # ------------------------------------------------------------------
+    # 专辑播放（#437）
+    # ------------------------------------------------------------------
+
+    def _play_album(self, query: str) -> PlaybackOutcome:
+        """`:album <query>` 的 UI 编排。"""
+        try:
+            return self._run_album_flow(query)
+        except Exception as exc:
+            self.logger.warning(f"播放专辑失败: {query}: {exc}")
+            return PlaybackOutcome.failed(f"Failed to play album: {query}: {exc}")
+
+    def _run_album_flow(self, query: str) -> PlaybackOutcome:
+        handler = self._handler
+
+        query = self._album_query(query)
+        if not query:
+            return PlaybackOutcome.failed("Failed to get playback info")
+
+        if not handler.query_music(query):
+            self.logger.warning(f"Failed to query album with query {query}")
+            return PlaybackOutcome.failed("Failed to query album")
+
+        if not self._select_category_tab("album"):
+            self.logger.warning(f"Failed to select album tab with query {query}")
+            return PlaybackOutcome.failed("Failed to select album tab")
+
+        key, _ = handler.element_finder.wait_for_any_element(ALBUM_RESULT_KEYS)
+        if not key or key == "not_found":
+            self.logger.warning(f"Not found album result with query {query}")
+            return PlaybackOutcome.failed(
+                f"Failed to find album result with query {query}"
+            )
+
+        card = self._album_card()
+        if card is None:
+            return PlaybackOutcome.failed("Failed to find album result")
+        album_name, album_singer = card
+        # 房名/话题/歌单名都用文案，不用控件本身 —— 控件会被页面重排带走。
+        album_title = (album_name.text or "").strip()
+        album_artist = (album_singer.text or "").strip()
+
+        album_name.click()
+        self.logger.info(f"已点开专辑: {album_title}")
+
+        play_error = self._click_play_all()
+        if play_error:
+            return PlaybackOutcome.failed(play_error)
+
+        song, singer = self._read_first_track()
+        # 读队列之前先取曲目：队列面板会盖住专辑的歌曲列表。
+        room_playlist = f"{album_artist} - {album_title}"
+        queue_text, _ = self._read_queue(fallback=room_playlist)
+
+        # 专辑详情页是盖在搜索结果上的：不按返回键把它收掉，后面引擎去 Soul 改
+        # 标题/话题时弹窗会压在它下面。
+        handler.key_actions.press_back()
+
+        return PlaybackOutcome.started(
+            PlaybackTrack(song=song, singer=singer, album=album_title),
+            title=album_artist,
+            topic=album_title,
+            playlist=room_playlist,
+            extra={"playlist": queue_text},
+        )
+
+    def _album_query(self, query: str) -> str:
+        """`:album` 不带参数 = 播「现在这首所在的专辑」。
+
+        查询词由当前播放的「歌名 歌手 专辑」拼出来。三样都要带上：QQ Music 的专辑
+        检索认得专辑名，可同名专辑不少，只给专辑名容易选错碟。读不到当前播放就
+        返回空串，让调用方如实报失败，而不是拿一个空查询词去搜。
+        """
+        if query:
+            return query
+        try:
+            from ushareiplay.managers.music_manager import MusicManager
+
+            info = MusicManager.instance().get_playback_info()
+        except Exception as exc:
+            self.logger.warning(f"读取当前播放信息失败: {exc}")
+            return ""
+        if not info:
+            self.logger.warning("没有正在播放的歌曲，无法推断要播哪张专辑")
+            return ""
+        return " ".join(
+            str(info.get(field) or "").strip()
+            for field in ("song", "singer", "album")
+        ).strip()
+
+    def _album_card(self):
+        """专辑结果的头两行：`(专辑名控件, 专辑歌手控件)`。
+
+        `album_result` 一次返回整页的 TextView，**至少两行才算一张排版完的卡片**
+        （第一行专辑名、第二行歌手）。少于两行说明卡片还没排好：此时点下去点开的
+        可能不是那张碟，而房名也会缺歌手。宁可如实报失败，也不拿半张卡片拼房间。
+
+        Returns:
+            `(专辑名控件, 歌手控件)`；行数不足时为 None。
+        """
+        rows = self._handler.element_finder.find_elements("album_result")
+        if len(rows) < 2:
+            self.logger.warning(f"专辑卡只有 {len(rows)} 行，判定为未排版完")
+            return None
+        return rows[0], rows[1]
+
     # ------------------------------------------------------------------
     # 播放模式切换（#423）
     # ------------------------------------------------------------------

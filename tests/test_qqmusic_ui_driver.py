@@ -7,9 +7,9 @@
 「Appium 点了哪个坐标」。
 
 `start_playback` 已实现的模式：`SONG`（#421）、`FAVORITES` 与 `RADAR`（#425）、
-`PLAYLIST`（#434）；`SINGER` / `ALBUM`（#437）与 `RADIO`（#431）仍未交付。
-各模式的编排测试见 `tests/test_favorites_radar_seam.py` 与
-`tests/test_playlist_seam.py`。
+`PLAYLIST`（#434）、`SINGER` 与 `ALBUM`（#437）；`RADIO`（#431）仍未交付。
+各模式的编排测试见 `tests/test_favorites_radar_seam.py`、
+`tests/test_playlist_seam.py` 与 `tests/test_singer_album_seam.py`。
 伴奏的两条 UI 通路（#427）都收在 `set_accompaniment` 后面：页上直接开关，以及
 K歌入口只在「更多」菜单里那条要滚动着找的路。
 """
@@ -100,25 +100,31 @@ class _QQMusicHandlerFake:
 
 
 def test_driver_refuses_a_mode_it_does_not_implement_yet(initialized_test_singletons):
-    """#431/#437 之前，未交付的模式必须响亮失败，而不是静默「播放成功」。"""
+    """未交付的模式必须响亮失败，而不是静默「播放成功」。
+
+    已实现的模式（见 `IMPLEMENTED_MODES`）各有自己的编排测试；这里用一个真的
+    还没交付的模式（RADIO，#431）守住「不认识的模式不假装成功」这条底线。
+    """
     handler = _QQMusicHandlerFake(playing_info={"song": "任意", "singer": "某", "album": "碟"})
 
     outcome = QQMusicUIDriver(handler).start_playback(
-        PlaybackRequest(mode=PlaybackMode.PLAYLIST, query="任意", requester="小明")
+        PlaybackRequest(mode=PlaybackMode.RADIO, query="任意", requester="小明")
     )
 
     assert outcome.ok is False
-    assert "playlist" in outcome.error
+    assert "radio" in outcome.error
     # 一个 UI 动作都不该发生：驱动连 handler 都没碰
     assert handler.prepared_queries == []
 
 
-# 已交付的模式：#421 单曲点播、#425 收藏与雷达、#434 歌单。
+# 已交付的模式：#421 单曲点播、#425 收藏与雷达、#434 歌单、#437 歌手与专辑。
 IMPLEMENTED_MODES = (
     PlaybackMode.SONG,
     PlaybackMode.FAVORITES,
     PlaybackMode.RADAR,
     PlaybackMode.PLAYLIST,
+    PlaybackMode.SINGER,
+    PlaybackMode.ALBUM,
 )
 
 

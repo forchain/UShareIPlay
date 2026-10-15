@@ -219,13 +219,14 @@ async def test_playlist_guardian_released_when_all_avatars_leave(user_db, clean_
 
 
 @pytest.fixture
-def playlist_engine(clean_info_manager):
-    """:playlist 切歌路径的引擎台：真守护（InfoManager）+ 内存 UI 驱动。
+def playback_engine(clean_info_manager):
+    """迁进引擎的切歌命令的引擎台：真守护（InfoManager）+ 内存 UI 驱动。
 
-    #434 之后 `:playlist <query>` 走 `MusicManager.play()`，守护因而由引擎调
-    `PlaylistAdoption.guard_switch`。这里只把 UI 换成内存替身 —— 守护判定仍然
-    是真的 `InfoManager.check_playlist_protection`，因此这些用例考的是「守护还
-    管不管得住」，不是「命令层有没有再自己判一次」。
+    #434 之后 `:playlist <query>`、#437 之后 `:singer` / `:album` 都走
+    `MusicManager.play()`，守护因而由引擎调 `PlaylistAdoption.guard_switch`。
+    这里只把 UI 换成内存替身 —— 守护判定仍然是真的
+    `InfoManager.check_playlist_protection`，因此这些用例考的是「守护还管不管
+    得住」，不是「命令层有没有再自己判一次」。
     """
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -254,7 +255,7 @@ def playlist_engine(clean_info_manager):
 
 
 @pytest.mark.asyncio
-async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, playlist_engine):
+async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager.player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
@@ -268,11 +269,11 @@ async def test_playlist_command_blocked_when_other_user_playing(clean_info_manag
     res = await command.do_process(msg, ["周杰伦"])
     assert res == {"error": "不约儿童🐏🐏 正在播放歌单，请等待"}
     # 被守护拦下时一个 UI 动作都不该发生
-    assert playlist_engine.requests == []
+    assert playback_engine.requests == []
 
 
 @pytest.mark.asyncio
-async def test_album_command_blocked_when_other_user_playing(clean_info_manager):
+async def test_album_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager.player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
@@ -285,10 +286,12 @@ async def test_album_command_blocked_when_other_user_playing(clean_info_manager)
     msg = MessageInfo(content="/album 范特西", nickname="Timer")
     res = await command.do_process(msg, ["范特西"])
     assert res == {"error": "不约儿童🐏🐏 正在播放歌单，请等待"}
+    # 被守护拦下时一个 UI 动作都不该发生
+    assert playback_engine.requests == []
 
 
 @pytest.mark.asyncio
-async def test_singer_command_blocked_when_other_user_playing(clean_info_manager):
+async def test_singer_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager.player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
@@ -301,66 +304,47 @@ async def test_singer_command_blocked_when_other_user_playing(clean_info_manager
     msg = MessageInfo(content="/singer 周杰伦", nickname="Timer")
     res = await command.do_process(msg, ["周杰伦"])
     assert res == {"error": "不约儿童🐏🐏 正在播放歌单，请等待"}
+    # 被守护拦下时一个 UI 动作都不该发生
+    assert playback_engine.requests == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("command_class", "play_method", "content", "parameters", "result"),
+    ("command_class", "content", "parameters"),
     [
-        (SingerCommand, "play_singer", "/singer 张天赋", ["张天赋"], {"playlist": "张天赋"}),
-        (AlbumCommand, "play_album", "/album 范特西", ["范特西"], {"playlist": "范特西"}),
+        (PlaylistCommand, "/playlist 流行歌单", ["流行歌单"]),
+        (SingerCommand, "/singer 张天赋", ["张天赋"]),
+        (AlbumCommand, "/album 范特西", ["范特西"]),
     ],
 )
-async def test_allowed_commands_hand_the_requester_to_the_play_step(
-    clean_info_manager, command_class, play_method, content, parameters, result
+async def test_allowed_commands_hand_the_requester_to_the_playback_engine(
+    clean_info_manager, playback_engine, command_class, content, parameters
 ):
-    """守护放行后，请求者被交给播放方法 —— 播放在成功时把它交给 PlaylistAdoption 记录。
+    """守护放行后，请求者一路交到引擎的 `PlaybackRequest.requester` 上。
 
-    命令不再自己写 player_name（那次写入现在归 PlaylistAdoption.adopt），
-    因此这里断言的是「请求者被正确传下去」，播放者写入本身由
-    tests/test_playlist_adoption.py 在模块接口层覆盖。
+    命令不再自己写 player_name（那次写入归 `PlaylistAdoption.adopt`），因此这里
+    断言的是「请求者被正确传下去」，播放者写入本身由 tests/test_playlist_adoption.py
+    在模块接口层覆盖。
 
-    `:playlist` 不在此列：#434 之后它把请求交给引擎，没有可 mock 的播放方法了；
-    请求者的传递由下面那条用例在引擎入口上断言。
+    这三条命令（#434 的 `:playlist`、#437 的 `:singer`/`:album`）都已迁进引擎，
+    没有可 mock 的播放方法了 —— 断言点因此落在引擎入口上。
     """
-    info_manager = clean_info_manager
-    info_manager.player_name = None
-
-    mock_controller = MagicMock()
-    mock_controller.soul_handler = MagicMock()
-    mock_controller.music_handler = MagicMock()
-    command = command_class(mock_controller)
-    play = MagicMock(return_value=result)
-    setattr(command, play_method, play)
-
-    msg = MessageInfo(content=content, nickname="张三")
-    res = await command.do_process(msg, parameters)
-
-    assert res == result
-    play.assert_called_once_with(parameters[0], "张三")
-
-
-@pytest.mark.asyncio
-async def test_playlist_hands_the_requester_to_the_playback_engine(
-    clean_info_manager, playlist_engine
-):
-    """`:playlist <query>` 迁移进引擎后，请求者在 `PlaybackRequest.requester` 上。"""
     clean_info_manager.player_name = None
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    command = PlaylistCommand(mock_controller)
+    command = command_class(mock_controller)
 
-    await command.do_process(MessageInfo(content="/playlist 流行歌单", nickname="张三"), ["流行歌单"])
+    await command.do_process(MessageInfo(content=content, nickname="张三"), parameters)
 
-    assert len(playlist_engine.requests) == 1
-    assert playlist_engine.requests[0].requester == "张三"
+    assert len(playback_engine.requests) == 1
+    assert playback_engine.requests[0].requester == "张三"
     assert clean_info_manager.player_name == "张三", "请求者最终写进房间播放者"
 
 
 @pytest.mark.asyncio
-async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, playlist_engine):
+async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, playback_engine):
     """
     当普通用户正在播放且在线时，管理员（Outlier/Chainer）、房主（Joyer）以及控制台（Console）
     可以突破守护，执行切歌操作。
@@ -402,7 +386,7 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
 
 @pytest.mark.asyncio
 async def test_normal_user_can_play_when_admin_or_owner_is_playing(
-    clean_info_manager, playlist_engine
+    clean_info_manager, playback_engine
 ):
     """
     当管理员（Outlier）或房主（Joyer）正在播放歌单时，无需保护，普通用户点歌可自由切入。
