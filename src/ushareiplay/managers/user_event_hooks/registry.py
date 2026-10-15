@@ -1,9 +1,9 @@
 """用户事件钩子的事件类型注册表。
 
 这是 5 类事件（进入 / 离开 / 返回 / 收礼物 / 专注人数联动）**唯一**的参数化
-事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径与旧钩子
-方法名都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在 `EVENT_HOOK_SPECS`
-里加一条。
+事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径、入队前的
+宏展开策略与旧钩子方法名都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在
+`EVENT_HOOK_SPECS` 里加一条。
 
 刻意保留的一处非对称：**用户解析口径按事件类型逐条声明**，不是全局默认。收礼物
 命令（`receive`）历史上走 alias-group —— 主账号下发的命令，用任意分身名都要能查
@@ -13,7 +13,9 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Awaitable, Callable, Optional
 
+from ushareiplay.managers.user_event_hooks.macros import expand_seat_macros
 from ushareiplay.models.enter_event import EnterEvent
 from ushareiplay.models.exit_event import ExitEvent
 from ushareiplay.models.focus_event import FocusEvent
@@ -43,6 +45,10 @@ ALIAS_GROUP = Resolution.ALIAS_GROUP
 #: 用户配置的钩子命令必须以这些前缀之一开头。
 COMMAND_PREFIXES = (":", "：", "/", "／")
 
+#: 入队前的宏展开策略：`(命令原文, 钩子归属人, 事件上下文) -> 替换后的命令原文`。
+#: 声明在注册表里而不是让引擎按 `event_type` 分支，新增宏族只改这一处。
+MacroExpander = Callable[[str, str, dict], Awaitable[str]]
+
 
 @dataclass(frozen=True)
 class UserEventHookSpec:
@@ -58,6 +64,9 @@ class UserEventHookSpec:
     #: 迁移前 `CommandManager.notify_*` 按属性名分发的旧钩子方法名。保留在注册表里，
     #: 是为了让后续接入方知道每个事件类型原先挂在哪个方法上。
     hook_method: str
+    #: 入队前要展开的宏策略；`None` = 原样入队。目前只有专注人数联动带宏
+    #: （`{username}` / `{seat}` / `{action}`），见 `macros.py`。
+    macros: Optional[MacroExpander] = None
 
 
 EVENT_HOOK_SPECS = {
@@ -111,6 +120,8 @@ EVENT_HOOK_SPECS = {
         prefix_example='":play 歌曲名"',
         resolution=SINGLE_ID,
         hook_method="focus_count_change",
+        # 座位观测是这一族宏唯一的数据源，键名见 macros.SEAT_INFO_CTX_KEY。
+        macros=expand_seat_macros,
     ),
 }
 

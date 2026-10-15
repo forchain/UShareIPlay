@@ -7,6 +7,7 @@
 - `execute_crud` 的 shlex 解析、子动作分发与命令前缀校验；
 - `fire()` 把命令以 `MessageInfo` 形态投进运行时队列（`{user_name}` 宏依赖
   这条路径，因此绝不能绕过队列直接执行命令）。
+- `fire()` 的三态选人（`None` 回退全部 / `[]` 一个不发 / 名单）与入队前的宏替换。
 """
 
 from types import SimpleNamespace
@@ -373,14 +374,18 @@ async def test_fire_accepts_realtime_context(db_init, hooks):
 
 @pytest.mark.asyncio
 async def test_fire_with_none_username_uses_all_configured_users(db_init, hooks):
-    """`username=None` 是专注人数联动的向后兼容回退：执行所有已配置用户。"""
+    """`username=None` 是专注人数联动的向后兼容回退：执行所有已配置用户。
+
+    #433 起 `fire()` 同时负责入队前的宏替换，所以没有座位观测时 `{seat}` /
+    `{action}` 落成空串、`{username}` 落成钩子归属人。
+    """
     await hooks.execute_crud(FOCUS, "Alice", ':focus add ":seat {seat}"')
     await hooks.execute_crud(FOCUS, "Bob", ':focus add ":wave {username}"')
 
     await hooks.fire(FOCUS, None, {})
 
     queued = await drain_messages()
-    assert sorted(msg.content for msg in queued) == [":seat {seat}", ":wave {username}"]
+    assert sorted(msg.content for msg in queued) == [":seat ", ":wave Bob"]
     assert sorted(msg.nickname for msg in queued) == ["Alice", "Bob"]
 
 
