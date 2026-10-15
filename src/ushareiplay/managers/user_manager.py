@@ -131,12 +131,16 @@ class UserManager(Singleton):
         if 'error' in open_result:
             return open_result
 
-        try:
-            return await self._gift_on_card(self.drawer.driver)
-        finally:
-            # 收尾放在 finally：送成了、送挂了、还是中途抛了异常，弹窗与资料卡都不能留在
-            # 屏幕上 —— 悬着的抽屉下一次盲按返回就会把派对房间一起带走。
-            await self._close_gift_overlays()
+        # `open_user_profile` 的会话在交接之后就退出了（锁随之松开，而卡片与抽屉还在
+        # 屏幕上），所以卡片内这几步要自己重新把住 UI 锁。漏了这一层，EventManager 的
+        # 兜底 press_back 就会在下面的 await 点把抽屉当成未知页面关掉。
+        async with self.drawer.card_session(f"user:gift:{nickname}"):
+            try:
+                return await self._gift_on_card(self.drawer.driver)
+            finally:
+                # 收尾放在 finally：送成了、送挂了、还是中途抛了异常，弹窗与资料卡都不能留在
+                # 屏幕上 —— 悬着的抽屉下一次盲按返回就会把派对房间一起带走。
+                await self._close_gift_overlays()
 
     async def _gift_on_card(self, driver):
         """已经在资料卡上：点送礼物 -> 读弹窗 -> 送出。

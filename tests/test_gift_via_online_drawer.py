@@ -24,6 +24,31 @@ class _Handler:
         self.logger = None
 
 
+class _RecordingController:
+    """记录 `ui_lock` 的获取与释放，让断言能看见「谁在什么时候把住了屏幕」。"""
+
+    def __init__(self):
+        self._depth = 0
+
+    @property
+    def locked(self) -> bool:
+        return self._depth > 0
+
+    def ui_session(self, reason: str = ""):
+        controller = self
+
+        class _Session:
+            async def __aenter__(self_):
+                controller._depth += 1
+                return self_
+
+            async def __aexit__(self_, *exc):
+                controller._depth -= 1
+                return False
+
+        return _Session()
+
+
 @pytest.fixture(autouse=True)
 def reset_singletons():
     UserManager.reset_instance()
@@ -33,17 +58,55 @@ def reset_singletons():
     OnlineDrawerManager.reset_instance()
 
 
-def _wire(*, members=("小明",), name_resolver=None, **driver_kwargs):
+def _wire(*, members=("小明",), name_resolver=None, handler=None, **driver_kwargs):
     """装好抽屉会话与 `UserManager`，把屏幕交给内存替身。"""
     # 单例只允许 initialize 一次（ADR-0009）：同一个测试里重装之前必须先 reset。
     UserManager.reset_instance()
     OnlineDrawerManager.reset_instance()
+    if handler is None:
+        handler = _Handler()
     driver = InMemoryOnlineDrawerDriver(members=list(members), **driver_kwargs)
     OnlineDrawerManager.initialize(
-        handler=_Handler(), driver=driver, name_resolver=name_resolver
+        handler=handler, driver=driver, name_resolver=name_resolver
     )
-    manager = UserManager.initialize(_Handler())
+    manager = UserManager.initialize(handler)
     return manager, driver
+
+
+@pytest.mark.asyncio
+async def test_the_ui_lock_stays_held_while_the_gift_flow_works_on_the_handed_over_card():
+    """交接之后、收尾之前，UI 独占锁必须一直被把住。
+
+    `open_user_profile` 的会话在 `handover.release()` 之后就退出了 —— 抽屉与资料卡还挂在
+    屏幕上，锁却已经松开。`send_gift` 接下来还要在卡片上点好几步；这段路上没有锁的话，
+    EventManager 的兜底 `press_back` 就会在这些 await 点把抽屉当成未知页面关掉，
+    甚至连派对房间一起带走。
+
+    `manage_admin` 与私信流程没有这个窗口 —— 它们的卡片内操作都还留在会话体内。这里
+    锁住 `send_gift` 也不例外。
+    """
+    controller = _RecordingController()
+    handler = _Handler()
+    handler.controller = controller
+
+    manager, driver = _wire(members=("小明",), handler=handler)
+
+    lock_states = []
+    original = driver.open_gift_entry
+
+    async def spy():
+        lock_states.append(controller.locked)
+        return await original()
+
+    driver.open_gift_entry = spy
+
+    result = await manager.send_gift("小明")
+
+    assert 'success' in result, result
+    assert lock_states == [True], (
+        "在交接出来的资料卡上送礼时必须持有 UI 独占锁；"
+        f"实际锁状态={lock_states}"
+    )
 
 
 # ---------------------------------------------------------------------------

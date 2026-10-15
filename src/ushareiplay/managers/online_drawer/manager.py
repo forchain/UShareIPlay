@@ -58,6 +58,11 @@ class Handover:
     刻意做成一个显式对象，而不是一个布尔开关：开关只能整段会话生效，于是「没找到人
     就中途 return」这类**失败**路径也会被跳过收尾，把抽屉悬在屏幕上 —— 而悬着的抽屉
     下一次盲按返回就会把房间一起带走（spec #426 问题陈述 #1）。
+
+    ⚠️ `release()` 同时意味着**抽屉会话到此结束**：`drawer_session()` 一退出，UI 独占
+    锁就松开了，而卡片与抽屉还挂在屏幕上。因此「先交接、等会话退干净、再用卡片」的
+    调用方，必须用 `card_session()` 把住收尾之前的那段路（`send_gift` 就是这种形状）。
+    卡片内操作仍然留在会话体内的调用方（`manage_admin`、私信流程）不需要额外加。
     """
 
     def __init__(self):
@@ -278,6 +283,28 @@ class OnlineDrawerManager(Singleton):
     # ------------------------------------------------------------------
     # 命名域
     # ------------------------------------------------------------------
+
+    @asynccontextmanager
+    async def card_session(self, reason: str):
+        """交接之后、收尾之前的「卡片独占」：抽屉与资料卡正挂在屏幕上时，用它把住 UI 锁。
+
+        `handover.release()` 的语义是**抽屉会话到此结束** —— 锁会随之松开，但抽屉与
+        资料卡仍然留在屏幕上。于是「拿到交接的调用方」接着要做的卡片内操作，跑在一段
+        没有 UI 独占的窗口里：`EventManager` 的兜底 `press_back` 就在这些 await 点把
+        抽屉当成未知页面关掉，甚至连带退出派对房间。
+
+        收尾（`close_profile_card()`）自己会再拿一次锁，所以最要命的是**收尾之前**那
+        段：弹窗点开、读文案、点赠送、点确认，全都在锁外。
+
+        `manage_admin` 与私信流程不需要它 —— 它们的卡片内操作仍然留在
+        `drawer_session()` 的会话体内，锁一直没松。只有「先把卡片交接出去、等会话
+        退干净、再用卡片」的调用方（例如 `send_gift` 走公共的 `open_user_profile()`）
+        必须显式套上这一层。
+
+        `ui_session` 是可重入的，嵌套调用安全。
+        """
+        async with self._ui_session(reason):
+            yield
 
     async def find_member_in_drawer(self, visible_name: str) -> bool:
         """在抽屉里一页一页找某个昵称：翻到底提示、滑不动或滑满为止。
