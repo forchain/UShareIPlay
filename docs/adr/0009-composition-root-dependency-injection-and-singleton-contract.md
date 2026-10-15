@@ -67,13 +67,45 @@ Accepted
 | 时点 | 具体单例类 | 扣掉两个 handler 单例 |
 |---|---|---|
 | 本 ADR 引入时（`95a219a`，2026-10-01） | 37 | **35** ← 第 21 行的来源 |
-| 今日 | 34 | **32** |
+| 2026-10-07 实记（**口径有误，见下**） | 34 | **32** |
+| 今日（#440 更正后） | **29** | **27** |
 
 差额的来龙去脉：#395 / #400 / #401 删掉了四个座位内部单例（`SeatUIManager`、
 `SeatCheckManager`、`ReservationManager`、`SeatingManager`），同期没有新增任何单例，
 35 → 31。新增的 `SeatSubsystem` 与 `SeatPanelDriver` **刻意不是单例**（前者由组合根
 构造并持有一个实例，后者是无全局状态的普通可注入对象），所以它们不进这个数 —— 这是
 本契约想要的形态，不是缺口。
+
+### 2026-10-15 —— 上一行「34 / 32」的口径是错的，更正为 29 / 27
+
+上面这行数不是按本节自己声明的口径数出来的，而是一次 `grep 'class \w+(Singleton)'`
+的**朴素结果**：它把 `tests/test_singleton.py` 里的三个测试替身（`_FooService`、
+`_BarService`、`_ConcurrentService`）也算了进去。三个测试夹具不是系统单例，不该进这个表。
+
+按本节声明的口径（`src/` 内 `Singleton` 的具体实现类，扣掉抽象基类
+`SeatManagerBase` 与两个 handler 单例）重新数过：
+
+- `src/` 内以 `Singleton` 为基类的类共 **30** 个；
+- 扣掉抽象基类 `SeatManagerBase` → **29**；
+- 再扣掉 `SoulHandler` / `QQMusicHandler` → **27**。
+
+因此真实值是 **29 / 27**，上一行的 34 / 32 偏高 5。#428 的 `+1` 方向没错（它确实新增了
+一个受保护单例），只是建立在一个偏高的基数上。复核方式：
+
+```bash
+uv run python -c "
+import ast, pathlib
+names = [n.name for p in pathlib.Path('src').rglob('*.py')
+         for n in ast.walk(ast.parse(p.read_text()))
+         if isinstance(n, ast.ClassDef)
+         and any(ast.unparse(b) == 'Singleton' for b in n.bases)]
+concrete = [n for n in names if n != 'SeatManagerBase']
+print(len(names), len(concrete),
+      len([n for n in concrete if n not in {'SoulHandler', 'QQMusicHandler'}]))"
+```
+
+注：历史行（本 ADR 引入时的 37 / 35）与 #428 那条记录里引用的 33 → 34 属于**当时的
+结论，不回改**，此处只登记当前值与更正理由。
 
 ### 2026-10-15 —— #428 新增 `OnlineDrawerManager`（+1）
 

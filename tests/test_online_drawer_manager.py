@@ -357,6 +357,124 @@ async def test_canonical_name_must_be_resolved_before_searching_the_drawer():
 
 
 # ---------------------------------------------------------------------------
+# 找一个人：翻页判据的唯一所有者（#440）
+# ---------------------------------------------------------------------------
+#
+# 这段循环此前在 `UserManager` 与 `AdminManager` 里各抄了一份逐字相同的实现（送礼物、
+# 私聊、房管三处调用点）。#440 把它整段搬进抽屉会话的唯一所有者：翻到哪一页、翻够
+# 几页、什么时候如实回报「未找到」都是**抽屉会话的决策**，端口只负责如实回答「此刻
+# 屏幕上有哪些行」。
+#
+# 下面四条锁的是搬动前后的行为等价：先查当前页、到底提示出现就停、滑不动就停、翻够
+# 50 页就停。搬运不该改变其中任何一条。
+
+
+async def test_member_search_paginates_until_it_finds_the_row():
+    """人在后面几页：一页一页翻过去，找到为止，且不越翻越远。"""
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(
+        members=["a", "b", "c", "d", "e", "f"], page_size=2, journal=journal
+    )
+    manager = _make_manager(driver)
+
+    assert await manager.find_member_in_drawer("e") is True
+    # 找 5 个人之前必须真的滑过页，而不是靠一次 dump 蒙对。
+    assert journal.count("drawer:scroll") >= 2
+    assert journal.index("drawer:scroll") < journal.index("drawer:find:e")
+
+
+async def test_member_search_gives_up_at_the_end_of_list_without_swiping_past_it():
+    """翻到底提示出现：如实回报未找到，并在那之后不再多滑一下。"""
+    journal = []
+    driver = InMemoryOnlineDrawerDriver(
+        members=["a", "b", "c"], page_size=2, journal=journal
+    )
+    manager = _make_manager(driver)
+
+    assert await manager.find_member_in_drawer("查无此人") is False
+    assert driver.at_end_reads > 0
+    # 第一页看完（2 行）还剩 1 行，所以滑一次到最后一页；到那一页就收工。
+    assert journal.count("drawer:scroll") == 1
+
+
+async def test_member_search_stops_immediately_when_the_list_will_not_swipe():
+    """手势滑不动：停在这一页，不把一次定位变成无上限轮询。
+
+    `end_hint=False` 是必要的另一半条件：到底提示读不到，`is_at_end()` 才会返回 False
+    而让代码真的走到 `scroll_container()`；否则它会先被「已经到底了」那条分支截走，
+    这条断言就考不到滑动手势了。
+    """
+    driver = InMemoryOnlineDrawerDriver(
+        members=["a", "b"], page_size=2, swipe_fails=True, end_hint=False
+    )
+    manager = _make_manager(driver)
+
+    assert await manager.find_member_in_drawer("查无此人") is False
+    assert driver.scroll_durations == [800]
+
+
+async def test_member_search_stops_after_fifty_pages_when_the_list_never_ends():
+    """到底提示一直读不到（老版本的列表就是）：翻够上限就如实回报未找到。
+
+    50 这个上限是搬运前就有的既有行为，与在线名单抓取的 `MAX_SWIPES` 同源 ——
+    别把一次定位变成无上限轮询。
+
+    滑动次数锁在 **51** 而不是 50：被搬过来的是 `for _ in range(MAX + 1)` 这一段，
+    每一轮都是「查一次、判一次到底、滑一次」，所以最后一次也会滑一下才跳出循环 ——
+    那一下其实没意义（结果不参与任何判断），但**搬动不改行为**，所以照旧锁住。
+    真要去掉它是另一个话题：会改变真机上翻页次数，属于行为变更而非重构。
+    """
+    driver = InMemoryOnlineDrawerDriver(
+        members=["a", "b"], page_size=2, end_hint=False
+    )
+    manager = _make_manager(driver)
+
+    assert await manager.find_member_in_drawer("查无此人") is False
+    assert len(driver.scroll_durations) == 51
+    assert driver.at_end_reads == 51
+
+
+def test_the_legacy_managers_no_longer_carry_their_own_copy_of_the_search_loop():
+    """送礼物 / 私聊 / 房管三个调用点共用抽屉会话的这一段循环。
+
+    两份逐字相同的实现意味着改翻页上限要改三处、漏一处就在真机上翻到天荒地老。
+    这里锁的是「只有唯一所有者才有这段循环」这条归属，而不是某个私有方法的名字。
+    """
+    from ushareiplay.managers.admin_manager import AdminManager
+    from ushareiplay.managers.user_manager import UserManager
+
+    for legacy_manager in (UserManager, AdminManager):
+        assert not hasattr(legacy_manager, "_find_member_in_drawer"), legacy_manager.__name__
+        # 上限常量同样只在抽屉会话这一侧定义。
+        assert not hasattr(legacy_manager, "MAX_SEARCH_SWIPES"), legacy_manager.__name__
+
+
+def test_recovery_manager_no_longer_owns_any_online_drawer_closing_machinery():
+    """`RecoveryManager` 不再持有在线用户抽屉的关窗机制（#440）。
+
+    它原先有一张 `DRAWER_CLOSE_BUTTONS` 表，表里唯一的一行就是 `online_drawer`，
+    外加一层「先找抽屉自带关闭按钮」的分支。全仓最后一个传 `'online_drawer'` 的调用点
+    早就不存在了（`events/drawer_elements.py` 里那一条一直是注释状态），所以整层机制
+    连同那张表一起删掉。
+
+    `close_drawer` **方法本身保留**：它仍是 `DrawerElementsEvent` 关 `input_drawer`
+    的通用入口，那类遮罩式抽屉本来就没有关闭按钮可用。
+
+    这里锁的是「通用机制还在、在线用户抽屉的专属机制没了」这条分界，防止有人日后
+    又把 `ivClose` 那张表加回来 —— 那样在线用户抽屉就又有了第二个关闭手势的归属，
+    正是 spec #426 要消灭的东西。
+    """
+    from ushareiplay.managers import recovery_manager
+    from ushareiplay.managers.recovery_manager import RecoveryManager
+
+    # 通用入口仍在。
+    assert callable(RecoveryManager.close_drawer)
+    # 在线用户抽屉的专属机制已退役。
+    assert not hasattr(recovery_manager, "DRAWER_CLOSE_BUTTONS")
+    assert not hasattr(RecoveryManager, "_close_via_close_button")
+
+
+# ---------------------------------------------------------------------------
 # 端口契约：两个适配器必须遵守同一份签名
 # ---------------------------------------------------------------------------
 

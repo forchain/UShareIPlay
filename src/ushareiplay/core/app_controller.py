@@ -494,6 +494,7 @@ class AppController(Singleton):
             # 那里（#428）。命名域解析器按 ADR-0009 从组合根注入，模块内不去
             # import InfoManager —— DB 的 canonical 名与 Soul UI 上的可见昵称是两个
             # 域，拿 canonical 名去 UI 里找人永远不相等（#426 问题陈述 #2）。
+            # 必须排在 InfoManager 之后：name_resolver 取的是上面那个实例的方法。
             self.online_drawer_manager = OnlineDrawerManager.initialize(
                 self.soul_handler,
                 driver=SoulOnlineDrawerDriver(self.soul_handler),

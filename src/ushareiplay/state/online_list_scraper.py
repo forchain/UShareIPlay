@@ -23,6 +23,7 @@ from typing import Optional, Set, Tuple
 
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
@@ -62,9 +63,10 @@ class OnlineListScraper(Singleton):
 
         单例只查不建（组合根装配的，见 ADR-0009）：这里拿到就去用，拿不到就说明
         抽屉链路没接线，让刷新整体失败而不是悄悄退回裸 Appium 操作。
-        """
-        from ushareiplay.managers.online_drawer import OnlineDrawerManager
 
+        模块顶层 import（ADR-0009 §4）：`managers.online_drawer` 不反向依赖
+        `state`，这条链上不存在循环引用，因此不需要函数体内延迟导入。
+        """
         return OnlineDrawerManager.instance()
 
     async def _scrape_online_user_names(
