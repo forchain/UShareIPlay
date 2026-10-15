@@ -62,7 +62,7 @@ def clean_info_manager():
 
 @pytest.mark.asyncio
 async def test_radio_empty_params_blocked_when_user_is_playing(
-    clean_info_manager, music_engine
+    clean_info_manager, playback_engine
 ):
     """
     当正常用户正在播放歌单且在线时，定时器或其他人触发无参数的 /radio 命令，
@@ -90,13 +90,13 @@ async def test_radio_empty_params_blocked_when_user_is_playing(
     assert isinstance(res, dict)
     assert res.get("error") == "不约儿童🐏🐏 正在播放歌单，请等待"
     # #431 之后守护归引擎：被拦下时连播放请求都没发出，更谈不上动 UI。
-    assert music_engine.requests == []
+    assert playback_engine.requests == []
     mock_controller.music_handler.navigate_to_home.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
-    clean_info_manager, music_engine
+    clean_info_manager, playback_engine
 ):
     """
     当当前播放者是 Timer 或系统管理员（如 Joyer）时，整点定时器触发 /radio 应该被允许执行。
@@ -123,13 +123,13 @@ async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
 
     assert "error" not in res
     # 裸 `:radio` 放行后落到精选频道。
-    assert len(music_engine.requests) == 1
-    assert music_engine.requests[0].channel == "collection"
+    assert len(playback_engine.requests) == 1
+    assert playback_engine.requests[0].channel == "collection"
 
 
 @pytest.mark.asyncio
 async def test_playlist_guardian_protects_with_avatar_online(
-    user_db, clean_info_manager, music_engine
+    user_db, clean_info_manager, playback_engine
 ):
     """
     测试守护者本人昵称不在房间，但其分身仍在房间时，歌单仍受到守护。
@@ -163,7 +163,7 @@ async def test_playlist_guardian_protects_with_avatar_online(
 
 @pytest.mark.asyncio
 async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
-    user_db, clean_info_manager, music_engine
+    user_db, clean_info_manager, playback_engine
 ):
     """
     测试守护者用分身切歌时，不应被自己守护的歌单拦截。
@@ -192,13 +192,13 @@ async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
     msg = MessageInfo(content="/radio", nickname="儿童不易~🐏🐏")
     res = await command.do_process(msg, [])
     assert "error" not in res
-    assert len(music_engine.requests) == 1
-    assert music_engine.requests[0].requester == "儿童不易~🐏🐏"
+    assert len(playback_engine.requests) == 1
+    assert playback_engine.requests[0].requester == "儿童不易~🐏🐏"
 
 
 @pytest.mark.asyncio
 async def test_playlist_guardian_released_when_all_avatars_leave(
-    user_db, clean_info_manager, music_engine
+    user_db, clean_info_manager, playback_engine
 ):
     """
     当守护者及其所有分身均离开房间后，守护解除，定时器可以切歌。
@@ -227,7 +227,7 @@ async def test_playlist_guardian_released_when_all_avatars_leave(
     msg = MessageInfo(content="/radio", nickname="Timer")
     res = await command.do_process(msg, [])
     assert "error" not in res
-    assert len(music_engine.requests) == 1
+    assert len(playback_engine.requests) == 1
 
 
 @pytest.fixture
