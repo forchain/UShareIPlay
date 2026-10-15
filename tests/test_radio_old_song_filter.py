@@ -359,14 +359,16 @@ class _PlayMusicHandler:
         return True
 
 
-def test_play_command_checks_song_quality_immediately_after_playback_starts(monkeypatch):
-    music_handler = _PlayMusicHandler()
-    controller = SimpleNamespace(
-        music_handler=music_handler,
-        soul_handler=SimpleNamespace(),
-    )
-    command = PlayCommand(controller)
+def test_play_driver_checks_song_quality_immediately_after_playback_starts(monkeypatch):
+    """#421：查歌/点播/质量过滤的编排已移入 `QQMusicUIDriver`，命令不再自己点歌。
 
+    断言仍落在「质量过滤发生在播放刚起来的同一时刻」这个行为上，只是不再经由
+    `PlayCommand.play_song` —— 那条路现在是 `MusicManager.play()` 的引擎流水线。
+    """
+    from ushareiplay.managers.playback.models import PlaybackRequest
+    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+
+    music_handler = _PlayMusicHandler()
     quality_checked = []
 
     class _FakeMusicManager:
@@ -379,21 +381,25 @@ def test_play_command_checks_song_quality_immediately_after_playback_starts(monk
         staticmethod(lambda: _FakeMusicManager()),
     )
 
-    result = command.play_song("似是故人来 梅艳芳")
+    outcome = QQMusicUIDriver(music_handler).start_playback(
+        PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
+    )
 
-    assert result == music_handler.playing_info
+    assert outcome.ok is True
     assert music_handler.first_song.clicks == 1
     assert quality_checked == [music_handler.playing_info]
 
 
-def test_play_command_returns_error_when_first_song_not_found():
+def test_play_driver_returns_error_when_first_song_not_found(monkeypatch):
+    from ushareiplay.managers.playback.models import PlaybackRequest
+    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+
     music_handler = _PlayMusicHandler()
     music_handler.wait_for_element_clickable = lambda key: None
-    controller = SimpleNamespace(
-        music_handler=music_handler,
-        soul_handler=SimpleNamespace(),
-    )
-    command = PlayCommand(controller)
 
-    result = command.play_song("似是故人来 梅艳芳")
-    assert result == {"error": "Failed to find first song"}
+    outcome = QQMusicUIDriver(music_handler).start_playback(
+        PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
+    )
+
+    assert outcome.ok is False
+    assert "first song" in outcome.error

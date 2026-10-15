@@ -2,6 +2,7 @@ from appium.webdriver.common.appiumby import AppiumBy
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.managers.playback.models import PlaybackRequest
 
 
 class PlayCommand(BaseCommand):
@@ -14,6 +15,19 @@ class PlayCommand(BaseCommand):
             return None
         return query
 
+    def playback_muting_applies(self, parameters):
+        """点歌分支不参与命令级静音：麦克风生命周期归 `MusicManager.play()`。
+
+        命令级守卫在守护之前就闭麦，于是「小红正在播放歌单，请等待」这句回复
+        之前已经闭过一次麦 —— 房间里只听见一段没有来由的静音。迁移到引擎后，
+        守护通过才会闭麦。
+
+        收藏与电台分支尚未迁移（#425），仍靠命令级静音保护切歌，因此按分支判定
+        而不是一刀切地关掉整个命令的静音参与。
+        """
+        query = ' '.join(parameters or [])
+        return query in ('', '?')
+
     async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)
 
@@ -24,35 +38,19 @@ class PlayCommand(BaseCommand):
             playing_info = self.play_radar(message_info.nickname)
             return playing_info
         else:
-            playing_info = self.play_song(query)
+            playing_info = await self.play_song(query, message_info.nickname)
             return playing_info
 
-    def play_song(self, music_query):
-        """Search and play music"""
-        if music_query == '?':
-            playing_info = self.play_favorites()
-            return playing_info
-        elif music_query == '':
-            playing_info = self.play_radar()
-            return playing_info
+    async def play_song(self, music_query, requester=None):
+        """`:play <歌名> [歌手]` —— 单曲点播。
 
-        playing_info = self.handler._prepare_music_playback(music_query)
-        if 'error' in playing_info:
-            self.handler.logger.error(f'Failed to play music {music_query}')
-            return playing_info
-
-        song_element = self.handler.element_finder.wait_for_element_clickable('first_song')
-        if not song_element:
-            self.handler.logger.error("Failed to find first song")
-            return {'error': 'Failed to find first song'}
-        song_element.click()
-        self.handler.logger.info("Select first song")
-
-        # 播放页会自动弹出：未收藏则自动收藏
-        self.handler.ensure_favorited_in_playing_page(timeout=10)
-        MusicManager.instance().handle_song_quality_check(playing_info)
-
-        return playing_info
+        查歌、点结果、收藏、质量过滤都由 `QQMusicUIDriver` 在引擎的静音守护内
+        完成；命令层只负责把请求翻译成 `PlaybackRequest`，再把结果交给公屏模板。
+        """
+        result = await MusicManager.instance().play(
+            PlaybackRequest.song(music_query, requester=requester)
+        )
+        return result.as_response()
 
     def play_favorites(self, requester=None):
         """Navigate to favorites and play all"""

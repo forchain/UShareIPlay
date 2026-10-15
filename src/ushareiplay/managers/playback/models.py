@@ -13,7 +13,22 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from types import MappingProxyType
+from typing import Any, Mapping, Optional
+
+_EMPTY_EXTRA: Mapping[str, Any] = MappingProxyType({})
+
+
+def _freeze_extra(extra: Optional[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """把回复用的附加字段收成只读映射。
+
+    冻结 dataclass 只挡住属性重绑，挡不住 `result.extra["x"] = ...` 这种就地修改 ——
+    而这份 extra 会一路流到用户看到的公屏文案上，就地改写会让「这次回复的内容」
+    不再由这一次播放决定。
+    """
+    if not extra:
+        return _EMPTY_EXTRA
+    return MappingProxyType(dict(extra))
 
 
 # 播放模式的词表：命令参数 ↔ 记录在案的 key ↔ 面向用户的名称。
@@ -136,6 +151,8 @@ class PlaybackOutcome:
         title: 观察到的房间标题来源；None 表示沿用 `PlaybackRequest.room_title`。
         topic: 观察到的房间话题来源；None 表示由曲目队列行推导。
         playlist: 观察到的完整歌单名；None 表示沿用 `PlaybackRequest.playlist`。
+        extra: 驱动的回复附加字段（如发行日期）。这些是「只有 UI 层拿得到的事实」，
+            由 `MusicManager.play()` 原样转交 `PlaybackResult.as_response()`。
     """
 
     ok: bool
@@ -144,6 +161,10 @@ class PlaybackOutcome:
     title: Optional[str] = None
     topic: Optional[str] = None
     playlist: Optional[str] = None
+    extra: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_EXTRA)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "extra", _freeze_extra(self.extra))
 
     @classmethod
     def started(
@@ -153,8 +174,16 @@ class PlaybackOutcome:
         title: Optional[str] = None,
         topic: Optional[str] = None,
         playlist: Optional[str] = None,
+        extra: Optional[Mapping[str, Any]] = None,
     ) -> "PlaybackOutcome":
-        return cls(ok=True, track=track, title=title, topic=topic, playlist=playlist)
+        return cls(
+            ok=True,
+            track=track,
+            title=title,
+            topic=topic,
+            playlist=playlist,
+            extra=extra,
+        )
 
     @classmethod
     def failed(cls, error: str) -> "PlaybackOutcome":
@@ -165,17 +194,30 @@ class PlaybackOutcome:
 class PlaybackResult:
     """播放请求的最终归宿 —— 引擎返回给命令层的唯一结果类型。
 
+    除状态与曲目外，还携带「回复格式元数据」：命令层的 `response_template`
+    各不相同（`:play` 用 `{song} - {singer} • {album} • {release_date}`，
+    fav/singer/playlist/radio/album 用 `{playlist}`），把这些键收在这里，
+    命令就只管把 `as_response()` 的结果交给 `CommandManager`，不再各自手拼 dict。
+
     Attributes:
         status: 三种归宿之一。
         track: 已开始的曲目；被拒绝或 UI 失败时为空。
         error: 本地化错误说明。被拒绝与 UI 失败时非空；`STARTED` 时也可能非空 ——
             那表示歌已经在放、但房间同步（标题/话题）失败，此时 `error` 只用于日志，
             不该出现在给用户的回复里。
+        playlist: UI 上读到的完整歌单名。为 None 时 `as_response()` 渲染成空串 ——
+            不是省略该键（见 `as_response` 的说明）。
+        extra: 其余回复字段（如老歌过滤阶段补上的 `release_date`）。
     """
 
     status: PlaybackStatus
     track: PlaybackTrack = field(default_factory=PlaybackTrack)
     error: Optional[str] = None
+    playlist: Optional[str] = None
+    extra: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_EXTRA)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "extra", _freeze_extra(self.extra))
 
     @property
     def started(self) -> bool:
@@ -197,16 +239,25 @@ class PlaybackResult:
         以 `started` 而非 `error` 为准：歌已经在放而房间同步失败时，房间里的人
         听到的是歌，回复就该是歌。反过来按 `error` 判定会让人在歌响起时读到报错。
 
-        `{'song','singer','album'}` 表示成功、`{'error': ...}` 表示被拒或失败。
-        保留这个形状是为了让五个命令能逐个迁移，而不是一次性改掉所有回复文案。
+        成功时**恒定**给出 `song` / `singer` / `album` / `playlist` 四个键，再并上
+        `extra`；被拒或失败时给 `{'error': ...}`。
+
+        `playlist` 没有就渲染成空串而不是省略 —— `CommandManager` 的
+        `response_template.format(**result)` 不在 try/except 里，缺键就是
+        `KeyError` 冲出 `process_command`，用户连报错都收不到。fav/singer/
+        playlist/radio/album 五个模板恰好是纯 `"{playlist}"`，省略即线上失联。
         """
-        if self.started:
-            return {
-                "song": self.track.song,
-                "singer": self.track.singer,
-                "album": self.track.album,
-            }
-        return {"error": self.error}
+        if not self.started:
+            return {"error": self.error}
+
+        response = {
+            "song": self.track.song,
+            "singer": self.track.singer,
+            "album": self.track.album,
+            "playlist": self.playlist or "",
+        }
+        response.update(self.extra)
+        return response
 
 
 @dataclass(frozen=True)

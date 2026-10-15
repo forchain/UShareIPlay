@@ -59,6 +59,16 @@ class BaseCommand(ABC):
         """
         return None
 
+    def playback_muting_applies(self, parameters) -> bool:
+        """本次调用是否需要命令级的播放静音保护。
+
+        默认就是类属性 `playback_muting` —— 声明参与静音的命令整体参与。
+        一个命令内部有多条播放路径、且只有部分路径已迁到 `MusicManager.play()`
+        时覆盖本方法：迁走的那条由引擎在守护通过后自己闭麦，提前闭麦会在
+        守护拒绝时留下一次无来由的静音。
+        """
+        return bool(getattr(self, "playback_muting", False))
+
     def error_context(self, message_info, parameters):
         """Extra fields merged into the error result when do_process raises.
 
