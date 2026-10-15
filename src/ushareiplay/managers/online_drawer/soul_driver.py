@@ -15,12 +15,14 @@
 """
 
 import asyncio
+import re
 from typing import Optional
 
 from ushareiplay.managers.online_drawer.driver import (
     CLOSE_KEYS,
     DEFAULT_SCROLL_DURATION_MS,
     DEFAULT_SETTLE_TIMEOUT,
+    END_OF_LIST_KEY,
     ENTRY_KEY,
     ONLINE_CONTAINER_KEY,
     POST_SCROLL_SETTLE_SECONDS,
@@ -183,6 +185,90 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
                 continue
 
         return None
+
+    async def read_online_count(self) -> Optional[int]:
+        """读「N 人在线」控件里第一段数字。
+
+        解析留在这里而不是引擎：`6人在线` / `在线 10 人` 这些文案是 App 的事，引擎
+        只该拿到一个 int 或 None。旧实现在 `OnlineListScraper` 里用同一个正则解析，
+        这里只是把它挪到它该在的层。
+        """
+        finder = self._finder()
+        if finder is None:
+            return None
+        try:
+            entry = finder.try_find_element(ENTRY_KEY, log=False)
+            if not entry:
+                return None
+            text = getattr(entry, "text", None)
+            if not text:
+                return None
+            match = re.search(r'(\d+)', text)
+            if not match:
+                return None
+            return int(match.group(1))
+        except Exception:
+            # 人数只是对账的期望值，读不到不该让整次抓取失败。
+            return None
+
+    async def visible_member_rows(self) -> list:
+        """整页已渲染的行，一次读回昵称与关注关系。
+
+        「翻页判据是这一页有没有带来新的人」，所以整页读数是一次语义上的读取；
+        逐行问端口会把同一页 dump 五十次，正是这段旧代码当初踩的坑。
+        """
+        finder = self._finder()
+        if finder is None:
+            return []
+        try:
+            container = finder.try_find_element(ONLINE_CONTAINER_KEY, log=False)
+            if not container:
+                return []
+
+            rows = []
+            for row in finder.find_child_elements(container, ROW_CONTAINER_KEY):
+                try:
+                    name_elem = finder.find_child_element(row, ROW_NAME_KEY)
+                    if not name_elem:
+                        continue
+                    visible_name = name_elem.text
+                    if not visible_name:
+                        continue
+                    follow_elem = finder.find_child_element(
+                        row, ROW_FOLLOW_STATE_KEY, log_failure=False
+                    )
+                    rows.append(
+                        MemberRow(
+                            visible_name=visible_name,
+                            follow_state=follow_elem.text if follow_elem else None,
+                        )
+                    )
+                except Exception:
+                    # 单行读坏跳过整行，不影响这一页剩下的行（滚动途中失效是常态）。
+                    continue
+            return rows
+        except Exception:
+            return []
+
+    async def is_at_end(self) -> bool:
+        """`no_more_data` 提示在不在**且显示着**。"""
+        finder = self._finder()
+        if finder is None:
+            return False
+        try:
+            hint = finder.try_find_element(END_OF_LIST_KEY, log=False)
+            if not hint:
+                return False
+            return bool(hint.is_displayed())
+        except Exception:
+            return False
+
+    def _finder(self):
+        """handler / element_finder 任一缺席都退化成「App 不可用」。"""
+        handler = self._handler
+        if handler is None:
+            return None
+        return getattr(handler, "element_finder", None)
 
     def _swipe_geometry(self, container):
         """容器内滑动的起止坐标：手指从 0.75 高度划到 0.30 高度。

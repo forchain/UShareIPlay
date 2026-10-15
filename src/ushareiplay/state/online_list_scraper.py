@@ -1,6 +1,23 @@
+"""在线名单抓取：全部在 `OnlineDrawerManager.drawer_session` 里进出抽屉（#432）。
+
+#428 把这份抽屉的物理生命周期收进了 `OnlineDrawerManager`。本模块随之把自己那份
+「开抽屉 -> 读行 -> 关抽屉」整个换成经由那个会话，于是元素 key、手势、落定时间都不再
+出现在这里。留在引擎这一侧的是**唯一一件事**：把列表一页一页读全，以及决定什么时候
+停。翻页判据是循环决策，适配器只负责把「此刻屏幕上有什么」如实读回来。
+
+三条要守住的约定：
+
+1. **人数在打开之前读**：抽屉一旦盖上来，房间里「N 人在线」那个控件就被挡住了。
+2. **一次抓取一个会话**：旧实现每次抓取自己开关抽屉，因此人数对不上时的重试拿到的是
+   一张**从第一页开始**的列表。列表没法往回滚，这是重试唯一可能奏效的前提，所以重试
+   必须是新会话而不是复用。
+3. **UI 独占锁留在最外层**：`refresh_online_users` 持锁跨越两次抓取（含中间的 0.4s
+   间隔），`drawer_session` 在里面可重入地嵌套。锁一旦在两次抓取之间松开，兜底的
+   `press_back` 就有机会在这半秒里把抽屉当成未知页面关掉。
+"""
+
 import asyncio
 import logging
-import re
 import traceback
 from typing import Optional, Set, Tuple
 
@@ -9,9 +26,20 @@ from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
+#: 最多翻多少页。上限存在的理由是「别把一次刷新变成无上限轮询」：在线人数超过这个量级
+#: 时宁可留给下一次人数变化再抓，也不在这一次里耗下去。
+MAX_SWIPES = 50
+
+#: 连续多少轮没带来新面孔就认为翻不动了。这条是兜底：到底提示读不到时靠它收尾。
+MAX_NO_NEW_ROUNDS = 2
+
+#: 关注关系文案 -> 等级。顺序即优先级，与旧实现的三段 if/elif 逐字一致：
+#: 「密友」文案里同时带「我关注的」字样，先判密友才不会把人降级。
+FOLLOW_STATE_LEVELS = (("密友", 3), ("我关注的", 2), ("关注了我", 1))
+
 
 class OnlineListScraper(Singleton):
-    """从 Soul App 在线用户列表 UI 抓取当前在线用户。"""
+    """从 Soul App 在线用户抽屉抓取当前在线用户。"""
 
     def __init__(self, handler=None):
         self._handler = handler
@@ -28,201 +56,108 @@ class OnlineListScraper(Singleton):
     def handler(self):
         return self._handler
 
-    def _close_online_users_dialog(self) -> None:
-        """关闭在线用户列表弹窗。
+    @property
+    def drawer(self):
+        """在线用户抽屉会话的唯一所有者。
 
-        优先点击专门的关闭按钮（ivClose），避免按抽屉遮罩点击导致无法关闭；
-        若未找到关闭按钮，使用 press_back 作为第一保底；
-        最后保留旧版抽屉遮罩点击作为兜底。
+        单例只查不建（组合根装配的，见 ADR-0009）：这里拿到就去用，拿不到就说明
+        抽屉链路没接线，让刷新整体失败而不是悄悄退回裸 Appium 操作。
         """
-        finder = getattr(self.handler, "element_finder", None)
-        if finder:
-            for key in ('online_users_close', 'close_button'):
-                try:
-                    close_btn = None
-                    if hasattr(finder, "wait_for_element_clickable"):
-                        close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
-                    if not close_btn and hasattr(finder, "try_find_element"):
-                        close_btn = finder.try_find_element(key, log=False)
+        from ushareiplay.managers.online_drawer import OnlineDrawerManager
 
-                    if close_btn:
-                        self.logger.info(f"Close online users dialog via close button ({key})")
-                        close_btn.click()
-                        if hasattr(finder, "wait_for_element_disappear"):
-                            finder.wait_for_element_disappear(key, timeout=2.0, poll_frequency=0.1)
-                        return
-                except Exception as e:
-                    self.logger.debug(f"Error checking/clicking close button {key}: {e}")
-
-        try:
-            # 优先使用 press_back 兜底（Soul 对所有弹窗均响应 back 键退出）
-            key_actions = getattr(self.handler, "key_actions", None)
-            if key_actions and hasattr(key_actions, "press_back"):
-                self.logger.info("Close online users dialog via press_back")
-                key_actions.press_back()
-                return
-        except Exception as e:
-            self.logger.warning(f"Error pressing back to close online users dialog: {e}")
-
-        try:
-            # 兼容旧逻辑：点击抽屉上方遮罩
-            if finder and hasattr(finder, "try_find_element"):
-                bottom_drawer = finder.try_find_element('bottom_drawer', log=False)
-                if bottom_drawer:
-                    self.logger.info('Hide online users dialog via drawer mask click')
-                    self.handler.gesture_handler.click_element_at(bottom_drawer, 0.5, -0.1)
-        except Exception as e:
-            self.logger.warning(f"Failed to hide online users dialog via drawer mask: {e}")
+        return OnlineDrawerManager.instance()
 
     async def _scrape_online_user_names(
         self, target_count: Optional[int] = None
     ) -> Tuple[Optional[Set[str]], Optional[int]]:
-        """打开在线用户列表抽屉，抓取在线用户并返回 (用户名集合, 探测到的人数)。
+        """在一个抽屉会话里抓全在线用户，返回 (用户名集合, 探测到的人数)。
 
-        如果在打开前从 user_count 文本中解析出人数，返回为 detected_count。
+        每次调用自带一个会话，打开、翻页、关闭都在里面收尾；会话打不开时返回
+        `(None, detected_count)`，由调用方决定放弃还是重试。
         """
-        user_count_elem = self.handler.element_finder.try_find_element('user_count', log=False)
-        if not user_count_elem:
-            self.logger.warning("user_count element not found, cannot refresh online users")
-            return None, None
+        drawer = self.drawer
+        driver = drawer.driver
 
-        detected_count = None
-        try:
-            text = getattr(user_count_elem, "text", None)
-            if text:
-                match = re.search(r'(\d+)', text)
-                if match:
-                    detected_count = int(match.group(1))
-        except Exception:
-            pass
+        # 人数必须在抽屉打开**之前**读：抽屉一盖就挡住这个控件了。
+        detected_count = await driver.read_online_count()
 
-        try:
-            user_count_elem.click()
-        except Exception as e:
-            self.logger.warning(f"Failed to click user_count element: {str(e)}")
-            return None, detected_count
+        async with drawer.drawer_session("state:scrape_online_users") as open_error:
+            if open_error:
+                return None, detected_count
+            return await self._collect_online_user_names(driver, target_count), detected_count
 
-        self.logger.info("Clicked user count element")
+    async def _collect_online_user_names(self, driver, target_count: Optional[int]) -> Set[str]:
+        """把已经打开的抽屉一页一页读全，直到某个终止条件成立。
 
-        online_container = self.handler.element_finder.wait_for_element('online_users')
-        if not online_container:
-            self.logger.error("Online users container not found")
-            self._close_online_users_dialog()
-            return None, detected_count
+        五个终止条件各管各的，判定顺序与旧实现一致（先到底提示、再人数达标、再没有
+        新人、最后滑够次数），因此同一条列表仍然在同一处停下：
 
-        try:
-            await asyncio.sleep(0.4)
-        except Exception:
-            pass
-
+        - 到底提示显示了；
+        - 已抓人数达到 `target_count`（够数就收工，后面的人不去翻）；
+        - 连续若干轮没有新面孔（列表不再前进的兜底）；
+        - 已经滑满 `MAX_SWIPES` 页；
+        - 手势滑不动了。
+        """
         all_online_user_names = set()
         prev_size = 0
         no_new_rounds = 0
-        max_no_new_rounds = 2
-        max_swipes = 50
 
-        # 预计算容器内滑动坐标：手指向上滑（列表向上滚动）
-        # 适当缩短滑动距离、放慢滑动时间，避免列表惯性飞滚跳过未渲染项
-        try:
-            loc = online_container.location
-            size = online_container.size
-            left = int(loc["x"])
-            top = int(loc["y"])
-            width = int(size["width"])
-            height = int(size["height"])
-
-            swipe_x = left + int(width * 0.5)
-            start_y = top + int(height * 0.75)
-            end_y = top + int(height * 0.30)
-        except Exception:
-            self.logger.warning("Failed to compute container swipe coordinates, fallback to default swipe")
-            swipe_x = None
-            start_y = None
-            end_y = None
-
-        try:
-            for swipe_idx in range(max_swipes + 1):
-                visible_containers = self.handler.element_finder.find_child_elements(online_container, 'user_container')
-                if visible_containers:
-                    for container in visible_containers:
-                        try:
-                            user_elem = self.handler.element_finder.find_child_element(container, 'online_user')
-                            if not user_elem:
-                                continue
-                            username = user_elem.text
-                            if not username:
-                                continue
-
-                            # 仍用用户名判断唯一性；只对新出现的用户处理关注状态/等级
-                            if username in all_online_user_names:
-                                continue
-                            all_online_user_names.add(username)
-
-                            follow_state_elem = self.handler.element_finder.find_child_element(container, 'follow_state')
-                            follow_state = follow_state_elem.text if follow_state_elem else None
-
-                            if follow_state:
-                                if "密友" in follow_state:
-                                    await UserDAO.update_level_if_lower(username, 3)
-                                elif "我关注的" in follow_state:
-                                    await UserDAO.update_level_if_lower(username, 2)
-                                elif "关注了我" in follow_state:
-                                    await UserDAO.update_level_if_lower(username, 1)
-                            else:
-                                await UserDAO.get_or_create(username)
-                        except Exception:
-                            continue
-
-                # 停止条件 1：到底提示出现
+        for swipe_idx in range(MAX_SWIPES + 1):
+            for row in await driver.visible_member_rows():
+                # 仍用用户名判断唯一性；只对新出现的用户处理关注状态/等级
+                if not row.visible_name or row.visible_name in all_online_user_names:
+                    continue
+                all_online_user_names.add(row.visible_name)
                 try:
-                    no_more = self.handler.element_finder.try_find_element('no_more_data', log=False)
-                    if no_more and no_more.is_displayed():
-                        self.logger.info("Detected no_more_data, stop scrolling online users.")
-                        break
+                    await self._record_new_user(row.visible_name, row.follow_state)
                 except Exception:
-                    pass
+                    # 单个用户建档/定级失败不该中断整页抓取，人名本身已经收下了。
+                    continue
 
-                # 停止条件 2：已收集人数达到目标人数（更快结束）
-                if target_count is not None and len(all_online_user_names) >= target_count:
-                    self.logger.info(f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling.")
-                    break
+            if await driver.is_at_end():
+                self.logger.info("Detected no_more_data, stop scrolling online users.")
+                break
 
-                # 停止条件 3：连续多轮无新增（兜底）
-                if len(all_online_user_names) == prev_size:
-                    no_new_rounds += 1
-                else:
-                    no_new_rounds = 0
-                    prev_size = len(all_online_user_names)
-                if no_new_rounds >= max_no_new_rounds:
-                    self.logger.info(f"No new users found for {no_new_rounds} rounds, stop scrolling.")
-                    break
+            if target_count is not None and len(all_online_user_names) >= target_count:
+                self.logger.info(f"Collected {len(all_online_user_names)}/{target_count} users, stop scrolling.")
+                break
 
-                if swipe_idx >= max_swipes:
-                    self.logger.info("Reached max_swipes, stop scrolling online users.")
-                    break
+            if len(all_online_user_names) == prev_size:
+                no_new_rounds += 1
+            else:
+                no_new_rounds = 0
+                prev_size = len(all_online_user_names)
+            if no_new_rounds >= MAX_NO_NEW_ROUNDS:
+                self.logger.info(f"No new users found for {no_new_rounds} rounds, stop scrolling.")
+                break
 
-                try:
-                    if swipe_x is not None:
-                        # 降低翻页速度：持续时间从 400ms 提高到 800ms
-                        ok = self.handler.gesture_handler.swipe(swipe_x, start_y, swipe_x, end_y, duration_ms=800)
-                        if not ok:
-                            self.logger.warning("Swipe failed, stop scrolling online users.")
-                            break
-                    else:
-                        self.handler.gesture_handler.swipe(500, 1500, 500, 900, 800)
-                except Exception as e:
-                    self.logger.error(f"Error during swipe operation: {str(e)}")
-                    break
+            if swipe_idx >= MAX_SWIPES:
+                self.logger.info("Reached max_swipes, stop scrolling online users.")
+                break
 
-                try:
-                    # 延长翻页后等待时间，确保 RecyclerView 停稳并完成视图渲染
-                    await asyncio.sleep(0.6)
-                except Exception:
-                    pass
-        finally:
-            self._close_online_users_dialog()
+            # 滑完等列表停稳的静默在适配器里（见 POST_SCROLL_SETTLE_SECONDS）：
+            # 等 RecyclerView 的物理时序不该由引擎来记。
+            if not await driver.scroll_container():
+                self.logger.warning("Swipe failed, stop scrolling online users.")
+                break
 
-        return all_online_user_names, detected_count
+        return all_online_user_names
+
+    async def _record_new_user(self, visible_name: str, follow_state: Optional[str]) -> None:
+        """按关注关系给新面孔定级；没有关注关系就先在 DB 里建档。
+
+        名字直接取抽屉上显示的文本，与旧实现一致：这里是既有行为，本 ticket 只把它
+        搬进抽屉会话，不顺手改语义（命名域解析是另外一件事）。
+        """
+        if not follow_state:
+            await UserDAO.get_or_create(visible_name)
+            return
+
+        for marker, level in FOLLOW_STATE_LEVELS:
+            if marker in follow_state:
+                await UserDAO.update_level_if_lower(visible_name, level)
+                return
+        # 关注关系文案三种都不匹配：不猜等级，也不建档（与旧实现同样处理）。
 
     async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
@@ -230,6 +165,8 @@ class OnlineListScraper(Singleton):
         if controller and hasattr(controller, "ui_session"):
             session = controller.ui_session("event:refresh_online_users")
             if hasattr(session, "__aenter__"):
+                # 锁在**两次抓取之外**持有：人数对不上时的间隔期也不能放锁，
+                # 里面的 drawer_session 靠 controller 的可重入语义嵌套。
                 async with session:
                     return await self._do_refresh_online_users(target_count)
         return await self._do_refresh_online_users(target_count)
@@ -259,7 +196,7 @@ class OnlineListScraper(Singleton):
                 except Exception:
                     pass
 
-                # 重试第 2 次抓取
+                # 重试第 2 次抓取：新会话、新列表 —— 上一张已经滑到底，回不去了。
                 user_names_retry, detected_count_retry = await self._scrape_online_user_names(expected_count)
                 if user_names_retry is not None:
                     user_names = user_names_retry
