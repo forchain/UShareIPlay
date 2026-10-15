@@ -16,6 +16,13 @@
 #435 追加的资料卡与私聊那几步同样不是新设计的交互，而是把旧 `UserManager` 的裸
 Appium 调用原样搬进来：点头像的 `y_ratio=0.7`、私聊各步 5 秒、找返回入口 3 秒、以及
 `item_left_back` 之后补一下标题栏返回，都是旧实现里真机调出来的既有值，逐字保留。
+
+#438 追加的送礼那几步同理，也全部照抄旧 `UserManager.send_gift`：点 `send_gift` 进弹窗、
+`wait_for_any_element(['give_gift', 'use_item'])` 判弹窗到没到位、`luck_item` 的文案按
+`x` 拆件数、点「使用」之后 `wait_for_element('confirm_use')` 再 `.click()`（不是坐标点击）。
+**唯一没有搬过来的是那两处 `key_actions.press_back()`**：旧实现在收不掉弹窗时盲按返回，
+收掉的只是最上面那层，底下的资料卡与抽屉照样悬在屏幕上（spec #426 问题陈述 #1）。
+这里改用 `GIFT_POPUP_CLOSE_KEYS` 里的页内 X，收不掉就如实 False 让调用方记警告。
 """
 
 import asyncio
@@ -29,6 +36,15 @@ from ushareiplay.managers.online_drawer.driver import (
     DEFAULT_SETTLE_TIMEOUT,
     END_OF_LIST_KEY,
     ENTRY_KEY,
+    GIFT_ACTION_GIVE,
+    GIFT_ACTION_KEYS,
+    GIFT_ACTION_USE,
+    GIFT_CONFIRM_KEY,
+    GIFT_ENTRY_KEY,
+    GIFT_ITEM_NAME_KEY,
+    GIFT_POPUP_CLOSE_KEYS,
+    GIFT_POPUP_TIMEOUT,
+    GIFT_SOUL_POWER_KEY,
     ONLINE_CONTAINER_KEY,
     POST_SCROLL_SETTLE_SECONDS,
     PRIVATE_CHAT_BUTTON_KEY,
@@ -452,6 +468,202 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
         except Exception as e:
             self._log_warning(f"点击标题栏返回失败: {e}")
             return False
+
+    # ------------------------------------------------------------------
+    # 送礼（#438）
+    # ------------------------------------------------------------------
+
+    async def open_gift_entry(self) -> bool:
+        finder = self._finder()
+        gesture = self._gesture()
+        if finder is None or gesture is None:
+            return False
+
+        entry = finder.wait_for_element_clickable(GIFT_ENTRY_KEY, timeout=GIFT_POPUP_TIMEOUT)
+        if not entry:
+            self._log_warning("资料卡上没有送礼物入口")
+            return False
+        try:
+            gesture.click_element_at(entry)
+        except Exception as e:
+            self._log_warning(f"点击送礼物入口失败: {e}")
+            return False
+        return True
+
+    async def gift_popup_action(self) -> Optional[str]:
+        """等「赠送」或「使用」出现，报出是哪一个；两个都没有就是弹窗没起来。"""
+        finder = self._finder()
+        if finder is None or not hasattr(finder, "wait_for_any_element"):
+            return None
+        try:
+            key, _element = finder.wait_for_any_element(
+                list(GIFT_ACTION_KEYS), timeout=GIFT_POPUP_TIMEOUT
+            )
+        except Exception as e:
+            self._log_warning(f"等送礼弹窗出错: {e}")
+            return None
+        if key not in (GIFT_ACTION_GIVE, GIFT_ACTION_USE):
+            return None
+        return key
+
+    async def read_gift_item_name(self) -> Optional[str]:
+        finder = self._finder()
+        if finder is None:
+            return None
+        try:
+            item = finder.try_find_element(GIFT_ITEM_NAME_KEY, log=False)
+        except Exception as e:
+            self._log_warning(f"读选中礼物名字出错: {e}")
+            return None
+        if not item:
+            return None
+        raw = item.text or ""
+        # 「名字x件数」是 App 的文案格式，件数不该出现在「XX 送你啦」里，因此在这里
+        # 就拆掉；拆不掉就整段原样返回，与旧实现的 split 逻辑逐字等价。
+        parts = raw.split("x")
+        return parts[0] if len(parts) > 1 else raw
+
+    async def read_gift_soul_power(self) -> Optional[str]:
+        finder = self._finder()
+        if finder is None:
+            return None
+        try:
+            power = finder.try_find_element(GIFT_SOUL_POWER_KEY, log=False)
+        except Exception:
+            # 灵魂力只是日志里的一行读数，读不到不该让一次送礼失败。
+            return None
+        return power.text if power else None
+
+    async def click_gift_item(self) -> bool:
+        """点选中的礼物本身。
+
+        沿用旧实现对 `luck_item` 的读法：`try_find_element`（弹窗里的静态文本，等它等于
+        白等默认超时），点击走坐标手势。
+        """
+        finder = self._finder()
+        gesture = self._gesture()
+        if finder is None or gesture is None:
+            return False
+        try:
+            item = finder.try_find_element(GIFT_ITEM_NAME_KEY, log=False)
+        except Exception as e:
+            self._log_warning(f"找选中礼物 {GIFT_ITEM_NAME_KEY} 出错: {e}")
+            return False
+        if not item:
+            return False
+        try:
+            return bool(gesture.click_element_at(item))
+        except Exception as e:
+            self._log_warning(f"点击选中礼物失败: {e}")
+            return False
+
+    async def click_gift_action(self) -> bool:
+        """点弹窗上此刻存在的那个动作按钮。
+
+        两个按钮互斥，所以先找到一个就点它；找不到也不记「找不到赠送控件」这种假警告 ——
+        走背包道具路径时 `give_gift` 本来就不渲染。
+        """
+        finder = self._finder()
+        gesture = self._gesture()
+        if finder is None or gesture is None:
+            return False
+        for key in GIFT_ACTION_KEYS:
+            try:
+                control = finder.try_find_element(key, log=False)
+            except Exception:
+                continue
+            if not control:
+                continue
+            try:
+                return bool(gesture.click_element_at(control))
+            except Exception as e:
+                self._log_warning(f"点击 {key} 失败: {e}")
+                return False
+        return False
+
+    async def confirm_gift_use(self) -> bool:
+        """等确认框出来并点掉。
+
+        沿用旧实现的两步原样：`wait_for_element('confirm_use')` 等它弹出来，再对它自己
+        `.click()`（不是坐标点击 —— 确认框是系统弹出的对话框，按钮位置已经由系统定死）。
+        """
+        finder = self._finder()
+        if finder is None:
+            return False
+        try:
+            confirm = finder.wait_for_element(GIFT_CONFIRM_KEY, timeout=GIFT_POPUP_TIMEOUT)
+        except Exception as e:
+            self._log_warning(f"等确认使用按钮出错: {e}")
+            return False
+        if not confirm:
+            return False
+        try:
+            confirm.click()
+        except Exception as e:
+            self._log_warning(f"点击确认使用按钮失败: {e}")
+            return False
+        return True
+
+    async def dismiss_gift_popup(self) -> bool:
+        finder = self._finder()
+        gesture = self._gesture()
+        if finder is None or gesture is None:
+            return False
+        marker = self._gift_popup_marker()
+        if marker is None:
+            # 幂等：弹窗本来就没开着，这一步已经完成了。
+            return True
+
+        for key in GIFT_POPUP_CLOSE_KEYS:
+            try:
+                close_btn = None
+                if hasattr(finder, "wait_for_element_clickable"):
+                    close_btn = finder.wait_for_element_clickable(key, timeout=1.5)
+                if not close_btn and hasattr(finder, "try_find_element"):
+                    close_btn = finder.try_find_element(key, log=False)
+                if not close_btn:
+                    continue
+                if not gesture.click_element_at(close_btn):
+                    self._log_warning(f"点击送礼弹窗关闭按钮 {key} 失败")
+                    continue
+                # 关掉了不能就算数：按弹窗自己的动作按钮确认它真的走了，否则调用方会把
+                # 一张还悬着的弹窗当成已经收拾干净。
+                if hasattr(finder, "wait_for_element_disappear"):
+                    finder.wait_for_element_disappear(
+                        marker, timeout=GIFT_POPUP_TIMEOUT, poll_frequency=0.1
+                    )
+                if self._gift_popup_marker() is None:
+                    return True
+            except Exception as e:
+                self._log_warning(f"收送礼弹窗时 {key} 出错: {e}")
+        return False
+
+    def _gift_popup_marker(self) -> Optional[str]:
+        """弹窗此刻盖着的话报出它的标记 key（赠送或使用），没盖着返回 None。
+
+        弹窗没有自己的容器控件，能证明「它还在」的就是那两个互斥的动作按钮 —— 与旧实现
+        用 `wait_for_any_element(['give_gift', 'use_item'])` 判断弹窗到没到位同源。
+        """
+        finder = self._finder()
+        if finder is None:
+            return None
+        for key in GIFT_ACTION_KEYS:
+            try:
+                if finder.try_find_element(key, log=False):
+                    return key
+            except Exception:
+                continue
+        return None
+
+    def _gesture(self):
+        """手势处理器缺席就退化成「这一步做不了」，而不是抛 AttributeError。"""
+        handler = self._handler
+        if handler is None:
+            return None
+        gesture = getattr(handler, "gesture_handler", None)
+        if gesture is None or not hasattr(gesture, "click_element_at"):
+            return None
+        return gesture
 
     def _find_row_element(self, finder, visible_username: str):
         """在当前已渲染的行里找昵称匹配的那一行，返回**行元素**本身。

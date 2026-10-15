@@ -32,6 +32,13 @@
 `room_entry_key` / `room_return_fails`（回房间会落在哪个入口）描述。这样「每条失败
 路径都一定回到房间」这类断言，考的是 `UserManager` 自己的编排，而不是任何 UI 时序。
 **注意这里同样没有 `card:back`** —— 端口里根本没有盲按返回这个原语。
+
+#438 再追加盖在资料卡之上的「送礼弹窗」：弹窗状态由 `gift_popup_open` /
+`confirm_pending` 描述，弹窗内容由 `gift_action_key`（商店礼物走赠送、背包道具走使用）
+与 `gift_name` / `gift_soul_power` 描述，`gift_steps_fails`（哪一步会失败，见 `GIFT_STEPS`）
+与 `dismiss_gift_fails` 让每一条异常安全路径都能被确定性地走到。于是「每条路径都把弹窗
+和抽屉收干净」这类断言，考的是 `UserManager` 的收尾编排。
+**这里同样没有 `gift:back`** —— 收不掉的弹窗只允许保持原状并记警告。
 """
 
 from typing import Optional
@@ -39,12 +46,17 @@ from typing import Optional
 from ushareiplay.managers.online_drawer.driver import (
     DEFAULT_SCROLL_DURATION_MS,
     DEFAULT_SETTLE_TIMEOUT,
+    GIFT_ACTION_GIVE,
+    GIFT_ACTION_USE,
     MemberRow,
     OnlineDrawerDriverPort,
 )
 
 #: 私聊流程的步骤顺序。`chat_steps_fails` 里出现哪一个，那一步就失败。
 CHAT_STEPS = ("home", "chat_page", "type", "submit")
+
+#: 送礼流程的步骤顺序。`gift_steps_fails` 里出现哪一个，那一步就失败。
+GIFT_STEPS = ("entry", "popup", "item", "action", "confirm")
 
 
 class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
@@ -67,12 +79,21 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         chat_steps_fails: 私聊流程里会失败的步骤，取值见 `CHAT_STEPS`。
         room_entry_key: 回房间时会命中的入口 key，默认 `private_room_entry`。
         room_return_fails: 回房间这一步失败（三个入口都读不到）。
+        gift_action_key: 送礼弹窗上此刻是「赠送」还是「使用」，取值见 `GIFT_ACTION_*`。
+        gift_name: 弹窗里当前选中礼物的原始文案（可以带 `x<件数>` 后缀）。
+        gift_soul_power: 灵魂力读数，`None` 表示那个控件没渲染。
+        gift_steps_fails: 送礼流程里会失败的步骤，取值见 `GIFT_STEPS`。
+        dismiss_gift_fails: 送礼弹窗的页内关闭按钮点不到。
         journal: 可选的共享事件流。每次动作追加一条 `drawer:open` /
             `drawer:settle` / `drawer:rows:<行数>` / `drawer:scroll` /
             `drawer:find:<昵称>` / `drawer:close` / `card:open:<昵称>` /
             `card:dismiss` / `chat:home` / `chat:page` / `chat:type` /
-            `chat:submit` / `room:return`，用来断言动作的先后顺序。
-            **注意：这里没有 `drawer:back`** —— 端口里根本没有盲按返回这个原语。
+            `chat:submit` / `room:return` / `gift:entry` / `gift:popup:<动作>` /
+            `gift:item:<显示名>` / `gift:power:<读数>` / `gift:click:item` /
+            `gift:click:action:<动作>` / `gift:confirm` / `gift:dismiss`，
+            用来断言动作的先后顺序。
+            **注意：这里没有 `drawer:back`，也没有 `gift:back`** —— 端口里根本没有盲按
+            返回这个原语。
 
     Attributes:
         scroll_offset: 已经滑过的行数，即当前窗口的起点。
@@ -83,6 +104,9 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         chat_reached: 已经成功走到哪一步私聊。
         typed_messages: 提交出去的文字，按顺序。
         room_returns: 回房间的次数与每次落在哪个入口。
+        gift_popup_open: 送礼弹窗此刻是否还盖在资料卡上。
+        confirm_pending: 「使用」之后那道确认框是否正等着被点。
+        gift_item_clicks / gift_action_clicks: 被点过的礼物与动作按钮，按顺序。
     """
 
     def __init__(
@@ -103,6 +127,11 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         chat_steps_fails=(),
         room_entry_key="private_room_entry",
         room_return_fails=False,
+        gift_action_key=GIFT_ACTION_GIVE,
+        gift_name="初级福袋x2",
+        gift_soul_power=None,
+        gift_steps_fails=(),
+        dismiss_gift_fails=False,
         journal=None,
     ):
         self.members = [self._as_member(m) for m in members]
@@ -120,6 +149,11 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.chat_steps_fails = tuple(chat_steps_fails)
         self.room_entry_key = room_entry_key
         self.room_return_fails = room_return_fails
+        self.gift_action_key = gift_action_key
+        self.gift_name = gift_name
+        self.gift_soul_power = gift_soul_power
+        self.gift_steps_fails = tuple(gift_steps_fails)
+        self.dismiss_gift_fails = dismiss_gift_fails
         self.journal = journal
 
         self.scroll_offset = 0
@@ -133,6 +167,10 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.chat_reached = None
         self.typed_messages = []
         self.room_returns = []
+        self.gift_popup_open = False
+        self.confirm_pending = False
+        self.gift_item_clicks = []
+        self.gift_action_clicks = []
 
     async def is_open(self) -> bool:
         if self.container_missing:
@@ -294,6 +332,85 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
             return False
         self.chat_reached = step
         self._record(f"chat:{step}")
+        return True
+
+    # ------------------------------------------------------------------
+    # 送礼（#438）
+    # ------------------------------------------------------------------
+
+    async def open_gift_entry(self) -> bool:
+        if not self.card_open or "entry" in self.gift_steps_fails:
+            self._record("gift:entry:fails")
+            return False
+        self.gift_popup_open = True
+        self.confirm_pending = False
+        self._record("gift:entry")
+        return True
+
+    async def gift_popup_action(self) -> Optional[str]:
+        if not self.gift_popup_open or "popup" in self.gift_steps_fails:
+            self._record("gift:popup:fails")
+            return None
+        self._record(f"gift:popup:{self.gift_action_key}")
+        return self.gift_action_key
+
+    async def read_gift_item_name(self) -> Optional[str]:
+        if not self.gift_popup_open or "item" in self.gift_steps_fails:
+            self._record("gift:item:fails")
+            return None
+        # 与生产端同形：`高级福袋x2` 的件数后缀在这里就摘掉，读回去的是显示名。
+        parts = self.gift_name.split("x")
+        name = parts[0] if len(parts) > 1 else self.gift_name
+        self._record(f"gift:item:{name}")
+        return name
+
+    async def read_gift_soul_power(self) -> Optional[str]:
+        self._record(f"gift:power:{self.gift_soul_power}")
+        return self.gift_soul_power
+
+    async def click_gift_item(self) -> bool:
+        if not self.gift_popup_open:
+            self._record("gift:click:item:fails")
+            return False
+        self.gift_item_clicks.append(self.gift_name)
+        # 小黄鸭点一下即送，弹窗自己就走了。
+        self.gift_popup_open = False
+        self._record("gift:click:item")
+        return True
+
+    async def click_gift_action(self) -> bool:
+        if not self.gift_popup_open or "action" in self.gift_steps_fails:
+            self._record("gift:click:action:fails")
+            return False
+        self.gift_action_clicks.append(self.gift_action_key)
+        self._record(f"gift:click:action:{self.gift_action_key}")
+        if self.gift_action_key == GIFT_ACTION_USE:
+            # 背包道具点「使用」之后弹窗还在，前头多一道确认框。
+            self.confirm_pending = True
+        else:
+            self.gift_popup_open = False
+        return True
+
+    async def confirm_gift_use(self) -> bool:
+        if not self.confirm_pending or "confirm" in self.gift_steps_fails:
+            self._record("gift:confirm:fails")
+            return False
+        self.confirm_pending = False
+        self.gift_popup_open = False
+        self._record("gift:confirm")
+        return True
+
+    async def dismiss_gift_popup(self) -> bool:
+        if not self.gift_popup_open:
+            # 幂等：弹窗本来就没开着，「收好了」与「没有弹窗」是同一件事。
+            self._record("gift:dismiss:none")
+            return True
+        if self.dismiss_gift_fails:
+            self._record("gift:dismiss:fails")
+            return False
+        self.gift_popup_open = False
+        self.confirm_pending = False
+        self._record("gift:dismiss")
         return True
 
     def visible_members(self):

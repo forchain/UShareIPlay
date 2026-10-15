@@ -192,6 +192,26 @@ class OnlineDrawerManager(Singleton):
             # 收尾失败不能让调用方的正常结果变成异常（同 `_ensure_closed` 的理由）。
             self.logger.warning(f"[online_drawer] 收起资料卡时出错: {e}")
 
+    async def dismiss_gift_popup(self) -> None:
+        """交接的另一半之一：把还盖在资料卡上的送礼弹窗收掉。
+
+        与 `close_profile_card` 同一套规矩 —— 持 UI 独占锁、只在弹窗真的悬着时才动手、
+        收不掉就记一条警告并保持原状，绝不盲按返回。送礼流程（#438）用它替掉旧实现那两
+        次 `press_back`：盲按返回会把弹窗收掉，顺手把资料卡与抽屉留在屏幕上。
+        """
+        try:
+            async with self._ui_session("online_drawer:dismiss_gift_popup"):
+                driver = self._require_driver()
+                if not await driver.dismiss_gift_popup():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过页内关闭键收起送礼弹窗，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 送礼弹窗已收起")
+        except Exception as e:
+            # 收尾失败不能让调用方的正常结果变成异常（同 `close_profile_card` 的理由）。
+            self.logger.warning(f"[online_drawer] 收送礼弹窗时出错: {e}")
+
     @asynccontextmanager
     async def _ui_session(self, reason: str):
         """持有 UI 独占锁。

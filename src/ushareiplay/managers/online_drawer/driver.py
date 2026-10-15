@@ -94,6 +94,51 @@ ROOM_ENTRY_KEYS = ('private_room_entry', 'floating_entry', 'item_left_back')
 #: 点了 `item_left_back` 之后要补的那一下标题栏返回。
 TITLEBAR_BACK_KEY = 'titlebar_back_ivbtn'
 
+# ---------------------------------------------------------------------------
+# 送礼（#438）
+# ---------------------------------------------------------------------------
+#
+# 送礼弹窗是盖在资料卡**之上**的一层弹窗：先点资料卡上的「送礼物」，弹窗才出现。
+# 因此整条链路是 抽屉 -> 资料卡 -> 送礼弹窗 ->（小黄鸭即时送 或 赠送/使用 + 确认），
+# 而收尾要按**相反的顺序**分层收：先收弹窗，再收卡片（收卡片时抽屉一起收）。
+#
+# 与 #435 一样，这里不提供盲按返回：旧实现收不了弹窗时就 `press_back`，把那层资料卡
+# 与抽屉留在屏幕上，下一次盲按返回会把它们连同派对房间一起带走（问题陈述 #1）。
+
+#: 资料卡上的「送礼物」入口。
+GIFT_ENTRY_KEY = 'send_gift'
+
+#: 送礼弹窗上两个互斥的动作按钮：商店礼物点「赠送」，背包道具点「使用」。
+#: 两者只会出现一个，这个事实本身就是弹窗是否已经起来的判据。
+GIFT_ACTION_KEYS = ('give_gift', 'use_item')
+
+#: `gift_popup_action` 的两个取值。用常量而不是裸字符串：这两个 key 同时出现在端口
+#: 签名与引擎的分支判断里，共用一份定义才不会在 App 改 key 时漏改一处。
+GIFT_ACTION_GIVE = 'give_gift'
+GIFT_ACTION_USE = 'use_item'
+
+#: 弹窗里当前选中礼物的名字（初级/中级/高级福袋，或背包为空时的小黄鸭）。
+GIFT_ITEM_NAME_KEY = 'luck_item'
+
+#: 选中礼物旁的灵魂力读数（`+12灵魂力`）。只进日志，因此读不到不算失败。
+GIFT_SOUL_POWER_KEY = 'soul_power'
+
+#: 背包道具点「使用」之后那道确认框里的「确认」。
+GIFT_CONFIRM_KEY = 'confirm_use'
+
+#: 送礼弹窗自己的页内关闭键组，按顺序试完为止 —— 没有第三个手势，也没有盲按返回。
+#:
+#: `close_button_1`（`iv_close`）是「我送给 TA」那类送礼弹窗自己的 X；`close_button`
+#: （`ivClose`）是资料卡与抽屉共用的那个 X，也是 #435 收资料卡用的手势。两个都点不到
+#: 就返回 False 让调用方记警告，保持原状等下一轮恢复 —— 屏幕上多一层弹窗只是难看，
+#: 盲按返回退出派对房间才是事故。
+GIFT_POPUP_CLOSE_KEYS = ('close_button_1', 'close_button')
+
+#: 送礼弹窗各步的等待上限（秒）：等入口可点、等弹窗起来、等确认框出现、等弹窗消失。
+#: 沿用旧实现里 `wait_for_element_clickable` / `wait_for_any_element` / `wait_for_element`
+#: 的默认 10 秒，逐字保留而不是收紧 —— 真机上这些等待本来就踩过线。
+GIFT_POPUP_TIMEOUT = 10
+
 #: 头像点击的纵向比例。沿用旧实现的 0.7：卡片上的头像是圆图，点正中会落在圆外的空白
 #: 边距里 —— 这是真机调出来的值，迁移时逐字保留，不顺手改成 0.5。
 AVATAR_CLICK_Y_RATIO = 0.7
@@ -295,5 +340,80 @@ class OnlineDrawerDriverPort(ABC):
         Returns:
             回到房间了返回 True；三个入口都读不到、或 `item_left_back` 之后没等到标题栏
             返回，返回 False。
+        """
+
+    # ------------------------------------------------------------------
+    # 送礼（#438）
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def open_gift_entry(self) -> bool:
+        """点资料卡上的「送礼物」，把送礼弹窗叫起来。
+
+        只负责「点下去」：弹窗起没起来由下一次 `gift_popup_action` 回答，因为那两件事
+        在旧实现里是两条不同的报错文案，合成一步会把聊天气泡里的话改掉。
+
+        Returns:
+            点了返回 True；资料卡上没有这个入口（本来就没渲染）返回 False。
+        """
+
+    @abstractmethod
+    async def gift_popup_action(self) -> Optional[str]:
+        """送礼弹窗此刻起来了没有，起来了是哪一个动作按钮。
+
+        「赠送」与「使用」互斥：商店礼物点前者，背包道具点后者，而旧实现正是靠
+        `wait_for_any_element(['give_gift', 'use_item'])` 判断弹窗到没到位。
+
+        Returns:
+            `GIFT_ACTION_GIVE` / `GIFT_ACTION_USE` 之一；弹窗没出现或超时返回 None。
+        """
+
+    @abstractmethod
+    async def read_gift_item_name(self) -> Optional[str]:
+        """读弹窗里当前选中礼物的**显示名**。
+
+        「显示名」是指已经去掉件数后缀的那个名字：`高级福袋x2` 读回来是 `高级福袋`。
+        拆分留在这里是因为「名字后面跟着一个 x 和件数」是 App 的文案格式，而这份显示名
+        会原样进入聊天气泡里的「XX 送你啦」，由引擎再拼一次就会在两处各留一份格式知识。
+
+        Returns:
+            读不到（背包里没有可用礼物、控件没渲染）返回 None。
+        """
+
+    @abstractmethod
+    async def read_gift_soul_power(self) -> Optional[str]:
+        """读选中礼物旁的灵魂力读数（如 `+12灵魂力`），只进日志。
+
+        读不到返回 None 而不是 `'0'`：兜底的 `'0'` 是旧实现拼日志时用的字面量，留在
+        引擎里拼日志才是它的原处，端口不必替调用方编一个读数。
+        """
+
+    @abstractmethod
+    async def click_gift_item(self) -> bool:
+        """点弹窗里当前选中的礼物本身。
+
+        小黄鸭（背包为空时的兜底礼物）点一下即送出，不再需要「赠送」那一步，所以它
+        与 `click_gift_action` 是两个手势而不是带开关的一个。
+        """
+
+    @abstractmethod
+    async def click_gift_action(self) -> bool:
+        """点弹窗上此刻存在的那个动作按钮（赠送或使用）。
+
+        不收参数：按钮是哪一个由 `gift_popup_action` 报给引擎，这里只负责点当下那个 ——
+        让引擎回传一个元素 key 再点它，等于把 App 的控件词汇泄进引擎层。
+        """
+
+    @abstractmethod
+    async def confirm_gift_use(self) -> bool:
+        """等「使用」之后那道确认框出现并点掉「确认」。"""
+
+    @abstractmethod
+    async def dismiss_gift_popup(self) -> bool:
+        """把还盖在资料卡上的送礼弹窗收掉，点的是 `GIFT_POPUP_CLOSE_KEYS` 里的页内 X。
+
+        弹窗本来就没开着时直接返回 True（幂等）：「没有弹窗」与「收好了」是同一件事，
+        调用方不必先问一遍。收不掉就返回 False 让**调用方**记警告 —— 这里同样没有第二条
+        兜底手势，见模块开头的「为什么这个端口里没有 press_back」。
         """
 
