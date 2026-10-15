@@ -449,6 +449,7 @@ class AppController(Singleton):
             from ushareiplay.managers.online_drawer import OnlineDrawerManager
             from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
+            from ushareiplay.managers.user_event_hooks import UserEventHooks
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             from ushareiplay.state.playlist_state import PlaylistState
@@ -505,6 +506,9 @@ class AppController(Singleton):
             )
             AdminManager.initialize(self.soul_handler)
             KeywordManager.initialize(self.soul_handler)
+            # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
+            # 这一个模块里，各命令文件只是薄适配器（#422）。
+            UserEventHooks.initialize(self.soul_handler)
             from ushareiplay.managers.memory_manager import MemoryManager
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()

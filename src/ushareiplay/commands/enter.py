@@ -1,7 +1,7 @@
-import traceback
-import shlex
+"""`:enter` 命令：用户事件钩子深度模块的薄适配器（#422 示踪弹）。"""
+
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.dal.enter_dao import EnterDao
+from ushareiplay.managers.user_event_hooks import ENTER, UserEventHooks
 
 
 class EnterCommand(BaseCommand):
@@ -9,124 +9,16 @@ class EnterCommand(BaseCommand):
     error_message = '处理进入命令时出错'
 
     async def do_process(self, message_info, parameters):
-        """Process enter command
-
-        Args:
-            message_info: MessageInfo object
-            parameters: List of parameters
-
-        Returns:
-            dict: Result with success message or error
-        """
-        # Parse parameters using shlex to handle quoted strings
-        try:
-            # Get original message content to properly parse quoted strings
-            original_content = message_info.content
-            # Remove the command prefix ":enter"
-            parts = original_content.split(None, 1)
-            if len(parts) < 2:
-                return {'error': '缺少参数。使用: :enter [add|del|list|clear]'}
-
-            # Parse parameters
-            params = shlex.split(parts[1])
-        except ValueError as e:
-            return {'error': '参数格式错误，带空格的参数请使用引号包裹'}
-
-        if not params:
-            return {'error': '缺少参数。使用: :enter [add|del|list|clear]'}
-
-        operation = params[0]
-        username = message_info.nickname
-
-        # Handle different operations
-        if operation == 'add':
-            if len(params) < 2:
-                return {'error': '缺少命令内容。使用: :enter add "命令内容"'}
-
-            command = params[1]
-
-            if not command.startswith((':', '：', '/', '／')):
-                return {'error': '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
-
-            # Add to database using DAO
-            await EnterDao.create(username, command)
-
-            return {'message': f'已添加进入命令: {command}'}
-
-        elif operation == 'del':
-            if len(params) < 2:
-                return {'error': '缺少命令ID。使用: :enter del <id>'}
-
-            try:
-                command_id = int(params[1])
-            except ValueError:
-                return {'error': '命令ID必须是数字'}
-
-            # Delete from database using DAO
-            deleted = await EnterDao.delete_by_id(command_id)
-
-            if deleted:
-                return {'message': f'已删除命令 ID: {command_id}'}
-            else:
-                return {'error': f'未找到命令 ID: {command_id}'}
-
-        elif operation == 'list':
-            # Get all commands for this user using DAO
-            commands = await EnterDao.get_by_username(username)
-
-            if not commands:
-                return {'message': '您还没有设置任何进入命令'}
-
-            # Format the list
-            message_lines = ['您的进入命令列表:']
-            for cmd in commands:
-                message_lines.append(f'  [{cmd.id}] {cmd.command}')
-
-            return {'message': '\n'.join(message_lines)}
-
-        elif operation == 'clear':
-            # Delete all commands for this user using DAO
-            count = await EnterDao.delete_all_by_username(username)
-
-            if count > 0:
-                return {'message': f'已清除 {count} 个进入命令'}
-            else:
-                return {'message': '您没有任何进入命令需要清除'}
-
-        else:
-            return {'error': f'未知操作: {operation}。使用: :enter [add|del|list|clear]'}
+        """配置进入房间时要执行的命令。解析与渲染都在 UserEventHooks 内部。"""
+        return await UserEventHooks.instance().execute_crud(
+            ENTER, message_info.nickname, message_info.content
+        )
 
     async def user_enter(self, username: str):
-        """Called when a user enters the party
+        """有人进入派对：把他配置的进入命令投进队列。
 
-        Args:
-            username: Username of the user who entered
+        方法保留：它是命令层的事件接缝，覆盖 `BaseCommand.user_enter` 的 no-op 契约，
+        测试也直接调它断言入队结果。生产触发不再走按属性名分发（#436 已删）——
+        `CommandManager.notify_user_enter` 直接调 `UserEventHooks.fire`。
         """
-        try:
-            # Get all enter commands for this user using DAO
-            commands = await EnterDao.get_by_username(username)
-
-            if not commands:
-                return
-
-            self.handler.logger.info(f"User {username} entered, executing {len(commands)} enter command(s)")
-
-            # Execute each command
-            from ushareiplay.core.message_queue import MessageQueue
-            from ushareiplay.models.message_info import MessageInfo
-
-            message_queue = MessageQueue.instance()
-
-            for cmd in commands:
-                # Create MessageInfo object
-                message_info = MessageInfo(
-                    content=cmd.command,
-                    nickname=username
-                )
-
-                # Put message in queue for processing
-                await message_queue.put_message(message_info)
-                self.handler.logger.info(f"Queued enter command [{cmd.id}] for {username}: {cmd.command}")
-
-        except Exception as e:
-            self.handler.log_error(f"Error in enter user_enter: {traceback.format_exc()}")
+        await UserEventHooks.instance().fire(ENTER, username)

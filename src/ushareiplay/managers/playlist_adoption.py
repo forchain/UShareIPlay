@@ -113,9 +113,9 @@ class PlaylistAdoption(Singleton):
 
         Args:
             requester: 触发切歌的用户名，写入 `player_name`；None/空表示本次不变更播放者
-            mode: 播放类型，写入 `list_mode`（favorites/radar/album/singer/playlist/radio）
+            mode: 播放类型，写入 `list_mode`（favorites/radar/album/singer/playlist/radio/song）
             title: 房间标题；空则不写（避免用空串覆盖正在生效的标题）
-            topic: 房间话题原始文案（播放队列行或歌曲名），经 `primary_topic` 归一化
+            topic: 房间话题原始文案（播放队列行或歌曲名），经 `primary_topic` 归一化；单曲模式（song）不修改话题
             playlist: 完整歌单名，写入 `current_playlist_name`；None 表示本次不变更
 
         Returns:
@@ -139,12 +139,13 @@ class PlaylistAdoption(Singleton):
             if isinstance(title_result, dict) and "error" in title_result:
                 return title_result
 
-        # 3. 房间话题
-        topic_value = primary_topic(topic)
-        if topic_value:
-            topic_result = self._room_profile_manager.set_topic(topic_value)
-            if isinstance(topic_result, dict) and "error" in topic_result:
-                return topic_result
+        # 3. 房间话题（单曲播放不修改房间话题）
+        if mode != "song":
+            topic_value = primary_topic(topic)
+            if topic_value:
+                topic_result = self._room_profile_manager.set_topic(topic_value)
+                if isinstance(topic_result, dict) and "error" in topic_result:
+                    return topic_result
 
         # 标题/话题各自的落地日志由 RoomProfileManager 给出，这里不再重复打日志
         #（也就不必依赖任何一个 logger）。

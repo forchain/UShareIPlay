@@ -11,6 +11,7 @@ from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.timer_manager import TimerManager
+from ushareiplay.managers.user_event_hooks import UserEventHooks
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +29,7 @@ def initialized_test_singletons():
         PlaylistAdoption,
         RoomProfileManager,
         TimerManager,
+        UserEventHooks,
     ):
         singleton_class.initialize()
 

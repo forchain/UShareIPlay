@@ -351,6 +351,15 @@ async def test_play_adopts_the_room_topic_after_playback_is_confirmed(initialize
     assert engine.room_profile.topics == ["起风了"]
 
 
+async def test_play_song_never_adopts_room_topic(initialized_test_singletons):
+    """单曲点播 (:play <song>) 只放单曲，不得更改房间话题。"""
+    engine = _build_engine()
+
+    await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+
+    assert engine.room_profile.topics == []
+
+
 async def test_play_prefers_the_topic_observed_in_the_ui_over_the_derived_one(
     initialized_test_singletons,
 ):
@@ -411,17 +420,24 @@ async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
     initialized_test_singletons,
 ):
     """歌已经在响时，回复必须是歌 —— 房间同步失败只该进日志。"""
-    engine = _build_engine()
+    engine = _build_engine(
+        driver=InMemoryMusicUIDriver(
+            tracks={PlaybackMode.FAVORITES: PlaybackTrack("青花瓷", "song-歌手", "")}
+        )
+    )
 
     def _boom(_topic):
         return {"error": "Failed to change topic"}
 
     engine.room_profile.set_topic = _boom
 
-    result = await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+    result = await engine.manager.play(
+        PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明", room_title="O Station")
+    )
 
     assert result.started
     assert result.track.song == "青花瓷"
+    assert result.error == "Failed to change topic"
     assert result.as_response() == {
         "song": "青花瓷",
         "singer": "song-歌手",

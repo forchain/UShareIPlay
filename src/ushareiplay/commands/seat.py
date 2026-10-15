@@ -1,4 +1,3 @@
-import traceback
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.seat_manager import SeatManager
 
@@ -95,28 +94,3 @@ class SeatCommand(BaseCommand):
             return {'error': 'Invalid command. Use: :seat 4 [seat_number]'}
         else:
             return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]|4 [seat_number]]'}
-
-    async def user_enter(self, username: str):
-        """Called when a user enters the party"""
-        try:
-            if RoomState.in_guest_room():
-                return
-            # Check seats when user enters, passing the username
-            await SeatManager.instance().check_seats_on_entry(username)
-        except Exception as e:
-            self.handler.log_error(f"Error checking seats on user enter: {traceback.format_exc()}")
-
-    async def user_return(self, username: str):
-        """Called when a user returns to the party"""
-        try:
-            if RoomState.in_guest_room():
-                return
-            # Check seats when user returns, passing the username
-            await SeatManager.instance().check_seats_on_entry(username)
-        except Exception as e:
-            self.handler.log_error(f"Error checking seats on user return: {traceback.format_exc()}")
-
-    def update(self):
-        """Update method - focus count monitoring has been migrated to event system"""
-        # 专注数监控已迁移到事件系统，不再需要手动调用
-        pass
