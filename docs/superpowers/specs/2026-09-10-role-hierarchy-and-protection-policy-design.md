@@ -83,8 +83,32 @@ Currently, administrator names (`{"Joyer", "Timer", "Outlier", "Chainer", "Conso
        (favorites / radar / playlist / singer / album / radio) are. Unknown/missing mode stays
        protected: the exemption requires knowing that the current playback is a single song.
     2. **Does the caller have the authority to switch?** The role matrix above, unchanged.
-  - Consequence: the role matrix is only consulted for playlist-like playback, so no rule in it
-    loosens or tightens; a single-song request still cannot interrupt an attendee's playlist.
+  - Consequence (as amended on 2026-10-16 below): the role matrix is only consulted for
+    playlist-like playback, so no rule in it loosens or tightens.
+
+  **Amendment (2026-10-16) — the exemption was only applied to one side of the question.**
+  The 10-15 fix made single-song playback *unable to lock* the room, but left it still *locked
+  out* by someone else's playlist: `guard_switch()` judged the currently adopted `list_mode`
+  only, never the incoming playback intent, so `MusicManager.play()` asked the role matrix even
+  for `:play <song>`. Observed 2026-10-16 23:13: 不约儿童 was playing a playlist, and 石碘's
+  `:play Love The Way You Lie` was answered with "不约儿童 正在播放歌单，请等待". The module's
+  own invariant for `UNPROTECTED_PLAYBACK_MODES` already said a single request "should neither be
+  blocked by the guardian nor lock the room with one request" — only the second half was implemented.
+  - `PlaylistAdoption.guard_switch(caller, incoming_mode)` now asks three questions in order:
+    1. **Is the current playback protected at all?** (unchanged, reads `list_mode`)
+    2. **Is the incoming request a single song?** Same judgement, same
+       `UNPROTECTED_PLAYBACK_MODES` set: a single-song request is released without consulting
+       the role matrix. Unknown/missing incoming mode keeps the guard — the exemption requires
+       positively knowing that this is a single request.
+    3. **Does the caller have the authority to switch?** The role matrix above, unchanged.
+  - Consequence: one attendee's playlist no longer freezes everyone else's `:play <song>`; the
+    room hands the switch back after that song (`adopt()` records `list_mode = "song"`), so the
+    playlist owner can immediately resume with their own queue command. Continuous queues remain
+    protected against each other exactly as before, and `:play` with no argument (favorites) or
+    `:play ?` (radar) are queue requests, so they still go through the role matrix.
+  - Known cost, accepted: a single request interrupts the playlist that was playing, and nothing
+    resumes it automatically. Restoring the interrupted queue is a separate feature (it needs a
+    pending-request queue plus playback-end detection), not part of this fix.
 - **Sleep Protection Behavior Matrix**:
   - In `CommandManager.process_command`:
     - Command level bypass: Administrators, Room Owner, and configured System Users bypass command level restrictions.

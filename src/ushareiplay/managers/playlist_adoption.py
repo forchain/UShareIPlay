@@ -22,10 +22,18 @@
 「已经决定切歌之后」的同步，因此没有前置守护检查的命令（`:play`、`:fav`）仍然可以
 只调用 `adopt()`。
 
-守护本身问两个问题，缺一不可：先问「现在放的这张队列值不值得保护」（单曲点播不
-保护，见 `UNPROTECTED_PLAYBACK_MODES`），再问「来切歌的人有没有这个权限」（角色
-策略，见 `InfoManager.check_playlist_protection`）。只问第二个问题的话，一位普通
-房客点一首歌就能把整个房间的点歌权锁死。
+守护本身问三个问题，缺一不可：
+
+1. 「现在放的这张队列值不值得保护」（单曲点播不保护，见
+   `UNPROTECTED_PLAYBACK_MODES`）；
+2. 「要来切的这一手是不是单曲」（单曲请求同样不受保护 —— 它不该反过来被
+   别人的歌单挡在门外）；
+3. 前两问都成立时，才问「来切歌的人有没有这个权限」（角色策略，见
+   `InfoManager.check_playlist_protection`）。
+
+只问第 3 问的话，一位普通房客点一首歌就能把整个房间的点歌权锁死；第 2 问缺了
+的话，另一位房客的单点又会被那句「正在播放歌单」挡回去 —— 单曲在守护眼里两头都
+不该是理由。
 """
 
 from typing import Optional
@@ -42,7 +50,8 @@ TOPIC_SEPARATOR = " - "
 # 守护保护的是「某位普通用户正在放的整张歌单」——收藏、雷达、歌单、歌手、专辑、
 # 电台都是连续队列，被中途顶掉就等于把人家没放完的那一叠全扔了。`:play <歌名>`
 # 只有一首歌，放完就该把切歌权交还给房间，因此它既不该被守护拦住，也不该反过来
-# 用一次点播锁住整个房间。
+# 用一次点播锁住整个房间：这个类型在 `guard_switch()` 里两头都用得上——作为
+# 「现在放的」时不产生保护，作为「要来切的」时不受保护。
 UNPROTECTED_PLAYBACK_MODES = frozenset({PlaybackMode.SONG.value})
 
 
@@ -111,6 +120,15 @@ class PlaylistAdoption(Singleton):
             self._music = MusicManager.instance()
         return self._music
 
+    @staticmethod
+    def _is_protected_mode(mode: Optional[str]) -> bool:
+        """某个播放类型值不值得守护（纯判据，不读状态、不碰 UI）。
+
+        单曲不受保护，见 `UNPROTECTED_PLAYBACK_MODES`。取不到类型时按受保护处理
+        —— 守护是房间既有的默认规则，豁免的前提是明确知道「这是单曲」。
+        """
+        return (mode or "").strip().lower() not in UNPROTECTED_PLAYBACK_MODES
+
     def _current_playback_is_protected(self) -> bool:
         """房间里正在放的东西值不值得守护（只读状态，不碰 UI）。
 
@@ -118,20 +136,34 @@ class PlaylistAdoption(Singleton):
         会把 `player_name` 写成点播者，只看播放者就会把「他点了首歌」误当成
         「他在放歌单」，从此谁都点不动歌。
 
-        取不到播放类型时按受保护处理 —— 守护是房间既有的默认规则，只有明确知道
-        「现在放的是单曲」这一件事才放开。生产路径上 `adopt()` 总是与 `player_name`
-        同批写入 `list_mode`，因此这条兜底只在依赖尚未装配时生效。
+        生产路径上 `adopt()` 总是与 `player_name` 同批写入 `list_mode`，因此
+        「取不到类型」的兜底只在依赖尚未装配时生效。
         """
-        mode = getattr(self._music_manager, "list_mode", None)
-        return (mode or "").strip().lower() not in UNPROTECTED_PLAYBACK_MODES
+        return self._is_protected_mode(getattr(self._music_manager, "list_mode", None))
 
-    async def guard_switch(self, requester: str, config: Optional[dict] = None) -> Optional[dict]:
+    async def guard_switch(
+        self,
+        requester: str,
+        incoming_mode: Optional[str] = None,
+        config: Optional[dict] = None,
+    ) -> Optional[dict]:
         """歌单守护检查。
+
+        Args:
+            requester: 要切歌的人，交给角色策略。
+            incoming_mode: 这次要放的播放类型（`PlaybackMode` 的值）。单曲点播不受
+                守护拦：既然「单曲不值得被保护」，别人的歌单也就不该拿它当理由，
+                把一次 `:play <歌名>` 挡在门外（2026-10-16 线上：不约儿童 在放歌单，
+                石碘 单点被回以「正在播放歌单，请等待」）。None / 说不清类型时照旧
+                走守护 —— 少问一次不如多问一次。
+            config: 角色策略用的配置，原样转交。
 
         Returns:
             error dict 表示这次切歌应当被阻断；None 表示放行。
         """
         if not self._current_playback_is_protected():
+            return None
+        if not self._is_protected_mode(incoming_mode):
             return None
         return await self._info_manager.check_playlist_protection(requester, config=config)
 

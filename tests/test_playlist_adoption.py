@@ -201,6 +201,45 @@ async def test_guard_switch_asks_the_role_policy_for_continuous_queues(adoption,
 
 
 @pytest.mark.asyncio
+async def test_guard_switch_releases_a_single_song_request_over_a_protected_queue(adoption):
+    """别人正在放歌单时，单点一首歌照样切得进去。
+
+    2026-10-16 线上：不约儿童 在放「乖宝的私藏歌单」，石碘 `:play Love The Way
+    You Lie` 被回以「不约儿童 正在播放歌单，请等待」。守护的判据里单曲既不值得被
+    保护（`UNPROTECTED_PLAYBACK_MODES`），一次单点也就不该反过来被歌单挡在门外：
+    「放完这一首就把切歌权交还房间」对来的人和去的人都成立。
+    """
+    adoption._music.list_mode = "playlist"
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch("石碘", incoming_mode="song")
+
+    assert result is None
+    adoption._info.check_playlist_protection.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "incoming_mode", ["favorites", "radar", "playlist", "singer", "album", "radio", None]
+)
+async def test_guard_switch_still_asks_the_role_policy_for_queue_requests(
+    adoption, incoming_mode
+):
+    """连续队列（以及说不清类型的请求）照旧要问角色策略：放开单点不等于放开歌单。"""
+    adoption._music.list_mode = "playlist"
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch("石碘", incoming_mode=incoming_mode)
+
+    assert result == {"error": "被守护"}
+    adoption._info.check_playlist_protection.assert_awaited_once_with(
+        "石碘", config=None
+    )
+
+
+@pytest.mark.asyncio
 async def test_guard_switch_keeps_protection_when_the_playback_mode_is_unknown(adoption):
     """播放类型缺失时保持守护 —— 只有明确知道「现在是单曲」才放开。"""
     adoption._music.list_mode = None

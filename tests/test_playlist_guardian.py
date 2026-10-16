@@ -464,13 +464,42 @@ async def test_single_song_playback_does_not_protect_the_room(
 
 
 @pytest.mark.asyncio
-async def test_playlist_playback_still_protects_against_a_single_song(
+async def test_single_song_request_interrupts_another_user_playlist(
     clean_info_manager, playback_engine
 ):
-    """反向兜底：普通用户正在放歌单时，别人的单曲点播仍然要被拦下。
+    """线上事故复现（2026-10-16 23:13）：别人在放歌单，石碘照样能单点一首。
 
-    放开单曲不等于取消守护 —— 这条断言保证修复不会把歌单一起放倒。
+    不约儿童 在放「乖宝的私藏歌单」，石碘 `:play Love The Way You Lie` 被回以
+    「不约儿童 正在播放歌单，请等待」——守护把一次单点挡在了门外。单曲既不值得
+    被保护（`UNPROTECTED_PLAYBACK_MODES`），就不该被别人的歌单拿来当理由拒绝：
+    放完这一首，切歌权回到房间，谁都能接着放自己的歌单。
     """
+    info_manager = clean_info_manager
+    info_manager.update_online_users(["石碘", "不约儿童", "Joyer"])
+
+    await PlaylistCommand(MagicMock()).do_process(
+        MessageInfo(content="/playlist 乖宝的私藏歌单", nickname="不约儿童"),
+        ["乖宝的私藏歌单"],
+    )
+    assert info_manager.player_name == "不约儿童"
+    assert playback_engine.requests[0].mode is PlaybackMode.PLAYLIST
+
+    res = await PlayCommand(MagicMock()).do_process(
+        MessageInfo(content="/play Love The Way You Lie", nickname="石碘"),
+        ["Love", "The", "Way", "You", "Lie"],
+    )
+    assert "error" not in res, f"单曲点播不该被别人的歌单拦下：{res}"
+    assert len(playback_engine.requests) == 2
+    assert playback_engine.requests[1].mode is PlaybackMode.SONG
+    # 切歌权随单曲交还房间：播放者记成点播者，类型记成不受保护的单曲
+    assert info_manager.player_name == "石碘"
+
+
+@pytest.mark.asyncio
+async def test_playlist_command_still_protects_against_another_playlist(
+    clean_info_manager, playback_engine
+):
+    """反向兜底：连续队列之间照旧互相守护 —— 放开单点不等于放开歌单。"""
     info_manager = clean_info_manager
     info_manager.update_online_users(["半點心", "不约儿童", "Joyer"])
 
@@ -478,11 +507,29 @@ async def test_playlist_playback_still_protects_against_a_single_song(
         MessageInfo(content="/playlist 流行歌单", nickname="半點心"), ["流行歌单"]
     )
     assert info_manager.player_name == "半點心"
-    assert playback_engine.requests[0].mode is PlaybackMode.PLAYLIST
 
-    res = await PlayCommand(MagicMock()).do_process(
-        MessageInfo(content="/play 重口味", nickname="不约儿童"), ["重口味"]
+    res = await PlaylistCommand(MagicMock()).do_process(
+        MessageInfo(content="/playlist 摇滚歌单", nickname="不约儿童"), ["摇滚歌单"]
     )
     assert res == {"error": "半點心 正在播放歌单，请等待"}
     # 被拦下的这一次不该动过 UI
+    assert len(playback_engine.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_favorites_request_is_still_blocked_by_another_user_playlist(
+    clean_info_manager, playback_engine
+):
+    """`:play` 不带参数是「播放全部收藏」，属于连续队列 —— 它仍然要问角色策略。"""
+    info_manager = clean_info_manager
+    info_manager.update_online_users(["半點心", "不约儿童", "Joyer"])
+
+    await PlaylistCommand(MagicMock()).do_process(
+        MessageInfo(content="/playlist 流行歌单", nickname="半點心"), ["流行歌单"]
+    )
+
+    res = await PlayCommand(MagicMock()).do_process(
+        MessageInfo(content="/play", nickname="不约儿童"), []
+    )
+    assert res == {"error": "半點心 正在播放歌单，请等待"}
     assert len(playback_engine.requests) == 1
