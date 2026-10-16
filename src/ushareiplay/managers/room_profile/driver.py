@@ -24,10 +24,13 @@ from typing import Optional, Sequence
 
 # 窗口开着的证据：抽屉自身，或抽屉内任一控件。
 DIALOG_KEYS = (
+    'slide_drawer',
     'party_room_type_option',
     'edit_topic_entry',
     'edit_notice_entry',
-    'slide_drawer',
+    'title_edit_entry',
+    'room_name_in_dialog',
+    'room_info_close',
 )
 
 # 打开抽屉的入口。chat_room_title 是既有调用点里最常用的入口，
