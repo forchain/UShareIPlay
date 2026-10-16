@@ -400,7 +400,11 @@ class MusicManager(Singleton):
                 "construct MusicManager with ui_driver=... at the composition root."
             )
 
-        guard_error = await self.playlist_adoption.guard_switch(request.requester)
+        # 守护要知道「这次要来切的是什么」：单曲请求不受歌单守护拦，见
+        # `PlaylistAdoption.guard_switch` 的第二问。
+        guard_error = await self.playlist_adoption.guard_switch(
+            request.requester, incoming_mode=request.mode.value
+        )
         if guard_error:
             self.logger.info(
                 f"Playback rejected by song protection: mode={request.mode.value}, "

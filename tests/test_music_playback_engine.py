@@ -206,7 +206,9 @@ async def test_play_rejects_an_authorized_switch_violation_with_the_guard_messag
         protection_error={"error": "小红 正在播放歌单，请等待"},
     )
 
-    result = await engine.manager.play(PlaybackRequest.song("稻香", requester="小明"))
+    result = await engine.manager.play(
+        PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明")
+    )
 
     assert result.status is PlaybackStatus.REJECTED
     assert result.error == "小红 正在播放歌单，请等待"
@@ -217,7 +219,9 @@ async def test_play_never_touches_the_music_ui_when_the_guard_rejects(initialize
     """被守护拒绝时不该有任何 UI 动作：这是拒绝存在的意义。"""
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    await engine.manager.play(PlaybackRequest.song("稻香", requester="小明"))
+    await engine.manager.play(
+        PlaybackRequest(mode=PlaybackMode.PLAYLIST, query="流行歌单", requester="小明")
+    )
 
     assert engine.driver.requests == []
     assert engine.journal == []
@@ -226,22 +230,43 @@ async def test_play_never_touches_the_music_ui_when_the_guard_rejects(initialize
 async def test_play_checks_the_guard_with_the_requester_identity(initialized_test_singletons):
     engine = _build_engine()
 
-    await engine.manager.play(PlaybackRequest.song("稻香", requester="小明"))
+    await engine.manager.play(
+        PlaybackRequest(mode=PlaybackMode.RADIO, channel="daily", requester="小明")
+    )
 
     assert engine.info.guard_calls == ["小明"]
 
 
-async def test_play_enforces_the_guard_for_every_mode(initialized_test_singletons):
-    """守护是流水线第一段，所有模式同等受约束。"""
+async def test_play_enforces_the_guard_for_every_queue_mode(initialized_test_singletons):
+    """守护是流水线第一段：六种连续队列同等受约束。"""
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    for mode in PlaybackMode:
+    queue_modes = [mode for mode in PlaybackMode if mode is not PlaybackMode.SONG]
+    for mode in queue_modes:
         result = await engine.manager.play(
             PlaybackRequest(mode=mode, query="任意", requester="小明")
         )
         assert result.rejected, f"{mode} 未受歌曲守护约束"
 
     assert engine.driver.requests == []
+
+
+async def test_play_releases_a_single_song_request_past_the_guard(initialized_test_singletons):
+    """单曲请求不问角色策略：别人的歌单挡不住一首歌（2026-10-16 线上）。
+
+    守护对「现在放的是单曲」和「要来切的是单曲」用同一份判据
+    （`UNPROTECTED_PLAYBACK_MODES`），所以这里即使角色策略一直回答「拒绝」，
+    `:play <歌名>` 仍然要走到 UI。
+    """
+    engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
+
+    result = await engine.manager.play(PlaybackRequest.song("稻香", requester="小明"))
+
+    assert result.status is PlaybackStatus.STARTED
+    assert engine.driver.requests == [
+        PlaybackRequest.song("稻香", requester="小明")
+    ]
+    assert engine.info.guard_calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -604,10 +629,13 @@ async def test_play_command_reports_a_rejected_switch_without_muting_or_ui(
 
     这正是把 `:play` 的命令级静音撤掉的理由：命令级闭麦发生在守护之前，
     于是「小红正在播放歌单，请等待」这句回复之前已经闭过一次麦。
+
+    用不带参数的 `:play`（播放全部收藏）而不是 `:play <歌名>`：单曲请求已经不受
+    守护约束，只有连续队列才会走到那句拒绝。
     """
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    result = await _make_play_command().do_process(_sender("小明"), ["稻香"])
+    result = await _make_play_command().do_process(_sender("小明"), [])
 
     assert result == {"error": "小红 正在播放歌单，请等待"}
     assert engine.driver.requests == []
