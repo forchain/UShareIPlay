@@ -142,7 +142,11 @@ class GestureHandler:
             self.logger.debug(f"Clicked element at position ({click_x}, {click_y})")
             return True
 
-        except Exception:
+        except Exception as e:
+            # 元素已从 DOM 树中移除/失效（如窗口关闭动画或界面刷新），属于可预期的 UI 状态变化
+            if "StaleElementReferenceException" in type(e).__name__ or "does not exist in DOM" in str(e):
+                self.logger.warning(f"Element became stale before click could be performed: {e}")
+                return False
             self.logger.error(f"Error clicking element: {traceback.format_exc()}")
             return False
 

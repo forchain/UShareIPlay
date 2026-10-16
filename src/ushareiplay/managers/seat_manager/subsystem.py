@@ -576,7 +576,15 @@ class SeatSubsystem:
 
             for desk_index in scan_order:
                 # Ensure the row containing this desk is visible
-                self.scroll_to_row(desk_index, seat_desks)
+                if self.scroll_to_row(desk_index, seat_desks):
+                    finder = getattr(self.handler, "element_finder", None)
+                    if finder and hasattr(finder, "find_elements"):
+                        try:
+                            fresh = finder.find_elements(SEAT_DESK_KEY)
+                            if fresh and len(fresh) == len(seat_desks):
+                                seat_desks = fresh
+                        except Exception:
+                            pass
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)
                 # self.handler.logger.debug(f"desk_info: {desk_info}" )
@@ -601,7 +609,12 @@ class SeatSubsystem:
                 # Ensure the row containing the target seat is visible before taking it
                 # This is important because we may have scrolled to other rows during scanning
                 try:
-                    self.scroll_to_row(first_empty_candidate['desk_index'], seat_desks)
+                    if self.scroll_to_row(first_empty_candidate['desk_index'], seat_desks):
+                        finder = getattr(self.handler, "element_finder", None)
+                        if finder and hasattr(finder, "find_elements"):
+                            fresh = finder.find_elements(SEAT_DESK_KEY)
+                            if fresh and len(fresh) == len(seat_desks):
+                                seat_desks = fresh
                     # Re-collect desk info to get fresh element references after scrolling
                     desk = seat_desks[first_empty_candidate['desk_index']]
                     desk_info = self._collect_desk_info(desk)
@@ -650,7 +663,15 @@ class SeatSubsystem:
             for desk_index in range(len(seat_desks)):
                 row_index = desk_index // 2
                 if row_index != last_scrolled_row:
-                    self.scroll_to_row(desk_index, seat_desks)
+                    if self.scroll_to_row(desk_index, seat_desks):
+                        finder = getattr(self.handler, "element_finder", None)
+                        if finder and hasattr(finder, "find_elements"):
+                            try:
+                                fresh = finder.find_elements(SEAT_DESK_KEY)
+                                if fresh and len(fresh) == len(seat_desks):
+                                    seat_desks = fresh
+                            except Exception:
+                                pass
                     last_scrolled_row = row_index
                 desk = seat_desks[desk_index]
                 desk_info = self._collect_desk_info(desk)

@@ -937,18 +937,21 @@ class SeatObservationManager(Singleton):
 
     def _desk_bounds(self, desk) -> Optional[dict]:
         """desk 的屏幕坐标（ElementWrapper 给 bounds，raw WebElement 给 location/size）。"""
-        bounds = getattr(desk, "bounds", None)
-        if isinstance(bounds, dict):
-            return bounds
-        location = getattr(desk, "location", None)
-        size = getattr(desk, "size", None)
-        if isinstance(location, dict) and isinstance(size, dict):
-            return {
-                "x": location.get("x", 0),
-                "y": location.get("y", 0),
-                "width": size.get("width", 0),
-                "height": size.get("height", 0),
-            }
+        try:
+            bounds = getattr(desk, "bounds", None)
+            if isinstance(bounds, dict):
+                return bounds
+            location = getattr(desk, "location", None)
+            size = getattr(desk, "size", None)
+            if isinstance(location, dict) and isinstance(size, dict):
+                return {
+                    "x": location.get("x", 0),
+                    "y": location.get("y", 0),
+                    "width": size.get("width", 0),
+                    "height": size.get("height", 0),
+                }
+        except Exception:
+            return None
         return None
 
     def _has_desk_content(self, desk) -> bool:
@@ -1081,7 +1084,12 @@ class SeatObservationManager(Singleton):
             return username
 
         except Exception as e:
-            self.logger.error(f"Error inspecting occupant on seat {seat_number}: {e}")
+            if "StaleElementReferenceException" in type(e).__name__ or "does not exist in DOM" in str(e):
+                self.logger.warning(
+                    f"Desk element became stale while inspecting occupant on seat {seat_number}: {e}"
+                )
+            else:
+                self.logger.error(f"Error inspecting occupant on seat {seat_number}: {e}")
             return None
         finally:
             try:

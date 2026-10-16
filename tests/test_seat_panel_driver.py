@@ -342,6 +342,28 @@ def test_scroll_to_row_skips_when_the_anchor_geometry_is_unreadable():
     handler.gesture_handler.swipe.assert_not_called()
 
 
+def test_scroll_to_row_recovers_when_cached_anchor_is_stale():
+    from selenium.common.exceptions import StaleElementReferenceException
+
+    class StaleDesk:
+        @property
+        def location(self):
+            raise StaleElementReferenceException("Cached userRoot does not exist in DOM")
+
+        @property
+        def size(self):
+            raise StaleElementReferenceException("Cached userRoot does not exist in DOM")
+
+    handler = make_panel_handler(desks=make_desks())
+    driver = SeatPanelDriver(handler)
+    stale_desks = [StaleDesk()] * 6
+
+    # When seat_desks[2] is stale, scroll_to_row should re-query element_finder and succeed
+    assert driver.scroll_to_row(4, stale_desks) is True
+    assert handler.gesture_handler.swipe.call_args.args == (*SWIPE_UP, 100)
+
+
+
 def test_scroll_to_row_skips_without_a_gesture_handler():
     handler = make_panel_handler()
     handler.gesture_handler = None

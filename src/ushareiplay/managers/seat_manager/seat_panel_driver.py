@@ -277,19 +277,22 @@ class SeatPanelDriver:
         desk 在生产里有两种形状：ElementWrapper 给 bounds，展开重扫拿到的 raw
         WebElement 给 location/size。两种都读不出来时返回 None（没有锚点可滚）。
         """
-        bounds = getattr(desk, "bounds", None)
-        if isinstance(bounds, dict):
-            return bounds
+        try:
+            bounds = getattr(desk, "bounds", None)
+            if isinstance(bounds, dict):
+                return bounds
 
-        location = getattr(desk, "location", None)
-        size = getattr(desk, "size", None)
-        if isinstance(location, dict) and isinstance(size, dict):
-            return {
-                "x": location.get("x", 0),
-                "y": location.get("y", 0),
-                "width": size.get("width", 0),
-                "height": size.get("height", 0),
-            }
+            location = getattr(desk, "location", None)
+            size = getattr(desk, "size", None)
+            if isinstance(location, dict) and isinstance(size, dict):
+                return {
+                    "x": location.get("x", 0),
+                    "y": location.get("y", 0),
+                    "width": size.get("width", 0),
+                    "height": size.get("height", 0),
+                }
+        except Exception:
+            return None
         return None
 
     def scroll_to_row(self, desk_index: int, seat_desks=None, duration: int = 100) -> bool:
@@ -316,7 +319,18 @@ class SeatPanelDriver:
         if row_index == self.VISIBLE_ROW_INDEX:
             return False
 
-        anchor = self._desk_bounds(seat_desks[self.ANCHOR_DESK_INDEX])
+        anchor_desk = seat_desks[self.ANCHOR_DESK_INDEX]
+        anchor = self._desk_bounds(anchor_desk)
+        # 若旧 anchor_desk 已在 DOM 中失效，尝试从当前页面刷新获取最新的锚点元素
+        if not anchor:
+            finder = getattr(self.handler, "element_finder", None)
+            if finder and hasattr(finder, "find_elements"):
+                try:
+                    fresh_desks = finder.find_elements(SEAT_DESK_KEY)
+                    if fresh_desks and len(fresh_desks) > self.ANCHOR_DESK_INDEX:
+                        anchor = self._desk_bounds(fresh_desks[self.ANCHOR_DESK_INDEX])
+                except Exception:
+                    pass
         if not anchor or not anchor.get("height"):
             return False
 
