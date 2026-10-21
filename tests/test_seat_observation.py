@@ -2336,6 +2336,82 @@ async def test_full_rescan_lands_an_in_viewport_move_and_reports_move_seat():
 
 
 @pytest.mark.asyncio
+async def test_contested_old_seat_must_inspect_before_clearing_as_residual():
+    """真机 10-10 19:58：Outlier 2→3，2 号实际坐了 Chainer —— 不许当残留清空。
+
+    时间线（日志原句）：
+    - 快照仍挂着 2=Outlier；3 号新出现「管理」无昵称
+    - 弹窗在 3 号认出 Outlier → 2 号标 identity_contested（只沿用过旧快照）
+    - 全量重扫把 2 号当「换座残留」清空，**从未再点 2 号头像**
+    - 座次表只剩 4 人，专注人数仍是 5；随后 accompany 在 desk 1 右位读到 Chainer
+
+    权威重扫在清空 contested 位之前必须弹窗确认：若是别人，留下；若是原主人
+    或空座，才可按残留处理。否则人从账上消失，专注对账永久背离。
+    """
+    handler = make_handler()
+    handler.config["room_owner"] = "Joyer"
+    manager = SeatObservationManager.initialize(handler)
+    desks = [
+        # 1=群主(Joyer) 本轮真实；2=普通用户占座（DOM 只有编号，无昵称）；3=管理
+        build_live_raw_desk((1, True, "群主"), (2, True, None), y=100),
+        build_live_raw_desk((3, True, "管理"), (4, False, None), y=200),
+        build_live_raw_desk((5, False, None), (6, False, None), y=300),
+        build_live_raw_desk((7, False, None), (8, False, None), y=400),
+        build_live_raw_desk((9, False, None), (10, True, "管理"), y=500),
+        build_live_raw_desk((11, True, "管理"), (12, False, None), y=600),
+    ]
+    handler.element_finder.find_elements = MagicMock(return_value=desks)
+    manager._seat_ui = FakeSeatUI(desks=desks)
+    # 重扫前快照：Outlier 还挂在 2；Chainer 已不在账上（刚被 Joyer 从 1 号挤掉后
+    # 坐到了 2，但观测层还没读到）
+    manager.seats[1] = SeatSlot(
+        seat_number=1, occupied=True, username="Joyer", label="群主", is_owner=True
+    )
+    manager.seats[2] = SeatSlot(
+        seat_number=2, occupied=True, username="Outlier", label="管理"
+    )
+    manager.seats[10] = SeatSlot(
+        seat_number=10, occupied=True, username="不约儿童🐏🐏", label="管理"
+    )
+    manager.seats[11] = SeatSlot(
+        seat_number=11, occupied=True, username="儿童不易~🐏🐏", label="管理"
+    )
+    manager._last_focus_count = 5
+    manager._reconciled_focus_count = 5
+    manager._record_room_admin("Outlier")
+    manager._record_room_admin("不约儿童🐏🐏")
+    manager._record_room_admin("儿童不易~🐏🐏")
+
+    inspected: list[int] = []
+
+    async def _inspect(_desk, _side, seat_number):
+        inspected.append(seat_number)
+        if seat_number == 2:
+            return "Chainer"
+        if seat_number == 3:
+            return "Outlier"
+        return None
+
+    manager.inspect_occupant = AsyncMock(side_effect=_inspect)
+
+    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        await manager.expand_rescan_and_collapse(5)
+
+    assert 2 in inspected, (
+        f"contested 的 2 号位必须再弹窗确认，不能直接当残留清空；实际点过: {inspected}"
+    )
+    assert manager.seats[2].occupied is True and manager.seats[2].username == "Chainer", (
+        "2 号上的新人 Chainer 不许被 Outlier 换座的残留清理抹掉"
+    )
+    assert manager.seats[3].occupied is True and manager.seats[3].username == "Outlier"
+    seated = sorted(n for n, s in manager.seats.items() if s.occupied)
+    assert seated == [1, 2, 3, 10, 11], seated
+    assert sum(1 for s in manager.seats.values() if s.occupied) == 5
+    assert manager._consistency_retry_due is False
+
+
+@pytest.mark.asyncio
 async def test_in_viewport_move_without_residual_render_is_applied_directly():
     """旧位子已重绘成空座时，视口内换座应当直接配对落快照并发出 move_seat。
 

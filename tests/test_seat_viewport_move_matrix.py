@@ -225,8 +225,11 @@ async def test_full_rescan_converges_an_in_viewport_move(phase, src, dst):
     handler = manager.handler
     handler.element_finder.find_elements = MagicMock(return_value=desks)
     manager._seat_ui = FakeSeatUI(desks=desks)
+    # 残留渲染的旧位弹窗仍是换座者本人；复检必须认出才会按残留清空
     manager.inspect_occupant = AsyncMock(
-        side_effect=lambda desk, side, seat_number: MOVER if seat_number == dst else None
+        side_effect=lambda desk, side, seat_number: (
+            MOVER if seat_number in (src, dst) else None
+        )
     )
 
     with patch(
