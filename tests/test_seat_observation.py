@@ -280,6 +280,29 @@ async def test_inspect_occupant_still_closes_a_card_that_rendered_after_the_time
 
 
 @pytest.mark.asyncio
+async def test_inspect_occupant_handles_stale_desk_gracefully():
+    from selenium.common.exceptions import StaleElementReferenceException
+
+    handler = make_handler(popup_name="Alice")
+    manager = SeatObservationManager.initialize(handler)
+
+    class StaleDesk:
+        @property
+        def location(self):
+            raise StaleElementReferenceException("Cached userRoot does not exist in DOM")
+
+        @property
+        def size(self):
+            raise StaleElementReferenceException("Cached userRoot does not exist in DOM")
+
+    stale_desk = StaleDesk()
+    # When desk element is stale, inspect_occupant should gracefully return None without raising
+    username = await manager.inspect_occupant(stale_desk, "left", 3)
+    assert username is None
+    handler.key_actions.press_back.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_observe_visible_desks_reuses_known_occupant_without_reinspection():
     handler = make_handler()
     manager = SeatObservationManager.initialize(handler)

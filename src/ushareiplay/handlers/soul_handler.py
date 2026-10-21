@@ -61,12 +61,22 @@ class SoulHandler(AppHandler, Singleton):
             except Exception:
                 input_element = None
 
-        if input_element is None and not self.is_chat_window_open():
+        if not self.is_chat_window_open():
             return True
 
         self.logger.info("Chat window is open, attempting to close it")
 
-        target_box = input_element or self.element_finder.try_find_element('input_box', log=False)
+        # 始终优先获取当前 DOM 中的最新有效输入框；若旧引用存活则作为兜底
+        target_box = None
+        if hasattr(self, "element_finder") and self.element_finder:
+            target_box = self.element_finder.try_find_element('input_box', log=False)
+        if target_box is None and input_element is not None:
+            try:
+                if input_element.is_displayed():
+                    target_box = input_element
+            except Exception:
+                target_box = None
+
         if target_box:
             try:
                 self.gesture_handler.click_element_at(
