@@ -254,9 +254,8 @@ async def test_play_enforces_the_guard_for_every_queue_mode(initialized_test_sin
 async def test_play_releases_a_single_song_request_past_the_guard(initialized_test_singletons):
     """单曲请求不问角色策略：别人的歌单挡不住一首歌（2026-10-16 线上）。
 
-    守护对「现在放的是单曲」和「要来切的是单曲」用同一份判据
-    （`UNPROTECTED_PLAYBACK_MODES`），所以这里即使角色策略一直回答「拒绝」，
-    `:play <歌名>` 仍然要走到 UI。
+    守护的豁免判据是 `UNPROTECTED_PLAYBACK_MODES`，所以这里即使角色策略一直
+    回答「拒绝」，`:play <歌名>` 仍然要走到 UI。
     """
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
@@ -612,14 +611,20 @@ async def test_play_command_delegates_the_song_to_the_engine(initialized_test_si
     assert [r.mode for r in engine.driver.requests] == [PlaybackMode.SONG]
 
 
-async def test_play_command_credits_the_requester_in_the_room(initialized_test_singletons):
-    """`:play` 的请求者要写进房间的 `player_name`，与收藏/电台分支同一套身份。"""
+async def test_play_command_hands_the_requester_to_the_engine_without_claiming_the_room(
+    initialized_test_singletons,
+):
+    """`:play <歌名>` 把请求者交给引擎，但不认领房间的歌单上下文。
+
+    单曲是插播：房间里那张队列（电台/歌单）并没有换人，因此 `player_name` 不写。
+    请求者仍然一路交到 `PlaybackRequest.requester`，由驱动与回复文案使用。
+    """
     engine = _build_engine()
 
     await _make_play_command().do_process(_sender("小明"), ["稻香"])
 
     assert engine.driver.requests[0].requester == "小明"
-    assert engine.info.player_name == "小明"
+    assert engine.info.player_name is None
 
 
 async def test_play_command_reports_a_rejected_switch_without_muting_or_ui(

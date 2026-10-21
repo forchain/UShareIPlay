@@ -12,7 +12,6 @@ from ushareiplay.managers.playback.models import (
     PLAY_MODE_INDEX_BY_KEY,
     PLAY_MODE_INVALID_PARAMETER_ERROR,
     PLAY_MODE_NAMES,
-    PlaybackMode,
     PlaybackRequest,
     PlaybackResult,
     PlaybackStatus,
@@ -401,7 +400,7 @@ class MusicManager(Singleton):
             )
 
         # 守护要知道「这次要来切的是什么」：单曲请求不受歌单守护拦，见
-        # `PlaylistAdoption.guard_switch` 的第二问。
+        # `PlaylistAdoption.guard_switch`。
         guard_error = await self.playlist_adoption.guard_switch(
             request.requester, incoming_mode=request.mode.value
         )
@@ -429,16 +428,13 @@ class MusicManager(Singleton):
                     error=outcome.error,
                 )
 
-            topic = (
-                None
-                if request.mode is PlaybackMode.SONG
-                else (outcome.topic or outcome.track.queue_line)
-            )
+            # 「单曲不写歌单上下文」这条规则归 `PlaylistAdoption.adopt()`：引擎这里
+            # 照常把观察到的标题/话题/歌单名交出去，由采纳协议决定什么该落进房间。
             adopt_error = self.playlist_adoption.adopt(
                 request.requester,
                 mode=request.mode.value,
                 title=outcome.title or request.room_title,
-                topic=topic,
+                topic=outcome.topic or outcome.track.queue_line,
                 playlist=outcome.playlist or request.playlist,
             )
             if adopt_error:

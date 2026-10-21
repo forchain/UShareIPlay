@@ -38,6 +38,11 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 - `MusicManager` automatically filters low-quality tracks (old songs per `old_song_filter`, DJ/Remix noise, singer-mode heuristics) when radio stations or auto-playlists advance.
 - An explicit user request (`:play <song>` or `:next <song>`) registers an on-demand intent (`MusicManager.mark_on_demand`), exempting the user's chosen song from the old-song filter for that play. Once the song finishes, standard filtering resumes.
 
+### Playlist Context & Single-Song Interludes
+- The room's playlist context — `list_mode`, `player_name`, `current_playlist_name`, plus the room title/topic — describes a **continuous queue** (favorites / radar / playlist / singer / album / radio) that someone is playing. Only `PlaylistAdoption.adopt()` writes it, and only continuous queues are adopted.
+- `:play <song>` is an **interlude** in the queue that is already playing, not a new queue: QQ Music keeps advancing the radio/playlist after the requested song. It therefore writes nothing to that context, so `/info` keeps showing e.g. `[电台] 猜你喜欢-沉浸刷歌 (by Timer)` while the interlude plays.
+- `PlaylistAdoption.guard_switch()` only asks whether the incoming request is a single song: single-song requests bypass playlist protection (a point-play must never be blocked by someone else's queue), every other request asks the role policy.
+
 ### Lyrics & Accompaniment
 - **Lyrics (`:lyrics`)**: Fetches current song lyrics from QQ Music and posts them to Soul App chat in timed segments.
 - **Accompaniment (`:acc [0/1]`)**: Toggles QQ Music K-song accompaniment (伴唱) mode via the playback settings menu; state is read from element content-description.

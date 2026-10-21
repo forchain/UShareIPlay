@@ -445,6 +445,7 @@ async def test_single_song_playback_does_not_protect_the_room(
     """
     info_manager = clean_info_manager
     info_manager.update_online_users(["半點心", "不约儿童", "Joyer"])
+    room_player_before = info_manager.player_name
 
     command = PlayCommand(MagicMock())
 
@@ -453,7 +454,8 @@ async def test_single_song_playback_does_not_protect_the_room(
         ["心深伤透", "陈奕迅"],
     )
     assert "error" not in first, first
-    assert info_manager.player_name == "半點心"
+    # 单曲不采纳歌单上下文：房间里没有歌单在放，点播者也就不会被记成「歌单主人」。
+    assert info_manager.player_name == room_player_before
     assert playback_engine.requests[0].mode is PlaybackMode.SONG
 
     second = await command.do_process(
@@ -470,9 +472,9 @@ async def test_single_song_request_interrupts_another_user_playlist(
     """线上事故复现（2026-10-16 23:13）：别人在放歌单，石碘照样能单点一首。
 
     不约儿童 在放「乖宝的私藏歌单」，石碘 `:play Love The Way You Lie` 被回以
-    「不约儿童 正在播放歌单，请等待」——守护把一次单点挡在了门外。单曲既不值得
-    被保护（`UNPROTECTED_PLAYBACK_MODES`），就不该被别人的歌单拿来当理由拒绝：
-    放完这一首，切歌权回到房间，谁都能接着放自己的歌单。
+    「不约儿童 正在播放歌单，请等待」——守护把一次单点挡在了门外。一次单点只是
+    插一首歌（`UNPROTECTED_PLAYBACK_MODES`），不该被别人的歌单拿来当理由拒绝；
+    同时它也不改写房间的歌单上下文：那张歌单仍归 不约儿童。
     """
     info_manager = clean_info_manager
     info_manager.update_online_users(["石碘", "不约儿童", "Joyer"])
@@ -491,8 +493,9 @@ async def test_single_song_request_interrupts_another_user_playlist(
     assert "error" not in res, f"单曲点播不该被别人的歌单拦下：{res}"
     assert len(playback_engine.requests) == 2
     assert playback_engine.requests[1].mode is PlaybackMode.SONG
-    # 切歌权随单曲交还房间：播放者记成点播者，类型记成不受保护的单曲
-    assert info_manager.player_name == "石碘"
+    # 插播不改写歌单上下文：歌单主人还是那张队列的，播放类型也仍是 playlist
+    #（`PlaylistAdoption.adopt()` 对单曲整条跳过）。
+    assert info_manager.player_name == "不约儿童"
 
 
 @pytest.mark.asyncio
