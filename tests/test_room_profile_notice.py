@@ -365,6 +365,23 @@ def test_a_disabled_customization_hides_the_notice_layer_before_giving_up():
     assert driver.close_attempts == 1
 
 
+def test_notice_dialog_is_closed_even_if_input_fails():
+    """输入或确认步骤失败时，已弹出的公告编辑层仍必须被关闭，避免阻塞界面。"""
+    driver = _driver(
+        present=('edit_notice_entry', 'close_notice', 'customize_notice_button')
+    )
+    # 模拟 replace_text 失败（未找到输入框）
+    driver.replace_text = lambda *_a, **_k: False
+    profile = _profile(driver)
+    profile.set_notice("今晚八点开播")
+
+    result = profile.update_notice()
+
+    assert result == {"error": "Failed to find notice input"}
+    assert "close_notice" in driver.clicks, "即便输入失败，也必须关闭公告编辑层"
+    assert driver.close_attempts == 1
+
+
 def test_a_ui_layer_that_raises_becomes_an_error_dict_rather_than_an_exception():
     driver = _driver()
 

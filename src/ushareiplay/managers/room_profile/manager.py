@@ -674,32 +674,34 @@ class RoomProfileManager(Singleton):
                     return {'error': 'Failed to find edit notice entry'}
                 self.logger.info("点击了编辑notice入口")
 
-                # 公告编辑层弹出后一定有「关闭公告」按钮；没有说明弹的不是这一层。
-                if driver.wait_for_any([NOTICE_CLOSE_KEY]) is None:
-                    return {'error': 'Close notice not found'}
+                notice_dialog_open = False
+                try:
+                    # 公告编辑层弹出后一定有「关闭公告」按钮；没有说明弹的不是这一层。
+                    if driver.wait_for_any([NOTICE_CLOSE_KEY]) is None:
+                        return {'error': 'Close notice not found'}
+                    notice_dialog_open = True
 
-                customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS)
-                if customize is None:
-                    # 底部抽屉挡住了「自定义」：先把公告层点掉，不能留在屏幕上。
-                    driver.click_element(NOTICE_CLOSE_KEY)
-                    self.logger.warning(
-                        'Bottom drawer is open, notice customization is disabled, hiding...'
-                    )
-                    return {'error': 'Failed to find customize notice button'}
-                driver.click_element(customize)
-                self.logger.info(f"点击了自定义按钮 {customize}")
+                    customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS)
+                    if customize is None:
+                        self.logger.warning(
+                            'Bottom drawer is open, notice customization is disabled, hiding...'
+                        )
+                        return {'error': 'Failed to find customize notice button'}
+                    driver.click_element(customize)
+                    self.logger.info(f"点击了自定义按钮 {customize}")
 
-                if not driver.replace_text(NOTICE_INPUT_KEY, notice):
-                    return {'error': 'Failed to find notice input'}
-                self.logger.info(f"输入了notice内容: {notice}")
+                    if not driver.replace_text(NOTICE_INPUT_KEY, notice):
+                        return {'error': 'Failed to find notice input'}
+                    self.logger.info(f"输入了notice内容: {notice}")
 
-                if not driver.click_element(NOTICE_CONFIRM_KEY):
-                    return {'error': 'Failed to find confirm button'}
-                self.logger.info("点击了确认按钮")
-
-                # 收起公告编辑层（抽屉本身由 with_window_open 收尾）
-                driver.click_element(NOTICE_CLOSE_KEY)
-                self.logger.info("隐藏notice设置对话框")
+                    if not driver.click_element(NOTICE_CONFIRM_KEY):
+                        return {'error': 'Failed to find confirm button'}
+                    self.logger.info("点击了确认按钮")
+                finally:
+                    if notice_dialog_open:
+                        # 收起公告编辑层（抽屉本身由 with_window_open 收尾）
+                        driver.click_element(NOTICE_CLOSE_KEY)
+                        self.logger.info("隐藏notice设置对话框")
 
             self.logger.info(f"成功设置notice: {notice}")
             return {'success': f'Notice restored to: {notice}'}
@@ -820,22 +822,26 @@ class RoomProfileManager(Singleton):
             driver.click_element(NOTICE_EDIT_ENTRY_KEY)
             self.logger.info("Clicked edit_notice_entry in room info window")
 
-            if driver.wait_for_any([NOTICE_CLOSE_KEY], timeout=3) is None:
-                return {'error': 'close_notice not found'}
+            notice_dialog_open = False
+            try:
+                if driver.wait_for_any([NOTICE_CLOSE_KEY], timeout=3) is None:
+                    return {'error': 'close_notice not found'}
+                notice_dialog_open = True
 
-            customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS, timeout=3)
-            if customize is None:
-                driver.click_element(NOTICE_CLOSE_KEY)
-                self.logger.warning('Bottom drawer is open, notice customization is disabled')
-                return {'error': 'Failed to find customize notice button'}
+                customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS, timeout=3)
+                if customize is None:
+                    self.logger.warning('Bottom drawer is open, notice customization is disabled')
+                    return {'error': 'Failed to find customize notice button'}
 
-            driver.click_element(customize)
+                driver.click_element(customize)
 
-            if not driver.replace_text(NOTICE_INPUT_KEY, default_notice, timeout=3):
-                return {'error': 'Failed to find notice input'}
+                if not driver.replace_text(NOTICE_INPUT_KEY, default_notice, timeout=3):
+                    return {'error': 'Failed to find notice input'}
 
-            driver.click_element(NOTICE_CONFIRM_KEY, timeout=3)
-            driver.click_element(NOTICE_CLOSE_KEY, timeout=3)
+                driver.click_element(NOTICE_CONFIRM_KEY, timeout=3)
+            finally:
+                if notice_dialog_open:
+                    driver.click_element(NOTICE_CLOSE_KEY, timeout=3)
 
             self.drafts.mark_attempted('notice')
             self.drafts.clear('notice')
@@ -1132,14 +1138,14 @@ class RoomProfileManager(Singleton):
         if finder is None:
             return None
         try:
-            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
-            dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
+            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)
+            dialog_element = finder.try_find_element('room_name_in_dialog', log=False)
             if dialog_element:
                 text = finder.get_element_text(dialog_element)
                 if isinstance(text, str) and text.strip():
                     return text.strip()
 
-            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
+            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvChatRoomTitle)
             room_title_element = finder.try_find_element('chat_room_title', log=False)
             if not room_title_element:
                 return None

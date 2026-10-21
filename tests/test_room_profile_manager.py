@@ -12,6 +12,7 @@
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -831,3 +832,53 @@ def test_the_centre_tap_primitive_is_left_alone():
 
     assert driver.click_element("edit_topic_entry") is True
     assert driver.coordinate_clicks == [], "中心点击不得被偷偷改写成坐标点击"
+
+
+def test_dialog_keys_includes_title_edit_and_room_info_markers():
+    """DIALOG_KEYS 必须包含抽屉内关键元素，防止抽屉已打开时误判未开导致重试超时。"""
+    from ushareiplay.managers.room_profile.driver import DIALOG_KEYS
+
+    required_markers = {
+        'slide_drawer',
+        'party_room_type_option',
+        'edit_topic_entry',
+        'edit_notice_entry',
+        'title_edit_entry',
+        'room_name_in_dialog',
+        'room_info_close',
+    }
+    assert required_markers.issubset(set(DIALOG_KEYS))
+
+
+def test_read_room_title_text_from_ui_uses_try_find_element_without_blocking():
+    """读 UI 房名必须使用非阻塞的 try_find_element，在弹窗未出现时不产生 2 秒超时等待或警告。"""
+    queries = []
+
+    class _MockFinder:
+        def wait_for_element(self, key, timeout=10):
+            queries.append(('wait', key))
+            return None
+
+        def try_find_element(self, key, log=False):
+            queries.append(('try', key))
+            if key == 'chat_room_title':
+                return 'title_elem'
+            return None
+
+        def get_element_text(self, element):
+            if element == 'title_elem':
+                return '听歌｜测试'
+            return None
+
+    handler = SimpleNamespace(
+        element_finder=_MockFinder(),
+        logger=MagicMock(),
+    )
+    profile = RoomProfileManager.initialize(handler=handler)
+    text = profile._read_room_title_text_from_ui()
+
+    assert text == '听歌｜测试'
+    assert ('wait', 'room_name_in_dialog') not in queries, "不得使用带超时的 wait_for_element 阻塞检测弹窗"
+    assert ('try', 'room_name_in_dialog') in queries
+    assert ('try', 'chat_room_title') in queries
+
