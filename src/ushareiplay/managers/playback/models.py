@@ -60,7 +60,9 @@ ACCOMPANIMENT_INVALID_PARAMETER_ERROR = "Invalid accompaniment parameter, must b
 class PlaybackMode(str, Enum):
     """房间支持的全部播放意图。
 
-    值即写入 `list_mode` 的字符串，与 `PlaylistAdoption.adopt()` 的既有约定一致。
+    连续队列（收藏/雷达/歌单/歌手/专辑/电台）的值即写入 `list_mode` 的字符串，
+    与 `PlaylistAdoption.adopt()` 的既有约定一致。`SONG` 是例外：单曲点播不是
+    一次歌单切换，`adopt()` 会跳过它，因此房间的播放类型里不会出现 `song`。
     """
 
     SONG = "song"
@@ -108,7 +110,8 @@ class PlaybackRequest:
         variant: 模式内部的取法，目前只有 FAVORITES 有多形态（见 `PlaybackVariant`）。
             关键字仍走 `query`，形态只回答「这些字怎么用」。
         channel: 电台频道（daily/guess/sleep/radar/collection），仅 RADIO 模式使用。
-        requester: 触发播放的用户名，写入房间的 `player_name`。
+        requester: 触发播放的用户名，连续队列时写入房间的 `player_name`；单曲点播
+            不写（房间里那张队列并没有换人，见 `PlaylistAdoption.adopt()`）。
         room_title: 要采纳的房间标题（如 "O Station"）；驱动若观察到更准确的值则以其为准。
         playlist: 完整歌单名，写入 `current_playlist_name`。
     """
@@ -132,7 +135,11 @@ class PlaybackRequest:
 
     @classmethod
     def song(cls, query, requester=None, **kwargs) -> "PlaybackRequest":
-        """`:play <query>` —— 单曲点播。"""
+        """`:play <query>` —— 单曲点播。
+
+        不采纳歌单上下文（不改 `player_name` / `list_mode` / `current_playlist_name`）：
+        它是在现有队列里插一首歌，不是换一张队列。
+        """
         return cls(mode=PlaybackMode.SONG, query=query, requester=requester, **kwargs)
 
     @classmethod
