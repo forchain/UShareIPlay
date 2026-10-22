@@ -374,9 +374,10 @@ class SeatPanelDriver:
         的兜底 press_back 会在这些 await 点把弹窗当成未知页面关掉，手里那个
         seat_off 句柄随之失效（StaleElementReferenceException）。
 
-        刻意由**调用方**持有而不在本模块内部自取：ui_lock 是不可重入的
-        asyncio.Lock，调用方（observe_visible_desks 等）已经持锁时再来一次就是
-        自己等自己。
+        刻意由**调用方**持有而不在本模块内部自取：面板动作全程会改页面结构，
+        一次流程只该有一把锁（`AppController.ui_session` 按持有者 task + 嵌套
+        深度放行同 task 的嵌套进入，但驱动自己不再申请第二次 —— 语义更清楚，
+        也不会把锁的持有期拖长）。
 
         controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
         契约时直接抛错，而不是静默裸奔。
