@@ -5,22 +5,24 @@ from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
     SeatRescanCooldownPolicy,
 )
+from typing import Optional, Tuple
 from ushareiplay.managers.seat_manager.guard import (
     guest_room_guard,
     GUEST_ROOM_ERROR_RESULT,
     GUEST_ROOM_CHAT_SCAN_RESULT,
     GUEST_ROOM_ENTRY_CHECK_RESULT,
+    GUEST_ROOM_EMPTY_DESK_RESULT,
 )
 import logging
 
 class SeatManager(SeatManagerBase):
-    """座位子系统的门面：持有唯一一份实现，公开八个座位命令接口。
+    """座位子系统的门面：持有唯一一份实现，公开十个座位命令接口。
 
     合并前这里是一个逐方法转发的空壳（八个方法逐个转给四个互相独立的单例）。现在
     实现都在 `SeatSubsystem` 里，本门面只做两件事：
 
     - 构造一个 `SeatSubsystem`，把显式注入的协作者原样交给它；
-    - 在八个公开接口上挂客房守卫。
+    - 在十个公开接口上挂客房守卫。
     """
 
     def __init__(
@@ -63,6 +65,11 @@ class SeatManager(SeatManagerBase):
         return await self._subsystem.sit_at_specific_seat(seat_number)
 
     @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
+    async def invite_user_to_seat(self, seat_number: int, target_visible_name: str) -> dict:
+        """邀请指定用户入座某个空座位。"""
+        return await self._subsystem.invite_user_to_seat(seat_number, target_visible_name)
+
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def remove_seat_occupant(self, seat_number=None) -> dict:
         """Remove the owner or a specific seat occupant, preserving :seat 4 [n]."""
         if seat_number is None:
@@ -88,3 +95,13 @@ class SeatManager(SeatManagerBase):
     async def check_seats_on_entry(self, username: str):
         """Check seats when a user enters or returns to the party."""
         return await self._subsystem.check_seats_on_entry(username)
+
+    @guest_room_guard(GUEST_ROOM_EMPTY_DESK_RESULT)
+    async def find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
+        """挑一张左右两座都空、且经真机 DOM 核验过的独立桌位。
+
+        挑桌要展开面板、滚视口 —— 会改页面结构，所以这一层自己取 UI 锁
+        （子系统里的同名方法不取锁：它假定调用方已经持锁）。
+        """
+        async with self._subsystem._ui_session("seat_empty_desk"):
+            return await self._subsystem.find_verified_isolated_empty_desk()

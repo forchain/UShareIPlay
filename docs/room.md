@@ -27,7 +27,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 `PartyManager` tracks `init_time`. When elapsed time exceeds `soul.party_restart_minutes` (default 720 min / 12 h) AND only the owner is in the room, it closes and recreates the party to avoid Soul App's 24-hour forced closure.
 
 ### Seat & Mic Flow
-- **Seat**: `:seat 1 <n>` reserves seat `n`; `:seat 2 <n>` seats user immediately; `:seat 4 [n]` vacates the occupant.
+- **Seat**: `:seat 1 <n>` reserves seat `n`; `:seat 2 <n>` seats user immediately; `:seat 4 [n]` vacates the occupant; `:seat 5 <n> [user]` invites a user into an empty seat.
 - **Mic**: `:mic 1` (or `:mic` when off-seat) automatically calls `SoulHandler.ensure_on_seat()` to claim a seat before unmuting. `:mic 0` mutes without leaving the seat.
 
 ### Recommendation Distribution

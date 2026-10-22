@@ -807,6 +807,64 @@ class SeatObservationManager(Singleton):
             return seat_num is None or int(label) == seat_num
         return dom["avatar_images"] == 1
 
+    # ------------------------------------------------------------------
+    # 公开读数入口（供座位子系统等外部调用方使用）
+    # ------------------------------------------------------------------
+    def read_seat_occupancy(self, desk, side: str) -> bool:
+        """这个座位**有没有占座证据**（真机 DOM 判据）。
+
+        判定规则住在观测器这一侧：`_read_seat_dom` 读原始证据，
+        `_has_occupancy_evidence` 判定「有证据 = 有人在座」。外部调用方
+        （座位子系统的独立空桌核验）不该伸手进这两个私有方法。
+
+        Args:
+            desk: 桌位元素（ElementWrapper 或 raw WebElement）。
+            side: 'left' / 'right'。
+
+        Returns:
+            True = 有占座证据（有人在座）；False = 没有占座证据。
+        """
+        return self._has_occupancy_evidence(self._read_seat_dom(desk, side))
+
+    def room_owner_nickname(self) -> Optional[str]:
+        """观测器认出的房主昵称（读不到就是 None）。
+
+        「群主」身份文字 → 配置的房主昵称；认不出时返回 None，调用方保留「群主」。
+        """
+        return self._owner_nickname()
+
+    def seat_click_position(self, desk, side: str, seat_number: int):
+        """这个座位在屏幕上的点击落点。
+
+        优先用座位元素自己的 bounds（点正中间），读不到就退回桌位 bounds 的
+        四分之一 / 四分之三处。几何来自同一份 DOM 读数，所以它住在观测器这一侧
+        —— 调用方（座位子系统）不必伸手进 `_find_child_element` / `_desk_bounds`。
+
+        Args:
+            desk: 桌位元素（ElementWrapper 或 raw WebElement）。
+            side: 'left' / 'right'。
+            seat_number: 座位号（只用于报错文案）。
+
+        Returns:
+            ``(x, y, None)`` 或 ``(None, None, 错误信息)``。
+        """
+        seat_element = self._find_child_element(desk, f"{side}_seat")
+        seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
+        if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
+            return (
+                seat_bounds["x"] + seat_bounds["width"] // 2,
+                seat_bounds["y"] + seat_bounds["height"] // 2,
+                None,
+            )
+
+        desk_bounds = getattr(desk, "bounds", None) or self._desk_bounds(desk)
+        if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
+            return None, None, f'Could not determine click bounds for seat {seat_number}'
+        width, height = desk_bounds["width"], desk_bounds["height"]
+        x = desk_bounds["x"] + (width // 4 if side == "left" else (3 * width) // 4)
+        y = desk_bounds["y"] + height // 2
+        return x, y, None
+
     def _owner_nickname(self) -> Optional[str]:
         """「群主」身份文字 → 配置的房主昵称；认不出时返回 None，调用方保留「群主」。
 
@@ -1744,7 +1802,7 @@ class SeatObservationManager(Singleton):
         返回 (快照是否有变更, 去向不明需要全量扫描的变更指纹)。
 
         被动观测与背离重扫共用这一段；区别只在触发源文案、是否自己拿 ui_session
-        （重扫已在外层持有，asyncio.Lock 不可重入）以及通知里的人数取值。
+        （重扫已在外层持有，不再重复申请）以及通知里的人数取值。
         """
         # 被动观测不滚面板、视口可能停在任何位置：座位号读不到就不写（见 _read_visible_seats）
         observed = self._read_visible_seats(desk_wrappers)

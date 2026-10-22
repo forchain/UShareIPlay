@@ -5,10 +5,11 @@ from typing import Any, Callable, TypeVar
 
 import ushareiplay.state.room_state as room_state
 
-# 三种显式命名的返回形状
+# 四种显式命名的返回形状
 GUEST_ROOM_ERROR_RESULT = {'error': '他人房间不支持座位功能'}
 GUEST_ROOM_CHAT_SCAN_RESULT = True
 GUEST_ROOM_ENTRY_CHECK_RESULT = None
+GUEST_ROOM_EMPTY_DESK_RESULT = None
 
 F = TypeVar('F', bound=Callable[..., Any])
 

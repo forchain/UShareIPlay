@@ -139,7 +139,7 @@ User levels range from `0` (guest / unprivileged) to `9` (owner / system adminis
 | `:title` | 3 | `<text>` | Set room title |
 | `:topic` | 1 | `<text>` | Set study-room topic |
 | `:notice` | 1 | `<message>` | Set room announcement |
-| `:seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or vacate seat occupant (4) |
+| `:seat` | 1 | `1 <n> / 2 <n> / 4 [n] / 5 <n> [user]` | Reserve (1), immediately take (2), vacate seat occupant (4), or invite a user into an empty seat (5) |
 | `:mic` | 2 | `0/1` | Turn microphone off (0) or on (1); seats bot first if off-seat |
 | `:pack` | 1 | — | Open luck pack from backpack (auto-triggered at ≥ 5 online users) |
 | `:recommend` | 1 | `[on/off]` | Toggle room recommendation distribution (no argument toggles; also accepts `开启`/`关闭`, `所有人`/`关闭推荐分发`) |

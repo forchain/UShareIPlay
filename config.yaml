@@ -154,6 +154,12 @@ soul:
     up_seat: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="上座"]'
     apply_seat: '//android.widget.TextView[@text="点击入座"]'
     confirm_seat: "cn.soulapp.android:id/tvOperation"
+    # ── 「邀请入座」底部弹窗（点空座后弹出：列出房间在线用户，每人一个「邀请 / 已上座」按钮）──
+    seat_invite_panel: "//androidx.recyclerview.widget.RecyclerView[.//*[@resource-id='cn.soulapp.android:id/userContainer']]" # 弹窗里的用户列表容器
+    seat_invite_row: "cn.soulapp.android:id/userContainer"        # 弹窗里的用户行容器
+    seat_invite_name: "cn.soulapp.android:id/tvName"              # 行内昵称
+    seat_invite_operation: "cn.soulapp.android:id/tvOperation"    # 行内操作按钮（邀请 / 已上座）
+    seat_invite_close: "cn.soulapp.android:id/ivClose"            # 弹窗右上角 X
     chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
     room_name_in_dialog: "cn.soulapp.android:id/tv_room_name"
     chat_room_notice: "cn.soulapp.android:id/tv_notice"
@@ -466,7 +472,7 @@ commands:
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
     level: 1
-    description: "派对座位管理。参数: [0 | 1 <座位号> | 2 <座位号> | 3 [昵称] | 4 [座位号]]，无参自动为房主寻找可用座位并落座，0=取消自身座位预约，1=预约指定座位(1-12)，2=直接落座指定座位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下座(无参抱房主，带座位号抱该位)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2"
+    description: "派对座位管理。参数: [0 | 1 <座位号> | 2 <座位号> | 3 [昵称] | 4 [座位号] | 5 <座位号> [昵称]]，无参自动为房主寻找可用座位并落座，0=取消自身座位预约，1=预约指定座位(1-12)，2=直接落座指定座位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下座(无参抱房主，带座位号抱该位)，5=邀请用户入座指定空座位(默认自己)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2、:seat 5 3"
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"

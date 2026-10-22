@@ -34,7 +34,7 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 | `InfoManager.resolve_visible_username(name)` | 解析成房间里当前可见的分身名（在线列表、资料页、座位靶子） |
 | `InfoManager.is_user_or_avatar_online(name)` | 任意分身在线即视为在线 |
 
-已按此规则接线的用户名参数入口：`:seat 3 [user]`（命令层解析可见名 + 座位层按身份匹配）、`:admin 1|0 [user]`（在线列表按可见名打开资料页，房间管理员也以可见名记账，供座位观测与 `:info` 比对）、`:gift [user]`、Seat Event Hooks 的 `{seat}`/`{action}` 取值（观测键是分身名）。
+已按此规则接线的用户名参数入口：`:seat 3 [user]`（命令层解析可见名 + 座位层按身份匹配）、`:seat 5 [user]`（命令层解析可见名 + 邀请弹窗按可见昵称检索）、`:admin 1|0 [user]`（在线列表按可见名打开资料页，房间管理员也以可见名记账，供座位观测与 `:info` 比对）、`:gift [user]`、Seat Event Hooks 的 `{seat}`/`{action}` 取值（观测键是分身名）。
 
 纯 DB 侧的入口无需额外解析，`UserDAO` 的 canonical 解析已经保证同一身份：`:level [user] [n]`、`:enter/:exit/:return/:receive/:focus add`、`:alias`。
 
