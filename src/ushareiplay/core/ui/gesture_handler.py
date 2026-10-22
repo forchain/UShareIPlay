@@ -237,41 +237,20 @@ class GestureHandler:
             values, matched = target_values(page_source)
             attribute_values_list.extend(values)
 
-            # 获取容器（未指定容器时使用全屏视口滑动）
-            if container_key:
-                container = self.owner.element_finder.wait_for_element_clickable(container_key)
-                if not container:
-                    container = self.owner.element_finder.wait_for_element(container_key)
-                if not container:
-                    self.logger.warning(
-                        f"scroll_container_until_element: 容器未找到: {container_key}"
-                    )
-                    return None, None, attribute_values_list
-                loc = container.location
-                size = container.size
-                left = int(loc["x"])
-                top = int(loc["y"])
-                width = int(size["width"])
-                height = int(size["height"])
-                margin_y = 0.1
-                margin_x = 0.1
-            else:
-                container = None
-                window_size = self.driver.get_window_size()
-                left = 0
-                top = 0
-                width = int(window_size["width"])
-                height = int(window_size["height"])
-                margin_y = 0.25
-                margin_x = 0.15
+            # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
+            container = self.owner.element_finder.wait_for_element_clickable(container_key)
+            if not container:
+                container = self.owner.element_finder.wait_for_element(container_key)
+            if not container:
+                self.logger.warning(
+                    f"scroll_container_until_element: 容器未找到: {container_key}"
+                )
+                return None, None, attribute_values_list
 
             def find_visible_target() -> Optional[WebElement]:
-                if container:
-                    candidates = self.owner.element_finder.find_child_elements(
-                        container, element_key
-                    )
-                else:
-                    candidates = self.owner.element_finder.find_elements(element_key)
+                candidates = self.owner.element_finder.find_child_elements(
+                    container, element_key
+                )
                 if attribute_value is None:
                     return candidates[0] if candidates else None
 
@@ -302,30 +281,38 @@ class GestureHandler:
                 )
                 direction = "up"
 
+            # 预计算容器可视坐标
+            loc = container.location
+            size = container.size
+            left = int(loc["x"])
+            top = int(loc["y"])
+            width = int(size["width"])
+            height = int(size["height"])
+
             # 单次滑动的起止点计算（默认 'up'）
             def compute_points(dir_name: str):
                 if dir_name == "up":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * (1.0 - margin_y))
+                    start_y = top + int(height * 0.9)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * margin_y)
+                    end_y = top + int(height * 0.1)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "down":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * margin_y)
+                    start_y = top + int(height * 0.1)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * (1.0 - margin_y))
+                    end_y = top + int(height * 0.9)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "left":
-                    start_x = left + int(width * (1.0 - margin_x))
+                    start_x = left + int(width * 0.9)
                     start_y = top + int(height * 0.5)
-                    end_x = left + int(width * margin_x)
+                    end_x = left + int(width * 0.2)
                     end_y = top + int(height * 0.5)
                     return start_x, start_y, end_x, end_y
                 # right
-                start_x = left + int(width * margin_x)
+                start_x = left + int(width * 0.1)
                 start_y = top + int(height * 0.5)
-                end_x = left + int(width * (1.0 - margin_x))
+                end_x = left + int(width * 0.9)
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
@@ -381,3 +368,57 @@ class GestureHandler:
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
             return None, None, self._reversed_if_needed(attribute_values_list, direction)
+
+    @with_driver_recovery(retry=False, op="write")
+    def swipe_until_element(
+        self,
+        element_key: str,
+        direction: str = "up",
+        max_swipes: int = 5,
+        duration_ms: int = 300,
+    ) -> Optional[WebElement]:
+        """全屏幕中心滑动查找指定元素（无需指定容器）。
+
+        在屏幕中心区域按指定方向滑动，每次滑动后直接通过 element_finder 检测目标元素。
+        若元素已在屏幕上或滑动后出现，返回找到的 WebElement；超过最大滑动次数仍未出现返回 None。
+        """
+        element = self.owner.element_finder.try_find_element(element_key, log=False)
+        if element is not None:
+            return element
+
+        try:
+            size = self.driver.get_window_size()
+            width = int(size["width"])
+            height = int(size["height"])
+        except Exception:
+            return None
+
+        if direction == "up":
+            start_x = end_x = width // 2
+            start_y = int(height * 0.75)
+            end_y = int(height * 0.35)
+        elif direction == "down":
+            start_x = end_x = width // 2
+            start_y = int(height * 0.35)
+            end_y = int(height * 0.75)
+        elif direction == "left":
+            start_y = end_y = height // 2
+            start_x = int(width * 0.8)
+            end_x = int(width * 0.2)
+        elif direction == "right":
+            start_y = end_y = height // 2
+            start_x = int(width * 0.2)
+            end_x = int(width * 0.8)
+        else:
+            self.logger.warning(f"swipe_until_element: 未知方向 {direction}，使用默认 'up'")
+            start_x = end_x = width // 2
+            start_y = int(height * 0.75)
+            end_y = int(height * 0.35)
+
+        for _ in range(max(0, max_swipes)):
+            if not self.swipe(start_x, start_y, end_x, end_y, duration_ms=duration_ms):
+                return None
+            element = self.owner.element_finder.try_find_element(element_key, log=False)
+            if element is not None:
+                return element
+        return None

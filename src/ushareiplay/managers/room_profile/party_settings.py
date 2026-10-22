@@ -101,9 +101,8 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
             RECOMMENDATION_STATUS_KEY, log=False
         ):
             return True
-        _key, element, _ = self._handler.gesture_handler.scroll_container_until_element(
+        element = self._handler.gesture_handler.swipe_until_element(
             RECOMMENDATION_STATUS_KEY,
-            PARTY_SETTING_CONTAINER_KEY,
             direction='up',
             max_swipes=max_swipes,
         )

@@ -166,7 +166,9 @@ Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contai
   1. **严禁防御性判空（No Defensive Null-Checking for Injected Dependencies）**：对 `handler`、`element_finder` 等注入依赖直接访问，严禁写冗余的 `if handler is None` 或 `getattr(handler, 'element_finder', None)`。依赖缺失应直接抛出异常（Fail-Fast）暴露问题，严禁掩盖错误；显式引用便于 IDE 精准维护对象关系与静态代码跳转。
   2. **窗口状态用标准等待判定，禁止遍历 Marker 列表推测（State Assertion via Standard Waits）**：检测弹窗/面板是否存在或关闭，直接调用 SDK / Finder 标准等待方法（如 `wait_for_element`、`wait_for_element_disappear`）等待唯一权威标志（如专属标题），或直接等待预期目标出现。严禁遍历多个 marker key 列表做多重循环轮询，低效且掩盖状态异常。
   3. **元素交互默认使用原生点击（Default to element.click()）**：查找并点击元素一律优先使用 `finder.wait_for_element_clickable(key)` 配合 `element.click()`。严禁无特殊要求私自引入 `click_element_at` 坐标手势或兜底阶梯（UiAutomator2 的 `clickGesture` 坐标点击极易仅消费手势而不触发 Android 原生 View 点击监听，导致二级弹窗或跳转失效）；仅在明确特殊说明（如座位面板 1/4 / 3/4 盲点几何落点）时方可使用坐标点击。同时直接调用 finder 标准接口，严禁到处滥用 `hasattr` 检查。
-  4. **滑动与翻页通用能力必须下沉底层模块（Gesture Primitives in GestureHandler）**：滚动查找元素、屏幕翻页等属于通用底层能力，必须统一下沉到 `GestureHandler`（如 `scroll_container_until_element`），严禁在具体业务 Driver 中重复编写屏幕宽高计算、滑动坐标百分比与循环滑动重试。
+  4. **滑动与翻页通用能力必须下沉底层模块（Gesture Primitives in GestureHandler）**：滚动查找元素、屏幕翻页等属于通用底层能力，必须统一下沉到 `GestureHandler`，严禁在业务 Driver 中重复编写屏幕宽高计算、滑动坐标百分比与循环滑动重试。必须清晰区分两类手势场景：
+     - **容器局部滑动（`scroll_container_until_element`）**：明确已知滚动容器（如歌单横滑卡片、特定列表视图）；
+     - **全屏中心滑动（`swipe_until_element`）**：无需指定容器（如设置面板、全局长页面），由底层基于屏幕中心区域执行滑动并检测目标元素出现。
   5. **禁止无意义的浅层包装（No Superfluous Wrapper Methods）**：严禁在 Driver 内封装毫无价值的私有包装方法（如 `_click_key`、`_click_element` 等），直接在业务步骤中调用 finder 标准等待并点击，保持代码扁平、精简与可读性。
 
 ## Logging Policy (铁律)

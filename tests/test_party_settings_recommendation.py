@@ -506,6 +506,12 @@ class _ProdGesture:
         self.clicks.append(element.key)
         return True
 
+    def swipe_until_element(
+        self, element_key, direction='up', max_swipes=10
+    ):
+        self.scrolls.append((element_key, direction, max_swipes))
+        return self.finder.elements.get(element_key)
+
     def scroll_container_until_element(
         self, element_key, container_key, direction='up', max_swipes=10
     ):
@@ -572,17 +578,17 @@ def test_the_production_driver_uses_the_scroll_helper_with_the_swipe_limit():
     handler = _ProdHandler()  # 状态项一开始不在屏幕上
     driver = SoulPartySettingsDriver(handler)
 
-    original = handler.gesture_handler.scroll_container_until_element
+    original = handler.gesture_handler.swipe_until_element
 
-    def scroll_and_reveal(element_key, container_key, direction='up', max_swipes=10):
-        original(element_key, container_key, direction, max_swipes)
-        return element_key, status, []
+    def scroll_and_reveal(element_key, direction='up', max_swipes=10):
+        original(element_key, direction, max_swipes)
+        return status
 
-    handler.gesture_handler.scroll_container_until_element = scroll_and_reveal
+    handler.gesture_handler.swipe_until_element = scroll_and_reveal
 
     assert driver.reveal_recommendation_status(max_swipes=3) is True
     assert handler.gesture_handler.scrolls == [
-        (RECOMMENDATION_STATUS_KEY, 'party_setting_container', 'up', 3)
+        (RECOMMENDATION_STATUS_KEY, 'up', 3)
     ]
 
 
