@@ -132,12 +132,8 @@ soul:
     # 面板里有多行 tvRightHint，用当前两种状态文案收窄到推荐那一行。
     party_setting_recommendation_status: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRightHint" and (@text="所有人" or @text="关闭推荐分发")]'
     party_setting_close: "cn.soulapp.android:id/ivClose"
-    # 二级弹窗（RN 页面）里的选项行：文案本身 clickable=false，能点的是它上面
-    # 那层 ViewGroup（content-desc 由 RN 把子文案拼出来），所以按 content-desc 找行。
-    party_recommendation_open: '//android.view.ViewGroup[@clickable="true" and contains(@content-desc, "所有人")]'
-    party_recommendation_close: '//android.view.ViewGroup[@clickable="true" and contains(@content-desc, "关闭推荐分发")]'
-    # 房间与原生设置面板都没有 rn_container，只有二级弹窗（RN 页面）开着时才有。
-    party_recommendation_sheet: "cn.soulapp.android:id/rn_container"
+    party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
+    party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'
     create_party_button: '//android.widget.TextView[@text="创建房间"]'
     restore_party: "cn.soulapp.android:id/imgRestore"
     confirm_party: "cn.soulapp.android:id/tv_confirm"

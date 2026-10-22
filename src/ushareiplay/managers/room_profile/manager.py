@@ -97,9 +97,6 @@ DEFAULT_TITLE_FALLBACK = '听歌'
 #: 一致（先认"所有人"）。选择器 key 由 `party_settings` 模块拥有。
 RECOMMENDATION_OPEN_TEXT = '所有人'
 RECOMMENDATION_CLOSED_TEXT = '关闭推荐分发'
-#: 选项点完之后面板那一行要等后台回写才刷新 —— 读回状态的等待参数。
-RECOMMENDATION_SETTLE_TIMEOUT = 5.0
-RECOMMENDATION_SETTLE_POLL = 0.5
 #: 抽屉里「派对类型」那一行；被纠正的源类型文案。
 ROOM_TYPE_OPTION_KEY = 'party_room_type_option'
 CHAT_PARTY_TYPE_TEXT = '闲聊唠嗑'
@@ -1459,20 +1456,11 @@ class RoomProfileManager(Singleton):
                 )
                 return {'error': '未找到推荐选项'}
 
-            # 选项点完弹窗自己收起，面板那一行要等后台回写才换成新文案：
-            # 读回来确认真的生效了再记账，不许「点了就当成了」。
-            final_status = self._read_recommendation_status_until(enabled)
-            if final_status != enabled:
-                self.logger.warning(
-                    f'Party recommendation status did not become {enabled}: {final_status}'
-                )
-                return {'error': '推荐状态未生效'}
-
-            self.room_state.recommendation_enabled = final_status
+            self.room_state.recommendation_enabled = enabled
             self.logger.info(
                 f"Party recommendation set to {'开放' if enabled else '关闭'}"
             )
-            return {'success': True, 'recommendation_enabled': final_status}
+            return {'success': True, 'recommendation_enabled': enabled}
         except Exception:
             self.logger.error(
                 f'Error setting party recommendation: {traceback.format_exc()}'
@@ -1552,22 +1540,6 @@ class RoomProfileManager(Singleton):
         if RECOMMENDATION_CLOSED_TEXT in text:
             return False
         return None
-
-    def _read_recommendation_status_until(
-        self, expected: bool, *, timeout: Optional[float] = None
-    ) -> Optional[bool]:
-        """等推荐状态真的变成目标值再收工。
-
-        选项点完之后，面板那一行要等后台回写才刷新；立刻读会读到旧文案，
-        于是「点过了」被当成「生效了」。
-        """
-        limit = RECOMMENDATION_SETTLE_TIMEOUT if timeout is None else timeout
-        deadline = time.time() + limit
-        while True:
-            status = self._read_recommendation_status_from_ui()
-            if status == expected or time.time() >= deadline:
-                return status
-            time.sleep(RECOMMENDATION_SETTLE_POLL)
 
     def ensure_synced_on_return(self) -> Dict:
         """回房 / 进房 / 建房之后，把房间档案的 UI 事实**读**回来。

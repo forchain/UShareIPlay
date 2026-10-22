@@ -118,13 +118,6 @@ class InMemoryPartySettingsDriver(PartySettingsDriverPort):
         self.popup_open = False
         self.panel_open = False
 
-    def dismiss_option_sheet(self) -> bool:
-        if not self.popup_open:
-            return False
-        self.back_presses += 1
-        self.popup_open = False
-        return True
-
     # ------------------------------------------------------------------
     # 推荐状态
     # ------------------------------------------------------------------
