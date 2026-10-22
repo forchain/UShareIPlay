@@ -117,6 +117,10 @@ def _info_logs(subsystem):
     return [call.args[0] for call in subsystem.logger.info.call_args_list if call.args]
 
 
+def _debug_logs(subsystem):
+    return [call.args[0] for call in subsystem.logger.debug.call_args_list if call.args]
+
+
 @pytest.fixture(autouse=True)
 def reset_observation():
     SeatObservationManager.reset_instance()
@@ -260,14 +264,39 @@ async def test_all_candidates_failing_verification_returns_none():
 
 @pytest.mark.asyncio
 async def test_method_is_reachable_through_the_seat_manager_facade():
-    """门面不另写一份实现：`SeatManager.subsystem` 上就是同一个方法。
+    """门面不另写一份实现：`SeatManager` 上就是子系统那一份，且带客房守卫。
 
-    门面上带客房守卫的包装方法由集成者补齐（#454 与 #455 并行改同一文件），
-    这里只钉住「接线层拿得到这个能力」这一条。
+    接线层（#454）要的正是这条：门面得**独立**提供这个方法，调用方不必伸手进
+    `SeatManager.subsystem`。
     """
-    manager = SeatManager.initialize(handler=make_handler())
+    subsystem, observation, seat_ui = _make_subsystem()
+    manager = SeatManager.initialize(handler=subsystem.handler, seat_ui=seat_ui)
 
-    assert callable(manager.subsystem.find_verified_isolated_empty_desk)
+    assert getattr(
+        manager.find_verified_isolated_empty_desk, "__wrapped__", None
+    ) is not None, "门面方法上必须挂着客房守卫"
+
+    result = await manager.find_verified_isolated_empty_desk()
+
+    assert result == (0, 1), "门面方法要给的是子系统挑出来的那张桌"
+    assert result == await subsystem.find_verified_isolated_empty_desk()
+
+
+@pytest.mark.asyncio
+async def test_the_facade_method_returns_nothing_in_a_guest_room():
+    """他人房间：客房守卫短路，返回显式命名的空结果（None）。"""
+    from ushareiplay.state.room_state import RoomState
+
+    subsystem, observation, seat_ui = _make_subsystem()
+    manager = SeatManager.initialize(handler=subsystem.handler, seat_ui=seat_ui)
+
+    RoomState.reset_instance()
+    room_state = RoomState.initialize()
+    room_state.is_guest_room = True
+    try:
+        assert await manager.find_verified_isolated_empty_desk() is None
+    finally:
+        RoomState.reset_instance()
 
 
 # ---------------------------------------------------------------------------
@@ -297,14 +326,17 @@ async def test_every_desk_has_an_occupied_neighbour_has_no_isolated_empty_desk()
 
 @pytest.mark.asyncio
 async def test_no_isolated_desk_is_reported_once():
-    """核验全败时只报一次「没有独立空桌」，不刷屏。"""
+    """核验全败时只报一次「没有独立空桌」，而且是 DEBUG（没有行为，不刷屏）。"""
     live = {1: True, 3: True, 5: True, 7: True, 9: True, 11: True}
     subsystem, observation, seat_ui = _make_subsystem(live_occupants=live)
 
     assert await subsystem.find_verified_isolated_empty_desk() is None
 
-    outcomes = [m for m in _info_logs(subsystem) if "独立空桌" in m]
+    outcomes = [m for m in _debug_logs(subsystem) if "独立空桌" in m]
     assert len(outcomes) == 1, f"「没有独立空桌」应该只报一次，实报 {len(outcomes)} 次"
+    assert not [m for m in _info_logs(subsystem) if "独立空桌" in m], (
+        "没挑到桌是「没有行为」，不该刷 INFO"
+    )
 
 
 @pytest.mark.asyncio
@@ -317,3 +349,4 @@ async def test_no_candidate_desk_is_not_logged():
     assert await subsystem.find_verified_isolated_empty_desk() is None
 
     assert not [m for m in _info_logs(subsystem) if "独立空桌" in m]
+    assert not [m for m in _debug_logs(subsystem) if "独立空桌" in m]

@@ -11,44 +11,28 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.seat_fixtures import FakeSeatUI
+from tests.seat_fixtures import (
+    FAKE_SEAT_BOUNDS,
+    FakeSeatDesk,
+    FakeSeatObservation,
+    FakeSeatUI,
+)
 from tests.test_seat_invite_driver import InviteRow, make_invite_handler
 
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
-SEAT_BOUNDS = {"x": 60, "y": 600, "width": 135, "height": 167}
+SEAT_BOUNDS = FAKE_SEAT_BOUNDS
 
 
-class FakeDesk:
-    """一张桌位：座位元素带 bounds（点空座的落点就来自它）。"""
-
-    def __init__(self, bounds=None):
-        bounds = bounds or SEAT_BOUNDS
-        self.bounds = bounds
-        self.seat_element = SimpleNamespace(bounds=bounds)
-
-
-class FakeObservation:
-    """视口读数的替身：只回报「这一轮看到了哪些座位、每个座位是什么状态」。"""
-
-    def __init__(self, observed=None):
-        self.observed = observed or {}
-        self.bands = []
-
-    async def sync_current_viewport(self, band=None, page_source=None):
-        self.bands.append(band)
-        return self.observed
-
-    def _find_child_element(self, desk, element_key):
-        return getattr(desk, "seat_element", None)
-
-    def _desk_bounds(self, desk):
-        return getattr(desk, "bounds", None)
-
-
-def make_subsystem(pages=None, close_button=None, occupied=False, unjudgable=False):
+def make_subsystem(
+    pages=None,
+    close_button=None,
+    occupied=False,
+    unjudgable=False,
+    invite_driver=None,
+):
     handler = make_invite_handler(pages=pages, close_button=close_button)
-    desks = [FakeDesk() for _ in range(6)]
+    desks = [FakeSeatDesk() for _ in range(6)]
     seat_ui = FakeSeatUI(desks=desks)
 
     if occupied:
@@ -58,9 +42,10 @@ def make_subsystem(pages=None, close_button=None, occupied=False, unjudgable=Fal
     else:
         info = {"occupied": False, "is_empty": True}
 
-    observation = FakeObservation({3: (desks[1], "left", info)})
+    observation = FakeSeatObservation(observed={3: (desks[1], "left", info)})
     subsystem = SeatSubsystem(
-        handler=handler, seat_ui=seat_ui, observation=observation
+        handler=handler, seat_ui=seat_ui, observation=observation,
+        invite_driver=invite_driver,
     )
     return subsystem, handler, seat_ui, observation
 
@@ -195,3 +180,42 @@ async def test_invite_user_to_seat_scrolls_the_target_row_into_the_viewport():
 
     assert seat_ui.scrolled_rows == [0]
     assert observation.bands == ["top"]
+
+
+# ---------------------------------------------------------------------------
+# 异常退出：弹窗要关、面板要收
+# ---------------------------------------------------------------------------
+
+
+class ExplodingInviteDriver:
+    """在弹窗里找人的时候炸掉的邀请驱动（模拟 Appium 读列表时的意外）。"""
+
+    def __init__(self, handler=None):
+        self.handler = handler
+        self.closed = False
+
+    async def wait_until_open(self, timeout: float = 3.0) -> bool:
+        return True
+
+    async def find_row(self, visible_name, max_pages: int = 10):
+        raise RuntimeError("读邀请列表时炸了")
+
+    def click_invite(self, row) -> bool:
+        return True
+
+    def close(self) -> bool:
+        self.closed = True
+        return True
+
+
+async def test_an_exception_in_the_invite_flow_still_closes_the_sheet_and_the_panel():
+    """异常退出也要收尾：弹窗关掉、面板收起、错误如实返回（#453 验收要求）。"""
+    driver = ExplodingInviteDriver()
+    subsystem, handler, seat_ui, observation = make_subsystem(invite_driver=driver)
+
+    result = await subsystem.invite_user_to_seat(3, "Alice")
+
+    assert "error" in result, "异常必须变成一个错误结果，不能把异常甩给调用方"
+    assert driver.closed is True, "异常退出时弹窗的 X 必须被点掉"
+    assert seat_ui.collapsed is True, "异常退出时座位面板必须收起"
+    handler.key_actions.press_back.assert_not_called()

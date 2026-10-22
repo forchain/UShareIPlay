@@ -267,18 +267,45 @@ class ClickableNode:
 
 
 class FakeController:
-    """与 AppController 同形的独占接口：ui_session 异步上下文管理器。"""
+    """与 AppController 同形的独占接口：ui_session 异步上下文管理器。
+
+    **可重入**：生产实现按「持有者 task + 嵌套深度」放行同一 task 的嵌套进入
+    （`asyncio.Lock` 本身不可重入，`AppController.ui_session` 才补上这层语义）。
+    这里照抄同一套 —— 否则测的不是生产的接线：一个在生产里跑得通的嵌套 session
+    在替身里会挂住。
+
+    `sessions` 只记**真正取到锁**的那些 session（嵌套直通的不算）：它回答的是
+    「这把锁被申请了几次」。
+    """
 
     def __init__(self):
         self.ui_lock = asyncio.Lock()
         self.logger = MagicMock()
         self.sessions = []
+        self._owner = None
+        self._depth = 0
 
     @asynccontextmanager
     async def ui_session(self, reason=""):
-        async with self.ui_lock:
-            self.sessions.append(reason)
+        task = asyncio.current_task()
+        if self._depth > 0 and self._owner is task:
+            self._depth += 1
+            try:
+                yield
+            finally:
+                self._depth -= 1
+            return
+
+        await self.ui_lock.acquire()
+        self._owner = task
+        self._depth = 1
+        self.sessions.append(reason)
+        try:
             yield
+        finally:
+            self._owner = None
+            self._depth = 0
+            self.ui_lock.release()
 
 
 class FakeSeatUI:
@@ -300,6 +327,78 @@ class FakeSeatUI:
         if not hasattr(self, "scrolled_rows"):
             self.scrolled_rows = []
         self.scrolled_rows.append(desk_index // 2)
+
+
+# ---------------------------------------------------------------------------
+# 桌位与观测器的替身（座位相关测试共用）
+# ---------------------------------------------------------------------------
+
+# 一张桌位上某个座位元素的屏幕坐标（点空座的落点就来自它）。
+FAKE_SEAT_BOUNDS = {"x": 60, "y": 600, "width": 135, "height": 167}
+
+
+class FakeSeatDesk:
+    """一张桌位：座位元素带 bounds（点空座的落点就来自它）。"""
+
+    def __init__(self, bounds=None):
+        bounds = bounds or dict(FAKE_SEAT_BOUNDS)
+        self.bounds = bounds
+        self.seat_element = SimpleNamespace(bounds=bounds)
+
+
+class FakeSeatObservation:
+    """观测器替身：缓存座次表 + 视口读数。
+
+    与生产的 `SeatObservationManager` 同形的地方：
+    - `seats`：座位号 -> `SeatSlot`（缓存座次表）；
+    - `sync_current_viewport(band=...)`：这一轮看到了哪些座位、每个座位什么状态；
+    - `read_seat_occupancy(desk, side)`：真机 DOM 的占座证据（独立空桌核验用）。
+    """
+
+    def __init__(self, seats=None, observed=None, owner=None):
+        self.seats = seats if seats is not None else {}
+        self.observed = observed or {}
+        self.owner = owner
+        self.bands = []
+
+    async def sync_current_viewport(self, band=None, page_source=None):
+        self.bands.append(band)
+        return self.observed
+
+    def read_seat_occupancy(self, desk, side):
+        """这个座位有没有占座证据（真机 DOM 判据）。"""
+        return bool(getattr(desk, "occupied", False))
+
+    def seat_click_position(self, desk, side, seat_number):
+        """这个座位在屏幕上的点击落点（与生产同形：座位元素中心 -> 桌位四分点）。"""
+        seat_element = getattr(desk, "seat_element", None)
+        seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
+        if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
+            return (
+                seat_bounds["x"] + seat_bounds["width"] // 2,
+                seat_bounds["y"] + seat_bounds["height"] // 2,
+                None,
+            )
+        desk_bounds = getattr(desk, "bounds", None)
+        if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
+            return None, None, f'Could not determine click bounds for seat {seat_number}'
+        width, height = desk_bounds["width"], desk_bounds["height"]
+        x = desk_bounds["x"] + (width // 4 if side == "left" else (3 * width) // 4)
+        y = desk_bounds["y"] + height // 2
+        return x, y, None
+
+    def room_owner_nickname(self):
+        """观测器认出的房主昵称（读不到就是 None）。"""
+        return self.owner
+
+    def _find_child_element(self, desk, element_key):
+        return getattr(desk, "seat_element", None)
+
+    def _desk_bounds(self, desk):
+        return getattr(desk, "bounds", None)
+
+    def _owner_nickname(self):
+        return self.owner
 
 
 def make_handler(elements=None, desks=None, popup_name=None, controller=None):

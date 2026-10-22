@@ -33,6 +33,7 @@ import asyncio
 import logging
 import traceback
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import ClassVar, Optional, Tuple
 
@@ -45,6 +46,29 @@ from ushareiplay.managers.seat_manager.seat_observation import SeatObservationMa
 
 # 无 handler 时 logger 的回退目标（ADR-0009 第 3 条）。
 _MODULE_LOGGER = logging.getLogger("ushareiplay.seat_subsystem")
+
+
+@dataclass
+class _SeatClickPlan:
+    """空座的点击计划：落点坐标，或者失败原因。
+
+    「自己入座」与「邀请入座」共用同一段定位与核验（见
+    `SeatSubsystem._prepare_empty_seat_click`）。共享的是**判据**，不是文案 ——
+    两个入口的报错文案本来就不一样，所以失败原因在这里只留一个符号，由调用方
+    翻译（见 `SeatSubsystem._seat_click_error`）。
+    """
+
+    click_x: Optional[int] = None
+    click_y: Optional[int] = None
+    #: 失败原因：no_desks / not_in_viewport / occupied / unjudgable / no_bounds /
+    #: no_gesture；None 表示成功。
+    reason: Optional[str] = None
+    #: 占座人标签（reason == "occupied" 时有值）。
+    occupied_label: Optional[str] = None
+    desk_index: Optional[int] = None
+    side: Optional[str] = None
+    #: 座位是不是已经点下去了（点下去了弹窗才可能开着）。
+    clicked: bool = False
 
 
 class _DriverSeatPanel:
@@ -106,6 +130,7 @@ class SeatSubsystem:
         panel_driver=None,
         observation=None,
         seat_ui=None,
+        invite_driver=None,
     ):
         self._handler = handler
         self._panel_driver = panel_driver
@@ -115,6 +140,7 @@ class SeatSubsystem:
         self.current_desk_index = 0
         self.current_side = None
         self._driver_panel = None
+        self._invite_driver = invite_driver
 
         # 面板契约接缝（ADR-0009 第 4 条）：调用方显式传入的面板对象命中时就是
         # **唯一**面板入口。`SeatObservationManager` 消费的就是这一份契约
@@ -133,6 +159,8 @@ class SeatSubsystem:
         self._handler = value
         if self._panel_driver is not None:
             self._panel_driver.handler = value
+        if self._invite_driver is not None:
+            self._invite_driver.handler = value
 
     @property
     def panel_driver(self) -> SeatPanelDriver:
@@ -143,6 +171,19 @@ class SeatSubsystem:
         if self._panel_driver is None:
             self._panel_driver = SeatPanelDriver(self.handler)
         return self._panel_driver
+
+    @property
+    def invite_driver(self) -> SeatInviteDriver:
+        """「邀请入座」弹窗的 UI 驱动：读列表、翻页、点「邀请」、按证据关窗。
+
+        与 `panel_driver` 同一约定：构造注入优先，缺省时按需自建并缓存；handler
+        被换掉时驱动跟着换（否则它会一直往旧 handler 上写）。
+        """
+        if self._invite_driver is None:
+            self._invite_driver = SeatInviteDriver(self.handler)
+        elif self._invite_driver.handler is not self.handler:
+            self._invite_driver.handler = self.handler
+        return self._invite_driver
 
     @property
     def panel(self):
@@ -391,6 +432,12 @@ class SeatSubsystem:
 
         任何一步没有结果都安静结束：没有独立空桌就谁也不打扰，已经在座就不重复
         邀请，邀请失败（人已离房等）如实记一笔但不往公屏上刷。
+
+        全流程在**同一把 UI 锁**下跑完：找桌要展开面板滚视口，邀请要点开座位弹
+        弹窗，两步之间不能插进别的事件任务（否则座位可能被人抢走，弹窗也可能被
+        兜底的 press_back 关掉）。`AppController.ui_session` 是**可重入**的：同一
+        个 task 嵌套进入时直通，所以 `invite_user_to_seat` 自己那层锁在这里不会
+        自锁死。
         """
         if self.handler is None or not username:
             return
@@ -402,28 +449,26 @@ class SeatSubsystem:
         if await self._is_user_already_seated(username):
             return
 
-        # 锁的纪律（改动这段之前先读一遍）：
-        #
-        # - `find_verified_isolated_empty_desk` 自己**不取锁**：它要展开面板并滚动
-        #   视口，调用方必须已经持有 UI 锁；
-        # - `invite_user_to_seat` 自己**取锁**；
-        # - UI 锁不可重入，把这两步包进同一个 `async with self._ui_session(...)`
-        #   就是同一个 task 二次 acquire —— 那是死锁，不是空操作。
-        #
-        # 所以这里只给「找桌」这一段上锁，出了这一段就把锁还回去，再让「邀请」
-        # 那一步自己取一次锁。两步之间座位可能变了：不要紧，邀请那一步会用
-        # 实时 DOM 证据重新核验那个座位是不是还空着。
+        result = None
+        seat_number = None
         async with self._ui_session(f"seat_auto_invite:{username}"):
-            desk = await self.find_verified_isolated_empty_desk(quiet=True)
+            try:
+                desk = await self.find_verified_isolated_empty_desk()
+                if desk:
+                    _desk_index, seat_number = desk
+                    result = await self.invite_user_to_seat(seat_number, visible_name)
+            finally:
+                # 面板必须恢复原状：找桌这一步把面板展开了，找不到桌就没人收起它
+                # —— 房间里会留着一张展开的座位面板（#455 的验收要求）。
+                # `collapse_seats()` 是幂等的：面板本来就收着时它什么都不点。
+                try:
+                    await self.collapse_seats()
+                except Exception as e:
+                    self.logger.error(f"Failed to collapse seats: {e}")
 
-        if not desk:
+        if not result:
             # 全场没有可用的独立空桌：静默结束，不打扰任何人。
             return
-
-        _desk_index, seat_number = desk
-
-        # 锁已还回去；下面这一步自己取锁。
-        result = await self.invite_user_to_seat(seat_number, visible_name)
 
         if result.get('success'):
             self.logger.info(f"进房用户 {visible_name} 已自动邀请入座 {seat_number} 号座位")
@@ -489,8 +534,14 @@ class SeatSubsystem:
 
     @staticmethod
     def _room_owner_nickname(obs) -> Optional[str]:
-        """观测器认出的房主昵称（读不到就是 None）。"""
-        getter = getattr(obs, "_owner_nickname", None)
+        """观测器认出的房主昵称（读不到就是 None）。
+
+        走观测器的公开入口 `room_owner_nickname()`；观测器还没有这个公开方法时
+        （旧替身）退回它自己的私有方法。
+        """
+        getter = getattr(obs, "room_owner_nickname", None) or getattr(
+            obs, "_owner_nickname", None
+        )
         if getter is None:
             return None
         try:
@@ -604,69 +655,19 @@ class SeatSubsystem:
         if not 1 <= seat_number <= 12:
             return {'error': f'Invalid seat number {seat_number}. Must be between 1 and 12'}
 
-        desk_index = (seat_number - 1) // 2
-        row_index = desk_index // 2
-        side = 'left' if seat_number % 2 == 1 else 'right'
-
-        # 相位必须由本次真实滚动决定，不能只是声明：第二排（row 1）在展开后的
-        # 默认可视区域内，但「默认视口就是顶相位」是没被真机证实过的假设 ——
-        # 面板若停在滚动后的位置，带位偏移会算错。row 0/1 一律先滚到内容顶部
-        # 夹住（row 1 时这次滚动被内容顶端夹住，是幂等的空操作），row 2 滚到底部。
-        band = "bottom" if row_index == 2 else "top"
-        scroll_target_desk = desk_index if row_index == 2 else 0
-
         try:
-            # 展开座位面板
-            seat_desks = await self.expand_and_find_desks()
-            if not seat_desks:
-                return {'error': 'Failed to find seat desks'}
-
-            # 直达目标行滚动，传播对应相位
-            self.scroll_to_row(scroll_target_desk, seat_desks)
-            await asyncio.sleep(0.3)
-
-            # 视口同步与 DOM 证据校验
             obs = self.observation
-            observed = await obs.sync_current_viewport(band=band)
-            if not observed or seat_number not in observed:
-                return {'error': f'Seat {seat_number} could not be verified in viewport'}
-
-            desk, seat_side, info = observed[seat_number]
-            if info.get('occupied'):
-                occupied_label = info.get("label") or info.get("username") or "occupant"
-                return {'error': f'Seat {seat_number} is already occupied by {occupied_label}'}
-            if not info.get('is_empty'):
-                # occupied=False 且 is_empty=False 是第三种状态：读不到判据（渲染缺证据）。
-                # 它同样不该点击，但不能谎报成「有人占座」。
-                return {'error': f'Seat {seat_number} could not be verified in viewport'}
-
-            # 目标为空座，通过 page_source 导出的坐标点击
-            seat_element = obs._find_child_element(desk, f"{side}_seat")
-            seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
-            if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
-                click_x = seat_bounds["x"] + seat_bounds["width"] // 2
-                click_y = seat_bounds["y"] + seat_bounds["height"] // 2
-            else:
-                desk_bounds = getattr(desk, "bounds", None) or obs._desk_bounds(desk)
-                if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
-                    return {'error': f'Could not determine click bounds for seat {seat_number}'}
-                w, h = desk_bounds["width"], desk_bounds["height"]
-                click_x = desk_bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
-                click_y = desk_bounds["y"] + h // 2
-
-            gesture = getattr(self.handler, "gesture_handler", None)
-            if not gesture or not hasattr(gesture, "click_at"):
-                # 点不了就必须报错返回：继续往下走会去等一个不存在的确认弹窗
-                return {'error': f'Gesture handler cannot click; seat {seat_number} was not selected'}
-            gesture.click_at(click_x, click_y)
-            await asyncio.sleep(0.3)
+            plan = await self._prepare_empty_seat_click(seat_number, obs)
+            error = self._seat_click_error(plan, seat_number, style="seat")
+            if error:
+                return {'error': error}
 
             # 确认就座
             result = self._confirm_seat()
             if result.get('success'):
                 obs.mark_owner_seated(seat_number)
-                self.current_desk_index = desk_index
-                self.current_side = side
+                self.current_desk_index = plan.desk_index
+                self.current_side = plan.side
 
             return result
 
@@ -680,6 +681,118 @@ class SeatSubsystem:
             except Exception as e:
                 if hasattr(self.handler, "logger") and self.handler.logger:
                     self.handler.logger.error(f"Failed to collapse seats: {e}")
+
+    # ------------------------------------------------------------------
+    # 空座定位（自己入座 / 邀请入座共用同一段形状）
+    # ------------------------------------------------------------------
+    async def _prepare_empty_seat_click(
+        self, seat_number: int, obs, scroll_duration: int = 100
+    ) -> "_SeatClickPlan":
+        """滚到目标座位所在的那一排、核验它确实是空座、算出并按下点击落点。
+
+        「自己入座」（`:seat 2 <n>`）与「邀请入座」（`:seat 5 <n> [user]`）的前半段
+        是同一件事：展开面板 → 滚进视口 → 用 DOM 证据核验空座 → 点座位。差别只在
+        点开之后（自己落座 vs 弹窗里邀请别人）。这段形状收在这里，两个入口共用，
+        免得两条路的核验判据各写一份、各漂各的。
+
+        Args:
+            seat_number: 目标座位号（1..12）。
+            obs: 座位观测器（读视口与 DOM 证据）。
+            scroll_duration: 滚动时长（毫秒）。
+
+        Returns:
+            `_SeatClickPlan`：成功时带着点击落点与桌位信息，失败时带着失败原因
+            （由调用方翻译成各自的文案 —— 两个入口的报错文案本来就不同）。
+        """
+        # 展开座位面板
+        seat_desks = await self.expand_and_find_desks()
+        if not seat_desks:
+            return _SeatClickPlan(reason="no_desks")
+
+        desk_index = (seat_number - 1) // 2
+        row_index = desk_index // 2
+        side = 'left' if seat_number % 2 == 1 else 'right'
+
+        # 相位必须由本次真实滚动决定，不能只是声明：第二排（row 1）在展开后的
+        # 默认可视区域内，但「默认视口就是顶相位」是没被真机证实过的假设 ——
+        # 面板若停在滚动后的位置，带位偏移会算错。row 0/1 一律先滚到内容顶部
+        # 夹住（row 1 时这次滚动被内容顶端夹住，是幂等的空操作），row 2 滚到底部。
+        band = "bottom" if row_index == 2 else "top"
+        scroll_target_desk = desk_index if row_index == 2 else 0
+
+        # 直达目标行滚动，传播对应相位
+        self.scroll_to_row(scroll_target_desk, seat_desks, duration=scroll_duration)
+        await asyncio.sleep(0.3)
+
+        # 视口同步与 DOM 证据校验
+        observed = await obs.sync_current_viewport(band=band)
+        if not observed or seat_number not in observed:
+            return _SeatClickPlan(reason="not_in_viewport", desk_index=desk_index, side=side)
+
+        desk, seat_side, info = observed[seat_number]
+        if info.get('occupied'):
+            occupied_label = info.get("label") or info.get("username") or "occupant"
+            return _SeatClickPlan(
+                reason="occupied",
+                occupied_label=occupied_label,
+                desk_index=desk_index,
+                side=side,
+            )
+        if not info.get('is_empty'):
+            # occupied=False 且 is_empty=False 是第三种状态：读不到判据（渲染缺证据）。
+            # 它同样不该点击，但不能谎报成「有人占座」。
+            return _SeatClickPlan(reason="unjudgable", desk_index=desk_index, side=side)
+
+        # 目标为空座，通过 page_source 导出的坐标点击
+        click_x, click_y, bounds_error = obs.seat_click_position(
+            desk, side, seat_number
+        )
+        if bounds_error:
+            return _SeatClickPlan(reason="no_bounds", desk_index=desk_index, side=side)
+
+        gesture = getattr(self.handler, "gesture_handler", None)
+        if not gesture or not hasattr(gesture, "click_at"):
+            # 点不了就必须报错返回：继续往下走会去等一个不存在的确认弹窗
+            return _SeatClickPlan(reason="no_gesture", desk_index=desk_index, side=side)
+        gesture.click_at(click_x, click_y)
+        await asyncio.sleep(0.3)
+
+        return _SeatClickPlan(
+            click_x=click_x,
+            click_y=click_y,
+            desk_index=desk_index,
+            side=side,
+            clicked=True,
+        )
+
+    @staticmethod
+    def _seat_click_error(plan: "_SeatClickPlan", seat_number: int, style: str) -> Optional[str]:
+        """把点击计划的失败原因翻译成调用方的报错文案。
+
+        两个入口的文案本来就不一样（`:seat 2` 用英文，`：seat 5` 用中文），所以
+        这里按 `style` 分派：共享的是**判据**，不是文案。
+        """
+        reason = plan.reason
+        if reason is None:
+            return None
+        if reason == "no_desks":
+            return 'Failed to find seat desks'
+        if reason == "no_bounds":
+            return f'Could not determine click bounds for seat {seat_number}'
+        if reason == "no_gesture":
+            return f'Gesture handler cannot click; seat {seat_number} was not selected'
+        if style == "invite":
+            if reason == "not_in_viewport":
+                return f'座位 {seat_number} 无法核验'
+            if reason == "occupied":
+                return f'座位 {seat_number} 已被占用'
+            if reason == "unjudgable":
+                return f'座位 {seat_number} 无法核验为空座'
+            return f'座位 {seat_number} 无法核验'
+        # style == "seat"（自己入座）
+        if reason == "occupied":
+            return f'Seat {seat_number} is already occupied by {plan.occupied_label or "occupant"}'
+        return f'Seat {seat_number} could not be verified in viewport'
 
     async def invite_user_to_seat(self, seat_number: int, target_visible_name: str) -> dict:
         """邀请房间里的某个用户入座某个**空座位**。
@@ -712,60 +825,29 @@ class SeatSubsystem:
         if not target_visible_name:
             return {'error': '未指定要邀请入座的用户'}
 
-        driver = SeatInviteDriver(self.handler)
+        driver = self.invite_driver
         # 点开空座之后弹窗就可能开着：不管走哪条分支，都要把弹窗关掉。
         sheet_possible = False
 
         async with self._ui_session(f"seat_invite:{seat_number}"):
             try:
-                seat_desks = await self.expand_and_find_desks()
-                if not seat_desks:
-                    return {'error': 'Failed to find seat desks'}
-
-                desk_index = (seat_number - 1) // 2
-                row_index = desk_index // 2
-                side = 'left' if seat_number % 2 == 1 else 'right'
-
-                # 相位由本次真实滚动决定（与 sit_at_specific_seat 同一套）：
-                # row 0/1 滚到内容顶部夹住，row 2 滚到底部。
-                band = "bottom" if row_index == 2 else "top"
-                scroll_target_desk = desk_index if row_index == 2 else 0
-
-                self.scroll_to_row(scroll_target_desk, seat_desks, duration=1000)
-                await asyncio.sleep(0.3)
-
                 obs = self.observation
                 if obs is None:
                     return {'error': f'座位 {seat_number} 无法核验'}
-                observed = await obs.sync_current_viewport(band=band)
-                if not observed or seat_number not in observed:
-                    return {'error': f'座位 {seat_number} 无法核验'}
 
-                desk, _seat_side, info = observed[seat_number]
-                if info.get('occupied'):
-                    return {'error': f'座位 {seat_number} 已被占用'}
-                if not info.get('is_empty'):
-                    # occupied=False 且 is_empty=False 是第三种状态：读不到判据
-                    # （渲染缺证据）。它同样不该点，但不能谎报成「有人占座」。
-                    return {'error': f'座位 {seat_number} 无法核验为空座'}
-
-                click_x, click_y, bounds_error = self._seat_click_position(
-                    obs, desk, side, seat_number
+                # 展开面板 → 滚进视口 → 核验空座 → 点座位（与 `:seat 2 <n>` 同一段）
+                plan = await self._prepare_empty_seat_click(
+                    seat_number, obs, scroll_duration=1000
                 )
-                if bounds_error:
-                    return {'error': bounds_error}
-
-                gesture = getattr(self.handler, "gesture_handler", None)
-                if not gesture or not hasattr(gesture, "click_at"):
-                    # 点不了就必须报错返回：继续往下走会去等一个不存在的弹窗
-                    return {
-                        'error': f'Gesture handler cannot click; seat {seat_number} was not selected'
-                    }
-                gesture.click_at(click_x, click_y)
-                sheet_possible = True
-                await asyncio.sleep(0.3)
+                error = self._seat_click_error(plan, seat_number, style="invite")
+                if error:
+                    return {'error': error}
+                sheet_possible = plan.clicked
 
                 if not await driver.wait_until_open():
+                    self.logger.info(
+                        f"点开 {seat_number} 号座位后没有出现「邀请入座」弹窗"
+                    )
                     return {'error': '未打开邀请入座弹窗'}
 
                 row = await driver.find_row(target_visible_name)
@@ -796,36 +878,10 @@ class SeatSubsystem:
                 except Exception as e:
                     self.logger.error(f"Failed to collapse seats: {e}")
 
-    def _seat_click_position(self, obs, desk, side, seat_number):
-        """空座的点击落点。
-
-        优先用座位元素自己的 bounds（点正中间），读不到就退回桌位 bounds 的
-        四分之一 / 四分之三处（与 sit_at_specific_seat 同一套几何）。
-
-        Returns:
-            ``(x, y, None)`` 或 ``(None, None, 错误信息)``。
-        """
-        seat_element = obs._find_child_element(desk, f"{side}_seat")
-        seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
-        if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
-            return (
-                seat_bounds["x"] + seat_bounds["width"] // 2,
-                seat_bounds["y"] + seat_bounds["height"] // 2,
-                None,
-            )
-
-        desk_bounds = getattr(desk, "bounds", None) or obs._desk_bounds(desk)
-        if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
-            return None, None, f'Could not determine click bounds for seat {seat_number}'
-        width, height = desk_bounds["width"], desk_bounds["height"]
-        x = desk_bounds["x"] + (width // 4 if side == "left" else (3 * width) // 4)
-        y = desk_bounds["y"] + height // 2
-        return x, y, None
-
     # ------------------------------------------------------------------
     # 独立空桌（社恐模式）
     # ------------------------------------------------------------------
-    async def find_verified_isolated_empty_desk(self, *, quiet: bool = False) -> Optional[Tuple[int, int]]:
+    async def find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
         """挑一张左右两座都空、且经真机 DOM 核验过的独立桌位。
 
         「独立空桌」= 同一张桌子的左右两个座位都没有人在座。房间里 6 张桌子对应
@@ -833,18 +889,15 @@ class SeatSubsystem:
         只要一侧有人，这张桌就不算独立（社恐排除）。
 
         候选桌来自 `SeatObservationManager` 的缓存座次表（快，但可能滞后），每一张
-        候选桌都要滚进视口、用真机 DOM 证据（`_read_seat_dom` +
-        `_has_occupancy_evidence`）复核：现场发现有人就换下一张候选桌；现场读不出
-        证据的座位一律不算「核验通过」——没核验过的空桌不能当成空桌。
+        候选桌都要滚进视口、用真机 DOM 证据（观测器的 `read_seat_occupancy`）复核：
+        现场发现有人就换下一张候选桌；现场读不出证据的座位一律不算「核验通过」——
+        没核验过的空桌不能当成空桌。
 
         **UI 独占**：本方法会展开面板并滚动视口，属于会改页面结构的 UI 动作，
-        调用方必须已经持有 UI 锁（如 `check_seats_on_entry`）。这里不再自己申请
-        一次锁：UI 锁不可重入，调用方持锁时再取一次会死锁。
-
-        Args:
-            quiet: 安静模式。进房自动邀请这条路每个进房的人都会走一遍，「没挑到
-                桌」「缓存过期」这类**没有行为**的结果不该刷屏，quiet=True 时
-                它们降到 DEBUG；挑到桌（真的要邀请了）仍然照常报 INFO。
+        调用方必须已经持有 UI 锁（持锁的是 `_auto_invite_to_isolated_desk`；门面
+        上的 `SeatManager.find_verified_isolated_empty_desk` 会自己取锁）。
+        这里不再自己申请一次锁：`AppController.ui_session` 是**可重入**的，同一个
+        task 嵌套进入时直通，不会自锁死。
 
         Returns:
             (桌号 0..5, 推荐空座号)；没有可用独立空桌时返回 None。
@@ -882,19 +935,12 @@ class SeatSubsystem:
                 return (desk_index, left_seat)
             if occupied:
                 # 缓存滞后是一次真实的状态变化，值得报出来；随后换下一张候选桌。
-                stale_message = (
+                self.logger.info(
                     f"缓存座次表已过期：{desk_index + 1} 号桌现场有人在座，改核验下一张候选桌"
                 )
-                if quiet:
-                    self.logger.debug(stale_message)
-                else:
-                    self.logger.info(stale_message)
 
-        if quiet:
-            # 没挑到桌是「没有行为」，安静模式下不刷屏。
-            self.logger.debug("没有可用的独立空桌（左右两座都空）")
-        else:
-            self.logger.info("没有可用的独立空桌（左右两座都空）")
+        # 没挑到桌是「没有行为」：按日志铁律降到 DEBUG，不刷屏。
+        self.logger.debug("没有可用的独立空桌（左右两座都空）")
         return None
 
     @staticmethod
@@ -914,7 +960,7 @@ class SeatSubsystem:
     def _verify_isolated_empty_desk(self, obs, observed, desk_index: int) -> Tuple[bool, bool]:
         """用真机 DOM 证据核验一张候选桌的左右两座是否都空。
 
-        空座判据两条同时成立才算数：`_has_occupancy_evidence` 为假（没有占座证据）
+        空座判据两条同时成立才算数：观测器读到的**占座证据**为假（没有占座证据）
         **且** 读数的 `is_empty` 为真（明确的空座证据）。缺前者时位子可能只是没
         渲染出任何证据（读不出判据），缺后者时它可能正被人占着 —— 两者缺一不可，
         没核验过的桌位绝不当成空桌。
@@ -928,8 +974,7 @@ class SeatSubsystem:
                 # 这个座位不在本轮视口读数里：核验不通过（读不到 ≠ 空）。
                 return (False, False)
             desk, seat_side, info = entry
-            dom = obs._read_seat_dom(desk, seat_side or side)
-            if obs._has_occupancy_evidence(dom):
+            if obs.read_seat_occupancy(desk, seat_side or side):
                 return (False, True)
             if not info.get("is_empty"):
                 return (False, False)

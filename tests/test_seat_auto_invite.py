@@ -9,10 +9,10 @@
 4. 挑一张左右两座都空的独立桌，并用真机 DOM 证据核验；
 5. 点开空座、在弹窗里找到这个人、点「邀请」。
 
-本文件钉得最死的一条是**锁的纪律**：`find_verified_isolated_empty_desk` 自己不取锁
-（它要展开面板并滚动视口，调用方必须已经持锁），而 `invite_user_to_seat` 自己取锁。
-UI 锁不可重入，把这两步包进同一个 `async with self._ui_session(...)` 就是自锁死 ——
-所以「找桌」这一段上锁、出了这段还锁，再让「邀请」自己取一次锁。
+本文件钉得最死的一条是**锁的纪律**：整条链（挑桌 + 邀请）在**同一把** UI 锁下跑完。
+`AppController.ui_session` 是可重入的（同一个 task 嵌套进入时直通），所以
+`invite_user_to_seat` 自己那层锁在这里不会自锁死；两步之间也不会把锁放出去 ——
+那一段窗口里别的 UI 事件（麦位扫描、兜底 back）可能插进来。
 """
 
 import asyncio
@@ -21,7 +21,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.seat_fixtures import ClickableNode, FakeController, make_handler
+from tests.seat_fixtures import (
+    ClickableNode,
+    FakeController,
+    FakeSeatDesk,
+    FakeSeatObservation,
+    make_handler,
+)
 from tests.test_seat_invite_driver import InviteRow, make_invite_handler
 
 from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
@@ -89,42 +95,6 @@ class FakeInfoManager:
         return self.visible_by_canonical.get(username, username)
 
 
-class FakeDesk:
-    """一张桌位：座位元素带 bounds（点空座的落点就来自它）。"""
-
-    def __init__(self, bounds=None):
-        bounds = bounds or {"x": 60, "y": 600, "width": 135, "height": 167}
-        self.bounds = bounds
-        self.seat_element = SimpleNamespace(bounds=bounds)
-
-
-class FakeObservation:
-    """观测器替身：缓存座次表 + 视口读数（本文件只用到这两样）。"""
-
-    def __init__(self, seats=None, observed=None, owner=None):
-        self.seats = (
-            seats
-            if seats is not None
-            else {number: SeatSlot(seat_number=number) for number in range(1, 13)}
-        )
-        self.observed = observed or {}
-        self.owner = owner
-        self.bands = []
-
-    async def sync_current_viewport(self, band=None, page_source=None):
-        self.bands.append(band)
-        return self.observed
-
-    def _find_child_element(self, desk, element_key):
-        return getattr(desk, "seat_element", None)
-
-    def _desk_bounds(self, desk):
-        return getattr(desk, "bounds", None)
-
-    def _owner_nickname(self):
-        return self.owner
-
-
 class RecordingSeatUI:
     """面板替身：记录展开/收起/滚动的次数（用来证明「没动过面板」）。"""
 
@@ -132,6 +102,7 @@ class RecordingSeatUI:
         self.desks = desks if desks is not None else []
         self.expand_calls = 0
         self.collapse_calls = 0
+        self.collapsed = False
         self.scrolled = []
 
     async def expand_and_find_desks(self):
@@ -140,6 +111,7 @@ class RecordingSeatUI:
 
     async def collapse_seats(self):
         self.collapse_calls += 1
+        self.collapsed = True
         return True
 
     def scroll_to_row(self, desk_index, seat_desks=None, duration=100):
@@ -214,7 +186,9 @@ def _build(
     """搭一套子系统：DAO / InfoManager / 找桌 / 邀请全部是可控替身。"""
     handler = handler or make_handler(controller=controller or FakeController())
     seat_ui = RecordingSeatUI()
-    observation = FakeObservation(seats=seats, owner=room_owner)
+    if seats is None:
+        seats = {number: SeatSlot(seat_number=number) for number in range(1, 13)}
+    observation = FakeSeatObservation(seats=seats, owner=room_owner)
     subsystem = SeatSubsystem(
         handler=handler, seat_ui=seat_ui, observation=observation
     )
@@ -420,21 +394,25 @@ async def test_a_failed_invite_sends_no_screen_message_and_raises_nothing(monkey
 # ---------------------------------------------------------------------------
 # 锁的纪律
 # ---------------------------------------------------------------------------
-async def test_the_desk_search_and_the_invite_each_take_the_ui_lock_in_turn(monkeypatch):
-    """找桌与邀请分两次取锁，不能互相嵌套（UI 锁不可重入）。
+async def test_the_whole_auto_invite_flow_runs_under_one_ui_session(monkeypatch):
+    """找桌 + 邀请全流程在**同一把** UI 锁下跑完。
 
-    这里让「邀请」走真实实现：它自己会取一次锁。整条链必须能跑完 —— 嵌套取锁
-    就是死锁，这里用超时把死锁变成失败而不是挂住。
+    `AppController.ui_session` 是可重入的：同一个 task 嵌套进入时直通。所以
+    「邀请」那一步自己那层锁不会自锁死，也不会在两步之间把锁放出去 —— 中间那一
+    段窗口里，别的 UI 事件（麦位扫描、兜底 back）可能插进来抢座位或关弹窗。
+
+    这里让「邀请」走真实实现：它自己会取一次锁（嵌套）。整条链必须能跑完，
+    用超时把「挂住」变成失败。
     """
     controller = FakeController()
-    desks = [FakeDesk() for _ in range(6)]
+    desks = [FakeSeatDesk() for _ in range(6)]
     handler = make_invite_handler(
         pages=[[InviteRow(VISIBLE, "邀请")]], close_button=ClickableNode("")
     )
     handler.controller = controller
 
     seat_ui = RecordingSeatUI(desks=desks)
-    observation = FakeObservation(
+    observation = FakeSeatObservation(
         observed={
             DESK_SEAT: (
                 desks[1],
@@ -467,12 +445,33 @@ async def test_the_desk_search_and_the_invite_each_take_the_ui_lock_in_turn(monk
         subsystem.check_seats_on_entry(CANONICAL), timeout=10
     )
 
-    assert controller.sessions == [
-        f"seat_auto_invite:{CANONICAL}",
-        f"seat_invite:{DESK_SEAT}",
-    ], "找桌与邀请各取一次锁，且是先后而不是嵌套"
+    assert controller.sessions == [f"seat_auto_invite:{CANONICAL}"], (
+        "整条链只该申请一次锁：找桌与邀请在同一把锁里"
+    )
     assert controller.ui_lock.locked() is False, "锁必须被还回去"
     assert len(messages) == 1, "真实邀请成功后要报一句"
+
+
+# ---------------------------------------------------------------------------
+# 面板必须恢复原状
+# ---------------------------------------------------------------------------
+async def test_the_panel_is_collapsed_after_the_auto_invite_flow(monkeypatch):
+    """#455：退出时面板恢复原状（收起），不能把展开的面板留在房间里。"""
+    bundle = _build(monkeypatch)
+
+    await bundle.subsystem.check_seats_on_entry(CANONICAL)
+
+    assert bundle.seat_ui.collapsed is True, "自动邀请结束后座位面板必须是收起的"
+
+
+async def test_the_panel_is_collapsed_when_no_isolated_desk_is_found(monkeypatch):
+    """没挑到桌也一样要收面板：找桌这一步把面板展开了。"""
+    bundle = _build(monkeypatch, desk=None)
+
+    await bundle.subsystem.check_seats_on_entry(CANONICAL)
+
+    assert bundle.seat_ui.collapsed is True, "没挑到桌也不能把展开的面板留在房间里"
+    assert bundle.invite.calls == []
 
 
 # ---------------------------------------------------------------------------
