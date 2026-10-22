@@ -28,6 +28,7 @@ from tests.seat_fixtures import (
     load_real_desk_nodes,
     make_handler,
     soul_elements,
+    tap_point,
 )
 from lxml import etree
 
@@ -216,10 +217,7 @@ async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session(
     # ElementWrapper 的子元素没有 element key，click() 拿不到真实元素 -> 按坐标点
     # 落点由替身桌位的 bounds 算出（左侧座位点四分之一处，纵向取中点）
     bounds = desk.bounds
-    assert handler.gesture_handler.click_at.call_args.args == (
-        bounds["x"] + bounds["width"] // 4,
-        bounds["y"] + bounds["height"] // 2,
-    )
+    assert handler.gesture_handler.click_at.call_args.args == tap_point(bounds, "left")
     handler.key_actions.press_back.assert_called()
 
 

@@ -23,6 +23,7 @@ from tests.seat_fixtures import (
     build_desk_wrapper,
     make_handler,
     soul_elements,
+    tap_point,
 )
 
 from ushareiplay.managers.seat_manager.seat_panel_driver import (
@@ -703,10 +704,7 @@ async def test_avatar_card_taps_the_left_quarter_of_the_desk_bounds():
         pass
 
     # 落点由桌位 bounds 算出：左侧座位点四分之一处，纵向取中点
-    assert handler.gesture_handler.click_at.call_args.args == (
-        bounds["x"] + bounds["width"] // 4,
-        bounds["y"] + bounds["height"] // 2,
-    )
+    assert handler.gesture_handler.click_at.call_args.args == tap_point(bounds, "left")
 
 
 async def test_avatar_card_taps_the_right_three_quarters_for_the_right_seat():
@@ -719,10 +717,7 @@ async def test_avatar_card_taps_the_right_three_quarters_for_the_right_seat():
         pass
 
     # 右侧座位点四分之三处，纵向取中点
-    assert handler.gesture_handler.click_at.call_args.args == (
-        bounds["x"] + (3 * bounds["width"]) // 4,
-        bounds["y"] + bounds["height"] // 2,
-    )
+    assert handler.gesture_handler.click_at.call_args.args == tap_point(bounds, "right")
 
 
 async def test_avatar_card_clicks_a_raw_webelement_child_directly():

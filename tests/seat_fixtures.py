@@ -54,6 +54,18 @@ MOCK_DESK_HEIGHT = LIVE_DESK_SIZE[1]
 FRAGMENT_DESK_HEIGHT = 18
 
 
+def tap_point(bounds: dict, side: str) -> tuple[int, int]:
+    """头像弹窗的点击落点（与生产同口径）：左座点四分之一处、右座点四分之三处，纵向取中点。
+
+    生产有三处同一条公式（seat_observation / seat_panel_driver / subsystem），
+    测试侧以前在每个断言里各抄一遍；这里收敛成唯一事实源，公式要改只改这一处。
+    """
+    w = bounds["width"]
+    h = bounds["height"]
+    x = bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
+    return x, bounds["y"] + h // 2
+
+
 def _bounds_str(x1, y1, x2, y2) -> str:
     return f"[{x1},{y1}][{x2},{y2}]"
 
