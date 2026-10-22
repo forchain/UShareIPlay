@@ -445,19 +445,31 @@ async def test_recommend_does_not_touch_the_panel_when_soul_cannot_be_switched_t
 
 
 class _ProdElement:
-    def __init__(self, key, text='', displayed=True):
+    def __init__(self, key, text='', displayed=True, panel=None, finder=None):
         self.key = key
         self.text = text
         self.displayed = displayed
         self.size = {'width': 100, 'height': 40}
         self.location = {'x': 0, 'y': 0}
         self.clicks = 0
+        self.panel = panel
+        self.finder = finder
 
     def is_displayed(self):
         return self.displayed
 
     def click(self):
         self.clicks += 1
+        if self.panel is not None and self.finder is not None:
+            if self.key == PARTY_SETTING_BUTTON_KEY:
+                self.panel['open'] = True
+                self.finder.elements[PARTY_SETTING_TITLE_KEY] = _ProdElement(
+                    PARTY_SETTING_TITLE_KEY, panel=self.panel, finder=self.finder
+                )
+            if self.key == PARTY_SETTING_CLOSE_KEY and self.panel.get('close_works', True):
+                self.panel['open'] = False
+                for key in (PARTY_SETTING_TITLE_KEY, PARTY_SETTING_CLOSE_KEY):
+                    self.finder.elements.pop(key, None)
 
 
 class _ProdFinder:
@@ -492,18 +504,13 @@ class _ProdGesture:
 
     def click_element_at(self, element):
         self.clicks.append(element.key)
-        if element.key == PARTY_SETTING_BUTTON_KEY:
-            self.panel['open'] = True
-            self.finder.elements[PARTY_SETTING_TITLE_KEY] = _ProdElement(
-                PARTY_SETTING_TITLE_KEY
-            )
-        if element.key == PARTY_SETTING_CLOSE_KEY and self.panel.get('close_works', True):
-            self.panel['open'] = False
-            # 面板收起时按钮与标题一起从屏幕上消失；留着任何一个都会让
-            # is_open() 继续认为面板还在。
-            for key in (PARTY_SETTING_TITLE_KEY, PARTY_SETTING_CLOSE_KEY):
-                self.finder.elements.pop(key, None)
         return True
+
+    def swipe_until_element(
+        self, element_key, direction='up', max_swipes=10, duration_ms=300
+    ):
+        self.scrolls.append((element_key, direction, max_swipes, duration_ms))
+        return self.finder.elements.get(element_key)
 
     def scroll_container_until_element(
         self, element_key, container_key, direction='up', max_swipes=10
@@ -515,7 +522,12 @@ class _ProdGesture:
 class _ProdHandler:
     def __init__(self, elements=None, panel=None):
         self.panel = panel if panel is not None else {'open': False}
-        self.element_finder = _ProdFinder(dict(elements or {}))
+        elements_dict = dict(elements or {})
+        for el in elements_dict.values():
+            el.panel = self.panel
+        self.element_finder = _ProdFinder(elements_dict)
+        for el in elements_dict.values():
+            el.finder = self.element_finder
         self.gesture_handler = _ProdGesture(self.element_finder, self.panel)
         self.key_actions = SimpleNamespace(
             press_back=self._press_back, switch_to_app=lambda: True
@@ -551,14 +563,13 @@ def test_the_settings_port_is_an_abstract_boundary():
 
 
 def test_the_production_driver_opens_the_panel_with_the_setting_button():
-    handler = _ProdHandler(
-        elements={PARTY_SETTING_BUTTON_KEY: _ProdElement(PARTY_SETTING_BUTTON_KEY)}
-    )
+    btn = _ProdElement(PARTY_SETTING_BUTTON_KEY)
+    handler = _ProdHandler(elements={PARTY_SETTING_BUTTON_KEY: btn})
     driver = SoulPartySettingsDriver(handler)
 
     assert driver.is_open() is False
     assert driver.open() is True
-    assert PARTY_SETTING_BUTTON_KEY in handler.gesture_handler.clicks
+    assert btn.clicks == 1
     assert driver.is_open() is True
 
 
@@ -567,17 +578,17 @@ def test_the_production_driver_uses_the_scroll_helper_with_the_swipe_limit():
     handler = _ProdHandler()  # 状态项一开始不在屏幕上
     driver = SoulPartySettingsDriver(handler)
 
-    original = handler.gesture_handler.scroll_container_until_element
+    original = handler.gesture_handler.swipe_until_element
 
-    def scroll_and_reveal(element_key, container_key, direction='up', max_swipes=10):
-        original(element_key, container_key, direction, max_swipes)
-        return element_key, status, []
+    def scroll_and_reveal(element_key, direction='up', max_swipes=10, duration_ms=300):
+        original(element_key, direction, max_swipes, duration_ms)
+        return status
 
-    handler.gesture_handler.scroll_container_until_element = scroll_and_reveal
+    handler.gesture_handler.swipe_until_element = scroll_and_reveal
 
     assert driver.reveal_recommendation_status(max_swipes=3) is True
     assert handler.gesture_handler.scrolls == [
-        (RECOMMENDATION_STATUS_KEY, 'party_setting_container', 'up', 3)
+        (RECOMMENDATION_STATUS_KEY, 'up', 3, 500)
     ]
 
 
@@ -591,10 +602,11 @@ def test_the_production_driver_does_not_scroll_when_the_status_is_visible():
 
 
 def test_the_production_driver_closes_with_ivclose():
+    close_btn = _ProdElement(PARTY_SETTING_CLOSE_KEY)
     handler = _ProdHandler(
         elements={
             PARTY_SETTING_TITLE_KEY: _ProdElement(PARTY_SETTING_TITLE_KEY),
-            PARTY_SETTING_CLOSE_KEY: _ProdElement(PARTY_SETTING_CLOSE_KEY),
+            PARTY_SETTING_CLOSE_KEY: close_btn,
         }
     )
     handler.panel['open'] = True
@@ -602,7 +614,7 @@ def test_the_production_driver_closes_with_ivclose():
 
     driver.close()
 
-    assert PARTY_SETTING_CLOSE_KEY in handler.gesture_handler.clicks
+    assert close_btn.clicks == 1
     assert handler.back_presses == 0
     assert driver.is_open() is False
 
@@ -636,11 +648,9 @@ def test_the_production_driver_maps_the_target_state_to_the_option_key():
     driver = SoulPartySettingsDriver(handler)
 
     assert driver.click_recommendation_option(True) is True
+    assert option_open.clicks == 1
     assert driver.click_recommendation_option(False) is True
-    assert handler.gesture_handler.clicks == [
-        RECOMMENDATION_OPTION_KEYS[True],
-        RECOMMENDATION_OPTION_KEYS[False],
-    ]
+    assert option_close.clicks == 1
 
 
 def test_the_production_driver_reports_a_missing_option_as_false():
@@ -649,14 +659,9 @@ def test_the_production_driver_reports_a_missing_option_as_false():
     assert driver.click_recommendation_option(True) is False
 
 
-def test_the_production_driver_fails_gracefully_without_a_handler():
-    """装配漏了 handler 时按「不可用」失败，而不是在 UI 线程里抛 AttributeError。"""
+def test_the_production_driver_fails_when_handler_missing():
+    """handler 缺失时应直接报错（fail-fast），严禁过度防御静默吞异常。"""
     driver = SoulPartySettingsDriver(None)
 
-    assert driver.is_open() is False
-    assert driver.open() is False
-    assert driver.reveal_recommendation_status() is False
-    assert driver.click_recommendation_status() is False
-    assert driver.click_recommendation_option(True) is False
-    driver.close()
-    driver.press_back()
+    with pytest.raises(AttributeError):
+        driver.is_open()

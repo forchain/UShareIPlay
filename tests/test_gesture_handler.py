@@ -199,3 +199,48 @@ def test_scroll_container_returns_the_visible_element_matching_attribute_value()
 
     assert result[0] == "online_user"
     assert result[1] is outlier
+
+
+def test_swipe_until_element_returns_immediately_if_already_visible():
+    driver = MagicMock()
+    handler = _make_handler(driver)
+    handler.owner.element_finder = MagicMock()
+    target_element = MagicMock()
+    handler.owner.element_finder.try_find_element.return_value = target_element
+
+    result = handler.swipe_until_element("target_key", max_swipes=5)
+
+    assert result is target_element
+    handler.owner.element_finder.try_find_element.assert_called_once_with("target_key", log=False)
+    driver.get_window_size.assert_not_called()
+
+
+def test_swipe_until_element_swipes_screen_center_and_finds_element():
+    driver = MagicMock()
+    driver.get_window_size.return_value = {"width": 720, "height": 1480}
+    handler = _make_handler(driver)
+    handler.owner.element_finder = MagicMock()
+    target_element = MagicMock()
+
+    # 第一次查找 None，第一次滑动后找到
+    handler.owner.element_finder.try_find_element.side_effect = [None, target_element]
+    handler.swipe = MagicMock(return_value=True)
+
+    result = handler.swipe_until_element("target_key", direction="up", max_swipes=3)
+
+    assert result is target_element
+    handler.swipe.assert_called_once_with(360, int(1480 * 0.75), 360, int(1480 * 0.35), duration_ms=300)
+
+
+def test_swipe_until_element_returns_none_when_max_swipes_exhausted():
+    driver = MagicMock()
+    driver.get_window_size.return_value = {"width": 720, "height": 1480}
+    handler = _make_handler(driver)
+    handler.owner.element_finder = MagicMock()
+    handler.owner.element_finder.try_find_element.return_value = None
+    handler.swipe = MagicMock(return_value=True)
+
+    result = handler.swipe_until_element("target_key", direction="up", max_swipes=2)
+
+    assert result is None
+    assert handler.swipe.call_count == 2

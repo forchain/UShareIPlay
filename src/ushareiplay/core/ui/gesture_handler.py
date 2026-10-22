@@ -368,3 +368,57 @@ class GestureHandler:
                 f"scroll_container_until_element error: {traceback.format_exc()}"
             )
             return None, None, self._reversed_if_needed(attribute_values_list, direction)
+
+    @with_driver_recovery(retry=False, op="write")
+    def swipe_until_element(
+        self,
+        element_key: str,
+        direction: str = "up",
+        max_swipes: int = 5,
+        duration_ms: int = 300,
+    ) -> Optional[WebElement]:
+        """全屏幕中心滑动查找指定元素（无需指定容器）。
+
+        在屏幕中心区域按指定方向滑动，每次滑动后直接通过 element_finder 检测目标元素。
+        若元素已在屏幕上或滑动后出现，返回找到的 WebElement；超过最大滑动次数仍未出现返回 None。
+        """
+        element = self.owner.element_finder.try_find_element(element_key, log=False)
+        if element is not None:
+            return element
+
+        try:
+            size = self.driver.get_window_size()
+            width = int(size["width"])
+            height = int(size["height"])
+        except Exception:
+            return None
+
+        if direction == "up":
+            start_x = end_x = width // 2
+            start_y = int(height * 0.75)
+            end_y = int(height * 0.35)
+        elif direction == "down":
+            start_x = end_x = width // 2
+            start_y = int(height * 0.35)
+            end_y = int(height * 0.75)
+        elif direction == "left":
+            start_y = end_y = height // 2
+            start_x = int(width * 0.8)
+            end_x = int(width * 0.2)
+        elif direction == "right":
+            start_y = end_y = height // 2
+            start_x = int(width * 0.2)
+            end_x = int(width * 0.8)
+        else:
+            self.logger.warning(f"swipe_until_element: 未知方向 {direction}，使用默认 'up'")
+            start_x = end_x = width // 2
+            start_y = int(height * 0.75)
+            end_y = int(height * 0.35)
+
+        for _ in range(max(0, max_swipes)):
+            if not self.swipe(start_x, start_y, end_x, end_y, duration_ms=duration_ms):
+                return None
+            element = self.owner.element_finder.try_find_element(element_key, log=False)
+            if element is not None:
+                return element
+        return None

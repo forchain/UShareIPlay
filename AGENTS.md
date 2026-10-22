@@ -162,6 +162,14 @@ Local overrides go in `config.local.yaml` (gitignored, optional) and MUST contai
 - **座位与麦位术语铁律（Party Seat vs Mic）**：派对房间内的 1~12 号位置是**座位（Seat / 在座）**，与「上麦」没有任何关系；Soul 在线用户列表不包含在座用户。只有开麦说话的才叫**麦位（Mic）/ 上麦（On-Mic）**（例如公屏「XXX 已上麦」通知、切歌防啸叫的 `PlaybackMuting`）。日志、报错提示、提示文案与代码注释严禁把 1~12 号座位叫作「麦位」，严禁把在座用户说成「在麦上/上麦」（如「在 11 号麦上」是错误术语，必须表述为「在 11 号座位上」）。
 - **用户名参数铁律**：同一个人在 Soul UI 上是**可见昵称（分身名）**、在 DB 里是 **canonical 名（主账号名）**，两者字符串不同。任何以用户名作参数的命令（`:seat 3`、`:admin`、`:gift`、`:level`、事件钩子等），DB 侧用 canonical，**面向 UI 的查找必须先 `InfoManager.resolve_visible_username(...)`**；跨命名域比对只能用 `UserDAO.is_same_identity(...)`，严禁拿 canonical 名与 UI 文本做 `==`。详见 `docs/users.md` 的「两个命名域」。
 - **元素选择器单一事实源铁律（Single Source of Truth for Elements）**：`config.yaml` 是 UI 元素选择器（`elements`）的唯一权威定义，集中维护多版本兼容与联合 XPath（如 `user_count` 兼容 `tvUserCount` 与 `tvOnlineCount`）。`config.local.yaml` 仅用于机器级硬件与秘钥差异（`device.name`、`appium.host`、LLM Key 等），严禁在 `config.local.yaml` 中覆盖 `soul.elements` 或 `qq_music.elements`。私自覆盖会导致 UI 定位器降级为过时或单一 resource-id，引发事件无法触发、在线列表无法刷新（`/info` 显示「列表暂未更新」）、进退房事件失灵及座位判定异常等隐蔽故障。
+- **UI 驱动开发与防过度设计铁律（UI Driver Anti-Overengineering Iron Rules）**：开发 UI 驱动（Driver / Adaptor）时，必须保持逻辑精简，严禁过度设计引入虚假的「健壮性」代码：
+  1. **严禁防御性判空（No Defensive Null-Checking for Injected Dependencies）**：对 `handler`、`element_finder` 等注入依赖直接访问，严禁写冗余的 `if handler is None` 或 `getattr(handler, 'element_finder', None)`。依赖缺失应直接抛出异常（Fail-Fast）暴露问题，严禁掩盖错误；显式引用便于 IDE 精准维护对象关系与静态代码跳转。
+  2. **窗口状态用标准等待判定，禁止遍历 Marker 列表推测（State Assertion via Standard Waits）**：检测弹窗/面板是否存在或关闭，直接调用 SDK / Finder 标准等待方法（如 `wait_for_element`、`wait_for_element_disappear`）等待唯一权威标志（如专属标题），或直接等待预期目标出现。严禁遍历多个 marker key 列表做多重循环轮询，低效且掩盖状态异常。
+  3. **元素交互默认使用原生点击（Default to element.click()）**：查找并点击元素一律优先使用 `finder.wait_for_element_clickable(key)` 配合 `element.click()`。严禁无特殊要求私自引入 `click_element_at` 坐标手势或兜底阶梯（UiAutomator2 的 `clickGesture` 坐标点击极易仅消费手势而不触发 Android 原生 View 点击监听，导致二级弹窗或跳转失效）；仅在明确特殊说明（如座位面板 1/4 / 3/4 盲点几何落点）时方可使用坐标点击。同时直接调用 finder 标准接口，严禁到处滥用 `hasattr` 检查。
+  4. **滑动与翻页通用能力必须下沉底层模块（Gesture Primitives in GestureHandler）**：滚动查找元素、屏幕翻页等属于通用底层能力，必须统一下沉到 `GestureHandler`，严禁在业务 Driver 中重复编写屏幕宽高计算、滑动坐标百分比与循环滑动重试。必须清晰区分两类手势场景：
+     - **容器局部滑动（`scroll_container_until_element`）**：明确已知滚动容器（如歌单横滑卡片、特定列表视图）；
+     - **全屏中心滑动（`swipe_until_element`）**：无需指定容器（如设置面板、全局长页面），由底层基于屏幕中心区域执行滑动并检测目标元素出现。
+  5. **禁止无意义的浅层包装（No Superfluous Wrapper Methods）**：严禁在 Driver 内封装毫无价值的私有包装方法（如 `_click_key`、`_click_element` 等），直接在业务步骤中调用 finder 标准等待并点击，保持代码扁平、精简与可读性。
 
 ## Logging Policy (铁律)
 
