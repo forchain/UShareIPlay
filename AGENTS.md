@@ -105,7 +105,7 @@ AppController
 ├── EventManager      — Handles UI events (page classifier, drawer, focus/entry events)
 ├── TimerManager      — Scheduled tasks persisted in DB
 ├── PartyManager      — Party/room lifecycle management
-├── SeatManager       — Seat reservation, focus, validation sub-managers
+├── SeatManager       — Seat commands facade → SeatSubsystem (see seat sub-tree below)
 ├── MusicManager      — Playback control
 ├── PlaybackMuting    — Mic mute/restore around song switching; arms on XXX 已上麦
 ├── MessageManager    — Async message queue and dispatch
@@ -114,6 +114,20 @@ AppController
 └── [KeywordManager, InfoManager, UserManager, AdminManager, MemoryManager,
     MicManager, SleepManager, PlaylistAdoption, PendingWrite]
 ```
+
+#### 座位观测 vs 面板驱动（铁律，`src/ushareiplay/managers/seat_manager/`）
+
+```
+SeatManager (facade) → SeatSubsystem (sole implementation)
+├── SeatObservationManager — 被动观测：视口快照、12 座位状态、专注人数对账
+└── SeatPanelDriver        — 主动驱动：展开/收起/滚动/头像弹窗（命令路径）
+```
+
+- **被动观测 `SeatObservationManager`**（`seat_observation.py`，Singleton）：周期性观测**当前视口**里可见的桌位，维护 12 座位状态、3 排快照日志与专注人数对账；命令路径借它做**读数校验**（`sync_current_viewport`），但不继承它的跳过策略与冷却。
+- **主动驱动 `SeatPanelDriver`**（`seat_panel_driver.py`，普通可注入对象、非单例）：执行面板动作与用户显式命令 —— `expand` / `collapse` / `expand_and_find_desks` / `scroll_to_row` / `reveal_seat`；并持有 UI 独占与头像弹窗生命周期：`ui_session` / `avatar_card` / `read_occupant` / `card_still_present`。
+- **视口裁剪约束只属于被动观测路径**：`SeatObservationManager._is_desk_interactable` 拒绝渲染高度 < `MIN_INTERACTABLE_DESK_HEIGHT`(100) 或 h/w < 0.4 的桌位（残片头像已被视口裁切，按中心点击只会命中空白 → **绝不盲目点击**），观测的**逐桌读数**里**跳过**这类桌位；主动驱动用另一种方式满足同一条物理约束 —— **先把面板滚到目标座位真正渲染出来**（`scroll_to_row` / `reveal_seat`）再交互。
+- **严禁**把观测者的「跳过裁剪桌位」守卫抄进驱动例程（会让 `:seat N` 对视口外的座位静默失效），**严禁**把观测者的后台重扫冷却（`RESCAN_COOLDOWN` 等）搬进命令路径 —— 显式用户命令必须立即执行。
+- 头像弹窗的**按返回的铁律**在驱动侧实现：`avatar_card` / `read_occupant` 只在 `card_still_present` 证据成立时按 back —— 房间里一次盲按 back 就是退出派对房间。
 
 ### Adding a New Command
 
