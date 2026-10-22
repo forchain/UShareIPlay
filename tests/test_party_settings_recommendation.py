@@ -507,9 +507,9 @@ class _ProdGesture:
         return True
 
     def swipe_until_element(
-        self, element_key, direction='up', max_swipes=10
+        self, element_key, direction='up', max_swipes=10, duration_ms=300
     ):
-        self.scrolls.append((element_key, direction, max_swipes))
+        self.scrolls.append((element_key, direction, max_swipes, duration_ms))
         return self.finder.elements.get(element_key)
 
     def scroll_container_until_element(
@@ -580,15 +580,15 @@ def test_the_production_driver_uses_the_scroll_helper_with_the_swipe_limit():
 
     original = handler.gesture_handler.swipe_until_element
 
-    def scroll_and_reveal(element_key, direction='up', max_swipes=10):
-        original(element_key, direction, max_swipes)
+    def scroll_and_reveal(element_key, direction='up', max_swipes=10, duration_ms=300):
+        original(element_key, direction, max_swipes, duration_ms)
         return status
 
     handler.gesture_handler.swipe_until_element = scroll_and_reveal
 
     assert driver.reveal_recommendation_status(max_swipes=3) is True
     assert handler.gesture_handler.scrolls == [
-        (RECOMMENDATION_STATUS_KEY, 'up', 3)
+        (RECOMMENDATION_STATUS_KEY, 'up', 3, 500)
     ]
 
 
