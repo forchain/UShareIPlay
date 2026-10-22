@@ -92,5 +92,18 @@ class SeatCommand(BaseCommand):
                     return {'error': err}
                 return await SeatManager.instance().remove_seat_occupant(seat_number)
             return {'error': 'Invalid command. Use: :seat 4 [seat_number]'}
+        elif command == '5':
+            # 邀请入座：:seat 5 <座位号> [用户]，用户留空默认邀请发起人。
+            # 座位层只认 Soul UI 上可见的名字（分身名），所以先解析成房间里当前
+            # 可见的那个名字，再交给座位层去做 UI 查找。
+            if len(parameters) < 2:
+                return {'error': 'Invalid command. Use: :seat 5 <seat_number> [username]'}
+            seat_number, err = self.coerce_int(
+                parameters[1], 1, 12, 'Invalid seat number. Must be between 1 and 12')
+            if err:
+                return {'error': err}
+            target_username = (parameters[2].strip() if len(parameters) > 2 else message_info.nickname) or ''
+            target_username = await self._resolve_visible_username(target_username)
+            return await SeatManager.instance().invite_user_to_seat(seat_number, target_username)
         else:
-            return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]|4 [seat_number]]'}
+            return {'error': 'Invalid command. Use: :seat [0|1 <seat_number>|2 <seat_number>|3 [username]|4 [seat_number]|5 <seat_number> [username]]'}
