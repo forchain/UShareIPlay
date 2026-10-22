@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
+from tests.seat_fixtures import MOCK_DESK_HEIGHT, MOCK_DESK_WIDTH, MOCK_DESK_X
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.runtime_context import EventRuntimeContext
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
@@ -71,9 +72,13 @@ class DummySeatUI:
 
 
 def _desk():
+    """替身桌位：宽高与真机 1080p 一致（见 tests/seat_fixtures.py 的 MOCK_DESK_*）。
+
+    滑动落点由这张桌位的位置与尺寸算出，所以断言必须跟着几何走。
+    """
     return SimpleNamespace(
-        size={"height": 10, "width": 10},
-        location={"x": 0, "y": 0},
+        size={"height": MOCK_DESK_HEIGHT, "width": MOCK_DESK_WIDTH},
+        location={"x": MOCK_DESK_X, "y": 100},
     )
 
 
@@ -98,7 +103,13 @@ def test_check_user_specific_seat_uses_global_index_when_all_desks_are_visible(m
     monkeypatch.setattr(seat_check_module.asyncio, "sleep", sleep)
     asyncio.run(manager.check_user_specific_seat("Chainer", 9))
 
-    assert handler.swipes == [(5, 5, 5, -5, 1000)]
+    # 滑动落点由替身桌位的几何算出（第 3 张桌位当锚点；9 号位在第 3 排 ⇒ 上滑一排）
+    anchor = seat_desks[2]
+    center_x = anchor.location["x"] + anchor.size["width"] // 2
+    center_y = anchor.location["y"] + anchor.size["height"] // 2
+    assert handler.swipes == [
+        (center_x, center_y, center_x, center_y - anchor.size["height"], 1000)
+    ]
     assert handler.searched_desks == [seat_desks[4]]
     sleep.assert_awaited_once_with(0.5)
 

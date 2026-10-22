@@ -980,11 +980,14 @@ class SeatObservationManager(Singleton):
         但点头像弹窗必须依赖屏幕真实渲染区域。完整桌位高约 200px（头像高 167px
         且上边距约 50px），低于阈值的残片桌位（真机 10~56px）头像已被视口裁切，
         按中心点击只会击中视口边缘外的空白或装饰边框，必然导致弹窗失败和超时报错。
+
+        读不出 bounds（既没有 bounds 属性，也没有 location/size）同样判为不可交互：
+        渲染尺寸未知就无法证明它在视口内，与「绝不盲目点击」同源 —— 宁可这一轮
+        不点头像（身份留空交给下一轮），也不在未知坐标上盲点（见 #450）。
         """
         bounds = self._desk_bounds(desk)
         if not bounds:
-            # 单测替身未配 bounds 时放行，不破坏纯 mock 用例
-            return True
+            return False
         w = bounds.get("width", 0)
         h = bounds.get("height", 0)
         if h < self.MIN_INTERACTABLE_DESK_HEIGHT:
