@@ -142,7 +142,7 @@ User levels range from `0` (guest / unprivileged) to `9` (owner / system adminis
 | `:seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or vacate seat occupant (4) |
 | `:mic` | 2 | `0/1` | Turn microphone off (0) or on (1); seats bot first if off-seat |
 | `:pack` | 1 | — | Open luck pack from backpack (auto-triggered at ≥ 5 online users) |
-| `:recommend` | 1 | `[on/off]` | Turn room recommendation distribution on or off |
+| `:recommend` | 1 | `[on/off]` | Toggle room recommendation distribution (no argument toggles; also accepts `开启`/`关闭`, `所有人`/`关闭推荐分发`) |
 | `:end` | 4 | — | Close party (requires owner's friend present) |
 | `:room` | 4 | `<party_id>` | Switch to a different party room (validates room is open first) |
 

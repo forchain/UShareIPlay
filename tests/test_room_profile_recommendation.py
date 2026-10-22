@@ -1,16 +1,14 @@
-"""推荐分发 + 派对类型这一条纵切片的离线测试（#393）。
+"""房间信息抽屉里残留字段的离线测试（#393 / #456）。
 
-推荐分发是一个**没有冷却**的一次性开关，因此它与话题（5 分钟）/ 公告（15 分钟）/
-房名（10 分钟）三条纵切**形状不同**：`:recommend` 当场就写 UI，回复立刻回去，
-不像那三条「先排队、等下一次心跳」。因此本文件考的是：
+推荐分发已从房间信息抽屉搬到派对设置面板（#456），它自己的整条纵切
+（开关、翻页、二级弹窗、`:recommend`）在 `test_party_settings_recommendation.py`。
+本文件保留下来守的是**抽屉这一侧**的边界：
 
-- 开关走完端口的七个原语，全程一次抽屉会话，选项层收掉之后抽屉确认关好
-- 推荐分发**不进草稿库** —— 连续两次 `:recommend` 都必须真的生效
-- 派对类型（"闲聊唠嗑" -> "唱歌听歌"）与推荐分发是抽屉里的同两行，
-  归同一个所有者，且都是**读文本做判定**：端口只建模物理动作，读判定走 handler
-- **批处理（本 ticket 的交付物）**：建房与回房两次生命周期检查必须合并成**一次**
-  抽屉会话 —— 断言整个序列里只有一次 `drawer:open` 和一次 `drawer:close`
-- 审计结果的四个键（`recommendation` / `room_type` / `room_name` / `notice`）不变
+- 派对类型（"闲聊唠嗑" -> "唱歌听歌"）仍是抽屉里的行，归 `RoomProfileManager`
+- 推荐分发的设置与探测**不再**发生在这块屏幕上：没有设置面板端口时，管理器
+  只报错，不碰抽屉
+- 建房与回房的生命周期检查里没有推荐动作，也不为推荐开抽屉
+- 审计结果的键（`room_type` / `room_name` / `notice`）不变
 
 抽屉的内存替身见 `tests/fakes/in_memory_room_profile_drawer.py`；生产适配器
 `SoulDrawerDriver` 与真实 handler 的映射在 `test_room_profile_manager.py` 里考。
@@ -138,23 +136,27 @@ def _recommendation_driver(**kwargs):
 # --------------------------------------------------------------------------
 
 
-def test_set_recommendation_is_temporarily_disabled():
-    """设置派对推荐状态已暂时停用，不执行抽屉动作。"""
+def test_set_recommendation_never_touches_the_room_info_drawer():
+    """推荐分发的屏幕是派对设置面板；没装配那个端口时只报不可用。"""
     RoomState.initialize()
     driver = _recommendation_driver()
     profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})))
 
     result = profile.set_recommendation(True)
-    assert result == {"error": "派对推荐设置已暂时停用"}
+
+    assert result == {"error": "派对设置面板不可用"}
     assert driver.clicks == []
     assert driver.opened_entries == []
 
 
-def test_inspecting_the_recommendation_status_returns_none():
-    """推荐状态已不在房间信息面板展示。"""
-    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
+def test_inspecting_the_recommendation_status_does_not_open_the_drawer():
+    """只读探测不得退回到抽屉里找回已经搬走的推荐那一行。"""
+    driver = _recommendation_driver()
+    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
 
     assert profile.inspect_current_ui_status() is None
+    assert driver.clicks == []
+    assert driver.opened_entries == []
 
 
 def test_sync_while_open_does_not_sync_recommendation():
@@ -473,40 +475,31 @@ class _CommandRuntime:
         self.music_handler = SimpleNamespace()
 
 
-@pytest.mark.asyncio
-async def test_recommend_command_is_temporarily_disabled():
+def test_the_recommend_command_is_no_longer_temporarily_disabled():
+    """`:recommend` 的拦截必须撤掉，真正的工作交给房间档案模块（#457）。"""
+    import pathlib
+
+    source = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "src"
+        / "ushareiplay"
+        / "commands"
+        / "recommend.py"
+    ).read_text(encoding="utf-8")
+
+    assert "暂时停用" not in source
+    assert "set_recommendation" in source, "命令必须真正去写设置面板"
+
+
+def test_the_recommend_command_parses_both_state_aliases():
     from ushareiplay.commands.recommend import RecommendCommand
 
-    driver = _recommendation_driver()
-    screen = _Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})
-    handler = _Handler(screen)
-    _profile(driver, handler)
-    room_state = RoomState.initialize()
-    room_state.recommendation_enabled = True
-
-    cmd = RecommendCommand(_CommandRuntime(handler))
-    result = await cmd.do_process(SimpleNamespace(nickname="Console"), ["off"])
-
-    assert result == {"error": "派对推荐功能已暂时停用"}
-    assert driver.opened_entries == []
-    assert driver.clicks == []
-
-
-@pytest.mark.asyncio
-async def test_recommend_command_disabled_when_given_no_argument():
-    from ushareiplay.commands.recommend import RecommendCommand
-
-    driver = _recommendation_driver()
-    screen = _Screen(DRAWER_SCREEN, {"party_recommendation_status": CLOSED_TEXT})
-    handler = _Handler(screen)
-    _profile(driver, handler)
-    RoomState.initialize().recommendation_enabled = False
-
-    cmd = RecommendCommand(_CommandRuntime(handler))
-    result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])
-
-    assert result == {"error": "派对推荐功能已暂时停用"}
-    assert driver.opened_entries == []
+    cmd = RecommendCommand.__new__(RecommendCommand)
+    for alias in ("on", "open", "开启", "开放", "所有人", "1"):
+        assert cmd._parse_target(alias) is True, alias
+    for alias in ("off", "close", "关闭", "关闭推荐分发", "0"):
+        assert cmd._parse_target(alias) is False, alias
+    assert cmd._parse_target("maybe") is None
 
 
 # --------------------------------------------------------------------------

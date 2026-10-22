@@ -18,6 +18,10 @@ from ushareiplay.managers.room_profile.driver import (
     RoomProfileDrawerDriverPort,
 )
 from ushareiplay.managers.room_profile.manager import RoomProfileManager
+from ushareiplay.managers.room_profile.party_settings import (
+    PartySettingsDriverPort,
+    SoulPartySettingsDriver,
+)
 from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 
 __all__ = [
@@ -25,10 +29,12 @@ __all__ = [
     "DIALOG_KEYS",
     "DRAWER_KEY",
     "NOTICE_COOLDOWN_MINUTES",
+    "PartySettingsDriverPort",
     "ProfileDraftStore",
     "RoomProfileDrawerDriverPort",
     "RoomProfileManager",
     "SoulDrawerDriver",
+    "SoulPartySettingsDriver",
     "TITLE_COOLDOWN_MINUTES",
     "TOPIC_COOLDOWN_MINUTES",
 ]

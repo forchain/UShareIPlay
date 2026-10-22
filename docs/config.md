@@ -54,7 +54,7 @@ llm:
 | `roles` | `room_owner`, `system_users`, `admin_users` |
 | `sleep` | Sleep Guardian settings: `enabled`, `start_hour` (23), `end_hour` (6), `blocked_commands` |
 | `memory` | Dual-layer user memory settings: `enabled`, `message_threshold`, `timeout` |
-| `recommendation`| Party recommendation auto-sync and drawer settings |
+| `soul.create_party_recommendation` | Default recommendation state applied when creating a party; the toggle lives in the party settings panel (`soul.elements.party_setting_*`) |
 
 ## Common Local Overrides
 

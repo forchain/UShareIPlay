@@ -13,7 +13,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 |---|---|
 | `PartyManager` | Party lifecycle: creation, auto-restart after `party_restart_minutes`, state tracking |
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
-| `RoomProfileManager` | Sole owner of the room drawer session and all four field groups (room name / topic / notice / party type + recommendation); owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, the batched audit, and the notice restore after a title change |
+| `RoomProfileManager` | Sole owner of the room drawer session and its field groups (room name / topic / notice / party type) plus recommendation state; owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, the batched audit, and the notice restore after a title change. Recommendation reads/writes go through a separate party-settings driver (#456) |
 | `SeatManager` | Seat reservation + seating sub-managers |
 | `MicManager` | Microphone on/off automation and off-seat preparation |
 | `SleepManager` | Sleep Guardian: blocks unprivileged automated commands during night hours (23:00 - 06:00) |
@@ -31,7 +31,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 - **Mic**: `:mic 1` (or `:mic` when off-seat) automatically calls `SoulHandler.ensure_on_seat()` to claim a seat before unmuting. `:mic 0` mutes without leaving the seat.
 
 ### Recommendation Distribution
-Soul App periodically surfaces party recommendation popups or toggles in room settings. `RoomProfileManager` owns the recommendation state as one of its drawer fields, handles the drawer UI safely, and allows operators to toggle distribution via `:recommend on` / `:recommend off`. The legacy `RecommendationManager` was folded into it (#393).
+Soul moved the recommendation toggle out of the room-info drawer and into the **party settings panel** (`partySettingBtn`). `RoomProfileManager` still owns the state (`RoomState.recommendation_enabled`), but reads and writes it through `SoulPartySettingsDriver`: open the panel, scroll (with a bounded swipe limit) to the recommendation row, read its text (`所有人` / `关闭推荐分发`), and only when the state differs click the row and then the target option. The manager closes only panels it opened; a panel already open is left for the caller. `:recommend` with no argument toggles, and accepts `on`/`off` plus the UI's own wording (`开启`/`关闭`, `所有人`/`关闭推荐分发`). The legacy `RecommendationManager` was folded into `RoomProfileManager` in #393; #456 moved its UI to the settings panel.
 
 ### Sleep Guardian
 `SleepManager` prevents automated command floods during rest hours (default 23:00 to 06:00).
@@ -54,7 +54,7 @@ Soul App periodically surfaces party recommendation popups or toggles in room se
 | `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove seat occupant (4) |
 | `mic` | 2 | `0/1` | Turn microphone off (0) or on (1); seats bot first if off-seat |
 | `pack` | 1 | — | Open luck pack from backpack (auto-triggered at ≥ 5 online users) |
-| `recommend`| 1 | `[on/off]` | Turn room recommendation distribution on or off |
+| `recommend`| 1 | `[on/off]` | Toggle room recommendation distribution (no argument toggles; also accepts `开启`/`关闭`, `所有人`/`关闭推荐分发`) |
 | `sleep` | 4 | `on/off/status` | Manage Sleep Guardian night rest mode (overrides 23:00 - 06:00 window) |
 | `end` | 4 | — | Close party (requires owner's friend present) |
 | `room` | 4 | `<party_id>` | Switch to a different party room (verifies target room is open before switching) |
