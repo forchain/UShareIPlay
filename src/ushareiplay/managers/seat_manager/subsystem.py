@@ -34,7 +34,7 @@ import logging
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import ClassVar, Optional, Tuple
 
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.dal import SeatReservationDAO, UserDAO
@@ -94,6 +94,10 @@ class SeatSubsystem:
     刻意不是单例：handler 与协作者都由构造注入（与 `SeatPanelDriver` 同一原则），
     由 `SeatManager` 门面持有一个实例。
     """
+
+    # 视口滚动后的安定等待（秒）。滚动会改页面结构，读数必须等它落定，
+    # 否则读到的还是滚动前那一屏。
+    VIEWPORT_SETTLE_SECONDS: ClassVar[float] = 0.5
 
     def __init__(
         self,
@@ -542,6 +546,105 @@ class SeatSubsystem:
             except Exception as e:
                 if hasattr(self.handler, "logger") and self.handler.logger:
                     self.handler.logger.error(f"Failed to collapse seats: {e}")
+
+    # ------------------------------------------------------------------
+    # 独立空桌（社恐模式）
+    # ------------------------------------------------------------------
+    async def find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
+        """挑一张左右两座都空、且经真机 DOM 核验过的独立桌位。
+
+        「独立空桌」= 同一张桌子的左右两个座位都没有人在座。房间里 6 张桌子对应
+        1~12 号座位：桌号 0..5 ↔ 座位 (1,2) (3,4) (5,6) (7,8) (9,10) (11,12)。
+        只要一侧有人，这张桌就不算独立（社恐排除）。
+
+        候选桌来自 `SeatObservationManager` 的缓存座次表（快，但可能滞后），每一张
+        候选桌都要滚进视口、用真机 DOM 证据（`_read_seat_dom` +
+        `_has_occupancy_evidence`）复核：现场发现有人就换下一张候选桌；现场读不出
+        证据的座位一律不算「核验通过」——没核验过的空桌不能当成空桌。
+
+        **UI 独占**：本方法会展开面板并滚动视口，属于会改页面结构的 UI 动作，
+        调用方必须已经持有 UI 锁（如 `check_seats_on_entry`）。这里不再自己申请
+        一次锁：UI 锁不可重入，调用方持锁时再取一次会死锁。
+
+        Returns:
+            (桌号 0..5, 推荐空座号)；没有可用独立空桌时返回 None。
+        """
+        obs = self.observation
+        if obs is None:
+            return None
+
+        candidates = self._isolated_empty_desk_candidates(obs)
+        if not candidates:
+            # 没有候选桌：正常的查询结果，不刷屏。
+            return None
+
+        seat_desks = await self.expand_and_find_desks()
+        if not seat_desks:
+            return None
+
+        for desk_index in candidates:
+            row_index = desk_index // 2
+            # 相位与滚动目标跟 `sit_at_specific_seat` 同一套：第二排在顶相位视口内，
+            # 第三排必须滚到底部相位才读得到。
+            band = "bottom" if row_index == 2 else "top"
+            scroll_target_desk = desk_index if row_index == 2 else 0
+            self.scroll_to_row(scroll_target_desk, seat_desks, duration=1000)
+            # 滚动会改页面结构，读数必须等它落定。
+            await asyncio.sleep(self.VIEWPORT_SETTLE_SECONDS)
+
+            observed = await obs.sync_current_viewport(band=band)
+            empty, occupied = self._verify_isolated_empty_desk(obs, observed, desk_index)
+            if empty:
+                left_seat, right_seat = desk_index * 2 + 1, desk_index * 2 + 2
+                self.logger.info(
+                    f"选定独立空桌：{desk_index + 1} 号桌（{left_seat}/{right_seat} 号座位都空），"
+                    f"推荐座位 {left_seat}")
+                return (desk_index, left_seat)
+            if occupied:
+                # 缓存滞后是一次真实的状态变化，值得报出来；随后换下一张候选桌。
+                self.logger.info(
+                    f"缓存座次表已过期：{desk_index + 1} 号桌现场有人在座，改核验下一张候选桌")
+
+        self.logger.info("没有可用的独立空桌（左右两座都空）")
+        return None
+
+    @staticmethod
+    def _isolated_empty_desk_candidates(obs) -> list:
+        """从缓存座次表里挑出左右两座都空的候选桌（桌号 0..5，顺序即核验顺序）。"""
+        seats = getattr(obs, "seats", None) or {}
+        candidates = []
+        for desk_index in range(6):
+            left = seats.get(desk_index * 2 + 1)
+            right = seats.get(desk_index * 2 + 2)
+            if left is None or right is None:
+                continue
+            if not left.occupied and not right.occupied:
+                candidates.append(desk_index)
+        return candidates
+
+    def _verify_isolated_empty_desk(self, obs, observed, desk_index: int) -> Tuple[bool, bool]:
+        """用真机 DOM 证据核验一张候选桌的左右两座是否都空。
+
+        空座判据两条同时成立才算数：`_has_occupancy_evidence` 为假（没有占座证据）
+        **且** 读数的 `is_empty` 为真（明确的空座证据）。缺前者时位子可能只是没
+        渲染出任何证据（读不出判据），缺后者时它可能正被人占着 —— 两者缺一不可，
+        没核验过的桌位绝不当成空桌。
+
+        Returns:
+            (是否核验为空桌, 是否现场有人)。两者都不成立 = 读不出判据。
+        """
+        for side, seat_number in (("left", desk_index * 2 + 1), ("right", desk_index * 2 + 2)):
+            entry = (observed or {}).get(seat_number)
+            if entry is None:
+                # 这个座位不在本轮视口读数里：核验不通过（读不到 ≠ 空）。
+                return (False, False)
+            desk, seat_side, info = entry
+            dom = obs._read_seat_dom(desk, seat_side or side)
+            if obs._has_occupancy_evidence(dom):
+                return (False, True)
+            if not info.get("is_empty"):
+                return (False, False)
+        return (True, False)
 
     async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
