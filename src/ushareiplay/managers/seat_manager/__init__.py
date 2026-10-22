@@ -14,13 +14,13 @@ from ushareiplay.managers.seat_manager.guard import (
 import logging
 
 class SeatManager(SeatManagerBase):
-    """座位子系统的门面：持有唯一一份实现，公开八个座位命令接口。
+    """座位子系统的门面：持有唯一一份实现，公开九个座位命令接口。
 
     合并前这里是一个逐方法转发的空壳（八个方法逐个转给四个互相独立的单例）。现在
     实现都在 `SeatSubsystem` 里，本门面只做两件事：
 
     - 构造一个 `SeatSubsystem`，把显式注入的协作者原样交给它；
-    - 在八个公开接口上挂客房守卫。
+    - 在九个公开接口上挂客房守卫。
     """
 
     def __init__(
@@ -61,6 +61,11 @@ class SeatManager(SeatManagerBase):
     async def take_seat(self, seat_number: int) -> dict:
         """Take a specific seat number."""
         return await self._subsystem.sit_at_specific_seat(seat_number)
+
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
+    async def invite_user_to_seat(self, seat_number: int, target_visible_name: str) -> dict:
+        """邀请指定用户入座某个空座位。"""
+        return await self._subsystem.invite_user_to_seat(seat_number, target_visible_name)
 
     @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def remove_seat_occupant(self, seat_number=None) -> dict:
