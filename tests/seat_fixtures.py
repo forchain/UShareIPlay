@@ -29,6 +29,34 @@ BOTTOM_VIEW_RESOURCE_IDS = (
     "cn.soulapp.android:id/rightBottomView",
 )
 
+# ---------------------------------------------------------------------------
+# 真机 1080p 几何（唯一事实源）
+#
+# 全部取自真机 page_source dump（tests/fixtures/seat_dom/）：一张桌位宽 309、
+# 高 207，左右两列的左边缘分别是 28 / 383。替身桌位（build_desk_xml /
+# RawSeatDesk）与整屏 page_source 生成器（build_live_page_source）共用这一套
+# 尺寸 —— 替身与真机同口径，交互门禁（_is_desk_interactable 的高度/长宽比
+# 阈值）在单测里测的才是真机判据，而不是替身自己造出来的尺寸（见 #450）。
+# ---------------------------------------------------------------------------
+LIVE_DESK_ORIGIN = (28, 566)
+LIVE_DESK_SIZE = (309, 207)
+LIVE_DESK_GAP = (46, 27)
+LIVE_SIDE_INSET = {"left": (32, 52), "right": (142, 55)}
+LIVE_SIDE_SIZE = (135, 167)
+
+# 替身桌位的几何：宽高取真机值（309x207），左边缘沿用替身一直用的 40。
+# 纵向位置由各测试自己给（y 参数）—— 只有宽高会影响交互门禁的阈值判据。
+MOCK_DESK_X = 40
+MOCK_DESK_WIDTH = LIVE_DESK_SIZE[0]
+MOCK_DESK_HEIGHT = LIVE_DESK_SIZE[1]
+# 视口裁切残片的真实高度（真机 dump 里桌位只露出底座，18px）。这个高度是刻意
+# 短的：它证明观测层会拒绝盲点一个只露出几十像素的残片，不许放成整桌高度。
+FRAGMENT_DESK_HEIGHT = 18
+
+
+def _bounds_str(x1, y1, x2, y2) -> str:
+    return f"[{x1},{y1}][{x2},{y2}]"
+
 
 @lru_cache(maxsize=1)
 def soul_elements() -> dict:
@@ -89,7 +117,14 @@ def build_desk_xml(
     left_state_widgets=False,
     right_state_widgets=False,
 ) -> str:
-    bounds_attr = bounds if bounds else f"[40,{y}][400,{y + 160}]"
+    # 默认整桌尺寸取真机 1080p（309x207）：替身不再比真机小一截，交互门禁的
+    # 阈值判据在单测里与真机同口径（见 #450）。
+    bounds_attr = bounds if bounds else _bounds_str(
+        MOCK_DESK_X,
+        y,
+        MOCK_DESK_X + MOCK_DESK_WIDTH,
+        y + MOCK_DESK_HEIGHT,
+    )
     return (
         f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{bounds_attr}">'
         + _seat_xml(
@@ -183,7 +218,14 @@ def build_real_raw_desks(fixture_name: str) -> list:
 
 def build_base_fragment_xml(y=100, bounds=None) -> str:
     """只渲染底座的残片：bgRoot + left/rightBottomView，没有任何 userView。"""
-    bounds_attr = bounds if bounds else f"[40,{y}][400,{y + 18}]"
+    # 宽度与真机桌位一致（309），高度刻意保持残片高度（18px）—— 这个短高度是
+    # 证据本身：视口只露出桌位底座，用来证明观测层拒绝盲点残片（见 #341/#450）。
+    bounds_attr = bounds if bounds else _bounds_str(
+        MOCK_DESK_X,
+        y,
+        MOCK_DESK_X + MOCK_DESK_WIDTH,
+        y + FRAGMENT_DESK_HEIGHT,
+    )
     bottoms = "".join(f'<node resource-id="{rid}"/>' for rid in BOTTOM_VIEW_RESOURCE_IDS)
     return (
         f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{bounds_attr}">'
@@ -245,8 +287,9 @@ class RawSeatDesk:
 
     def __init__(self, children, location=None):
         self.children = children
-        self.location = location or {"x": 40, "y": 100}
-        self.size = {"width": 360, "height": 160}
+        self.location = location or {"x": MOCK_DESK_X, "y": 100}
+        # 尺寸与真机桌位一致（309x207）：raw 路径的桌位同样要过交互门禁的阈值。
+        self.size = {"width": MOCK_DESK_WIDTH, "height": MOCK_DESK_HEIGHT}
 
     def find_element(self, _by, value):
         child = self.children.get(value)
@@ -359,7 +402,7 @@ def build_live_raw_desk(left, right, y=600) -> RawSeatDesk:
             children[elements[f"{side}_state"]] = SimpleNamespace(text="")
         else:
             children[elements[f"{side}_default_name"]] = SimpleNamespace(text="点击入座")
-    return RawSeatDesk(children, location={"x": 40, "y": y})
+    return RawSeatDesk(children, location={"x": MOCK_DESK_X, "y": y})
 
 
 # ---------------------------------------------------------------------------
@@ -367,13 +410,9 @@ def build_live_raw_desk(left, right, y=600) -> RawSeatDesk:
 #
 # 几何取自 tests/fixtures/seat_dom/ 的真机 dump：两列三排共 6 张桌位，
 # 一张桌位左右各一个麦位，奇数号在左、偶数号在右。
+# 尺寸常量（LIVE_DESK_* / LIVE_SIDE_*）见文件顶部「真机 1080p 几何」。
 # ---------------------------------------------------------------------------
 
-LIVE_DESK_ORIGIN = (28, 566)
-LIVE_DESK_SIZE = (309, 207)
-LIVE_DESK_GAP = (46, 27)
-LIVE_SIDE_INSET = {"left": (32, 52), "right": (142, 55)}
-LIVE_SIDE_SIZE = (135, 167)
 # 视口相位 -> (完整渲染的 desk 序号, 只露出残片的 desk 序号)
 LIVE_VIEWPORT_PHASES = {
     "top": ((0, 1, 2, 3), (4, 5)),
@@ -383,10 +422,6 @@ LIVE_VIEWPORT_PHASES = {
     # 展开重扫合并顶/底两次读数后的等效全景（两次 find_elements 都看得见全部桌位）
     "full": ((0, 1, 2, 3, 4, 5), ()),
 }
-
-
-def _bounds_str(x1, y1, x2, y2) -> str:
-    return f"[{x1},{y1}][{x2},{y2}]"
 
 
 def live_desk_bounds(desk_index: int) -> tuple[int, int, int, int]:

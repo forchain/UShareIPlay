@@ -214,7 +214,12 @@ async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session(
     assert controller.sessions == ["seat_inspect"]
     assert controller.ui_lock.locked() is False
     # ElementWrapper 的子元素没有 element key，click() 拿不到真实元素 -> 按坐标点
-    assert handler.gesture_handler.click_at.call_args.args == (130, 180)
+    # 落点由替身桌位的 bounds 算出（左侧座位点四分之一处，纵向取中点）
+    bounds = desk.bounds
+    assert handler.gesture_handler.click_at.call_args.args == (
+        bounds["x"] + bounds["width"] // 4,
+        bounds["y"] + bounds["height"] // 2,
+    )
     handler.key_actions.press_back.assert_called()
 
 
@@ -2655,7 +2660,7 @@ async def test_admin_label_not_dropped_when_observation_has_empty_label():
 @pytest.mark.asyncio
 async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadable_label():
     """管理员从旧座换到新座后，即使新座在折叠视口中 label 读不到，也必须继承/识别出管理身份。"""
-    from tests.seat_fixtures import make_handler
+    from tests.seat_fixtures import build_desk_wrapper, make_handler
     from ushareiplay.managers.admin_manager import AdminManager
 
     AdminManager.reset_instance()
@@ -2669,10 +2674,22 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
     AdminManager.instance().add_room_admin("Chainer")
 
     # 视口内换座：7 号位空闲，6 号位占座；但 6 号位在折叠第二排，label 读不到（为空）
+    # 桌位必须是真的替身（带 bounds）：读不出尺寸的桌位判为不可交互，
+    # 观测层不会去点它 —— 那是生产规则，不是替身特权（见 #450）。
     manager.inspect_occupant = AsyncMock(return_value="Chainer")
+    desk_seat6 = build_desk_wrapper(handler, left="5", right="6", right_occupied=True)
+    desk_seat7 = build_desk_wrapper(handler, left="7", right="8")
     observed = {
-        6: (None, "right", {"occupied": True, "username": None, "label": "", "is_owner": False}),
-        7: (None, "left", {"occupied": False, "is_empty": True, "label": "7", "username": None}),
+        6: (
+            desk_seat6,
+            "right",
+            {"occupied": True, "username": None, "label": "", "is_owner": False},
+        ),
+        7: (
+            desk_seat7,
+            "left",
+            {"occupied": False, "is_empty": True, "label": "7", "username": None},
+        ),
     }
 
     await manager._resolve_usernames(observed, caller_holds_ui_session=False)
