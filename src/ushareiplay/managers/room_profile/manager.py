@@ -1432,7 +1432,7 @@ class RoomProfileManager(Singleton):
                 )
                 return {'error': '未找到推荐状态设置项'}
 
-            current_status = self._read_recommendation_status_from_ui()
+            current_status = self._read_recommendation_status_after_reveal(driver)
             # 只探测的读数留在 DEBUG：这是用户命令路径，但「读到什么」不是一次行为。
             self.logger.debug(
                 f'Inspected party recommendation status: {current_status}'
@@ -1552,6 +1552,25 @@ class RoomProfileManager(Singleton):
         if RECOMMENDATION_CLOSED_TEXT in text:
             return False
         return None
+
+    def _read_recommendation_status_after_reveal(self, driver) -> Optional[bool]:
+        """翻到推荐那一行之后再读它的状态。
+
+        面板刚打开时列表布局会换一次（图标摘要 -> 设置卡片），那一行会短暂不在
+        树上 —— 一次性去读会读到空。这里等它真的出现，读到的才是真值。
+        """
+        status = self._read_recommendation_status_from_ui()
+        if status is not None:
+            return status
+        for _ in range(2):
+            status = self._read_recommendation_status_from_ui(wait=True)
+            if status is not None:
+                return status
+            if not driver.reveal_recommendation_status(
+                max_swipes=PARTY_SETTINGS_DEFAULT_MAX_SWIPES
+            ):
+                return None
+        return self._read_recommendation_status_from_ui(wait=True)
 
     def _read_recommendation_status_until(
         self, expected: bool, *, timeout: Optional[float] = None

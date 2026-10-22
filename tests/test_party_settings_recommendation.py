@@ -25,6 +25,7 @@ from ushareiplay.managers.room_profile.party_settings import (
     PARTY_SETTING_CLOSE_KEY,
     PARTY_SETTING_TITLE_KEY,
     RECOMMENDATION_OPTION_KEYS,
+    RECOMMENDATION_ROW_KEY,
     RECOMMENDATION_SHEET_KEY,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
@@ -764,7 +765,7 @@ class _SheetFinder:
             return _FakeElement() if self.sheet_open else None
         if key == PARTY_SETTING_TITLE_KEY:
             return _FakeElement() if self.panel_open else None
-        if key == RECOMMENDATION_STATUS_KEY:
+        if key in (RECOMMENDATION_STATUS_KEY, RECOMMENDATION_ROW_KEY):
             return self.status_element
         if key == PARTY_SETTING_BUTTON_KEY:
             return self.button
