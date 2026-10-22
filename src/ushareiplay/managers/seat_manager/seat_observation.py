@@ -154,6 +154,7 @@ class SeatObservationManager(Singleton):
     # 重扫落地了、但结论与专注人数不自洽时的补扫间隔：展开收起会逼面板重绘，
     # 残留 label 通常在第二遍就清掉，但一次展开要十几秒，不能按 3 秒追着扫。
     CONSISTENCY_RESCAN_COOLDOWN: ClassVar[float] = DEFAULT_COOLDOWN_POLICY.consistency_rescan_cooldown
+    MIN_INTERACTABLE_DESK_HEIGHT: ClassVar[int] = 100
 
     # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
     # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
@@ -972,6 +973,26 @@ class SeatObservationManager(Singleton):
                 return True
         return False
 
+    def _is_desk_interactable(self, desk) -> bool:
+        """桌位是否在当前视口具备足够的可点击交互高度。
+
+        DOM 读取（_is_desk_visible）不限高度（Android 会 dump 残片节点的 DOM），
+        但点头像弹窗必须依赖屏幕真实渲染区域。完整桌位高约 200px（头像高 167px
+        且上边距约 50px），低于阈值的残片桌位（真机 10~56px）头像已被视口裁切，
+        按中心点击只会击中视口边缘外的空白或装饰边框，必然导致弹窗失败和超时报错。
+        """
+        bounds = self._desk_bounds(desk)
+        if not bounds:
+            # 单测替身未配 bounds 时放行，不破坏纯 mock 用例
+            return True
+        w = bounds.get("width", 0)
+        h = bounds.get("height", 0)
+        if h < self.MIN_INTERACTABLE_DESK_HEIGHT:
+            return False
+        if w > 0 and (h / w) < 0.4:
+            return False
+        return True
+
     def _is_desk_visible(self, desk) -> bool:
         """桌位是否可用作麦位读数 —— 只由 DOM 决定。
 
@@ -996,6 +1017,9 @@ class SeatObservationManager(Singleton):
         wrapper 没有 element key，get_web_element() 返回 None 且静默 False），
         所以退回按 bounds 坐标点击。
         """
+        if not self._is_desk_interactable(desk):
+            return False
+
         if target_element is not None and not isinstance(target_element, ElementWrapper):
             try:
                 target_element.click()
@@ -1507,6 +1531,9 @@ class SeatObservationManager(Singleton):
                 last_probe is not None
                 and not self.cooldown_policy.is_unknown_probe_cooldown_expired(last_probe)
             ):
+                continue
+            # 裁剪残片桌位（高度不足以交互）在当前视口无法通过点头像读取昵称，绝不盲目点击
+            if not self._is_desk_interactable(desk):
                 continue
             pending.append((seat_num, desk, side))
 
