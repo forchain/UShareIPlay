@@ -446,7 +446,7 @@ class SeatSubsystem:
         if not visible_name:
             return
 
-        if await self._is_user_already_seated(username):
+        if await self._is_user_already_seated(username, visible_name=visible_name):
             return
 
         result = None
@@ -495,16 +495,37 @@ class SeatSubsystem:
             return username
         return visible or username
 
-    async def _is_user_already_seated(self, username: str) -> bool:
+    async def _is_user_already_seated(
+        self, username: str, visible_name: Optional[str] = None
+    ) -> bool:
         """缓存座次表里这个人是不是已经在座。
 
-        座次表里的 `username` 可能是可见昵称，而调用方给的是 canonical 名，所以
-        只能按身份判定，绝不按字符串相等。群主的座位（UI 上写的是「群主」，读不到
-        昵称）证明不了是谁，不算「进房用户已在座」。
+        座次表里的 `username` 可能是可见昵称，而调用方给的可能是 canonical 名或可见昵称。
+        群主的座位（UI 上写的是「群主」或标有 is_owner）属于房主，证明不了是进房普通用户，不算。
+        房主自身（配置的 room_owner 或其可见名）有固定房主位，不算普通在座用户且不予安排普通空桌。
+        与房主绑定同一 canonical 主账号的分身/管理员账号（如 Chainer）不是房主，必须正常邀请入座。
         """
         obs = self.observation
         if obs is None:
             return False
+
+        if visible_name is None:
+            visible_name = await self._resolve_visible_name(username)
+
+        user_names = {username.strip().lower()}
+        if visible_name:
+            user_names.add(visible_name.strip().lower())
+
+        # 房主（群主）本来就有自己的固定房主位，别给他再安排普通空桌。
+        # 仅当进房用户确实是房主账号自身时才算（配置名或其可见名），绝不误伤同主账号下的其他分身/管理账号。
+        owner_name = self._room_owner_nickname(obs)
+        if owner_name:
+            visible_owner = await self._resolve_visible_name(owner_name)
+            owner_aliases = {owner_name.strip().lower()}
+            if visible_owner:
+                owner_aliases.add(visible_owner.strip().lower())
+            if user_names & owner_aliases:
+                return True
 
         seats = getattr(obs, "seats", None) or {}
         for slot in seats.values():
@@ -514,13 +535,24 @@ class SeatSubsystem:
             if not slot_username:
                 # 群主座位读不到昵称：证明不了是进房用户，不算。
                 continue
-            if await self._same_identity(slot_username, username):
+            if getattr(slot, "is_owner", False) or getattr(slot, "label", "") == "群主":
+                # 群主座位属于房主，不属于进房普通用户
+                continue
+
+            slot_norm = slot_username.strip().lower()
+            if slot_norm in user_names:
                 return True
 
-        # 房主（群主）本来就有自己的座位，别给他再安排一张空桌。
-        owner_name = self._room_owner_nickname(obs)
-        if owner_name and await self._same_identity(owner_name, username):
-            return True
+            # 若跨名匹配（如同一身份改名前后）：只有当 slot_username 并不是房间里另一个独立在线的用户时才算同一人
+            if await self._same_identity(slot_username, username):
+                try:
+                    is_online_fn = getattr(InfoManager.instance(), "is_user_online", None)
+                    if is_online_fn and is_online_fn(slot_username):
+                        # slot 上的账号与进房账号同时在线，属于同主账号下的不同独立账号（如 Outlier 在座，Chainer 进房）
+                        continue
+                except Exception:
+                    pass
+                return True
 
         return False
 

@@ -83,12 +83,16 @@ class FakeReservationDAO:
 class FakeInfoManager:
     """`InfoManager` 的替身：把 canonical 名解析成房间里可见的昵称。"""
 
-    def __init__(self, visible_by_canonical=None):
+    def __init__(self, visible_by_canonical=None, online_users=None):
         self.visible_by_canonical = visible_by_canonical or {}
+        self.online_users = set(online_users) if online_users else set()
         self.resolved = []
 
     def instance(self):
         return self
+
+    def is_user_online(self, username):
+        return username in self.online_users
 
     async def resolve_visible_username(self, username):
         self.resolved.append(username)
@@ -182,6 +186,9 @@ def _build(
     handler=None,
     controller=None,
     room_owner=None,
+    identities=None,
+    visible_by_canonical=None,
+    online_users=None,
 ):
     """搭一套子系统：DAO / InfoManager / 找桌 / 邀请全部是可控替身。"""
     handler = handler or make_handler(controller=controller or FakeController())
@@ -194,8 +201,11 @@ def _build(
     )
 
     reservations = FakeReservationDAO(reservation)
-    identities = FakeIdentityDAO([(CANONICAL, VISIBLE)])
-    info = FakeInfoManager({CANONICAL: VISIBLE})
+    if identities is None:
+        identities = FakeIdentityDAO([(CANONICAL, VISIBLE)])
+    if visible_by_canonical is None:
+        visible_by_canonical = {CANONICAL: VISIBLE}
+    info = FakeInfoManager(visible_by_canonical, online_users=online_users)
 
     monkeypatch.setattr(seat_subsystem_module, "SeatReservationDAO", reservations)
     monkeypatch.setattr(seat_subsystem_module, "UserDAO", identities)
@@ -351,6 +361,40 @@ async def test_the_room_owner_is_not_pulled_to_another_desk(monkeypatch):
     assert bundle.desk_search.calls == 0
     assert bundle.invite.calls == []
     assert bundle.messages == []
+
+
+async def test_alt_account_sharing_canonical_id_with_room_owner_is_invited(monkeypatch):
+    """同 canonical 主账号的分身账号（如 Chainer 进房，房主为 Joyer）不是房主本人，必须正常邀请入座。"""
+    bundle = _build(
+        monkeypatch,
+        room_owner="Joyer",
+        identities=FakeIdentityDAO([("Outlier", "Joyer", "Chainer")]),
+        visible_by_canonical={"Outlier": "Outlier", "Joyer": "Joyer", "Chainer": "Chainer"},
+        online_users={"Outlier", "Joyer", "Chainer"},
+    )
+
+    await bundle.subsystem.check_seats_on_entry("Chainer")
+
+    assert bundle.desk_search.calls == 1, "Chainer 不是房主，必须挑独立空桌"
+    assert bundle.invite.calls == [(DESK_SEAT, "Chainer")], "必须向 Chainer 发出入座邀请"
+
+
+async def test_alt_account_is_invited_when_another_alt_is_seated(monkeypatch):
+    """同主账号的另一个账号（如 Outlier）在座时，进房账号（Chainer）仍应正常邀请入座。"""
+    seats = _occupied_seats("Outlier", seat_number=5)
+    bundle = _build(
+        monkeypatch,
+        room_owner="Joyer",
+        seats=seats,
+        identities=FakeIdentityDAO([("Outlier", "Joyer", "Chainer")]),
+        visible_by_canonical={"Outlier": "Outlier", "Joyer": "Joyer", "Chainer": "Chainer"},
+        online_users={"Outlier", "Joyer", "Chainer"},
+    )
+
+    await bundle.subsystem.check_seats_on_entry("Chainer")
+
+    assert bundle.desk_search.calls == 1, "在座的是 Outlier 不是 Chainer，必须给 Chainer 挑桌"
+    assert bundle.invite.calls == [(DESK_SEAT, "Chainer")]
 
 
 async def test_a_room_without_an_isolated_empty_desk_leaves_everyone_alone(monkeypatch):
