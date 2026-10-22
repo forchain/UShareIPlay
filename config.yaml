@@ -125,7 +125,13 @@ soul:
     party_type_chat: '//android.widget.TextView[@text="闲聊唠嗑"]'
     party_type_singing: '//android.widget.TextView[@text="唱歌听歌"]'
     party_room_type_option: "cn.soulapp.android:id/tv_type"
-    party_recommendation_status: "cn.soulapp.android:id/tv_private_title"
+    # 派对设置面板：Soul 把「推荐分发」从房间信息抽屉搬到了这里（#456）。
+    party_setting_button: "cn.soulapp.android:id/partySettingBtn"
+    party_setting_title: '//android.widget.TextView[@text="派对设置"]'
+    party_setting_container: '//android.widget.FrameLayout[@resource-id="cn.soulapp.android:id/flContainer"][.//android.widget.TextView[@text="派对设置"]]'
+    # 面板里有多行 tvRightHint，用当前两种状态文案收窄到推荐那一行。
+    party_setting_recommendation_status: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRightHint" and (@text="所有人" or @text="关闭推荐分发")]'
+    party_setting_close: "cn.soulapp.android:id/ivClose"
     party_recommendation_open: '//android.widget.TextView[@text="所有人"]'
     party_recommendation_close: '//android.widget.TextView[@text="关闭推荐分发"]'
     create_party_button: '//android.widget.TextView[@text="创建房间"]'

@@ -445,6 +445,9 @@ class AppController(Singleton):
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.managers.sleep_manager import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
+            from ushareiplay.managers.room_profile.party_settings import (
+                SoulPartySettingsDriver,
+            )
             from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.online_drawer import OnlineDrawerManager
             from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
@@ -492,7 +495,9 @@ class AppController(Singleton):
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(
-                self.soul_handler, drawer_driver=SoulDrawerDriver(self.soul_handler)
+                self.soul_handler,
+                drawer_driver=SoulDrawerDriver(self.soul_handler),
+                settings_driver=SoulPartySettingsDriver(self.soul_handler),
             )
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
             # 那里（#428）。命名域解析器按 ADR-0009 从组合根注入，模块内不去

@@ -39,6 +39,12 @@ from ushareiplay.managers.room_profile.driver import (
     DEFAULT_ENTRY_KEYS,
     RoomProfileDrawerDriverPort,
 )
+from ushareiplay.managers.room_profile.party_settings import (
+    DEFAULT_MAX_SWIPES as PARTY_SETTINGS_DEFAULT_MAX_SWIPES,
+    RECOMMENDATION_OPTION_KEYS,
+    RECOMMENDATION_STATUS_KEY,
+    PartySettingsDriverPort,
+)
 from ushareiplay.state.room_state import RoomState
 
 #: 没读到真实房名时，下一次尝试接地的间隔（秒）。接地挂在心跳上、每拍都走，
@@ -87,13 +93,8 @@ TITLE_SETTLE_SECONDS = 1.0
 DEFAULT_THEME_FALLBACK = '听歌'
 DEFAULT_TITLE_FALLBACK = '听歌'
 
-#: 抽屉里「推荐分发」那一行，以及点开之后二级列表里的两个目标选项。
-RECOMMENDATION_STATUS_KEY = 'party_recommendation_status'
-RECOMMENDATION_OPTION_KEYS = {
-    True: 'party_recommendation_open',
-    False: 'party_recommendation_close',
-}
-#: 那一行显示的文案 -> 布尔状态。判定顺序与既有实现一致（先认"所有人"）。
+#: 设置面板里「推荐分发」那一行显示的文案 -> 布尔状态。判定顺序与既有实现
+#: 一致（先认"所有人"）。选择器 key 由 `party_settings` 模块拥有。
 RECOMMENDATION_OPEN_TEXT = '所有人'
 RECOMMENDATION_CLOSED_TEXT = '关闭推荐分发'
 #: 抽屉里「派对类型」那一行；被纠正的源类型文案。
@@ -106,10 +107,16 @@ DEFAULT_TARGET_PARTY_TYPE_KEY = 'party_type_singing'
 class RoomProfileManager(Singleton):
     """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。"""
 
-    def __init__(self, handler=None, drawer_driver: Optional[RoomProfileDrawerDriverPort] = None):
+    def __init__(
+        self,
+        handler=None,
+        drawer_driver: Optional[RoomProfileDrawerDriverPort] = None,
+        settings_driver: Optional[PartySettingsDriverPort] = None,
+    ):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._drawer_driver = drawer_driver
+        self._settings_driver = settings_driver
         self._drafts = ProfileDraftStore()
         self.pending_audit_retry = False
         self.last_audit_results: Dict = {}
@@ -150,7 +157,12 @@ class RoomProfileManager(Singleton):
         """抽屉 UI 端口。None 表示尚未装配适配器（离线装配或接线漏了）。"""
         return self._drawer_driver
 
-    def adopt_handler(self, handler, drawer_driver=None) -> None:
+    @property
+    def settings_driver(self):
+        """派对设置面板 UI 端口（推荐分发的真实所在地，#456）。"""
+        return self._settings_driver
+
+    def adopt_handler(self, handler, drawer_driver=None, settings_driver=None) -> None:
         """把 handler（可选地连同它的端口）接过来。
 
         正常装配由组合根的 `initialize(handler=..., drawer_driver=...)` 一次做完，
@@ -163,6 +175,8 @@ class RoomProfileManager(Singleton):
             self._logger = getattr(handler, "logger", self._logger)
         if drawer_driver is not None:
             self._drawer_driver = drawer_driver
+        if settings_driver is not None:
+            self._settings_driver = settings_driver
 
     # ------------------------------------------------------------------
     # 生命周期
@@ -1379,16 +1393,153 @@ class RoomProfileManager(Singleton):
     # 「我现在就要开/关」。因此这里没有草稿、没有 PendingWrite、没有延迟。
 
     def set_recommendation(self, enabled: bool) -> Dict:
-        """设置派对推荐状态已暂时停用（UI位置已改变，未来恢复）。"""
-        return {"error": "派对推荐设置已暂时停用"}
+        """在派对设置面板里把推荐分发设为目标状态，当场生效。
+
+        流程与 ticket #456 的验收一致：
+        1. 客房守卫（他人房间不可修改）。
+        2. 需要时才打开设置面板；自己打开的就由自己关。
+        3. 翻页找到推荐状态项（最多 ``PARTY_SETTINGS_DEFAULT_MAX_SWIPES`` 次）。
+        4. 读当前文案；已经是目标状态就跳过点击，避免多余的 UI 操作。
+        5. 否则点状态项呼出二级弹窗，再点「所有人」或「关闭推荐分发」。
+        6. 把最终事实写进 `RoomState.recommendation_enabled`。
+
+        返回面与旧实现一致：成功 `{'success': True, 'recommendation_enabled': bool}`，
+        失败 `{'error': ...}`（字符串会经 config 的 `:recommend` 模板回给用户）。
+        """
+        if RoomState.in_guest_room():
+            return {'error': '他人房间模式下不可修改推荐状态'}
+
+        driver = self.settings_driver
+        if driver is None:
+            return {'error': '派对设置面板不可用'}
+
+        opened_here = False
+        try:
+            if not driver.is_open():
+                if not driver.open():
+                    self.logger.warning('Failed to open party settings panel')
+                    return {'error': '无法打开派对设置面板'}
+                opened_here = True
+
+            if not driver.reveal_recommendation_status(
+                max_swipes=PARTY_SETTINGS_DEFAULT_MAX_SWIPES
+            ):
+                self.logger.warning(
+                    'Failed to find party recommendation status in settings panel'
+                )
+                return {'error': '未找到推荐状态设置项'}
+
+            current_status = self._read_recommendation_status_from_ui()
+            # 只探测的读数留在 DEBUG：这是用户命令路径，但「读到什么」不是一次行为。
+            self.logger.debug(
+                f'Inspected party recommendation status: {current_status}'
+            )
+
+            if current_status is None:
+                self.logger.warning(
+                    'Unrecognized party recommendation status text in settings panel'
+                )
+                return {'error': '无法读取推荐状态'}
+
+            if current_status == enabled:
+                self.room_state.recommendation_enabled = enabled
+                return {'success': True, 'recommendation_enabled': enabled}
+
+            if not driver.click_recommendation_status():
+                self.logger.warning('Failed to click party recommendation status entry')
+                return {'error': '无法点击推荐状态设置项'}
+
+            if not driver.click_recommendation_option(enabled):
+                option_key = RECOMMENDATION_OPTION_KEYS[bool(enabled)]
+                self.logger.warning(
+                    f'Failed to click party recommendation option: {option_key}'
+                )
+                return {'error': '未找到推荐选项'}
+
+            self.room_state.recommendation_enabled = enabled
+            self.logger.info(
+                f"Party recommendation set to {'开放' if enabled else '关闭'}"
+            )
+            return {'success': True, 'recommendation_enabled': enabled}
+        except Exception:
+            self.logger.error(
+                f'Error setting party recommendation: {traceback.format_exc()}'
+            )
+            return {'error': '设置推荐状态时出错'}
+        finally:
+            if opened_here:
+                try:
+                    driver.close()
+                except Exception as e:
+                    self.logger.warning(f'Error closing party settings panel: {e}')
 
     def inspect_current_ui_status(self, wait: bool = False) -> Optional[bool]:
-        """推荐分发已不在房间信息抽屉中展示。"""
-        return None
+        """打开设置面板读一次推荐分发的真实状态。
+
+        `wait` 保留给既有调用形状；设置面板姿势下它只影响读文本时的等待策略
+        （见 `_read_drawer_row_text`）。
+
+        这里是**只读探测**：不改 UI、不写草稿，只在读到可识别文案时把事实同步到
+        `RoomState.recommendation_enabled`。按日志铁律，探测本身只留 DEBUG。
+        """
+        if RoomState.in_guest_room():
+            return None
+
+        driver = self.settings_driver
+        if driver is None:
+            return None
+
+        opened_here = False
+        try:
+            if not driver.is_open():
+                if not driver.open():
+                    self.logger.debug('Party settings panel did not open for inspection')
+                    return None
+                opened_here = True
+
+            if not driver.reveal_recommendation_status(
+                max_swipes=PARTY_SETTINGS_DEFAULT_MAX_SWIPES
+            ):
+                self.logger.debug(
+                    'Party recommendation status was not found in settings panel'
+                )
+                return None
+
+            status = self._read_recommendation_status_from_ui(wait=wait)
+            self.logger.debug(f'Inspected party recommendation status: {status}')
+            if status is not None:
+                self.room_state.recommendation_enabled = status
+            return status
+        except Exception:
+            self.logger.debug(
+                f'Error inspecting party recommendation status: {traceback.format_exc()}'
+            )
+            return None
+        finally:
+            if opened_here:
+                try:
+                    driver.close()
+                except Exception as e:
+                    self.logger.debug(f'Error closing party settings panel: {e}')
 
     def update_recommendation_ui(self, target_state: bool) -> Dict:
-        """推荐分发已不在房间信息抽屉中展示。"""
-        return {"error": "派对推荐设置已暂时停用"}
+        """兼容旧调用点：设置推荐状态并同步 `RoomState`。"""
+        return self.set_recommendation(target_state)
+
+    def _read_recommendation_status_from_ui(self, wait: bool = False) -> Optional[bool]:
+        """读设置面板里推荐状态那一行的文案，翻译成布尔状态。
+
+        端口只建模物理动作；「这行字算开还是关」是判定，因此这里仍然走 handler
+        的 element_finder —— 与公告、房名两条判定读同一个形状。
+        """
+        text = self._read_drawer_row_text(RECOMMENDATION_STATUS_KEY, wait=wait)
+        if not text:
+            return None
+        if RECOMMENDATION_OPEN_TEXT in text:
+            return True
+        if RECOMMENDATION_CLOSED_TEXT in text:
+            return False
+        return None
 
     def ensure_synced_on_return(self) -> Dict:
         """回房 / 进房 / 建房之后，把房间档案的 UI 事实**读**回来。
@@ -1411,6 +1562,17 @@ class RoomProfileManager(Singleton):
         """
         if RoomState.in_guest_room():
             return {"skipped": True, "reason": "guest_room"}
+
+        # 推荐分发的真实状态在设置面板里（#456）：只在还没读到过时问一次 UI。
+        # 一个设置面板会话与房名接地互不依赖，失败也不该挡住房名。
+        # `RoomState` 未装配时（离线装配 / 测试替身）没有可未知的状态可读，
+        # 也就不要为了推荐去碰设置面板。
+        if (
+            self.settings_driver is not None
+            and RoomState.is_initialized()
+            and RoomState.instance().recommendation_enabled is None
+        ):
+            self.inspect_current_ui_status()
 
         if self.is_initialized:
             return {"skipped": True, "reason": "already_initialized"}
@@ -1537,8 +1699,18 @@ class RoomProfileManager(Singleton):
     # ------------------------------------------------------------------
 
     def _sync_recommendation(self, wait: bool = False) -> Dict:
-        """推荐分发已不在房间信息抽屉中展示。"""
-        return {'skipped': True, 'reason': 'ui_moved', 'status': self.room_state.recommendation_enabled}
+        """抽屉会话里不再顺带核对推荐分发。
+
+        推荐分发已搬到派对设置面板（#456）。抽屉与设置面板是两块不同的屏幕，
+        在抽屉会话里偷偷再开一个设置面板会叠出两层弹窗，谁负责关也说不清。
+        因此回房接地的主动探测走 `ensure_synced_on_return`，用户显式修改走
+        `set_recommendation`；这里只报告当前记录，不碰 UI。
+        """
+        return {
+            'skipped': True,
+            'reason': 'ui_moved',
+            'status': self.room_state.recommendation_enabled,
+        }
 
     def _sync_room_type(self) -> Dict:
         """派对类型检查与修正（"闲聊唠嗑" -> "唱歌听歌"）。
