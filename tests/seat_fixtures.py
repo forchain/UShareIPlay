@@ -33,15 +33,16 @@ BOTTOM_VIEW_RESOURCE_IDS = (
 # 真机 1080p 几何（唯一事实源）
 #
 # 全部取自真机 page_source dump（tests/fixtures/seat_dom/）：一张桌位宽 309、
-# 高 207，左右两列的左边缘分别是 28 / 383。替身桌位（build_desk_xml /
-# RawSeatDesk）与整屏 page_source 生成器（build_live_page_source）共用这一套
-# 尺寸 —— 替身与真机同口径，交互门禁（_is_desk_interactable 的高度/长宽比
-# 阈值）在单测里测的才是真机判据，而不是替身自己造出来的尺寸（见 #450）。
+# 高 207，左右两列的左边缘分别是 28 / 383；座位 UserView 相对桌位原点的内缩
+# 左 (32, 7)、右 (142, 10)。替身桌位（build_desk_xml / RawSeatDesk）与整屏
+# page_source 生成器（build_live_page_source）共用这一套尺寸 —— 替身与真机同
+# 口径，交互门禁（_is_desk_interactable 的高度/长宽比阈值）在单测里测的才是
+# 真机判据，而不是替身自己造出来的尺寸（见 #450）。
 # ---------------------------------------------------------------------------
 LIVE_DESK_ORIGIN = (28, 566)
 LIVE_DESK_SIZE = (309, 207)
 LIVE_DESK_GAP = (46, 27)
-LIVE_SIDE_INSET = {"left": (32, 52), "right": (142, 55)}
+LIVE_SIDE_INSET = {"left": (32, 7), "right": (142, 10)}
 LIVE_SIDE_SIZE = (135, 167)
 
 # 替身桌位的几何：宽高取真机值（309x207），左边缘沿用替身一直用的 40。
@@ -510,7 +511,7 @@ def build_live_page_source(occupants: dict, phase: str = "top") -> str:
                 continue
             # 残片：只剩背景与底座，与真机滑出视口的桌位同形
             desks.append(
-                f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{_bounds_str(x1, y1, x2, y1 + 18)}">'
+                f'<node resource-id="{DESK_RESOURCE_ID}" bounds="{_bounds_str(x1, y1, x2, y1 + FRAGMENT_DESK_HEIGHT)}">'
                 f'<node resource-id="cn.soulapp.android:id/bgRoot"/>'
                 f'<node resource-id="cn.soulapp.android:id/leftBottomView"/>'
                 f'<node resource-id="cn.soulapp.android:id/rightBottomView"/></node>'

@@ -16,6 +16,7 @@ from tests.seat_fixtures import (
     ClickableNode,
     FakeController,
     FakeElementFinder,
+    LIVE_DESK_ORIGIN,
     MOCK_DESK_HEIGHT,
     MOCK_DESK_WIDTH,
     MOCK_DESK_X,
@@ -265,7 +266,7 @@ async def test_expand_and_find_desks_without_an_element_finder_returns_none():
 # 参考桌位（seat_desks[2]）的几何：中心 (x + 宽//2, y + 高//2)，一排高 = 桌位高
 # 下滑一排 -> 中心 + 一排高，上滑一排 -> 中心 - 一排高
 # 落点跟着替身桌位的几何走（真机 1080p：309x207），不写死旧数字。
-_ANCHOR_DESK = RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": 100})
+_ANCHOR_DESK = RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": LIVE_DESK_ORIGIN[1]})
 _SWIPE_CENTER_X = _ANCHOR_DESK.location["x"] + _ANCHOR_DESK.size["width"] // 2
 _SWIPE_CENTER_Y = _ANCHOR_DESK.location["y"] + _ANCHOR_DESK.size["height"] // 2
 SWIPE_DOWN = (
@@ -292,14 +293,17 @@ class BoundsOnlyDesk:
 # 只暴露 bounds 的桌位，几何与替身桌位一致（真机 1080p：309x207）
 BOUNDS_ONLY_BOUNDS = {
     "x": MOCK_DESK_X,
-    "y": 100,
+    "y": LIVE_DESK_ORIGIN[1],
     "width": MOCK_DESK_WIDTH,
     "height": MOCK_DESK_HEIGHT,
 }
 
 
 def make_desks(count=6):
-    return [RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": 100}) for _ in range(count)]
+    return [
+        RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": LIVE_DESK_ORIGIN[1]})
+        for _ in range(count)
+    ]
 
 
 def test_scroll_to_row_skips_the_middle_row_that_is_already_visible():

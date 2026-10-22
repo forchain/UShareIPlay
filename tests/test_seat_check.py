@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
-from tests.seat_fixtures import MOCK_DESK_HEIGHT, MOCK_DESK_WIDTH, MOCK_DESK_X
+from tests.seat_fixtures import LIVE_DESK_ORIGIN, MOCK_DESK_HEIGHT, MOCK_DESK_WIDTH, MOCK_DESK_X
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.runtime_context import EventRuntimeContext
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
@@ -78,7 +78,7 @@ def _desk():
     """
     return SimpleNamespace(
         size={"height": MOCK_DESK_HEIGHT, "width": MOCK_DESK_WIDTH},
-        location={"x": MOCK_DESK_X, "y": 100},
+        location={"x": MOCK_DESK_X, "y": LIVE_DESK_ORIGIN[1]},
     )
 
 

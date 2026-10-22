@@ -14,6 +14,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## PR conventions live in the global steering rules
+
+PR branch naming, reusing the open PR in the current worktree, and declaring a
+per-issue `Closes #<n>` keyword in the PR body are defined by the global steering
+rules. They are intentionally not restated here — this is a pointer, not a second
+copy, so the rule has one source of truth.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
