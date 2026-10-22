@@ -46,12 +46,15 @@ def test_is_desk_interactable_predicates():
     clipped_18.bounds = {"x": 28, "y": 566, "width": 309, "height": 18}
     assert obs_manager._is_desk_interactable(clipped_18) is False
 
-    # 4. 无有效 bounds（单测 mock 替身放行，不阻断单测）
+    # 4. 读不出 bounds（既没有 bounds 属性，也没有 location/size）
+    #    渲染尺寸未知就无法证明它在视口内，与「绝不盲目点击」同源：判为不可交互。
+    #    这不是给单测开的口子 —— 真机上的桌位要么有 bounds（page_source），
+    #    要么有 location/size（raw WebElement），读不出尺寸就不该点。
     no_bounds = MagicMock()
     no_bounds.bounds = None
     no_bounds.location = None
     no_bounds.size = None
-    assert obs_manager._is_desk_interactable(no_bounds) is True
+    assert obs_manager._is_desk_interactable(no_bounds) is False
 
 
 @pytest.mark.asyncio

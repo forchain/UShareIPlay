@@ -105,7 +105,7 @@ AppController
 ├── EventManager      — Handles UI events (page classifier, drawer, focus/entry events)
 ├── TimerManager      — Scheduled tasks persisted in DB
 ├── PartyManager      — Party/room lifecycle management
-├── SeatManager       — Seat reservation, focus, validation sub-managers
+├── SeatManager       — Seat commands facade → SeatSubsystem (see seat sub-tree below)
 ├── MusicManager      — Playback control
 ├── PlaybackMuting    — Mic mute/restore around song switching; arms on XXX 已上麦
 ├── MessageManager    — Async message queue and dispatch
@@ -114,6 +114,20 @@ AppController
 └── [KeywordManager, InfoManager, UserManager, AdminManager, MemoryManager,
     MicManager, SleepManager, PlaylistAdoption, PendingWrite]
 ```
+
+#### 座位观测 vs 面板驱动（铁律，`src/ushareiplay/managers/seat_manager/`）
+
+```
+SeatManager (facade) → SeatSubsystem (sole implementation)
+├── SeatObservationManager — 被动观测：视口快照、12 座位状态、专注人数对账
+└── SeatPanelDriver        — 主动驱动：展开/收起/滚动/头像弹窗（命令路径）
+```
+
+- **被动观测 `SeatObservationManager`**（`seat_observation.py`，Singleton）：周期性观测**当前视口**里可见的桌位，维护 12 座位状态、3 排快照日志与专注人数对账；命令路径借它做**读数校验**（`sync_current_viewport`），但不继承它的跳过策略与冷却。
+- **主动驱动 `SeatPanelDriver`**（`seat_panel_driver.py`，普通可注入对象、非单例）：执行面板动作与用户显式命令 —— `expand` / `collapse` / `expand_and_find_desks` / `scroll_to_row` / `reveal_seat`；并持有 UI 独占与头像弹窗生命周期：`ui_session` / `avatar_card` / `read_occupant` / `card_still_present`。
+- **视口裁剪约束只属于被动观测路径**：`SeatObservationManager._is_desk_interactable` 拒绝三类桌位 —— 读不出渲染尺寸（既无 `bounds` 属性，也无 `location`/`size`）、渲染高度 < `MIN_INTERACTABLE_DESK_HEIGHT`(100)、或 h/w < 0.4；残片头像已被视口裁切，按座位几何算出的四分之一/四分之三落点点击只会命中空白 → **绝不盲目点击**，观测的**逐桌读数**里**跳过**这类桌位；主动驱动用另一种方式满足同一条物理约束 —— **先把面板滚到目标座位所在的那一排**（`scroll_to_row`，排级滚动；顶/底排会被内容边缘夹住，不保证整桌完全渲染），再用 `sync_current_viewport` 的读数校验空位，并以座位元素自身的 `bounds` 为落点（读不到时才退回桌位的四分之一/四分之三落点）。`reveal_seat` 支持按座位展开并滚动，但目前只有测试在调用，生产命令未接入。
+- **严禁**把观测者的「跳过裁剪桌位」守卫抄进驱动例程（会让 `:seat N` 对视口外的座位静默失效），**严禁**把观测者的后台重扫冷却（`RESCAN_COOLDOWN` 等）搬进命令路径 —— 显式用户命令必须立即执行。
+- 头像弹窗的**按返回的铁律**在驱动侧实现：`avatar_card` / `read_occupant` 只在 `card_still_present` 证据成立时按 back —— 房间里一次盲按 back 就是退出派对房间。
 
 ### Adding a New Command
 
@@ -175,16 +189,11 @@ This repo uses OpenSpec for structured change management:
 
 Change specs live in `docs/superpowers/specs/`. Active changes are tracked there with tasks, design docs, and implementation notes.
 
-## GitHub / PR Rules & Account Switching
+## GitHub Account Switching
 
 ### Account Switching
 When creating or editing pull requests with `gh`, the correct GitHub account depends on the repository remote URL.
 - **Rule**: Read `remote.origin.url` and extract the username before `@github.com` (e.g. `https://forchain@github.com/forchain/UShareIPlay` → `forchain`). Temporarily switch `gh` to that account for PR operations, then switch back.
-
-### PR Branch Naming Rule
-If the current branch name is randomly generated or non-descriptive (e.g. worktree default names like `lava-flint` or temporary names like `forchain/i-will-read-the-2`), then **before creating a PR**:
-1. **Rename the current branch** to a meaningful kebab-case name matching the change intent (e.g. `forchain/<feature-name>` or `feat/<feature-name>`).
-2. Push to remote and then create the PR.
 
 Example:
 ```bash
@@ -198,14 +207,6 @@ gh pr create ...
 # Switch back
 gh auth switch -h github.com -u <previous-active-username>
 ```
-
-### PR Reuse in Same Worktree (铁律)
-**全局铁律**：如果当前 worktree 不变，且已有打开的 PR，**必须直接复用已有的 PR**（向该 PR 分支追加 commit 并 push），**严禁在已有 PR 的情况下创建新的 PR**。
-- 若有新增改动且与当前 PR 需求出入较大，直接通过 `gh pr edit` 修改已有 PR 的标题和描述，保持单一 PR 递进；若确实需要拆分新 PR，必须事先与用户明确确认是在当前 worktree 下新开还是另建独立 worktree。
-
-### PR Issue Auto-Close (铁律)
-**全局铁律**：创建 Pull Request 时，如果该 PR 与 Issue 关联，必须在 PR 描述（Body）中使用规范的 GitHub 关闭关键字（如 `Closes #123`、`Fixes #123` 或 `Resolves #123`）。
-- 若关联多个 Issue，必须对每个 Issue 分别显式声明关键字（如 `Closes #123, Closes #124` 或多行独立声明，严禁写成 `Closes #123, #124`）。
 
 ## Agent Skills
 

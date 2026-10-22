@@ -16,10 +16,15 @@ from tests.seat_fixtures import (
     ClickableNode,
     FakeController,
     FakeElementFinder,
+    LIVE_DESK_ORIGIN,
+    MOCK_DESK_HEIGHT,
+    MOCK_DESK_WIDTH,
+    MOCK_DESK_X,
     RawSeatDesk,
     build_desk_wrapper,
     make_handler,
     soul_elements,
+    tap_point,
 )
 
 from ushareiplay.managers.seat_manager.seat_panel_driver import (
@@ -258,10 +263,24 @@ async def test_expand_and_find_desks_without_an_element_finder_returns_none():
 # 整排滚动
 # ---------------------------------------------------------------------------
 
-# 参考桌位（seat_desks[2]）的几何：中心 (220, 180)，高 160
-# 下滑一排 -> (220, 340)，上滑一排 -> (220, 20)
-SWIPE_DOWN = (220, 180, 220, 340)
-SWIPE_UP = (220, 180, 220, 20)
+# 参考桌位（seat_desks[2]）的几何：中心 (x + 宽//2, y + 高//2)，一排高 = 桌位高
+# 下滑一排 -> 中心 + 一排高，上滑一排 -> 中心 - 一排高
+# 落点跟着替身桌位的几何走（真机 1080p：309x207），不写死旧数字。
+_ANCHOR_DESK = RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": LIVE_DESK_ORIGIN[1]})
+_SWIPE_CENTER_X = _ANCHOR_DESK.location["x"] + _ANCHOR_DESK.size["width"] // 2
+_SWIPE_CENTER_Y = _ANCHOR_DESK.location["y"] + _ANCHOR_DESK.size["height"] // 2
+SWIPE_DOWN = (
+    _SWIPE_CENTER_X,
+    _SWIPE_CENTER_Y,
+    _SWIPE_CENTER_X,
+    _SWIPE_CENTER_Y + _ANCHOR_DESK.size["height"],
+)
+SWIPE_UP = (
+    _SWIPE_CENTER_X,
+    _SWIPE_CENTER_Y,
+    _SWIPE_CENTER_X,
+    _SWIPE_CENTER_Y - _ANCHOR_DESK.size["height"],
+)
 
 
 class BoundsOnlyDesk:
@@ -271,8 +290,20 @@ class BoundsOnlyDesk:
         self.bounds = bounds
 
 
+# 只暴露 bounds 的桌位，几何与替身桌位一致（真机 1080p：309x207）
+BOUNDS_ONLY_BOUNDS = {
+    "x": MOCK_DESK_X,
+    "y": LIVE_DESK_ORIGIN[1],
+    "width": MOCK_DESK_WIDTH,
+    "height": MOCK_DESK_HEIGHT,
+}
+
+
 def make_desks(count=6):
-    return [RawSeatDesk({}, location={"x": 40, "y": 100}) for _ in range(count)]
+    return [
+        RawSeatDesk({}, location={"x": MOCK_DESK_X, "y": LIVE_DESK_ORIGIN[1]})
+        for _ in range(count)
+    ]
 
 
 def test_scroll_to_row_skips_the_middle_row_that_is_already_visible():
@@ -327,7 +358,7 @@ def test_scroll_to_row_skips_when_there_are_too_few_desks():
 def test_scroll_to_row_falls_back_to_bounds_geometry():
     handler = make_panel_handler()
     driver = SeatPanelDriver(handler)
-    desks = [BoundsOnlyDesk({"x": 40, "y": 100, "width": 360, "height": 160})] * 6
+    desks = [BoundsOnlyDesk(BOUNDS_ONLY_BOUNDS)] * 6
 
     assert driver.scroll_to_row(4, desks) is True
     assert handler.gesture_handler.swipe.call_args.args == (*SWIPE_UP, 100)
@@ -670,23 +701,27 @@ async def test_avatar_card_taps_the_left_quarter_of_the_desk_bounds():
     """ElementWrapper 的子元素没有 element key，click() 静默 False ⇒ 退回按坐标点。"""
     handler = make_panel_handler(popup_name="Bob")
     driver = SeatPanelDriver(handler)
-    desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)  # bounds [40,100][400,260]
+    desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
+    bounds = desk.bounds
 
     async with driver.avatar_card(desk, "left", 9):
         pass
 
-    assert handler.gesture_handler.click_at.call_args.args == (130, 180)
+    # 落点由桌位 bounds 算出：左侧座位点四分之一处，纵向取中点
+    assert handler.gesture_handler.click_at.call_args.args == tap_point(bounds, "left")
 
 
 async def test_avatar_card_taps_the_right_three_quarters_for_the_right_seat():
     handler = make_panel_handler(popup_name="Bob")
     driver = SeatPanelDriver(handler)
     desk = build_desk_wrapper(handler, left="", right="10", right_occupied=True)
+    bounds = desk.bounds
 
     async with driver.avatar_card(desk, "right", 10):
         pass
 
-    assert handler.gesture_handler.click_at.call_args.args == (310, 180)
+    # 右侧座位点四分之三处，纵向取中点
+    assert handler.gesture_handler.click_at.call_args.args == tap_point(bounds, "right")
 
 
 async def test_avatar_card_clicks_a_raw_webelement_child_directly():
