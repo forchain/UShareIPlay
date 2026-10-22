@@ -317,12 +317,16 @@ class SeatSubsystem:
             return
 
         try:
-            self.handler.logger.info(f"Starting seat check for user {username}")
+            # 这条路径每个进房/回房的人都会走一遍，属于「没有行为触发的监控」，
+            # 按日志铁律降到 DEBUG（异常与真实事件仍然走 INFO）。
+            self.handler.logger.debug(f"Starting seat check for user {username}")
 
             # Get user's reservation
             user_reservation = await SeatReservationDAO.get_reservation_by_user_name(username)
             if not user_reservation:
-                self.handler.logger.info(f"No reservation found for user {username}")
+                self.handler.logger.debug(f"No reservation found for user {username}")
+                # 没有预约 = 没有有效预约：社恐模式，给他安排一张独立空桌并发出邀请。
+                await self._auto_invite_to_isolated_desk(username)
                 return
 
             self.handler.logger.info(f"Found reservation for user {username} on seat {user_reservation.seat_number}")
@@ -346,6 +350,8 @@ class SeatSubsystem:
                 self.handler.logger.info(f"Reservation for user {username} has expired, removing it")
                 await SeatReservationDAO.remove_reservation(user_reservation)
                 self.handler.logger.info(f"Successfully removed expired reservation for user {username}")
+                # 过期预约等于没有有效预约：同样走社恐模式的自动邀请。
+                await self._auto_invite_to_isolated_desk(username)
                 return
 
             # Reservation is valid, auto-renew it
@@ -365,6 +371,133 @@ class SeatSubsystem:
 
         except Exception as e:
             self.handler.log_error(f"Error checking seats: {traceback.format_exc()}")
+
+    # ------------------------------------------------------------------
+    # 进房自动邀请入座（社恐模式）
+    # ------------------------------------------------------------------
+    async def _auto_invite_to_isolated_desk(self, username: str) -> None:
+        """进房用户没有座位预约时：给他安排一张独立空桌并发出入座邀请（社恐模式）。
+
+        「独立空桌」= 同一张桌子的左右两个座位都没有人在座：社恐用户不想一坐下就
+        有人陪坐。
+
+        流程：
+
+        1. 把 canonical 名（主账号名）解析成 Soul UI 上当前可见的昵称（分身名）——
+           邀请弹窗只在可见昵称这一个命名域里比对；
+        2. 已经在座的人不打扰（缓存座次表里已经有他）；
+        3. 挑一张左右两座都空的独立桌，并用真机 DOM 证据核验；
+        4. 点开空座、在弹窗里找到这个人、点「邀请」。
+
+        任何一步没有结果都安静结束：没有独立空桌就谁也不打扰，已经在座就不重复
+        邀请，邀请失败（人已离房等）如实记一笔但不往公屏上刷。
+        """
+        if self.handler is None or not username:
+            return
+
+        visible_name = await self._resolve_visible_name(username)
+        if not visible_name:
+            return
+
+        if await self._is_user_already_seated(username):
+            return
+
+        # 锁的纪律（改动这段之前先读一遍）：
+        #
+        # - `find_verified_isolated_empty_desk` 自己**不取锁**：它要展开面板并滚动
+        #   视口，调用方必须已经持有 UI 锁；
+        # - `invite_user_to_seat` 自己**取锁**；
+        # - UI 锁不可重入，把这两步包进同一个 `async with self._ui_session(...)`
+        #   就是同一个 task 二次 acquire —— 那是死锁，不是空操作。
+        #
+        # 所以这里只给「找桌」这一段上锁，出了这一段就把锁还回去，再让「邀请」
+        # 那一步自己取一次锁。两步之间座位可能变了：不要紧，邀请那一步会用
+        # 实时 DOM 证据重新核验那个座位是不是还空着。
+        async with self._ui_session(f"seat_auto_invite:{username}"):
+            desk = await self.find_verified_isolated_empty_desk(quiet=True)
+
+        if not desk:
+            # 全场没有可用的独立空桌：静默结束，不打扰任何人。
+            return
+
+        _desk_index, seat_number = desk
+
+        # 锁已还回去；下面这一步自己取锁。
+        result = await self.invite_user_to_seat(seat_number, visible_name)
+
+        if result.get('success'):
+            self.logger.info(f"进房用户 {visible_name} 已自动邀请入座 {seat_number} 号座位")
+            self.message_dispatch.send_screen_message(
+                f"已邀请 {visible_name} 入座 {seat_number} 号座位"
+            )
+        else:
+            # 失败是一次真实事件（如人已离房、座位已被占）：如实记一笔，但公屏不刷。
+            self.logger.info(
+                f"自动邀请 {visible_name} 入座 {seat_number} 号座位失败: {result.get('error')}"
+            )
+
+    async def _resolve_visible_name(self, username: str) -> str:
+        """把 canonical 名解析成 Soul UI 上当前可见的昵称（分身名）。
+
+        邀请弹窗里渲染的是分身名，canonical 名送进去永远找不到人。`InfoManager`
+        缺席或解析失败时退化为原样返回（与 `resolve_visible_username` 的兜底语义
+        一致：认不出就按调用方给的名字继续）。
+        """
+        try:
+            visible = await InfoManager.instance().resolve_visible_username(username)
+        except Exception as e:
+            self.logger.debug(f"解析 {username} 的可见昵称失败，按原名继续: {e}")
+            return username
+        return visible or username
+
+    async def _is_user_already_seated(self, username: str) -> bool:
+        """缓存座次表里这个人是不是已经在座。
+
+        座次表里的 `username` 可能是可见昵称，而调用方给的是 canonical 名，所以
+        只能按身份判定，绝不按字符串相等。群主的座位（UI 上写的是「群主」，读不到
+        昵称）证明不了是谁，不算「进房用户已在座」。
+        """
+        obs = self.observation
+        if obs is None:
+            return False
+
+        seats = getattr(obs, "seats", None) or {}
+        for slot in seats.values():
+            if not getattr(slot, "occupied", False):
+                continue
+            slot_username = getattr(slot, "username", None)
+            if not slot_username:
+                # 群主座位读不到昵称：证明不了是进房用户，不算。
+                continue
+            if await self._same_identity(slot_username, username):
+                return True
+
+        # 房主（群主）本来就有自己的座位，别给他再安排一张空桌。
+        owner_name = self._room_owner_nickname(obs)
+        if owner_name and await self._same_identity(owner_name, username):
+            return True
+
+        return False
+
+    @staticmethod
+    async def _same_identity(first: str, second: str) -> bool:
+        """跨命名域的身份判定（DB 读不出来时按「不是同一个人」处理）。"""
+        try:
+            return await UserDAO.is_same_identity(first, second)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _room_owner_nickname(obs) -> Optional[str]:
+        """观测器认出的房主昵称（读不到就是 None）。"""
+        getter = getattr(obs, "_owner_nickname", None)
+        if getter is None:
+            return None
+        try:
+            owner = getter()
+        except Exception:
+            return None
+        return owner if isinstance(owner, str) and owner else None
 
     async def check_user_specific_seat(self, username: str, seat_number: int):
         """展开面板、滚到目标排，把占座人清掉换成目标用户。"""
@@ -692,7 +825,7 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     # 独立空桌（社恐模式）
     # ------------------------------------------------------------------
-    async def find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
+    async def find_verified_isolated_empty_desk(self, *, quiet: bool = False) -> Optional[Tuple[int, int]]:
         """挑一张左右两座都空、且经真机 DOM 核验过的独立桌位。
 
         「独立空桌」= 同一张桌子的左右两个座位都没有人在座。房间里 6 张桌子对应
@@ -707,6 +840,11 @@ class SeatSubsystem:
         **UI 独占**：本方法会展开面板并滚动视口，属于会改页面结构的 UI 动作，
         调用方必须已经持有 UI 锁（如 `check_seats_on_entry`）。这里不再自己申请
         一次锁：UI 锁不可重入，调用方持锁时再取一次会死锁。
+
+        Args:
+            quiet: 安静模式。进房自动邀请这条路每个进房的人都会走一遍，「没挑到
+                桌」「缓存过期」这类**没有行为**的结果不该刷屏，quiet=True 时
+                它们降到 DEBUG；挑到桌（真的要邀请了）仍然照常报 INFO。
 
         Returns:
             (桌号 0..5, 推荐空座号)；没有可用独立空桌时返回 None。
@@ -744,10 +882,19 @@ class SeatSubsystem:
                 return (desk_index, left_seat)
             if occupied:
                 # 缓存滞后是一次真实的状态变化，值得报出来；随后换下一张候选桌。
-                self.logger.info(
-                    f"缓存座次表已过期：{desk_index + 1} 号桌现场有人在座，改核验下一张候选桌")
+                stale_message = (
+                    f"缓存座次表已过期：{desk_index + 1} 号桌现场有人在座，改核验下一张候选桌"
+                )
+                if quiet:
+                    self.logger.debug(stale_message)
+                else:
+                    self.logger.info(stale_message)
 
-        self.logger.info("没有可用的独立空桌（左右两座都空）")
+        if quiet:
+            # 没挑到桌是「没有行为」，安静模式下不刷屏。
+            self.logger.debug("没有可用的独立空桌（左右两座都空）")
+        else:
+            self.logger.info("没有可用的独立空桌（左右两座都空）")
         return None
 
     @staticmethod
