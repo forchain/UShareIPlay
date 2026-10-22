@@ -18,7 +18,6 @@ import time
 
 PARTY_SETTING_BUTTON_KEY = 'party_setting_button'
 RECOMMENDATION_STATUS_KEY = 'party_setting_recommendation_status'
-RECOMMENDATION_ROW_KEY = 'party_setting_recommendation_row'
 RECOMMENDATION_OPTION_KEYS = {
     True: 'party_recommendation_open',
     False: 'party_recommendation_close',
@@ -34,7 +33,7 @@ DEFAULT_MAX_SWIPES = 5
 # 这时候点下去会被滚动容器吃掉 —— 弹窗不开，选项也就永远找不到。
 # 所以点之前先等行停稳，点完再确认弹窗真的开了，没开就再点一次。
 SETTLE_POLL_SECONDS = 0.4
-ROW_STABLE_TIMEOUT = 4.0
+SETTLE_TIMEOUT_SECONDS = 3.0
 STATUS_CLICK_ATTEMPTS = 3
 SHEET_OPEN_TIMEOUT_SECONDS = 3.0
 SHEET_CLOSE_TIMEOUT_SECONDS = 5.0
@@ -157,22 +156,19 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
     def click_recommendation_status(self) -> bool:
         """点推荐状态那一行，把二级弹窗叫出来。
 
-        三个真机踩过的坑，都得在这儿挡住：
-
-        1. **点的对象**：状态文案本身 `clickable=false`，点它只能靠坐标手势 ——
-           手势被 ScrollView 吃掉时原生点击监听不会触发，弹窗根本不开。要点的是
-           它上面那层真正可点的行容器。
-        2. **点的时机**：面板刚打开时列表布局会换一次（图标摘要 -> 设置卡片），
-           那一行会短暂消失；翻页找它的那一滑还带着惯性，行会继续往上飘。这两种
-           时候点下去都点不到 —— 所以先等到它在屏幕上、而且不再动了再点。
-        3. **点完**：确认弹窗真的开了，没开就重新翻到它再点一次。
+        翻页找状态项的那一滑还带着惯性时，状态行会继续往上飘，这时候点下去
+        会被 ScrollView 吃掉 —— 弹窗不开，选项也就永远找不到（真机上就是这个
+        症状：`:recommend off` 报「未找到推荐选项」）。
+        所以点之前等行停稳，点完确认弹窗真的开了，没开就再点一次。
         """
         for _ in range(STATUS_CLICK_ATTEMPTS):
-            self.reveal_recommendation_status(max_swipes=DEFAULT_MAX_SWIPES)
-            row = self._wait_for_stable_row()
-            if row is None:
-                continue
-            row.click()
+            element = self._handler.element_finder.wait_for_element_clickable(
+                RECOMMENDATION_STATUS_KEY, timeout=5
+            )
+            if not element:
+                return False
+            self._wait_until_row_stops_moving(element)
+            element.click()
             sheet = self._handler.element_finder.wait_for_element(
                 RECOMMENDATION_SHEET_KEY, timeout=SHEET_OPEN_TIMEOUT_SECONDS
             )
@@ -194,30 +190,23 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
         )
         return True
 
-    def _wait_for_stable_row(self):
-        """等到推荐那一行在屏幕上、而且不再往下飘，才把它交出去点。
+    def _wait_until_row_stops_moving(self, element) -> None:
+        """等状态行停稳。
 
-        面板布局换一次那一行会短暂消失，翻页的惯性又让它继续往上飘：这两种时候
-        拿到的坐标都是过期的，点下去要么落空，要么被滚动容器吃掉。
+        面板还在惯性滑动时行会一直飘，这会儿点下去只会被滚动容器吃掉。
+        连续两次读到同一个位置就算停稳。
         """
-        deadline = time.time() + ROW_STABLE_TIMEOUT
-        previous = None
+        deadline = time.time() + SETTLE_TIMEOUT_SECONDS
+        try:
+            previous = element.rect
+        except Exception:
+            return
         while time.time() < deadline:
-            row = self._handler.element_finder.try_find_element(
-                RECOMMENDATION_ROW_KEY, log=False
-            )
-            if row is None:
-                previous = None
-                time.sleep(SETTLE_POLL_SECONDS)
-                continue
-            try:
-                current = row.rect
-            except Exception:
-                previous = None
-                time.sleep(SETTLE_POLL_SECONDS)
-                continue
-            if previous is not None and current == previous:
-                return row
-            previous = current
             time.sleep(SETTLE_POLL_SECONDS)
-        return None
+            try:
+                current = element.rect
+            except Exception:
+                return
+            if current == previous:
+                return
+            previous = current

@@ -131,9 +131,6 @@ soul:
     party_setting_container: '//android.widget.FrameLayout[@resource-id="cn.soulapp.android:id/flContainer"][.//android.widget.TextView[@text="派对设置"]]'
     # 面板里有多行 tvRightHint，用当前两种状态文案收窄到推荐那一行。
     party_setting_recommendation_status: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRightHint" and (@text="所有人" or @text="关闭推荐分发")]'
-    # 点开这一行要点的不是文案本身（它 clickable=false，只能靠坐标手势，落空时
-    # 会被 ScrollView 吃掉），而是它上面那层真正可点的行容器。
-    party_setting_recommendation_row: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvRightHint" and (@text="所有人" or @text="关闭推荐分发")]/ancestor::android.view.ViewGroup[@clickable="true"][1]'
     party_setting_close: "cn.soulapp.android:id/ivClose"
     # 二级弹窗（RN 页面）里的选项行：文案本身 clickable=false，能点的是它上面
     # 那层 ViewGroup（content-desc 由 RN 把子文案拼出来），所以按 content-desc 找行。
