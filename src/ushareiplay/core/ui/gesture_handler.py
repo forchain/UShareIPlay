@@ -237,20 +237,41 @@ class GestureHandler:
             values, matched = target_values(page_source)
             attribute_values_list.extend(values)
 
-            # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
-            container = self.owner.element_finder.wait_for_element_clickable(container_key)
-            if not container:
-                container = self.owner.element_finder.wait_for_element(container_key)
-            if not container:
-                self.logger.warning(
-                    f"scroll_container_until_element: 容器未找到: {container_key}"
-                )
-                return None, None, attribute_values_list
+            # 获取容器（未指定容器时使用全屏视口滑动）
+            if container_key:
+                container = self.owner.element_finder.wait_for_element_clickable(container_key)
+                if not container:
+                    container = self.owner.element_finder.wait_for_element(container_key)
+                if not container:
+                    self.logger.warning(
+                        f"scroll_container_until_element: 容器未找到: {container_key}"
+                    )
+                    return None, None, attribute_values_list
+                loc = container.location
+                size = container.size
+                left = int(loc["x"])
+                top = int(loc["y"])
+                width = int(size["width"])
+                height = int(size["height"])
+                margin_y = 0.1
+                margin_x = 0.1
+            else:
+                container = None
+                window_size = self.driver.get_window_size()
+                left = 0
+                top = 0
+                width = int(window_size["width"])
+                height = int(window_size["height"])
+                margin_y = 0.25
+                margin_x = 0.15
 
             def find_visible_target() -> Optional[WebElement]:
-                candidates = self.owner.element_finder.find_child_elements(
-                    container, element_key
-                )
+                if container:
+                    candidates = self.owner.element_finder.find_child_elements(
+                        container, element_key
+                    )
+                else:
+                    candidates = self.owner.element_finder.find_elements(element_key)
                 if attribute_value is None:
                     return candidates[0] if candidates else None
 
@@ -281,38 +302,30 @@ class GestureHandler:
                 )
                 direction = "up"
 
-            # 预计算容器可视坐标
-            loc = container.location
-            size = container.size
-            left = int(loc["x"])
-            top = int(loc["y"])
-            width = int(size["width"])
-            height = int(size["height"])
-
             # 单次滑动的起止点计算（默认 'up'）
             def compute_points(dir_name: str):
                 if dir_name == "up":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.9)
+                    start_y = top + int(height * (1.0 - margin_y))
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.1)
+                    end_y = top + int(height * margin_y)
                     return start_x, start_y, end_x, end_y
                 if dir_name == "down":
                     start_x = left + int(width * 0.5)
-                    start_y = top + int(height * 0.1)
+                    start_y = top + int(height * margin_y)
                     end_x = left + int(width * 0.5)
-                    end_y = top + int(height * 0.9)
+                    end_y = top + int(height * (1.0 - margin_y))
                     return start_x, start_y, end_x, end_y
                 if dir_name == "left":
-                    start_x = left + int(width * 0.9)
+                    start_x = left + int(width * (1.0 - margin_x))
                     start_y = top + int(height * 0.5)
-                    end_x = left + int(width * 0.2)
+                    end_x = left + int(width * margin_x)
                     end_y = top + int(height * 0.5)
                     return start_x, start_y, end_x, end_y
                 # right
-                start_x = left + int(width * 0.1)
+                start_x = left + int(width * margin_x)
                 start_y = top + int(height * 0.5)
-                end_x = left + int(width * 0.9)
+                end_x = left + int(width * (1.0 - margin_x))
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
