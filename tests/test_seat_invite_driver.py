@@ -89,6 +89,12 @@ class InviteSheetFinder(FakeElementFinder):
             return list(self.current_page)
         return super().find_elements(element_key)
 
+    def find_child_elements(self, parent, element_key):
+        """在弹窗列表容器里找行（与生产 ElementFinder.find_child_elements 同形）。"""
+        if element_key == ROW_KEY:
+            return list(self.current_page)
+        return []
+
     def find_child_element(self, parent, element_key, log_failure=True):
         if element_key in (NAME_KEY, OPERATION_KEY):
             try:
@@ -200,6 +206,36 @@ def test_read_rows_without_an_element_finder_is_empty():
     assert driver.read_rows() == []
 
 
+def test_read_rows_is_scoped_to_the_invite_panel_when_it_can_be_found():
+    """行查找收敛到弹窗自己的列表容器：页面别处的同名容器不该混进来。"""
+    panel = MagicMock()
+    handler = make_invite_handler(pages=[[InviteRow("Alice", "邀请")]], panel=panel)
+    finder = handler.element_finder
+
+    def _page_wide(element_key):
+        if element_key == ROW_KEY:
+            # 页面别处还有一个同 resource-id 的容器（别的浮层）
+            return list(finder.current_page) + [InviteRow("路人", "邀请")]
+        return finder.find_elements(element_key)
+
+    finder.find_elements = _page_wide
+    driver = SeatInviteDriver(handler)
+
+    rows = driver.read_rows()
+
+    assert [row.name for row in rows] == ["Alice"]
+
+
+def test_read_rows_falls_back_to_the_page_wide_lookup_without_the_panel():
+    """弹窗容器读不到（尽力而为的结构化 XPath）：退回全屏查找。"""
+    handler = make_invite_handler(pages=[[InviteRow("Alice", "邀请")]])
+    driver = SeatInviteDriver(handler)
+
+    rows = driver.read_rows()
+
+    assert [row.name for row in rows] == ["Alice"]
+
+
 @pytest.mark.parametrize(
     "operation, invitable",
     [
@@ -265,6 +301,33 @@ async def test_find_row_returns_none_when_the_sheet_is_closed():
     driver = SeatInviteDriver(make_invite_handler(pages=[]))
 
     assert await driver.find_row("Alice") is None
+
+
+async def test_find_row_keeps_paging_when_a_page_is_still_rendering():
+    """半渲染的一页（读得到行、读不出昵称）不算「弹窗没了」：翻页继续找。
+
+    昵称还没渲染出来就下结论，会把一个**确实在列表里**的人报成「未在邀请列表中
+    找到」—— 那是一个假失败。
+    """
+    handler = make_invite_handler(
+        pages=[[NamelessRow()], [InviteRow("Bob", "邀请")]]
+    )
+    driver = SeatInviteDriver(handler)
+
+    row = await driver.find_row("Bob")
+
+    assert row is not None
+    assert row.name == "Bob"
+    handler.gesture_handler.swipe.assert_called_once()
+
+
+async def test_find_row_gives_up_when_every_page_stays_half_rendered():
+    """每一页都半渲染：翻页签名不变就停手，别无限滑下去。"""
+    handler = make_invite_handler(pages=[[NamelessRow()]])
+    driver = SeatInviteDriver(handler)
+
+    assert await driver.find_row("Bob") is None
+    assert handler.gesture_handler.swipe.call_count == 1
 
 
 async def test_find_row_scrolls_inside_the_invite_list_area():
@@ -347,6 +410,37 @@ def test_close_reports_failure_when_there_is_no_x_button():
 
     assert driver.close() is False
     handler.key_actions.press_back.assert_not_called()
+
+
+def test_close_does_not_click_the_x_when_there_is_no_evidence_of_the_sheet():
+    """`ivClose` 是全 App 共用的 X：弹窗不在屏幕上时点它就是关别人的浮层。"""
+    close_button = ClickableNode("")
+    handler = make_invite_handler(pages=[], close_button=close_button)
+    driver = SeatInviteDriver(handler)
+
+    assert driver.close() is False
+    assert close_button.clicked is False
+    handler.key_actions.press_back.assert_not_called()
+
+
+def test_close_clicks_the_x_when_only_the_panel_is_on_screen():
+    """行还没读出来不算「弹窗不在」：弹窗自己的列表容器在，就是证据。"""
+    close_button = ClickableNode("")
+    panel = MagicMock()
+    handler = make_invite_handler(pages=[], close_button=close_button, panel=panel)
+    driver = SeatInviteDriver(handler)
+
+    assert driver.close() is True
+    assert close_button.clicked is True
+
+
+def test_is_open_is_true_when_only_the_panel_is_on_screen():
+    """弹窗刚弹出来、行还没渲染完：容器在就算开着。"""
+    panel = MagicMock()
+    handler = make_invite_handler(pages=[], panel=panel)
+    driver = SeatInviteDriver(handler)
+
+    assert driver.is_open() is True
 
 
 def test_close_without_a_handler_is_false():

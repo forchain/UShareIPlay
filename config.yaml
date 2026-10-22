@@ -153,8 +153,6 @@ soul:
     seat_invite_row: "cn.soulapp.android:id/userContainer"        # 弹窗里的用户行容器
     seat_invite_name: "cn.soulapp.android:id/tvName"              # 行内昵称
     seat_invite_operation: "cn.soulapp.android:id/tvOperation"    # 行内操作按钮（邀请 / 已上座）
-    seat_invite_invite_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and (@text="邀请" or @text="上座")]' # 可邀请
-    seat_invite_seated_button: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation" and @text="已上座"]' # 已在座
     seat_invite_close: "cn.soulapp.android:id/ivClose"            # 弹窗右上角 X
     chat_room_title: "cn.soulapp.android:id/tvChatRoomTitle"
     room_name_in_dialog: "cn.soulapp.android:id/tv_room_name"

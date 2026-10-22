@@ -75,6 +75,8 @@ class SeatInviteDriver:
     PANEL_KEY = "seat_invite_panel"
 
     # 可点「邀请」的按钮文案。「上座」与「邀请」是同一个意思的两种措辞。
+    # 这是**界面文案**而不是元素选择器，所以住在 Python 侧（与 SeatPanelDriver 的
+    # EXPAND_LABEL = "展开" 同一处理）：选择器一律在 config.yaml，文案不是。
     INVITABLE_LABELS = ("邀请", "上座")
     # 「已上座」＝人已经在座位上，再点也没有意义。
     SEATED_LABELS = ("已上座",)
@@ -164,30 +166,49 @@ class SeatInviteDriver:
             return False
         return any(label in operation for label in cls.INVITABLE_LABELS)
 
-    def read_rows(self) -> list:
-        """读当前可见的邀请行。
+    def _read_raw_rows(self) -> list:
+        """当前可见的邀请行**元素**（原始行，读不出昵称的行也在里面）。
 
-        读不出昵称的行整行跳过：比对用的是可见昵称，没有昵称的行没有意义
-        （也可能只是这一行还没渲染完，翻页时还会再读一次）。
+        行查找优先收敛到弹窗自己的列表容器（`seat_invite_panel`）：全屏搜
+        `userContainer` 会把别的浮层里的同名节点一起捞进来。容器选择器是尽力而为
+        的结构化 XPath，读不到容器时退回全屏查找。
+
+        Returns:
+            原始行元素列表；弹窗不在页面上时是空列表。
         """
         finder = self._finder
         if finder is None:
             return []
 
+        panel = self._panel_element()
+        if panel is not None:
+            find_child = getattr(finder, "find_child_elements", None)
+            if find_child is not None:
+                try:
+                    return list(find_child(panel, self.ROW_KEY) or [])
+                except Exception as e:
+                    self.logger.debug(f"在弹窗列表容器里查找用户行失败: {e}")
+
         try:
-            rows = finder.find_elements(self.ROW_KEY)
+            return list(finder.find_elements(self.ROW_KEY) or [])
         except Exception as e:
-            self.logger.warning(f"读取邀请入座弹窗的用户行失败: {e}")
+            # 读失败是可恢复的读数问题：按日志铁律降到 DEBUG（轮询里每 100ms
+            # 就会读一次，WARNING 会刷屏）。
+            self.logger.debug(f"读取邀请入座弹窗的用户行失败: {e}")
             return []
 
-        result = []
-        for row in rows or []:
+    def _build_rows(self, raw_rows) -> list:
+        """把原始行变成 `SeatInviteRow`。
+
+        读不出昵称的行**也留着**（name 为空串）：调用方要能区分「这一页还没渲染
+        完」和「弹窗已经不在了」，整行丢掉就把两者混成一件事。
+        """
+        rows = []
+        for row in raw_rows or []:
             name = self._child_text(row, self.NAME_KEY)
-            if not name:
-                continue
             operation_element = self._child_element(row, self.OPERATION_KEY)
             operation = (getattr(operation_element, "text", "") or "").strip()
-            result.append(
+            rows.append(
                 SeatInviteRow(
                     name=name,
                     operation=operation,
@@ -196,33 +217,60 @@ class SeatInviteDriver:
                     operation_element=operation_element,
                 )
             )
-        return result
+        return rows
+
+    def read_rows(self) -> list:
+        """读当前可见的邀请行。
+
+        读不出昵称的行整行跳过：比对用的是可见昵称，没有昵称的行没有意义
+        （也可能只是这一行还没渲染完，翻页时还会再读一次）。
+        """
+        return [row for row in self._build_rows(self._read_raw_rows()) if row.name]
 
     def is_open(self) -> bool:
         """弹窗是否开着。
 
-        证据只有一条：**读得到至少一行邀请行**。不依赖弹窗标题 —— 标题文案随版本
-        变，而行是弹窗自己渲染的（`userContainer`），它在就说明弹窗在。
+        证据两条：**读得到至少一行邀请行**，或**弹窗自己的列表容器在页面上**。
+        两者都读不到才算没开。不依赖弹窗标题 —— 标题文案随版本变，而行与容器
+        都是弹窗自己渲染的，它们在就说明弹窗在。
         """
         if self.handler is None:
             return False
         try:
-            return bool(self.read_rows())
+            if self.read_rows():
+                return True
+            return self._panel_element() is not None
         except Exception as e:
-            self.logger.warning(f"判定邀请入座弹窗是否打开失败: {e}")
+            self.logger.debug(f"判定邀请入座弹窗是否打开失败: {e}")
             return False
+
+    def _sheet_on_screen(self) -> bool:
+        """还有证据表明「邀请入座」弹窗在屏幕上吗。
+
+        证据：读得到邀请行，或弹窗自己的列表容器还在页面上。
+        """
+        try:
+            if self.read_rows():
+                return True
+        except Exception:
+            pass
+        return self._panel_element() is not None
 
     async def wait_until_open(self, timeout: float = 3.0) -> bool:
         """等弹窗渲染出来。
 
         超时不代表没开，只代表没在这个窗口里读到 —— 调用方要按「没打开」处理，
         但绝不能因此去按返回键。
+
+        轮询期间每一次读不到都只是「还没渲染出来」，按日志铁律不刷 WARNING；
+        「弹窗始终没开」这个**结果**由调用方记一笔（见 `invite_user_to_seat`）。
         """
         deadline = time.monotonic() + timeout
         while True:
             if self.is_open():
                 return True
             if time.monotonic() >= deadline:
+                self.logger.debug("等待「邀请入座」弹窗打开超时")
                 return False
             await asyncio.sleep(self.OPEN_POLL_SECONDS)
 
@@ -230,15 +278,23 @@ class SeatInviteDriver:
     # 翻页
     # ------------------------------------------------------------------
 
-    def _panel_bounds(self) -> Optional[dict]:
-        """弹窗列表容器的屏幕坐标；读不到就是 None。"""
+    def _panel_element(self):
+        """弹窗的列表容器元素；读不到就是 None。
+
+        容器既是行查找的收敛范围（见 `_read_raw_rows`），也是「弹窗还在屏幕上」的
+        证据之一（见 `is_open`）。
+        """
         finder = self._finder
         if finder is None:
             return None
         try:
-            panel = finder.try_find_element(self.PANEL_KEY, log=False)
+            return finder.try_find_element(self.PANEL_KEY, log=False)
         except Exception:
             return None
+
+    def _panel_bounds(self) -> Optional[dict]:
+        """弹窗列表容器的屏幕坐标；读不到就是 None。"""
+        panel = self._panel_element()
         if not panel:
             return None
 
@@ -317,6 +373,9 @@ class SeatInviteDriver:
         翻页终止条件：找到了 / 当前页的行签名与上一页重复（没有更多数据了）/
         翻满 `max_pages` 页 / 弹窗已经不在了。
 
+        「一页原始行都读不到」= 弹窗不在了；「读得到行、却一个昵称都读不出来」=
+        这一页还没渲染完 —— 那是**半渲染**，翻页继续找，不能当成「人不在列表里」。
+
         Returns:
             命中的那一行；找不到就是 None。
         """
@@ -324,23 +383,30 @@ class SeatInviteDriver:
             return None
 
         seen_signatures = set()
-        for page in range(max(1, max_pages)):
-            rows = self.read_rows()
-            if not rows:
-                # 一行都读不到：弹窗已经不在了（或列表空到没法找）
+        pages = max(1, max_pages)
+        for page in range(pages):
+            raw_rows = self._read_raw_rows()
+            if not raw_rows:
+                # 一行原始行都读不到：弹窗已经不在了。
                 return None
 
+            rows = self._build_rows(raw_rows)
             for row in rows:
                 if row.name == visible_name:
                     return row
 
-            signature = tuple(row.name for row in rows)
+            # 页签名：昵称读得出来就用昵称，读不出来退回操作文案（「邀请」/
+            # 「已上座」）—— 半渲染的一页也得有个签名，否则翻页停不下来。
+            signature = tuple((row.name or row.operation) for row in rows)
             if signature in seen_signatures:
                 self.logger.debug("邀请入座列表翻页后内容未变化，停止翻页")
                 return None
             seen_signatures.add(signature)
 
-            if page == max(1, max_pages) - 1:
+            if not any(row.name for row in rows):
+                self.logger.debug("邀请入座列表这一页还没渲染出昵称，翻页继续找")
+
+            if page == pages - 1:
                 break
 
             if not await self._scroll_list():
@@ -375,11 +441,19 @@ class SeatInviteDriver:
     def close(self) -> bool:
         """点弹窗右上角的 X 关掉它。
 
+        只在**还有证据表明弹窗在屏幕上**时才点：`ivClose` 是全 App 共用的
+        resource-id，别的浮层（头像名片等）用的是同一个 X —— 弹窗不在的时候点它，
+        关掉的是别人的浮层。
+
         **绝不按返回键**：派对房间里一次盲按 back 就是退出派对房间。读不到 X 就
         返回 False，让调用方知道「弹窗可能还在」，而不是拿房间去赌。
         """
         finder = self._finder
         if finder is None:
+            return False
+
+        if not self._sheet_on_screen():
+            self.logger.debug("没有证据表明「邀请入座」弹窗在屏幕上，不点关闭按钮")
             return False
 
         try:
