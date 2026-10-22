@@ -58,10 +58,12 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
         self._handler = handler
 
     def is_open(self) -> bool:
-        element = self._handler.element_finder.try_find_element(
-            PARTY_SETTING_TITLE_KEY, log=False
+        key, _element = self._handler.element_finder.wait_for_any_element(
+            [PARTY_SETTING_TITLE_KEY, PARTY_SETTING_BUTTON_KEY]
         )
-        return bool(element and getattr(element, 'is_displayed', lambda: True)())
+        if key == PARTY_SETTING_TITLE_KEY:
+            return True
+        return False
 
     def open(self) -> bool:
         if self.is_open():
@@ -87,7 +89,7 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
         if close_btn:
             close_btn.click()
             if self._handler.element_finder.wait_for_element_disappear(
-                PARTY_SETTING_TITLE_KEY, timeout=3
+                    PARTY_SETTING_TITLE_KEY, timeout=3
             ):
                 return
         if self.is_open():
@@ -98,13 +100,14 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
 
     def reveal_recommendation_status(self, *, max_swipes: int = DEFAULT_MAX_SWIPES) -> bool:
         if self._handler.element_finder.try_find_element(
-            RECOMMENDATION_STATUS_KEY, log=False
+                RECOMMENDATION_STATUS_KEY, log=False
         ):
             return True
         element = self._handler.gesture_handler.swipe_until_element(
             RECOMMENDATION_STATUS_KEY,
             direction='up',
             max_swipes=max_swipes,
+            duration_ms=500,
         )
         return element is not None
 
