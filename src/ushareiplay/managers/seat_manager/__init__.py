@@ -35,6 +35,10 @@ class SeatManager(SeatManagerBase):
 
         logging.getLogger('seat_manager').info(f"初始化 SeatManager 完成，handler={handler}")
 
+    def configure_runtime(self, runtime):
+        """把运行期上下文交给子系统（与 EventManager 同一套接线）。"""
+        self._subsystem.configure_runtime(runtime)
+
     @property
     def subsystem(self) -> SeatSubsystem:
         """座位子系统的唯一实现。"""

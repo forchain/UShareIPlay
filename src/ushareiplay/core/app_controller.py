@@ -464,6 +464,8 @@ class AppController(Singleton):
             # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
             # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
             self.seat_manager = SeatManager.initialize(self.soul_handler)
+            # 运行期上下文（UI 独占锁的读法）与 EventManager 同一套接线。
+            self.seat_manager.configure_runtime(self.event_runtime_context)
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.

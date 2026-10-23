@@ -259,6 +259,80 @@ async def test_expand_and_find_desks_without_an_element_finder_returns_none():
     assert await driver.expand_and_find_desks() is None
 
 
+class _FlippingButton(ClickableNode):
+    """点完就翻面的面板按钮：真机上「展开座位」点完变成「收起座位」。"""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.other = COLLAPSE_LABEL if text == EXPAND_LABEL else EXPAND_LABEL
+        self.clicks = 0
+
+    def click(self):
+        self.clicks += 1
+        super().click()
+        self.text = self.other
+
+    def collapse(self):
+        """模拟别的流程把面板收起：按钮翻回「展开座位」。"""
+        self.text = EXPAND_LABEL
+
+
+class _RacingPanelFinder(PanelButtonFinder):
+    """复现真机竞态：展开后扫描前，面板被别的流程收起。
+
+    真机上座位面板是 RecyclerView：视口一收（513px -> 290px），第三排立刻被回收，
+    桌位从 6 张掉回 4 张。这里用脚本化的桌位数复现同一形状，并在每次没数齐的
+    扫描时把按钮翻回「展开座位」—— 那正是「面板被抢收起」的状态读数。
+    """
+
+    def __init__(self, elements, desk_counts, **kwargs):
+        super().__init__(elements, **kwargs)
+        self.button = _FlippingButton(self.button_text)
+        self.desk_counts = list(desk_counts)
+        self.scans = 0
+
+    def find_elements(self, element_key):
+        count = self.desk_counts[min(self.scans, len(self.desk_counts) - 1)]
+        self.scans += 1
+        if count != 6:
+            self.button.collapse()
+        return [object()] * count
+
+
+async def test_expand_and_find_desks_re_expands_when_the_panel_was_collapsed_mid_scan():
+    """面板在展开与重扫之间被收起时，重新展开再扫，别拿半张面板交差。
+
+    真机 10-23 11:42:52：EventManager 的风险元素处理器在座位流程持锁期间点了
+    「收起座位」，桌位从 6 张掉到 4 张，座位命令整条链失败。面板归持锁流程所有，
+    驱动方必须自己把前提重新建立起来。
+    """
+    desks = make_desks()
+    handler = make_panel_handler(button_text=EXPAND_LABEL, desks=desks)
+    finder = _RacingPanelFinder(
+        handler.element_finder.elements, [4, 6], button_text=EXPAND_LABEL
+    )
+    handler.element_finder = finder
+    driver = SeatPanelDriver(handler)
+
+    assert len(await driver.expand_and_find_desks()) == 6
+    assert finder.scans == 2
+    # 展开一次 + 发现被收起后重新展开一次
+    assert finder.button.clicks == 2
+
+
+async def test_expand_and_find_desks_gives_up_when_the_panel_never_yields_six_desks():
+    """面板反复收起就认输：不能无限重试，也不能拿半张面板当六张交差。"""
+    handler = make_panel_handler(button_text=EXPAND_LABEL, desks=make_desks())
+    finder = _RacingPanelFinder(
+        handler.element_finder.elements, [4], button_text=EXPAND_LABEL
+    )
+    handler.element_finder = finder
+    driver = SeatPanelDriver(handler)
+
+    assert await driver.expand_and_find_desks() is None
+    assert finder.scans > 1
+
+
 # ---------------------------------------------------------------------------
 # 整排滚动
 # ---------------------------------------------------------------------------
