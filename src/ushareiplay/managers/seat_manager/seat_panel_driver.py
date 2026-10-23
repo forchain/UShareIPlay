@@ -43,6 +43,9 @@ SEAT_DESK_KEY = "seat_desk"
 PANEL_SETTLE_SECONDS = 0.5
 # 展开后必须完整渲染出 6 张桌位（两列三排）才认为面板真的开了。
 EXPECTED_DESK_COUNT = 6
+# 重扫桌位的尝试次数：面板被别的流程抢收起时，重新展开再扫（见 expand_and_find_desks）。
+# 4 次 = 1 次展开 + 1 次重新展开 + 2 次渲染跟上的余量；每轮 0.5s，最坏 2s。
+DESK_SCAN_MAX_ATTEMPTS = 4
 # 点头像后等弹窗渲染出来的上限。超时不代表没开，只代表没在这个窗口里读到。
 SEAT_CARD_TIMEOUT = 1.5
 # 点头像后的渲染延迟，与 SeatObservationManager.inspect_occupant 一致。
@@ -235,6 +238,20 @@ class SeatPanelDriver:
 
         展开后必须数齐 6 张桌位才算数：只渲染出一部分说明面板还在动画里或根本没
         开，拿半张面板读座位会把「没渲染出来」误判成空位。
+
+        面板在「展开 → 等动画 → 重扫」这半秒里被收起时，桌位会从 6 张掉回 4 张：
+        座位带是个 RecyclerView，视口一收（513px → 290px）第三排立刻被回收。
+        本驱动持着 UI 锁，面板归它所有 —— 前提被别人破坏了，就自己把前提重新
+        建立起来（重新展开再扫），而不是拿半张面板交差。
+
+        收起面板的不止别的流程：**App 自己在展开约 2 秒后就会把面板收回去**
+        （真机实测，无人操作时同样发生：展开 → 2 秒后自动收回）。所以
+        「展开 → 等动画 → 重扫」这条链上，面板随时可能已经不在展开态，重扫必须
+        能自己把前提补回来。重扫次数留了余量：4 次 = 1 次展开 + 1 次重新展开 +
+        2 次渲染跟上的余量。
+
+        面板按钮读不出来时（被弹窗盖住/页面已切走）只能等渲染跟不跟得上：
+        看不见按钮就没有「重新展开」这一说，此时重试只会白等。
         """
         if not await self.expand():
             return None
@@ -244,22 +261,30 @@ class SeatPanelDriver:
             self.logger.error("element_finder 缺席，无法重扫桌位")
             return None
 
-        await asyncio.sleep(PANEL_SETTLE_SECONDS)  # 等展开动画走完
-        try:
-            desks = finder.find_elements(SEAT_DESK_KEY)
-        except Exception as e:
-            self.logger.error(f"重扫座位桌位失败: {e}")
-            return None
+        desks = []
+        for _ in range(DESK_SCAN_MAX_ATTEMPTS):
+            await asyncio.sleep(PANEL_SETTLE_SECONDS)  # 等展开动画走完
+            try:
+                desks = finder.find_elements(SEAT_DESK_KEY)
+            except Exception as e:
+                self.logger.error(f"重扫座位桌位失败: {e}")
+                return None
+            if len(desks) == EXPECTED_DESK_COUNT:
+                return desks
+            # 面板被抢收起 → 重新展开再扫；还开着只是没渲染齐 → 等下一轮
+            if not self.is_expanded():
+                self.logger.info("座位面板被其它流程收起，重新展开后重扫桌位")
+                if not await self.expand():
+                    return None
+
         if not desks:
             self.logger.error("Failed to find seat desks after expanding the panel")
             return None
-        if len(desks) != EXPECTED_DESK_COUNT:
-            self.logger.error(
-                f"seat panel expansion incomplete: found {len(desks)} desks, "
-                f"expected {EXPECTED_DESK_COUNT}"
-            )
-            return None
-        return desks
+        self.logger.error(
+            f"seat panel expansion incomplete: found {len(desks)} desks, "
+            f"expected {EXPECTED_DESK_COUNT}"
+        )
+        return None
 
     # ------------------------------------------------------------------
     # 整排滚动

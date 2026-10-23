@@ -20,6 +20,7 @@ import pytest
 from tests.seat_fixtures import FakeController, make_handler, soul_elements
 
 from ushareiplay.core.app_controller import AppController
+from ushareiplay.core.runtime_context import EventRuntimeContext
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
 from ushareiplay.managers.seat_manager.guard import (
@@ -203,6 +204,24 @@ async def test_prepare_for_chat_scan_only_collapses_when_the_panel_is_open():
     panel = _RecordingPanel(expanded=False)
     assert await _manager_with_panel(panel).prepare_for_chat_scan() is True
     assert panel.collapsed is False
+
+
+async def test_prepare_for_chat_scan_leaves_the_panel_alone_while_the_ui_lock_is_held():
+    """持锁的流程拥有座位面板：锁被持有时聊天扫描不许把面板收起。
+
+    真机 10-23 11:42:52：座位流程 `seat_auto_invite` 持有 ui_lock 展开面板，
+    聊天回溯把面板收起 —— 座位带视口从 513px 缩回 290px，RecyclerView 回收第三排，
+    桌位从 6 张掉回 4 张，`expand_and_find_desks` 报 "found 4 desks, expected 6"。
+    """
+    controller = FakeController()
+    panel = _RecordingPanel(expanded=True)
+    manager = SeatManager.initialize(make_handler(controller=controller), seat_ui=panel)
+    # 与生产同一套接线：组合根把运行期上下文交给子系统。
+    manager.configure_runtime(EventRuntimeContext(ui_lock=controller.ui_lock))
+
+    async with controller.ui_session("seat_auto_invite:someone"):
+        assert await manager.prepare_for_chat_scan() is True
+        assert panel.collapsed is False
 
 
 async def test_public_interfaces_keep_their_canonical_return_shapes(monkeypatch):

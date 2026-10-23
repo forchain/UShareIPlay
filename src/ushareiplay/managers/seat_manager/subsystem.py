@@ -136,6 +136,9 @@ class SeatSubsystem:
         self._panel_driver = panel_driver
         self._observation = observation
         self._message_dispatch = None
+        # 运行期上下文（UI 独占锁的读法），由组合根经 configure_runtime 注入 ——
+        # 与 EventManager / CommandManager 同一套接线（ADR-0009 第 3 条）。
+        self._runtime = None
         # 占座游标：占座侧原本持有的两个状态，合并后归子系统所有。
         self.current_desk_index = 0
         self.current_side = None
@@ -240,6 +243,25 @@ class SeatSubsystem:
         async with ctrl.ui_session(reason):
             yield
 
+    def configure_runtime(self, runtime):
+        """注入运行期上下文（UI 独占锁的读法）。
+
+        与 `EventManager` / `CommandManager` 同一套接线：依赖只从构造函数或
+        `configure_runtime` 进入（ADR-0009 第 3 条）。
+        """
+        self._runtime = runtime
+
+    def _ui_is_busy(self) -> bool:
+        """有没有别的流程正在驱动屏幕（UI 锁被持有）。
+
+        走 `EventRuntimeContext.is_ui_busy()` —— 与 EventManager 读的是同一把锁。
+        没注入运行期上下文（单元测试）时按「没人驱动屏幕」处理，与
+        `BaseEvent.is_ui_busy` 同一套约定。
+        """
+        if self._runtime is None:
+            return False
+        return self._runtime.is_ui_busy()
+
     # ------------------------------------------------------------------
     # 面板
     # ------------------------------------------------------------------
@@ -259,7 +281,17 @@ class SeatSubsystem:
         return self.panel.scroll_to_row(desk_index, seat_desks, duration=duration)
 
     async def prepare_for_chat_scan(self) -> bool:
-        """聊天历史扫描前把座位面板收回原状。"""
+        """聊天历史扫描前把座位面板收回原状。
+
+        持锁的流程拥有座位面板：锁被持有时（别人正在驱动屏幕）不许把面板收起。
+        座位面板是 RecyclerView，视口一收（513px → 290px）第三排立刻被回收，
+        正在重扫桌位的座位流程会只数到 4 张而不是 6 张，整条座位命令失败
+        （真机 10-23 11:42:52：found 4 desks, expected 6）。
+        """
+        if self._ui_is_busy():
+            self.logger.debug("UI 锁被持有，座位面板归持锁流程所有，本次聊天扫描不收起面板")
+            return True
+
         is_expanded = self.check_seats_state()
         if is_expanded:
             return await self.collapse_seats()

@@ -216,6 +216,27 @@ gh pr create ...
 gh auth switch -h github.com -u <previous-active-username>
 ```
 
+### Branch Naming (铁律)
+
+分支一律用 `<type>/<slug>` 格式：类型前缀与 slug 之间**必须用斜杠分隔**。严禁使用
+`forchain/fix-<slug>` 这类「属主前缀 + 连字符」的形式。
+
+```bash
+# ✅ 正确
+fix/seat-panel-collapse-race
+feat/invite-empty-seat
+chore/ci-pytest-gate
+
+# ❌ 错误
+forchain/fix-seat-panel-collapse-race
+forchain/feat-invite-empty-seat
+```
+
+- 类型前缀：`fix/`、`feat/`、`chore/`、`refactor/`、`docs/`、`test/`
+- slug 用短横线小写，**不重复类型前缀**（`fix/seat-panel-collapse-race`，而不是
+  `fix/fix-seat-panel-collapse-race`）
+- 仓库里已存在的 `forchain/*` 历史分支不用回改，新建分支一律按本规则命名
+
 ## Agent Skills
 
 ### Issue tracker

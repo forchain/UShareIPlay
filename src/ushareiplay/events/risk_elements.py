@@ -55,6 +55,20 @@ class RiskElementsEvent(BaseEvent):
         Returns:
             bool: 如果点击成功返回 True，否则 False
         """
+        # 「收起座位」是唯一一个与持锁流程冲突的风险元素：别人正在驱动屏幕时必须让路。
+        #
+        # 座位面板是 RecyclerView：视口一收（513px → 290px）第三排立刻被回收，桌位从
+        # 6 张掉回 4 张。座位流程在「展开面板 → 等动画 → 重扫桌位」这半秒里读桌位，
+        # 这里在同一时刻点掉「收起座位」，重扫就只数得到 4 张 —— 整条座位命令失败
+        # （真机 10-23 11:42:52：found 4 desks, expected 6）。
+        #
+        # 其余风险元素是「不管你在干什么，先把挡路的清掉」，保持无条件处理。
+        if key == "collapse_seats" and self.is_ui_busy():
+            self.logger.debug(
+                f"Risk element {key} skipped: UI 锁被持有，面板归持锁流程所有"
+            )
+            return False
+
         try:
             # 使用 wait_for 获取可点击的元素（因为 page_source 中已确认存在）
             element = self.handler.element_finder.wait_for_element_clickable(key)
