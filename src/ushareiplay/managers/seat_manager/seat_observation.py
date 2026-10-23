@@ -370,6 +370,16 @@ class SeatObservationManager(Singleton):
             return None
         return parse_focus_count_text(getattr(element, "text", ""))
 
+    def is_ui_busy(self) -> bool:
+        """有没有别的流程正在驱动屏幕（UI 锁被持有）。"""
+        ctrl = self.controller
+        if ctrl is None:
+            return False
+        ui_lock = getattr(ctrl, "ui_lock", None)
+        if ui_lock is None:
+            return False
+        return bool(ui_lock.locked())
+
     @asynccontextmanager
     async def _ui_session(self, reason: str):
         """独占 UI 执行权，契约与 AppController.ui_session 一致。
@@ -1601,6 +1611,10 @@ class SeatObservationManager(Singleton):
         if not pending:
             return
 
+        if not caller_holds_ui_session and self.is_ui_busy():
+            self.logger.debug("UI 锁被持有，面板归持锁流程所有，跳过被动观测点头像弹窗")
+            return
+
         async def _inspect_pending():
             for seat_num, desk, side in pending:
                 username = await self.inspect_occupant(desk, side, seat_num)
@@ -1818,22 +1832,23 @@ class SeatObservationManager(Singleton):
         # 见 _read_band_baseline）：清掉基线等于放弃下一轮的比对资格。
         self._read_band_baseline(desk_wrappers)
 
-        old_slots = {k: v.copy() for k, v in self.seats.items()}
-
         await self._resolve_usernames(
             observed, caller_holds_ui_session=caller_holds_ui_session
         )
 
-        # 只有「看得明白」的变更才落快照：有人消失/凭空出现/同位换人都说明影响可能
-        # 落在看不见的麦位上 —— 那种读数既不写快照，也不当作没发生，交给全量扫描定夺。
-        writable, clearable, unexplained = self._plan_observation_changes(old_slots, observed)
-        to_apply = {num: item for num, item in observed.items() if num in writable}
-        if to_apply:
-            self._apply_snapshot(to_apply, clearable=clearable)
+        async with self._lock:
+            old_slots = {k: v.copy() for k, v in self.seats.items()}
 
-        has_changes, changed_users, seat_info = self._compute_diff(
-            old_slots, self.seats, set(to_apply.keys())
-        )
+            # 只有「看得明白」的变更才落快照：有人消失/凭空出现/同位换人都说明影响可能
+            # 落在看不见的麦位上 —— 那种读数既不写快照，也不当作没发生，交给全量扫描定夺。
+            writable, clearable, unexplained = self._plan_observation_changes(old_slots, observed)
+            to_apply = {num: item for num, item in observed.items() if num in writable}
+            if to_apply:
+                self._apply_snapshot(to_apply, clearable=clearable)
+
+            has_changes, changed_users, seat_info = self._compute_diff(
+                old_slots, self.seats, set(to_apply.keys())
+            )
 
         if has_changes:
             self.logger.info(
@@ -1877,15 +1892,14 @@ class SeatObservationManager(Singleton):
         if not desk_wrappers:
             return False
 
-        async with self._lock:
-            has_changes, unexplained = await self._sync_desks(
-                desk_wrappers,
-                "可视区域变更",
-                current_focus_count,
-                caller_holds_ui_session=False,
-            )
-            band_change_reason = self._band_change_reason
-            self._band_change_reason = None
+        has_changes, unexplained = await self._sync_desks(
+            desk_wrappers,
+            "可视区域变更",
+            current_focus_count,
+            caller_holds_ui_session=False,
+        )
+        band_change_reason = self._band_change_reason
+        self._band_change_reason = None
 
         target_focus = self._resolve_target_focus(current_focus_count)
 
@@ -2149,7 +2163,7 @@ class SeatObservationManager(Singleton):
         # 这一扫就是那次补扫本身：先撤销欠账，结不结由 _verify_focus_consistency 说
         self._consistency_retry_due = False
 
-        async with self._lock, self._ui_session("seat_expansion"):
+        async with self._ui_session("seat_expansion"):
             try:
                 # 人数是「这遍扫对没有」的唯一判据，而调用方带进来的值在冷启动/
                 # RoomState.clear() 之后是 None。这里已在 ui_session 内，可以安全地
@@ -2177,14 +2191,15 @@ class SeatObservationManager(Singleton):
                 if not observed:
                     return False
 
-                old_slots = {k: v.copy() for k, v in self.seats.items()}
-                # 权威路径：两个相位把 12 个座位都读过，明确空座即可判下座
-                self._apply_snapshot(observed)
-                self._last_rescan_ok = True
+                async with self._lock:
+                    old_slots = {k: v.copy() for k, v in self.seats.items()}
+                    # 权威路径：两个相位把 12 个座位都读过，明确空座即可判下座
+                    self._apply_snapshot(observed)
+                    self._last_rescan_ok = True
 
-                has_changes, changed_users, seat_info = self._compute_diff(
-                    old_slots, self.seats, set(observed.keys())
-                )
+                    has_changes, changed_users, seat_info = self._compute_diff(
+                        old_slots, self.seats, set(observed.keys())
+                    )
 
                 # 重扫是十几秒的主动行为，落地就得给出结论：没有变更也打印，否则没人
                 # 能判断这次到底读到了什么（真机 23:00:0x：扫完一个字节都没输出，
