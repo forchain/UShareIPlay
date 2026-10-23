@@ -2709,5 +2709,87 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
     assert "[6号: 管理(Chainer)]" in layout
 
 
+@pytest.mark.asyncio
+async def test_observe_visible_desks_skips_avatar_inspection_when_ui_is_busy():
+    """UI 锁被持有时（例如进房自动邀请正在驱动屏幕），被动观测跳过点击头像弹窗，避免争抢屏幕与死锁。"""
+    controller = FakeController()
+    handler = make_handler(popup_name="Bob", controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
+
+    async with controller.ui_session("seat_auto_invite:some_user"):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([desk])
+
+    # UI 忙碌时，不应打开弹窗，保留身份未解析
+    assert manager.seats[1].username is None
+    assert "seat_inspect" not in controller.sessions
+
+
+@pytest.mark.asyncio
+async def test_observe_visible_desks_and_sync_current_viewport_concurrency_no_deadlock():
+    """持锁流程与被动观测并发时不发生死锁（修复 AB-BA 锁死问题）。"""
+    page_xml = """<hierarchy>
+      <node resource-id="cn.soulapp.android:id/userRoot" bounds="[100,100][300,300]">
+        <node resource-id="cn.soulapp.android:id/left_seat" bounds="[100,100][200,300]">
+          <node resource-id="cn.soulapp.android:id/left_label" text="1"/>
+        </node>
+        <node resource-id="cn.soulapp.android:id/right_seat" bounds="[200,100][300,300]">
+          <node resource-id="cn.soulapp.android:id/right_label" text="2"/>
+        </node>
+      </node>
+    </hierarchy>"""
+
+    controller = FakeController()
+    handler = make_handler(popup_name="Bob", controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
+
+    async def holding_task():
+        async with controller.ui_session("seat_auto_invite:user"):
+            await asyncio.sleep(0.01)
+            await manager.sync_current_viewport(band="top", page_source=page_xml)
+
+    async def observation_task():
+        await asyncio.sleep(0.005)
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([desk])
+
+    await asyncio.wait_for(asyncio.gather(holding_task(), observation_task()), timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_expand_rescan_and_collapse_concurrency_no_deadlock():
+    """全量重扫与 UI 持锁任务并发时不发生死锁。"""
+    page_xml = """<hierarchy>
+      <node resource-id="cn.soulapp.android:id/userRoot" bounds="[100,100][300,300]">
+        <node resource-id="cn.soulapp.android:id/left_seat" bounds="[100,100][200,300]">
+          <node resource-id="cn.soulapp.android:id/left_label" text="1"/>
+        </node>
+        <node resource-id="cn.soulapp.android:id/right_seat" bounds="[200,100][300,300]">
+          <node resource-id="cn.soulapp.android:id/right_label" text="2"/>
+        </node>
+      </node>
+    </hierarchy>"""
+
+    controller = FakeController()
+    handler = make_handler(controller=controller)
+    manager = SeatObservationManager.initialize(handler)
+
+    async def holding_task():
+        async with controller.ui_session("seat_auto_invite:user"):
+            await asyncio.sleep(0.01)
+            await manager.sync_current_viewport(band="top", page_source=page_xml)
+
+    async def rescan_task():
+        await asyncio.sleep(0.005)
+        await manager.expand_rescan_and_collapse(target_focus_count=5)
+
+    await asyncio.wait_for(asyncio.gather(holding_task(), rescan_task()), timeout=1.0)
+
+
+
 
 
