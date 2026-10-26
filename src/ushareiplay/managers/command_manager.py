@@ -10,10 +10,10 @@ from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_parser import CommandParser, resolve_command_level
+from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.core.roles import RolePolicy, resolve_command_level
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
