@@ -327,7 +327,13 @@ class RoomProfileManager(Singleton):
         `:recommend` 需要知道「现在是开是关」才能决定 toggle 往哪边走，因此这
         是模块边界上唯一对外的一个纯读出口。语义与 `RoomState` 上那份记录
         逐字一致：读接口不复制状态，复制就会出现两个真相。
+
+        `RoomState` 还没装配时（离线装配 / 测试替身）读出来同样是 `None` ——
+        没有记录可问，「还没从 UI 读到过」正是这个意思。与本模块
+        `ensure_synced_on_return` 里的同一处判断同源。
         """
+        if not RoomState.is_initialized():
+            return None
         return self.room_state.recommendation_enabled
 
     def get_topic_status(self) -> Dict:
@@ -1403,6 +1409,15 @@ class RoomProfileManager(Singleton):
         5. 否则点状态项呼出二级弹窗，再点「所有人」或「关闭推荐分发」。
         6. 把最终事实写进 `RoomState.recommendation_enabled`。
 
+        **缓存命中（fast path）**：`RoomState.recommendation_enabled` 已经是目标
+        状态时，一个 UI 动作都不发生 —— 不开面板、不翻页、不读文案，直接返回
+        成功。缓存是机器人对当前房间推荐状态的记录（建房时配置的结果、UI 读写
+        的落账），`/info` 报的就是它；目标状态与它一致就意味着「已经是这样了」，
+        再去开一次面板、翻一次页、读一次文案全是白花的时间。
+
+        缓存命中不绕过他房守卫，也不绕开「面板不可用」：这两个是能力与权限的
+        判断，与状态是否已经一致无关。
+
         返回面与旧实现一致：成功 `{'success': True, 'recommendation_enabled': bool}`，
         失败 `{'error': ...}`（字符串会经 config 的 `:recommend` 模板回给用户）。
         """
@@ -1412,6 +1427,14 @@ class RoomProfileManager(Singleton):
         driver = self.settings_driver
         if driver is None:
             return {'error': '派对设置面板不可用'}
+
+        cached = self.recommendation_enabled
+        if cached is not None and cached == enabled:
+            # 一个行为都没发生：按日志铁律只留 DEBUG。
+            self.logger.debug(
+                f'Recommendation already at {enabled}; skipping the settings panel'
+            )
+            return {'success': True, 'recommendation_enabled': enabled}
 
         opened_here = False
         try:

@@ -149,6 +149,114 @@ def test_the_target_state_skips_the_second_level_popup():
     assert driver.close_calls == 1
 
 
+def test_the_cached_state_is_unknown_before_the_room_state_is_assembled():
+    """`RoomState` 没装配时读出来是「未知」，而不是把调用方炸掉。"""
+    profile = _profile(_driver())
+
+    assert profile.recommendation_enabled is None
+
+
+def test_a_cached_state_at_the_target_skips_the_settings_panel():
+    """缓存已经是目标状态：一个 UI 动作都不该发生。
+
+    缓存是机器人对当前房间推荐状态的记录（建房时配置的结果、UI 读写的落账）。
+    目标状态与它一致就意味着「已经是这样了」，再去开一次面板、翻一次页、
+    读一次文案全是白花的时间。
+    """
+    driver = _driver(status_text=OPEN_TEXT)
+    profile = _profile(driver)
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = True
+
+    result = profile.set_recommendation(True)
+
+    assert result == {'success': True, 'recommendation_enabled': True}
+    assert driver.open_attempts == 0, '缓存命中就不该去点设置按钮'
+    assert driver.opened == 0, '缓存命中就不该开面板'
+    assert driver.swipes == 0, '不开面板就不该翻页找状态项'
+    assert driver.clicks == []
+    assert driver.option_clicks == []
+    assert driver.close_calls == 0, '根本没打开过，就不该声称自己关了'
+    assert room_state.recommendation_enabled is True
+
+
+def test_a_cached_closed_state_skips_the_panel_for_turning_off():
+    """缓存是「关」、目标也是「关」：同样一个 UI 动作都不发生。"""
+    driver = _driver(status_text=CLOSED_TEXT)
+    profile = _profile(driver)
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = False
+
+    result = profile.set_recommendation(False)
+
+    assert result == {'success': True, 'recommendation_enabled': False}
+    assert driver.open_attempts == 0
+    assert driver.opened == 0, '缓存命中就不该开面板'
+    assert driver.swipes == 0, '不开面板就不该翻页找状态项'
+    assert driver.clicks == []
+    assert driver.close_calls == 0, '根本没打开过，就不该声称自己关了'
+    assert room_state.recommendation_enabled is False
+
+
+def test_a_cached_state_at_the_target_leaves_an_open_panel_alone():
+    """缓存命中、面板本来就是外层开着的：直接返回，不去关别人的面板。
+
+    面板开着时「顺带读一次」是允许的，但读了也改不了什么 —— 目标状态与缓存
+    一致，本来就不该动它。选了直接返回：谁开的谁关，这里一个动作都不发生。
+    """
+    driver = _driver(panel_open=True, status_text=OPEN_TEXT)
+    profile = _profile(driver)
+    RoomState.initialize().recommendation_enabled = True
+
+    result = profile.set_recommendation(True)
+
+    assert result == {'success': True, 'recommendation_enabled': True}
+    assert driver.open_attempts == 0
+    assert driver.clicks == []
+    assert driver.close_calls == 0, '面板是外层开的，就由外层关'
+    assert driver.is_open() is True
+
+
+def test_a_cached_state_at_another_target_still_writes_through_the_panel():
+    """缓存是「开」而目标是「关」：缓存不命中，照旧走设置面板。"""
+    driver = _driver(status_text=OPEN_TEXT)
+    profile = _profile(driver)
+    RoomState.initialize().recommendation_enabled = True
+
+    result = profile.set_recommendation(False)
+
+    assert result == {'success': True, 'recommendation_enabled': False}
+    assert driver.opened == 1, '缓存与目标不一致就必须去面板上写'
+    assert driver.option_clicks == [False]
+
+
+def test_an_unknown_cached_state_still_reads_the_settings_panel():
+    """缓存是 None（还没从 UI 读到过）：必须去面板读一次真实状态。"""
+    driver = _driver(status_text=OPEN_TEXT)
+    profile = _profile(driver)
+    RoomState.initialize()
+
+    assert profile.set_recommendation(True) == {
+        'success': True,
+        'recommendation_enabled': True,
+    }
+    assert driver.opened == 1
+
+
+def test_a_cached_state_at_the_target_does_not_bypass_the_guest_room_guard():
+    """缓存命中也不能绕过他房守卫：他人房间依旧不可修改。"""
+    driver = _driver(status_text=OPEN_TEXT)
+    profile = _profile(driver)
+    room_state = RoomState.initialize()
+    room_state.recommendation_enabled = True
+    room_state.is_guest_room = True
+
+    assert profile.set_recommendation(True) == {
+        'error': '他人房间模式下不可修改推荐状态'
+    }
+    assert driver.open_attempts == 0
+
+
 def test_a_panel_someone_else_opened_is_not_closed_by_the_manager():
     driver = _driver(panel_open=True, status_text=OPEN_TEXT)
     profile = _profile(driver)
@@ -396,6 +504,34 @@ async def test_recommend_accepts_the_documented_aliases(
 
     assert result == {'status': expected_status}
     assert driver.option_clicks == [expected_option]
+
+
+@pytest.mark.asyncio
+async def test_recommend_on_an_already_open_state_does_not_touch_the_panel():
+    """`:recommend on` 而推荐已经是开的：不碰设置面板，直接回话。"""
+    driver = _driver(status_text=OPEN_TEXT)
+    RoomState.initialize().recommendation_enabled = True
+    cmd = _command(driver)
+
+    result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['on'])
+
+    assert result == {'status': '开放'}
+    assert driver.open_attempts == 0, '已经是开的就不该再开一次面板'
+    assert driver.option_clicks == []
+
+
+@pytest.mark.asyncio
+async def test_recommend_on_a_closed_state_still_writes_through_the_panel():
+    """`:recommend on` 而推荐是关的：缓存不命中，照旧去面板上写。"""
+    driver = _driver(status_text=CLOSED_TEXT)
+    RoomState.initialize().recommendation_enabled = False
+    cmd = _command(driver)
+
+    result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['on'])
+
+    assert result == {'status': '开放'}
+    assert driver.opened == 1
+    assert driver.option_clicks == [True]
 
 
 @pytest.mark.asyncio
