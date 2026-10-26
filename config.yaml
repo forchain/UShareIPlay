@@ -438,7 +438,12 @@ commands:
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
-    description: "搜索并播放指定歌单。参数: <歌单名>，无参数播放默认推荐歌单，例如 :playlist 欧美流行、:playlist"
+    subcommands:
+      '':
+        level: 1
+      '*':
+        level: 2
+    description: "搜索并播放指定歌单。参数: <歌单名>，无参数查询当前播放队列，例如 :playlist 欧美流行、:playlist"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
