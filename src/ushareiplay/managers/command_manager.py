@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.core.command_parser import CommandParser, resolve_command_level
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.roles import RolePolicy
@@ -264,7 +264,7 @@ class CommandManager(Singleton):
 
             # 1. 检查用户等级：人工操作者（房主、Console、管理员）与系统自动化角色不受等级限制
             if not role_policy.is_privileged(message_info.nickname):
-                required_level = command_info.get('level', 1)
+                required_level = resolve_command_level(command_info, parameters)
                 user = await UserDAO.get_or_create(message_info.nickname)
                 
                 if user.level < required_level:
