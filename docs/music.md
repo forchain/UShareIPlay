@@ -62,7 +62,7 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 | `lyrics` | 1 | — | Post current song lyrics to chat |
 | `singer` | 1 | `<name>` | Play top songs by artist |
 | `album` | 2 | `<name>` | Play entire album |
-| `playlist` | 2 | `<name>` | Play a named playlist |
+| `playlist` | 1/2 | `[<name>]` | No args shows the current queue; with a name plays that playlist |
 | `radio` | 2 | `guess/daily/collection/sleep` | Play recommended radio station |
 | `info` | 0 | — | Show current song, queue, online users, and timers |
 

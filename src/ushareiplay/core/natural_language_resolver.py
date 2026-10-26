@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from ushareiplay.core.chat_intake import format_ai_message
+from ushareiplay.core.roles import min_command_level
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class NaturalLanguageResolver:
             prefix = cmd.get("prefix", "")
             if not prefix:
                 continue
-            lvl = cmd.get("level", 0)
+            lvl = min_command_level(cmd)
             desc = cmd.get("description") or cmd.get("response_template") or prefix
             cmd_lines.append(f"- `:{prefix}` (所需等级: L{lvl}): {desc}")
 

@@ -127,7 +127,7 @@ User levels range from `0` (guest / unprivileged) to `9` (owner / system adminis
 | `:lyrics` | 1 | — | Fetch and post current song lyrics to chat |
 | `:singer` | 1 | `<name>` | Play top songs by artist |
 | `:album` | 2 | `<name>` | Play entire album |
-| `:playlist`| 2 | `<name>` | Play a named playlist |
+| `:playlist`| 1/2 | `[<name>]` | Bare call shows the current queue; with a name plays that playlist |
 | `:radio` | 2 | `guess/daily/collection/sleep` | Play recommended radio station |
 | `:info` | 0 | — | Show current song, queue, online users, and timers |
 

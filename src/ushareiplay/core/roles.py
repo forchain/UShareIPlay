@@ -1,9 +1,107 @@
+"""统一角色与权限判定策略。
+
+两半都在这里回答「这个人能不能做这件事」：
+
+- `RolePolicy` —— 这个人是不是特权用户（房主 / 管理员 / 系统角色）；
+- `resolve_command_level` / `min_command_level` —— 这条命令（这一种调用
+  形态）要多少等级。
+"""
+
 from typing import Any, Iterable, Optional, Set
 
 
 DEFAULT_ROOM_OWNER = "Joyer"
 DEFAULT_ADMIN_USERS = frozenset({"Outlier", "Chainer"})
 DEFAULT_SYSTEM_USERS = frozenset({"Timer", "Agent"})
+
+# 子命令配置里的形态键：无参形态用空串，其余带参形态用 '*'
+SUBCOMMAND_NO_ARG = ''
+SUBCOMMAND_ANY_ARG = '*'
+
+# 命令没有声明等级时的兜底门槛
+DEFAULT_COMMAND_LEVEL = 1
+
+
+def _extract_level(subcommand_config: Any) -> Optional[int]:
+    """从子命令配置里取出等级。
+
+    只认两种写法：字典（`{'level': 1}`）与整数标量简写（`list: 1`）。
+    其他写法一律当作「没写等级」。
+    """
+    if isinstance(subcommand_config, dict):
+        level = subcommand_config.get('level')
+        return int(level) if level is not None else None
+    if isinstance(subcommand_config, int):
+        return int(subcommand_config)
+    return None
+
+
+def _top_level(command_info: dict) -> int:
+    """命令的顶层门槛（兜底等级）。"""
+    return int(command_info.get('level', DEFAULT_COMMAND_LEVEL))
+
+
+def _subcommand_levels(command_info: dict) -> dict[str, Optional[int]]:
+    """子命令配置里各形态自己声明的等级，没写等级的是 None。"""
+    subcommands = command_info.get('subcommands')
+    if not isinstance(subcommands, dict):
+        return {}
+    return {
+        str(name).lower(): _extract_level(cfg)
+        for name, cfg in subcommands.items()
+    }
+
+
+def resolve_command_level(command_info: dict, parameters: list[str]) -> int:
+    """解析一次命令调用所需的权限等级。
+
+    匹配顺序：
+      1. 无参调用 -> `subcommands['']`（没写等级则回顶层）
+      2. 首参数（忽略大小写）命中具名子命令 -> 该子命令的等级；没写等级则
+         依次尝试 `'*'` 规则、顶层等级
+      3. 其余带参调用 -> `'*'` 规则（没写等级则回顶层）
+      4. 都没命中 -> 顶层 `level`（默认 1）
+    """
+    top_level = _top_level(command_info)
+    levels = _subcommand_levels(command_info)
+    if not levels:
+        return top_level
+
+    if not parameters:
+        level = levels.get(SUBCOMMAND_NO_ARG)
+        return level if level is not None else top_level
+
+    key = str(parameters[0]).lower()
+    if key in levels:
+        level = levels[key]
+        if level is not None:
+            return level
+
+    wildcard = levels.get(SUBCOMMAND_ANY_ARG)
+    return wildcard if wildcard is not None else top_level
+
+
+def min_command_level(command_info: dict) -> int:
+    """命令所有形态里最低的权限等级。
+
+    自然语言提示在还不知道用户要哪种形态时就得先报一个等级，因此这里取
+    顶层 `level` 与各子命令「生效等级」的最小值：具名子命令没写等级时按
+    `'*'` 规则算，无参形态没写等级时按顶层算。
+    """
+    top_level = _top_level(command_info)
+    levels = _subcommand_levels(command_info)
+    if not levels:
+        return top_level
+
+    wildcard = levels.get(SUBCOMMAND_ANY_ARG)
+    candidates = [top_level]
+    for name, level in levels.items():
+        if level is None:
+            level = wildcard if name != SUBCOMMAND_NO_ARG else top_level
+            if level is None:
+                level = top_level
+        candidates.append(level)
+    return min(candidates)
 
 
 def _normalize_set(values: Optional[Iterable[Any]]) -> Set[str]:

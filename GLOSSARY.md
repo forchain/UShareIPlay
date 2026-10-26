@@ -35,8 +35,12 @@ The combined Soul App party room name `{theme}｜{title}`, its shared cooldown, 
 _Avoid_: ThemeManager, TitleManager, RoomNameManager (legacy adapters)
 
 **Command Execution**:
-All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, configured command retries, and response delivery.
+All behavior that turns runtime queue entries or scanned chat rows into command outcomes, including command detection, normalization, routing, execution, configured command retries, per-form privilege gating, and response delivery.
 _Avoid_: Command parser, queue drainer, chat command handler
+
+**Command Level**:
+The privilege threshold that gates one command form. A command declares a top-level `level` plus optional `subcommands` rules that override it per call shape: the no-arg form (`''`), a named form keyed by the first parameter, and the wildcard form (`'*'`) covering every other parameterised call. The gate and the natural-language prompt read the same policy from `core/roles.py`, so a read-only form stays open to low-level users while its state-changing form remains restricted.
+_Avoid_: Command tier, subcommand permission, per-parameter privilege
 
 **Event Processing**:
 All behavior that describes and reacts to the current app screen, including page-source readiness, screen classification, event priority, UI-busy suppression, and unknown-page recovery.

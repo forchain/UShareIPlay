@@ -354,25 +354,25 @@ lyrics:
 
 commands:
   - prefix: "play"
-    level: 1
+    level: 2
     description: "立即搜索并播放指定歌曲。参数: <歌名> [歌手名]，例如 :play 晴天 周杰伦（播放期间受麦克风静音保护，且享有老歌过滤豁免）"
     retry: true
     response_template: "{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
-    level: 1
+    level: 3
     description: "从我的收藏播放歌曲。参数: [0/type <分类> | 2/search <关键词>]，无参数播放全部收藏，例如 :fav、:fav 0 粤语、:fav type 摇滚、:fav 2 晴天"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
-    level: 1
+    level: 2
     description: "跳过当前正在播放的歌曲切到下一首。无参数，例如 :skip"
     retry: true
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
-    level: 0
+    level: 1
     description: "切下一首歌或添加歌曲到待播队列。参数: [歌名] [歌手名]，无参数表示立即切下一首，有参数加入待播列表，例如 :next 或 :next 稻香 周杰伦"
     retry: true
     response_template: "Added {song} by {singer} in {album} • {release_date} to playlist"
@@ -422,6 +422,11 @@ commands:
     error_template: "别名绑定失败: {error}"
   - prefix: "level"
     level: 0
+    subcommands:
+      '':
+        level: 0
+      '*':
+        level: 9
     description: "查看或设置用户权限等级(0-9)。参数: [用户名] [0-9]，无参查看自身等级，1个参数查看目标用户等级，2个参数设置目标用户等级(需操作员权限)，例如 :level、:level 张三、:level 张三 3"
     response_template: "{message}"
     error_template: "{error}"
@@ -431,62 +436,67 @@ commands:
     response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
-    level: 1
+    level: 3
     description: "搜索并播放指定歌手的热门歌曲列表。参数: <歌手名>，例如 :singer 周杰伦"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
-    description: "搜索并播放指定歌单。参数: <歌单名>，无参数播放默认推荐歌单，例如 :playlist 欧美流行、:playlist"
+    subcommands:
+      '':
+        level: 1
+      '*':
+        level: 2
+    description: "搜索并播放指定歌单。参数: <歌单名>，无参数查询当前播放队列，例如 :playlist 欧美流行、:playlist"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play playlist, because {error}"
   - prefix: "radio"
-    level: 2
+    level: 3
     description: "播放推荐电台。参数: [guess/daily/collection/sleep/radar]，支持中文(猜你喜欢/每日30首/收藏/助眠/雷达)，无参默认收藏电台，例如 :radio daily、:radio 猜你喜欢、:radio"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
-    level: 2
+    level: 3
     description: "切换播放循环模式。参数: [0/1/-1]，0=顺序播放, 1=单曲循环, -1=随机播放，无参数查看当前模式，例如 :mode、:mode 1、:mode -1"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
-    level: 1
+    level: 4
     description: "查看或设置自习室房间话题。参数: [话题内容]，无参数返回当前话题状态，有参数安排话题更新，例如 :topic、:topic 听歌自习中"
     response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
 
   - prefix: "notice"
-    level: 1
+    level: 4
     description: "设置派对房间公屏公告。参数: <公告内容>，例如 :notice 欢迎来到音乐派对，请保持友善交流"
     response_template: "Change notice to {notice}"
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
-    level: 2
+    level: 3
     description: "搜索并播放整张指定专辑。参数: <专辑名>，例如 :album 范特西"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play album, because {error}"
   - prefix: "seat"
-    level: 1
+    level: 4
     description: "派对座位管理。参数: [0 | 1 <座位号> | 2 <座位号> | 3 [昵称] | 4 [座位号] | 5 <座位号> [昵称]]，无参自动为房主寻找可用座位并落座，0=取消自身座位预约，1=预约指定座位(1-12)，2=直接落座指定座位(1-12)，3=陪伴指定用户入座(默认自己)，4=抱下座(无参抱房主，带座位号抱该位)，5=邀请用户入座指定空座位(默认自己)，例如 :seat、:seat 1 3、:seat 2 1、:seat 4 2、:seat 5 3"
     response_template: "{success}"
     error_template: "Failed to apply for seat, because {error}"
   - prefix: "title"
-    level: 3
+    level: 4
     description: "设置派对房间标题（受冷却时间保护）。参数: <标题文字> [主题文字]，支持同时指定标题与主题，参数含空格请用引号包裹，例如 :title 欢迎光临、:title \"晚安音乐会\" \"助眠\""
     response_template: "{title}"
     error_template: "Failed to change title, because {error}"
   - prefix: "theme"
-    level: 3
+    level: 4
     description: "设置派对房间主题（通常≤2个字符，与标题组合为「主题｜标题」展示）。参数: <主题文字>，例如 :theme 听歌、:theme 聊天"
     response_template: "{theme}"
     error_template: "Failed to change theme, because {error}"
   - prefix: "end"
-    level: 4
+    level: 5
     description: "结束并解散当前派对房间（需房主好友在场且非他人客房）。无参数，例如 :end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
@@ -506,7 +516,7 @@ commands:
     response_template: "{timer}"
     error_template: "{error}"
   - prefix: "keyword"
-    level: 1
+    level: 3
     description: "自定义触发词自动回复管理。参数: <add/del/update/exec/grant/revoke> [参数]，例如 :keyword add 晚安 \":play 晚安\" 1(添加公开关键字)、:keyword update 晚安 0(设为私有关键字)、:keyword grant 晚安 张三(授权私有关键字给指定用户)、:keyword exec 晚安(立即测试执行)、:keyword del 晚安"
     response_template: "{message}"
     error_template: "关键字操作失败: {error}"
@@ -553,7 +563,7 @@ commands:
     error_template: "{error}"
 
   - prefix: "recommend"
-    level: 1
+    level: 5
     description: "开启或关闭派对公域推荐分发。参数: [on/off]，无参数切换当前推荐状态，例如 :recommend、:recommend on、:recommend off"
     response_template: "派对推荐已设置为: {status}"
     error_template: "设置派对推荐失败: {error}"

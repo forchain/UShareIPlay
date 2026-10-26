@@ -46,7 +46,7 @@ llm:
 |---|---|
 | `soul` | Soul App package, default party ID, room owner, notice, UI element XPaths, `party_restart_minutes` |
 | `qq_music` | QQ Music package, activity, UI element XPaths |
-| `commands` | List of command configs: `prefix`, `level`, `retry`, `response_template`, `error_template` |
+| `commands` | List of command configs: `prefix`, `level`, `subcommands`, `retry`, `response_template`, `error_template` |
 | `appium` | `host`, `port` for Appium server connection |
 | `device` | `name` (ADB address), `platform_name`, `platform_version`, `automation_name`, `no_reset` |
 | `logging` | `directory` for log files |
@@ -78,6 +78,36 @@ llm:
   api_key: "sk-xxx"
   model: "deepseek-chat"
 ```
+
+## Command Levels
+
+每个命令的顶层 `level` 是该命令的兜底门槛。`subcommands` 用来给同一条命令的
+不同调用形态配不同门槛：只读形态放低，能改状态的形态放高。
+
+```yaml
+- prefix: "playlist"
+  level: 2                      # 兜底门槛
+  subcommands:
+    '':
+      level: 1                  # 无参调用：只读当前播放队列
+    '*':
+      level: 2                  # 其余带参调用：切歌单
+```
+
+匹配顺序：
+
+1. 无参调用命中 `''`（空参数）；该形态没写等级时回退顶层 `level`；
+2. 首参数（忽略大小写）命中同名子命令，如 `list`；该子命令没写等级时依次
+   尝试 `'*'` 规则、顶层 `level`；
+3. 其余带参调用命中 `'*'`；没写等级时回退顶层 `level`；
+4. 都没命中，回退顶层 `level`（默认 1）。
+
+子命令配置写成字典是为了给后续属性（描述、是否静默等）留位置；写整数标量
+（如 `list: 1`）也等价于 `list: {level: 1}`，字符串不是等级写法。
+
+等级判定只有一处事实源：`src/ushareiplay/core/roles.py` 的
+`resolve_command_level`（门禁用）与 `min_command_level`（自然语言提示用，
+取所有形态里的最低等级，与门禁口径一致）。
 
 ## Extension Points
 

@@ -559,6 +559,23 @@ async def test_call_api_custom_timeout():
         mock_sync.assert_called_once_with({"model": "deepseek-chat"}, timeout=25.0)
 
 
+def test_resolver_advertises_lowest_level_for_subcommand_commands():
+    """带子命令的命令按最低形态等级报给 LLM，与门禁口径一致。"""
+    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key"})
 
+    commands_config = [
+        {
+            "prefix": "playlist",
+            "level": 2,
+            "subcommands": {"": {"level": 1}, "*": {"level": 2}},
+            "description": "搜索并播放指定歌单",
+        }
+    ]
 
+    prompt = resolver._build_system_prompt(
+        user_name="Alice",
+        user_level=1,
+        commands_config=commands_config,
+    )
 
+    assert "`:playlist` (所需等级: L1)" in prompt
