@@ -43,6 +43,11 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 - `:play <song>` is an **interlude** in the queue that is already playing, not a new queue: QQ Music keeps advancing the radio/playlist after the requested song. It therefore writes nothing to that context, so `/info` keeps showing e.g. `[电台] 猜你喜欢-沉浸刷歌 (by Timer)` while the interlude plays.
 - `PlaylistAdoption.guard_switch()` only asks whether the incoming request is a single song: single-song requests bypass playlist protection (a point-play must never be blocked by someone else's queue), every other request asks the role policy.
 
+### Play-All Button Forms
+- QQ Music renders the "play all" button differently per page: a `TextView` with the text `全部播放` on album detail / favourites / daily-radio pages, an `ImageView` icon on some versions, and a `FrameLayout` with `content-desc="播放"` on the **playlist detail** page.
+- Every play-all lookup therefore goes through one fallback chain (`PLAY_ALL_KEYS` in `qq_music_ui_driver`), whose selectors live in `config.yaml` — the single source of truth for UI elements. A page that gains a new form only needs a new key in that chain, not a new lookup per command.
+- `tests/test_qqmusic_play_all_selector.py` pins the chain against real device page-source snapshots (`tests/fixtures/qqmusic_dom/`), so a selector that stops matching the device fails in CI instead of at runtime.
+
 ### Lyrics & Accompaniment
 - **Lyrics (`:lyrics`)**: Fetches current song lyrics from QQ Music and posts them to Soul App chat in timed segments.
 - **Accompaniment (`:acc [0/1]`)**: Toggles QQ Music K-song accompaniment (伴唱) mode via the playback settings menu; state is read from element content-description.

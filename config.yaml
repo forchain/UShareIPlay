@@ -299,6 +299,10 @@ qq_music:
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
     play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
     play_all_compact: '//android.view.ViewGroup[@content-desc="评论"]/../android.widget.RelativeLayout/android.widget.ImageView'
+    # 歌单详情页（AI 歌单）把「播放全部」渲染成一个 content-desc="播放" 的
+    # FrameLayout，既不是 TextView 文案也不是 ImageView 图标 —— 真机 dump 见
+    # tests/fixtures/qqmusic_dom/playlist_detail.xml。
+    play_all_frame: '//android.widget.FrameLayout[@content-desc="播放"]'
     singer_tabs: '//android.widget.TextView[@text="歌曲"]'
     go_back: '//android.widget.ImageButton[@content-desc="返回"]'
     list_title: '//android.view.ViewGroup/android.widget.TextView[@text="单曲" or @text="视频" or @text="专辑" or @text="歌单"]'

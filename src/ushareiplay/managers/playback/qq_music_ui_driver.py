@@ -114,8 +114,10 @@ SINGER_CONTENT_DESC_SUFFIX = "的歌曲"
 # 歌手名读不出来时房间里也不该出现空白标题，用迁移前就有的 Unknown 顶上。
 UNKNOWN_SINGER_NAME = "Unknown"
 
-# 「播放全部」在不同版本/不同页面下有三套文案，因此走三 key 兜底。
-PLAY_ALL_KEYS = ["play_all", "play_all_playlist", "play_all_compact"]
+# 「播放全部」在不同版本/不同页面下有四套形态，因此走多 key 兜底：歌单详情页
+# 的那个是 content-desc="播放" 的 FrameLayout（play_all_frame），其余三套是
+# TextView 文案与 ImageView 图标。
+PLAY_ALL_KEYS = ["play_all", "play_all_playlist", "play_all_compact", "play_all_frame"]
 
 # 歌单详情页第一行（歌名/歌手）按列拆开读：列容器与列内文字都是原生控件，没有
 # 独立 resource-id，只能按类名逐列取。
@@ -321,8 +323,12 @@ class QQMusicUIDriver(MusicUIDriverPort):
         )
 
     def _click_play_all(self) -> Optional[str]:
-        """点「全部播放」。返回错误说明；成功为 None。"""
-        play_all = self._handler.element_finder.wait_for_element_clickable("play_all")
+        """点「全部播放」。返回错误说明；成功为 None。
+
+        按钮形态随页面而变（TextView 文案 / ImageView 图标 / FrameLayout 描述），
+        因此认按钮一律走 `PLAY_ALL_KEYS` 这条兜底链，而不是只认一种形态。
+        """
+        _, play_all = self._handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
         if not play_all:
             return "Cannot find play all button"
         play_all.click()
@@ -428,7 +434,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """
         handler = self._handler
 
-        play_all = handler.element_finder.wait_for_element_clickable("play_all")
+        _, play_all = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
         if not play_all:
             return "Cannot find play all button"
 
@@ -665,7 +671,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         topic = self._radio_subtitle_topic(topic_element.text)
 
         title_element.click()
-        play_all = handler.element_finder.wait_for_element_clickable("play_all")
+        _, play_all = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
         if not play_all:
             return PlaybackOutcome.failed("Failed to locate play all button")
         play_all.click()

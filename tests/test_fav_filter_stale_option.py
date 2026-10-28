@@ -80,6 +80,14 @@ class _ElementFinder:
     def wait_for_element(self, key, timeout=None):
         return self._find(key)
 
+    def wait_for_any_element(self, keys, timeout=None):
+        """按兜底链认按钮：链上第一个命中的 key 胜出（与生产同口径）。"""
+        for key in keys:
+            element = self._find(key)
+            if element is not None:
+                return key, element
+        return None, None
+
 
 class _HandlerFake:
     def __init__(self, option_stale, option_fresh, confirm):

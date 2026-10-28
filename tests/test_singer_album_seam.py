@@ -19,6 +19,7 @@ from ushareiplay.managers.playback.models import (
 )
 from ushareiplay.managers.playback.qq_music_ui_driver import (
     ALBUM_RESULT_KEYS,
+    PLAY_ALL_KEYS,
     SINGER_RESULT_KEYS,
     SINGER_SHORTCUT_KEYS,
     QQMusicUIDriver,
@@ -179,6 +180,8 @@ class _SingerAlbumHandler:
             return self.singer_result_key, self.singer_result
         if keys == ALBUM_RESULT_KEYS:
             return self.album_result_key, self.album_card
+        if keys == PLAY_ALL_KEYS:
+            return "play_all", (self.play_button if self.play_all else None)
         raise AssertionError(f"unexpected keys: {keys}")
 
     def _try_find(self, key, **kwargs):
