@@ -19,6 +19,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
+from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 from ushareiplay.managers.playlist_adoption import primary_topic
 from ushareiplay.models.message_info import MessageInfo
 
@@ -381,7 +382,8 @@ def test_daily_channel_plays_the_daily_thirty(music_manager):
         "wait_clickable:daily_title",
         "wait:daily_topic",
         "click:daily_title",
-        "wait_clickable:play_all",
+        # 「播放全部」按兜底链认，认不出就是认不出（见 PLAY_ALL_KEYS）。
+        "wait_any:" + "/".join(PLAY_ALL_KEYS),
         "click:play_all",
         "queue",
     ]

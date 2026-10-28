@@ -10,6 +10,7 @@ from selenium.common import StaleElementReferenceException
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playback.models import PLAY_MODE_NAMES
+from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 
 
 # 在导入后设置种子
@@ -276,7 +277,9 @@ class QQMusicHandler(AppHandler, Singleton):
 
         key, element = self.navigator.navigate_to_element(
             'search_box',
-            ['play_all', 'play_all_playlist', 'play_all_compact', 'fav_entry'],
+            # 带着「播放全部」的详情页（歌单/专辑/收藏）都得先退出去才能搜歌；
+            # 认按钮的 key 集合与驱动共用一份，免得两边各记一套又各漏一个形态。
+            [*PLAY_ALL_KEYS, 'fav_entry'],
         )
         if key == 'home_nav':
             search_entry = self.element_finder.wait_for_element('search_entry', timeout=20)
