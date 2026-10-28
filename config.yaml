@@ -57,8 +57,8 @@ soul:
 
   # 风险元素监控列表：检测到即自动处理（关弹窗、收起面板等）
   # 留空（[]）或删除本项即回退到 events/risk_elements.py 的默认列表
-  # 本列表与 events/risk_elements.py 的 __elements__ 保持一致（代码级默认列表
-  # 是回退用的，两边漂移了测试会报出来）
+  # 改这份列表不用改代码，改完在控制台敲 !reload 即可生效。
+  # 列表里的每个 key 都必须在下面的 elements 里有选择器，否则机器人永远找不到它。
   # 「close_button」故意不在列表里：它与派对大厅的「关闭组件」冲突
   risk_elements:
     - "collapse_seats"
@@ -71,7 +71,6 @@ soul:
     - "close_widget"
     - "close_btn"
     - "party_back"
-    - "reload_more"
     - "go_back"
     - "close_button_1"
     - "confirm_close"

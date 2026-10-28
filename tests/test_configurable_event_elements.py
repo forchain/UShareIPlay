@@ -175,14 +175,44 @@ def test_event_manager_falls_back_when_the_configured_list_is_empty():
 
 
 def test_config_yaml_declares_the_configurable_element_lists():
+    """config.yaml 的两张列表是「生效列表」，模块的 __elements__ 是「回退列表」。
+
+    两者角色不同，允许不同 —— 只改 config.yaml 不该被要求改代码，所以这里
+    不断言两者相等。要守的是真正会坏掉的那条：生效列表里的每个 key 都得在
+    soul.elements 里有选择器，否则机器人永远找不到它，那一行监控就是空转。
+    """
     config = yaml.safe_load((REPO_ROOT / "config.yaml").read_text(encoding="utf-8"))
     soul = config["soul"]
+    elements = soul["elements"]
 
-    # 漂移守卫：生效列表是 config.yaml 里的这份，模块里的 __elements__ 是代码级
-    # 回退默认列表。两边一旦不一致，就说明其中一份已经过期（改了 config.yaml
-    # 忘了改模块，或反过来），此时必须报错而不是让回退悄悄失效。
-    assert soul["risk_elements"] == risk_elements_module.__elements__
-    assert soul["drawer_elements"] == drawer_elements_module.__elements__
+    for config_key in ("risk_elements", "drawer_elements"):
+        declared = soul[config_key]
+        assert isinstance(declared, list) and declared, f"{config_key} 必须是非空列表"
+        assert all(
+            isinstance(item, str) for item in declared
+        ), f"{config_key} 的条目必须都是字符串"
+        missing = [item for item in declared if item not in elements]
+        assert not missing, (
+            f"soul.{config_key} 里的 {missing} 在 soul.elements 没有选择器，"
+            f"机器人永远匹配不到"
+        )
+
+    # 回退列表同样不能指向不存在的选择器，否则「配置缺省时回退」也是空转
+    for module in (risk_elements_module, drawer_elements_module):
+        missing = [item for item in module.__elements__ if item not in elements]
+        assert not missing, (
+            f"{module.__name__} 的回退列表里的 {missing} 在 soul.elements 没有选择器"
+        )
+
+
+def test_config_list_can_differ_from_the_module_fallback():
+    """改生效列表不用改回退列表 —— 只改 config.yaml 就能让监控列表变样。"""
+    handler = _handler({"risk_elements": ["collapse_seats"]})
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == ["collapse_seats"]
+    # 回退列表没被动过，生效列表照样只认配置那份
+    assert risk_elements_module.__elements__ != ["collapse_seats"]
 
 
 def test_event_manager_binding_equals_the_element_list_the_event_reports():

@@ -154,8 +154,10 @@ class ConfigReloadManager:
     def _validate(self, config) -> Optional[str]:
         """校验新配置；返回问题描述，通过则返回 None。
 
-        最低要求：根是字典、soul 是字典、soul.elements 是字典 —— 少了任何一项，
-        元素查找都会在每次调用时炸掉。
+        校验的是「机器人启动时必须有的东西」：少了任何一项，机器人要么起不来
+        （app_controller 读 config["qq_music"] / config["commands"] 会 KeyError），
+        要么一用就炸（元素查找读 config["elements"] 会 KeyError）。这种配置不该
+        被热重载接受 —— 接受了就等于把机器人推进一个重启也起不来的状态。
         """
         if not isinstance(config, dict):
             return "配置文件根节点必须是字典"
@@ -164,6 +166,13 @@ class ConfigReloadManager:
             return "配置文件缺少 soul 段"
         if not isinstance(soul.get("elements"), dict):
             return "配置文件缺少 soul.elements 元素表"
+        qq_music = config.get("qq_music")
+        if not isinstance(qq_music, dict):
+            return "配置文件缺少 qq_music 段"
+        if not isinstance(qq_music.get("elements"), dict):
+            return "配置文件缺少 qq_music.elements 元素表"
+        if not isinstance(config.get("commands"), list):
+            return "配置文件缺少 commands 命令表"
         return None
 
     def _selectors(self, config: Optional[dict] = None) -> dict:

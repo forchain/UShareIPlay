@@ -1,15 +1,14 @@
 """
 风险元素事件 - 处理潜在风险元素
 
-监控以下元素：
-- claim_reward_button: 领取奖励按钮
-- new_message_tip: 新消息提示
-- close_button: 关闭按钮
-- collapse_seats: 收起座位
+监控列表来自 config.yaml 的 soul.risk_elements（配置优先）；配置缺省或未声明
+时回退到下面的 __elements__。改监控列表不用改代码 —— 在 config.yaml 里改完，
+控制台敲 !reload 即可生效。
 
 当检测到这些元素时，自动点击处理，避免界面不稳定。
 
 - post_draft_dont_save: 发帖退出菜单「不保存」（ESC 无效时避免反复点关闭死循环）
+- 'close_button' 故意不在列表里：它与派对大厅的「关闭组件」冲突
 """
 
 __event__ = "RiskElementsEvent"
@@ -27,7 +26,6 @@ __elements__ = [
     'close_widget',
     'close_btn',
     'party_back',
-    'reload_more',
     'go_back',
     'close_button_1',
     'confirm_close',

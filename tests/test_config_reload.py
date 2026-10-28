@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 import ushareiplay.events as events_package
+from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
 from ushareiplay.managers.command_manager import CommandManager
@@ -99,12 +100,23 @@ def _make_reload_manager(root, event_manager, command_manager, config_path):
     )
 
 
-def _write_config(path, soul_config, qq_music_config=None, commands=None):
+def _write_config(path, soul_config, qq_music_config=None, commands=None, omit=()):
+    """写一份配置文件。
+
+    默认写全机器人启动需要的东西（soul / qq_music / commands），这样每个用例
+    只关心自己那一个变量；omit 里的顶层键不写，用来模拟「配置缺了一块」。
+    """
     payload = {"soul": soul_config}
-    if qq_music_config is not None:
-        payload["qq_music"] = qq_music_config
-    if commands is not None:
-        payload["commands"] = commands
+    if "qq_music" not in omit:
+        payload["qq_music"] = (
+            qq_music_config
+            if qq_music_config is not None
+            else {"elements": {"play_button": "id/play"}}
+        )
+    if "commands" not in omit:
+        payload["commands"] = (
+            commands if commands is not None else [{"prefix": "play", "level": 1}]
+        )
     path.write_text(
         yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8"
     )
@@ -164,6 +176,41 @@ def test_config_reload_manager_takes_its_dependencies_explicitly():
         "command_manager",
         "config_path",
     } <= set(parameters)
+
+
+def _make_controller_with_live_sections():
+    """最小控制器替身：两个 handler 手里就是根配置里那两个段。"""
+    controller = AppController.__new__(AppController)
+    controller.config = {
+        "soul": {"elements": {"collapse_seats": "id/collapse"}},
+        "qq_music": {"elements": {"play_button": "id/play"}},
+        "commands": [{"prefix": "play", "level": 1}],
+    }
+    controller.soul_handler = SimpleNamespace(config=controller.config["soul"])
+    controller.music_handler = SimpleNamespace(config=controller.config["qq_music"])
+    controller.event_manager = SimpleNamespace(element_to_event={})
+    controller.command_manager = SimpleNamespace()
+    return controller
+
+
+def test_composition_root_wires_the_live_config_objects():
+    """热重载写的是各组件手里那个活的 dict —— 组合根接线错了就是静默空转。"""
+    controller = _make_controller_with_live_sections()
+
+    manager = controller._build_config_reload_manager()
+
+    assert manager.root_config is controller.config
+    assert manager.soul_config is controller.soul_handler.config
+    assert manager.qq_music_config is controller.music_handler.config
+
+
+def test_composition_root_refuses_a_copied_section():
+    """接成副本的话，重载会写进副本，机器人照旧用旧选择器，控制台还报成功。"""
+    controller = _make_controller_with_live_sections()
+    controller.soul_handler = SimpleNamespace(config=dict(controller.config["soul"]))
+
+    with pytest.raises(AssertionError):
+        controller._build_config_reload_manager()
 
 
 # --------------------------------------------------------------------------
@@ -278,6 +325,51 @@ def test_reload_keeps_the_live_config_when_the_root_is_not_a_mapping(
     ).reload()
 
     assert report.success is False
+    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+
+
+@pytest.mark.parametrize(
+    "omit, expected",
+    [
+        (("qq_music",), "qq_music"),
+        (("commands",), "commands"),
+    ],
+)
+def test_reload_keeps_the_live_config_when_the_bot_could_not_start_from_it(
+    tmp_path, command_manager, omit, expected
+):
+    """缺了机器人启动时必须有的东西，配置不该被接受。
+
+    少了 qq_music 或 commands，机器人重启时会直接 KeyError 起不来；热重载却
+    报「成功」的话，就把机器人推进了一个重启也救不回来的状态。
+    """
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, _soul_config(["input_drawer"]), omit=omit)
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.success is False
+    assert expected in report.message
+    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
+
+
+def test_reload_keeps_the_live_config_when_qq_music_elements_is_missing(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, _soul_config(["input_drawer"]), qq_music_config={})
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.success is False
+    assert "qq_music.elements" in report.message
     assert root["soul"]["risk_elements"] == ["collapse_seats"]
 
 

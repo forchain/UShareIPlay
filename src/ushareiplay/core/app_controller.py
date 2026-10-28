@@ -552,16 +552,8 @@ class AppController(Singleton):
             self.event_manager.initialize_events()
             self.logger.info("事件管理器初始化完成")
 
-            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。依赖在这里
-            # 显式注入（ADR-0009 §1）——注入的是各组件手里那个活的配置 dict，
-            # 热重载靠「原地换内容」生效，换对象会让缓存了旧 dict 的组件失效。
-            self.config_reload_manager = ConfigReloadManager(
-                root_config=self.config,
-                soul_config=self.soul_handler.config,
-                qq_music_config=self.music_handler.config,
-                event_manager=self.event_manager,
-                command_manager=self.command_manager,
-            )
+            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。
+            self.config_reload_manager = self._build_config_reload_manager()
 
             self.logger.info("Handlers and managers initialized successfully")
             self.logger.info("所有 handlers 和 managers 初始化完成")
@@ -570,6 +562,31 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.error(f"Error initializing handlers: {traceback.format_exc()}")
             raise
+
+    def _build_config_reload_manager(self) -> ConfigReloadManager:
+        """构造配置热重载的编排者（#469）。
+
+        依赖在这里显式注入（ADR-0009 §1），注入的必须是各组件手里那个「活的」
+        配置 dict：热重载靠原地换内容生效，写进副本的话机器人照旧用旧选择器，
+        而控制台还会报「重载成功」—— 所以这里直接把身份不符挡在启动时。
+        """
+        if self.soul_handler.config is not self.config["soul"]:
+            raise AssertionError(
+                "soul_handler.config 必须是 controller.config['soul'] 同一个对象，"
+                "否则热重载写不进机器人真正在用的配置"
+            )
+        if self.music_handler.config is not self.config["qq_music"]:
+            raise AssertionError(
+                "music_handler.config 必须是 controller.config['qq_music'] 同一个对象，"
+                "否则热重载写不进机器人真正在用的配置"
+            )
+        return ConfigReloadManager(
+            root_config=self.config,
+            soul_config=self.soul_handler.config,
+            qq_music_config=self.music_handler.config,
+            event_manager=self.event_manager,
+            command_manager=self.command_manager,
+        )
 
     async def start_monitoring(self):
         error_count = 0
