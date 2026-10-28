@@ -153,6 +153,21 @@ async def test_reload_with_extra_arguments_replies_with_usage_and_does_not_reloa
 
 
 @pytest.mark.asyncio
+async def test_reload_usage_line_states_that_only_loaded_modules_are_refreshed():
+    """重载的边界：只刷新已加载的事件模块绑定，不加载磁盘上的新事件文件。"""
+    policy = _policy()
+
+    _pipeline_out, _screen, logger = _pipeline(
+        [{"content": "!reload now", "source": "console"}],
+        reload_config=lambda: "ok",
+        is_admin=policy.is_admin,
+    )
+    await _pipeline_out.drain()
+
+    assert any("已加载" in text for text in _echoes(logger))
+
+
+@pytest.mark.asyncio
 async def test_reload_reports_unavailable_when_no_reload_capability_is_injected():
     _pipeline_out, _screen, logger = _pipeline(
         [{"content": "!reload", "source": "console"}]

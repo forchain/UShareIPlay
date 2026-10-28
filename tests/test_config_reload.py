@@ -1,12 +1,14 @@
 """配置热重载（#469）：元素绑定重绑 + 热重载编排。
 
-两个公开缝：
+三个公开缝：
 - `EventManager.rebind_elements()` —— 运行时按当前配置重建元素 key → 事件模块映射；
-- `ConfigReloadManager.reload()` —— 读盘、校验、原地生效、回报差异。
+- `ConfigReloadManager.reload()` —— 读盘、校验、原地生效、回报差异；
+- `RuntimeInputPipeline.drain()` —— 控制台 `!reload` 入口。
 
 全程用假 handler / 假配置，不碰设备、不碰网络。
 """
 
+import inspect
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
@@ -17,6 +19,7 @@ import yaml
 import ushareiplay.events as events_package
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
+from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.event_manager import EventManager
 
@@ -41,12 +44,12 @@ class _Logger:
         pass
 
 
-def _soul_config(risk_elements):
+def _soul_config(risk_elements, elements=None):
     return {
         "room_owner": "Joyer",
         "admin_users": ["Outlier"],
         "risk_elements": list(risk_elements),
-        "elements": {
+        "elements": elements if elements is not None else {
             "collapse_seats": "cn.soulapp.android:id/collapseSeats",
             "input_drawer": "cn.soulapp.android:id/inputDrawer",
         },
@@ -71,28 +74,49 @@ def _make_event_manager(soul_config):
     return manager
 
 
-def _make_controller(soul_config):
-    """组合根的最小替身：根配置 + 两个 handler + 事件管理器。"""
+def _make_runtime(soul_config):
+    """组合根的最小替身：根配置 + 两个活配置段 + 事件管理器 + 命令管理器。"""
     root = {
         "soul": soul_config,
         "qq_music": {"elements": {"play_button": "id/play"}},
+        "commands": [{"prefix": "play", "level": 1}],
         "device": {"name": "emulator"},
     }
     event_manager = _make_event_manager(soul_config)
     event_manager.load_event_module("risk_elements")
-    controller = SimpleNamespace(
-        config=root,
-        soul_handler=SimpleNamespace(config=soul_config),
-        music_handler=SimpleNamespace(config=root["qq_music"]),
+    return root, event_manager
+
+
+def _make_reload_manager(root, event_manager, command_manager, config_path):
+    """依赖显式注入（ADR-0009 §1）：热重载器自己不回头去翻控制器。"""
+    return ConfigReloadManager(
+        root_config=root,
+        soul_config=root["soul"],
+        qq_music_config=root["qq_music"],
         event_manager=event_manager,
+        command_manager=command_manager,
+        config_path=str(config_path),
     )
-    return controller, event_manager
 
 
-def _write_config(path, soul_config):
+def _write_config(path, soul_config, qq_music_config=None, commands=None):
+    payload = {"soul": soul_config}
+    if qq_music_config is not None:
+        payload["qq_music"] = qq_music_config
+    if commands is not None:
+        payload["commands"] = commands
     path.write_text(
-        yaml.safe_dump({"soul": soul_config}, allow_unicode=True), encoding="utf-8"
+        yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8"
     )
+
+
+@pytest.fixture
+def command_manager():
+    """真的 CommandManager：命令解析器重绑的效果要能被 parse_command 看见。"""
+    CommandManager.reset_instance()
+    manager = CommandManager.initialize(SimpleNamespace(logger=_Logger()))
+    yield manager
+    CommandManager.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -102,7 +126,7 @@ def _write_config(path, soul_config):
 
 def test_rebind_elements_rebuilds_the_mapping_from_the_current_config():
     soul = _soul_config(["collapse_seats"])
-    _controller, event_manager = _make_controller(soul)
+    _root, event_manager = _make_runtime(soul)
 
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
@@ -114,7 +138,7 @@ def test_rebind_elements_rebuilds_the_mapping_from_the_current_config():
 
 
 def test_rebind_elements_keeps_the_element_to_event_object_identity():
-    _controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+    _root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     mapping_before = event_manager.element_to_event
 
     event_manager.rebind_elements()
@@ -123,34 +147,64 @@ def test_rebind_elements_keeps_the_element_to_event_object_identity():
 
 
 # --------------------------------------------------------------------------
+# ConfigReloadManager：依赖注入契约
+# --------------------------------------------------------------------------
+
+
+def test_config_reload_manager_takes_its_dependencies_explicitly():
+    """ADR-0009 §1：依赖在 __init__ 里显式注入，不在调用时回头翻控制器。"""
+    parameters = inspect.signature(ConfigReloadManager.__init__).parameters
+
+    assert "controller" not in parameters
+    assert {
+        "root_config",
+        "soul_config",
+        "qq_music_config",
+        "event_manager",
+        "command_manager",
+        "config_path",
+    } <= set(parameters)
+
+
+# --------------------------------------------------------------------------
 # ConfigReloadManager：热重载编排
 # --------------------------------------------------------------------------
 
 
-def test_reload_applies_the_new_config_in_place_and_reports_the_mapping_diff(tmp_path):
-    controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+def test_reload_applies_the_new_config_in_place_and_reports_the_mapping_diff(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    soul_config = root["soul"]
+    qq_music_config = root["qq_music"]
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, _soul_config(["input_drawer"]))
 
-    report = ConfigReloadManager(controller, config_path=str(config_path)).reload()
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
 
     assert report.success is True
     # 活对象身份不变：换了对象，缓存了旧 dict 的组件就会继续用旧选择器
-    assert controller.config["soul"] is controller.soul_handler.config
-    assert controller.config["qq_music"] is controller.music_handler.config
-    assert controller.soul_handler.config["risk_elements"] == ["input_drawer"]
+    assert root["soul"] is soul_config
+    assert root["qq_music"] is qq_music_config
+    assert soul_config["risk_elements"] == ["input_drawer"]
     assert event_manager.element_to_event == {"input_drawer": "risk_elements"}
     assert report.diff.added == {"input_drawer": "risk_elements"}
     assert report.diff.removed == {"collapse_seats": "risk_elements"}
     assert report.diff.remapped == {}
 
 
-def test_reload_reports_the_removed_and_remapped_element_bindings(tmp_path):
-    controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+def test_reload_reports_the_removed_and_remapped_element_bindings(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, _soul_config(["input_drawer"]))
 
-    report = ConfigReloadManager(controller, config_path=str(config_path)).reload()
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
 
     rendered = report.render()
     assert "配置热重载成功" in rendered
@@ -158,44 +212,196 @@ def test_reload_reports_the_removed_and_remapped_element_bindings(tmp_path):
     assert "input_drawer" in rendered
 
 
-def test_reload_keeps_the_live_config_when_the_file_is_broken(tmp_path):
-    controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+def test_reload_keeps_the_live_section_objects_in_the_root_config(
+    tmp_path, command_manager
+):
+    """根配置是一次性更新的：root["soul"] 始终是各组件手里那个活对象。"""
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    soul_config = root["soul"]
+    qq_music_config = root["qq_music"]
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, _soul_config(["input_drawer"]))
+
+    _make_reload_manager(root, event_manager, command_manager, config_path).reload()
+
+    assert root["soul"] is soul_config
+    assert root["qq_music"] is qq_music_config
+    # 事件管理器读的就是这个活对象：热重载原地换内容，它立刻看见
+    assert event_manager.handler.config is soul_config
+    assert soul_config["risk_elements"] == ["input_drawer"]
+
+
+def test_reload_keeps_the_live_config_when_the_file_is_broken(tmp_path, command_manager):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     config_path = tmp_path / "config.yaml"
     config_path.write_text("soul: [unclosed\n", encoding="utf-8")
 
-    report = ConfigReloadManager(controller, config_path=str(config_path)).reload()
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
 
     assert report.success is False
-    assert controller.soul_handler.config["risk_elements"] == ["collapse_seats"]
+    assert root["soul"]["risk_elements"] == ["collapse_seats"]
     assert (
-        controller.soul_handler.config["elements"]["collapse_seats"]
+        root["soul"]["elements"]["collapse_seats"]
         == "cn.soulapp.android:id/collapseSeats"
     )
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
     assert "配置热重载失败" in report.render()
 
 
-def test_reload_keeps_the_live_config_when_soul_elements_is_missing(tmp_path):
-    controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+def test_reload_keeps_the_live_config_when_soul_elements_is_missing(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, {"risk_elements": ["input_drawer"]})
 
-    report = ConfigReloadManager(controller, config_path=str(config_path)).reload()
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
 
     assert report.success is False
-    assert controller.soul_handler.config["risk_elements"] == ["collapse_seats"]
+    assert root["soul"]["risk_elements"] == ["collapse_seats"]
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
 
-def test_reload_keeps_the_live_config_when_the_root_is_not_a_mapping(tmp_path):
-    controller, _event_manager = _make_controller(_soul_config(["collapse_seats"]))
+def test_reload_keeps_the_live_config_when_the_root_is_not_a_mapping(
+    tmp_path, command_manager
+):
+    root, _event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     config_path = tmp_path / "config.yaml"
     config_path.write_text("- just\n- a\n- list\n", encoding="utf-8")
 
-    report = ConfigReloadManager(controller, config_path=str(config_path)).reload()
+    report = _make_reload_manager(
+        root, _event_manager, command_manager, config_path
+    ).reload()
 
     assert report.success is False
-    assert controller.soul_handler.config["risk_elements"] == ["collapse_seats"]
+    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+
+
+# --------------------------------------------------------------------------
+# 选择器变化（改 XPath 是最常见的重载理由，必须看得见）
+# --------------------------------------------------------------------------
+
+
+def test_reload_reports_the_changed_selectors(tmp_path, command_manager):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        _soul_config(
+            ["collapse_seats"],
+            elements={
+                "collapse_seats": "cn.soulapp.android:id/newCollapseSeats",
+                "input_drawer": "cn.soulapp.android:id/inputDrawer",
+            },
+        ),
+        qq_music_config={"elements": {"play_button": "id/play_v2"}},
+    )
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.selector_diff.remapped == {
+        "soul.collapse_seats": (
+            "cn.soulapp.android:id/collapseSeats",
+            "cn.soulapp.android:id/newCollapseSeats",
+        ),
+        "qq_music.play_button": ("id/play", "id/play_v2"),
+    }
+
+
+def test_reload_reports_the_added_and_removed_selectors(tmp_path, command_manager):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        _soul_config(
+            ["collapse_seats"],
+            elements={
+                "collapse_seats": "cn.soulapp.android:id/collapseSeats",
+                "new_key": "cn.soulapp.android:id/newKey",
+            },
+        ),
+    )
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.selector_diff.added == {"soul.new_key": "cn.soulapp.android:id/newKey"}
+    assert report.selector_diff.removed == {"soul.input_drawer": "cn.soulapp.android:id/inputDrawer"}
+
+
+def test_reload_render_separates_the_binding_and_the_selector_changes(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        _soul_config(
+            ["input_drawer"],
+            elements={
+                "collapse_seats": "cn.soulapp.android:id/newCollapseSeats",
+                "input_drawer": "cn.soulapp.android:id/inputDrawer",
+            },
+        ),
+    )
+
+    rendered = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload().render()
+
+    assert "元素绑定变化：" in rendered
+    assert "选择器变化：" in rendered
+    assert "soul.collapse_seats" in rendered
+    assert "cn.soulapp.android:id/newCollapseSeats" in rendered
+
+
+# --------------------------------------------------------------------------
+# 命令定义：重载后必须重新绑定解析器
+# --------------------------------------------------------------------------
+
+
+def test_reload_rebinds_the_command_parser_with_the_new_commands(
+    tmp_path, command_manager
+):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    command_manager.initialize_parser(root["commands"])
+    assert command_manager.parse_command("newcmd") is None
+
+    config_path = tmp_path / "config.yaml"
+    _write_config(
+        config_path,
+        _soul_config(["collapse_seats"]),
+        commands=[{"prefix": "newcmd", "level": 3}],
+    )
+
+    _make_reload_manager(root, event_manager, command_manager, config_path).reload()
+
+    parsed = command_manager.parse_command("newcmd")
+    assert parsed is not None
+    assert parsed["prefix"] == "newcmd"
+    assert parsed["level"] == 3
+    assert command_manager.parse_command("play") is None
+
+
+def test_reload_message_states_what_was_refreshed(tmp_path, command_manager):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, _soul_config(["collapse_seats"]))
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert "元素映射" in report.message
+    assert "选择器" in report.message
+    assert "命令定义" in report.message
 
 
 # --------------------------------------------------------------------------
@@ -204,8 +410,8 @@ def test_reload_keeps_the_live_config_when_the_root_is_not_a_mapping(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_console_reload_echoes_the_element_binding_diff(tmp_path):
-    controller, event_manager = _make_controller(_soul_config(["collapse_seats"]))
+async def test_console_reload_echoes_the_element_binding_diff(tmp_path, command_manager):
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, _soul_config(["input_drawer"]))
 
@@ -216,10 +422,10 @@ async def test_console_reload_echoes_the_element_binding_diff(tmp_path):
         room_owner_provider=lambda: "Joyer",
         logger=logger,
         send_screen_message=screen.append,
-        reload_config=lambda: ConfigReloadManager(
-            controller, config_path=str(config_path)
+        reload_config=lambda: _make_reload_manager(
+            root, event_manager, command_manager, config_path
         ).reload().render(),
-        is_admin=RolePolicy(controller.config).is_admin,
+        is_admin=RolePolicy(root).is_admin,
     )
     pipeline.input_queue.put(("!reload", "console"))
     await pipeline.drain()

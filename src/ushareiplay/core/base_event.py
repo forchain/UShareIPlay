@@ -45,6 +45,9 @@ class BaseEvent(ABC):
 
         配置优先（soul.<config_key>），配置缺省或未声明时回退模块默认列表。
         每次访问都实时读取 handler.config，运行时热加载后立即生效。
+
+        这是「生效列表」的唯一实现：EventManager 的元素绑定映射直接问事件
+        实例要，两处口径不会漂移。
         """
         return resolve_event_elements(
             self.handler.config, self.config_key, self.default_elements

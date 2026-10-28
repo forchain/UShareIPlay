@@ -57,6 +57,9 @@ soul:
 
   # 风险元素监控列表：检测到即自动处理（关弹窗、收起面板等）
   # 留空（[]）或删除本项即回退到 events/risk_elements.py 的默认列表
+  # 本列表与 events/risk_elements.py 的 __elements__ 保持一致（代码级默认列表
+  # 是回退用的，两边漂移了测试会报出来）
+  # 「close_button」故意不在列表里：它与派对大厅的「关闭组件」冲突
   risk_elements:
     - "collapse_seats"
     - "new_message_tip"
@@ -78,6 +81,8 @@ soul:
 
   # 抽屉式弹窗监控列表：检测到即自动关闭
   # 留空（[]）或删除本项即回退到 events/drawer_elements.py 的默认列表
+  # 「online_drawer」故意不要加进来：它的生命周期归 OnlineDrawerManager 管，
+  # 事件层去「顺手关掉」会和抽屉会话的归属规则打架
   drawer_elements:
     - "input_drawer"
 

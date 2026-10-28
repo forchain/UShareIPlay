@@ -248,7 +248,10 @@ class RuntimeInputPipeline:
         只认控制台来源或管理员；命令被消费，绝不会作为聊天文字上屏。
         """
         if len(tokens) > 1:
-            self.logger.critical('!reload 不接受参数；用法：!reload')
+            self.logger.critical(
+                '!reload 不接受参数；用法：!reload（只刷新已加载的事件模块绑定，'
+                '不加载磁盘上的新事件文件）'
+            )
             return
 
         if source != 'console' and not (self._is_admin and self._is_admin(nickname)):

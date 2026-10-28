@@ -178,5 +178,31 @@ def test_config_yaml_declares_the_configurable_element_lists():
     config = yaml.safe_load((REPO_ROOT / "config.yaml").read_text(encoding="utf-8"))
     soul = config["soul"]
 
+    # 漂移守卫：生效列表是 config.yaml 里的这份，模块里的 __elements__ 是代码级
+    # 回退默认列表。两边一旦不一致，就说明其中一份已经过期（改了 config.yaml
+    # 忘了改模块，或反过来），此时必须报错而不是让回退悄悄失效。
     assert soul["risk_elements"] == risk_elements_module.__elements__
     assert soul["drawer_elements"] == drawer_elements_module.__elements__
+
+
+def test_event_manager_binding_equals_the_element_list_the_event_reports():
+    """生效列表只有一处实现：EventManager 的绑定映射 = 事件实例报告的列表。"""
+    manager = _event_manager({"risk_elements": ["close_widget", "party_back"]})
+
+    module = manager.load_event_module("risk_elements")
+
+    assert module.event.elements == ["close_widget", "party_back"]
+    assert manager.element_to_event == {
+        "close_widget": "risk_elements",
+        "party_back": "risk_elements",
+    }
+
+
+def test_event_without_module_elements_binds_its_filename_derived_keys():
+    """模块没有 __elements__ 时按文件名派生 key —— 列表只有一处实现，不能丢。"""
+    manager = _event_manager({})
+
+    module = manager.load_event_module("planet_tab")
+
+    assert module.event.elements == ["planet_tab"]
+    assert manager.element_to_event == {"planet_tab": "planet_tab"}

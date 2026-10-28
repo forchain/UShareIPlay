@@ -59,7 +59,9 @@ class ConfigLoader:
             if local_config:
                 for section in ("soul", "qq_music"):
                     sec_dict = local_config.get(section)
-                    if isinstance(sec_dict, dict) and "elements" in sec_dict:
+                    if not isinstance(sec_dict, dict):
+                        continue
+                    if "elements" in sec_dict:
                         elements = sec_dict["elements"]
                         keys = list(elements.keys()) if isinstance(elements, dict) else []
                         logger.warning(
@@ -68,6 +70,17 @@ class ConfigLoader:
                             section,
                             keys,
                         )
+                    # 元素列表（risk_elements / drawer_elements）同样是元素定义，
+                    # 一样只能待在 config.yaml（单一事实源）。
+                    for list_key in ("risk_elements", "drawer_elements"):
+                        if list_key in sec_dict:
+                            logger.warning(
+                                "config.local.yaml overrides '%s.%s': %s. "
+                                "UI element lists must remain in config.yaml to preserve multi-version compatibility.",
+                                section,
+                                list_key,
+                                sec_dict[list_key],
+                            )
                 if "elements" in local_config and isinstance(local_config["elements"], dict):
                     logger.warning(
                         "config.local.yaml overrides 'elements': %s. "

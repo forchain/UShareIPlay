@@ -530,8 +530,6 @@ class AppController(Singleton):
                 self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
-            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。
-            self.config_reload_manager = ConfigReloadManager(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
                 handler=self.soul_handler,
@@ -553,6 +551,17 @@ class AppController(Singleton):
             self.event_manager.configure_runtime(self.event_runtime_context)
             self.event_manager.initialize_events()
             self.logger.info("事件管理器初始化完成")
+
+            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。依赖在这里
+            # 显式注入（ADR-0009 §1）——注入的是各组件手里那个活的配置 dict，
+            # 热重载靠「原地换内容」生效，换对象会让缓存了旧 dict 的组件失效。
+            self.config_reload_manager = ConfigReloadManager(
+                root_config=self.config,
+                soul_config=self.soul_handler.config,
+                qq_music_config=self.music_handler.config,
+                event_manager=self.event_manager,
+                command_manager=self.command_manager,
+            )
 
             self.logger.info("Handlers and managers initialized successfully")
             self.logger.info("所有 handlers 和 managers 初始化完成")
