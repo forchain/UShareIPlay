@@ -182,19 +182,7 @@ class EventManager(Singleton):
             self.event_modules[module_name] = module
 
             # 建立元素 key 到模块的映射
-            # 默认列表：优先使用 __elements__ 字段，如果不存在则从文件名解析
-            if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
-                default_keys = module.__elements__
-            else:
-                default_keys = self._parse_module_name(module_name)
-
-            # 配置优先：soul.risk_elements / soul.drawer_elements 可覆盖默认列表，
-            # 配置缺省或未声明时回退默认列表。实时读取 handler.config，热加载后立即生效。
-            element_keys = resolve_event_elements(
-                self.handler.config, getattr(event_class, 'config_key', None), default_keys
-            )
-
-            for key in element_keys:
+            for key in self._module_element_keys(module_name, module, event_class):
                 self.element_to_event[key] = module_name
 
             return module
@@ -202,6 +190,41 @@ class EventManager(Singleton):
         except Exception:
             self.logger.error(f"Error loading event module {module_name}: {traceback.format_exc()}")
             return None
+
+    def _module_element_keys(self, module_name: str, module, event_class) -> List[str]:
+        """事件模块当前生效的元素 key 列表。
+
+        默认列表：优先使用 __elements__ 字段，如果不存在则从文件名解析。
+        配置优先：soul.risk_elements / soul.drawer_elements 可覆盖默认列表，
+        配置缺省或未声明时回退默认列表。实时读取 handler.config，热加载后立即生效。
+
+        启动（load_event_module）与热重载（rebind_elements）共用这一处解析，
+        两边的口径不会漂移。
+        """
+        if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
+            default_keys = module.__elements__
+        else:
+            default_keys = self._parse_module_name(module_name)
+
+        return resolve_event_elements(
+            self.handler.config, getattr(event_class, 'config_key', None), default_keys
+        )
+
+    def rebind_elements(self) -> Dict[str, str]:
+        """按当前配置重建「元素 key → 事件模块」映射，并返回新映射。
+
+        热重载用：配置改了以后无需重启应用，事件监控列表立刻跟着变。
+        """
+        mapping: Dict[str, str] = {}
+        for module_name, module in self.event_modules.items():
+            event = getattr(module, 'event', None)
+            event_class = type(event) if event is not None else None
+            for key in self._module_element_keys(module_name, module, event_class):
+                mapping[key] = module_name
+
+        self.element_to_event.clear()
+        self.element_to_event.update(mapping)
+        return dict(mapping)
 
     def load_all_events(self):
         """加载 events 目录下的所有事件模块"""

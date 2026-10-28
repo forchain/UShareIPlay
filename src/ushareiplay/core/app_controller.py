@@ -29,11 +29,13 @@ from ushareiplay.core.runtime_context import (
     DriverRecoveryContext,
     EventRuntimeContext,
 )
+from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
@@ -528,6 +530,8 @@ class AppController(Singleton):
                 self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
+            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。
+            self.config_reload_manager = ConfigReloadManager(self)
 
             self._runtime_queue_drainer = RuntimeQueueDrainer(
                 handler=self.soul_handler,
@@ -611,6 +615,8 @@ class AppController(Singleton):
             timer_manager=self.timer_manager,
             obs=self.obs,
             dump_artifacts=self._dump_readonly_artifacts,
+            reload_config=lambda: self.config_reload_manager.reload().render(),
+            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
         )
 
         self.logger.info("开始主监控循环...")
