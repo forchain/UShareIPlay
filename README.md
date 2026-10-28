@@ -106,6 +106,19 @@ Commands can be triggered through several prefixes depending on desired visibili
 - **Mention Trigger (`@我` or `@room_owner`)**: Natural language intent resolution via LLM.
 - **Chained Queue Grammar**: Multi-command strings separated by `;` (e.g. `:play 晴天; :say 祝大家开心`), supporting `{user_name}` template substitution.
 
+### Console Meta Commands (`!`)
+
+The `!` prefix is **console-only**. It is not a chat prefix: `!` commands are typed in the bot's console (or injected by the agent command spool), are consumed by the runtime input pipeline, and never reach the room as chat text.
+
+| Command | Description |
+|---|---|
+| `!stop` | Pause / resume the runtime loop (and the timer manager). |
+| `!timer` | Toggle the scheduled-timer manager on or off. |
+| `!dump` | Dump diagnostic artifacts (screenshots, logs) for debugging. |
+| `!reload` | Re-read `config.yaml` and hot-refresh the element mapping, the UI selectors and the command definitions — no bot restart needed. |
+
+`!reload` takes no arguments and is restricted to the console and to admins (the room owner and `soul.admin_users` in `config.yaml`). It only refreshes the element bindings of the **already loaded** event modules: adding a new event module file under `src/ushareiplay/events/` is a code deploy and is not picked up by a reload. The reload echoes the applied configuration together with the element-binding and selector changes.
+
 ---
 
 ## Command Reference

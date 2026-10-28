@@ -440,8 +440,13 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
         "timer_manager",
         "obs",
         "dump_artifacts",
+        "reload_config",
+        "is_admin",
     }
     assert built[0].kwargs["input_queue"] is controller.input_queue
+    # 热重载与管理员判定都是循环交给管线的可调用协作者（#469）
+    assert callable(built[0].kwargs["reload_config"])
+    assert callable(built[0].kwargs["is_admin"])
     # 每圈都 drain，paused 的圈不处理屏幕
     assert built[0].drains == 3
     assert passes == [(1, False), (2, True), (3, True)]

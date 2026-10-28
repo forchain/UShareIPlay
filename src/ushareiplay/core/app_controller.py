@@ -29,11 +29,13 @@ from ushareiplay.core.runtime_context import (
     DriverRecoveryContext,
     EventRuntimeContext,
 )
+from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
@@ -550,6 +552,9 @@ class AppController(Singleton):
             self.event_manager.initialize_events()
             self.logger.info("事件管理器初始化完成")
 
+            # 配置热重载的编排者（#469）：普通对象，组合根构造一次。
+            self.config_reload_manager = self._build_config_reload_manager()
+
             self.logger.info("Handlers and managers initialized successfully")
             self.logger.info("所有 handlers 和 managers 初始化完成")
 
@@ -557,6 +562,31 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.error(f"Error initializing handlers: {traceback.format_exc()}")
             raise
+
+    def _build_config_reload_manager(self) -> ConfigReloadManager:
+        """构造配置热重载的编排者（#469）。
+
+        依赖在这里显式注入（ADR-0009 §1），注入的必须是各组件手里那个「活的」
+        配置 dict：热重载靠原地换内容生效，写进副本的话机器人照旧用旧选择器，
+        而控制台还会报「重载成功」—— 所以这里直接把身份不符挡在启动时。
+        """
+        if self.soul_handler.config is not self.config["soul"]:
+            raise AssertionError(
+                "soul_handler.config 必须是 controller.config['soul'] 同一个对象，"
+                "否则热重载写不进机器人真正在用的配置"
+            )
+        if self.music_handler.config is not self.config["qq_music"]:
+            raise AssertionError(
+                "music_handler.config 必须是 controller.config['qq_music'] 同一个对象，"
+                "否则热重载写不进机器人真正在用的配置"
+            )
+        return ConfigReloadManager(
+            root_config=self.config,
+            soul_config=self.soul_handler.config,
+            qq_music_config=self.music_handler.config,
+            event_manager=self.event_manager,
+            command_manager=self.command_manager,
+        )
 
     async def start_monitoring(self):
         error_count = 0
@@ -611,6 +641,8 @@ class AppController(Singleton):
             timer_manager=self.timer_manager,
             obs=self.obs,
             dump_artifacts=self._dump_readonly_artifacts,
+            reload_config=lambda: self.config_reload_manager.reload().render(),
+            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
         )
 
         self.logger.info("开始主监控循环...")

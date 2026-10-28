@@ -1,0 +1,238 @@
+"""风险元素与抽屉元素的监控列表可配置，缺省时回退模块默认列表。
+
+配置入口是 config.yaml 的 `soul.risk_elements` / `soul.drawer_elements`
+（运行时由 SoulHandler.config 即 soul 段读取）。
+
+判定规则（事件类与 EventManager 共用同一套）：
+配置值只有在「非空列表且条目全部为字符串」时才算已声明；其余情况
+（键缺省、null、空列表、类型错误、含非字符串条目）一律回退模块默认列表。
+"""
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import yaml
+
+from ushareiplay.events import drawer_elements as drawer_elements_module
+from ushareiplay.events import risk_elements as risk_elements_module
+from ushareiplay.events.drawer_elements import DrawerElementsEvent
+from ushareiplay.events.risk_elements import RiskElementsEvent
+from ushareiplay.managers.event_manager import EventManager
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _FakeLogger:
+    def debug(self, *_args, **_kwargs):
+        return None
+
+    def info(self, *_args, **_kwargs):
+        return None
+
+    def warning(self, *_args, **_kwargs):
+        return None
+
+    def error(self, *_args, **_kwargs):
+        return None
+
+
+def _handler(soul_config):
+    """SoulHandler 的替身：config 即 config.yaml 的 soul 段。"""
+    return SimpleNamespace(logger=_FakeLogger(), controller=None, config=soul_config)
+
+
+def _event_manager(soul_config):
+    manager = EventManager.__new__(EventManager)
+    manager._handler = _handler(soul_config)
+    manager._logger = manager._handler.logger
+    manager._config = manager._handler.config
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager.events_path = Path(risk_elements_module.__file__).parent
+    manager.event_modules = {}
+    manager.element_to_event = {}
+    manager._initialized = True
+    manager._consecutive_unknown_pages = 0
+    return manager
+
+
+def test_risk_elements_event_uses_the_configured_element_list():
+    handler = _handler({"risk_elements": ["close_widget", "party_back"]})
+
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == ["close_widget", "party_back"]
+
+
+def test_drawer_elements_event_uses_the_configured_element_list():
+    handler = _handler({"drawer_elements": ["input_drawer", "other_drawer"]})
+
+    event = DrawerElementsEvent(handler)
+
+    assert event.elements == ["input_drawer", "other_drawer"]
+
+
+def test_risk_elements_event_falls_back_to_the_module_default_when_not_configured():
+    handler = _handler({})
+
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == risk_elements_module.__elements__
+    assert "collapse_seats" in event.elements
+
+
+def test_drawer_elements_event_falls_back_to_the_module_default_when_not_configured():
+    handler = _handler({})
+
+    event = DrawerElementsEvent(handler)
+
+    assert event.elements == drawer_elements_module.__elements__
+    assert "input_drawer" in event.elements
+
+
+def test_risk_elements_event_falls_back_when_the_configured_list_is_empty():
+    handler = _handler({"risk_elements": []})
+
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == risk_elements_module.__elements__
+
+
+def test_risk_elements_event_falls_back_when_the_configured_value_is_not_a_list():
+    handler = _handler({"risk_elements": "collapse_seats"})
+
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == risk_elements_module.__elements__
+
+
+def test_risk_elements_event_falls_back_when_the_configured_list_has_non_string_entries():
+    handler = _handler({"risk_elements": ["collapse_seats", 7]})
+
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == risk_elements_module.__elements__
+
+
+def test_drawer_elements_event_falls_back_when_the_configured_value_is_none():
+    handler = _handler({"drawer_elements": None})
+
+    event = DrawerElementsEvent(handler)
+
+    assert event.elements == drawer_elements_module.__elements__
+
+
+def test_risk_elements_event_reads_the_live_config_on_every_access():
+    """运行时热加载改写 soul 配置后，元素列表立即生效（不做导入期快照）。"""
+    handler = _handler({"risk_elements": ["close_widget"]})
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == ["close_widget"]
+
+    handler.config["risk_elements"] = ["party_back"]
+
+    assert event.elements == ["party_back"]
+
+
+def test_event_manager_registers_the_configured_risk_elements():
+    manager = _event_manager({"risk_elements": ["close_widget", "party_back"]})
+
+    module = manager.load_event_module("risk_elements")
+
+    assert module is not None
+    assert manager.element_to_event == {
+        "close_widget": "risk_elements",
+        "party_back": "risk_elements",
+    }
+
+
+def test_event_manager_registers_the_configured_drawer_elements():
+    manager = _event_manager({"drawer_elements": ["other_drawer"]})
+
+    module = manager.load_event_module("drawer_elements")
+
+    assert module is not None
+    assert manager.element_to_event == {"other_drawer": "drawer_elements"}
+
+
+def test_event_manager_falls_back_to_the_module_default_elements():
+    manager = _event_manager({})
+
+    manager.load_event_module("risk_elements")
+
+    assert manager.element_to_event == {
+        key: "risk_elements" for key in risk_elements_module.__elements__
+    }
+
+
+def test_event_manager_falls_back_when_the_configured_list_is_empty():
+    manager = _event_manager({"risk_elements": []})
+
+    manager.load_event_module("risk_elements")
+
+    assert manager.element_to_event == {
+        key: "risk_elements" for key in risk_elements_module.__elements__
+    }
+
+
+def test_config_yaml_declares_the_configurable_element_lists():
+    """config.yaml 的两张列表是「生效列表」，模块的 __elements__ 是「回退列表」。
+
+    两者角色不同，允许不同 —— 只改 config.yaml 不该被要求改代码，所以这里
+    不断言两者相等。要守的是真正会坏掉的那条：生效列表里的每个 key 都得在
+    soul.elements 里有选择器，否则机器人永远找不到它，那一行监控就是空转。
+    """
+    config = yaml.safe_load((REPO_ROOT / "config.yaml").read_text(encoding="utf-8"))
+    soul = config["soul"]
+    elements = soul["elements"]
+
+    for config_key in ("risk_elements", "drawer_elements"):
+        declared = soul[config_key]
+        assert isinstance(declared, list) and declared, f"{config_key} 必须是非空列表"
+        assert all(
+            isinstance(item, str) for item in declared
+        ), f"{config_key} 的条目必须都是字符串"
+        missing = [item for item in declared if item not in elements]
+        assert not missing, (
+            f"soul.{config_key} 里的 {missing} 在 soul.elements 没有选择器，"
+            f"机器人永远匹配不到"
+        )
+
+    # 回退列表同样不能指向不存在的选择器，否则「配置缺省时回退」也是空转
+    for module in (risk_elements_module, drawer_elements_module):
+        missing = [item for item in module.__elements__ if item not in elements]
+        assert not missing, (
+            f"{module.__name__} 的回退列表里的 {missing} 在 soul.elements 没有选择器"
+        )
+
+
+def test_config_list_can_differ_from_the_module_fallback():
+    """改生效列表不用改回退列表 —— 只改 config.yaml 就能让监控列表变样。"""
+    handler = _handler({"risk_elements": ["collapse_seats"]})
+    event = RiskElementsEvent(handler)
+
+    assert event.elements == ["collapse_seats"]
+    # 回退列表没被动过，生效列表照样只认配置那份
+    assert risk_elements_module.__elements__ != ["collapse_seats"]
+
+
+def test_event_manager_binding_equals_the_element_list_the_event_reports():
+    """生效列表只有一处实现：EventManager 的绑定映射 = 事件实例报告的列表。"""
+    manager = _event_manager({"risk_elements": ["close_widget", "party_back"]})
+
+    module = manager.load_event_module("risk_elements")
+
+    assert module.event.elements == ["close_widget", "party_back"]
+    assert manager.element_to_event == {
+        "close_widget": "risk_elements",
+        "party_back": "risk_elements",
+    }
+
+
+def test_event_without_module_elements_binds_its_filename_derived_keys():
+    """模块没有 __elements__ 时按文件名派生 key —— 列表只有一处实现，不能丢。"""
+    manager = _event_manager({})
+
+    module = manager.load_event_module("planet_tab")
+
+    assert module.event.elements == ["planet_tab"]
+    assert manager.element_to_event == {"planet_tab": "planet_tab"}

@@ -24,6 +24,10 @@ from ushareiplay.core.base_event import BaseEvent
 class DrawerElementsEvent(BaseEvent):
     """抽屉式弹窗事件处理器"""
 
+    # 监控列表可在 soul.drawer_elements 中覆盖，缺省回退上面的 __elements__
+    config_key = "drawer_elements"
+    default_elements = __elements__
+
     async def handle(self, key: str, element_wrapper):
         """
         处理抽屉式弹窗事件

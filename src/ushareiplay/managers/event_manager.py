@@ -175,19 +175,17 @@ class EventManager(Singleton):
 
             # 创建事件实例
             event_class = getattr(module, class_name)
-            module.event = event_class(self.handler, runtime=self.runtime)
+            event = event_class(self.handler, runtime=self.runtime)
+            # 事件实例持有的默认列表 = 模块的权威默认列表（模块 __elements__，
+            # 没有就按文件名派生）。生效列表只有事件实例一处实现。
+            event.default_elements = self._default_element_keys(module_name, module)
+            module.event = event
 
             # 缓存模块
             self.event_modules[module_name] = module
 
-            # 建立元素 key 到模块的映射
-            # 优先使用 __elements__ 字段，如果不存在则从文件名解析
-            if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
-                element_keys = module.__elements__
-            else:
-                element_keys = self._parse_module_name(module_name)
-
-            for key in element_keys:
+            # 建立元素 key 到模块的映射（列表问事件实例要，两处口径不会漂移）
+            for key in event.elements:
                 self.element_to_event[key] = module_name
 
             return module
@@ -195,6 +193,30 @@ class EventManager(Singleton):
         except Exception:
             self.logger.error(f"Error loading event module {module_name}: {traceback.format_exc()}")
             return None
+
+    def _default_element_keys(self, module_name: str, module) -> List[str]:
+        """事件模块的默认元素列表：优先 __elements__，没有则按文件名派生。"""
+        if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
+            return list(module.__elements__)
+        return self._parse_module_name(module_name)
+
+    def rebind_elements(self) -> Dict[str, str]:
+        """按当前配置重建「元素 key → 事件模块」映射，并返回新映射。
+
+        热重载用：配置改了以后无需重启应用，事件监控列表立刻跟着变。
+
+        边界：只重建**已经加载**的事件模块的绑定。磁盘上新加的事件模块文件
+        不会被发现 —— 那属于代码发布（要重新执行模块文件），不是配置变更，
+        运行期不做（#469 的范围之外）。
+        """
+        mapping: Dict[str, str] = {}
+        for module_name, module in self.event_modules.items():
+            for key in module.event.elements:
+                mapping[key] = module_name
+
+        self.element_to_event.clear()
+        self.element_to_event.update(mapping)
+        return dict(mapping)
 
     def load_all_events(self):
         """加载 events 目录下的所有事件模块"""

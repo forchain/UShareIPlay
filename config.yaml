@@ -55,6 +55,36 @@ soul:
     commands:
       - ":skip"
 
+  # 风险元素监控列表：检测到即自动处理（关弹窗、收起面板等）
+  # 留空（[]）或删除本项即回退到 events/risk_elements.py 的默认列表
+  # 改这份列表不用改代码，改完在控制台敲 !reload 即可生效。
+  # 列表里的每个 key 都必须在下面的 elements 里有选择器，否则机器人永远找不到它。
+  # 「close_button」故意不在列表里：它与派对大厅的「关闭组件」冲突
+  risk_elements:
+    - "collapse_seats"
+    - "new_message_tip"
+    - "floating_entry"
+    - "claim_reward_button"
+    - "tv_open_luck_bag"
+    - "party_ended"
+    - "confirm_close_3"
+    - "close_widget"
+    - "close_btn"
+    - "party_back"
+    - "go_back"
+    - "close_button_1"
+    - "confirm_close"
+    - "close_more_menu"
+    - "left_top_close"
+    - "post_draft_dont_save"
+
+  # 抽屉式弹窗监控列表：检测到即自动关闭
+  # 留空（[]）或删除本项即回退到 events/drawer_elements.py 的默认列表
+  # 「online_drawer」故意不要加进来：它的生命周期归 OnlineDrawerManager 管，
+  # 事件层去「顺手关掉」会和抽屉会话的归属规则打架
+  drawer_elements:
+    - "input_drawer"
+
   elements:
     message_list: "cn.soulapp.android:id/rvMessage"
     message_container: "//androidx.recyclerview.widget.RecyclerView[@resource-id='cn.soulapp.android:id/rvMessage']/android.view.ViewGroup"

@@ -126,6 +126,8 @@ class RuntimeInputPipeline:
         timer_manager=None,
         obs=None,
         dump_artifacts=None,
+        reload_config=None,
+        is_admin=None,
     ):
         self.input_queue = input_queue
         self.room_owner_provider = room_owner_provider
@@ -134,6 +136,8 @@ class RuntimeInputPipeline:
         self.timer_manager = timer_manager
         self.obs = obs
         self._dump_artifacts = dump_artifacts
+        self._reload_config = reload_config
+        self._is_admin = is_admin
         self.paused = False
 
     async def drain(self) -> None:
@@ -168,12 +172,12 @@ class RuntimeInputPipeline:
         message, source, nickname = self._normalize(item)
         if not message.strip():
             return
-        if await self._handle_meta_command(message, source):
+        if await self._handle_meta_command(message, source, nickname):
             return
         await self._route_text(message, source, nickname)
 
-    async def _handle_meta_command(self, message: str, source: str) -> bool:
-        """处理 `!stop` / `!timer` / `!dump`；返回 True 表示已被消费。"""
+    async def _handle_meta_command(self, message: str, source: str, nickname: str) -> bool:
+        """处理 `!stop` / `!timer` / `!dump` / `!reload`；返回 True 表示已被消费。"""
         if message in ('!stop', 'stop'):
             self.paused = not self.paused
             self.logger.critical(f'paused: {self.paused}')
@@ -231,7 +235,40 @@ class RuntimeInputPipeline:
                     )
             return True
 
+        tokens = message.strip().split()
+        if tokens and tokens[0] == '!reload':
+            self._handle_reload(tokens, source, nickname)
+            return True
+
         return False
+
+    def _handle_reload(self, tokens, source: str, nickname: str) -> None:
+        """`!reload`：管理员或控制台触发的配置热重载（#469）。
+
+        只认控制台来源或管理员；命令被消费，绝不会作为聊天文字上屏。
+        """
+        if len(tokens) > 1:
+            self.logger.critical(
+                '!reload 不接受参数；用法：!reload（只刷新已加载的事件模块绑定，'
+                '不加载磁盘上的新事件文件）'
+            )
+            return
+
+        if source != 'console' and not (self._is_admin and self._is_admin(nickname)):
+            self.logger.critical(f'!reload 被拒绝：{nickname} 不是管理员')
+            return
+
+        if self._reload_config is None:
+            self.logger.critical('!reload 不可用：当前进程未注入配置热重载能力')
+            return
+
+        try:
+            echo = self._reload_config()
+        except Exception as exc:
+            self.logger.critical(f'!reload 执行失败：{exc}')
+            return
+
+        self.logger.critical(echo)
 
     async def _route_text(self, message: str, source: str, nickname: str) -> None:
         routing = route_queue_text(message, nickname, source=source)
