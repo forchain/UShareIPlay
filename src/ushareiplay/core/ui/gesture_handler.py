@@ -193,8 +193,12 @@ class GestureHandler:
             max_swipes: 最多滑动次数，默认 10 次
 
         策略：
-            以 'up' 为例：每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
-            若找到则返回 (element_key, element, attribute_values)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界，返回 (None, None, attribute_values)。
+            先等容器（容器可点 = 这一屏 UI 已渲染好），再判断目标在不在：
+            拿「UI 还没渲染好」时的旧快照去决定要不要滚动，会让第一次滑动把刚
+            渲染出来的目标推出视口，之后再也找不回来。
+            目标不在时以 'up' 为例，每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
+            若找到则返回 (element_key, element, attribute_values)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界。
+            单向滚动会把目标推出视口且再也找不回来，因此到达边界仍没找到时反方向再扫一遍兜底。
 
         返回：
             (key, element, attribute_values): 找到目标元素时返回
@@ -233,11 +237,9 @@ class GestureHandler:
                         matched = True
                 return values, matched
 
-            page_source, prev_hash = snapshot()
-            values, matched = target_values(page_source)
-            attribute_values_list.extend(values)
-
             # 获取容器（横滑区等父节点可能不可点击，回退为仅存在即可）
+            # 容器排在目标判断之前：等容器期间 UI 才渲染好，此时再看目标在不在，
+            # 才不会拿着「UI 还没准备好」的旧快照决定「目标不在 → 滚」。
             container = self.owner.element_finder.wait_for_element_clickable(container_key)
             if not container:
                 container = self.owner.element_finder.wait_for_element(container_key)
@@ -268,6 +270,12 @@ class GestureHandler:
                             return candidate
                 return None
 
+            page_source, prev_hash = snapshot()
+            values, matched = target_values(page_source)
+            attribute_values_list.extend(values)
+
+            # 目标就在当前视口里就别滚：UI 渲染慢的页面（搜索结果页）上，
+            # 容器等到时目标往往已经露脸，再滑一次只会把它推出视口。
             if matched:
                 target = find_visible_target()
                 if target:
@@ -316,52 +324,72 @@ class GestureHandler:
                 end_y = top + int(height * 0.5)
                 return start_x, start_y, end_x, end_y
 
-            # 开始循环滑动查找
-            stable_rounds = 0
-            max_stable_rounds = 2  # 连续多次无变化则认为到达边界
-
             # 查找目标元素的辅助函数
-            def find_target_element(source: str) -> Tuple[Optional[str], Optional[WebElement]]:
+            def find_target_element(source: str) -> Optional[WebElement]:
                 """先用 page source 判断命中，再解析对应的可见元素。"""
                 values, matched = target_values(source)
                 attribute_values_list.extend(values)
                 if not matched:
-                    return None, None
-                target = find_visible_target()
-                return (element_key, target) if target else (None, None)
+                    return None
+                return find_visible_target()
 
-            for _ in range(max_swipes):
-                # 计算滑动坐标并执行滑动
-                sx, sy, ex, ey = compute_points(direction)
-                ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=300)
-                if not ok:
-                    self.logger.warning(
-                        f"scroll_container_until_element: 滑动失败，终止:{element_key}"
-                    )
-                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
+            def sweep(sweep_direction: str) -> Tuple[Optional[WebElement], bool]:
+                """朝一个方向扫一遍视口。
 
-                # 滑动后再试一次（元素可能已进入可视区）
-                page_source, cur_hash = snapshot()
-                key, element = find_target_element(page_source)
-                if element:
-                    return key, element, self._reversed_if_needed(attribute_values_list, direction)
+                返回 (目标元素, 是否彻底中止)：目标没找到但还能换方向时中止位为
+                False；手势本身失败时为 True（换方向也没用，直接收工）。
+                """
+                nonlocal prev_hash
+                stable_rounds = 0
+                max_stable_rounds = 2  # 连续多次无变化则认为到达边界
 
-                # 判断是否到底/到边（页面无变化）
-                if cur_hash == prev_hash:
-                    stable_rounds += 1
-                else:
-                    stable_rounds = 0
-                    prev_hash = cur_hash
+                for _ in range(max_swipes):
+                    # 计算滑动坐标并执行滑动
+                    sx, sy, ex, ey = compute_points(sweep_direction)
+                    ok = self._perform_swipe(sx, sy, ex, ey, duration_ms=300)
+                    if not ok:
+                        self.logger.warning(
+                            f"scroll_container_until_element: 滑动失败，终止:{element_key}"
+                        )
+                        return None, True
 
-                if stable_rounds >= max_stable_rounds:
-                    self.logger.warning(
-                        f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
-                    )
-                    return None, None, self._reversed_if_needed(attribute_values_list, direction)
+                    # 滑动后再试一次（元素可能已进入可视区）
+                    page_source, cur_hash = snapshot()
+                    element = find_target_element(page_source)
+                    if element:
+                        return element, False
 
-            self.logger.warning(
-                f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
-            )
+                    # 判断是否到底/到边（页面无变化）
+                    if cur_hash == prev_hash:
+                        stable_rounds += 1
+                    else:
+                        stable_rounds = 0
+                        prev_hash = cur_hash
+
+                    if stable_rounds >= max_stable_rounds:
+                        self.logger.warning(
+                            f"scroll_container_until_element: 已到达边界，未找到目标元素:{element_key}"
+                        )
+                        return None, False
+
+                self.logger.warning(
+                    f"scroll_container_until_element: 达到最大滑动次数，未找到目标元素:{element_key}"
+                )
+                return None, False
+
+            target, aborted = sweep(direction)
+            if target:
+                return element_key, target, self._reversed_if_needed(attribute_values_list, direction)
+            if aborted:
+                return None, None, self._reversed_if_needed(attribute_values_list, direction)
+
+            # 反方向兜底：朝一个方向滚会把目标推出视口，单向扫完它就再也找不回来。
+            # 换方向再扫一遍，才能把它捞回来。
+            opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}[direction]
+            target, _aborted = sweep(opposite)
+            if target:
+                return element_key, target, self._reversed_if_needed(attribute_values_list, direction)
+
             return None, None, self._reversed_if_needed(attribute_values_list, direction)
         except Exception:
             self.logger.error(
