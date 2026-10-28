@@ -13,10 +13,18 @@
 """
 
 from abc import ABC
+from typing import List, Optional, Sequence
+
+from ushareiplay.core.event_elements import resolve_event_elements
 
 
 class BaseEvent(ABC):
     """事件处理器基类"""
+
+    # 元素列表在 soul 配置中的键名；None 表示该事件不支持配置覆盖
+    config_key: Optional[str] = None
+    # 配置缺省时的默认元素列表（事件模块的 __elements__）
+    default_elements: Sequence[str] = ()
 
     def __init__(self, handler, runtime=None):
         """
@@ -29,6 +37,18 @@ class BaseEvent(ABC):
         self.logger = handler.logger
         self.controller = handler.controller
         self.runtime = runtime
+
+    @property
+    def elements(self) -> List[str]:
+        """
+        当前生效的元素 key 列表
+
+        配置优先（soul.<config_key>），配置缺省或未声明时回退模块默认列表。
+        每次访问都实时读取 handler.config，运行时热加载后立即生效。
+        """
+        return resolve_event_elements(
+            self.handler.config, self.config_key, self.default_elements
+        )
 
     def is_ui_busy(self) -> bool:
         if self.runtime is None:

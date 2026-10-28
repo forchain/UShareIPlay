@@ -42,6 +42,10 @@ from ushareiplay.core.base_event import BaseEvent
 class RiskElementsEvent(BaseEvent):
     """风险元素事件处理器"""
 
+    # 监控列表可在 soul.risk_elements 中覆盖，缺省回退上面的 __elements__
+    config_key = "risk_elements"
+    default_elements = __elements__
+
     async def handle(self, key: str, element_wrapper):
         """
         处理风险元素事件

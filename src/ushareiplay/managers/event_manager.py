@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from lxml import etree
 
 from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.core.event_elements import resolve_event_elements
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.element_wrapper import ElementWrapper
 import asyncio
@@ -181,11 +182,17 @@ class EventManager(Singleton):
             self.event_modules[module_name] = module
 
             # 建立元素 key 到模块的映射
-            # 优先使用 __elements__ 字段，如果不存在则从文件名解析
+            # 默认列表：优先使用 __elements__ 字段，如果不存在则从文件名解析
             if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
-                element_keys = module.__elements__
+                default_keys = module.__elements__
             else:
-                element_keys = self._parse_module_name(module_name)
+                default_keys = self._parse_module_name(module_name)
+
+            # 配置优先：soul.risk_elements / soul.drawer_elements 可覆盖默认列表，
+            # 配置缺省或未声明时回退默认列表。实时读取 handler.config，热加载后立即生效。
+            element_keys = resolve_event_elements(
+                self.handler.config, getattr(event_class, 'config_key', None), default_keys
+            )
 
             for key in element_keys:
                 self.element_to_event[key] = module_name
