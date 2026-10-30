@@ -4,6 +4,7 @@ Soul App 把「推荐分发」从房间信息抽屉搬到了派对设置面板�
 端口只建模物理动作，不承载「读文本」：判定留在 RoomProfileManager。
 """
 
+import time
 from abc import ABC, abstractmethod
 
 PARTY_SETTING_BUTTON_KEY = 'party_setting_button'
@@ -107,9 +108,12 @@ class SoulPartySettingsDriver(PartySettingsDriverPort):
             RECOMMENDATION_STATUS_KEY,
             direction='up',
             max_swipes=max_swipes,
-            duration_ms=500,
+            duration_ms=800,
         )
-        return element is not None
+        if element is not None:
+            time.sleep(1.0)
+            return True
+        return False
 
     def click_recommendation_status(self) -> bool:
         element = self._handler.element_finder.wait_for_element_clickable(
