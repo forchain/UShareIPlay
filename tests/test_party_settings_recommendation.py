@@ -724,7 +724,7 @@ def test_the_production_driver_uses_the_scroll_helper_with_the_swipe_limit():
 
     assert driver.reveal_recommendation_status(max_swipes=3) is True
     assert handler.gesture_handler.scrolls == [
-        (RECOMMENDATION_STATUS_KEY, 'up', 3, 500)
+        (RECOMMENDATION_STATUS_KEY, 'up', 3, 800)
     ]
 
 
