@@ -7,8 +7,11 @@ class CommandParser:
         """Check if message starts with any valid prefix"""
         if not message:
             return False
-        msg = message.lstrip().lower()
-        return any(msg.startswith(str(cmd.get('prefix', '')).lower()) for cmd in self.commands)
+        parts = message.lstrip().split()
+        if not parts:
+            return False
+        command = parts[0].lower()
+        return any(command == str(cmd.get('prefix', '')).lower() for cmd in self.commands)
 
     def parse_command(self, message):
         """Parse command and get the music query"""

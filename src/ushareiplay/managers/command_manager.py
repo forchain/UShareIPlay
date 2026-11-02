@@ -272,9 +272,8 @@ class CommandManager(Singleton):
                         'error': f'需要等级 {required_level} 才能使用此命令，您当前等级为 {user.level}'
                     }
                     format_kwargs = {'user': message_info.nickname, **result}
-                    if parameters:
-                        format_kwargs['party_id'] = parameters[0]
-                    res = command_info['error_template'].format(**format_kwargs)
+                    format_kwargs['party_id'] = parameters[0] if parameters else 'unknown'
+                    res = command_info.get('error_template', '{error}').format(**format_kwargs)
                     return res
 
             # 2. 睡眠模式检查 (Sleep mode)：
@@ -293,9 +292,8 @@ class CommandManager(Singleton):
                             )
                         }
                         format_kwargs = {"user": message_info.nickname, **result}
-                        if parameters:
-                            format_kwargs["party_id"] = parameters[0]
-                        return command_info["error_template"].format(**format_kwargs)
+                        format_kwargs["party_id"] = parameters[0] if parameters else "unknown"
+                        return command_info.get("error_template", "{error}").format(**format_kwargs)
                 except Exception:
                     # Guard should never break command execution.
                     pass
@@ -497,35 +495,34 @@ class CommandManager(Singleton):
             if not content:
                 continue
 
-            if self.is_valid_command(content):
-                command_info = self.parse_command(content)
-                if command_info:
-                    command_info["silent"] = silent
-                    # Handle different commands using match-case
-                    cmd = command_info['prefix']
-                    time_prefix = datetime.now().strftime('%H:%M:%S')
+            command_info = self.parse_command(content)
+            if command_info:
+                command_info["silent"] = silent
+                # Handle different commands using match-case
+                cmd = command_info['prefix']
+                time_prefix = datetime.now().strftime('%H:%M:%S')
+                self.message_dispatch.send_screen_message(
+                    f'[{time_prefix}] {cmd} ... @{message_info.nickname}',
+                    silent=silent,
+                )
+
+                command = self.get_command(cmd)
+                if command:
+                    # 播放静音保护：闭麦 -> 点歌/切歌 -> 公屏通知 -> 等待播放就绪 -> 开麦
+                    with self.playback_muting_guard(command, command_info):
+                        response = await self.process_command(command, message_info, command_info)
+                        if response:
+                            # 私聊回复要经抽屉会话进出，因此这条出口是异步的（#435）。
+                            await self.message_dispatch.send_for_message_info(
+                                message_info, response, silent=silent
+                            )
+                    success_count += 1
+                else:
+                    self.logger.error(f"Unknown command: {cmd}")
                     self.message_dispatch.send_screen_message(
-                        f'[{time_prefix}] {cmd} ... @{message_info.nickname}',
+                        f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}',
                         silent=silent,
                     )
-
-                    command = self.get_command(cmd)
-                    if command:
-                        # 播放静音保护：闭麦 -> 点歌/切歌 -> 公屏通知 -> 等待播放就绪 -> 开麦
-                        with self.playback_muting_guard(command, command_info):
-                            response = await self.process_command(command, message_info, command_info)
-                            if response:
-                                # 私聊回复要经抽屉会话进出，因此这条出口是异步的（#435）。
-                                await self.message_dispatch.send_for_message_info(
-                                    message_info, response, silent=silent
-                                )
-                        success_count += 1
-                    else:
-                        self.logger.error(f"Unknown command: {cmd}")
-                        self.message_dispatch.send_screen_message(
-                            f'[{time_prefix}] Unknown command: {cmd} @{message_info.nickname}',
-                            silent=silent,
-                        )
 
         self.logger.info(f"{success_count}/{len(messages)} commands processed")
 
