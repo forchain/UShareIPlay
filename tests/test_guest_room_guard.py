@@ -64,7 +64,12 @@ def _reset_singletons():
     MessageDispatch.initialize()
     RoomState.reset_instance()
     SeatManager.reset_instance()
-    room_state = RoomState.initialize()
+    from ushareiplay.core.command_catalogue import CommandCatalogue
+    from ushareiplay.core.config_loader import ConfigLoader
+
+    room_state = RoomState.initialize(
+        catalogue=CommandCatalogue.from_config(ConfigLoader.load_config())
+    )
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     yield
     CommandManager.reset_instance()

@@ -389,58 +389,84 @@ lyrics:
 commands:
   - prefix: "play"
     level: 2
+    guest_allowed: true
     description: "立即搜索并播放指定歌曲。参数: <歌名> [歌手名]，例如 :play 晴天 周杰伦（播放期间受麦克风静音保护，且享有老歌过滤豁免）"
+    help: ":play 歌名"
+    help_order: 2
     retry: true
     response_template: "{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to play music, because {error}"
   - prefix: "fav"
     level: 3
+    guest_allowed: true
     description: "从我的收藏播放歌曲。参数: [0/type <分类> | 2/search <关键词>]，无参数播放全部收藏，例如 :fav、:fav 0 粤语、:fav type 摇滚、:fav 2 晴天"
+    help: ":fav 收藏"
+    help_order: 8
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play favorites, because {error}"
   - prefix: "skip"
     level: 2
+    guest_allowed: true
     description: "跳过当前正在播放的歌曲切到下一首。无参数，例如 :skip"
+    help: ":skip"
+    help_order: 4
     retry: true
     response_template: "Skipped {song} by {singer}"
     error_template: "Failed to skip song, because {error}"
   - prefix: "next"
     level: 1
+    guest_allowed: true
     description: "切下一首歌或添加歌曲到待播队列。参数: [歌名] [歌手名]，无参数表示立即切下一首，有参数加入待播列表，例如 :next 或 :next 稻香 周杰伦"
+    help: ":next 歌名"
+    help_order: 3
     retry: true
     response_template: "Added {song} by {singer} in {album} • {release_date} to playlist"
     error_template: "Failed to add songs to play list, because {error}"
   - prefix: "pause"
     level: 1
+    guest_allowed: true
     description: "暂停或恢复音乐播放。参数: [0/1]，0=恢复播放, 1=暂停播放，无参数在播放与暂停间切换，例如 :pause、:pause 1、:pause 0"
+    help: ":pause 1/0"
+    help_order: 5
     retry: true
     response_template: "{action} {song} by {singer}"
     error_template: "Failed to pause/resume song, because {error}"
   - prefix: "vol"
     level: 1
+    guest_allowed: true
     description: "查看或调节系统音量。参数: [0-15]，无参数查看当前音量，有参数设置目标音量(0-15)，例如 :vol、:vol 10"
+    help: ":vol 0~15"
+    help_order: 6
     response_template: "{message}"
     error_template: "Failed to adjust volume, because {error}"
   - prefix: "acc"
     level: 2
+    guest_allowed: true
     description: "QQ音乐K歌伴唱/伴奏模式开关。参数: [0/1]，0=关闭伴唱(原唱), 1=开启伴唱(伴奏)，无参数切换当前模式，例如 :acc、:acc 1、:acc 0"
     retry: true
     response_template: "Accompaniment mode {enabled}"
     error_template: "Failed to toggle accompaniment mode, because {error}"
   - prefix: "lyrics"
     level: 1
+    guest_allowed: true
     description: "抓取当前播放歌曲的歌词并分段发送到公屏。无参数，例如 :lyrics"
+    help: ":lyrics"
+    help_order: 7
     retry: true
     response_template: "{lyrics}"
     error_template: "Failed to get lyrics, because {error}"
   - prefix: "help"
     level: 0
+    guest_allowed: true
     description: "查看机器人常用指令帮助与使用说明。无参数，例如 :help"
+    help: ":help 帮助"
+    help_order: 1
     response_template: "{help}"
 
   - prefix: "room"
     level: 4
+    guest_allowed: true
     description: "邀请机器人切换进入指定的派对房间。参数: <party_id>，切换前会自动预检目标房间可用性，例如 :room FM123456"
     response_template: "Invited by {user} to party {party_id}"
     error_template: "Failed to join party {party_id}, because {error}"
@@ -466,17 +492,24 @@ commands:
     error_template: "{error}"
   - prefix: "info"
     level: 0
+    guest_allowed: true
     description: "查看房间当前播放歌曲、播放循环模式、待播歌单、在线用户、时长与定时器状态。无参数，例如 :info"
+    help: ":info"
+    help_order: 9
     response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 3
+    guest_allowed: true
     description: "搜索并播放指定歌手的热门歌曲列表。参数: <歌手名>，例如 :singer 周杰伦"
+    help: ":singer 歌手"
+    help_order: 10
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to play singer, because {error}"
   - prefix: "playlist"
     level: 2
+    guest_allowed: true
     subcommands:
       '':
         level: 1
@@ -488,18 +521,22 @@ commands:
     error_template: "Failed to play playlist, because {error}"
   - prefix: "radio"
     level: 3
+    guest_allowed: true
     description: "播放推荐电台。参数: [guess/daily/collection/sleep/radar]，支持中文(猜你喜欢/每日30首/收藏/助眠/雷达)，无参默认收藏电台，例如 :radio daily、:radio 猜你喜欢、:radio"
     retry: true
     response_template: "{playlist}"
     error_template: "Failed to start radio, because {error}"
   - prefix: "mode"
     level: 3
+    guest_allowed: true
     description: "切换播放循环模式。参数: [0/1/-1]，0=顺序播放, 1=单曲循环, -1=随机播放，无参数查看当前模式，例如 :mode、:mode 1、:mode -1"
     response_template: "Change play mode to {mode}"
     error_template: "Failed to change play mode, because {error}"
   - prefix: "topic"
     level: 4
     description: "查看或设置自习室房间话题。参数: [话题内容]，无参数返回当前话题状态，有参数安排话题更新，例如 :topic、:topic 听歌自习中"
+    help: ":topic 话题"
+    help_order: 11
     response_template: "{topic}"
     error_template: "Failed to change topic, because {error}"
 
@@ -510,6 +547,7 @@ commands:
     error_template: "Failed to change notice, because {error}"
   - prefix: "album"
     level: 3
+    guest_allowed: true
     description: "搜索并播放整张指定专辑。参数: <专辑名>，例如 :album 范特西"
     retry: true
     response_template: "{playlist}"
@@ -531,11 +569,13 @@ commands:
     error_template: "Failed to change theme, because {error}"
   - prefix: "end"
     level: 5
+    guest_allowed: true
     description: "结束并解散当前派对房间（需房主好友在场且非他人客房）。无参数，例如 :end"
     response_template: "{success}"
     error_template: "Failed to end party, because {error}"
   - prefix: "mic"
     level: 2
+    guest_allowed: true
     description: "麦克风开关控制。参数: [0/1]，0=闭麦, 1=开麦(若机器人未在麦位上会自动先上麦再开麦)，无参数时在开闭麦间切换，例如 :mic、:mic 1、:mic 0"
     response_template: "Microphone set to {state}"
     error_template: "Failed to set microphone: {error}"
@@ -576,6 +616,7 @@ commands:
     error_template: "专注人数命令操作失败: {error}"
   - prefix: "say"
     level: 1
+    guest_allowed: true
     description: "向派对公屏发送指定文本消息。参数: <消息文本>，例如 :say 大家好呀"
     response_template: "{message}"
     error_template: "发送消息失败: {error}"

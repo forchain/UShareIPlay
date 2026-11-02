@@ -46,7 +46,7 @@ llm:
 |---|---|
 | `soul` | Soul App package, default party ID, room owner, notice, UI element XPaths, `party_restart_minutes` |
 | `qq_music` | QQ Music package, activity, UI element XPaths |
-| `commands` | List of command configs: `prefix`, `level`, `subcommands`, `retry`, `response_template`, `error_template` |
+| `commands` | List of command configs: `prefix`, `module` (defaults to `prefix`), `level`, `subcommands`, `guest_allowed`, `sleep_blocked`, `help`, `help_order`, `retry`, `response_template`, `error_template` |
 | `appium` | `host`, `port` for Appium server connection |
 | `device` | `name` (ADB address), `platform_name`, `platform_version`, `automation_name`, `no_reset` |
 | `logging` | `directory` for log files |
@@ -80,6 +80,11 @@ llm:
 ```
 
 ## Command Levels
+
+每条命令的 `guest_allowed` 决定他人房间（客房模式）是否可用；`help` / `help_order`
+提供 `:help` 文案与排序；`sleep.blocked_commands` 决定睡眠时段拦截哪些前缀。
+启动时 `CommandCatalogue` 会校验每个声明的前缀都能在 `ushareiplay/commands/` 下
+找到对应的 `BaseCommand` 模块，缺失或前缀重复会直接启动失败。
 
 每个命令的顶层 `level` 是该命令的兜底门槛。`subcommands` 用来给同一条命令的
 不同调用形态配不同门槛：只读形态放低，能改状态的形态放高。

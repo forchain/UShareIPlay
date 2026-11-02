@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.roles import RolePolicy, resolve_command_level
@@ -48,7 +48,7 @@ class CommandManager(Singleton):
         # 命令相关属性
         self.commands_path = Path(__file__).parent.parent / 'commands'
         self.command_modules = {}  # Cache for loaded command modules
-        self.command_parser = None  # Will be initialized when needed
+        self.catalogue = None  # Built from config by initialize_parser()
 
     def configure_runtime(self, runtime):
         self._runtime = runtime
@@ -94,13 +94,17 @@ class CommandManager(Singleton):
             return candidates[0]
         return None
 
-    def initialize_parser(self, commands_config):
+    def initialize_parser(self, config):
         """
-        初始化命令解析器
+        初始化命令目录
         Args:
-            commands_config: 命令配置列表
+            config: 根配置（含 commands / sleep），或直接传入命令列表
         """
-        self.command_parser = CommandParser(commands_config)
+        self.catalogue = (
+            config
+            if isinstance(config, CommandCatalogue)
+            else CommandCatalogue.from_config(config)
+        )
         self.logger.info("Command parser initialized")
 
     def load_command_module(self, command):
@@ -152,9 +156,12 @@ class CommandManager(Singleton):
             dict: Loaded command modules
         """
         try:
-            # Get all .py files in commands directory
-            command_files = [f.stem for f in self.commands_path.glob('*.py')
-                             if f.is_file() and not f.stem.startswith('__')]
+            # 目录声明了哪些模块就加载哪些；没有目录时回退到扫描目录（测试/排查）。
+            if self.catalogue is not None:
+                command_files = list(self.catalogue.modules())
+            else:
+                command_files = [f.stem for f in self.commands_path.glob('*.py')
+                                 if f.is_file() and not f.stem.startswith('__')]
 
             self.logger.info(f"Found command files: {command_files}")
 
@@ -183,7 +190,10 @@ class CommandManager(Singleton):
 
     def get_command(self, command_name):
         """Get command by name"""
-        module = self.load_command_module(command_name)
+        definition = self.catalogue.get(command_name) if self.catalogue else None
+        module = self.load_command_module(
+            definition.module if definition else command_name
+        )
         return module.command if module else None
 
     @staticmethod
@@ -264,7 +274,12 @@ class CommandManager(Singleton):
 
             # 1. 检查用户等级：人工操作者（房主、Console、管理员）与系统自动化角色不受等级限制
             if not role_policy.is_privileged(message_info.nickname):
-                required_level = resolve_command_level(command_info, parameters)
+                prefix = command_info.get("prefix") or ""
+                required_level = (
+                    self.catalogue.required_level(prefix, parameters)
+                    if self.catalogue is not None and self.catalogue.get(prefix)
+                    else resolve_command_level(command_info, parameters)
+                )
                 user = await UserDAO.get_or_create(message_info.nickname)
                 
                 if user.level < required_level:
@@ -383,17 +398,18 @@ class CommandManager(Singleton):
 
     def is_valid_command(self, content):
         """Check if content is a valid command"""
-        if not self.command_parser:
+        if not self.catalogue:
             self.logger.error("Command parser not initialized")
             return False
-        return self.command_parser.is_valid_command(content)
+        return self.catalogue.resolve(content) is not None
 
     def parse_command(self, content):
         """Parse command content"""
-        if not self.command_parser:
+        if not self.catalogue:
             self.logger.error("Command parser not initialized")
             return None
-        return self.command_parser.parse_command(content)
+        invocation = self.catalogue.resolve(content)
+        return invocation.command_info if invocation else None
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
         """排空 runtime 队列，按各自文法把消息交给命令执行。
