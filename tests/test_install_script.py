@@ -85,7 +85,7 @@ def test_check_prerequisites_unsupported_os():
 
 
 def test_setup_waydroid_skipped_on_darwin():
-    """Waydroid setup is skipped on macOS without error."""
+    """Waydroid setup is skipped on macOS without error or redundant logs."""
     cmd = f"""
     source "{INSTALL_SH_SOURCE}"
     uname() {{
@@ -95,11 +95,11 @@ def test_setup_waydroid_skipped_on_darwin():
     """
     proc = _run_bash_command(cmd)
     assert proc.returncode == 0
-    assert "跳过 Waydroid" in proc.stdout or "跳过 Waydroid" in proc.stderr or "Waydroid" in proc.stdout
+    assert proc.stdout.strip() == ""
 
 
 def test_setup_adb_forwarding_skipped_on_darwin():
-    """ADB port forwarding is skipped on macOS without error."""
+    """ADB port forwarding is skipped on macOS without error or redundant logs."""
     cmd = f"""
     source "{INSTALL_SH_SOURCE}"
     uname() {{
@@ -109,11 +109,11 @@ def test_setup_adb_forwarding_skipped_on_darwin():
     """
     proc = _run_bash_command(cmd)
     assert proc.returncode == 0
-    assert "跳过" in proc.stdout or "直连" in proc.stdout
+    assert proc.stdout.strip() == ""
 
 
 def test_setup_appium_service_skipped_on_darwin():
-    """Appium background systemd service setup is skipped on macOS."""
+    """Appium background systemd service setup is skipped on macOS without error or redundant logs."""
     cmd = f"""
     source "{INSTALL_SH_SOURCE}"
     uname() {{
@@ -123,7 +123,21 @@ def test_setup_appium_service_skipped_on_darwin():
     """
     proc = _run_bash_command(cmd)
     assert proc.returncode == 0
-    assert "appium.sh" in proc.stdout
+    assert proc.stdout.strip() == ""
+
+
+def test_setup_audio_loopback_skipped_on_darwin():
+    """Audio loopback setup is skipped on macOS without checking BlackHole."""
+    cmd = f"""
+    source "{INSTALL_SH_SOURCE}"
+    uname() {{
+      if [[ "$1" == "-s" ]]; then echo "Darwin"; else command uname "$@"; fi
+    }}
+    setup_audio_loopback
+    """
+    proc = _run_bash_command(cmd)
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == ""
 
 
 def test_print_summary_macos():
@@ -140,3 +154,38 @@ def test_print_summary_macos():
     assert proc.returncode == 0
     assert "macOS" in proc.stdout
     assert "appium.sh" in proc.stdout
+
+
+def test_link_local_config_in_worktree(tmp_path):
+    """link_local_config automatically symlinks config.local.yaml from main repo."""
+    main_dir = tmp_path / "main"
+    main_dir.mkdir()
+    feature_dir = tmp_path / "feature"
+    feature_dir.mkdir()
+
+    # Init fake main git repo
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(main_dir), check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(main_dir), check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(main_dir), check=True)
+    (main_dir / "init.txt").write_text("init\n", encoding="utf-8")
+    subprocess.run(["git", "add", "init.txt"], cwd=str(main_dir), check=True)
+    subprocess.run(["git", "commit", "-m", "init", "-q"], cwd=str(main_dir), check=True)
+
+    # Create worktree
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "feat", str(feature_dir)], cwd=str(main_dir), check=True)
+
+    # Main config exists
+    main_cfg = main_dir / "config.local.yaml"
+    main_cfg.write_text("device:\n  name: 'test'\n", encoding="utf-8")
+
+    cmd = f"""
+    TARGET_DIR="{feature_dir}"
+    source "{INSTALL_SH_SOURCE}"
+    link_local_config
+    """
+    proc = _run_bash_command(cmd)
+    assert proc.returncode == 0
+    feature_cfg = feature_dir / "config.local.yaml"
+    assert feature_cfg.is_symlink()
+    assert feature_cfg.resolve() == main_cfg.resolve()
+

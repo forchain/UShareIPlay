@@ -173,15 +173,48 @@ install_appium() {
   fi
 }
 
-# 6. Python Virtual Environment and Project Dependencies
+# 6. Python Virtual Environment, Dependencies and Local Config Link
 setup_python_project() {
   log_info "初始化 Python 虚拟环境与依赖..."
   cd "${TARGET_DIR}"
   uv sync --quiet
 
-  # config.yaml 为受版本管理的基准配置（同时充当示例）；config.local.yaml 为可选的
-  # 本地覆盖文件，安装器不再代为创建。
+  # config.yaml 为受版本管理的基准配置（同时充当示例）；config.local.yaml 为可选的本地覆盖文件。
+  # 若当前位于 linked worktree 且主工作区存在 config.local.yaml，自动创建软链接。
+  link_local_config
   log_succ "Python 运行环境与依赖配置完成。"
+}
+
+link_local_config() {
+  local target_cfg="${TARGET_DIR}/config.local.yaml"
+  if [[ -f "${target_cfg}" ]]; then
+    return 0
+  fi
+  if [[ -e "${target_cfg}" ]]; then
+    return 0
+  fi
+
+  local common_dir=""
+  common_dir="$(git -C "${TARGET_DIR}" rev-parse --git-common-dir 2>/dev/null)" || return 0
+  case "${common_dir}" in
+    /*) ;;
+    *) common_dir="${TARGET_DIR}/${common_dir}" ;;
+  esac
+  if [[ ! -d "${common_dir}/.." ]]; then
+    return 0
+  fi
+
+  local main_dir=""
+  main_dir="$(cd "${common_dir}/.." && pwd)" || return 0
+  if [[ -z "${main_dir}" || "${main_dir}" == "${TARGET_DIR}" ]]; then
+    return 0
+  fi
+
+  local main_cfg="${main_dir}/config.local.yaml"
+  if [[ -f "${main_cfg}" ]]; then
+    ln -sfn "${main_cfg}" "${target_cfg}"
+    log_info "已自动链接 config.local.yaml -> ${main_cfg}"
+  fi
 }
 
 # 7. Install & Configure Waydroid (Linux Only)
@@ -189,7 +222,6 @@ setup_waydroid() {
   local os_type
   os_type="$(uname -s)"
   if [[ "${os_type}" != "Linux" ]]; then
-    log_info "macOS 环境跳过 Waydroid 虚拟容器配置 (macOS 支持物理 Android 设备或 Android Studio AVD 模拟器)。"
     return 0
   fi
 
@@ -239,7 +271,6 @@ install_apks() {
 
   if [[ "${os_type}" == "Darwin" ]]; then
     if [[ "${INSTALL_APKS:-0}" != "1" ]]; then
-      log_info "macOS 环境跳过应用 APK 自动下载与安装 (设备端请确保安装 QQ 音乐与 Soul App；如需由脚本自动推送安装，请设置 INSTALL_APKS=1)。"
       return 0
     fi
     log_info "检查 macOS 下 Android 设备连接状态..."
@@ -387,7 +418,6 @@ setup_adb_forwarding() {
   local os_type
   os_type="$(uname -s)"
   if [[ "${os_type}" != "Linux" ]]; then
-    log_info "macOS 环境跳过持久化 ADB 端口转发 (物理设备或模拟器直连)。"
     return 0
   fi
 
@@ -415,7 +445,6 @@ setup_appium_service() {
   local os_type
   os_type="$(uname -s)"
   if [[ "${os_type}" != "Linux" ]]; then
-    log_info "macOS 环境跳过 systemd 后台服务配置 (可通过 ./appium.sh 手动启动 Appium)。"
     return 0
   fi
 
@@ -427,19 +456,11 @@ setup_appium_service() {
   log_succ "Appium 服务已启动并在后台常驻 (0.0.0.0:4723)。"
 }
 
-# 11. Configure PipeWire Audio Loopback (Linux) / Check BlackHole (macOS)
+# 11. Configure PipeWire Audio Loopback (Linux Only)
 setup_audio_loopback() {
   local os_type
   os_type="$(uname -s)"
   if [[ "${os_type}" != "Linux" ]]; then
-    log_info "检查 macOS 音频回环配置..."
-    if command -v brew >/dev/null 2>&1; then
-      if brew list --cask blackhole-2ch >/dev/null 2>&1; then
-        log_succ "检测到 BlackHole 2ch 虚拟音频设备已安装。"
-      else
-        log_info "提示: 如需虚拟音频回环，可运行 'brew install --cask blackhole-2ch' 安装 BlackHole 2ch。"
-      fi
-    fi
     return 0
   fi
 
