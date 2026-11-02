@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
-from typing import Iterable
 
+from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.singleton import Singleton
 
 
@@ -68,18 +68,10 @@ class SleepManager(Singleton):
     DEFAULT_ENABLED = True
     DEFAULT_WINDOW_START = dt.time(23, 0)
     DEFAULT_WINDOW_END = dt.time(6, 0)
-    DEFAULT_BLOCKED_COMMANDS = (
-        "play",
-        "next",
-        "fav",
-        "singer",
-        "album",
-        "playlist",
-        "radio",
-    )
 
-    def __init__(self, config: dict | None = None):
+    def __init__(self, config: dict | None = None, catalogue: CommandCatalogue | None = None):
         self._config = config or {}
+        self._catalogue = catalogue or CommandCatalogue.from_config(self._config)
 
         sleep_cfg = self._config.get("sleep")
         if not isinstance(sleep_cfg, dict):
@@ -114,28 +106,9 @@ class SleepManager(Singleton):
         end = _parse_hhmm(end_raw)
         self._window: _Window | None = _Window(start, end) if start and end else None
 
-        blocked = sleep_cfg.get("blocked_commands", self.DEFAULT_BLOCKED_COMMANDS)
-        self._blocked_commands = self._normalize_commands(blocked)
-
-    @staticmethod
-    def _normalize_commands(value: object) -> set[str]:
-        if value is None:
-            return set()
-        if isinstance(value, (list, tuple, set)):
-            items: Iterable[object] = value
-        elif isinstance(value, str):
-            # Allow comma-separated strings defensively
-            items = [s.strip() for s in value.split(",")]
-        else:
-            return set()
-
-        out: set[str] = set()
-        for item in items:
-            if isinstance(item, str):
-                s = item.strip().lower()
-                if s:
-                    out.add(s)
-        return out
+    def configure_catalogue(self, catalogue: CommandCatalogue) -> None:
+        """配置热重载后换用新的命令目录（目录本身不可变）。"""
+        self._catalogue = catalogue
 
     def set_override(self, enabled: bool | None) -> None:
         if enabled is None:
@@ -217,6 +190,6 @@ class SleepManager(Singleton):
         cmd = command.strip().lower()
         if not cmd:
             return False
-        if cmd not in self._blocked_commands:
+        if not self._catalogue.is_sleep_blocked(cmd):
             return False
         return self.is_in_sleep_window(now)

@@ -14,6 +14,7 @@ from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
+from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -471,8 +472,12 @@ class AppController(Singleton):
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
+            # 命令目录只编译/校验一次：前缀缺模块或前缀重复必须启动即失败，
+            # 而不是等用户在公屏敲下命令才暴露。
+            self.command_catalogue = CommandCatalogue.from_config(self.config)
+            self.command_catalogue.validate()
             UserManager.initialize(self.soul_handler)
-            SleepManager.initialize(self.config)
+            SleepManager.initialize(self.config, catalogue=self.command_catalogue)
             MessageQueue.initialize()
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
@@ -488,7 +493,7 @@ class AppController(Singleton):
             self.command_manager = CommandManager.initialize(self.soul_handler)
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            RoomState.initialize(self.soul_handler)
+            RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
             PresenceTracker.initialize(self.soul_handler)
             PlaylistState.initialize(self.soul_handler)
             PlaybackBroadcaster.initialize(self.soul_handler)
@@ -543,7 +548,7 @@ class AppController(Singleton):
 
             # Initialize command manager with config
             self.logger.info("初始化命令解析器...")
-            self.command_manager.initialize_parser(self.config["commands"])
+            self.command_manager.initialize_parser(self.command_catalogue)
 
             # Initialize event manager
             self.logger.info("初始化事件管理器...")

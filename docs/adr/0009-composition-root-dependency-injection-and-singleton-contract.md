@@ -118,3 +118,11 @@ spec #426 拆出的第一个 ticket #428 交付了在线用户抽屉深模块 `O
 同一次新增里的 `SoulOnlineDrawerDriver` 与 `InMemoryOnlineDrawerDriver` **刻意不是
 单例**：前者是无全局状态的构造注入适配器，后者是测试替身，两者都可并存多实例 ——
 与上面 `SeatSubsystem` / `SeatPanelDriver` 的处理一致，不进这个数。
+
+### 2026-11-02 —— Non-Goals §2「命令声明式化」的边界（#485）
+
+§2 拒绝的是「用声明式抽象替换命令实现、过度元编程」。`CommandCatalogue`（#485）不在此列：
+它是一张**启动期解析与校验表**，把 `config.yaml` 里已经存在的命令前缀、等级、子命令、
+客房权限、睡眠拦截与帮助文案编译成不可变定义，启动时校验「声明的前缀 → 可执行的
+`BaseCommand` 模块」是否对得上。命令的业务实现仍由 `ushareiplay/commands/*.py` 各自承担，
+目录不做动态类生成，也不接管命令逻辑。

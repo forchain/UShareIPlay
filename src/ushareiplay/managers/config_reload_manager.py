@@ -199,10 +199,18 @@ class ConfigReloadManager:
         }
 
     def _refresh_command_parser(self) -> None:
-        """命令前缀 / 等级 / 模板改了要重新绑定解析器，否则改动不生效。"""
-        commands = self.root_config.get("commands")
-        if isinstance(commands, list):
-            self.command_manager.initialize_parser(commands)
+        """命令前缀 / 等级 / 模板 / 权限改了要重新编译目录，否则改动不生效。"""
+        self.command_manager.initialize_parser(self.root_config)
+        catalogue = self.command_manager.catalogue
+
+        # 睡眠拦截与客房权限各自持有一份目录引用；不换的话热重载只刷新了解析器。
+        from ushareiplay.managers.sleep_manager import SleepManager
+        from ushareiplay.state.room_state import RoomState
+
+        if SleepManager.is_initialized():
+            SleepManager.instance().configure_catalogue(catalogue)
+        if RoomState.is_initialized():
+            RoomState.instance().configure_catalogue(catalogue)
 
     def _apply_in_place(self, new_config: dict) -> None:
         """把新配置写进各组件正在用的 dict 对象（对象身份保持不变）。"""

@@ -459,6 +459,13 @@ class KeywordManager(Singleton):
                 pass
 
             commands_config = (self.config or {}).get("commands", [])
+            catalogue = None
+            try:
+                from ushareiplay.managers.command_manager import CommandManager
+                if CommandManager.is_initialized():
+                    catalogue = CommandManager.instance().catalogue
+            except Exception:
+                pass
             room_info = None
             try:
                 from ushareiplay.state.room_state import RoomState
@@ -500,6 +507,7 @@ class KeywordManager(Singleton):
                 playback_info=playback_info,
                 room_info=room_info,
                 memory_context=memory_context,
+                command_catalogue=catalogue,
             )
 
 

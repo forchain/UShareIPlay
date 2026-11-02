@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
@@ -10,15 +11,10 @@ from ushareiplay.managers.seat_manager.seat_observation import SeatObservationMa
 class RoomState(Singleton):
     """房间静态/半静态状态：在线人数、专注人数、房间ID、主/客房状态。"""
 
-    GUEST_ALLOWED_COMMANDS = {
-        "play", "next", "fav", "skip", "pause", "vol", "mode",
-        "acc", "lyrics", "singer", "album", "playlist", "radio",
-        "info", "help", "room", "mic", "say", "end"
-    }
-
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, catalogue: CommandCatalogue | None = None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
+        self._catalogue = catalogue
         self._user_count: Optional[int] = None
         self._focus_count: Optional[int] = None
         self._room_id: Optional[str] = None
@@ -212,12 +208,15 @@ class RoomState(Singleton):
             self.room_id = room_id
         self.is_guest_room = False
 
+    def configure_catalogue(self, catalogue: CommandCatalogue) -> None:
+        """配置热重载后换用新的命令目录（目录本身不可变）。"""
+        self._catalogue = catalogue
+
     def is_command_allowed_in_guest_room(self, prefix: str) -> bool:
         """检查命令在他人房间（客房模式）下是否允许执行"""
-        if not prefix:
+        if not prefix or self._catalogue is None:
             return False
-        clean_prefix = prefix.lstrip(":：/／$＄").strip().lower()
-        return clean_prefix in self.GUEST_ALLOWED_COMMANDS
+        return self._catalogue.is_guest_allowed(prefix)
 
     def clear(self):
         """清空房间状态"""

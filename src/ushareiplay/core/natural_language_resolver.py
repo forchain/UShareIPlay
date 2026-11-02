@@ -70,16 +70,22 @@ class NaturalLanguageResolver:
         playback_info: Optional[dict] = None,
         room_info: Optional[dict] = None,
         memory_context: Optional[dict] = None,
+        command_catalogue: Optional[object] = None,
     ) -> str:
         """Construct the system prompt with command schemas, user context, playback state, room state, and memory."""
-        cmd_lines = []
-        for cmd in commands_config or []:
-            prefix = cmd.get("prefix", "")
-            if not prefix:
-                continue
-            lvl = min_command_level(cmd)
-            desc = cmd.get("description") or cmd.get("response_template") or prefix
-            cmd_lines.append(f"- `:{prefix}` (所需等级: L{lvl}): {desc}")
+        if command_catalogue is not None:
+            cmd_lines = command_catalogue.get_prompt_lines(
+                guest_room=bool(room_info and room_info.get("is_guest_room"))
+            )
+        else:
+            cmd_lines = []
+            for cmd in commands_config or []:
+                prefix = cmd.get("prefix", "")
+                if not prefix:
+                    continue
+                lvl = min_command_level(cmd)
+                desc = cmd.get("description") or cmd.get("response_template") or prefix
+                cmd_lines.append(f"- `:{prefix}` (所需等级: L{lvl}): {desc}")
 
         cmd_table = "\n".join(cmd_lines) if cmd_lines else "- `:play` (所需等级: L1): 播放指定歌曲"
 
@@ -279,6 +285,7 @@ class NaturalLanguageResolver:
         playback_info: Optional[dict] = None,
         room_info: Optional[dict] = None,
         memory_context: Optional[dict] = None,
+        command_catalogue: Optional[object] = None,
     ) -> Optional[NaturalLanguageResult]:
         """Resolve a natural language user utterance into a command or reply.
 
@@ -304,6 +311,7 @@ class NaturalLanguageResolver:
             playback_info=playback_info,
             room_info=room_info,
             memory_context=memory_context,
+            command_catalogue=command_catalogue,
         )
 
 
