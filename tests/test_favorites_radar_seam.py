@@ -313,6 +313,25 @@ def test_favourites_all_reports_a_failure_when_there_is_no_play_all_button(
 
     assert outcome.ok is False
     assert handler.opened_favourites == 1
+    # 失败也要把 QQ 音乐收回首页，否则收藏页会挡住引擎随后的房间同步。
+    assert handler.home_visits == 1
+
+
+def test_favourites_restores_home_even_when_an_ui_call_raises(
+    initialized_test_singletons,
+):
+    handler = _QQMusicHandlerFake(queue=QUEUE_TEXT)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("session terminated")
+
+    handler.open_favorites_entry = _boom
+
+    outcome = _driver(handler).start_playback(PlaybackRequest.favorites(requester="小明"))
+
+    assert outcome.ok is False
+    assert "session terminated" in outcome.error
+    assert handler.home_visits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -446,7 +465,8 @@ def test_radar_goes_home_and_opens_the_radar_stream(initialized_test_singletons)
 
     assert outcome.ok is True
     assert handler.key_actions.switches == 1
-    assert handler.home_visits == 1
+    # 一次是 trigger 前回到首页认入口，一次是 restore 的保底收尾。
+    assert handler.home_visits == 2
     assert handler.radar_nav.clicks == 1
     assert (outcome.track.song, outcome.track.singer) == ("雷达电台", "O Radio")
     assert outcome.title == "O Radio"
