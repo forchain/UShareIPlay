@@ -4,10 +4,12 @@ from ushareiplay.managers.seat_manager.seat_panel_reader import (
     Reading,
     SeatPanelReader,
 )
-from ushareiplay.managers.seat_manager.seat_observation import (
+from ushareiplay.managers.seat_manager.seat_ledger import (
     SeatObservationGateState,
-    SeatObservationManager,
     SeatRescanCooldownPolicy,
+)
+from ushareiplay.managers.seat_manager.seat_observation import (
+    SeatObservationManager,
 )
 from typing import Optional, Tuple
 from ushareiplay.managers.seat_manager.guard import (
