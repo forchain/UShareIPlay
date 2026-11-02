@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass
 from html import unescape
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
@@ -177,6 +177,9 @@ class _PlaybackSession:
 
     `restore` 放在 finally 而不是各模式 happy path 的末尾：中途任何一步失败或
     抛异常，QQ 音乐都不会停在搜索页/详情页上，挡住引擎随后对 Soul 房间的同步。
+
+    `took_over` 记录 enter 是否真的把 QQ 音乐切到了前台：没切成功时前台还是
+    Soul，善后一律不许按返回/回首页 —— 那会把房间界面点掉。
     """
 
     def __init__(
@@ -186,6 +189,27 @@ class _PlaybackSession:
         self.logger = driver.logger
         self.request = request
         self.spec = spec
+        # enter 阶段写入的中间状态；显式声明，避免动态挂载的字段在类型检查里不可见。
+        self.took_over: bool = False
+        self.playing_info: Optional[dict] = None
+        self.count: Optional[int] = None
+        self.variant: Optional[PlaybackVariant] = None
+        self.play_search: Any = None
+        self.title_element: Any = None
+        self.topic_element: Any = None
+        self.play_button: Any = None
+        self.play_healing: Any = None
+        self.shortcut_button: Any = None
+        self.radar_nav: Any = None
+        self.room_title: Optional[str] = None
+        self.topic: Optional[str] = None
+        self.station_name: Optional[str] = None
+        self.playlist_name: Optional[str] = None
+        self.subject: Optional[str] = None
+        self.singer_name: Optional[str] = None
+        self.album_title: Optional[str] = None
+        self.album_artist: Optional[str] = None
+        self.first_track: Optional[tuple] = None
 
     def run(self) -> PlaybackOutcome:
         try:
@@ -207,10 +231,14 @@ class _PlaybackSession:
 
 
 def _restore_home(session: _PlaybackSession) -> None:
+    if not session.took_over:
+        return
     session.handler.navigate_to_home()
 
 
 def _restore_back(session: _PlaybackSession) -> None:
+    if not session.took_over:
+        return
     session.handler.key_actions.press_back()
 
 
@@ -295,6 +323,8 @@ class QQMusicUIDriver(MusicUIDriverPort):
                 lambda exc: f"Failed to play singer: {query}: {exc}",
             )
         if request.mode is PlaybackMode.ALBUM:
+            # 专辑详情页是盖在搜索结果上的一层：按一次返回就退回结果页，正好收掉；
+            # 其余六种模式停在首页/收藏/电台这类顶层页，只有回首页才能收干净。
             return _ModeSpec(
                 self._album_enter,
                 self._album_trigger,
@@ -316,6 +346,8 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return f"not found with query {session.request.query}"
         if "error" in playing_info:
             return playing_info["error"]
+        # 走到这里说明 query_music 已切前台并搜到了结果，善后可以安全收尾。
+        session.took_over = True
         session.playing_info = playing_info
         return None
 
@@ -371,6 +403,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
         if not handler.key_actions.switch_to_app():
             return "Cannot switch to qq music"
+        session.took_over = True
         self.logger.info("已切到 QQ 音乐，准备进入收藏页")
 
         entry_error = handler.open_favorites_entry()
@@ -647,6 +680,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         handler = session.handler
         if not handler.key_actions.switch_to_app():
             return "Cannot switch to qq music"
+        session.took_over = True
         self.logger.info("已切到 QQ 音乐，准备打开雷达电台")
 
         handler.navigate_to_home()
@@ -719,12 +753,13 @@ class QQMusicUIDriver(MusicUIDriverPort):
             ),
         }
 
-    def _switch_to_qq_music_home(self) -> Optional[str]:
+    def _switch_to_qq_music_home(self, session: _PlaybackSession) -> Optional[str]:
         """切到 QQ 音乐并回首页。返回非 None 即为失败，调用方直接转交。"""
         handler = self._handler
         if not handler.key_actions.switch_to_app():
             self.logger.warning("Cannot switch to QQ Music for radio playback")
             return "Cannot switch to qq music"
+        session.took_over = True
         if not handler.navigate_to_home():
             self.logger.warning("Failed to navigate to QQ Music home for radio playback")
             return "Failed to navigate to home in QQ Music"
@@ -732,7 +767,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
     def _guess_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:radio guess` —— 每日猜你喜欢：认频道卡片，起播留给 trigger。"""
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
         handler = session.handler
@@ -763,7 +798,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
     def _daily_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:radio daily` —— 每日 30 首：认频道卡片，起播留给 trigger。"""
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
         handler = session.handler
@@ -808,7 +843,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         老歌判定必须与别处逐字一致：这里不自己查发行日期，判定交给
         `MusicManager._is_old_song`（见 `_collection_candidate_is_old`）。
         """
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
         handler = session.handler
@@ -989,7 +1024,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
     def _sleep_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:radio sleep` —— 音乐疗愈：首页标签要横向滑到「疗愈」才看得见。"""
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
         handler = session.handler
@@ -1037,7 +1072,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         读队列（队列文本即这次广播的歌单），而 `PlaybackMode.RADAR` 刻意不读 ——
         它读到的是电台的历史列表，不是这次要广播的东西。
         """
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
         radar_nav = session.handler.element_finder.try_find_element(
@@ -1094,6 +1129,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         if not handler.query_music(query):
             self.logger.warning("Failed to query music in playlist")
             return "Failed to query music playlist"
+        session.took_over = True
 
         if not self._select_category_tab("playlist"):
             self.logger.warning("Failed to find playlist tab")
@@ -1240,6 +1276,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         if not from_key:
             self.logger.warning(f"Failed to query singer {query}")
             return f"Failed to query singer {query}"
+        session.took_over = True
 
         shortcut = self._singer_shortcut(from_key)
         if shortcut is not None:
@@ -1347,6 +1384,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         if not handler.query_music(query):
             self.logger.warning(f"Failed to query album with query {query}")
             return "Failed to query album"
+        session.took_over = True
 
         if not self._select_category_tab("album"):
             self.logger.warning(f"Failed to select album tab with query {query}")

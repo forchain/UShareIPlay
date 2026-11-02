@@ -505,6 +505,8 @@ def test_driver_reports_an_empty_album_query_with_nothing_playing(
 
     assert outcome.ok is False
     assert handler.queries == []
+    # 查不出专辑名就根本没切过前台：此时按返回键会点掉 Soul 的房间界面。
+    assert handler.pressed_back == 0
 
 
 def test_driver_refuses_an_album_card_that_lost_its_singer_row(

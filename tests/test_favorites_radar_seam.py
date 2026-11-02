@@ -334,6 +334,19 @@ def test_favourites_restores_home_even_when_an_ui_call_raises(
     assert handler.home_visits == 1
 
 
+def test_favourites_leaves_the_foreground_app_alone_when_it_never_took_over(
+    initialized_test_singletons,
+):
+    """没切到 QQ 音乐就失败时，前台还是 Soul：善后绝不回首页/按返回。"""
+    handler = _QQMusicHandlerFake(queue=QUEUE_TEXT, switch_ok=False)
+
+    outcome = _driver(handler).start_playback(PlaybackRequest.favorites(requester="小明"))
+
+    assert outcome.ok is False
+    assert outcome.error == "Cannot switch to qq music"
+    assert handler.home_visits == 0
+
+
 # ---------------------------------------------------------------------------
 # Slice 3: 收藏 —— 按语种/流派筛选
 # ---------------------------------------------------------------------------
