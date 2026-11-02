@@ -14,8 +14,9 @@
 import logging
 import re
 import time
+from dataclasses import dataclass
 from html import unescape
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
@@ -155,6 +156,92 @@ def favourite_filter_title(keyword: str) -> str:
     return _FAVOURITE_FILTER_TITLES.get(keyword, keyword or FAVOURITES_DEFAULT_NAME)
 
 
+@dataclass(frozen=True)
+class _ModeSpec:
+    """一种播放模式的声明式编排。
+
+    `enter` 切前台并走到可操作的面，`trigger` 真正让音乐响起来，`collect` 读回
+    UI 上观察到的事实，`restore` 把 QQ 音乐收回干净状态。各模式只声明这四步，
+    顺序与善后由 `_PlaybackSession` 统一保证。
+    """
+
+    enter: Callable[["_PlaybackSession"], Optional[str]]
+    trigger: Callable[["_PlaybackSession"], Optional[str]]
+    collect: Callable[["_PlaybackSession"], PlaybackOutcome]
+    restore: Callable[["_PlaybackSession"], None]
+    failure: Callable[[Exception], str]
+
+
+class _PlaybackSession:
+    """一次播放的 UI 生命周期：trigger → collect → restore（保证执行）。
+
+    `restore` 放在 finally 而不是各模式 happy path 的末尾：中途任何一步失败或
+    抛异常，QQ 音乐都不会停在搜索页/详情页上，挡住引擎随后对 Soul 房间的同步。
+
+    `took_over` 记录 enter 是否真的把 QQ 音乐切到了前台：没切成功时前台还是
+    Soul，善后一律不许按返回/回首页 —— 那会把房间界面点掉。
+    """
+
+    def __init__(
+        self, driver: "QQMusicUIDriver", request: PlaybackRequest, spec: _ModeSpec
+    ):
+        self.handler = driver._handler
+        self.logger = driver.logger
+        self.request = request
+        self.spec = spec
+        # enter 阶段写入的中间状态；显式声明，避免动态挂载的字段在类型检查里不可见。
+        self.took_over: bool = False
+        self.playing_info: Optional[dict] = None
+        self.count: Optional[int] = None
+        self.variant: Optional[PlaybackVariant] = None
+        self.play_search: Any = None
+        self.title_element: Any = None
+        self.topic_element: Any = None
+        self.play_button: Any = None
+        self.play_healing: Any = None
+        self.shortcut_button: Any = None
+        self.radar_nav: Any = None
+        self.room_title: Optional[str] = None
+        self.topic: Optional[str] = None
+        self.station_name: Optional[str] = None
+        self.playlist_name: Optional[str] = None
+        self.subject: Optional[str] = None
+        self.singer_name: Optional[str] = None
+        self.album_title: Optional[str] = None
+        self.album_artist: Optional[str] = None
+        self.first_track: Optional[tuple] = None
+
+    def run(self) -> PlaybackOutcome:
+        try:
+            error = self.spec.enter(self)
+            if error is None:
+                error = self.spec.trigger(self)
+            if error is not None:
+                return PlaybackOutcome.failed(error)
+            return self.spec.collect(self)
+        except Exception as exc:
+            message = self.spec.failure(exc)
+            self.logger.warning(message)
+            return PlaybackOutcome.failed(message)
+        finally:
+            try:
+                self.spec.restore(self)
+            except Exception as exc:
+                self.logger.warning(f"恢复 QQ 音乐界面失败: {exc}")
+
+
+def _restore_home(session: _PlaybackSession) -> None:
+    if not session.took_over:
+        return
+    session.handler.navigate_to_home()
+
+
+def _restore_back(session: _PlaybackSession) -> None:
+    if not session.took_over:
+        return
+    session.handler.key_actions.press_back()
+
+
 class QQMusicUIDriver(MusicUIDriverPort):
     """把 QQ Music 的 UI 编排关在端口后面。
 
@@ -175,62 +262,113 @@ class QQMusicUIDriver(MusicUIDriverPort):
         实现只读模式与查询词：请求者身份属于引擎的守护职责，不该出现在 UI 层
         （见 `MusicUIDriverPort.start_playback` 的约定）。
         """
-        if request.mode is PlaybackMode.SONG:
-            return self._play_song(request.query)
-        if request.mode is PlaybackMode.FAVORITES:
-            return self._play_favourites(request)
-        if request.mode is PlaybackMode.RADAR:
-            return self._play_radar()
-        if request.mode is PlaybackMode.PLAYLIST:
-            return self._play_playlist(request.query)
-        if request.mode is PlaybackMode.RADIO:
-            return self._play_radio(request)
-        if request.mode is PlaybackMode.SINGER:
-            return self._play_singer(request.query)
-        if request.mode is PlaybackMode.ALBUM:
-            return self._play_album(request.query)
-        # 七种播放模式已全部交付（#421/#425/#431/#434/#437）。未实现就响亮失败 ——
-        # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
-        return PlaybackOutcome.failed(f"暂不支持的播放模式：{request.mode.value}")
+        spec = self._mode_spec(request)
+        if spec is None:
+            if request.mode is PlaybackMode.RADIO:
+                return PlaybackOutcome.failed(f"暂不支持的电台频道：{request.channel}")
+            # 七种播放模式已全部交付（#421/#425/#431/#434/#437）。未实现就响亮失败 ——
+            # 静默返回一个空的成功会让引擎去采纳一条房间里并不存在的歌单。
+            return PlaybackOutcome.failed(f"暂不支持的播放模式：{request.mode.value}")
+        return _PlaybackSession(self, request, spec).run()
 
-    def _play_song(self, query: str) -> PlaybackOutcome:
-        """`:play <query>` 的 UI 编排：查歌 → 点第一首 → 收藏 → 质量过滤。
+    def _mode_spec(self, request: PlaybackRequest) -> Optional[_ModeSpec]:
+        """把请求翻译成该模式的四步编排；不认识的模式/频道回 None。"""
+        query = request.query or ""
+        if request.mode is PlaybackMode.SONG:
+            return _ModeSpec(
+                self._song_enter,
+                self._song_trigger,
+                self._song_collect,
+                _restore_home,
+                lambda exc: f"Failed to query music: {query}: {exc}",
+            )
+        if request.mode is PlaybackMode.FAVORITES:
+            return _ModeSpec(
+                self._favourites_enter,
+                self._favourites_trigger,
+                self._favourites_collect,
+                _restore_home,
+                lambda exc: f"Failed to play favourites: {exc}",
+            )
+        if request.mode is PlaybackMode.RADAR:
+            return _ModeSpec(
+                self._radar_enter,
+                self._radar_trigger,
+                self._radar_collect,
+                _restore_home,
+                lambda exc: f"Failed to start radar: {exc}",
+            )
+        if request.mode is PlaybackMode.PLAYLIST:
+            return _ModeSpec(
+                self._playlist_enter,
+                self._playlist_trigger,
+                self._playlist_collect,
+                _restore_home,
+                lambda exc: f"Failed to play playlist: {query}: {exc}",
+            )
+        if request.mode is PlaybackMode.RADIO:
+            channel = (request.channel or RADIO_DEFAULT_CHANNEL).strip().lower()
+            spec = self._radio_specs(
+                lambda exc: f"Failed to start radio {request.channel}: {exc}"
+            ).get(channel)
+            if spec is None:
+                self.logger.warning(f"Unknown radio channel: {request.channel}")
+            return spec
+        if request.mode is PlaybackMode.SINGER:
+            return _ModeSpec(
+                self._singer_enter,
+                self._singer_trigger,
+                self._singer_collect,
+                _restore_home,
+                lambda exc: f"Failed to play singer: {query}: {exc}",
+            )
+        if request.mode is PlaybackMode.ALBUM:
+            # 专辑详情页是盖在搜索结果上的一层：按一次返回就退回结果页，正好收掉；
+            # 其余六种模式停在首页/收藏/电台这类顶层页，只有回首页才能收干净。
+            return _ModeSpec(
+                self._album_enter,
+                self._album_trigger,
+                self._album_collect,
+                _restore_back,
+                lambda exc: f"Failed to play album: {query}: {exc}",
+            )
+        return None
+
+    def _song_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:play <query>` 的第一三步：查歌，让播放页自己弹出来。
 
         这里不再等待播放就绪：就绪校验属于引擎（`MusicManager.play()` 经
         `PlaybackMuting.guard` 轮询 MediaSession）。驱动再等一次只会把同一次
         等待变成两遍，并让「搜不到歌」这类快速失败也背上就绪超时的延迟。
-
-        Returns:
-            成功为 `PlaybackOutcome.started(track)`，失败一律以返回值汇报 ——
-            引擎据此跳过就绪等待并立即恢复开麦。
         """
-        handler = self._handler
-        try:
-            playing_info = handler._prepare_music_playback(query)
-        except Exception as exc:
-            # 带上原始原因：Appium 的失败原因（会话断开、控件不可交互……）互相之间
-            # 完全不同，只报「搜索失败」会让线上问题无从区分。
-            self.logger.warning(f"搜索歌曲失败: {query}: {exc}")
-            return PlaybackOutcome.failed(f"Failed to query music: {query}: {exc}")
-
+        playing_info = session.handler._prepare_music_playback(session.request.query)
         if not isinstance(playing_info, dict):
-            return PlaybackOutcome.failed(f"not found with query {query}")
+            return f"not found with query {session.request.query}"
         if "error" in playing_info:
-            return PlaybackOutcome.failed(playing_info["error"])
+            return playing_info["error"]
+        # 走到这里说明 query_music 已切前台并搜到了结果，善后可以安全收尾。
+        session.took_over = True
+        session.playing_info = playing_info
+        return None
 
+    def _song_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        handler = session.handler
         song_element = handler.element_finder.wait_for_element_clickable("first_song")
         if not song_element:
-            return PlaybackOutcome.failed("Failed to find first song")
+            return "Failed to find first song"
         song_element.click()
-        self.logger.info(f"Select first song for query: {query}")
+        self.logger.info(f"Select first song for query: {session.request.query}")
 
         # 播放页会自动弹出：未收藏则自动收藏，否则下次点播搜不到这首歌
         handler.ensure_favorited_in_playing_page(timeout=10)
 
         # 老歌过滤要在播放刚起来时立刻判一次（与迁移前的命令层同一时机）。
         # 它会就地往曲目 dict 上补发行日期，因此必须在判定之后才读 extra。
-        self._quality_check(playing_info)
+        self._quality_check(session.playing_info)
+        return None
 
+    def _song_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        playing_info = session.playing_info
         return PlaybackOutcome.started(
             PlaybackTrack(
                 song=playing_info.get("song", ""),
@@ -258,77 +396,69 @@ class QQMusicUIDriver(MusicUIDriverPort):
     # 因此形态由 `PlaybackRequest.variant` 决定，骨架只写一遍。
     # ------------------------------------------------------------------
 
-    def _play_favourites(self, request: PlaybackRequest) -> PlaybackOutcome:
+    def _favourites_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:fav` / `:play ""` —— 收藏的三种取法共用一条骨架。"""
-        try:
-            return self._favourites_flow(request)
-        except Exception as exc:
-            # 端口约定：UI 层失败一律以返回值汇报，让引擎据此跳过就绪等待并立即恢复开麦。
-            self.logger.warning(f"播放收藏失败: {request.variant}: {exc}")
-            return PlaybackOutcome.failed(f"Failed to play favourites: {exc}")
-
-    def _favourites_flow(self, request: PlaybackRequest) -> PlaybackOutcome:
-        handler = self._handler
-        variant = request.variant or PlaybackVariant.ALL
+        handler = session.handler
+        request = session.request
 
         if not handler.key_actions.switch_to_app():
-            return PlaybackOutcome.failed("Cannot switch to qq music")
+            return "Cannot switch to qq music"
+        session.took_over = True
         self.logger.info("已切到 QQ 音乐，准备进入收藏页")
 
         entry_error = handler.open_favorites_entry()
         if entry_error:
-            return PlaybackOutcome.failed(entry_error.get("error") or "Cannot open favourites")
+            return entry_error.get("error") or "Cannot open favourites"
 
-        count = None
-        if variant is PlaybackVariant.SEARCH:
+        session.variant = request.variant or PlaybackVariant.ALL
+        session.count = None
+        if session.variant is PlaybackVariant.SEARCH:
             # 搜索这条路自己点「全部播放」：它要的是搜索结果那一栏的按钮，
             # 而不是收藏页顶部的那个。
-            search_error = self._search_within_favourites(request.query or "")
-            if search_error:
-                return PlaybackOutcome.failed(search_error)
-        else:
-            if variant is PlaybackVariant.FILTER:
-                error, count = self._apply_favourite_filter(request.query or "")
-                if error:
-                    return PlaybackOutcome.failed(error)
-            play_error = self._click_play_all()
-            if play_error:
-                return PlaybackOutcome.failed(play_error)
+            return self._reveal_favourite_search(session)
+        if session.variant is PlaybackVariant.FILTER:
+            error, session.count = self._apply_favourite_filter(request.query or "")
+            return error
+        return None
 
+    def _favourites_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        if session.variant is PlaybackVariant.SEARCH:
+            session.play_search.click()
+            self.logger.info("已播放收藏内的搜索结果")
+            return None
+        return self._click_play_all()
+
+    def _favourites_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        request = session.request
         track = self._first_result_track()
-        room_name = self._favourites_room_name(variant, request.query)
-        playlist_text, first_line, queue_error = get_playlist_text_and_first_song(
-            handler.get_playlist_info()
-        )
-        if queue_error:
-            # 歌已经在放了，读不到歌单只该降级、不该把播放收回去。
-            self.logger.warning(f"播放已开始但读不到收藏歌单: {queue_error}")
-            playlist_text = room_name
-            first_line = None
-
-        # 先回 QQ 音乐首页，引擎随后才去 Soul 改标题/话题 —— 顺序反了会让
-        # Soul 的弹窗盖在收藏页上。
-        handler.navigate_to_home()
-        self.logger.info("收藏已开始播放，已回到 QQ 音乐首页，等待引擎同步房间")
+        room_name = self._favourites_room_name(session.variant, request.query)
+        playlist_text, first_line = self._read_queue(room_name)
 
         extra = {"playlist": playlist_text}
-        if count is not None:
-            extra["count"] = count
+        if session.count is not None:
+            extra["count"] = session.count
         return PlaybackOutcome.started(
             track,
             title=room_name,
-            topic=self._favourites_topic(variant, request.query, first_line, track),
+            topic=self._favourites_topic(
+                session.variant, request.query, first_line, track
+            ),
             playlist=room_name,
             extra=extra,
         )
 
-    def _click_play_all(self) -> Optional[str]:
-        """点「全部播放」。返回错误说明；成功为 None。
+    def _find_play_all(self):
+        """按兜底链认出「全部播放」按钮；认不出为 None。
 
         按钮形态随页面而变（TextView 文案 / ImageView 图标 / FrameLayout 描述），
         因此认按钮一律走 `PLAY_ALL_KEYS` 这条兜底链，而不是只认一种形态。
         """
         _, play_all = self._handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
+        return play_all
+
+    def _click_play_all(self) -> Optional[str]:
+        """点「全部播放」。返回错误说明；成功为 None。"""
+        play_all = self._find_play_all()
         if not play_all:
             return "Cannot find play all button"
         play_all.click()
@@ -426,15 +556,15 @@ class QQMusicUIDriver(MusicUIDriverPort):
         matched = FAVOURITE_COUNT_PATTERN.search(confirm_text[0]) if confirm_text else None
         return None, int(matched.group(1)) if matched else None
 
-    def _search_within_favourites(self, keyword: str) -> Optional[str]:
-        """收藏页内搜索：滑出搜索框 → 粘关键字 → 点「全部播放」。
+    def _reveal_favourite_search(self, session: _PlaybackSession) -> Optional[str]:
+        """收藏页内搜索的前半段：滑出搜索框 → 粘关键字 → 找到结果栏的播放按钮。
 
-        Returns:
-            失败时的错误说明；成功为 None。
+        点这个按钮就是「播放」本身，留给 `trigger` 做。
         """
-        handler = self._handler
+        handler = session.handler
+        keyword = session.request.query or ""
 
-        _, play_all = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
+        play_all = self._find_play_all()
         if not play_all:
             return "Cannot find play all button"
 
@@ -468,8 +598,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         )
         if not play_search:
             return "Cannot find play_favourite_search button"
-        play_search.click()
-        self.logger.info("已播放收藏内的搜索结果")
+        session.play_search = play_search
         return None
 
     def _xpath_with_stale_retry(
@@ -541,33 +670,34 @@ class QQMusicUIDriver(MusicUIDriverPort):
     # 雷达电台（#425）
     # ------------------------------------------------------------------
 
-    def _play_radar(self) -> PlaybackOutcome:
-        """`:play ?` —— 回首页、点开雷达电台，让电台自己开始播。
+    def _radar_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:play ?` —— 回首页、找到雷达入口。
 
-        与收藏不同：雷达是一路持续流，点进 `radar_nav` 就等于开了播，页面上没有
-        「播放全部」可点，所以这里不再读队列 —— 读到的队列是电台的历史列表，不是
-        这次要广播的歌单。
+        雷达是一路持续流，点进 `radar_nav` 就等于开了播，页面上没有「播放全部」
+        可点，所以 `collect` 不再读队列 —— 读到的队列是电台的历史列表，不是这次
+        要广播的歌单。
         """
-        try:
-            return self._radar_flow()
-        except Exception as exc:
-            self.logger.warning(f"打开雷达电台失败: {exc}")
-            return PlaybackOutcome.failed(f"Failed to start radar: {exc}")
-
-    def _radar_flow(self) -> PlaybackOutcome:
-        handler = self._handler
+        handler = session.handler
         if not handler.key_actions.switch_to_app():
-            return PlaybackOutcome.failed("Cannot switch to qq music")
+            return "Cannot switch to qq music"
+        session.took_over = True
         self.logger.info("已切到 QQ 音乐，准备打开雷达电台")
 
         handler.navigate_to_home()
 
         radar_nav = handler.element_finder.try_find_element("radar_nav", log=False)
         if not radar_nav:
-            return PlaybackOutcome.failed("Cannot find radar_nav")
-        radar_nav.click()
-        self.logger.info("已进入雷达电台")
+            return "Cannot find radar_nav"
+        session.radar_nav = radar_nav
+        return None
 
+    def _radar_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        session.radar_nav.click()
+        self.logger.info("已进入雷达电台")
+        return None
+
+    def _radar_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        handler = session.handler
         song = handler.element_finder.wait_for_element_clickable("radar_song")
         singer = handler.element_finder.wait_for_element_clickable("radar_singer")
         song_text = song.text if song else "Unknown"
@@ -589,122 +719,134 @@ class QQMusicUIDriver(MusicUIDriverPort):
     # 静默成功会让引擎去采纳一个房间里并不存在的电台。
     # ------------------------------------------------------------------
 
-    def _play_radio(self, request: PlaybackRequest) -> PlaybackOutcome:
-        """`:radio [channel]` —— 五种电台共用一条骨架。"""
-        try:
-            return self._radio_flow(request)
-        except Exception as exc:
-            # 带上频道名：Appium 的失败原因互相之间完全不同，只报「电台播放失败」
-            # 会让线上问题无从区分是哪一路。
-            self.logger.warning(f"打开电台失败: {request.channel}: {exc}")
-            return PlaybackOutcome.failed(
-                f"Failed to start radio {request.channel}: {exc}"
-            )
+    def _radio_specs(self, failure: Callable[[Exception], str]) -> dict:
+        """频道 → 该频道的四步编排。频道词表归命令层，这里只负责映射到编排。"""
 
-    def _radio_flow(self, request: PlaybackRequest) -> PlaybackOutcome:
-        channel = (request.channel or RADIO_DEFAULT_CHANNEL).strip().lower()
+        def spec(enter, trigger, collect):
+            return _ModeSpec(enter, trigger, collect, _restore_home, failure)
 
-        if channel == "guess":
-            return self._guess_radio()
-        if channel == "daily":
-            return self._daily_radio()
-        if channel == "collection":
-            return self._collection_radio()
-        if channel == "sleep":
-            return self._sleep_radio()
-        if channel == "radar":
-            return self._radio_radar()
+        return {
+            "guess": spec(
+                self._guess_radio_enter,
+                self._guess_radio_trigger,
+                self._guess_radio_collect,
+            ),
+            "daily": spec(
+                self._daily_radio_enter,
+                self._daily_radio_trigger,
+                self._daily_radio_collect,
+            ),
+            "collection": spec(
+                self._collection_radio_enter,
+                self._collection_radio_trigger,
+                self._collection_radio_collect,
+            ),
+            "sleep": spec(
+                self._sleep_radio_enter,
+                self._sleep_radio_trigger,
+                self._sleep_radio_collect,
+            ),
+            "radar": spec(
+                self._radio_radar_enter,
+                self._radio_radar_trigger,
+                self._radio_radar_collect,
+            ),
+        }
 
-        self.logger.warning(f"Unknown radio channel: {request.channel}")
-        return PlaybackOutcome.failed(f"暂不支持的电台频道：{request.channel}")
-
-    def _switch_to_qq_music_home(self) -> Optional[PlaybackOutcome]:
+    def _switch_to_qq_music_home(self, session: _PlaybackSession) -> Optional[str]:
         """切到 QQ 音乐并回首页。返回非 None 即为失败，调用方直接转交。"""
         handler = self._handler
         if not handler.key_actions.switch_to_app():
             self.logger.warning("Cannot switch to QQ Music for radio playback")
-            return PlaybackOutcome.failed("Cannot switch to qq music")
+            return "Cannot switch to qq music"
+        session.took_over = True
         if not handler.navigate_to_home():
             self.logger.warning("Failed to navigate to QQ Music home for radio playback")
-            return PlaybackOutcome.failed("Failed to navigate to home in QQ Music")
+            return "Failed to navigate to home in QQ Music"
         return None
 
-    def _guess_radio(self) -> PlaybackOutcome:
-        """`:radio guess` —— 每日猜你喜欢：点开频道卡片，电台自己起播。"""
-        failure = self._switch_to_qq_music_home()
+    def _guess_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:radio guess` —— 每日猜你喜欢：认频道卡片，起播留给 trigger。"""
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
-        handler = self._handler
+        handler = session.handler
 
         title_element = handler.element_finder.wait_for_element_clickable("guess_title")
         topic_element = handler.element_finder.wait_for_element("guess_topic")
         if not title_element or not topic_element:
-            return PlaybackOutcome.failed("Failed to locate guess like radio elements")
-        room_title = title_element.text or ""
-        topic = self._radio_subtitle_topic(topic_element.text)
+            return "Failed to locate guess like radio elements"
+        session.title_element = title_element
+        session.room_title = title_element.text or ""
+        session.topic = self._radio_subtitle_topic(topic_element.text)
+        return None
 
-        title_element.click()
-        self.logger.info(f"已进入猜你喜欢电台: {room_title}")
+    def _guess_radio_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        session.title_element.click()
+        self.logger.info(f"已进入猜你喜欢电台: {session.room_title}")
+        return None
 
+    def _guess_radio_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        playlist_text, _ = self._read_queue(session.room_title)
         return PlaybackOutcome.started(
-            PlaybackTrack(song=topic or ""),
-            title=room_title,
-            topic=topic,
-            playlist=room_title,
-            extra={"playlist": self._radio_queue_text(room_title)},
+            PlaybackTrack(song=session.topic or ""),
+            title=session.room_title,
+            topic=session.topic,
+            playlist=session.room_title,
+            extra={"playlist": playlist_text},
         )
 
-    def _daily_radio(self) -> PlaybackOutcome:
-        """`:radio daily` —— 每日 30 首：点开频道卡片后还要再点「播放全部」。"""
-        failure = self._switch_to_qq_music_home()
+    def _daily_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:radio daily` —— 每日 30 首：认频道卡片，起播留给 trigger。"""
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
-        handler = self._handler
+        handler = session.handler
 
         title_element = handler.element_finder.wait_for_element_clickable("daily_title")
         topic_element = handler.element_finder.wait_for_element("daily_topic")
         if not title_element or not topic_element:
-            return PlaybackOutcome.failed("Failed to locate daily radio elements")
-        room_title = title_element.text or ""
+            return "Failed to locate daily radio elements"
+        session.title_element = title_element
+        session.room_title = title_element.text or ""
         # 卡片上的频道标签只当兜底：队列读得到时话题以队列第一行为准 ——
         # 用户在房间里看到的是正在放的那首歌，不是频道名。
-        topic = self._radio_subtitle_topic(topic_element.text)
+        session.topic = self._radio_subtitle_topic(topic_element.text)
+        return None
 
-        title_element.click()
-        _, play_all = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
-        if not play_all:
-            return PlaybackOutcome.failed("Failed to locate play all button")
-        play_all.click()
-        self.logger.info(f"已进入每日 30 首电台: {room_title}")
-
-        playlist_text, first_line, error = self._read_radio_queue()
+    def _daily_radio_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        session.title_element.click()
+        error = self._click_play_all()
         if error:
-            self.logger.warning(
-                f"Failed to read daily radio playlist after playback started: {error}"
-            )
-        elif first_line:
-            topic = first_line.split(" - ")[0].strip() or topic
+            return error
+        self.logger.info(f"已进入每日 30 首电台: {session.room_title}")
+        return None
 
+    def _daily_radio_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        playlist_text, first_line = self._read_queue(session.room_title)
+        topic = session.topic
+        if first_line:
+            topic = first_line.split(" - ")[0].strip() or topic
         return PlaybackOutcome.started(
             PlaybackTrack(song=topic or ""),
-            title=room_title,
+            title=session.room_title,
             topic=topic,
-            playlist=room_title,
-            extra={"playlist": playlist_text or room_title},
+            playlist=session.room_title,
+            extra={"playlist": playlist_text},
         )
 
-    def _collection_radio(self) -> PlaybackOutcome:
-        """`:radio collection`（裸 `:radio`）—— 精选：推荐太老就换一首。
+    def _collection_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:radio collection`（裸 `:radio`）—— 精选：认卡片与播放按钮。
 
         精选频道是一次性推荐的电台，播出来的那首是频道替房间挑的 —— 老歌就该换，
         而不是照播。这是全套命令里唯一一处「反复换推荐直到能播」的编排，因此
         老歌判定必须与别处逐字一致：这里不自己查发行日期，判定交给
         `MusicManager._is_old_song`（见 `_collection_candidate_is_old`）。
         """
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
-        handler = self._handler
+        handler = session.handler
 
         state_key, state_element = handler.element_finder.wait_for_any_element(
             RADIO_COLLECTION_STATE_KEYS
@@ -721,24 +863,28 @@ class QQMusicUIDriver(MusicUIDriverPort):
         elif state_key == "play_collection":
             play_button = state_element
         else:
-            return PlaybackOutcome.failed("Failed to find collection play button")
+            return "Failed to find collection play button"
         if not play_button:
-            return PlaybackOutcome.failed("Failed to find collection play button")
+            return "Failed to find collection play button"
 
         title_element = handler.element_finder.wait_for_element_clickable(
             "collection_title"
         )
         topic_element = handler.element_finder.wait_for_element("collection_topic")
         if not title_element or not topic_element:
-            return PlaybackOutcome.failed("Failed to locate collection radio elements")
-        station_name = self._read_collection_station_name(title_element)
+            return "Failed to locate collection radio elements"
+        session.play_button = play_button
+        session.topic_element = topic_element
+        session.station_name = self._read_collection_station_name(title_element)
+        return None
 
+    def _collection_radio_trigger(self, session: _PlaybackSession) -> Optional[str]:
         budget = self._radio_refresh_budget()
         refresh_count = 0
         while True:
-            candidate = self._read_collection_candidate(topic_element)
+            candidate = self._read_collection_candidate(session.topic_element)
             if not candidate:
-                return PlaybackOutcome.failed("Failed to read collection radio topic")
+                return "Failed to read collection radio topic"
             if not self._collection_candidate_is_old(candidate):
                 break
             if refresh_count >= budget:
@@ -751,21 +897,17 @@ class QQMusicUIDriver(MusicUIDriverPort):
                 f"精选推荐是老歌，换一首 ({refresh_count}/{budget}): {candidate}"
             )
             refreshed = self._refresh_collection_radio()
-            if isinstance(refreshed, PlaybackOutcome):
+            if isinstance(refreshed, str):
                 return refreshed
-            play_button, topic_element = refreshed
+            session.play_button, session.topic_element = refreshed
 
-        play_button.click()
-        self.logger.info(f"已进入精选电台: {station_name}")
+        session.play_button.click()
+        self.logger.info(f"已进入精选电台: {session.station_name}")
+        return None
 
-        playlist_text, first_song, error = self._read_radio_queue()
-        if error:
-            self.logger.warning(
-                f"Failed to read collection playlist after playback started: {error}"
-            )
-            playlist_text = station_name
-            first_song = None
-
+    def _collection_radio_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        station_name = session.station_name
+        playlist_text, first_song = self._read_queue(station_name)
         song_name = first_song.split(" - ")[0].strip() if first_song else ""
         return PlaybackOutcome.started(
             PlaybackTrack(song=song_name),
@@ -821,29 +963,23 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """换一首精选推荐：回首页 → 重新认播放按钮与推荐歌名。
 
         Returns:
-            `(播放按钮, 推荐歌名元素)`；任何一步认不出来则返回一个 `PlaybackOutcome`
-            失败，由调用方直接转交。
+            `(播放按钮, 推荐歌名元素)`；任何一步认不出来则返回错误说明，由调用方
+            直接转交。
         """
         handler = self._handler
         home_nav = handler.element_finder.wait_for_element_clickable("home_nav")
         if not home_nav:
-            return PlaybackOutcome.failed(
-                "Failed to find home navigation while refreshing radio"
-            )
+            return "Failed to find home navigation while refreshing radio"
         home_nav.click()
 
         play_button = handler.element_finder.wait_for_element_clickable(
             "play_collection"
         )
         if not play_button:
-            return PlaybackOutcome.failed(
-                "Failed to find collection play button after refresh"
-            )
+            return "Failed to find collection play button after refresh"
         topic_element = handler.element_finder.wait_for_element("collection_topic")
         if not topic_element:
-            return PlaybackOutcome.failed(
-                "Failed to locate collection radio topic after refresh"
-            )
+            return "Failed to locate collection radio topic after refresh"
         return play_button, topic_element
 
     def _radio_refresh_budget(self) -> int:
@@ -886,33 +1022,12 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return raw_topic.strip() or None
         return parts[0]
 
-    def _read_radio_queue(self) -> tuple:
-        """读起播后的队列，返回 `(队列文本, 队列第一行, 错误)`。"""
-        playlist_text, first_line, error = get_playlist_text_and_first_song(
-            self._handler.get_playlist_info()
-        )
-        return playlist_text, first_line, error
-
-    def _radio_queue_text(self, fallback: str) -> str:
-        """队列读不出来时的兜底：读不到队列不是失败，歌已经在放了。
-
-        报错会让用户以为歌没响，因此退回频道名并按 warning 记一笔（与迁移前命令层
-        的同一时刻、同一兜底）。
-        """
-        playlist_text, _, error = self._read_radio_queue()
-        if error:
-            self.logger.warning(
-                f"Failed to read radio playlist after playback started: {error}"
-            )
-            return fallback
-        return playlist_text
-
-    def _sleep_radio(self) -> PlaybackOutcome:
+    def _sleep_radio_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:radio sleep` —— 音乐疗愈：首页标签要横向滑到「疗愈」才看得见。"""
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
-        handler = self._handler
+        handler = session.handler
 
         _, healing_tab, _ = handler.gesture_handler.scroll_container_until_element(
             "home_tab_label",
@@ -923,9 +1038,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
             max_swipes=RADIO_HEALING_MAX_SWIPES,
         )
         if not healing_tab:
-            return PlaybackOutcome.failed(
-                f"Failed to scroll home tabs to {RADIO_HEALING_TAB_LABEL} column"
-            )
+            return f"Failed to scroll home tabs to {RADIO_HEALING_TAB_LABEL} column"
         healing_tab.click()
         self.logger.info("Clicked 疗愈 tab after scrolling home tab strip")
 
@@ -933,22 +1046,16 @@ class QQMusicUIDriver(MusicUIDriverPort):
             "play_healing"
         )
         if not play_healing:
-            return PlaybackOutcome.failed("Failed to find healing play button")
-        play_healing.click()
+            return "Failed to find healing play button"
+        session.play_healing = play_healing
+        return None
 
-        playlist_text, first_song, error = self._read_radio_queue()
-        if error:
-            self.logger.warning(
-                f"Failed to read healing playlist after playback started: {error}"
-            )
-            playlist_text = RADIO_HEALING_ROOM_NAME
-            first_song = None
+    def _sleep_radio_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        session.play_healing.click()
+        return None
 
-        # 疗愈是整站的一条长电台：留在详情页会把首页其它频道的入口挡住，
-        # 下一次换台先得退回首页。
-        if not handler.navigate_to_home():
-            return PlaybackOutcome.failed("Failed to navigate to home")
-
+    def _sleep_radio_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        playlist_text, first_song = self._read_queue(RADIO_HEALING_ROOM_NAME)
         return PlaybackOutcome.started(
             PlaybackTrack(song=(first_song or "").split(" - ")[0].strip()),
             title=RADIO_HEALING_ROOM_NAME,
@@ -957,7 +1064,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
             extra={"playlist": playlist_text},
         )
 
-    def _radio_radar(self) -> PlaybackOutcome:
+    def _radio_radar_enter(self, session: _PlaybackSession) -> Optional[str]:
         """`:radio radar` —— 雷达电台：点进频道就等于开了播。
 
         与 `:play ?`（`PlaybackMode.RADAR`）是同一屏 UI，但语义不同：这里是房间主动
@@ -965,17 +1072,24 @@ class QQMusicUIDriver(MusicUIDriverPort):
         读队列（队列文本即这次广播的歌单），而 `PlaybackMode.RADAR` 刻意不读 ——
         它读到的是电台的历史列表，不是这次要广播的东西。
         """
-        failure = self._switch_to_qq_music_home()
+        failure = self._switch_to_qq_music_home(session)
         if failure:
             return failure
-        handler = self._handler
-
-        radar_nav = handler.element_finder.try_find_element("radar_nav", log=False)
+        radar_nav = session.handler.element_finder.try_find_element(
+            "radar_nav", log=False
+        )
         if not radar_nav:
-            return PlaybackOutcome.failed("Cannot find radar_nav")
-        radar_nav.click()
-        self.logger.info("Clicked radar navigation button")
+            return "Cannot find radar_nav"
+        session.radar_nav = radar_nav
+        return None
 
+    def _radio_radar_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        session.radar_nav.click()
+        self.logger.info("Clicked radar navigation button")
+        return None
+
+    def _radio_radar_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        handler = session.handler
         song_element = handler.element_finder.wait_for_element_clickable("radar_song")
         singer_element = handler.element_finder.wait_for_element_clickable("radar_singer")
         if not song_element or not singer_element:
@@ -983,6 +1097,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
                 "Failed to locate radar song or singer elements"
             )
 
+        playlist_text, _ = self._read_queue(RADIO_RADAR_ROOM_NAME)
         return PlaybackOutcome.started(
             PlaybackTrack(
                 song=song_element.text or "",
@@ -991,14 +1106,14 @@ class QQMusicUIDriver(MusicUIDriverPort):
             title=RADIO_RADAR_ROOM_NAME,
             topic=song_element.text,
             playlist=RADIO_RADAR_ROOM_NAME,
-            extra={"playlist": self._radio_queue_text(RADIO_RADAR_ROOM_NAME)},
+            extra={"playlist": playlist_text},
         )
 
     # 歌单播放（#434）
     # ------------------------------------------------------------------
 
-    def _play_playlist(self, query: str) -> PlaybackOutcome:
-        """`:playlist <query>` 的 UI 编排：搜歌单 → 点开 → 播放全部 → 读队列。
+    def _playlist_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:playlist <query>` 的第一半：搜歌单 → 点开卡片 → 读卡片与首行。
 
         与单曲点播不同，这条编排的产物是**一个列表**而不是一首歌：房间标题与话题
         来自歌单卡片上的名字（`PlaylistParser` 按 `｜`/方括号/破折号…的优先级拆
@@ -1007,28 +1122,18 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
         这里同样不等播放就绪 —— 那件事归引擎（`MusicManager.play()` 经
         `PlaybackMuting.guard` 轮询 MediaSession）。
-
-        Returns:
-            成功为 `PlaybackOutcome.started(...)`；失败一律以返回值汇报。
         """
-        try:
-            return self._run_playlist_flow(query)
-        except Exception as exc:
-            # 带上原始原因：Appium 的失败原因（会话断开、控件不可交互……）互相之间
-            # 完全不同，只报「歌单播放失败」会让线上问题无从区分。
-            self.logger.warning(f"播放歌单失败: {query}: {exc}")
-            return PlaybackOutcome.failed(f"Failed to play playlist: {query}: {exc}")
-
-    def _run_playlist_flow(self, query: str) -> PlaybackOutcome:
-        handler = self._handler
+        handler = session.handler
+        query = session.request.query
 
         if not handler.query_music(query):
             self.logger.warning("Failed to query music in playlist")
-            return PlaybackOutcome.failed("Failed to query music playlist")
+            return "Failed to query music playlist"
+        session.took_over = True
 
         if not self._select_category_tab("playlist"):
             self.logger.warning("Failed to find playlist tab")
-            return PlaybackOutcome.failed("Failed to find playlist tab")
+            return "Failed to find playlist tab"
         self.logger.info("Selected playlist tab")
 
         result_key, result = handler.element_finder.wait_for_any_element(
@@ -1036,7 +1141,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         )
         if not result_key or result_key == "not_found" or not result:
             self.logger.warning(f"Failed to find playlist result with query {query}")
-            return PlaybackOutcome.failed(f"Failed to find playlist with query {query}")
+            return f"Failed to find playlist with query {query}"
 
         result.click()
         self.logger.info("Selected playlist result")
@@ -1053,32 +1158,34 @@ class QQMusicUIDriver(MusicUIDriverPort):
             self.logger.warning("Failed to parse playlist name")
             subject = singer_name
 
-        _, play_button = handler.element_finder.wait_for_any_element(PLAY_ALL_KEYS)
-        if not play_button:
-            self.logger.warning("Failed to find play all button (album or playlist)")
-            return PlaybackOutcome.failed("Failed to find play all button")
+        session.playlist_name = playlist_name
+        session.subject = subject
+        session.topic = topic
+        session.first_track = (song_name, singer_name)
+        return None
 
-        play_button.click()
-        self.logger.info("Selected play all button")
+    def _playlist_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        return self._click_play_all()
 
-        playlist_text, first_line = self._read_queue(fallback=playlist_name)
+    def _playlist_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
+        song_name, singer_name = session.first_track
+        playlist_text, first_line = self._read_queue(session.playlist_name)
 
         # 话题兜底依次落到详情页第一行、播放队列首行。详情页那一次是点完卡片
         # 在页面跳转中抢读的，随时可能静默落空；播放已经开始，队列首行才是这一
         # 次切歌实际放出来的第一行。两档都空时 `adopt` 会整个跳过 `set_topic`
         # —— 房间沿用旧话题、连 next topic 都不排，必须如实留下一条 warning。
-        if not topic:
-            topic = song_name or (first_line or "")
+        topic = session.topic or song_name or (first_line or "")
         if not topic:
             self.logger.warning(
-                f"歌单话题无从解析，房间将沿用旧话题: {playlist_name}"
+                f"歌单话题无从解析，房间将沿用旧话题: {session.playlist_name}"
             )
 
         return PlaybackOutcome.started(
             PlaybackTrack(song=song_name, singer=singer_name),
-            title=subject,
+            title=session.subject,
             topic=topic,
-            playlist=playlist_name,
+            playlist=session.playlist_name,
             extra={"playlist": playlist_text},
         )
 
@@ -1115,10 +1222,11 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return ""
 
     def _read_queue(self, fallback: str) -> tuple:
-        """读点完「播放全部」之后的播放队列，回 `(队列文本, 队列首行)`。
+        """读起播后的播放队列，回 `(队列文本, 队列首行)`。
 
         读不到队列不是失败：歌已经在放了，把失败报给用户会让人以为歌没响。因此
         退回 `fallback`，并按 warning 记一笔（与迁移前命令层的同一时刻、同一兜底）。
+        `get_playlist_info()` 自己抛异常时同样降级 —— 已经响起的歌不该被收回去。
 
         Args:
             fallback: 队列读不出来时改用的名字。
@@ -1126,13 +1234,14 @@ class QQMusicUIDriver(MusicUIDriverPort):
         Returns:
             `(队列文本或兜底值, 队列首行)`；读不到队列时首行为 None。
         """
-        playlist_text, first_line, error = get_playlist_text_and_first_song(
-            self._handler.get_playlist_info()
-        )
-        if error:
-            self.logger.warning(
-                f"Failed to read playlist after playback started: {error}"
+        try:
+            playlist_text, first_line, error = get_playlist_text_and_first_song(
+                self._handler.get_playlist_info()
             )
+        except Exception as exc:
+            playlist_text, first_line, error = None, None, str(exc)
+        if error:
+            self.logger.warning(f"播放已开始但读不到歌单: {error}")
             return fallback, None
         return playlist_text, first_line
 
@@ -1160,43 +1269,49 @@ class QQMusicUIDriver(MusicUIDriverPort):
     # 两条通路的产物相同（一个歌手的歌单），因此骨架只写一遍。
     # ------------------------------------------------------------------
 
-    def _play_singer(self, query: str) -> PlaybackOutcome:
-        """`:singer <query>` 的 UI 编排。"""
-        try:
-            return self._run_singer_flow(query)
-        except Exception as exc:
-            # 带上原始原因：Appium 的失败原因（会话断开、控件不可交互……）互相之间
-            # 完全不同，只报「歌手播放失败」会让线上问题无从区分。
-            self.logger.warning(f"播放歌手歌单失败: {query}: {exc}")
-            return PlaybackOutcome.failed(f"Failed to play singer: {query}: {exc}")
-
-    def _run_singer_flow(self, query: str) -> PlaybackOutcome:
-        from_key = self._handler.query_music(query)
+    def _singer_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:singer <query>`：查歌手，认首页快捷键或分类页那条路。"""
+        query = session.request.query
+        from_key = session.handler.query_music(query)
         if not from_key:
             self.logger.warning(f"Failed to query singer {query}")
-            return PlaybackOutcome.failed(f"Failed to query singer {query}")
+            return f"Failed to query singer {query}"
+        session.took_over = True
 
         shortcut = self._singer_shortcut(from_key)
         if shortcut is not None:
-            button, singer_name = shortcut
-            button.click()
-            self.logger.info(f"已通过首页快捷键开始播放歌手: {singer_name}")
-        else:
-            error, singer_name = self._singer_from_tab(query)
-            if error:
-                return PlaybackOutcome.failed(error)
+            # 快捷键本身就是「播放」：点击留给 trigger。
+            session.shortcut_button, session.singer_name = shortcut
+            return None
 
+        error, singer_name = self._singer_from_tab(query)
+        if error:
+            return error
+        session.shortcut_button = None
+        session.singer_name = singer_name
+        return None
+
+    def _singer_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        if session.shortcut_button is not None:
+            session.shortcut_button.click()
+            self.logger.info(
+                f"已通过首页快捷键开始播放歌手: {session.singer_name}"
+            )
+            return None
+        return self._click_play_all()
+
+    def _singer_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
         # 先读曲目再读队列：读队列要拉起播放队列面板，面板盖住列表之后
         # `result_item` 就找不到了。
         song, singer = self._read_first_track()
-        queue_text, first_line = self._read_queue(fallback=singer_name)
+        queue_text, first_line = self._read_queue(session.singer_name)
 
         return PlaybackOutcome.started(
             PlaybackTrack(song=song, singer=singer),
-            title=singer_name,
+            title=session.singer_name,
             # 队列首行形如「歌名 - 歌手」，`PlaylistAdoption` 按 " - " 取歌名做话题。
-            topic=first_line or singer_name,
-            playlist=singer_name,
+            topic=first_line or session.singer_name,
+            playlist=session.singer_name,
             extra={"playlist": queue_text},
         )
 
@@ -1232,7 +1347,9 @@ class QQMusicUIDriver(MusicUIDriverPort):
         return None
 
     def _singer_from_tab(self, query: str) -> tuple:
-        """分类页那条路：切歌手 tab → 点歌手 → 点播放全部。
+        """分类页那条路的前半段：切歌手 tab → 点开歌手。
+
+        「播放全部」由 `_singer_trigger` 统一点，与收藏/歌单/专辑共用同一个 helper。
 
         Returns:
             `(错误说明, 歌手名)`；成功时错误为 None。
@@ -1251,76 +1368,60 @@ class QQMusicUIDriver(MusicUIDriverPort):
         element.click()
         singer_name = (element.text or "").strip() or UNKNOWN_SINGER_NAME
         self.logger.info(f"已点开歌手: {singer_name}")
-
-        # 与收藏/歌单共用同一次「播放全部」点击：认不出按钮就是认不出，三条
-        # 通路对这件事没有各自的看法。
-        play_error = self._click_play_all()
-        if play_error:
-            return play_error, singer_name
         return None, singer_name
 
     # ------------------------------------------------------------------
     # 专辑播放（#437）
     # ------------------------------------------------------------------
 
-    def _play_album(self, query: str) -> PlaybackOutcome:
-        """`:album <query>` 的 UI 编排。"""
-        try:
-            return self._run_album_flow(query)
-        except Exception as exc:
-            self.logger.warning(f"播放专辑失败: {query}: {exc}")
-            return PlaybackOutcome.failed(f"Failed to play album: {query}: {exc}")
-
-    def _run_album_flow(self, query: str) -> PlaybackOutcome:
-        handler = self._handler
-
-        query = self._album_query(query)
+    def _album_enter(self, session: _PlaybackSession) -> Optional[str]:
+        """`:album <query>`：搜专辑 → 切分类 → 点开专辑卡。"""
+        handler = session.handler
+        query = self._album_query(session.request.query)
         if not query:
-            return PlaybackOutcome.failed("Failed to get playback info")
+            return "Failed to get playback info"
 
         if not handler.query_music(query):
             self.logger.warning(f"Failed to query album with query {query}")
-            return PlaybackOutcome.failed("Failed to query album")
+            return "Failed to query album"
+        session.took_over = True
 
         if not self._select_category_tab("album"):
             self.logger.warning(f"Failed to select album tab with query {query}")
-            return PlaybackOutcome.failed("Failed to select album tab")
+            return "Failed to select album tab"
 
         key, _ = handler.element_finder.wait_for_any_element(ALBUM_RESULT_KEYS)
         if not key or key == "not_found":
             self.logger.warning(f"Not found album result with query {query}")
-            return PlaybackOutcome.failed(
-                f"Failed to find album result with query {query}"
-            )
+            return f"Failed to find album result with query {query}"
 
         card = self._album_card()
         if card is None:
-            return PlaybackOutcome.failed("Failed to find album result")
+            return "Failed to find album result"
         album_name, album_singer = card
         # 房名/话题/歌单名都用文案，不用控件本身 —— 控件会被页面重排带走。
-        album_title = (album_name.text or "").strip()
-        album_artist = (album_singer.text or "").strip()
+        session.album_title = (album_name.text or "").strip()
+        session.album_artist = (album_singer.text or "").strip()
 
         album_name.click()
-        self.logger.info(f"已点开专辑: {album_title}")
+        self.logger.info(f"已点开专辑: {session.album_title}")
+        return None
 
-        play_error = self._click_play_all()
-        if play_error:
-            return PlaybackOutcome.failed(play_error)
+    def _album_trigger(self, session: _PlaybackSession) -> Optional[str]:
+        return self._click_play_all()
 
+    def _album_collect(self, session: _PlaybackSession) -> PlaybackOutcome:
         song, singer = self._read_first_track()
         # 读队列之前先取曲目：队列面板会盖住专辑的歌曲列表。
-        room_playlist = f"{album_artist} - {album_title}"
-        queue_text, _ = self._read_queue(fallback=room_playlist)
-
-        # 专辑详情页是盖在搜索结果上的：不按返回键把它收掉，后面引擎去 Soul 改
-        # 标题/话题时弹窗会压在它下面。
-        handler.key_actions.press_back()
+        room_playlist = f"{session.album_artist} - {session.album_title}"
+        queue_text, _ = self._read_queue(room_playlist)
 
         return PlaybackOutcome.started(
-            PlaybackTrack(song=song, singer=singer, album=album_title),
-            title=album_artist,
-            topic=album_title,
+            PlaybackTrack(
+                song=song, singer=singer, album=session.album_title
+            ),
+            title=session.album_artist,
+            topic=session.album_title,
             playlist=room_playlist,
             extra={"playlist": queue_text},
         )

@@ -354,6 +354,7 @@ def test_guess_channel_opens_the_guess_station(music_manager):
         "wait:guess_topic",
         "click:guess_title",
         "queue",
+        "home",
     ]
     assert outcome.title == "每日猜你喜欢"
     assert outcome.topic == "新歌"
@@ -386,6 +387,7 @@ def test_daily_channel_plays_the_daily_thirty(music_manager):
         "wait_any:" + "/".join(PLAY_ALL_KEYS),
         "click:play_all",
         "queue",
+        "home",
     ]
     assert outcome.title == "每日30首"
     # 话题取队列第一行的歌名，而不是卡片上的频道名。
@@ -449,6 +451,7 @@ def test_radar_channel_reads_the_streaming_song(music_manager):
         "wait_clickable:radar_song",
         "wait_clickable:radar_singer",
         "queue",
+        "home",
     ]
     assert outcome.title == "O Radio"
     assert outcome.topic == "正在播出"
@@ -543,6 +546,7 @@ def test_collection_channel_plays_the_station(music_manager):
         "attr:content-desc",
         "click:play_collection",
         "queue",
+        "home",
     ]
     # 房名取队列第一首歌的歌名，话题取裁剪后的电台名。
     assert outcome.title == "新歌"
@@ -567,7 +571,7 @@ def test_collection_refreshes_the_recommendation_when_it_is_old(music_manager):
     # 换过一次推荐：先回首页再认一次播放按钮。
     assert actions.count("click:home_nav") == 1
     assert actions.count("wait_clickable:home_nav") == 1
-    assert actions[-2:] == ["click:play_collection", "queue"]
+    assert actions[-3:] == ["click:play_collection", "queue", "home"]
     assert lookup.queries == ["老歌", "新歌"], "老歌判定要走统一的发行日期查询"
 
 
@@ -683,7 +687,7 @@ def test_collection_leaves_the_home_page_when_the_station_is_already_playing(
         "wait_clickable:home_nav",
         "click:home_nav",
     ]
-    assert actions[-2:] == ["click:play_collection", "queue"]
+    assert actions[-3:] == ["click:play_collection", "queue", "home"]
 
 
 # ---------------------------------------------------------------------------

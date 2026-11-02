@@ -77,6 +77,7 @@ class _QQMusicHandlerFake:
         self.first_song = first_song if first_song is not None else _Element()
         self.prepared_queries = []
         self.favorited = []
+        self.home_visits = 0
         self._element_finder = _ElementFinder(self.first_song)
 
     @property
@@ -91,6 +92,10 @@ class _QQMusicHandlerFake:
 
     def ensure_favorited_in_playing_page(self, timeout=10):
         self.favorited.append(timeout)
+        return True
+
+    def navigate_to_home(self):
+        self.home_visits += 1
         return True
 
 
@@ -292,6 +297,21 @@ def test_driver_leaves_the_release_date_out_when_the_quality_check_finds_none(
     )
 
     assert dict(outcome.extra) == {}
+
+
+def test_driver_returns_home_after_a_single_song_playback(
+    initialized_test_singletons, quality_checked
+):
+    """播完单曲也要回首页：播放页留着会挡住引擎随后对 Soul 房间的同步。"""
+    handler = _QQMusicHandlerFake(
+        playing_info={"song": "似是故人来", "singer": "梅艳芳", "album": "戏剧人生"}
+    )
+
+    QQMusicUIDriver(handler).start_playback(
+        PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
+    )
+
+    assert handler.home_visits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -871,6 +891,8 @@ class _PlaylistHandler:
         self.result_card = _Element()
         self.result_card.text = playlist_name
         self.queue_reads = 0
+        self.home_visits = 0
+        self.order = []
 
         self._element_finder = SimpleNamespace(
             wait_for_any_element=self._wait_any,
@@ -894,12 +916,18 @@ class _PlaylistHandler:
 
     def _try_find(self, key):
         if key == "result_item":
+            self.order.append("track")
             return self.track_item
         raise AssertionError(f"unexpected key: {key}")
 
     def get_playlist_info(self):
         self.queue_reads += 1
+        self.order.append("queue")
         return self.playlist_info
+
+    def navigate_to_home(self):
+        self.home_visits += 1
+        return True
 
 
 @pytest.fixture
@@ -1094,3 +1122,47 @@ def test_driver_reports_the_missing_playlist_tab(initialized_test_singletons, pl
     assert outcome.ok is False
     assert playlist_tab.calls == ["playlist"]
     assert handler.result_card.clicks == 0
+
+
+def test_driver_reads_background_track_before_opening_the_queue_panel(
+    initialized_test_singletons, playlist_tab
+):
+    """队列面板会盖住背景列表：曲目必须在读队列之前取到。"""
+    handler = _PlaylistHandler()
+
+    QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert handler.order.index("track") < handler.order.index("queue")
+
+
+def test_driver_restores_home_after_playlist_playback(
+    initialized_test_singletons, playlist_tab
+):
+    handler = _PlaylistHandler()
+
+    QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert handler.home_visits == 1
+
+
+def test_driver_degrades_when_reading_the_queue_raises(
+    initialized_test_singletons, playlist_tab
+):
+    """读队列抛异常也只该降级：歌已经在放，不能把整条播放报成失败。"""
+    handler = _PlaylistHandler()
+
+    def _boom():
+        raise RuntimeError("session terminated")
+
+    handler.get_playlist_info = _boom
+
+    outcome = QQMusicUIDriver(handler).start_playback(
+        _playlist_request("学习", requester="小明")
+    )
+
+    assert outcome.ok is True
+    assert outcome.extra["playlist"] == "学习|英语"

@@ -131,6 +131,7 @@ class _SingerAlbumHandler:
         self.queries = []
         self.pressed_back = 0
         self.queue_reads = 0
+        self.home_visits = 0
 
         self.shortcut_button = (
             _Element(attrs={"content-desc": shortcut_desc}) if shortcut else None
@@ -167,6 +168,10 @@ class _SingerAlbumHandler:
 
     def _press_back(self):
         self.pressed_back += 1
+
+    def navigate_to_home(self):
+        self.home_visits += 1
+        return True
 
     def query_music(self, query):
         self.queries.append(query)
@@ -279,6 +284,16 @@ def test_driver_prefers_the_home_singer_shortcut_over_the_tab(
     assert handler.shortcut_button.clicks == 1
     assert category_tab.calls == []
     assert handler.play_button.clicks == 0
+
+
+def test_driver_restores_home_after_singer_playback(
+    initialized_test_singletons, category_tab
+):
+    handler = _SingerAlbumHandler()
+
+    QQMusicUIDriver(handler).start_playback(_singer_request("张天赋"))
+
+    assert handler.home_visits == 1
 
 
 def test_driver_reads_the_singer_name_out_of_the_shortcut_content_desc(
@@ -490,6 +505,8 @@ def test_driver_reports_an_empty_album_query_with_nothing_playing(
 
     assert outcome.ok is False
     assert handler.queries == []
+    # 查不出专辑名就根本没切过前台：此时按返回键会点掉 Soul 的房间界面。
+    assert handler.pressed_back == 0
 
 
 def test_driver_refuses_an_album_card_that_lost_its_singer_row(
@@ -540,7 +557,8 @@ def test_driver_reports_a_missing_album_play_all_button(
 
     assert outcome.ok is False
     assert handler.queue_reads == 0
-    assert handler.pressed_back == 0
+    # 失败也要收掉盖在搜索结果上的详情页 —— restore 在 finally 里执行。
+    assert handler.pressed_back == 1
 
 
 def test_driver_falls_back_to_singer_and_album_when_the_queue_cannot_be_read(
