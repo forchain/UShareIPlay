@@ -123,7 +123,7 @@ class RowSkin:
         no_pending_result: 没有待写入内容时的对外形状。
         cooldown_result: 冷却没到时的对外形状。
         to_result: 把结局翻译回这一行对外的 dict 形状。
-        settle_attr: 提交后的静默时间取自 manager 的哪个属性（空 = 不等）。
+        settle_seconds: 提交后的静默时间怎么取（None = 不等）。
         probe_keys: 提交后用来判结果的候选（顺序即优先级）。
         probe_outcomes: 命中哪个 key = 什么结局。
         unknown_outcome: 一个都没命中时算什么（话题是成功，房名是失败）。
@@ -167,7 +167,7 @@ class RowSkin:
     cooldown_result: Callable[[Any], Dict[str, Any]]
     to_result: Callable[[Any, WriteResult], Dict[str, Any]]
 
-    settle_attr: str = ''
+    settle_seconds: Optional[Callable[[Any], float]] = None
     probe_keys: Tuple[str, ...] = ()
     probe_outcomes: Dict[str, WriteOutcome] = dc_field(default_factory=dict)
     unknown_outcome: WriteOutcome = WriteOutcome.RENDER_FAILED
@@ -299,7 +299,7 @@ class RowEditor:
                 if skin.after_confirm_log:
                     self._manager.logger.info(skin.after_confirm_log)
 
-                settle = getattr(self._manager, skin.settle_attr, 0) if skin.settle_attr else 0
+                settle = skin.settle_seconds(self._manager) if skin.settle_seconds else 0
                 if settle:
                     time.sleep(settle)
 

@@ -240,7 +240,7 @@ TOPIC_SKIN = RowSkin(
     input_error='Failed to find topic input',
     confirm_key='edit_topic_confirm',
     confirm_error='Failed to find confirm button',
-    settle_attr='topic_settle_seconds',
+    settle_seconds=lambda manager: manager.topic_settle_seconds,
     probe_keys=TOPIC_SUBMIT_PROBE_KEYS,
     probe_outcomes={
         'edit_topic_confirm': WriteOutcome.CONFLICT,
@@ -341,7 +341,7 @@ TITLE_SKIN = RowSkin(
     input_error='Failed to find title input',
     confirm_key=TITLE_CONFIRM_KEY,
     confirm_error='Failed to find confirm button',
-    settle_attr='title_settle_seconds',
+    settle_seconds=lambda manager: manager.title_settle_seconds,
     probe_keys=TITLE_SUBMIT_PROBE_KEYS,
     probe_outcomes={
         TITLE_EDIT_ENTRY_KEY: WriteOutcome.SUCCESS,
@@ -760,6 +760,9 @@ class RoomProfileManager(Singleton):
     def _write_topic_in_drawer(self, topic: str) -> Dict:
         """把话题写进黑板：抽屉会话由 `with_window_open` 独占。
 
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
+
         ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的话题皮肤。这里
         返回的是**这一行的对外形状**（dict），与旧 `TopicManager._update_topic_ui`
         逐字一致。
@@ -923,6 +926,9 @@ class RoomProfileManager(Singleton):
 
     def _write_notice_in_drawer(self, notice: str) -> Dict:
         """把公告写进抽屉：公告入口 -> 自定义 -> 输入 -> 提交 -> 收起公告层。
+
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
 
         ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的公告皮肤。这里
         返回的是**这一行的对外形状**（dict），与旧 `NoticeManager` 逐字一致。
@@ -1421,6 +1427,9 @@ class RoomProfileManager(Singleton):
             return {'skipped': True, 'reason': 'no title to update'}
 
         result = self._flush_row(TITLE_SKIN, title_to_update)
+        # 没写成（冷却 / 别人房间）不是一次 UI 更新：草稿与 pending 原样留着。
+        if 'cooldown' in result or 'skipped' in result:
+            return result
         if 'error' in result:
             return {'error': result['error']}
 
@@ -1429,6 +1438,9 @@ class RoomProfileManager(Singleton):
 
     def _write_title_in_drawer(self, title: str) -> Dict:
         """把 `{theme}｜{title}` 写进抽屉：入口 -> 输入 -> 提交 -> 判结果。
+
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
 
         ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的房名皮肤；房名
         特有的钩子（窗口内的纠偏与公告判定、写成功后的自愈与公告恢复、被拒与

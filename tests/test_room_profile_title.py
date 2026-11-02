@@ -375,6 +375,26 @@ def test_update_title_refuses_to_touch_the_ui_while_the_cooldown_is_running():
     assert profile.drafts.pending("title") == "早安"
 
 
+@pytest.mark.parametrize(
+    "write_result",
+    [
+        {"cooldown": True, "remaining_minutes": 9},
+        {"skipped": True, "reason": "guest_room"},
+    ],
+)
+def test_a_cooldown_or_skip_from_the_write_is_never_reported_as_a_ui_update(
+    monkeypatch, write_result
+):
+    """`_flush_row` 说「没写成」时：原样返回，不清 pending，也不谎报 ui_updated。"""
+    profile = _profile()
+    profile.set_title("晚安")
+    profile.pending_ui_update = True
+    monkeypatch.setattr(profile, "_flush_row", lambda _skin, _text: dict(write_result))
+
+    assert profile.update_title() == write_result
+    assert profile.has_pending_ui_update() is True, "没写成的这一轮不许清 pending"
+
+
 def test_update_title_skips_silently_when_nothing_is_queued():
     driver = _driver()
     profile = _profile(driver)
