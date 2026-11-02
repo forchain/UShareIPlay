@@ -191,6 +191,10 @@ class TimerManager(Singleton):
 
             if timer_data.get('repeat', False):
                 next_trigger = datetime.fromisoformat(timer_data['next_trigger']) + timedelta(days=1)
+                # Skip days missed while the bot was offline instead of firing back-to-back.
+                now = datetime.now()
+                while next_trigger <= now:
+                    next_trigger += timedelta(days=1)
                 timer_data['next_trigger'] = next_trigger.isoformat()
                 await TimerDAO.update_next_trigger(timer_key, next_trigger)
                 self.logger.info(f"Timer {timer_key} scheduled for next day: {next_trigger}")
