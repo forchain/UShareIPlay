@@ -2690,7 +2690,7 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
         ),
     }
 
-    await manager._resolve_usernames(observed, caller_holds_ui_session=False)
+    await manager._resolve_usernames(observed)
 
     old_slots = {k: v.copy() for k, v in manager.seats.items()}
     writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)

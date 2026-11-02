@@ -532,7 +532,9 @@ class AppController(Singleton):
             # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
             # 契约适配层上的 collapse_seats()。
             self.seat_observation_manager = SeatObservationManager.initialize(
-                self.soul_handler, seat_ui=self.seat_manager.subsystem.panel
+                self.soul_handler,
+                seat_ui=self.seat_manager.subsystem.panel,
+                panel_reader=self.seat_manager.subsystem.panel_reader,
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 

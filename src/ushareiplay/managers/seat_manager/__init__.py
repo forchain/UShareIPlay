@@ -1,5 +1,9 @@
 from ushareiplay.managers.seat_manager.base import SeatManagerBase
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from ushareiplay.managers.seat_manager.seat_panel_reader import (
+    Reading,
+    SeatPanelReader,
+)
 from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationGateState,
     SeatObservationManager,
@@ -14,6 +18,17 @@ from ushareiplay.managers.seat_manager.guard import (
     GUEST_ROOM_EMPTY_DESK_RESULT,
 )
 import logging
+
+__all__ = [
+    "SeatManager",
+    "SeatManagerBase",
+    "SeatSubsystem",
+    "Reading",
+    "SeatPanelReader",
+    "SeatObservationGateState",
+    "SeatObservationManager",
+    "SeatRescanCooldownPolicy",
+]
 
 class SeatManager(SeatManagerBase):
     """座位子系统的门面：持有唯一一份实现，公开十个座位命令接口。

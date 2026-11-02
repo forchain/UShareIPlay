@@ -19,6 +19,7 @@ import yaml
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 DESK_RESOURCE_ID = "cn.soulapp.android:id/userRoot"
 SOUL_PACKAGE = "cn.soulapp.android:id"
@@ -55,16 +56,17 @@ MOCK_DESK_HEIGHT = LIVE_DESK_SIZE[1]
 FRAGMENT_DESK_HEIGHT = 18
 
 
-def tap_point(bounds: dict, side: str) -> tuple[int, int]:
-    """头像弹窗的点击落点（与生产同口径）：左座点四分之一处、右座点四分之三处，纵向取中点。
+_FIXTURE_READER = SeatPanelReader()
 
-    生产有三处同一条公式（seat_observation / seat_panel_driver / subsystem），
-    测试侧以前在每个断言里各抄一遍；这里收敛成唯一事实源，公式要改只改这一处。
+
+def tap_point(bounds: dict, side: str) -> tuple[int, int]:
+    """头像弹窗的点击落点（委托给 SeatPanelReader.tap_point）。
+
+    测试侧以前在每个断言里各抄一遍；这里委托给 SeatPanelReader 唯一事实源。
     """
-    w = bounds["width"]
-    h = bounds["height"]
-    x = bounds["x"] + (w // 4 if side == "left" else (3 * w) // 4)
-    return x, bounds["y"] + h // 2
+    pt = _FIXTURE_READER.tap_point(SimpleNamespace(bounds=bounds), side)
+    assert pt is not None
+    return pt
 
 
 def _bounds_str(x1, y1, x2, y2) -> str:
@@ -408,40 +410,25 @@ class FakeSeatObservation:
     与生产的 `SeatObservationManager` 同形的地方：
     - `seats`：座位号 -> `SeatSlot`（缓存座次表）；
     - `sync_current_viewport(band=...)`：这一轮看到了哪些座位、每个座位什么状态；
-    - `read_seat_occupancy(desk, side)`：真机 DOM 的占座证据（独立空桌核验用）。
+    - `panel_reader`：读数器接缝。
     """
 
-    def __init__(self, seats=None, observed=None, owner=None):
+    def __init__(self, seats=None, observed=None, owner=None, panel_reader=None):
         self.seats = seats if seats is not None else {}
         self.observed = observed or {}
         self.owner = owner
         self.bands = []
+        self._panel_reader = panel_reader
+
+    @property
+    def panel_reader(self):
+        if self._panel_reader is None:
+            self._panel_reader = SeatPanelReader()
+        return self._panel_reader
 
     async def sync_current_viewport(self, band=None, page_source=None):
         self.bands.append(band)
         return self.observed
-
-    def read_seat_occupancy(self, desk, side):
-        """这个座位有没有占座证据（真机 DOM 判据）。"""
-        return bool(getattr(desk, "occupied", False))
-
-    def seat_click_position(self, desk, side, seat_number):
-        """这个座位在屏幕上的点击落点（与生产同形：座位元素中心 -> 桌位四分点）。"""
-        seat_element = getattr(desk, "seat_element", None)
-        seat_bounds = getattr(seat_element, "bounds", None) if seat_element else None
-        if seat_bounds and seat_bounds.get("width") and seat_bounds.get("height"):
-            return (
-                seat_bounds["x"] + seat_bounds["width"] // 2,
-                seat_bounds["y"] + seat_bounds["height"] // 2,
-                None,
-            )
-        desk_bounds = getattr(desk, "bounds", None)
-        if not desk_bounds or not desk_bounds.get("width") or not desk_bounds.get("height"):
-            return None, None, f'Could not determine click bounds for seat {seat_number}'
-        width, height = desk_bounds["width"], desk_bounds["height"]
-        x = desk_bounds["x"] + (width // 4 if side == "left" else (3 * width) // 4)
-        y = desk_bounds["y"] + height // 2
-        return x, y, None
 
     def room_owner_nickname(self):
         """观测器认出的房主昵称（读不到就是 None）。"""

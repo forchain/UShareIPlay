@@ -43,6 +43,7 @@ from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_invite_driver import SeatInviteDriver
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 无 handler 时 logger 的回退目标（ADR-0009 第 3 条）。
 _MODULE_LOGGER = logging.getLogger("ushareiplay.seat_subsystem")
@@ -131,8 +132,10 @@ class SeatSubsystem:
         observation=None,
         seat_ui=None,
         invite_driver=None,
+        panel_reader=None,
     ):
         self._handler = handler
+        self._panel_reader = panel_reader
         self._panel_driver = panel_driver
         self._observation = observation
         self._message_dispatch = None
@@ -160,10 +163,21 @@ class SeatSubsystem:
     @handler.setter
     def handler(self, value):
         self._handler = value
+        if self._panel_reader is not None:
+            self._panel_reader.handler = value
         if self._panel_driver is not None:
             self._panel_driver.handler = value
         if self._invite_driver is not None:
             self._invite_driver.handler = value
+
+    @property
+    def panel_reader(self) -> SeatPanelReader:
+        """座位面板的唯一读数器与 UI 锁门面。"""
+        if self._panel_reader is None:
+            self._panel_reader = SeatPanelReader(self.handler)
+        elif self.handler and self._panel_reader.handler is not self.handler:
+            self._panel_reader.handler = self.handler
+        return self._panel_reader
 
     @property
     def panel_driver(self) -> SeatPanelDriver:
@@ -172,7 +186,9 @@ class SeatSubsystem:
         构造注入优先，缺省时按需自建并缓存。驱动刻意不是单例（它没有全局状态）。
         """
         if self._panel_driver is None:
-            self._panel_driver = SeatPanelDriver(self.handler)
+            self._panel_driver = SeatPanelDriver(self.handler, panel_reader=self.panel_reader)
+        elif getattr(self._panel_driver, "_panel_reader", None) is None:
+            self._panel_driver._panel_reader = self.panel_reader
         return self._panel_driver
 
     @property
@@ -227,20 +243,8 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     @asynccontextmanager
     async def _ui_session(self, reason: str):
-        """独占 UI 执行权，契约与 SeatPanelDriver.ui_session 一致。
-
-        展开座位面板、滚动、点头像弹窗、点「请下麦」全程会改页面结构。若不持锁，
-        EventManager 的兜底 press_back 会在这些 await 点把弹窗当成未知页面关掉，
-        手里那个 seat_off 句柄随之失效（StaleElementReferenceException）。
-
-        controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
-        契约时直接抛错，而不是静默裸奔。
-        """
-        ctrl = getattr(self.handler, "controller", None) if self.handler else None
-        if ctrl is None:
-            yield
-            return
-        async with ctrl.ui_session(reason):
+        """独占 UI 执行权，委托给 reader.session。"""
+        async with self.panel_reader.session(reason):
             yield
 
     def configure_runtime(self, runtime):
@@ -250,17 +254,6 @@ class SeatSubsystem:
         `configure_runtime` 进入（ADR-0009 第 3 条）。
         """
         self._runtime = runtime
-
-    def _ui_is_busy(self) -> bool:
-        """有没有别的流程正在驱动屏幕（UI 锁被持有）。
-
-        走 `EventRuntimeContext.is_ui_busy()` —— 与 EventManager 读的是同一把锁。
-        没注入运行期上下文（单元测试）时按「没人驱动屏幕」处理，与
-        `BaseEvent.is_ui_busy` 同一套约定。
-        """
-        if self._runtime is None:
-            return False
-        return self._runtime.is_ui_busy()
 
     # ------------------------------------------------------------------
     # 面板
@@ -283,19 +276,19 @@ class SeatSubsystem:
     async def prepare_for_chat_scan(self) -> bool:
         """聊天历史扫描前把座位面板收回原状。
 
-        持锁的流程拥有座位面板：锁被持有时（别人正在驱动屏幕）不许把面板收起。
-        座位面板是 RecyclerView，视口一收（513px → 290px）第三排立刻被回收，
-        正在重扫桌位的座位流程会只数到 4 张而不是 6 张，整条座位命令失败
-        （真机 10-23 11:42:52：found 4 desks, expected 6）。
+        进入 reader.session("prepare_for_chat_scan", skip_if_busy=True)：
+        - 若 yield False（UI 锁被其他流程持有），不打扰正在驱动屏幕的流程，直接返回 True；
+        - 若 yield True（成功持锁），在锁内原子性地读取 check_seats_state() 并在需要时收起面板。
         """
-        if self._ui_is_busy():
-            self.logger.debug("UI 锁被持有，座位面板归持锁流程所有，本次聊天扫描不收起面板")
-            return True
+        async with self.panel_reader.session("prepare_for_chat_scan", skip_if_busy=True) as held:
+            if not held:
+                self.logger.debug("UI 锁被持有，座位面板归持锁流程所有，本次聊天扫描不收起面板")
+                return True
 
-        is_expanded = self.check_seats_state()
-        if is_expanded:
-            return await self.collapse_seats()
-        return True
+            is_expanded = self.check_seats_state()
+            if is_expanded:
+                return await self.collapse_seats()
+            return True
 
     # ------------------------------------------------------------------
     # 预约数据（ReservationManager 合并进来）
@@ -807,12 +800,11 @@ class SeatSubsystem:
             # 它同样不该点击，但不能谎报成「有人占座」。
             return _SeatClickPlan(reason="unjudgable", desk_index=desk_index, side=side)
 
-        # 目标为空座，通过 page_source 导出的坐标点击
-        click_x, click_y, bounds_error = obs.seat_click_position(
-            desk, side, seat_number
-        )
-        if bounds_error:
+        # 目标为空座，通过 reader 导出的坐标点击
+        point = self.panel_reader.where(desk, side)
+        if point is None:
             return _SeatClickPlan(reason="no_bounds", desk_index=desk_index, side=side)
+        click_x, click_y = point
 
         gesture = getattr(self.handler, "gesture_handler", None)
         if not gesture or not hasattr(gesture, "click_at"):
@@ -953,7 +945,7 @@ class SeatSubsystem:
         只要一侧有人，这张桌就不算独立（社恐排除）。
 
         候选桌来自 `SeatObservationManager` 的缓存座次表（快，但可能滞后），每一张
-        候选桌都要滚进视口、用真机 DOM 证据（观测器的 `read_seat_occupancy`）复核：
+        候选桌都要滚进视口、用真机 DOM 证据（`SeatPanelReader` 的 `read`）复核：
         现场发现有人就换下一张候选桌；现场读不出证据的座位一律不算「核验通过」——
         没核验过的空桌不能当成空桌。
 
@@ -1038,9 +1030,10 @@ class SeatSubsystem:
                 # 这个座位不在本轮视口读数里：核验不通过（读不到 ≠ 空）。
                 return (False, False)
             desk, seat_side, info = entry
-            if obs.read_seat_occupancy(desk, seat_side or side):
+            reading = self.panel_reader.read(desk, seat_side or side, seat_number=seat_number)
+            if reading.occupied:
                 return (False, True)
-            if not info.get("is_empty"):
+            if not reading.is_empty:
                 return (False, False)
         return (True, False)
 
@@ -1334,31 +1327,29 @@ class SeatSubsystem:
         return None
 
     def _collect_desk_info(self, desk):
-        left_seat = self.handler.element_finder.find_child_element(desk, 'left_seat', log_failure=False)
-        right_seat = self.handler.element_finder.find_child_element(desk, 'right_seat', log_failure=False)
-        left_state = self.handler.element_finder.find_child_element(desk, 'left_state', log_failure=False)
-        right_state = self.handler.element_finder.find_child_element(desk, 'right_state', log_failure=False)
-        left_label_element = self.handler.element_finder.find_child_element(desk, 'left_label', log_failure=False)
-        right_label_element = self.handler.element_finder.find_child_element(desk, 'right_label', log_failure=False)
+        left_reading = self.panel_reader.read(desk, "left")
+        right_reading = self.panel_reader.read(desk, "right")
+        left_seat = self.panel_reader.find_child_element(desk, "left_seat")
+        right_seat = self.panel_reader.find_child_element(desk, "right_seat")
 
-        left_label = left_label_element.text if left_label_element else ''
-        right_label = right_label_element.text if right_label_element else ''
+        left_label = left_reading.label
+        right_label = right_reading.label
 
         return {
-            'left': {
-                'element': left_seat,
-                'occupied': bool(left_state),
-                'label': left_label,
-                'is_owner': left_label == '群主',
-                'side': 'left'
+            "left": {
+                "element": left_seat,
+                "occupied": left_reading.occupied,
+                "label": left_label,
+                "is_owner": left_label == "群主",
+                "side": "left",
             },
-            'right': {
-                'element': right_seat,
-                'occupied': bool(right_state),
-                'label': right_label,
-                'is_owner': right_label == '群主',
-                'side': 'right'
-            }
+            "right": {
+                "element": right_seat,
+                "occupied": right_reading.occupied,
+                "label": right_label,
+                "is_owner": right_label == "群主",
+                "side": "right",
+            },
         }
 
     def _select_companion_candidate(self, desk_info):
