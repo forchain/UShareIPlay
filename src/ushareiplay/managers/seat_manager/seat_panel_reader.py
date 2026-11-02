@@ -9,11 +9,11 @@ from ushareiplay.core.element_wrapper import ElementWrapper
 
 @dataclass(frozen=True)
 class Reading:
-    """单个麦位的 DOM 读数与判定结果。
+    """单个座位的 DOM 读数与判定结果。
 
     三态语义：
     - `occupied`：存在明确的占座证据（多图头像、ClState、RankView、非空非纯数字昵称）；
-    - `is_empty`：无占座证据且存在明确的空座证据（TvDefaultName、空座文案、匹配的麦位数字、恰好一张头像图）；
+    - `is_empty`：无占座证据且存在明确的空座证据（TvDefaultName、空座文案、匹配的座位编号、恰好一张头像图）；
     - `readable`：`occupied or is_empty`，两者皆假表示「看不见 / 缺证据 / 无法判定」，绝不可等同于空座。
     """
 
@@ -53,7 +53,7 @@ class SeatPanelReader:
 
     集中管理：
     1. 占座与空座的 DOM 证据判定（唯一占座判据，三态 Reading）；
-    2. 桌位与麦位的几何计算（屏幕点击落点与头像弹窗落点）；
+    2. 桌位与座位的几何计算（屏幕点击落点与头像弹窗落点）；
     3. UI 会话租赁与重入控制（ui_session / holds_session / busy_elsewhere / can_probe_ui）。
     """
 
