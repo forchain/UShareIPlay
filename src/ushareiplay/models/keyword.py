@@ -6,8 +6,8 @@ class Keyword(Model):
     MODE_SEQUENCE = "sequence"
     MODE_RANDOM = "random"
 
-    id = fields.IntField(pk=True)
-    keyword = fields.CharField(max_length=255, index=True)
+    id = fields.IntField(primary_key=True)
+    keyword = fields.CharField(max_length=255, db_index=True)
     command = fields.TextField()  # 支持多条命令用 ; 分隔
     mode = fields.CharField(max_length=32, default=MODE_SEQUENCE)  # sequence=顺序执行，random=随机执行一条
     creator = fields.ForeignKeyField('models.User', related_name='keywords', null=True)

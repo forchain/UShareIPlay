@@ -8,7 +8,7 @@ _json_dumps_utf8 = partial(json.dumps, ensure_ascii=False, separators=(',', ':')
 
 
 class UserMemory(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     user = fields.OneToOneField('models.User', related_name='memory')
     immutable_directives = fields.JSONField(
         default=list,

@@ -3,7 +3,7 @@ from tortoise.models import Model
 from ushareiplay.models.user import User
 
 class SeatReservation(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(primary_key=True)
     user = fields.ForeignKeyField('models.User', related_name='reservations')
     seat_number = fields.IntField()
     start_time = fields.DatetimeField()
