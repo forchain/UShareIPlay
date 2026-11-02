@@ -24,16 +24,18 @@ from typing import Any, Optional
 class PendingWrite:
     """一个待写入值的冷却与重试状态机。
 
-    调用方的典型用法（见 RoomProfileManager.update_topic / update_notice）：
+    调用方的典型用法（见 RoomProfileManager._flush_row —— 话题 / 公告 / 房名
+    三条纵切共用的那一条记账路径）：
 
-        if not write.can_apply_now():
-            return {'cooldown': True, 'remaining_minutes': write.remaining_minutes()}
-        result = self._write_ui(write.pending)
-        if 'skipped' in result:
-            return result               # 没写成就别记账：草稿与预算都留着
-        write.mark_attempted()          # 真的写过了，无论成败都推进时钟
-        if 'success' in result:
-            write.clear()               # 成功才清空待写入值
+        outcome = write_row(text)          # 抽屉行编辑器：一次写入的结局
+        if outcome.outcome is WriteOutcome.SKIPPED:
+            return                        # 没写成就别记账：草稿与预算都留着
+        write.mark_attempted()            # 真的写过了，无论成败都推进时钟
+        if outcome.outcome is WriteOutcome.SUCCESS:
+            write.clear()                 # 成功才清空待写入值
+
+    结局是一个枚举（`WriteOutcome.SUCCESS` / `CONFLICT` / `RENDER_FAILED` /
+    `SKIPPED`），不是一堆要挨个试探的 dict 键 —— 调用方分支这一个枚举就够了。
     """
 
     def __init__(self, cooldown_minutes: int, label: str = ""):
@@ -73,10 +75,11 @@ class PendingWrite:
         循环变成紧循环重试 —— 因此时钟必须在对它再次发起尝试**之前**推进。
         在这一点上，调用点有两种合法顺序（都是既有的、有意的，别顺手统一）：
 
-        - UI 调用自己把异常收敛成 `{'error': ...}` 时：调用**之后**推进
-          （房间名、公告），读起来就是「无论成败都要推进」。
-        - UI 调用可能抛出时：**先**推进再调用（话题）—— 抛出也算一次尝试，
-          不能因为异常就跳过整个冷却周期。
+        - UI 调用自己把异常收敛成一个结局时：调用**之后**推进（房间名、公告、
+          话题三条纵切现在都是这一种 —— 它们共用 `_flush_row` 那一条记账路径），
+          读起来就是「无论成败都要推进」。
+        - UI 调用可能抛出时：**先**推进再调用 —— 抛出也算一次尝试，不能因为
+          异常就跳过整个冷却周期。
         """
         self.last_attempt_at = now or datetime.now()
 

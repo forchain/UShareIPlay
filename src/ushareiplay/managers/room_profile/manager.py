@@ -24,7 +24,6 @@ async 会打断剩下的同步调用点（`party_manager` 等），因此不做�
 
 import asyncio
 import logging
-import time
 import traceback
 from datetime import datetime, timedelta
 from contextlib import contextmanager
@@ -44,6 +43,13 @@ from ushareiplay.managers.room_profile.party_settings import (
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
+)
+from ushareiplay.managers.room_profile.row_editor import (
+    RowEditor,
+    RowSkin,
+    RowStep,
+    WriteOutcome,
+    WriteResult,
 )
 from ushareiplay.state.room_state import RoomState
 
@@ -102,6 +108,274 @@ ROOM_TYPE_OPTION_KEY = 'party_room_type_option'
 CHAT_PARTY_TYPE_TEXT = '闲聊唠嗑'
 #: 二级弹窗里的目标类型 key 来自 config（沿用既有配置项，不新造）。
 DEFAULT_TARGET_PARTY_TYPE_KEY = 'party_type_singing'
+
+
+# --------------------------------------------------------------------------
+# 三行抽屉的皮肤
+# --------------------------------------------------------------------------
+#
+# 话题 / 公告 / 房名各自只有**一条**常量：怎么走进这一行的编辑层、输入框与
+# 确认键是谁、提交后用哪几个元素判结果、对外长什么样。原先三行各写了一遍
+# ritual（#489），新增第四个抽屉字段 = 加一条这样的常量，不必再抄一遍。
+#
+# 「对外形状」是**逐字冻结**的：三条路历史上的返回 dict 本来就长得不一样
+# （话题跳过是 `{'skipped': 'guest_room'}`，公告与房名是
+# `{'skipped': True, 'reason': 'guest_room'}`；话题成功是
+# `{'success': True, 'topic': …}`，公告成功是
+# `{'success': 'Notice restored to: …'}`），命令层与 config.yaml 的响应模板
+# 依赖它们，因此这里逐字保留，**不**顺手统一（统一措辞是另一次改动）。
+
+
+def _topic_result(_manager, result: WriteResult) -> Dict:
+    """话题这一次写入的对外形状（与旧的 `TopicManager` 逐字一致）。"""
+    if result.outcome is WriteOutcome.SUCCESS:
+        return {'success': True, 'topic': result.text}
+    if result.outcome is WriteOutcome.SKIPPED:
+        return {'skipped': result.reason}
+    return {'error': result.reason}
+
+
+def _notice_result(_manager, result: WriteResult) -> Dict:
+    """公告这一次写入的对外形状（与旧的 `NoticeManager` 逐字一致）。"""
+    if result.outcome is WriteOutcome.SUCCESS:
+        return {'success': f'Notice restored to: {result.text}'}
+    if result.outcome is WriteOutcome.SKIPPED:
+        return {'skipped': True, 'reason': result.reason}
+    return {'error': result.reason}
+
+
+def _title_result(_manager, result: WriteResult) -> Dict:
+    """房名这一次写入的对外形状。
+
+    `update_title` 把它翻译成 `{'ui_updated': True, 'current_title': …}`；
+    写 UI 这一层自己仍然报 `{'success': True}`（既有调用点依赖它）。
+    """
+    if result.outcome is WriteOutcome.SUCCESS:
+        return {'success': True}
+    if result.outcome is WriteOutcome.SKIPPED:
+        return {'skipped': True, 'reason': result.reason}
+    return {'error': result.reason}
+
+
+def _skipped_cooldown(_manager) -> Dict:
+    """话题与公告在冷却中时的对外形状（静默跳过，不打日志）。"""
+    return {'skipped': 'cooldown'}
+
+
+def _title_cooldown(manager) -> Dict:
+    """房名在冷却中时的对外形状（报字段预算与抽屉表面里更晚的那一个）。"""
+    return {
+        'cooldown': True,
+        'remaining_minutes': manager.get_remaining_cooldown_minutes(),
+    }
+
+
+def _topic_after_success(manager, text: str) -> None:
+    """话题写成功：记住已经写进黑板的那一条。"""
+    manager.current_topic = text
+    manager.logger.info(f'Topic updated successfully to: {text}')
+
+
+def _notice_after_success(manager, text: str) -> None:
+    """公告写成功。"""
+    manager.logger.info(f'成功设置notice: {text}')
+
+
+def _title_before_write(manager, _text: str) -> None:
+    """房名写入前的窗口内准备。
+
+    窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑房名。房名
+    变更会把公告冲掉，因此写之前先判定并记下上一条。
+    """
+    manager.sync_while_open()
+    notice_check_result = manager._detect_notice_reset()
+    if 'error' in notice_check_result:
+        manager.logger.warning(f"Notice check failed: {notice_check_result['error']}")
+    elif 'detected' in notice_check_result:
+        manager.logger.info("System notice reset detected, will restore after title update")
+
+
+def _title_after_success(manager, text: str) -> None:
+    """房名写成功之后的收尾。
+
+    先清掉刚写成功的那条，再按需排队自愈用的默认标题 —— **顺序不能换**：
+    审核自愈排在清空之后，它排进去的默认标题才不会被随后的清空吃掉。
+    """
+    manager.current_title = manager.drafts.pending('title') or text
+    manager.logger.info(f'Updated current title to: {manager.current_title}')
+    manager.drafts.clear('title')
+    manager._recover_from_moderation_loss()
+    manager._restore_notice_if_needed()
+
+
+def _title_after_conflict(manager, _text: str) -> None:
+    """提交被拒：先恢复被冲掉的公告，再清掉恢复意图（不许漏进下一次写入）。"""
+    manager._restore_notice_if_needed()
+    manager._clear_notice_restore()
+
+
+def _title_after_failure(manager, _text: str) -> None:
+    """提交过了但结果认不出来（或 UI 层抛了异常）：恢复意图就此作废。
+
+    入口 / 输入框 / 确认键找不到时这次写入根本没开始，恢复意图留着 —— 下一次
+    写房名会重新判定公告有没有被冲掉。
+    """
+    manager._clear_notice_restore()
+
+
+#: 话题那一行：入口 -> 编辑层（两种皮肤）-> 输入 -> 提交 -> 判结果。
+TOPIC_SKIN = RowSkin(
+    field='topic',
+    drawer_entry_keys=TOPIC_ENTRY_KEYS,
+    open_error='Failed to find room topic',
+    entry_steps=(
+        RowStep(
+            action='wait_any_click',
+            keys=TOPIC_EDIT_ENTRY_KEYS,
+            timeout=5,
+            error='Failed to find edit topic entry',
+        ),
+    ),
+    input_key='edit_topic_input',
+    input_error='Failed to find topic input',
+    confirm_key='edit_topic_confirm',
+    confirm_error='Failed to find confirm button',
+    settle_seconds=lambda manager: manager.topic_settle_seconds,
+    probe_keys=TOPIC_SUBMIT_PROBE_KEYS,
+    probe_outcomes={
+        'edit_topic_confirm': WriteOutcome.CONFLICT,
+        'input_box_entry': WriteOutcome.SUCCESS,
+    },
+    # 话题那条路对认不出来的屏幕是宽容的：打个告警，仍然算写成功（既有行为）。
+    unknown_outcome=WriteOutcome.SUCCESS,
+    conflict_error='update topic too frequently',
+    conflict_log='Update topic too frequently, hide edit topic dialog',
+    # 话题没有自己的「收掉编辑层」按钮：被拒之后编辑层由抽屉会话自己的收尾
+    # 阶梯带走（与既有行为一致）。
+    conflict_close_key=None,
+    exception_log='Error changing topic: {traceback}',
+    exception_error='Failed to update topic: {text}',
+    after_success=_topic_after_success,
+    guard_log='In guest room, skip topic UI update',
+    no_pending_result={'skipped': 'no_pending_topic'},
+    cooldown_result=_skipped_cooldown,
+    to_result=_topic_result,
+    attempt_log='Attempting to update topic to {text}',
+    flush_success_log='Topic updated successfully to: {text}',
+    failure_log='Failed to update topic: {reason}. Will retry in {minutes} minute(s).',
+    announce=lambda manager, text: manager._announce_topic(text),
+)
+
+#: 公告那一行：入口 -> 等公告层弹出 -> 自定义（两种皮肤）-> 输入 -> 提交 -> 收层。
+NOTICE_SKIN = RowSkin(
+    field='notice',
+    drawer_entry_keys=DEFAULT_ENTRY_KEYS,
+    open_error='Failed to open room info window',
+    entry_steps=(
+        RowStep(
+            action='click',
+            key=NOTICE_EDIT_ENTRY_KEY,
+            error='Failed to find edit notice entry',
+            log='点击了编辑notice入口',
+        ),
+        # 公告编辑层弹出后一定有「关闭公告」按钮；没有说明弹的不是这一层。
+        RowStep(
+            action='wait_marker',
+            key=NOTICE_CLOSE_KEY,
+            error='Close notice not found',
+        ),
+        RowStep(
+            action='wait_any_click',
+            keys=NOTICE_CUSTOMIZE_ENTRY_KEYS,
+            error='Failed to find customize notice button',
+            # 底部抽屉挡住了「自定义」：先把公告层点掉，不能留在屏幕上。
+            close_on_missing=NOTICE_CLOSE_KEY,
+            missing_log=(
+                'Bottom drawer is open, notice customization is disabled, hiding...'
+            ),
+            log='点击了自定义按钮 {key}',
+        ),
+    ),
+    input_key=NOTICE_INPUT_KEY,
+    input_error='Failed to find notice input',
+    confirm_key=NOTICE_CONFIRM_KEY,
+    confirm_error='Failed to find confirm button',
+    # 公告没有探测：点完确认就收起公告层。
+    probe_keys=(),
+    unknown_outcome=WriteOutcome.SUCCESS,
+    close_after_confirm=NOTICE_CLOSE_KEY,
+    write_log='准备设置notice: {text}',
+    after_type_log='输入了notice内容: {text}',
+    after_confirm_log='点击了确认按钮',
+    after_close_log='隐藏notice设置对话框',
+    exception_log='设置notice时出错: {traceback}',
+    exception_error='Failed to update notice to {text}',
+    after_success=_notice_after_success,
+    guard_log='Skipping notice update in guest room',
+    restore_guard_log='Skipping notice restore in guest room',
+    no_pending_result={'skipped': 'no_pending_notice'},
+    cooldown_result=_skipped_cooldown,
+    to_result=_notice_result,
+    attempt_log='Attempting to set notice to: {text}',
+    flush_success_log='Notice set successfully: {text}',
+    failure_log='Failed to set notice: {reason}. Will retry in {minutes} minute(s).',
+    announce=lambda manager, text: manager._announce_notice(text),
+)
+
+#: 房名那一行：入口（点在元素上缘）-> 输入 -> 提交 -> 判结果。
+TITLE_SKIN = RowSkin(
+    field='title',
+    drawer_entry_keys=DEFAULT_ENTRY_KEYS,
+    open_error='Failed to find room title',
+    entry_steps=(
+        # 标题编辑入口必须点元素上缘（0.25 高度）而不是中心 —— 那是随主题
+        # 功能一起上线的既有手势，退化成中心点击就是一次没人要求过的行为变更。
+        RowStep(
+            action='click_at',
+            key=TITLE_EDIT_ENTRY_KEY,
+            y_ratio=TITLE_ENTRY_Y_RATIO,
+            error='Failed to find edit title entry',
+        ),
+    ),
+    input_key=TITLE_INPUT_KEY,
+    input_error='Failed to find title input',
+    confirm_key=TITLE_CONFIRM_KEY,
+    confirm_error='Failed to find confirm button',
+    settle_seconds=lambda manager: manager.title_settle_seconds,
+    probe_keys=TITLE_SUBMIT_PROBE_KEYS,
+    probe_outcomes={
+        TITLE_EDIT_ENTRY_KEY: WriteOutcome.SUCCESS,
+        TITLE_CONFIRM_KEY: WriteOutcome.CONFLICT,
+    },
+    # 房名那条路对认不出来的屏幕是严格的：它是失败（既有行为）。
+    unknown_outcome=WriteOutcome.RENDER_FAILED,
+    unknown_error='Failed to update title, unknown error',
+    conflict_error='Update failed - still in cooldown period',
+    conflict_log='Update title too frequently, hide edit title dialog',
+    # 被拒时编辑层还开着，而抽屉会话还要留着（要把公告补回去），因此这里
+    # 显式收掉编辑层。
+    conflict_close_key=TITLE_CLOSE_KEY,
+    before_type_log='Updating room title: {text}',
+    exception_log='Error in title update: {traceback}',
+    exception_error='Failed to update title: {text}',
+    compose=lambda manager, text: manager.compose_room_title(text),
+    before_write=_title_before_write,
+    after_success=_title_after_success,
+    after_conflict=_title_after_conflict,
+    after_failure=_title_after_failure,
+    guard_log='Skipping room title UI update in guest room',
+    no_pending_result={'skipped': True, 'reason': 'no pending update'},
+    cooldown_result=_title_cooldown,
+    to_result=_title_result,
+    # 房名这条路上原本就没有「开始写了」这一句，也不往公屏播报。
+    attempt_log='',
+    flush_success_log='',
+    failure_log='Failed to update title: {reason}. Will retry in {minutes} minute(s).',
+    announce=None,
+    # 房名的清空必须与审核自愈连在一起做（先清空、再排队默认标题），因此
+    # 清空留在房名自己的成功钩子里，共享的记账路径不重复清。
+    clear_draft_on_success=False,
+)
 
 
 class RoomProfileManager(Singleton):
@@ -304,6 +578,82 @@ class RoomProfileManager(Singleton):
         return driver
 
     # ------------------------------------------------------------------
+    # 抽屉行编辑器：三条写 UI 的纵切共用同一个 ritual
+    # ------------------------------------------------------------------
+    #
+    # 话题 / 公告 / 房名在抽屉里各占一行，各有各的「怎么走进编辑层」，但
+    # 「打开编辑层 → 写入 → 提交 → 等落地 → 判结果 → 收尾」是同一段 ritual。
+    # #489 把那一段收成了抽屉行编辑器（`row_editor`），这里只剩三样东西：
+    #
+    # - 皮肤（`TOPIC_SKIN` / `NOTICE_SKIN` / `TITLE_SKIN`）：一行抽屉的全部数据；
+    # - `_edit_row`：写一行，返回唯一的结局类型；
+    # - `_flush_row`：三个心跳共用的记账路径。
+    #
+    # 抽屉会话仍然只由本模块拥有（ADR-0001）：编辑器的 `with_window_open` 就是
+    # 本模块的那一个，调用方不必知道锁与会话的事。
+
+    def _row_editor(self) -> RowEditor:
+        """抽屉行编辑器。它只做物理动作；记账与对外形状仍归本模块。"""
+        return RowEditor(self)
+
+    def _edit_row(self, skin: RowSkin, text: str) -> WriteResult:
+        """写一行抽屉，返回唯一的结局类型。
+
+        Args:
+            skin: 这一行的皮肤（话题 / 公告 / 房名）。
+            text: 这一次要写进去的文字（房名写进去的是 `{theme}｜{title}`）。
+        """
+        return self._row_editor().edit_row(skin, text)
+
+    def _flush_row(self, skin: RowSkin, text: str) -> Dict:
+        """三个心跳共用的记账路径。
+
+        「没写就别记账；写成了清草稿并播报；写砸了留着草稿等下个冷却」只有
+        这一份，三个字段共享，因此不可能有哪个字段忘了 `mark_attempted` 或者
+        把「跳过」当成「写成功了」。
+
+        Args:
+            skin: 这一行的皮肤（字段名、对外形状、日志文案都在里面）。
+            text: 这一次要写进去的文字。
+        """
+        # 表面正热就别去开这个头：一次被拒要罚一整个字段周期，多等 60 秒买得到。
+        if not self.drafts.can_start_write(skin.field):
+            return skin.cooldown_result(self)
+
+        if skin.attempt_log:
+            self.logger.info(skin.attempt_log.format(text=text))
+
+        outcome = self._edit_row(skin, text)
+
+        if outcome.outcome is WriteOutcome.SKIPPED:
+            # 没写就别记账：别人房间里一个点击都没发生，草稿留着、预算留着，
+            # 等真的能写的那一轮再算。写成「跳过之后照样 mark_attempted」会让
+            # 一条用户明确要求的变更静静排队 5/10/15 分钟，还往公屏播报一条
+            # 根本没发生过的变更。
+            return skin.to_result(self, outcome)
+
+        # UI 调用自己把异常收敛成结局，因此「先写再推进」。
+        self.drafts.mark_attempted(skin.field)
+
+        if outcome.outcome is WriteOutcome.SUCCESS:
+            if skin.clear_draft_on_success:
+                self.drafts.clear(skin.field)
+            if skin.flush_success_log:
+                self.logger.info(skin.flush_success_log.format(text=text))
+            if skin.announce is not None:
+                skin.announce(self, text)
+        else:
+            # 失败：保留排队的内容，等下一次冷却到期后重试
+            self.logger.warning(
+                skin.failure_log.format(
+                    reason=outcome.reason,
+                    minutes=self.drafts.cooldown_minutes(skin.field),
+                )
+            )
+
+        return skin.to_result(self, outcome)
+
+    # ------------------------------------------------------------------
     # 字段草稿：排队 -> 冷却 -> 写 UI
     # ------------------------------------------------------------------
     #
@@ -391,7 +741,7 @@ class RoomProfileManager(Singleton):
     def update_topic(self) -> Dict:
         """心跳：冷却到期且有排队话题时，把它写进黑板。
 
-        两条提前返回都不打日志 —— 这是被 `:topic` 的定时轮询反复走到的分支，
+        提前返回都不打日志 —— 这是被 `:topic` 的定时轮询反复走到的分支，
         按 AGENTS.md 的日志铁律，刷屏属于缺陷而不是信息。
 
         `skipped`（别人房间）**不是**一次失败的尝试：那个房间里一个点击都没发生，
@@ -403,98 +753,31 @@ class RoomProfileManager(Singleton):
         """
         topic = self.drafts.pending('topic')
         if not topic:
-            return {'skipped': 'no_pending_topic'}
+            return dict(TOPIC_SKIN.no_pending_result)
 
-        # 表面正热就别去开这个头：一次被拒要罚一整个字段周期，多等 60 秒买得到。
-        if not self.drafts.can_start_write('topic'):
-            return {'skipped': 'cooldown'}
-
-        self.logger.info(f'Attempting to update topic to {topic}')
-        result = self._write_topic_in_drawer(topic)
-
-        if 'skipped' in result:
-            # 没写就别记账：别人房间里一个点击都没发生，草稿留着、预算留着，
-            # 等真的能写的那一轮再算。写成「跳过之后照样 mark_attempted」会让一条
-            # 用户明确要求的话题静静排队 5 分钟，还往公屏播报一条没发生过的变更。
-            return result
-
-        # UI 调用自己把异常收敛成 {'error': ...}，因此「先写再推进」。
-        self.drafts.mark_attempted('topic')
-
-        if 'success' in result:
-            # 成功：清空排队的话题
-            self.current_topic = topic
-            self.drafts.clear('topic')
-            self.logger.info(f'Topic updated successfully to: {self.current_topic}')
-            self._announce_topic(self.current_topic)
-        else:
-            # 失败：保留排队的话题，等下一次冷却到期后重试
-            self.logger.warning(
-                f'Failed to update topic: {result.get("error")}. '
-                f'Will retry in {self.drafts.cooldown_minutes("topic")} minute(s).'
-            )
-
-        return result
+        return self._flush_row(TOPIC_SKIN, topic)
 
     def _write_topic_in_drawer(self, topic: str) -> Dict:
         """把话题写进黑板：抽屉会话由 `with_window_open` 独占。
 
-        与旧 `TopicManager._update_topic_ui` 相比只改一件事：收尾不再盲按
-        `press_back()`。旧实现在成功、失败、风险提示三条路上分别连按 3 / 2 / 3
-        次返回键；按多了会直接退出派对房间（spec 用户故事 #12）。现在统一由
-        `with_window_open` 的 `finally` 走 `ensure_closed()` 阶梯：自己没有打开
-        抽屉就一次都不按；自己打开的就先点遮罩关；只有遮罩关不掉才退化为一次
-        保底返回键。
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
+
+        ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的话题皮肤。这里
+        返回的是**这一行的对外形状**（dict），与旧 `TopicManager._update_topic_ui`
+        逐字一致。
+
+        与旧实现相比只改一件事：收尾不再盲按 `press_back()`。旧实现在成功、
+        失败、风险提示三条路上分别连按 3 / 2 / 3 次返回键；按多了会直接退出
+        派对房间（spec 用户故事 #12）。现在统一由 `with_window_open` 的
+        `finally` 走 `ensure_closed()` 阶梯：自己没有打开抽屉就一次都不按；
+        自己打开的就先点遮罩关；只有遮罩关不掉才退化为一次保底返回键。
 
         Returns:
             `{'success': True, 'topic': topic}`，或带 `error` 的 dict。异常一律
             转成 error dict —— 走 `update_topic` 的失败分支保留草稿重试。
         """
-        try:
-            if RoomState.in_guest_room():
-                self.logger.info("In guest room, skip topic UI update")
-                return {'skipped': 'guest_room'}
-
-            with self.with_window_open(
-                TOPIC_ENTRY_KEYS, 'Failed to find room topic'
-            ) as open_error:
-                if open_error:
-                    return open_error
-
-                driver = self._require_driver()
-
-                # 黑板/抽屉里的「自定义话题」入口（两种皮肤）
-                entry_key = driver.wait_for_any(TOPIC_EDIT_ENTRY_KEYS, timeout=5)
-                if entry_key is None:
-                    return {'error': 'Failed to find edit topic entry'}
-                driver.click_element(entry_key)
-
-                # 输入新话题
-                if not driver.replace_text('edit_topic_input', topic):
-                    return {'error': 'Failed to find topic input'}
-
-                # 点击确认
-                if not driver.click_element('edit_topic_confirm'):
-                    return {'error': 'Failed to find confirm button'}
-
-                # 等待提交落地
-                if self.topic_settle_seconds:
-                    time.sleep(self.topic_settle_seconds)
-
-                probe = driver.wait_for_any(TOPIC_SUBMIT_PROBE_KEYS)
-                if probe == 'edit_topic_confirm':
-                    self.logger.warning('Update topic too frequently, hide edit topic dialog')
-                    return {'error': 'update topic too frequently'}
-                if probe == 'input_box_entry':
-                    self.logger.info(f'Topic updated successfully to: {topic}')
-                else:
-                    self.logger.warning(f'Unknown key: {probe}')
-
-                return {'success': True, 'topic': topic}
-
-        except Exception:
-            self.logger.error(f"Error changing topic: {traceback.format_exc()}")
-            return {'error': f'Failed to update topic: {topic}'}
+        return TOPIC_SKIN.to_result(self, self._edit_row(TOPIC_SKIN, topic))
 
     def _announce_to_screen(self, message: str, *, what: str) -> None:
         """往公屏发一条；未初始化或发送失败都只记日志，不影响调用方的结果。
@@ -579,7 +862,7 @@ class RoomProfileManager(Singleton):
     def update_notice(self) -> Dict:
         """心跳：冷却到期且有排队公告时，把它写进房间信息抽屉。
 
-        两条提前返回都不打日志 —— 这是被 `:notice` 的定时轮询反复走到的分支，
+        提前返回都不打日志 —— 这是被 `:notice` 的定时轮询反复走到的分支，
         按 AGENTS.md 的日志铁律，刷屏属于缺陷而不是信息。
 
         `skipped`（别人房间）**不是**一次失败的尝试：那个房间里一个点击都没发生，
@@ -593,34 +876,9 @@ class RoomProfileManager(Singleton):
         """
         notice = self.drafts.pending('notice')
         if not notice:
-            return {'skipped': 'no_pending_notice'}
+            return dict(NOTICE_SKIN.no_pending_result)
 
-        if not self.drafts.can_start_write('notice'):
-            return {'skipped': 'cooldown'}
-
-        self.logger.info(f'Attempting to set notice to: {notice}')
-        result = self._write_notice_in_drawer(notice)
-
-        if 'skipped' in result:
-            # 没写就别记账：草稿留着、预算留着，等真的能写的那一轮再算。
-            return result
-
-        # UI 调用自己把异常收敛成 {'error': ...}，因此「先写再推进」—— 与旧
-        # NoticeManager 同一个次序（`PendingWrite` 的两种合法次序之一）。
-        self.drafts.mark_attempted('notice')
-
-        if 'success' in result:
-            self.drafts.clear('notice')
-            self.logger.info(f'Notice set successfully: {notice}')
-            self._announce_notice(notice)
-        else:
-            # 失败：保留排队的公告，等下一次冷却到期后重试
-            self.logger.warning(
-                f'Failed to set notice: {result.get("error", "Unknown error")}. '
-                f'Will retry in {self.drafts.cooldown_minutes("notice")} minute(s).'
-            )
-
-        return result
+        return self._flush_row(NOTICE_SKIN, notice)
 
     def restore_notice(self, notice: str) -> Dict:
         """房名变更把公告冲掉之后的恢复（用户故事 #6）。
@@ -630,10 +888,12 @@ class RoomProfileManager(Singleton):
         时的行为与 `set_notice` 一致：排队，等冷却到期由 `update_notice` 写。
 
         别人房间里返回 `skipped` 且不推进时钟 —— 同 `update_notice` 的理由。
+        守卫问在预算之前：预算没到就会把这条公告排进队列，而在别人房间里这条
+        草稿永远写不出去（编辑器每次都跳过）。
         """
-        if RoomState.in_guest_room():
-            self.logger.info("Skipping notice restore in guest room")
-            return {'skipped': True, 'reason': 'guest_room'}
+        skipped = self._row_editor().guard(NOTICE_SKIN.restore_guard_log)
+        if skipped is not None:
+            return NOTICE_SKIN.to_result(self, skipped)
 
         if not self.drafts.can_apply_now('notice'):
             self.drafts.set_pending('notice', notice)
@@ -645,27 +905,33 @@ class RoomProfileManager(Singleton):
             return result
 
         self.logger.info(f'Restoring notice to: {notice}')
-        result = self._write_notice_in_drawer(notice)
+        outcome = self._edit_row(NOTICE_SKIN, notice)
 
-        if 'skipped' in result:
-            return result
+        if outcome.outcome is WriteOutcome.SKIPPED:
+            return NOTICE_SKIN.to_result(self, outcome)
 
         self.drafts.mark_attempted('notice')
 
-        if 'success' in result:
+        if outcome.outcome is WriteOutcome.SUCCESS:
             self.drafts.clear('notice')
             self.logger.info(f'Notice restored successfully: {notice}')
         else:
             self.drafts.set_pending('notice', notice)
             self.logger.warning(
-                f'Failed to restore notice: {result.get("error", "Unknown error")}. '
+                f'Failed to restore notice: {outcome.reason}. '
                 f'Will retry in {self.drafts.cooldown_minutes("notice")} minute(s).'
             )
 
-        return result
+        return NOTICE_SKIN.to_result(self, outcome)
 
     def _write_notice_in_drawer(self, notice: str) -> Dict:
         """把公告写进抽屉：公告入口 -> 自定义 -> 输入 -> 提交 -> 收起公告层。
+
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
+
+        ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的公告皮肤。这里
+        返回的是**这一行的对外形状**（dict），与旧 `NoticeManager` 逐字一致。
 
         整段复用端口已有的原语（点元素 / 等任意元素 / 写输入框），没有为公告
         增加任何新原语。抽屉本身的开关归 `with_window_open`：窗口是它打开的就
@@ -676,57 +942,7 @@ class RoomProfileManager(Singleton):
             或 `{'skipped': True, 'reason': 'guest_room'}`。异常一律转成 error
             dict —— 走 `update_notice` / `restore_notice` 的失败分支保留草稿重试。
         """
-        try:
-            if RoomState.in_guest_room():
-                self.logger.info("Skipping notice update in guest room")
-                return {'skipped': True, 'reason': 'guest_room'}
-
-            self.logger.info(f"准备设置notice: {notice}")
-
-            # 公告原先走的是抽屉默认入口（chat_room_title -> room_topic），保持不变。
-            with self.with_window_open() as open_error:
-                if open_error:
-                    return open_error
-
-                driver = self._require_driver()
-
-                if not driver.click_element(NOTICE_EDIT_ENTRY_KEY):
-                    return {'error': 'Failed to find edit notice entry'}
-                self.logger.info("点击了编辑notice入口")
-
-                # 公告编辑层弹出后一定有「关闭公告」按钮；没有说明弹的不是这一层。
-                if driver.wait_for_any([NOTICE_CLOSE_KEY]) is None:
-                    return {'error': 'Close notice not found'}
-
-                customize = driver.wait_for_any(NOTICE_CUSTOMIZE_ENTRY_KEYS)
-                if customize is None:
-                    # 底部抽屉挡住了「自定义」：先把公告层点掉，不能留在屏幕上。
-                    driver.click_element(NOTICE_CLOSE_KEY)
-                    self.logger.warning(
-                        'Bottom drawer is open, notice customization is disabled, hiding...'
-                    )
-                    return {'error': 'Failed to find customize notice button'}
-                driver.click_element(customize)
-                self.logger.info(f"点击了自定义按钮 {customize}")
-
-                if not driver.replace_text(NOTICE_INPUT_KEY, notice):
-                    return {'error': 'Failed to find notice input'}
-                self.logger.info(f"输入了notice内容: {notice}")
-
-                if not driver.click_element(NOTICE_CONFIRM_KEY):
-                    return {'error': 'Failed to find confirm button'}
-                self.logger.info("点击了确认按钮")
-
-                # 收起公告编辑层（抽屉本身由 with_window_open 收尾）
-                driver.click_element(NOTICE_CLOSE_KEY)
-                self.logger.info("隐藏notice设置对话框")
-
-            self.logger.info(f"成功设置notice: {notice}")
-            return {'success': f'Notice restored to: {notice}'}
-
-        except Exception:
-            self.logger.error(f"设置notice时出错: {traceback.format_exc()}")
-            return {'error': f'Failed to update notice to {notice}'}
+        return NOTICE_SKIN.to_result(self, self._edit_row(NOTICE_SKIN, notice))
 
     async def set_default_notice(self) -> Dict:
         """开房之后把配置里的默认公告排进去。
@@ -1191,32 +1407,30 @@ class RoomProfileManager(Singleton):
             `{'ui_updated': True, 'current_title': ...}` 或 `{'error': ...}`。
             键名与既有实现逐字一致，`ThemeCommand` 的回复拼装因此不变。
         """
-        if RoomState.in_guest_room():
-            return {'skipped': True, 'reason': 'guest_room'}
+        # 别人房间里一个点击都不许发生。守卫问的是抽屉行编辑器（判定只有那
+        # 一处）；这一条**不打日志** —— 它是被 `:title` / `:theme` 的轮询反复
+        # 走到的分支，「Skipping room title UI update in guest room」那句属于
+        # 真正写 UI 那条路上的。
+        skipped = self._row_editor().guard()
+        if skipped is not None:
+            return TITLE_SKIN.to_result(self, skipped)
 
         # 没有活可干就不要为了「发现没有活」去读 UI：监控循环每周期都调本方法。
         if not self.drafts.has_pending('title') and not self.pending_ui_update:
-            return {'skipped': True, 'reason': 'no pending update'}
+            return dict(TITLE_SKIN.no_pending_result)
 
         if not self.drafts.can_start_write('title'):
-            return {'cooldown': True, 'remaining_minutes': self.get_remaining_cooldown_minutes()}
+            return TITLE_SKIN.cooldown_result(self)
 
         title_to_update = self.get_title_to_update()
         if not title_to_update:
             return {'skipped': True, 'reason': 'no title to update'}
 
-        result = self._write_title_in_drawer(title_to_update)
-        if 'skipped' in result:
-            # 没写就别记账：草稿留着、预算留着，等真的能写的那一轮再算。
+        result = self._flush_row(TITLE_SKIN, title_to_update)
+        # 没写成（冷却 / 别人房间）不是一次 UI 更新：草稿与 pending 原样留着。
+        if 'cooldown' in result or 'skipped' in result:
             return result
-
-        self.drafts.mark_attempted('title')
-
         if 'error' in result:
-            self.logger.warning(
-                f'Failed to update title: {result["error"]}. '
-                f'Will retry in {self.drafts.cooldown_minutes("title")} minute(s).'
-            )
             return {'error': result['error']}
 
         self.clear_pending_ui_update()
@@ -1225,81 +1439,20 @@ class RoomProfileManager(Singleton):
     def _write_title_in_drawer(self, title: str) -> Dict:
         """把 `{theme}｜{title}` 写进抽屉：入口 -> 输入 -> 提交 -> 判结果。
 
+        测试接缝（兼容入口）：生产路径是 `_flush_row` → `_edit_row`，不经这里；
+        既有测试直接调用本方法来单驱这一行。
+
+        ritual 在抽屉行编辑器里（`edit_row`），这一行只是它的房名皮肤；房名
+        特有的钩子（窗口内的纠偏与公告判定、写成功后的自愈与公告恢复、被拒与
+        失败后的恢复意图清理）挂在皮肤上。
+
         整段复用端口已有的原语（点元素 / 等任意元素 / 写输入框），没有为房名
         增加任何新原语。与话题那条纵切一样，收尾不再盲按 `press_back()`：抽屉
         本身的开与关由 `with_window_open` 拥有。
 
         `skipped`（别人房间）**不是**写成功了 —— 调用方据此不记账。
         """
-        try:
-            if RoomState.in_guest_room():
-                self.logger.info("Skipping room title UI update in guest room")
-                return {'skipped': True, 'reason': 'guest_room'}
-
-            with self.with_window_open(error_message='Failed to find room title') as open_error:
-                if open_error:
-                    return open_error
-
-                # 窗口内的顺序是接口的一部分：先纠偏推荐状态/派对类型，再编辑房名。
-                self.sync_while_open()
-
-                # 房名变更会把公告冲掉：写之前先判定并记下上一条。
-                notice_check_result = self._detect_notice_reset()
-                if 'error' in notice_check_result:
-                    self.logger.warning(f"Notice check failed: {notice_check_result['error']}")
-                elif 'detected' in notice_check_result:
-                    self.logger.info("System notice reset detected, will restore after title update")
-
-                driver = self._require_driver()
-
-                # 标题编辑入口必须点元素上缘（0.25 高度）而不是中心 —— 那是随主题
-                # 功能一起上线的既有手势（旧 RoomNameManager 的
-                # `gesture_handler.click_element_at(entry, y_ratio=0.25)`），退化成
-                # 中心点击就是一次没人要求过的行为变更。
-                if not driver.click_element_at(TITLE_EDIT_ENTRY_KEY, y_ratio=TITLE_ENTRY_Y_RATIO):
-                    return {'error': 'Failed to find edit title entry'}
-
-                room_name = self.compose_room_title(title)
-                self.logger.info(f"Updating room title: {room_name}")
-
-                if not driver.replace_text(TITLE_INPUT_KEY, room_name):
-                    return {'error': 'Failed to find title input'}
-
-                if not driver.click_element(TITLE_CONFIRM_KEY):
-                    return {'error': 'Failed to find confirm button'}
-
-                # 等待提交落地
-                if self.title_settle_seconds:
-                    time.sleep(self.title_settle_seconds)
-
-                probe = driver.wait_for_any(TITLE_SUBMIT_PROBE_KEYS)
-
-                if probe == TITLE_EDIT_ENTRY_KEY:
-                    # 成功：编辑层收起来了，抽屉回到带铅笔的那一层。
-                    self.current_title = self.drafts.pending('title') or title
-                    self.logger.info(f'Updated current title to {self.current_title}')
-                    # 先清掉刚写成功的那条，再按需排队自愈用的默认标题。
-                    self.drafts.clear('title')
-                    self._recover_from_moderation_loss()
-                    self._restore_notice_if_needed()
-                    return {'success': True}
-
-                if probe == TITLE_CONFIRM_KEY:
-                    # 提交被拒（改得太频繁）：编辑层还开着，先把它收起，不能留在屏幕上。
-                    self.logger.warning('Update title too frequently, hide edit title dialog')
-                    driver.click_element(TITLE_CLOSE_KEY)
-                    self._restore_notice_if_needed()
-                    self._clear_notice_restore()
-                    return {'error': 'Update failed - still in cooldown period'}
-
-                self.logger.warning(f'Unknown key: {probe}')
-                self._clear_notice_restore()
-                return {'error': 'Failed to update title, unknown error'}
-
-        except Exception:
-            self.logger.error(f"Error in title update: {traceback.format_exc()}")
-            self._clear_notice_restore()
-            return {'error': f'Failed to update title: {title}'}
+        return TITLE_SKIN.to_result(self, self._edit_row(TITLE_SKIN, title))
 
     def _recover_from_moderation_loss(self) -> None:
         """写完之后房名里没有分隔符 = 审核没通过：排一次默认标题重设。"""
