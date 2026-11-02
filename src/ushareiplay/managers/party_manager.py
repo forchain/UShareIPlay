@@ -131,13 +131,16 @@ class PartyManager(Singleton):
 
                 # 关闭派对
                 end_success = self.end_party()
-                if end_success:
+                # update() 每条聊天消息都会跑到这里，失败后立即重试会反复打断 UI，
+                # 所以一次/天同时约束失败重试，不只是成功。
+                self.last_auto_end_date = current_date
+                if isinstance(end_success, dict) and 'error' not in end_success:
                     self.logger.info("派对关闭成功")
                     # 重置初始化时间，重新开始计时
                     self.reset_party_time()
                     self.logger.info("已重置重启功能状态，重新开始计时")
                 else:
-                    self.logger.error("派对关闭失败")
+                    self.logger.error(f"派对关闭失败: {end_success}")
 
         except Exception as e:
             self.logger.error(f"Error in party management update: {traceback.format_exc()}")

@@ -2,8 +2,8 @@ from tortoise import fields, models
 from tortoise.models import Model
 
 class User(Model):
-    id = fields.IntField(pk=True)
-    username = fields.CharField(max_length=255, unique=True, index=True)
+    id = fields.IntField(primary_key=True)
+    username = fields.CharField(max_length=255, unique=True, db_index=True)
     level = fields.IntField(default=0)  # Default level is 0
     heat_value = fields.IntField(default=0)  # Cumulative heat contribution in the room
     canonical_user = fields.ForeignKeyField(

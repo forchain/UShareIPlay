@@ -591,7 +591,8 @@ class MusicManager(Singleton):
 
         meta_match = re.search(r'metadata: size=\d+, description=(.*?)(?=\n)', result)
         if meta_match:
-            meta_parts = meta_match.group(1).split(', ')
+            # Max 3 fields: song titles may legitimately contain ", ".
+            meta_parts = meta_match.group(1).split(', ', 2)
             if len(meta_parts) >= 3:
                 metadata = {
                     'song': meta_parts[0],

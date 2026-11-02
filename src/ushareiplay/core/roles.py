@@ -107,6 +107,9 @@ def min_command_level(command_info: dict) -> int:
 def _normalize_set(values: Optional[Iterable[Any]]) -> Set[str]:
     if values is None:
         return set()
+    if isinstance(values, str):
+        # A bare YAML scalar is one name, not a sequence of characters.
+        values = [values]
     result = set()
     for item in values:
         if isinstance(item, str):
