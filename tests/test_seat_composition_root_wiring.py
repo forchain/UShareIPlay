@@ -118,6 +118,10 @@ def test_observation_manager_receives_the_subsystem_panel(started_controller):
     assert isinstance(subsystem.panel_driver, SeatPanelDriver)
     assert panel_delegate.driver is subsystem.panel_driver
 
+    # 规范 s2 (#488)：观测器的 panel_reader 也来自子系统。
+    assert started_controller.seat_observation_manager.panel_reader is subsystem.panel_reader
+    assert subsystem.panel_driver.panel_reader is subsystem.panel_reader
+
 
 def test_panel_delegate_keeps_the_legacy_seat_ui_contract(started_controller):
     """观测器用到的三个面板动作必须在委派上存在（否则重扫当场 AttributeError）。"""

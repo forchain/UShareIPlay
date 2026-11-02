@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Optional
 
 from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 面板按钮文本：按钮上写的是「点我之后」的状态，不是当前状态。
 EXPAND_LABEL = "展开"
@@ -106,9 +107,10 @@ class SeatPanelDriver:
         "right_seat": "cn.soulapp.android:id/rightUserView",
     }
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, panel_reader=None):
         # 面板是否展开的缓存。按钮读不到时它是唯一可用的取值（见 is_expanded）。
         self.expanded = False
+        self._panel_reader = panel_reader
         self.handler = handler
 
     @property
@@ -121,7 +123,17 @@ class SeatPanelDriver:
         # （SeatObservationManager.bind_handler 会改写 seat_ui.handler），快照必须
         # 跟着走，否则驱动会一直往旧 handler 的 logger 上写。
         self._handler = value
+        if self._panel_reader is not None:
+            self._panel_reader.handler = value
         self._logger = getattr(value, "logger", None)
+
+    @property
+    def panel_reader(self) -> SeatPanelReader:
+        if self._panel_reader is None:
+            self._panel_reader = SeatPanelReader(self.handler)
+        elif self.handler and self._panel_reader.handler is not self.handler:
+            self._panel_reader.handler = self.handler
+        return self._panel_reader
 
     @property
     def logger(self):
@@ -393,25 +405,8 @@ class SeatPanelDriver:
 
     @asynccontextmanager
     async def ui_session(self, reason: str):
-        """独占 UI 执行权，契约与 SeatObservationManager._ui_session 一致。
-
-        展开/收起面板、滚动、点头像读弹窗全程会改页面结构。若不持锁，EventManager
-        的兜底 press_back 会在这些 await 点把弹窗当成未知页面关掉，手里那个
-        seat_off 句柄随之失效（StaleElementReferenceException）。
-
-        刻意由**调用方**持有而不在本模块内部自取：面板动作全程会改页面结构，
-        一次流程只该有一把锁（`AppController.ui_session` 按持有者 task + 嵌套
-        深度放行同 task 的嵌套进入，但驱动自己不再申请第二次 —— 语义更清楚，
-        也不会把锁的持有期拖长）。
-
-        controller 缺席（单元测试）时退化为不加锁；controller 在场但接口不符
-        契约时直接抛错，而不是静默裸奔。
-        """
-        ctrl = getattr(self.handler, "controller", None) if self.handler else None
-        if ctrl is None:
-            yield
-            return
-        async with ctrl.ui_session(reason):
+        """独占 UI 执行权，委托给 reader.session。"""
+        async with self.panel_reader.session(reason):
             yield
 
     # ------------------------------------------------------------------
@@ -482,12 +477,10 @@ class SeatPanelDriver:
             except Exception:
                 pass
 
-        bounds = self._desk_bounds(desk)
-        if not bounds or not bounds.get("width") or not bounds.get("height"):
+        pt = self.panel_reader.tap_point(desk, side)
+        if pt is None:
             return False
-        w, h = bounds["width"], bounds["height"]
-        x = bounds.get("x", 0) + (w // 4 if side == "left" else (3 * w) // 4)
-        y = bounds.get("y", 0) + h // 2
+        x, y = pt
 
         gesture = getattr(self.handler, "gesture_handler", None)
         if gesture is None or not hasattr(gesture, "click_at"):
