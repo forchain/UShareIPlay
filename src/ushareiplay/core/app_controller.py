@@ -372,8 +372,8 @@ class AppController(Singleton):
                     self.logger.warning(f"Console input decode error: {e}")
                 continue
             except EOFError:
-                time.sleep(0.5)
-                continue
+                # No interactive stdin (systemd/docker): stop the console thread.
+                break
             except KeyboardInterrupt:
                 muter.unmute()
                 if self.in_console_mode:

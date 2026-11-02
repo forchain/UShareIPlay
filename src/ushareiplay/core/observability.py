@@ -63,6 +63,10 @@ class Observability:
         body.setdefault("schema_version", STATUS_SCHEMA_VERSION)
         body.setdefault("run_id", self.run_id)
         body.setdefault("ts", _now_iso())
-        p.write_text(json.dumps(body, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        payload = json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+        # Write via a temp file + atomic replace so readers never see a truncated file.
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, p)
         return p
 

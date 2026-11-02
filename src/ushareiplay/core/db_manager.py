@@ -2,14 +2,15 @@ from tortoise import Tortoise
 from tortoise import connections
 from datetime import datetime, timedelta
 from typing import Optional, List
-from pathlib import Path
+
+from ushareiplay.core.paths import repo_root
 
 class DatabaseManager:
     def __init__(self, db_url: str = None):
         if db_url is None:
-            # Create db directory if it doesn't exist
-            db_dir = Path('data')
-            db_dir.mkdir(exist_ok=True)
+            # Create db directory (repo root, not caller cwd) if it doesn't exist
+            db_dir = repo_root() / 'data'
+            db_dir.mkdir(parents=True, exist_ok=True)
             
             # Use the runtime SQLite database location
             db_path = db_dir / 'soul_bot.db'
