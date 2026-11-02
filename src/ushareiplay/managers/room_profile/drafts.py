@@ -43,6 +43,10 @@ class ProfileDraftStore:
     本类不碰 UI、不读配置、不认识 Soul 的任何 selector：它只回答「这个字段
     现在能不能写、要等几分钟、用户想写的是什么」。
 
+    记账那一侧（读草稿 → 问 `can_start_write` → 写 → 跳过不记账 / 成功清空 /
+    失败保留）在 `RoomProfileManager._flush_row` 里，三条纵切共用同一份；它按
+    抽屉行编辑器的结局枚举（`WriteOutcome`）分支，不再逐个试探 dict 键。
+
     Args:
         topic_cooldown_minutes: 话题冷却，缺省 5。
         notice_cooldown_minutes: 公告冷却，缺省 15。
@@ -155,7 +159,11 @@ class ProfileDraftStore:
         return self._write(field).remaining_minutes()
 
     def mark_attempted(self, field: str, now: Optional[datetime] = None) -> None:
-        """推进该字段的冷却时钟：每次尝试都要调用一次，成功、失败、异常都一样。"""
+        """推进该字段的冷却时钟：每次尝试都要调用一次，成功、失败、异常都一样。
+
+        「跳过」（别人房间，一个点击都没发生）**不算**一次尝试，因此不调用它 ——
+        调用方在抽屉行编辑器给出 `WriteOutcome.SKIPPED` 时直接返回。
+        """
         self._write(field).mark_attempted(now)
 
     def last_attempt_at(self, field: str) -> Optional[datetime]:
