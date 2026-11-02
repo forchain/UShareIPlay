@@ -126,3 +126,18 @@ spec #426 拆出的第一个 ticket #428 交付了在线用户抽屉深模块 `O
 客房权限、睡眠拦截与帮助文案编译成不可变定义，启动时校验「声明的前缀 → 可执行的
 `BaseCommand` 模块」是否对得上。命令的业务实现仍由 `ushareiplay/commands/*.py` 各自承担，
 目录不做动态类生成，也不接管命令逻辑。
+
+### 2026-11-02 —— §5 补充：`SeatObservationManager.bind_handler` 只绑定 UI 委派（#494）
+
+座位观测器在 #494 把 12 号位账本与策略拆到 `seat_ledger.SeatLedger`。按 §5 的口径，
+`SeatObservationManager.bind_handler` 只更新 UI 委派（`SeatPanelReader` / `SeatPanelDriver`
+等）与日志来源。`SeatLedger` 不注册为单例，`bind_handler` 对它的唯一影响是刷新 logger：
+不重建账本、也不重新注入端口。观测器仍是受保护单例，账本随它创建、清空与销毁。
+
+`SeatLedger` 所谓「纯域」的准确含义是**不持有 Appium / DOM 依赖**，不是没有外部世界：
+房主昵称、房管查询与房管登记经构造注入的 `owner_nickname` / `is_room_admin` /
+`record_room_admin` 三个端口访问。并发契约也一并写在这里：账本的公共动词是同步的，
+在事件循环里天然原子；一轮被动观测的 `observe → 弹窗读身份（await）→ apply` 由观测器
+用闸门锁串行化写操作，但锁不跨弹窗的 await 持有（闸门锁与 UI 会话的获取顺序相反，
+跨 await 持有会形成 AB-BA 死锁），因此 `apply()` 按当前快照重新分类而不是沿用
+observe 时刻的旧分类。

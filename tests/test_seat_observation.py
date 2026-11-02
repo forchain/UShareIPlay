@@ -33,12 +33,13 @@ from tests.seat_fixtures import (
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
-from ushareiplay.managers.seat_manager.seat_observation import (
+from ushareiplay.managers.seat_manager.seat_ledger import (
+    SeatLedger,
     SeatObservationGateState,
-    SeatObservationManager,
     SeatRescanCooldownPolicy,
     SeatSlot,
 )
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
 
 class FakeClock:
@@ -1008,7 +1009,7 @@ def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
         })
     }
 
-    manager._apply_snapshot(observed)
+    manager.ledger._apply_snapshot(observed)
 
     # 必须保留原有占座信息！
     assert manager.seats[5].occupied is True
@@ -1041,18 +1042,18 @@ def test_apply_snapshot_clears_only_on_explicit_empty_evidence_and_clearable():
 
     # 权威路径（clearable=None，全量重扫读过全部麦位）：读到明确空座即可判下座
     manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
-    manager._apply_snapshot(_empty_read())
+    manager.ledger._apply_snapshot(_empty_read())
     assert manager.seats[3].occupied is False
     assert manager.seats[3].username is None
 
     # 被动观测：只有显式列入 clearable 的号位（视口内配对换座的旧位）才允许清空
     manager.seats[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer")
-    manager._apply_snapshot(_empty_read(), clearable={5})
+    manager.ledger._apply_snapshot(_empty_read(), clearable={5})
     assert manager.seats[3].occupied is True
     assert manager.seats[3].username == "Chainer"
 
     # 列入 clearable 的号位读到明确空座就清
-    manager._apply_snapshot(_empty_read(), clearable={3})
+    manager.ledger._apply_snapshot(_empty_read(), clearable={3})
     assert manager.seats[3].occupied is False
 
 
@@ -2030,11 +2031,11 @@ def test_rescan_table_highlights_only_the_seats_that_actually_changed():
                              "username": "Joyer", "is_owner": False}),
     }
     old_slots = {k: v.copy() for k, v in manager.seats.items()}
-    changed = manager._changed_seat_numbers(old_slots, manager.seats, set(observed))
+    changed = manager.ledger._changed_seat_numbers(old_slots, manager.seats, set(observed))
     assert changed == {10} or changed == set()  # 10 号本轮新占座；9 号没动
 
     manager.seats[10] = SeatSlot(seat_number=10, occupied=True, username="Joyer", label="Joyer")
-    changed = manager._changed_seat_numbers(old_slots, manager.seats, set(observed))
+    changed = manager.ledger._changed_seat_numbers(old_slots, manager.seats, set(observed))
     assert changed == {10}
 
 
@@ -2160,7 +2161,7 @@ async def test_seat_identity_collision_in_snapshot_resolves_to_winner_and_clears
                 "is_empty": True,
             })
 
-    manager._apply_snapshot(observed)
+    manager.ledger._apply_snapshot(observed)
 
     # 11 号位证据强（is_owner=True, label="群主"），保留落座
     assert manager.seats[11].occupied is True
@@ -2371,13 +2372,10 @@ async def test_in_viewport_move_without_residual_render_is_applied_directly():
 
 
 def test_seat_rescan_cooldown_policy_defaults():
-    policy = SeatRescanCooldownPolicy()
+    policy = SeatLedger.DEFAULT_COOLDOWN_POLICY
     assert policy.rescan_cooldown == 3.0
     assert policy.rescan_retry_cooldown == 30.0
     assert policy.consistency_rescan_cooldown == 10.0
-    assert SeatObservationManager.RESCAN_COOLDOWN == 3.0
-    assert SeatObservationManager.RESCAN_RETRY_COOLDOWN == 30.0
-    assert SeatObservationManager.CONSISTENCY_RESCAN_COOLDOWN == 10.0
 
 
 @pytest.mark.asyncio
@@ -2551,7 +2549,7 @@ async def test_ghost_duplicate_cleared_in_rescan_is_recorded_as_residual_and_not
         10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
     }
     # 权威全量重扫落快照（clearable=None）
-    manager._apply_snapshot(observed_all, clearable=None)
+    manager.ledger._apply_snapshot(observed_all, clearable=None)
 
     assert manager.seats[10].occupied is True
     assert manager.seats[10].username == user
@@ -2593,7 +2591,7 @@ async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_
                 2: (None, "right", {"occupied": True, "username": user, "label": ""}),
                 10: (None, "right", {"occupied": True, "username": user, "label": "管理"}),
             }
-            manager._apply_snapshot(observed_all, clearable=None)
+            manager.ledger._apply_snapshot(observed_all, clearable=None)
             manager._last_rescan_ok = True
             return True
 
@@ -2636,18 +2634,18 @@ async def test_admin_label_not_dropped_when_observation_has_empty_label():
     }
 
     old_slots = {k: v.copy() for k, v in manager.seats.items()}
-    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    writable, clearable, unexplained = manager.ledger._plan_observation_changes(old_slots, observed)
     assert 7 in writable
 
     to_apply = {num: item for num, item in observed.items() if num in writable}
-    manager._apply_snapshot(to_apply, clearable=clearable)
+    manager.ledger._apply_snapshot(to_apply, clearable=clearable)
 
     # 验证：7 号位管理标签必须保留，且 AdminManager 记录 Chainer 为房管
     assert manager.seats[7].label == "管理"
     assert AdminManager.instance().is_room_admin("Chainer") is True
 
     # 比对不得产生虚假变更（防止无行为触发的刷屏）
-    has_changes, changed_users, _ = manager._compute_diff(old_slots, manager.seats, {7})
+    has_changes, changed_users, _ = manager.ledger._compute_diff(old_slots, manager.seats, {7})
     assert has_changes is False, "管理标签未丢失时不应产生虚假麦位变更"
 
     # 格式化座次表必须仍然是 管理(Chainer)
@@ -2693,12 +2691,12 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
     await manager._resolve_usernames(observed)
 
     old_slots = {k: v.copy() for k, v in manager.seats.items()}
-    writable, clearable, unexplained = manager._plan_observation_changes(old_slots, observed)
+    writable, clearable, unexplained = manager.ledger._plan_observation_changes(old_slots, observed)
     assert 6 in writable
     assert 7 in writable
 
     to_apply = {num: item for num, item in observed.items() if num in writable}
-    manager._apply_snapshot(to_apply, clearable=clearable)
+    manager.ledger._apply_snapshot(to_apply, clearable=clearable)
 
     # 验证：6 号位必须被赋予管理标签
     assert manager.seats[6].occupied is True
