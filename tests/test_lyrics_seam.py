@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.commands.lyrics import LyricsCommand
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
@@ -182,7 +183,9 @@ def _make_command(*, lyrics="第一行\n第二行\n第三行", config=None):
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()  # soul handler
     command.music_handler = MagicMock()  # 命令层不该再碰它
-    command.controller = SimpleNamespace(config=config if config is not None else {})
+    command.controller = SimpleNamespace(
+        config=ConfigView(config if config is not None else {})
+    )
     command._music_manager = MagicMock()
     command._music_manager.query_lyrics.return_value = {"lyrics": lyrics}
     command._message_dispatch = MagicMock()
@@ -276,7 +279,9 @@ async def test_do_process_sends_each_group_to_the_chat_screen(initialized_test_s
     )
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config={"lyrics": {"line_max_width": 16}})
+    command.controller = SimpleNamespace(
+        config=ConfigView({"lyrics": {"line_max_width": 16}})
+    )
     command._music_manager = engine.manager
     command._message_dispatch = MagicMock()
 
@@ -295,7 +300,7 @@ async def test_do_process_parses_a_leading_integer_as_the_group_count(
     engine = _build_manager(driver=InMemoryMusicUIDriver(lyrics={"稻香": "\n".join(["0123456789"] * 6)}))
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config={})
+    command.controller = SimpleNamespace(config=ConfigView({}))
     command._music_manager = engine.manager
     command._message_dispatch = MagicMock()
 
@@ -314,7 +319,7 @@ async def test_do_process_asks_for_the_current_song_without_parameters(
     engine = _build_manager(driver=InMemoryMusicUIDriver())
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config={})
+    command.controller = SimpleNamespace(config=ConfigView({}))
     command._music_manager = engine.manager
     command._message_dispatch = MagicMock()
     engine.manager.get_playback_info = lambda: {
@@ -334,7 +339,7 @@ async def test_do_process_surfaces_the_manager_error_to_the_room(initialized_tes
     engine = _build_manager(driver=InMemoryMusicUIDriver(not_found_lyrics=True))
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config={})
+    command.controller = SimpleNamespace(config=ConfigView({}))
     command._music_manager = engine.manager
     command._message_dispatch = MagicMock()
 

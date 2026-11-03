@@ -60,8 +60,16 @@ class LyricsCommand(BaseCommand):
 
         lyrics_content = result.get('lyrics', '')
 
-        lyrics_cfg = (self.controller.config or {}).get("lyrics") or {}
-        line_max_width = int(lyrics_cfg.get("line_max_width", 18))
+        lyrics_section = (
+            self.controller.config.maybe_section("lyrics")
+            if self.controller and self.controller.config
+            else None
+        )
+        line_max_width = int(
+            lyrics_section.value("line_max_width", 18)
+            if lyrics_section is not None
+            else 18
+        )
 
         lyrics_groups = self.process_lyrics(
             lyrics_content,
