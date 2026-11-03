@@ -552,6 +552,8 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
 def test_process_missed_messages_sends_empty_message_after_finding_anchor():
     from ushareiplay.managers.message_manager import MessageManager
 
+    scroll_calls = []
+
     class _FakeSoulHandler:
         def __init__(self):
             self.logger = logging.getLogger("test_message_manager_missed_anchor")
@@ -560,7 +562,8 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
         def switch_to_app(self):
             return True
 
-        def scroll_container_until_element(self, *_args, **_kwargs):
+        def scroll_container_until_element(self, *args, **kwargs):
+            scroll_calls.append((args, kwargs))
             return "message_content", object(), ["兴趣主题已更换为「Turn Around」"]
 
         def send_message(self, message):
@@ -576,6 +579,8 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
     assert _run(manager.process_missed_messages()) == set()
     # send_message("") should be called to scroll back to bottom
     assert handler.sent_messages == [""]
+    # bidirectional=False should be passed to return to latest messages quickly
+    assert scroll_calls[0][1].get("bidirectional") is False
 
 
 def test_missed_detection_fallback_prevents_false_missed():
