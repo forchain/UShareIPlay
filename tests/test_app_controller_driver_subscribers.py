@@ -5,7 +5,7 @@ from queue import Queue
 import pytest
 
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.core.config_view import REQUIRED_ELEMENTS, ConfigView
 
 
 class DriverAware:
@@ -98,20 +98,13 @@ def controller_without_init(driver=None):
 
 def _minimal_config() -> dict:
     """一份能通过启动期元素校验的最小配置。"""
-    soul_elements = {
-        key: f"cn.soulapp.android:id/{key}"
-        for key in (
-            "message_content",
-            "message_list",
-            "input_box",
-            "button_send",
-            "message_reply_view",
-            "message_reply_content",
-        )
-    }
     return {
-        "soul": {"elements": soul_elements},
-        "qq_music": {"elements": {"search_entry": "com.tencent.qqmusic:id/sub_edit_text"}},
+        section: {
+            "elements": {
+                key: f"cn.soulapp.android:id/{key}" for key in keys
+            }
+        }
+        for section, keys in REQUIRED_ELEMENTS.items()
     }
 
 

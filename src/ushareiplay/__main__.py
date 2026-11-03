@@ -1,5 +1,6 @@
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.core.config_loader import ConfigLoader, LocalConfigOverrideRejected
+from ushareiplay.core.config_view import ConfigError
 from ushareiplay.core.db_manager import DatabaseManager
 from ushareiplay.core.singleton import Singleton
 import asyncio
@@ -36,6 +37,10 @@ async def main():
     while run_count <= 9:
         try:
             res = await run_app()
+        except (ConfigError, LocalConfigOverrideRejected) as e:
+            # 配置错误重试也不会好：直接退出，别让 systemd / docker 当成正常停止。
+            print(f"[main]Configuration error, refusing to start: {e}")
+            sys.exit(2)
         except Exception as e:
             run_count += 1
             print(f"[main]App crashed ({e}), restarting... {run_count}")

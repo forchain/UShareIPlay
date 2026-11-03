@@ -162,12 +162,16 @@ def test_relative_xpath_for_id_and_xpath():
     assert xpath_locator.relative_xpath == ".//android.widget.TextView"
 
 
+def test_from_value_classifies_relative_xpath_selectors():
+    assert Locator.from_value(".//android.widget.TextView").kind == "xpath"
+    assert Locator.from_value("./android.widget.TextView").kind == "xpath"
+
+
 def test_relative_xpath_keeps_an_already_relative_xpath():
-    # 只有 "//" 开头的字符串才算 XPath，"." 开头的按 resource-id 处理，
-    # 因此这一条只能由直接构造的 xpath Locator 走到。
-    locator = Locator(kind="xpath", value=".//android.widget.TextView")
+    locator = Locator.from_value(".//android.widget.TextView")
 
     assert locator.relative_xpath == ".//android.widget.TextView"
+    assert locator.absolute_xpath == ".//android.widget.TextView"
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +338,43 @@ def test_reload_mutates_the_wrapped_mapping_in_place():
     assert data["soul"] is soul.data
     assert data["soul"]["room_owner"] == "Alice"
     assert view.command_entries == [{"prefix": "seat"}]
+
+
+def test_reload_accepts_the_live_mapping_itself():
+    """reload(view.data) 不能先把源清空再读：别名输入是签名邀请的用法。"""
+    data = {"soul": {"room_owner": "Joyer"}}
+    view = ConfigView(data)
+    soul = view.soul
+
+    view.reload(view.data)
+
+    assert soul.value("room_owner") == "Joyer"
+    assert data["soul"] is soul.data
+
+
+def test_reload_removes_a_section_missing_from_the_new_mapping():
+    data = {"soul": {"room_owner": "Joyer"}, "qq_music": {"package_name": "x"}}
+    view = ConfigView(data)
+    music = view.music
+
+    view.reload({"soul": {"room_owner": "Alice"}})
+
+    assert "qq_music" not in view.data
+    assert view.maybe_section("qq_music") is None
+    # 已经发出的旧视图不再端着过期配置
+    assert music.data == {}
+
+
+def test_reload_keeps_nested_views_live():
+    data = {"soul": {"elements": {"a": "id/old"}}}
+    view = ConfigView(data)
+    nested = view.soul.maybe_section("elements")
+
+    view.reload({"soul": {"elements": {"a": "id/NEW"}}})
+
+    assert view.soul.maybe_section("elements") is nested
+    assert nested.value("a") == "id/NEW"
+    assert view.soul.data["elements"] is nested.data
 
 
 def test_views_are_not_dicts():

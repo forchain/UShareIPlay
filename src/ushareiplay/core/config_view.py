@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, MutableMapping, Optional
 
 from appium.webdriver.common.appiumby import AppiumBy
 
@@ -64,6 +64,20 @@ REQUIRED_ELEMENTS: Mapping[str, tuple[str, ...]] = {
         "button_send",
         "message_reply_view",
         "message_reply_content",
+        # 座位面板：这些选择器删掉了硬编码兜底，缺任何一项都会静默观察不到座位。
+        "seat_desk",
+        "left_seat",
+        "right_seat",
+        "left_state",
+        "right_state",
+        "left_label",
+        "right_label",
+        "left_default_name",
+        "right_default_name",
+        "left_avatar",
+        "right_avatar",
+        "left_rank",
+        "right_rank",
     ),
     "qq_music": ("search_entry",),
 }
@@ -75,7 +89,7 @@ class Locator:
 
     `kind` 只有两种取值：
 
-    - ``"xpath"`` —— 选择器以 ``//`` 开头，是一条 XPath；
+    - ``"xpath"`` —— 选择器以 ``//`` 或 ``./`` 开头，是一条 XPath；
     - ``"id"`` —— 其它一律按 Android resource-id 处理。
 
     这个判定规则此前在 `element_finder`、`event_manager`、`gesture_handler`、
@@ -87,9 +101,9 @@ class Locator:
 
     @classmethod
     def from_value(cls, value: str) -> "Locator":
-        """按选择器字符串建 Locator（``//`` 开头算 XPath，其余算 resource-id）。"""
+        """按选择器字符串建 Locator（``//`` 或 ``./`` 开头算 XPath，其余算 resource-id）。"""
         text = (value or "").strip()
-        kind = "xpath" if text.startswith("//") else "id"
+        kind = "xpath" if text.startswith(("//", "./")) else "id"
         return cls(kind=kind, value=text)
 
     @property
@@ -141,9 +155,10 @@ class ConfigSectionView:
     一眼可见。
     """
 
-    def __init__(self, name: str, data: Mapping[str, Any]):
+    def __init__(self, name: str, data: MutableMapping[str, Any]):
         self._name = name
         self._data = data
+        self._sections: dict[str, ConfigSectionView] = {}
 
     @property
     def name(self) -> str:
@@ -183,18 +198,42 @@ class ConfigSectionView:
         return self._data[key]
 
     def section(self, key: str) -> "ConfigSectionView":
-        """段内的嵌套子段视图。"""
+        """段内的嵌套子段视图；同一子段名恒返回同一实例。"""
         nested = self._data.get(key)
         if not isinstance(nested, Mapping):
             raise MissingConfigKey(self._name, key)
-        return ConfigSectionView(f"{self._name}.{key}", nested)
+        return self._cached_section(key, nested)
 
     def maybe_section(self, key: str) -> Optional["ConfigSectionView"]:
         """可选的嵌套子段视图；缺失返回 None。"""
         nested = self._data.get(key)
         if not isinstance(nested, Mapping):
             return None
-        return ConfigSectionView(f"{self._name}.{key}", nested)
+        return self._cached_section(key, nested)
+
+    def _cached_section(
+        self, key: str, nested: Mapping[str, Any]
+    ) -> "ConfigSectionView":
+        view = self._sections.get(key)
+        if view is None:
+            view = ConfigSectionView(f"{self._name}.{key}", nested)
+            self._sections[key] = view
+        return view
+
+    def _reload(self, new_data: Mapping[str, Any]) -> None:
+        """原地刷新本视图与已发出的嵌套视图（对象身份不变）。"""
+        snapshot = dict(new_data)
+        for key in list(self._sections):
+            view = self._sections[key]
+            nested = new_data.get(key)
+            if isinstance(nested, Mapping):
+                view._reload(nested)
+                snapshot[key] = view._data
+            else:
+                del self._sections[key]
+                view._data.clear()
+        self._data.clear()
+        self._data.update(snapshot)
 
     def __repr__(self) -> str:
         return f"<ConfigSectionView {self._name}>"
@@ -207,7 +246,7 @@ class ConfigView:
     本视图、以及已发出的段视图实例，身份在热重载前后都保持不变。
     """
 
-    def __init__(self, data: Mapping[str, Any]):
+    def __init__(self, data: MutableMapping[str, Any]):
         self._data = data
         self._sections: dict[str, ConfigSectionView] = {}
 
@@ -267,28 +306,29 @@ class ConfigView:
     def validate_required_elements(self) -> None:
         """校验启动期必需的元素选择器；缺项直接抛 `MissingElementKey`。"""
         for section_name, keys in REQUIRED_ELEMENTS.items():
-            try:
-                section = self.section(section_name)
-            except MissingConfigSection:
-                raise MissingConfigSection(section_name) from None
+            section = self.section(section_name)
             for key in keys:
                 section.element(key)
 
     def reload(self, new_mapping: Mapping[str, Any]) -> None:
         """原地热重载。
 
-        底层根映射与已发出的段视图都在原地改写（对象身份不变），因此长生命周期的
-        持有者（Handler / Manager 单例）不需要重新接线就能看到新配置。
+        底层根映射、已发出的段视图与嵌套段视图都在原地改写（对象身份不变），因此
+        长生命周期的持有者（Handler / Manager 单例）不需要重新接线就能看到新配置。
+        新映射里不存在的段会被移除，对应旧视图清空，不再端着过期配置。
         """
-        merged = dict(new_mapping)
-        for name, view in self._sections.items():
+        snapshot = dict(new_mapping)
+        for name in list(self._sections):
+            view = self._sections[name]
             new_section = new_mapping.get(name)
             if isinstance(new_section, Mapping):
+                view._reload(new_section)
+                snapshot[name] = view._data
+            else:
+                del self._sections[name]
                 view._data.clear()
-                view._data.update(new_section)
-                merged[name] = view._data
         self._data.clear()
-        self._data.update(merged)
+        self._data.update(snapshot)
 
     def __repr__(self) -> str:
         return f"<ConfigView sections={sorted(self._sections)}>"

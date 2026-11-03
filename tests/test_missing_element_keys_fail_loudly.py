@@ -6,9 +6,13 @@
   是 `config.yaml`，见 AGENTS.md）。
 """
 
+import asyncio
+from pathlib import Path
+
 import pytest
 import yaml
 
+import ushareiplay.__main__ as app_main
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.config_loader import ConfigLoader, LocalConfigOverrideRejected
 from ushareiplay.core.config_view import (
@@ -41,6 +45,28 @@ def _config_without(section_name, element_key):
 
 def test_complete_config_passes_the_startup_validation():
     ConfigView(_complete_config()).validate_required_elements()
+
+
+def test_shipped_config_yaml_passes_the_startup_validation():
+    """仓库里真正提交的 config.yaml 必须能过启动校验（清单与文件不能各说各话）。"""
+    config_path = Path(__file__).resolve().parents[1] / "config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    ConfigView(config).validate_required_elements()
+
+
+def test_config_errors_stop_the_restart_loop(monkeypatch):
+    """配置错误重试也不会好：不打十遍崩溃日志，直接以非零码退出。"""
+
+    async def _failing_run_app():
+        raise MissingElementKey("soul", "button_send")
+
+    monkeypatch.setattr(app_main, "run_app", _failing_run_app)
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(app_main.main())
+
+    assert excinfo.value.code == 2
 
 
 def test_missing_soul_element_key_fails_the_startup_validation():

@@ -18,7 +18,11 @@ import yaml
 
 import ushareiplay.events as events_package
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.core.config_view import (
+    REQUIRED_ELEMENTS,
+    ConfigSectionView,
+    ConfigView,
+)
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
 from ushareiplay.managers.command_manager import CommandManager
@@ -46,15 +50,29 @@ class _Logger:
         pass
 
 
+_REQUIRED_SOUL_ELEMENTS = {
+    key: f"cn.soulapp.android:id/{key}" for key in REQUIRED_ELEMENTS["soul"]
+}
+_REQUIRED_QQ_ELEMENTS = {
+    key: f"cn.soulapp.android:id/{key}" for key in REQUIRED_ELEMENTS["qq_music"]
+}
+
+
 def _soul_config(risk_elements, elements=None):
+    merged = dict(_REQUIRED_SOUL_ELEMENTS)
+    merged.update(
+        elements
+        if elements is not None
+        else {
+            "collapse_seats": "cn.soulapp.android:id/collapseSeats",
+            "input_drawer": "cn.soulapp.android:id/inputDrawer",
+        }
+    )
     return ConfigSectionView("soul", {
         "room_owner": "Joyer",
         "admin_users": ["Outlier"],
         "risk_elements": list(risk_elements),
-        "elements": elements if elements is not None else {
-            "collapse_seats": "cn.soulapp.android:id/collapseSeats",
-            "input_drawer": "cn.soulapp.android:id/inputDrawer",
-        },
+        "elements": merged,
     })
 
 
@@ -80,7 +98,9 @@ def _make_runtime(soul_config):
     """组合根的最小替身：根配置 + 两个活配置段 + 事件管理器 + 命令管理器。"""
     root = ConfigView({
         "soul": soul_config.data,
-        "qq_music": {"elements": {"play_button": "id/play"}},
+        "qq_music": {
+            "elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play"}
+        },
         "commands": [{"prefix": "play", "level": 1}],
         "device": {"name": "emulator"},
     })
@@ -115,7 +135,7 @@ def _write_config(path, soul_config, qq_music_config=None, commands=None, omit=(
         payload["qq_music"] = (
             qq_music_config
             if qq_music_config is not None
-            else {"elements": {"play_button": "id/play"}}
+            else {"elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play"}}
         )
     if "commands" not in omit:
         payload["commands"] = (
@@ -377,6 +397,26 @@ def test_reload_keeps_the_live_config_when_qq_music_elements_is_missing(
     assert root.soul.value("risk_elements") == ["collapse_seats"]
 
 
+def test_reload_keeps_the_live_config_when_a_required_element_is_missing(
+    tmp_path, command_manager
+):
+    """热重载与启动期共用同一份必需清单：丢了一个必需选择器就不能接受。"""
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    new_soul = _soul_config(["input_drawer"])
+    new_soul.data["elements"].pop("button_send")
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, new_soul)
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.success is False
+    assert "button_send" in report.message
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
+    assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
+
+
 # --------------------------------------------------------------------------
 # 选择器变化（改 XPath 是最常见的重载理由，必须看得见）
 # --------------------------------------------------------------------------
@@ -394,7 +434,9 @@ def test_reload_reports_the_changed_selectors(tmp_path, command_manager):
                 "input_drawer": "cn.soulapp.android:id/inputDrawer",
             },
         ),
-        qq_music_config={"elements": {"play_button": "id/play_v2"}},
+        qq_music_config={
+            "elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play_v2"}
+        },
     )
 
     report = _make_reload_manager(

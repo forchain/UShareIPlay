@@ -9,10 +9,14 @@ last-synced: 2026-11-03
 `ConfigLoader` 在启动时读取它，再把可选的 `config.local.yaml`（gitignored）深合并上去，
 用于按机器、按环境的差异覆盖。
 
-代码里**只有一个**读配置的入口：`core/config_view.py` 里的 `ConfigView` /
-`ConfigSectionView` / `Locator`（ADR-0012）。裸字典下标 `config["soul"]["elements"]`
-与 `config.get("soul", {}).get("elements")` 这类形状试探一律不再使用 —— 取的是根配置
-还是某个应用段，在调用点必须一眼可见。
+代码里**正规的**读配置入口只有一个：`core/config_view.py` 里的 `ConfigView` /
+`ConfigSectionView` / `Locator`（ADR-0012）。新代码不得再写裸字典下标
+`config["soul"]["elements"]` 或 `config.get("soul", {}).get("elements")` 这类形状试探 ——
+取的是根配置还是某个应用段，在调用点必须一眼可见。少数尚未迁完的历史调用点仍接受
+裸 `dict`（`roles._split_config`、`runtime_logging._logging_directory`、
+`command_catalogue.from_config`、`memory_manager.configure`、`sleep_manager`、
+`keyword_manager._as_root_view`，以及组合根 `AppController` 的一次性归一化）；
+它们只是兼容旧调用方，不是新代码的范例。
 
 本文档只记录 `config.yaml` 里**真实存在且生效**的键；键一律写成从根出发的完整路径
 （如 `sleep.start`、`llm.memory.enabled`），以便一眼看出它住在哪一段。
@@ -195,8 +199,8 @@ view.command_entries                             # 命令表
 | `section.maybe_element(key)` | 可选的元素选择器 → `Locator` 或 `None` |
 | `section.value(key, default=None)` | 段内参数；缺失返回 `default` |
 | `section.require(key)` | 段内必需参数；缺失抛 `MissingConfigKey` |
-| `section.section(key)` | 嵌套子段视图；缺失抛 `MissingConfigKey` |
-| `section.maybe_section(key)` | 嵌套子段视图；缺失返回 `None` |
+| `section.section(key)` | 嵌套子段视图；同一子段名恒返回同一实例（重载后身份与内容都保持最新）；缺失抛 `MissingConfigKey` |
+| `section.maybe_section(key)` | 嵌套子段视图；同一子段名恒返回同一实例（重载后身份与内容都保持最新）；缺失返回 `None` |
 | `section.data` | 底层映射（逃生舱，只读用途） |
 
 ```python
@@ -215,7 +219,7 @@ section.maybe_element("seat_invite_panel")                     # 可选选择器
 
 | API | 说明 |
 |---|---|
-| `Locator.from_value(value)` | 由选择器字符串构造；以 `//` 开头算 XPath，其余算 resource-id |
+| `Locator.from_value(value)` | 由选择器字符串构造；以 `//` 或 `./` 开头算 XPath，其余算 resource-id |
 | `locator.kind` | `"xpath"` 或 `"id"` |
 | `locator.value` | 原始选择器字符串 |
 | `locator.appium` | Appium 定位元组 `(by, value)`：`AppiumBy.XPATH` 或 `AppiumBy.ID` |
@@ -243,14 +247,25 @@ locator.relative_xpath
 
 必需集合定义在 `core/config_view.py` 的 `REQUIRED_ELEMENTS`：
 
-- `soul` 段：`message_content`、`message_list`、`input_box`、`button_send`
+- `soul` 段：消息读取与回复相关的 `message_content`、`message_list`、`input_box`、
+  `button_send`、`message_reply_view`、`message_reply_content`；
+  座位面板的 `seat_desk`、`left_seat`、`right_seat`、`left_state`、`right_state`、
+  `left_label`、`right_label`、`left_default_name`、`right_default_name`、
+  `left_avatar`、`right_avatar`、`left_rank`、`right_rank`
 - `qq_music` 段：`search_entry`
+
+配置错误（`ConfigError` 或 `config.local.yaml` 覆盖元素定义）在 `__main__.main()`
+里是**致命**的：打印出错段与键后以退出码 2 退出，不进入重启循环 —— 否则一次配置
+漏项会变成十条相同的崩溃日志，还会被 systemd / docker 当成正常停止。
 
 ### 热重载
 
 `config.reload(new_mapping)` **原地**改写底层映射：根映射、视图实例、已经发出去的段视图
-实例，对象身份都不变。因此长生命周期的 Handler / Manager 单例不需要重新接线就能看到新
-配置。`ConfigReloadManager` 走的正是这条路。
+（含嵌套段视图）实例，对象身份都不变。因此长生命周期的 Handler / Manager 单例不需要重新
+接线就能看到新配置。新映射里不存在的段会从根映射移除，其旧视图被清空，不再端着过期配置。
+`ConfigReloadManager` 走的正是这条路，并在写活配置前用
+`ConfigView.validate_required_elements()` 跑**同一份**必需清单：会拒绝任何「重启也起不来」
+的新配置，而不是接受之后在下一次启动时炸掉。
 
 ## Common Local Overrides
 

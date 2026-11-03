@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.core.config_view import ConfigError, ConfigView
 
 
 @dataclass(frozen=True)
@@ -155,6 +155,8 @@ class ConfigReloadManager:
         （app_controller 读 config["qq_music"] / config["commands"] 会 KeyError），
         要么一用就炸（元素查找读 config["elements"] 会 KeyError）。这种配置不该
         被热重载接受 —— 接受了就等于把机器人推进一个重启也起不来的状态。
+        必需元素清单与启动期校验共用 `ConfigView.validate_required_elements`，
+        两个门禁对「什么样的配置能启动」只有一份定义。
         """
         if not isinstance(config, dict):
             return "配置文件根节点必须是字典"
@@ -170,13 +172,16 @@ class ConfigReloadManager:
             return "配置文件缺少 qq_music.elements 元素表"
         if not isinstance(config.get("commands"), list):
             return "配置文件缺少 commands 命令表"
+        try:
+            ConfigView(config).validate_required_elements()
+        except ConfigError as exc:
+            return f"配置文件缺少启动期必需的元素：{exc}"
         return None
 
     def _selectors(self, config: Optional[dict] = None) -> dict:
         """「段.元素 key → 选择器」的摊平视图。
 
-        不给 config 时取活配置（重载前）；给了就按生效语义取：某段在新配置里
-        不是字典时，这一段仍旧沿用活配置（与 `ConfigView.reload` 的口径一致）。
+        不给 config 时取活配置（重载前）；给了就按即将生效的新配置取。
         """
         if config is None:
             return {
