@@ -201,7 +201,7 @@ class InfoManager(Singleton):
         if cfg is None and self._handler is not None and hasattr(self._handler, "config"):
             cfg = self._handler.config
 
-        role_policy = RolePolicy(cfg if isinstance(cfg, dict) else None)
+        role_policy = RolePolicy(cfg)
 
         # 1. 若当前播放者为人工角色（房主、管理员、Console）或系统自动化角色，其播放无需保护，允许切歌
         if role_policy.is_privileged(player_name):

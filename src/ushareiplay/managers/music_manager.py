@@ -4,6 +4,7 @@ import time
 import traceback
 from collections import deque
 from typing import Optional
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.managers.playback.models import (
@@ -79,10 +80,18 @@ class MusicManager(Singleton):
 
     @property
     def config(self):
+        """根配置视图。
+
+        组合根的 `controller.config` 是根视图；QQ 音乐 handler 手里只有
+        `qq_music` 段视图，它不含根级的 `old_song_filter` 等段。
+        """
         controller_config = getattr(getattr(self.music_handler, "controller", None), "config", None)
-        if isinstance(controller_config, dict):
+        if isinstance(controller_config, ConfigView):
             return controller_config
-        return getattr(self.music_handler, "config", {}) or {}
+        handler_config = getattr(self.music_handler, "config", None)
+        if isinstance(handler_config, ConfigView):
+            return handler_config
+        return ConfigView({})
 
     @property
     def list_mode(self):
@@ -722,13 +731,14 @@ class MusicManager(Singleton):
     # Quality policy
     # ------------------------------------------------------------------
 
-    def _old_song_filter_config(self) -> dict:
-        return self.config.get("old_song_filter", {})
+    def _old_song_filter_config(self) -> ConfigSectionView:
+        section = self.config.maybe_section("old_song_filter")
+        return section if section is not None else ConfigSectionView("old_song_filter", {})
 
-    def _is_old_song_whitelisted_artist(self, singer: str, config: dict) -> bool:
+    def _is_old_song_whitelisted_artist(self, singer: str, config: ConfigSectionView) -> bool:
         whitelist = {
             str(artist).strip()
-            for artist in config.get("artist_whitelist", [])
+            for artist in (config.value("artist_whitelist") or [])
             if str(artist).strip()
         }
         if not whitelist or not singer:
@@ -759,11 +769,11 @@ class MusicManager(Singleton):
 
     def _is_old_song(self, song: str, singer: str = "", album: str = "", song_info: dict = None) -> bool:
         config = self._old_song_filter_config()
-        if not config.get("enabled", True):
+        if not config.value("enabled", True):
             return False
 
         from ushareiplay.helpers.song_release import parse_release_date
-        cutoff = parse_release_date(config.get("cutoff_date") or "2000-01-01")
+        cutoff = parse_release_date(config.value("cutoff_date") or "2000-01-01")
         if not cutoff or not song:
             return False
 

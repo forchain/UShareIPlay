@@ -27,6 +27,7 @@ from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _StubMusicManager:
@@ -68,12 +69,13 @@ def room(initialized_test_singletons):
         events = []
         handler = SimpleNamespace(
             logger=MagicMock(),
-            config={
-                "soul": {
+            config=ConfigSectionView(
+                "soul",
+                {
                     "room_owner": "Joyer",
                     "playback_mute": playback_mute,
-                }
-            },
+                },
+            ),
             controller=None,
         )
         muting = PlaybackMuting.initialize(
@@ -195,7 +197,9 @@ def test_backfilled_on_mic_line_does_not_arm(room):
 def test_dispatch_survives_an_uninitialized_playback_muting():
     """单例未装配时聊天流照常跑完，只是没人接联动（不许把公屏带崩）。"""
     manager = MessageManager.instance()
-    manager._handler = SimpleNamespace(logger=MagicMock(), config={}, controller=None)
+    manager._handler = SimpleNamespace(
+        logger=MagicMock(), config=ConfigSectionView("soul", {}), controller=None
+    )
     manager._chat_logger = MagicMock()
 
     commands = asyncio.run(manager.dispatch(["荒草 已上麦"]))
@@ -287,7 +291,7 @@ def _run_play_command(monkeypatch, r) -> None:
     manager.configure_runtime(_Runtime())
     manager._logger = MagicMock()
     manager._handler = SimpleNamespace(
-        logger=MagicMock(), config={"soul": {"system_users": ["Console"]}}
+        logger=MagicMock(), config=ConfigSectionView("soul", {"system_users": ["Console"]})
     )
     monkeypatch.setattr(manager, "is_valid_command", lambda _content: True)
     monkeypatch.setattr(

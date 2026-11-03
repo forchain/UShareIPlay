@@ -4,6 +4,7 @@ import traceback
 import logging
 from typing import List, Optional
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models import MessageInfo
 
@@ -25,18 +26,25 @@ class PostPartyCreateAutomation:
         self._command_ready: bool = False
         self._fired: bool = False
 
-    def _cfg(self) -> dict:
-        soul_cfg = (self.controller.config.get("soul", {}) or {}) if self.controller else {}
-        return (soul_cfg.get("post_party_create", {}) or {})
+    def _cfg(self) -> ConfigSectionView:
+        """`soul.post_party_create` 段配置视图。"""
+        controller = self.controller
+        if controller is None:
+            return ConfigSectionView("soul.post_party_create", {})
+        soul = controller.config.maybe_section("soul")
+        if soul is None:
+            return ConfigSectionView("soul.post_party_create", {})
+        section = soul.maybe_section("post_party_create")
+        return section if section is not None else ConfigSectionView("soul.post_party_create", {})
 
     def _enabled(self) -> bool:
-        return bool(self._cfg().get("enabled", False))
+        return bool(self._cfg().value("enabled", False))
 
     def _wait_for_ready(self) -> bool:
-        return bool(self._cfg().get("wait_for_command_ready", True))
+        return bool(self._cfg().value("wait_for_command_ready", True))
 
     def _commands(self) -> List[str]:
-        cmds = self._cfg().get("commands", []) or []
+        cmds = self._cfg().value("commands") or []
         # tolerate wrong types
         if not isinstance(cmds, list):
             return []

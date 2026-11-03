@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.roles import (
     DEFAULT_COMMAND_LEVEL,
     min_command_level,
@@ -116,16 +117,21 @@ class CommandCatalogue:
         commands_path: Optional[Path] = None,
     ) -> "CommandCatalogue":
         """从根配置（或裸命令列表）编译目录。"""
-        if not isinstance(config, dict):
-            config = {"commands": config}
+        if isinstance(config, ConfigView):
+            commands = config.command_entries
+            sleep_section = config.maybe_section("sleep")
+            sleep_cfg = dict(sleep_section.data) if sleep_section else {}
+        else:
+            if not isinstance(config, dict):
+                config = {"commands": config}
 
-        commands = config.get("commands")
-        if not isinstance(commands, list):
-            commands = []
+            commands = config.get("commands")
+            if not isinstance(commands, list):
+                commands = []
 
-        sleep_cfg = config.get("sleep")
-        if not isinstance(sleep_cfg, dict):
-            sleep_cfg = {}
+            sleep_cfg = config.get("sleep")
+            if not isinstance(sleep_cfg, dict):
+                sleep_cfg = {}
         blocked_raw = sleep_cfg.get("blocked_commands")
         configured_blocked = (
             _normalize_prefixes(blocked_raw)

@@ -10,9 +10,10 @@ class LevelCommand(BaseCommand):
     def _get_role_policy(self):
         from ushareiplay.core.roles import RolePolicy
         cfg = None
-        if hasattr(self, 'controller') and hasattr(self.controller, 'config') and isinstance(self.controller.config, dict):
-            cfg = self.controller.config
-        elif self.soul_handler and hasattr(self.soul_handler, 'config') and isinstance(self.soul_handler.config, dict):
+        controller = getattr(self, 'controller', None)
+        if controller is not None and getattr(controller, 'config', None) is not None:
+            cfg = controller.config
+        elif self.soul_handler and getattr(self.soul_handler, 'config', None) is not None:
             cfg = self.soul_handler.config
         return RolePolicy(cfg)
 

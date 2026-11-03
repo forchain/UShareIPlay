@@ -1,5 +1,6 @@
 import pytest
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
@@ -53,7 +54,7 @@ def chat_window():
     chat_logger = MagicMock()
     handler = SimpleNamespace(
         logger=MagicMock(),
-        config={"soul": {"room_owner": "群主"}},
+        config=ConfigSectionView("soul", {"room_owner": "群主"}),
         controller=None,  # BaseEvent 会读它
     )
     manager._handler = handler

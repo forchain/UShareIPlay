@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.singleton import Singleton
 
 logger = logging.getLogger(__name__)
@@ -34,16 +35,22 @@ class MemoryManager(Singleton):
 
     def configure(self, config: Optional[Dict[str, Any]] = None):
         """配置记忆管理器参数"""
-        cfg = config or {}
-        llm_cfg = cfg.get("llm") or (cfg.get("soul", {}) or {}).get("llm", {})
-        mem_cfg = (llm_cfg.get("memory") if isinstance(llm_cfg, dict) else {}) or {}
-        
+        if isinstance(config, ConfigView):
+            llm_section = config.maybe_section("llm")
+            mem_section = llm_section.maybe_section("memory") if llm_section else None
+            mem_cfg = dict(mem_section.data) if mem_section else {}
+            self._config = config
+        else:
+            cfg = config or {}
+            llm_cfg = cfg.get("llm") or (cfg.get("soul", {}) or {}).get("llm", {})
+            mem_cfg = (llm_cfg.get("memory") if isinstance(llm_cfg, dict) else {}) or {}
+            self._config = cfg
+
         self._enabled = bool(mem_cfg.get("enabled", True))
         self._min_messages = int(mem_cfg.get("min_messages", 10))
         self._min_level_for_long_term = int(mem_cfg.get("min_level_for_long_term", 20))
         self._worker_delay = float(mem_cfg.get("worker_delay_seconds", 1.0))
         self._timeout = float(mem_cfg.get("timeout", 30.0))
-        self._config = cfg
 
     @property
     def timeout(self) -> float:

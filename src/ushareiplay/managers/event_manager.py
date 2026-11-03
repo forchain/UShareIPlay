@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView, Locator
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.element_wrapper import ElementWrapper
@@ -62,8 +63,10 @@ class EventManager(Singleton):
 
     @property
     def config(self):
+        """Soul 应用段的配置视图。"""
         if self._config is None:
-            self._config = getattr(self._handler, "config", {}) or {}
+            config = getattr(self._handler, "config", None)
+            self._config = config if config is not None else ConfigSectionView("soul", {})
         return self._config
 
     @property
@@ -243,31 +246,19 @@ class EventManager(Singleton):
             self.logger.error(f"Error loading events: {traceback.format_exc()}")
 
     def _soul_package_name(self) -> str:
-        return (self.config.get("package_name") or "").strip() or "cn.soulapp.android"
+        return (self.config.value("package_name") or "").strip() or "cn.soulapp.android"
 
-    def _root_config(self) -> dict:
+    def _root_config(self) -> ConfigView:
+        """根配置视图（QQ 音乐段的包名从这里取）。"""
         controller = getattr(self.handler, "controller", None)
         root_config = getattr(controller, "config", None)
-        if isinstance(root_config, dict):
+        if isinstance(root_config, ConfigView):
             return root_config
-        return self.config if isinstance(self.config, dict) else {}
+        return ConfigView({})
 
     def _qq_music_package_name(self) -> str:
-        root_config = self._root_config()
-        return (
-            ((root_config.get("qq_music") or {}).get("package_name"))
-            or "com.tencent.qqmusic"
-        )
-
-    def _screen_elements(self) -> dict:
-        config = self.config if isinstance(self.config, dict) else {}
-        if isinstance(config.get("elements"), dict):
-            return config["elements"]
-
-        root_config = self._root_config()
-        soul_config = root_config.get("soul") or {}
-        elements = soul_config.get("elements")
-        return elements if isinstance(elements, dict) else {}
+        music = self._root_config().maybe_section("qq_music")
+        return (music.value("package_name") if music else None) or "com.tencent.qqmusic"
 
     def _launcher_packages(self) -> List[str]:
         defaults = [
@@ -275,7 +266,7 @@ class EventManager(Singleton):
             "com.android.launcher",
             "com.google.android.apps.nexuslauncher",
         ]
-        extra = self.config.get("launcher_packages") or []
+        extra = self.config.value("launcher_packages") or []
         if not isinstance(extra, list):
             return defaults
         merged: List[str] = []
@@ -297,12 +288,13 @@ class EventManager(Singleton):
             return None
         return self._packages_from_parsed_root(root)
 
-    def _selector_present(self, root: etree._Element, page_source: str, selector: str) -> bool:
-        if not selector or not isinstance(selector, str):
+    def _selector_present(self, root: etree._Element, page_source: str, locator: Locator) -> bool:
+        selector = locator.value
+        if not selector:
             return False
         if selector in page_source:
             return True
-        if selector.startswith("//"):
+        if locator.kind == "xpath":
             try:
                 return bool(root.xpath(selector))
             except Exception:
@@ -310,7 +302,7 @@ class EventManager(Singleton):
                 if match and match.group(1):
                     return match.group(1) in page_source
             return False
-        return bool(root.xpath(f"//*[@resource-id='{selector}']"))
+        return bool(root.xpath(locator.absolute_xpath))
 
     def describe_screen(self, page_source: str) -> dict:
         screen = {
@@ -341,8 +333,8 @@ class EventManager(Singleton):
 
         anchors = []
         for key in ("message_content", "input_box_entry", "input_box"):
-            selector = self._screen_elements().get(key)
-            if selector and self._selector_present(root, page_source, selector):
+            locator = self.config.maybe_element(key)
+            if locator is not None and self._selector_present(root, page_source, locator):
                 anchors.append(key)
         screen["anchors"] = anchors
 
@@ -368,18 +360,12 @@ class EventManager(Singleton):
         Returns:
             找到的 lxml Element，未找到返回 None
         """
-        if element_key not in self.config['elements']:
+        locator = self.config.maybe_element(element_key)
+        if locator is None:
             return None
 
-        element_value = self.config['elements'][element_key]
-
         try:
-            if element_value.startswith('//'):
-                # XPath 方式
-                results = root.xpath(element_value)
-            else:
-                # ID 方式：查找 resource-id 匹配的元素
-                results = root.xpath(f"//*[@resource-id='{element_value}']")
+            results = root.xpath(locator.absolute_xpath)
 
             # 检查模块是否有 __multiple__ 属性
             if module and hasattr(module, '__multiple__') and module.__multiple__:

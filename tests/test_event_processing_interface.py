@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import StatusReporter
 from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
 
 class FakeObserver:
@@ -41,19 +42,20 @@ def make_event_manager(config=None):
     manager = EventManager.__new__(EventManager)
     manager._handler = SimpleNamespace(
         logger=FakeLogger(),
-        config=config
-        or {
-            "package_name": "cn.soulapp.android",
-            "launcher_packages": [],
-            "qq_music": {"package_name": "com.tencent.qqmusic"},
-            "soul": {
+        # handler 手里的是 soul 段视图（生产上组合根注入的就是它）。
+        config=ConfigSectionView(
+            "soul",
+            config
+            or {
+                "package_name": "cn.soulapp.android",
+                "launcher_packages": [],
                 "elements": {
                     "message_content": "com.app:id/message_content",
                     "input_box_entry": "com.app:id/input_box_entry",
                     "input_box": "com.app:id/input_box",
-                }
+                },
             },
-        },
+        ),
     )
     manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: True)
     manager._logger = manager._handler.logger
@@ -285,7 +287,7 @@ def test_status_reporter_uses_supplied_screen_description():
     asyncio.run(MessageQueue.instance().clear_queue())
     obs = FakeObserver()
     reporter = StatusReporter(
-        config={"soul": {"default_party_id": "123"}},
+        config=ConfigView({"soul": {"default_party_id": "123"}}),
         ui_lock=SimpleNamespace(locked=lambda: False),
         obs=obs,
         soul_handler=SimpleNamespace(party_id="456"),

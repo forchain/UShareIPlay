@@ -4,9 +4,17 @@ import traceback
 import yaml
 from pathlib import Path
 from typing import Optional
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal import KeywordDAO, UserDAO
 from ushareiplay.models.keyword import Keyword
+
+
+def _as_root_view(config) -> ConfigView:
+    """把一份根配置（视图或裸 dict）统一成 `ConfigView`。"""
+    if isinstance(config, ConfigView):
+        return config
+    return ConfigView(config or {})
 
 
 class KeywordManager(Singleton):
@@ -54,30 +62,28 @@ class KeywordManager(Singleton):
 
     @property
     def config(self):
-        """延迟获取全局根配置"""
+        """延迟获取全局根配置（ConfigView）"""
         if self._config is not None:
-            return self._config
+            return _as_root_view(self._config)
 
         if (
             self._handler is not None
             and getattr(self._handler, "controller", None) is not None
             and getattr(self._handler.controller, "config", None) is not None
         ):
-            return self._handler.controller.config
+            return _as_root_view(self._handler.controller.config)
 
         try:
             from ushareiplay.core.config_loader import ConfigLoader
 
             loaded = ConfigLoader.load_config()
             if loaded:
-                return loaded
+                return ConfigView(loaded)
         except Exception:
             pass
 
-        if self._handler is not None and getattr(self._handler, "config", None) is not None:
-            return self._handler.config
-
-        return {}
+        # handler.config 是应用段视图，根级的 llm / commands 不在里面。
+        return ConfigView({})
 
     async def load_keywords_from_config(self):
         """从配置文件加载关键字到数据库
@@ -380,14 +386,14 @@ class KeywordManager(Singleton):
         if self._nl_resolver is None:
             from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
 
-            root_cfg = self.config or {}
-            cfg = root_cfg.get("llm") or (root_cfg.get("soul", {}) or {}).get("llm", {})
-            if isinstance(cfg, dict):
-                cfg = cfg.copy()
-                if "system_users" not in cfg:
-                    sys_users = (root_cfg.get("soul") or {}).get("system_users") or root_cfg.get("system_users")
-                    if sys_users:
-                        cfg["system_users"] = sys_users
+            root_cfg = self.config
+            llm_section = root_cfg.maybe_section("llm")
+            cfg = dict(llm_section.data) if llm_section else {}
+            if "system_users" not in cfg:
+                soul = root_cfg.maybe_section("soul")
+                sys_users = (soul.value("system_users") if soul else None) or root_cfg.value("system_users")
+                if sys_users:
+                    cfg["system_users"] = sys_users
             self._nl_resolver = NaturalLanguageResolver(cfg)
         return self._nl_resolver
 
@@ -458,7 +464,7 @@ class KeywordManager(Singleton):
             except Exception:
                 pass
 
-            commands_config = (self.config or {}).get("commands", [])
+            commands_config = self.config.command_entries
             catalogue = None
             try:
                 from ushareiplay.managers.command_manager import CommandManager

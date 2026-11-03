@@ -35,19 +35,19 @@ class KeyActions:
     @with_driver_recovery(retry=False, op="write")
     def switch_to_app(self):
         """Switch to specified app"""
-        self.driver.activate_app(self.config["package_name"])
+        self.driver.activate_app(self.config.require("package_name"))
         time.sleep(0.1)
         return True
 
     @with_driver_recovery(retry=False, op="write")
     def close_app(self):
         """关闭应用"""
-        self.driver.terminate_app(self.config["package_name"])
+        self.driver.terminate_app(self.config.require("package_name"))
 
     @with_driver_recovery(retry=False, op="write")
     def switch_to_activity(self, activity):
         """Switch to the specified activity"""
-        package_name = self.config["package_name"]
+        package_name = self.config.require("package_name")
         command = f"am start -n {package_name}/{activity}"
         self.driver.execute_script("mobile: shell", {"command": command})
 

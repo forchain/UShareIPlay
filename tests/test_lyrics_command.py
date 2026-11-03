@@ -9,13 +9,16 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ushareiplay.commands.lyrics import LyricsCommand
+from ushareiplay.core.config_view import ConfigView
 
 
 def _make_command():
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()  # soul handler
     command.music_handler = MagicMock()
-    command.controller = SimpleNamespace(config={"lyrics": {"line_max_width": 18}})
+    command.controller = SimpleNamespace(
+        config=ConfigView({"lyrics": {"line_max_width": 18}})
+    )
     command._music_manager = MagicMock()
     command._music_manager.query_lyrics.return_value = {"lyrics": "第一行\n第二行"}
     command.music_handler.key_actions.switch_to_app.return_value = True

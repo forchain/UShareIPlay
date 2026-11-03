@@ -429,8 +429,7 @@ class QQMusicHandler(AppHandler, Singleton):
             bool: True if the tab was found and clicked successfully, False otherwise.
         """
         try:
-            elements = (getattr(self, "config", {}) or {}).get("elements", {})
-            if tab_name in elements:
+            if self.config.maybe_element(tab_name) is not None:
                 element_key = tab_name
             elif tab_name in self.TAB_ALIASES:
                 element_key = self.TAB_ALIASES[tab_name]
@@ -440,11 +439,7 @@ class QQMusicHandler(AppHandler, Singleton):
                 element_key = f"{tab_name}_tab"
 
             if max_swipes is None:
-                max_swipes = (
-                    (getattr(self, "config", {}) or {}).get("qq_music", {}).get("tab_max_swipes")
-                    or (getattr(self, "config", {}) or {}).get("tab_max_swipes")
-                    or 10
-                )
+                max_swipes = self.config.value("tab_max_swipes") or 10
 
             # Fast path: tab already visible on screen
             tab_element = self.element_finder.try_find_element(element_key)

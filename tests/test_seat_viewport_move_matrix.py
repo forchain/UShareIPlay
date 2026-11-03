@@ -257,7 +257,7 @@ async def test_anchor_losing_move_is_still_detected_in_an_unreadable_phase():
     在那一轮时永远没有可比对象，漏检。
     """
     handler = make_handler()
-    handler.config["room_owner"] = "Joyer"  # 「群主」身份文字要归一成房主昵称本人
+    handler.config.data["room_owner"] = "Joyer"  # 「群主」身份文字要归一成房主昵称本人
     manager = SeatObservationManager.initialize(handler)
     manager.seats[1] = SeatSlot(1, occupied=True, username="Joyer", label="群主", is_owner=True)
     manager.seats[2] = SeatSlot(seat_number=2, occupied=True, username=MOVER, label="2")

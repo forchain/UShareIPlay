@@ -17,6 +17,7 @@ import pytest
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _Logger:
@@ -73,7 +74,7 @@ class _SoulHandler:
     def __init__(self, events):
         self.events = events
         self.logger = _Logger()
-        self.config = {}
+        self.config = ConfigSectionView("soul", {})
 
 
 class _MusicManager:
@@ -158,7 +159,9 @@ def _make_manager(monkeypatch, command, coordinator):
     monkeypatch.setattr(PlaybackMuting, "instance", staticmethod(lambda: coordinator))
     manager.configure_runtime(_Runtime())
     manager._logger = _Logger()
-    manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
+    manager._handler = SimpleNamespace(
+        config=ConfigSectionView("soul", {"system_users": ["Console"]})
+    )
     monkeypatch.setattr(manager, "is_valid_command", lambda _content: True)
     monkeypatch.setattr(
         manager,

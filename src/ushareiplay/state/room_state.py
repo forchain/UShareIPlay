@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
@@ -127,11 +128,14 @@ class RoomState(Singleton):
         """获取配置中的默认主房间ID"""
         try:
             handler = self._handler
-            if handler and hasattr(handler, 'config') and isinstance(handler.config, dict):
-                soul_cfg = handler.config.get("soul", {})
-                if isinstance(soul_cfg, dict) and soul_cfg.get("default_party_id"):
-                    return soul_cfg.get("default_party_id")
-                return handler.config.get("default_party_id")
+            if handler is None:
+                return None
+            config = getattr(handler, 'config', None)
+            if isinstance(config, ConfigSectionView):
+                return config.value("default_party_id")
+            if isinstance(config, ConfigView):
+                section = config.maybe_section("soul")
+                return section.value("default_party_id") if section is not None else None
         except Exception:
             pass
         return None

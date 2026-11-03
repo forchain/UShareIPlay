@@ -1,6 +1,8 @@
 import os
 import tempfile
 import yaml
+
+import pytest
 from ushareiplay.core.config_loader import ConfigLoader, _deep_merge
 
 
@@ -137,8 +139,7 @@ def test_config_loader_loads_and_merges_local_yaml():
 
 
 def test_config_loader_warns_on_elements_override(caplog):
-    import logging
-
+    """允许在 config.local.yaml 中覆盖元素选择器，但输出 WARNING 提醒。"""
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
         local_path = os.path.join(tmpdir, "config.local.yaml")
@@ -163,17 +164,15 @@ def test_config_loader_warns_on_elements_override(caplog):
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with caplog.at_level(logging.WARNING):
-            loaded = ConfigLoader.load_config(config_path)
+        with caplog.at_level("WARNING"):
+            config = ConfigLoader.load_config(config_path)
 
-        assert loaded["soul"]["elements"]["user_count"] == "tv1"
-        assert any("config.local.yaml overrides 'soul.elements'" in record.message for record in caplog.records)
+        assert config["soul"]["elements"]["user_count"] == "tv1"
+        assert "检测到 config.local.yaml 中覆盖了元素定义: soul.elements" in caplog.text
 
 
 def test_config_loader_warns_on_element_list_override(caplog):
-    """元素列表（risk_elements / drawer_elements）同样是元素定义，不能被本地配置覆盖。"""
-    import logging
-
+    """元素列表（risk_elements / drawer_elements）覆盖时同样输出 WARNING 提醒。"""
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
         local_path = os.path.join(tmpdir, "config.local.yaml")
@@ -197,15 +196,9 @@ def test_config_loader_warns_on_element_list_override(caplog):
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with caplog.at_level(logging.WARNING):
-            loaded = ConfigLoader.load_config(config_path)
+        with caplog.at_level("WARNING"):
+            config = ConfigLoader.load_config(config_path)
 
-        assert loaded["soul"]["risk_elements"] == ["close_widget"]
-        assert any(
-            "config.local.yaml overrides 'soul.risk_elements'" in record.message
-            for record in caplog.records
-        )
-        assert any(
-            "config.local.yaml overrides 'soul.drawer_elements'" in record.message
-            for record in caplog.records
-        )
+        assert config["soul"]["risk_elements"] == ["close_widget"]
+        assert config["soul"]["drawer_elements"] == ["other_drawer"]
+        assert "soul.risk_elements, soul.drawer_elements" in caplog.text

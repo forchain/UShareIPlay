@@ -1,4 +1,5 @@
 import asyncio
+from ushareiplay.core.config_view import ConfigView
 
 
 def _run(coro):
@@ -10,7 +11,7 @@ def test_post_party_create_latch_party_then_ready_fires_once():
     from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 
     class C:
-        config = {
+        config = ConfigView({
             "soul": {
                 "post_party_create": {
                     "enabled": True,
@@ -18,7 +19,7 @@ def test_post_party_create_latch_party_then_ready_fires_once():
                     "commands": [":radio", ":seat"],
                 }
             }
-        }
+        })
         logger = None
         obs = None
 
@@ -47,7 +48,7 @@ def test_post_party_create_latch_ready_then_party_fires_once():
     from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 
     class C:
-        config = {
+        config = ConfigView({
             "soul": {
                 "post_party_create": {
                     "enabled": True,
@@ -55,7 +56,7 @@ def test_post_party_create_latch_ready_then_party_fires_once():
                     "commands": [":radio"],
                 }
             }
-        }
+        })
         logger = None
         obs = None
 

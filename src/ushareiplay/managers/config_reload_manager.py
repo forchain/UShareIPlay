@@ -6,14 +6,15 @@
    绝不能把跑着的机器人变成砖头：ElementFinder 每次查元素都会读配置）；
 2. 原地写入 + 重绑元素映射 —— 这一段成功才算热重载完成。
 
-「原地写入」是关键：`ElementFinder`、`EventManager` 等组件缓存的是 handler.config
-这一个 dict 对象，把根配置换成新对象，它们会继续用旧选择器。
+「原地写入」是关键：`ElementFinder`、`EventManager` 等组件缓存的是
+`handler.config` 这个段视图，热重载靠视图换内容生效（ADR-0012）。
 """
 
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
 from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.core.config_view import ConfigError, ConfigView
 
 
 @dataclass(frozen=True)
@@ -111,16 +112,12 @@ class ConfigReloadManager:
     def __init__(
         self,
         *,
-        root_config: dict,
-        soul_config: dict,
-        qq_music_config: dict,
+        config: ConfigView,
         event_manager,
         command_manager,
         config_path: str = "config.yaml",
     ):
-        self.root_config = root_config
-        self.soul_config = soul_config
-        self.qq_music_config = qq_music_config
+        self.config = config
         self.event_manager = event_manager
         self.command_manager = command_manager
         self.config_path = config_path
@@ -140,7 +137,7 @@ class ConfigReloadManager:
         old_selectors = self._selectors()
         new_selectors = self._selectors(new_config)
 
-        self._apply_in_place(new_config)
+        self.config.reload(new_config)
         new_mapping = self.event_manager.rebind_elements()
         self._refresh_command_parser()
 
@@ -158,6 +155,8 @@ class ConfigReloadManager:
         （app_controller 读 config["qq_music"] / config["commands"] 会 KeyError），
         要么一用就炸（元素查找读 config["elements"] 会 KeyError）。这种配置不该
         被热重载接受 —— 接受了就等于把机器人推进一个重启也起不来的状态。
+        必需元素清单与启动期校验共用 `ConfigView.validate_required_elements`，
+        两个门禁对「什么样的配置能启动」只有一份定义。
         """
         if not isinstance(config, dict):
             return "配置文件根节点必须是字典"
@@ -173,34 +172,37 @@ class ConfigReloadManager:
             return "配置文件缺少 qq_music.elements 元素表"
         if not isinstance(config.get("commands"), list):
             return "配置文件缺少 commands 命令表"
+        try:
+            ConfigView(config).validate_required_elements()
+        except ConfigError as exc:
+            return f"配置文件缺少启动期必需的元素：{exc}"
         return None
 
     def _selectors(self, config: Optional[dict] = None) -> dict:
         """「段.元素 key → 选择器」的摊平视图。
 
-        不给 config 时取活配置（重载前）；给了就按生效语义取：某段在新配置里
-        不是字典时，这一段仍旧沿用活配置（与 _apply_in_place 的口径一致）。
+        不给 config 时取活配置（重载前）；给了就按即将生效的新配置取。
         """
         if config is None:
             return {
-                **selector_map("soul", self.soul_config),
-                **selector_map("qq_music", self.qq_music_config),
+                **selector_map("soul", self.config.soul.data),
+                **selector_map("qq_music", self.config.music.data),
             }
         soul = config.get("soul")
         qq_music = config.get("qq_music")
         return {
             **selector_map(
-                "soul", soul if isinstance(soul, dict) else self.soul_config
+                "soul", soul if isinstance(soul, dict) else self.config.soul.data
             ),
             **selector_map(
                 "qq_music",
-                qq_music if isinstance(qq_music, dict) else self.qq_music_config,
+                qq_music if isinstance(qq_music, dict) else self.config.music.data,
             ),
         }
 
     def _refresh_command_parser(self) -> None:
         """命令前缀 / 等级 / 模板 / 权限改了要重新编译目录，否则改动不生效。"""
-        self.command_manager.initialize_parser(self.root_config)
+        self.command_manager.initialize_parser(self.config)
         catalogue = self.command_manager.catalogue
 
         # 睡眠拦截与客房权限各自持有一份目录引用；不换的话热重载只刷新了解析器。
@@ -211,21 +213,3 @@ class ConfigReloadManager:
             SleepManager.instance().configure_catalogue(catalogue)
         if RoomState.is_initialized():
             RoomState.instance().configure_catalogue(catalogue)
-
-    def _apply_in_place(self, new_config: dict) -> None:
-        """把新配置写进各组件正在用的 dict 对象（对象身份保持不变）。"""
-        for live, section in (
-            (self.soul_config, new_config.get("soul")),
-            (self.qq_music_config, new_config.get("qq_music")),
-        ):
-            if isinstance(section, dict):
-                live.clear()
-                live.update(section)
-
-        # 根配置一次性换掉：活对象先放回新内容里，中间不会出现
-        # root["soul"] 指向另一个对象的半截状态。
-        merged = dict(new_config)
-        merged["soul"] = self.soul_config
-        merged["qq_music"] = self.qq_music_config
-        self.root_config.clear()
-        self.root_config.update(merged)

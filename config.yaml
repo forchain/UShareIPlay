@@ -105,7 +105,8 @@ soul:
     sender_relation: "cn.soulapp.android:id/ivFlagImg"
     sender_flag: "cn.soulapp.android:id/flagContainerView"
     sender_avatar: "cn.soulapp.android:id/flAvatar"
-    sender_nickname: "cn.soulapp.android:id/tvNickname"
+    sender_nickname: "cn.soulapp.android:id/tv_name"
+    love_close: "cn.soulapp.android:id/iv_love_close"
     private_chat_button: "cn.soulapp.android:id/tv_chat_secret"
     private_message_input: "cn.soulapp.android:id/et_sendmessage"
     private_message_send: "cn.soulapp.android:id/btn_send"
@@ -129,7 +130,7 @@ soul:
     grab_mic: "cn.soulapp.android:id/ivUpSeat"
     confirm_mic: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确认']"
     confirm_close: "//android.widget.TextView[@resource-id='cn.soulapp.android:id/tv_btn' and @text='确定']"
-    toggle_mic: "cn.soulapp.android:id/ivMicButton" # 开麦按钮/闭麦按钮
+    toggle_mic: 'cn.soulapp.android:id/micBtn' # 开麦按钮/闭麦按钮
     square_tab: "cn.soulapp.android:id/main_tab_square"
     party_tab: "//android.widget.LinearLayout[@content-desc='派对']"
     no_party_from_home: "cn.soulapp.android:id/tvEmptyContent"
@@ -327,7 +328,7 @@ qq_music:
     singer_name: '//android.widget.TextView[@content-desc="歌手" or @content-desc="演奏家"]/../android.widget.RelativeLayout/android.widget.TextView'
     play_singer_1: '//android.widget.ImageView[starts-with(@content-desc, "播放歌手: ")]'
     singer_result: "//android.widget.ListView//android.widget.RelativeLayout//android.widget.TextView"
-    play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"]'
+    play_all: '//android.widget.TextView[@text="全部播放" or @text="播放最热歌曲"] | //android.widget.LinearLayout[@content-desc="播放最热歌曲"]'
     play_all_compact: '//android.view.ViewGroup[@content-desc="评论"]/../android.widget.RelativeLayout/android.widget.ImageView'
     # 歌单详情页（AI 歌单）把「播放全部」渲染成一个 content-desc="播放" 的
     # FrameLayout，既不是 TextView 文案也不是 ImageView 图标 —— 真机 dump 见
@@ -368,8 +369,8 @@ qq_music:
     more_collection: '//android.widget.ImageView[@content-desc="更多"]'
     collection_title: '//android.widget.Button[@content-desc="播放"]/../android.widget.TextView'
     collection_topic: '//android.widget.ImageView[@content-desc="收藏" or @content-desc="取消收藏"]/../android.widget.TextView'
-    guess_title: '//android.widget.TextView[@text="猜你喜欢"]'
-    guess_topic: '//android.widget.TextView[@text="猜你喜欢"]/../android.widget.TextView'
+    guess_title: '//android.widget.TextView[starts-with(@text, "猜你喜欢")]'
+    guess_topic: '//android.widget.TextView[starts-with(@text, "猜你喜欢")]/../android.widget.TextView'
     daily_title: '//android.widget.TextView[@text="每日30首"]'
     daily_topic: '//android.widget.TextView[@text="每日30首"]/../android.widget.TextView'
     search_shortcuts: '//android.widget.TextView[@text="歌手"]/../..'

@@ -112,13 +112,10 @@ class PlaybackBroadcaster(Singleton):
             if not song_skipped:
                 playback_message = self._format_playback_message(info)
                 # 检查是否开启了广播
-                # 运行时 self.soul_handler.config 是 soul 子配置（不是全量 config），
-                # 兼容两种结构，避免读不到时错误回退为 True。
-                cfg = self.soul_handler.config if isinstance(self.soul_handler.config, dict) else {}
-                if 'broadcast_playing_info' in cfg:
-                    broadcast_enabled = cfg.get('broadcast_playing_info', True)
-                else:
-                    broadcast_enabled = cfg.get('soul', {}).get('broadcast_playing_info', True)
+                # 运行时 self.soul_handler.config 是 soul 段视图，
+                # 广播开关就在这一段里。
+                cfg = self.soul_handler.config
+                broadcast_enabled = cfg.value('broadcast_playing_info', True)
                 if not broadcast_enabled:
                     self.logger.info(f'Hidden "{playback_message}"')
                     return

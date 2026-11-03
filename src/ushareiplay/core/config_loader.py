@@ -4,6 +4,34 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+#: config.local.yaml 覆盖的元素定义键
+_ELEMENT_DEFINITION_KEYS = ("elements", "risk_elements", "drawer_elements")
+
+
+class LocalConfigOverrideRejected(ValueError):
+    """已废弃：保留该类以防外部旧引用破坏导入。"""
+
+
+def _warn_element_overrides(local_config: dict) -> None:
+    """检查 config.local.yaml 是否覆盖元素定义，若有则输出 WARNING 提醒。
+
+    允许在 config.local.yaml 中覆盖元素选择器（用于快速应对 App 定位符变更而免于重新发版），
+    但应尽快并入 config.yaml。
+    """
+    offenders = []
+    for scope in ("", "soul.", "qq_music."):
+        payload = local_config if not scope else local_config.get(scope[:-1])
+        if not isinstance(payload, dict):
+            continue
+        for key in _ELEMENT_DEFINITION_KEYS:
+            if key in payload:
+                offenders.append(f"{scope}{key}")
+    if offenders:
+        logger.warning(
+            f"检测到 config.local.yaml 中覆盖了元素定义: {', '.join(offenders)}。"
+            "此覆盖仅用于紧急修复定位符，请尽快在下一个版本中并入 config.yaml！"
+        )
+
 
 def _deep_merge(base, override):
     """Recursively merge override into base. Dicts are merged; commands lists are merged by prefix; other types replace."""
@@ -57,36 +85,7 @@ class ConfigLoader:
             with open(local_path, 'r', encoding='utf-8') as f:
                 local_config = yaml.safe_load(f)
             if local_config:
-                for section in ("soul", "qq_music"):
-                    sec_dict = local_config.get(section)
-                    if not isinstance(sec_dict, dict):
-                        continue
-                    if "elements" in sec_dict:
-                        elements = sec_dict["elements"]
-                        keys = list(elements.keys()) if isinstance(elements, dict) else []
-                        logger.warning(
-                            "config.local.yaml overrides '%s.elements': %s. "
-                            "UI element selectors must remain in config.yaml to preserve multi-version compatibility.",
-                            section,
-                            keys,
-                        )
-                    # 元素列表（risk_elements / drawer_elements）同样是元素定义，
-                    # 一样只能待在 config.yaml（单一事实源）。
-                    for list_key in ("risk_elements", "drawer_elements"):
-                        if list_key in sec_dict:
-                            logger.warning(
-                                "config.local.yaml overrides '%s.%s': %s. "
-                                "UI element lists must remain in config.yaml to preserve multi-version compatibility.",
-                                section,
-                                list_key,
-                                sec_dict[list_key],
-                            )
-                if "elements" in local_config and isinstance(local_config["elements"], dict):
-                    logger.warning(
-                        "config.local.yaml overrides 'elements': %s. "
-                        "UI element selectors must remain in config.yaml to preserve multi-version compatibility.",
-                        list(local_config["elements"].keys()),
-                    )
+                _warn_element_overrides(local_config)
                 config = _deep_merge(config, local_config)
 
         return config

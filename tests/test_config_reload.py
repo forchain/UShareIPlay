@@ -18,6 +18,11 @@ import yaml
 
 import ushareiplay.events as events_package
 from ushareiplay.core.app_controller import AppController
+from ushareiplay.core.config_view import (
+    REQUIRED_ELEMENTS,
+    ConfigSectionView,
+    ConfigView,
+)
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
 from ushareiplay.managers.command_manager import CommandManager
@@ -45,16 +50,30 @@ class _Logger:
         pass
 
 
+_REQUIRED_SOUL_ELEMENTS = {
+    key: f"cn.soulapp.android:id/{key}" for key in REQUIRED_ELEMENTS["soul"]
+}
+_REQUIRED_QQ_ELEMENTS = {
+    key: f"cn.soulapp.android:id/{key}" for key in REQUIRED_ELEMENTS["qq_music"]
+}
+
+
 def _soul_config(risk_elements, elements=None):
-    return {
+    merged = dict(_REQUIRED_SOUL_ELEMENTS)
+    merged.update(
+        elements
+        if elements is not None
+        else {
+            "collapse_seats": "cn.soulapp.android:id/collapseSeats",
+            "input_drawer": "cn.soulapp.android:id/inputDrawer",
+        }
+    )
+    return ConfigSectionView("soul", {
         "room_owner": "Joyer",
         "admin_users": ["Outlier"],
         "risk_elements": list(risk_elements),
-        "elements": elements if elements is not None else {
-            "collapse_seats": "cn.soulapp.android:id/collapseSeats",
-            "input_drawer": "cn.soulapp.android:id/inputDrawer",
-        },
-    }
+        "elements": merged,
+    })
 
 
 def _make_event_manager(soul_config):
@@ -62,7 +81,7 @@ def _make_event_manager(soul_config):
     manager._handler = SimpleNamespace(
         logger=_Logger(),
         config=soul_config,
-        controller=SimpleNamespace(config={"soul": soul_config}),
+        controller=SimpleNamespace(config=ConfigView({"soul": soul_config.data})),
     )
     manager._logger = manager._handler.logger
     manager._config = manager._handler.config
@@ -77,13 +96,16 @@ def _make_event_manager(soul_config):
 
 def _make_runtime(soul_config):
     """组合根的最小替身：根配置 + 两个活配置段 + 事件管理器 + 命令管理器。"""
-    root = {
-        "soul": soul_config,
-        "qq_music": {"elements": {"play_button": "id/play"}},
+    root = ConfigView({
+        "soul": soul_config.data,
+        "qq_music": {
+            "elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play"}
+        },
         "commands": [{"prefix": "play", "level": 1}],
         "device": {"name": "emulator"},
-    }
-    event_manager = _make_event_manager(soul_config)
+    })
+    # handler 拿到的就是组合根发出的那个段视图（生产上同一件事）。
+    event_manager = _make_event_manager(root.soul)
     event_manager.load_event_module("risk_elements")
     return root, event_manager
 
@@ -91,9 +113,7 @@ def _make_runtime(soul_config):
 def _make_reload_manager(root, event_manager, command_manager, config_path):
     """依赖显式注入（ADR-0009 §1）：热重载器自己不回头去翻控制器。"""
     return ConfigReloadManager(
-        root_config=root,
-        soul_config=root["soul"],
-        qq_music_config=root["qq_music"],
+        config=root,
         event_manager=event_manager,
         command_manager=command_manager,
         config_path=str(config_path),
@@ -106,12 +126,16 @@ def _write_config(path, soul_config, qq_music_config=None, commands=None, omit=(
     默认写全机器人启动需要的东西（soul / qq_music / commands），这样每个用例
     只关心自己那一个变量；omit 里的顶层键不写，用来模拟「配置缺了一块」。
     """
-    payload = {"soul": soul_config}
+    payload = {
+        "soul": soul_config.data
+        if isinstance(soul_config, ConfigSectionView)
+        else soul_config
+    }
     if "qq_music" not in omit:
         payload["qq_music"] = (
             qq_music_config
             if qq_music_config is not None
-            else {"elements": {"play_button": "id/play"}}
+            else {"elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play"}}
         )
     if "commands" not in omit:
         payload["commands"] = (
@@ -142,7 +166,7 @@ def test_rebind_elements_rebuilds_the_mapping_from_the_current_config():
 
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
-    soul["risk_elements"] = ["input_drawer"]
+    soul.data["risk_elements"] = ["input_drawer"]
     mapping = event_manager.rebind_elements()
 
     assert mapping == {"input_drawer": "risk_elements"}
@@ -169,9 +193,7 @@ def test_config_reload_manager_takes_its_dependencies_explicitly():
 
     assert "controller" not in parameters
     assert {
-        "root_config",
-        "soul_config",
-        "qq_music_config",
+        "config",
         "event_manager",
         "command_manager",
         "config_path",
@@ -181,13 +203,13 @@ def test_config_reload_manager_takes_its_dependencies_explicitly():
 def _make_controller_with_live_sections():
     """最小控制器替身：两个 handler 手里就是根配置里那两个段。"""
     controller = AppController.__new__(AppController)
-    controller.config = {
+    controller.config = ConfigView({
         "soul": {"elements": {"collapse_seats": "id/collapse"}},
         "qq_music": {"elements": {"play_button": "id/play"}},
         "commands": [{"prefix": "play", "level": 1}],
-    }
-    controller.soul_handler = SimpleNamespace(config=controller.config["soul"])
-    controller.music_handler = SimpleNamespace(config=controller.config["qq_music"])
+    })
+    controller.soul_handler = SimpleNamespace(config=controller.config.soul)
+    controller.music_handler = SimpleNamespace(config=controller.config.music)
     controller.event_manager = SimpleNamespace(element_to_event={})
     controller.command_manager = SimpleNamespace()
     return controller
@@ -199,15 +221,17 @@ def test_composition_root_wires_the_live_config_objects():
 
     manager = controller._build_config_reload_manager()
 
-    assert manager.root_config is controller.config
-    assert manager.soul_config is controller.soul_handler.config
-    assert manager.qq_music_config is controller.music_handler.config
+    assert manager.config is controller.config
+    assert controller.soul_handler.config is controller.config.soul
+    assert controller.music_handler.config is controller.config.music
 
 
 def test_composition_root_refuses_a_copied_section():
     """接成副本的话，重载会写进副本，机器人照旧用旧选择器，控制台还报成功。"""
     controller = _make_controller_with_live_sections()
-    controller.soul_handler = SimpleNamespace(config=dict(controller.config["soul"]))
+    controller.soul_handler = SimpleNamespace(
+        config=ConfigSectionView("soul", dict(controller.config.soul.data))
+    )
 
     with pytest.raises(AssertionError):
         controller._build_config_reload_manager()
@@ -222,8 +246,8 @@ def test_reload_applies_the_new_config_in_place_and_reports_the_mapping_diff(
     tmp_path, command_manager
 ):
     root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
-    soul_config = root["soul"]
-    qq_music_config = root["qq_music"]
+    soul_config = root.soul
+    qq_music_config = root.music
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, _soul_config(["input_drawer"]))
 
@@ -233,9 +257,9 @@ def test_reload_applies_the_new_config_in_place_and_reports_the_mapping_diff(
 
     assert report.success is True
     # 活对象身份不变：换了对象，缓存了旧 dict 的组件就会继续用旧选择器
-    assert root["soul"] is soul_config
-    assert root["qq_music"] is qq_music_config
-    assert soul_config["risk_elements"] == ["input_drawer"]
+    assert root.soul is soul_config
+    assert root.music is qq_music_config
+    assert soul_config.value("risk_elements") == ["input_drawer"]
     assert event_manager.element_to_event == {"input_drawer": "risk_elements"}
     assert report.diff.added == {"input_drawer": "risk_elements"}
     assert report.diff.removed == {"collapse_seats": "risk_elements"}
@@ -264,18 +288,18 @@ def test_reload_keeps_the_live_section_objects_in_the_root_config(
 ):
     """根配置是一次性更新的：root["soul"] 始终是各组件手里那个活对象。"""
     root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
-    soul_config = root["soul"]
-    qq_music_config = root["qq_music"]
+    soul_config = root.soul
+    qq_music_config = root.music
     config_path = tmp_path / "config.yaml"
     _write_config(config_path, _soul_config(["input_drawer"]))
 
     _make_reload_manager(root, event_manager, command_manager, config_path).reload()
 
-    assert root["soul"] is soul_config
-    assert root["qq_music"] is qq_music_config
+    assert root.soul is soul_config
+    assert root.music is qq_music_config
     # 事件管理器读的就是这个活对象：热重载原地换内容，它立刻看见
     assert event_manager.handler.config is soul_config
-    assert soul_config["risk_elements"] == ["input_drawer"]
+    assert soul_config.value("risk_elements") == ["input_drawer"]
 
 
 def test_reload_keeps_the_live_config_when_the_file_is_broken(tmp_path, command_manager):
@@ -288,9 +312,9 @@ def test_reload_keeps_the_live_config_when_the_file_is_broken(tmp_path, command_
     ).reload()
 
     assert report.success is False
-    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
     assert (
-        root["soul"]["elements"]["collapse_seats"]
+        root.soul.value("elements")["collapse_seats"]
         == "cn.soulapp.android:id/collapseSeats"
     )
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
@@ -309,7 +333,7 @@ def test_reload_keeps_the_live_config_when_soul_elements_is_missing(
     ).reload()
 
     assert report.success is False
-    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
 
@@ -325,7 +349,7 @@ def test_reload_keeps_the_live_config_when_the_root_is_not_a_mapping(
     ).reload()
 
     assert report.success is False
-    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
 
 
 @pytest.mark.parametrize(
@@ -353,7 +377,7 @@ def test_reload_keeps_the_live_config_when_the_bot_could_not_start_from_it(
 
     assert report.success is False
     assert expected in report.message
-    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
     assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
 
@@ -370,7 +394,27 @@ def test_reload_keeps_the_live_config_when_qq_music_elements_is_missing(
 
     assert report.success is False
     assert "qq_music.elements" in report.message
-    assert root["soul"]["risk_elements"] == ["collapse_seats"]
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
+
+
+def test_reload_keeps_the_live_config_when_a_required_element_is_missing(
+    tmp_path, command_manager
+):
+    """热重载与启动期共用同一份必需清单：丢了一个必需选择器就不能接受。"""
+    root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
+    new_soul = _soul_config(["input_drawer"])
+    new_soul.data["elements"].pop("button_send")
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, new_soul)
+
+    report = _make_reload_manager(
+        root, event_manager, command_manager, config_path
+    ).reload()
+
+    assert report.success is False
+    assert "button_send" in report.message
+    assert root.soul.value("risk_elements") == ["collapse_seats"]
+    assert event_manager.element_to_event == {"collapse_seats": "risk_elements"}
 
 
 # --------------------------------------------------------------------------
@@ -390,7 +434,9 @@ def test_reload_reports_the_changed_selectors(tmp_path, command_manager):
                 "input_drawer": "cn.soulapp.android:id/inputDrawer",
             },
         ),
-        qq_music_config={"elements": {"play_button": "id/play_v2"}},
+        qq_music_config={
+            "elements": {**_REQUIRED_QQ_ELEMENTS, "play_button": "id/play_v2"}
+        },
     )
 
     report = _make_reload_manager(
@@ -463,7 +509,7 @@ def test_reload_rebinds_the_command_parser_with_the_new_commands(
     tmp_path, command_manager
 ):
     root, event_manager = _make_runtime(_soul_config(["collapse_seats"]))
-    command_manager.initialize_parser(root["commands"])
+    command_manager.initialize_parser(root.command_entries)
     assert command_manager.parse_command("newcmd") is None
 
     config_path = tmp_path / "config.yaml"

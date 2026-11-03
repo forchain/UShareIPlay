@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.models import MessageInfo
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _Logger:
@@ -35,7 +36,7 @@ class _Element:
 
 class _MockHandler:
     def __init__(self, elements=None, config=None):
-        self.config = config or {}
+        self.config = ConfigSectionView("soul", config or {})
         self.logger = _Logger()
         self.elements = elements or {}
         self.child_elements = {}
@@ -591,9 +592,9 @@ async def test_join_party_recreates_room_after_guest_room_closed():
         "new_party_entry": new_party_entry,
         "create_party_button": create_party_button,
     })
-    handler.config["default_party_id"] = "FM13515566"
-    handler.config["change_party_type"] = False
-    handler.config["create_party_recommendation"] = True
+    handler.config.data["default_party_id"] = "FM13515566"
+    handler.config.data["change_party_type"] = False
+    handler.config.data["create_party_recommendation"] = True
 
     # 模拟 controller
     class _MockController:

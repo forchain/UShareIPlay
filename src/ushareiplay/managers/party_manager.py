@@ -82,7 +82,7 @@ class PartyManager(Singleton):
         if self.init_time is None:
             self.init_time = datetime.now()
             # 从配置中读取重启触发时间
-            self.trigger_minutes = self.handler.config.get('party_restart_minutes', 720)
+            self.trigger_minutes = self.handler.config.value('party_restart_minutes', 720)
             self.logger.info(f"派对管理器已初始化，触发时间: {self.trigger_minutes}分钟")
 
     def reset_party_time(self):
@@ -625,10 +625,7 @@ class PartyManager(Singleton):
             self.logger.warning("未找到搜索框")
             return False
 
-        default_party_id = (
-            self.handler.config.get('soul', {}).get('default_party_id')
-            or self.handler.config.get('default_party_id')
-        )
+        default_party_id = self.handler.config.value('default_party_id')
         party_id = default_party_id or self.handler.party_id
         if not party_id:
             self.logger.warning("未配置 default_party_id，直接准备创建派对")
@@ -708,7 +705,7 @@ class PartyManager(Singleton):
             element.click()
             self.logger.info(f"Clicked new party entry: {key}")
 
-        party_recommend_config = bool(self.handler.config.get('create_party_recommendation', True))
+        party_recommend_config = bool(self.handler.config.value('create_party_recommendation', True))
         if not party_recommend_config:
             party_state_entry = element if key == 'party_state_entry' else self.handler.element_finder.wait_for_element('party_state_entry')
             if not party_state_entry:
@@ -731,9 +728,9 @@ class PartyManager(Singleton):
             if RoomState.is_initialized():
                 RoomState.instance().recommendation_enabled = True
 
-        change_party_type = bool(self.handler.config.get('change_party_type', False))
+        change_party_type = bool(self.handler.config.value('change_party_type', False))
         if change_party_type:
-            target_type_key = self.handler.config.get('target_party_type_element', 'party_type_singing')
+            target_type_key = self.handler.config.value('target_party_type_element', 'party_type_singing')
             party_type_target = None
             max_retries = 3
             for attempt in range(max_retries):
@@ -783,7 +780,7 @@ class PartyManager(Singleton):
         return True
 
     def _party_create_mode(self) -> str:
-        mode = self.handler.config.get('party_create_mode', 'new_party_entry')
+        mode = self.handler.config.value('party_create_mode', 'new_party_entry')
         if mode in ('new_party_entry', 'restore_party'):
             return mode
         self.logger.warning(f"未知 party_create_mode={mode}，回退 new_party_entry")

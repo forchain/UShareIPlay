@@ -153,3 +153,11 @@ _Avoid_: Lazy singleton lookup, runtime service locator, global state sniffing
 **Protected Singleton Contract**:
 The strict instantiation gate enforced by `SingletonMeta` where protected services can only be created via `Service.initialize(...)` and direct constructor invocation (`Service()`) raises `SingletonError`. External callers look up services exclusively via `Service.instance()`.
 _Avoid_: Unprotected singleton, direct instantiator, ad-hoc singleton pattern
+
+**Config View**:
+The typed read interface over the configuration mapping, defined in `core/config_view.py`. A root view (`ConfigView`) covers the whole of `config.yaml`; a section view (`ConfigSectionView`) covers one application section (`soul`, `qq_music`). Views wrap the underlying mapping instead of copying it, so hot reload mutates that mapping in place and every view instance — including section views already handed to handlers and managers — keeps its object identity across a reload, and no consumer needs rewiring. A view is not a dict: there is no `view[...]` and no `view.get(...)`; values come from `.value()` / `.require()` / `.element()`, so "which segment am I reading" is visible at the call site. Missing required selectors fail at startup in the composition root (`MissingElementKey`) instead of mid-session. Element selectors have a single source: they live only in `config.yaml`, and `config.local.yaml` overrides of element definitions are rejected outright.
+_Avoid_: raw config dict, config dict probing, dual-shape config access
+
+**Locator**:
+The value object that wraps one UI selector, defined in `core/config_view.py`. It classifies the selector as XPath (a `//` prefix) or an Android resource-id, produces the Appium locator tuple `(by, value)`, builds the absolute (`//*[@resource-id='…']`) and relative-child (`.//*[@resource-id='…']`) XPath forms, and answers whether a parsed XML node is the element the selector points at. The classification rule lives in exactly one place instead of being restated per module.
+_Avoid_: raw selector string, xpath prefix check, element id fallback

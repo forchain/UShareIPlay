@@ -9,11 +9,8 @@ from typing import Optional, List
 from lxml import etree
 
 from ushareiplay.core.chat_intake import format_quoted_message
+from ushareiplay.core.config_view import Locator
 
-# 引用回复视图的默认资源 id；可经 config.yaml 的 soul.elements 覆盖
-# （UI 选择器统一放在配置中，见 AGENTS.md）
-DEFAULT_REPLY_VIEW_ID = "gReplyView"
-DEFAULT_REPLY_CONTENT_ID = "tvReplyContent"
 # 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器
 MAX_REPLY_ANCESTOR_LEVELS = 4
 
@@ -34,10 +31,10 @@ def _matches_resource_id(node, resource_id: str) -> bool:
     return node_id == resource_id or node_id.endswith(f"/{resource_id}")
 
 
-def _find_node_with_resource_id(node, resource_id: str):
-    """First node (self or descendant) carrying *resource_id*, or None."""
+def _find_node_with_locator(node, locator: Locator):
+    """First node (self or descendant) matching *locator*, or None."""
     for candidate in node.iter():
-        if _matches_resource_id(candidate, resource_id):
+        if locator.matches(candidate):
             return candidate
     return None
 
@@ -56,8 +53,8 @@ def _is_the_only_one(node, resource_id: str) -> bool:
     return matches == 1
 
 
-def _reply_view_text(reply_view, reply_content_id: str) -> Optional[str]:
-    node = _find_node_with_resource_id(reply_view, reply_content_id)
+def _reply_view_text(reply_view, locator: Locator) -> Optional[str]:
+    node = _find_node_with_locator(reply_view, locator)
     if node is None:
         # Tolerate a reply view that carries the quoted text on the view itself.
         node = reply_view
@@ -215,16 +212,15 @@ class ElementWrapper:
             return clickable.lower() == 'true'
         return False
 
-    def _element_id(self, config_key: str, default: str) -> str:
-        """Resolve a UI resource id from config.yaml `soul.elements`."""
+    def _element_locator(self, config_key: str) -> Optional[Locator]:
+        """从配置里的 `soul.elements` 取元素选择器。
+
+        没有硬编码兜底：UI 选择器的唯一事实源是 config.yaml（AGENTS.md）。
+        """
         config = getattr(self._handler, "config", None)
-        if isinstance(config, dict):
-            soul = config.get("soul")
-            elements = soul.get("elements") if isinstance(soul, dict) else None
-            selector = elements.get(config_key) if isinstance(elements, dict) else None
-            if isinstance(selector, str) and selector.strip():
-                return selector.strip()
-        return default
+        if config is None:
+            return None
+        return config.maybe_element(config_key)
 
     def quoted_message(self) -> Optional[str]:
         """Return the Quoted Message this element replies to, or None.
@@ -239,8 +235,10 @@ class ElementWrapper:
         if not own_id:
             return None
 
-        reply_view_id = self._element_id("message_reply_view", DEFAULT_REPLY_VIEW_ID)
-        reply_content_id = self._element_id("message_reply_content", DEFAULT_REPLY_CONTENT_ID)
+        reply_view = self._element_locator("message_reply_view")
+        reply_content = self._element_locator("message_reply_content")
+        if reply_view is None or reply_content is None:
+            return None
         try:
             node = self._xml_element
             for _ in range(MAX_REPLY_ANCESTOR_LEVELS):
@@ -251,10 +249,10 @@ class ElementWrapper:
                 if not _is_the_only_one(container, own_id):
                     # Ancestors only get wider, so no level above can be a row.
                     return None
-                reply_view = _find_node_with_resource_id(container, reply_view_id)
-                if reply_view is None:
+                reply_view_node = _find_node_with_locator(container, reply_view)
+                if reply_view_node is None:
                     continue
-                reply_text = _reply_view_text(reply_view, reply_content_id)
+                reply_text = _reply_view_text(reply_view_node, reply_content)
                 if reply_text:
                     return reply_text
             return None

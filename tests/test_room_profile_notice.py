@@ -28,6 +28,7 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 # 公告编辑层打开时抽屉里有的东西（`config.yaml` 的 elements key）。
 NOTICE_EDIT_LAYER = (
@@ -85,7 +86,7 @@ class _Handler:
         self.key_actions = MagicMock()
         self.key_actions.switch_to_app.return_value = can_switch
         self.element_finder = _NoticeTextFinder(notice_text)
-        self.config = {} if config is None else config
+        self.config = ConfigSectionView("soul", {} if config is None else config)
 
 
 def _profile(driver=None, handler=None, config=None, notice_text=""):

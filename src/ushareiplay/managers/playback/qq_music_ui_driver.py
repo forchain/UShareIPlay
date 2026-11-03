@@ -985,10 +985,10 @@ class QQMusicUIDriver(MusicUIDriverPort):
     def _radio_refresh_budget(self) -> int:
         """精选推荐最多换几次。配置缺失或非法时退回既有默认 5 次。"""
         manager = self._music_manager()
-        config = getattr(manager, "config", None) or {}
-        filter_config = config.get("old_song_filter", {}) or {}
+        config = getattr(manager, "config", None)
+        filter_config = config.maybe_section("old_song_filter") if config is not None else None
         try:
-            return int(filter_config.get("radio_max_refreshes", 5))
+            return int(filter_config.value("radio_max_refreshes", 5)) if filter_config else 5
         except (TypeError, ValueError):
             return 5
 

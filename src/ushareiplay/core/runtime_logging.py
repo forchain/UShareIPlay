@@ -15,8 +15,21 @@ Public surface:
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional
+
+
+def _logging_directory(config) -> str:
+    """从配置里取 `logging.directory`（配置视图与裸 dict 都认）。"""
+    from ushareiplay.core.config_view import ConfigView
+
+    if isinstance(config, ConfigView):
+        section = config.maybe_section("logging")
+        return (section.value("directory", "") or "") if section else ""
+    if isinstance(config, Mapping):
+        return ((config.get("logging") or {}).get("directory") or "")
+    return ""
 
 
 class RuntimeLogging:
@@ -40,12 +53,10 @@ class RuntimeLogging:
         from ushareiplay.core.config_loader import ConfigLoader
         from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
-        cfg = config
-        if not ((cfg or {}).get("logging", {}) or {}).get("directory", None):
+        configured = _logging_directory(config)
+        if not configured:
             loaded = ConfigLoader.load_config()
-            if loaded:
-                cfg = loaded
-        configured = ((cfg or {}).get("logging", {}) or {}).get("directory", "")
+            configured = _logging_directory(loaded)
         log_dir_path = resolve_log_directory(configured, default_rel=default_rel)
         ensure_dir(log_dir_path)
         return log_dir_path

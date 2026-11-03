@@ -28,6 +28,7 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.state.playlist_state import PlaylistState
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 RADIO_NAME = "猜你喜欢-沉浸刷歌"
 
@@ -68,7 +69,9 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
 ):
     """电台在放时点一首歌：`/info` 的歌单行仍是电台与它的播放者。"""
     PlaylistState.initialize()
-    info = InfoManager.initialize(SimpleNamespace(config={}, logger=MagicMock()))
+    info = InfoManager.initialize(
+        SimpleNamespace(config=ConfigSectionView("soul", {}), logger=MagicMock())
+    )
     info.current_playlist_name = RADIO_NAME
 
     # `/info` 的歌单类型直接读 `QQMusicHandler.list_mode`；这里让替身与引擎同源。
@@ -94,7 +97,9 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
 
     MusicManager.initialize(ui_driver=InMemoryMusicUIDriver())
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config={}), _ReadinessProbe(), _MicManager()
+        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
+        _ReadinessProbe(),
+        _MicManager(),
     )
 
     # 定时器开的电台已经在放。

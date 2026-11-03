@@ -3,12 +3,12 @@ from __future__ import annotations
 import time
 from typing import Optional, Tuple
 
-from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from ushareiplay.core.config_view import Locator
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
 
@@ -35,7 +35,7 @@ class ElementFinder:
     def wait_for_element(self, element_key: str, timeout: int = 10) -> WebElement:
         """Enhanced wait_for_element using just element key"""
         try:
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             element = WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((locator_type, value))
             )
@@ -80,7 +80,7 @@ class ElementFinder:
     ) -> WebElement:
         """Enhanced wait_for_element using just element key"""
         try:
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             element = WebDriverWait(self.driver, timeout).until(
                 EC.element_to_be_clickable((locator_type, value))
             )
@@ -111,7 +111,7 @@ class ElementFinder:
             bool: 元素消失或不可见返回 True，超时仍可见返回 False
         """
         try:
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             WebDriverWait(self.driver, timeout, poll_frequency=poll_frequency).until(
                 EC.invisibility_of_element_located((locator_type, value))
             )
@@ -135,14 +135,14 @@ class ElementFinder:
             if log:
                 self.logger.info(f"Looking for element '{element_key}'")
 
-            if element_key not in self.config["elements"]:
+            if self.config.maybe_element(element_key) is None:
                 if log:
                     self.logger.error(
                         f"Element key '{element_key}' not defined in configuration"
                     )
                 return None
 
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             if log:
                 self.logger.info(
                     f"Using locator type {locator_type} with value '{value}'"
@@ -274,20 +274,22 @@ class ElementFinder:
             )
             return None
 
-    def _get_locator(self, element_key: str) -> tuple:
-        """Helper to get locator type and value from element key"""
-        if element_key not in self.config["elements"]:
-            raise ValueError(f"Element key '{element_key}' not found in config")
+    def _get_locator(self, element_key: str) -> Locator:
+        """取元素选择器。
 
-        value = self.config["elements"][element_key]
-        locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
-        return locator_type, value
+        XPath 与 resource-id 的判定、Appium 定位元组都只在 `Locator` 里实现，
+        这里不再复述前缀规则（ADR-0012）。
+        """
+        locator = self.config.maybe_element(element_key)
+        if locator is None:
+            raise ValueError(f"Element key '{element_key}' not found in config")
+        return locator
 
     @with_driver_recovery(op="read")
     def find_elements(self, element_key: str) -> list:
         """Enhanced find_elements using just element key"""
         try:
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             return self.driver.find_elements(locator_type, value)
         except Exception as e:
             self.logger.warning(
@@ -307,7 +309,7 @@ class ElementFinder:
         try:
             if not parent:
                 return None
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             return parent.find_element(locator_type, value)
         except Exception:
             if log_failure:
@@ -325,7 +327,7 @@ class ElementFinder:
         try:
             if not parent:
                 return []
-            locator_type, value = self._get_locator(element_key)
+            locator_type, value = self._get_locator(element_key).appium
             return parent.find_elements(locator_type, value)
         except Exception:
             self.logger.debug(
@@ -350,11 +352,10 @@ class ElementFinder:
         """
         locators = []
         for key in element_keys:
-            if key not in self.config["elements"]:
+            locator = self.config.maybe_element(key)
+            if locator is None:
                 continue
-            value = self.config["elements"][key]
-            locator_type = AppiumBy.XPATH if value.startswith("//") else AppiumBy.ID
-            locators.append((key, (locator_type, value)))
+            locators.append((key, locator.appium))
 
         if not locators:
             self.logger.warning("wait_for_any_element: 没有有效的元素key")

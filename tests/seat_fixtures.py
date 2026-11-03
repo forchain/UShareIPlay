@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import yaml
 from lxml import etree
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
@@ -448,7 +449,7 @@ def make_handler(elements=None, desks=None, popup_name=None, controller=None):
     handler = MagicMock()
     handler.logger = MagicMock()
     # 生产上传给 handler 的就是 config.yaml 的 soul 段
-    handler.config = {"elements": elements or soul_elements()}
+    handler.config = ConfigSectionView("soul", {"elements": elements or soul_elements()})
     handler.key_actions = MagicMock()
     handler.gesture_handler = MagicMock()
     handler.controller = controller

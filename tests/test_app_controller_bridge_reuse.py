@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 from ushareiplay.core.app_controller import AppController
+from ushareiplay.core.config_view import ConfigView
 
 
 class FakeBridge:
@@ -28,7 +29,7 @@ class FakeDriver:
 
 def _controller(appium_host, appium_port):
     controller = AppController.__new__(AppController)
-    controller.config = {
+    controller.config = ConfigView({
         "device": {
             "platform_name": "Android",
             "platform_version": "13",
@@ -38,7 +39,7 @@ def _controller(appium_host, appium_port):
         },
         "soul": {"package_name": "cn.soulapp.android", "chat_activity": ".MainActivity"},
         "appium": {"host": appium_host, "port": appium_port},
-    }
+    })
     controller.logger = None
     controller._network_bridge = None
     return controller

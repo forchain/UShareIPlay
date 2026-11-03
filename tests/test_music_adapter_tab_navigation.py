@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _Logger:
@@ -33,19 +34,22 @@ class _Element:
 def _create_handler(elements=None):
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
-    handler.config = {
-        "elements": elements
-        or {
-            "singer_tab": "//singer",
-            "album_tab": "//album",
-            "playlist_tab": "//playlist",
-            "song_tab": "//song",
-            "lyrics_tab": "//lyrics",
-            "radio_tab": "//radio",
-            "music_tabs": "//container",
+    handler.config = ConfigSectionView(
+        "qq_music",
+        {
+            "elements": elements
+            or {
+                "singer_tab": "//singer",
+                "album_tab": "//album",
+                "playlist_tab": "//playlist",
+                "song_tab": "//song",
+                "lyrics_tab": "//lyrics",
+                "radio_tab": "//radio",
+                "music_tabs": "//container",
+            },
+            "tab_max_swipes": 10,
         },
-        "qq_music": {"tab_max_swipes": 10},
-    }
+    )
     handler.element_finder = SimpleNamespace()
     handler.gesture_handler = SimpleNamespace()
     return handler
@@ -233,7 +237,7 @@ def test_select_tab_song_tab_swipes_back_to_the_start_of_the_strip():
 
 def test_select_tab_falls_back_to_builtin_swipe_limit_when_config_is_absent():
     handler = _create_handler()
-    del handler.config["qq_music"]["tab_max_swipes"]
+    del handler.config.data["tab_max_swipes"]
     tab_elem = _Element("album_tab")
 
     handler.element_finder.try_find_element = MagicMock(return_value=None)
@@ -252,7 +256,7 @@ def test_select_tab_falls_back_to_builtin_swipe_limit_when_config_is_absent():
 
 def test_select_tab_reads_swipe_limit_from_qq_music_config():
     handler = _create_handler()
-    handler.config["qq_music"]["tab_max_swipes"] = 7
+    handler.config.data["tab_max_swipes"] = 7
     tab_elem = _Element("album_tab")
 
     handler.element_finder.try_find_element = MagicMock(return_value=None)

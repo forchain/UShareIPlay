@@ -129,10 +129,31 @@ def _find_config_value(soul_cfg: dict, raw_cfg: dict, keys: Iterable[str]) -> An
     return None
 
 
+def _split_config(config: Any) -> tuple[dict, dict]:
+    """把配置拆成 (soul 段, 根段) 两份原始映射。
+
+    接受三种输入（ADR-0012 之后前两种是正规用法）：
+
+    - `ConfigView` —— 根配置视图；
+    - `ConfigSectionView` —— 应用段视图；
+    - 原始字典 —— 旧调用方仍然传的裸 dict。
+    """
+    from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+
+    if isinstance(config, ConfigView):
+        soul = config.maybe_section("soul")
+        return (dict(soul.data) if soul else {}), dict(config.data)
+    if isinstance(config, ConfigSectionView):
+        return dict(config.data), {}
+    raw = config if isinstance(config, dict) else {}
+    soul = raw.get("soul")
+    return (soul if isinstance(soul, dict) else {}), raw
+
+
 class RolePolicy:
     """
     统一角色与权限判定策略。
-    
+
     分类：
     1. 房主 (Room Owner): 配置的 room_owner (如 Joyer)。所有后台操作直接以房主身份执行，不再单独设立 Console 角色。
     2. 管理员 (Admin Users): 配置的 admin_users (含房主)。
@@ -140,11 +161,9 @@ class RolePolicy:
     4. 人工操作者 (Human Operators): 具备主观判断能力的人工角色 (房主、管理员)。
     """
 
-    def __init__(self, config: Optional[dict] = None):
-        self._raw_config = config or {}
-        soul_cfg = self._raw_config.get("soul", {})
-        if not isinstance(soul_cfg, dict):
-            soul_cfg = {}
+    def __init__(self, config: Any = None):
+        soul_cfg, raw_cfg = _split_config(config)
+        self._raw_config = raw_cfg
 
         # 1. 房主 (Room Owner)
         owner_raw = _find_config_value(soul_cfg, self._raw_config, ["room_owner", "owner_username"])

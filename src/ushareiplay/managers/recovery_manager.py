@@ -111,7 +111,7 @@ class RecoveryManager(Singleton):
                 self.logger.warning(f"Room ID:{room_id_text} does not start with FM, skip")
                 return True
 
-            party_id = self.handler.config.get('default_party_id')
+            party_id = self.handler.config.value('default_party_id')
             return room_id_text == party_id
         except Exception as e:
             self.logger.debug(f"检测正常状态时出错: {str(e)}")

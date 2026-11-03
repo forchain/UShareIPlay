@@ -8,6 +8,7 @@ from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.state.playlist_state import PlaylistState
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
     mock_music_manager, skip_result = _music_manager_mock()
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
         # Case 1: Broadcast enabled (True) - should send message
-        mock_handler.config = {'broadcast_playing_info': True}
+        mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': True})
         info_manager.send_playing_message()
         mock_handler.send_message.assert_called_once_with("SongA - SingerA • AlbumA 2020-01-02")
         mock_handler.send_message.reset_mock()
@@ -66,7 +67,7 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         mock_music_manager.handle_song_quality_check.reset_mock()
 
         # Case 2: Broadcast disabled (False) - should NOT send message
-        mock_handler.config = {'broadcast_playing_info': False}
+        mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
         mock_music_manager.handle_song_quality_check.assert_called_once_with(info)
@@ -75,13 +76,13 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         mock_logger.info.reset_mock()
 
         # Case 3: Broadcast enabled but song skipped (quality check) - should NOT send message
-        mock_handler.config = {'broadcast_playing_info': True}
+        mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': True})
         skip_result["value"] = True
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
 
         # Case 4: Broadcast disabled (False) and song skipped (quality check)
-        mock_handler.config = {'broadcast_playing_info': False}
+        mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
         skip_result["value"] = True
         mock_music_manager.handle_song_quality_check.reset_mock()
         info_manager.send_playing_message()
@@ -102,12 +103,13 @@ def test_send_playing_message_default_behavior(info_manager):
     )
 
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
-        mock_handler.config = {}
+        mock_handler.config = ConfigSectionView('soul', {})
         info_manager.send_playing_message()
         mock_handler.send_message.assert_called_once_with("SongA - SingerA • AlbumA 2020-01-02")
 
 
-def test_send_playing_message_backward_compatible_nested_config(info_manager):
+def test_send_playing_message_reads_the_switch_from_the_soul_section(info_manager):
+    """开关就在 soul 段里：没有「根配置里再套一层 soul」的形状试探了。"""
     mock_handler = MagicMock()
     _inject_broadcaster(
         mock_handler, MagicMock(), {'song': 'SongA', 'singer': 'SingerA', 'album': 'AlbumA'}
@@ -117,7 +119,7 @@ def test_send_playing_message_backward_compatible_nested_config(info_manager):
     mock_music_manager.handle_song_quality_check.return_value = False
 
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
-        mock_handler.config = {'soul': {'broadcast_playing_info': False}}
+        mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
         info_manager.send_playing_message()
         mock_handler.send_message.assert_not_called()
 
