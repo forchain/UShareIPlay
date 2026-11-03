@@ -180,7 +180,7 @@ class GestureHandler:
     @with_driver_recovery(op="read")
     def scroll_container_until_element(
             self, element_key: str, container_key: str, direction: str = "up", attribute_name: str = None,
-            attribute_value: str = None, max_swipes: int = 10
+            attribute_value: str = None, max_swipes: int = 10, bidirectional: bool = True
     ) -> Tuple[Optional[str], Optional[WebElement], list[str]]:
         """在指定容器内滚动，直到找到目标元素或无法继续滚动。
 
@@ -191,6 +191,8 @@ class GestureHandler:
             attribute_name: 要匹配的属性名（支持 | 分隔的多个属性）
             attribute_value: 要匹配的属性值
             max_swipes: 最多滑动次数，默认 10 次
+            bidirectional: 到达边界仍未找到时是否反方向再扫一遍兜底，默认 True；
+                False 时只扫 direction 一个方向（调用方自己负责把视图恢复到目标位置）
 
         策略：
             先等容器（容器可点 = 这一屏 UI 已渲染好），再判断目标在不在：
@@ -198,7 +200,8 @@ class GestureHandler:
             渲染出来的目标推出视口，之后再也找不回来。
             目标不在时以 'up' 为例，每次从容器可视部分约 80% 处滑动到容器顶部附近（约 10%），滑动后尝试查找子元素；
             若找到则返回 (element_key, element, attribute_values)。若连续滑动后页面不再变化（page_source 无变化），则认为到达边界。
-            单向滚动会把目标推出视口且再也找不回来，因此到达边界仍没找到时反方向再扫一遍兜底。
+            单向滚动会把目标推出视口且再也找不回来，因此到达边界仍没找到时反方向再扫一遍兜底
+            （bidirectional=False 时跳过这一步）。
 
         返回：
             (key, element, attribute_values): 找到目标元素时返回
@@ -380,7 +383,7 @@ class GestureHandler:
             target, aborted = sweep(direction)
             if target:
                 return element_key, target, self._reversed_if_needed(attribute_values_list, direction)
-            if aborted:
+            if aborted or not bidirectional:
                 return None, None, self._reversed_if_needed(attribute_values_list, direction)
 
             # 反方向兜底：朝一个方向滚会把目标推出视口，单向扫完它就再也找不回来。

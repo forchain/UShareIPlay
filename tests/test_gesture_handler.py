@@ -363,3 +363,28 @@ def test_scroll_container_searches_opposite_direction_when_target_was_pushed_awa
     assert element is target
     # 兜底扫描必须真的往回滚过
     assert swipes[-1][0] < swipes[-1][2]
+
+
+def test_scroll_container_skips_opposite_direction_when_bidirectional_false():
+    """bidirectional=False 时只单向扫，不反向回滚（如扫描历史消息后快速回到底部）。"""
+    driver = _FakePageSourceDriver([_RENDERED_TAB_STRIP])
+    handler = _tab_strip_handler(driver, tab_element=None)
+    swipes = []
+
+    def fake_swipe(sx, sy, ex, ey, duration_ms=300):
+        swipes.append((sx, sy, ex, ey))
+        return True
+
+    handler._perform_swipe = fake_swipe
+    handler.owner.element_finder.find_child_elements.return_value = []
+
+    key, element, _values = handler.scroll_container_until_element(
+        "playlist_tab", "music_tabs", direction="left", max_swipes=5, bidirectional=False
+    )
+
+    assert key is None
+    assert element is None
+    # 所有滑动均为初始方向（向左滑：sx > ex），没有任何反向滑动
+    assert swipes
+    assert all(s[0] > s[2] for s in swipes)
+

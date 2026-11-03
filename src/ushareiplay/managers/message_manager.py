@@ -408,12 +408,15 @@ class MessageManager(Singleton):
 
         self.handler.logger.critical(f"last_chat={anchor}")
 
+        # 锚点就在历史消息里，'down' 单向扫不到说明确实没有；下面的
+        # send_message("") 会立刻跳回最新消息，反向兜底只会白拖时间。
         key, element, attribute_values = self.handler.gesture_handler.scroll_container_until_element(
             'message_content',
             'message_list',
             'down',
             'content-desc|text',
             scroll_anchor,
+            bidirectional=False,
         )
 
         # send empty message to scroll to bottom instantly (always, even if
