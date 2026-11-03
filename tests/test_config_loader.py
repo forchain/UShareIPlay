@@ -138,10 +138,8 @@ def test_config_loader_loads_and_merges_local_yaml():
         assert loaded["commands"][1]["level"] == 1
 
 
-def test_config_loader_rejects_elements_override():
-    """元素选择器只能待在 config.yaml：本地覆盖当场拒绝，不静默合并。"""
-    from ushareiplay.core.config_loader import LocalConfigOverrideRejected
-
+def test_config_loader_warns_on_elements_override(caplog):
+    """允许在 config.local.yaml 中覆盖元素选择器，但输出 WARNING 提醒。"""
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
         local_path = os.path.join(tmpdir, "config.local.yaml")
@@ -166,16 +164,15 @@ def test_config_loader_rejects_elements_override():
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with pytest.raises(LocalConfigOverrideRejected) as excinfo:
-            ConfigLoader.load_config(config_path)
+        with caplog.at_level("WARNING"):
+            config = ConfigLoader.load_config(config_path)
 
-        assert "soul.elements" in str(excinfo.value)
+        assert config["soul"]["elements"]["user_count"] == "tv1"
+        assert "检测到 config.local.yaml 中覆盖了元素定义: soul.elements" in caplog.text
 
 
-def test_config_loader_rejects_element_list_override():
-    """元素列表（risk_elements / drawer_elements）同样是元素定义，不能被本地配置覆盖。"""
-    from ushareiplay.core.config_loader import LocalConfigOverrideRejected
-
+def test_config_loader_warns_on_element_list_override(caplog):
+    """元素列表（risk_elements / drawer_elements）覆盖时同样输出 WARNING 提醒。"""
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
         local_path = os.path.join(tmpdir, "config.local.yaml")
@@ -199,8 +196,9 @@ def test_config_loader_rejects_element_list_override():
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with pytest.raises(LocalConfigOverrideRejected) as excinfo:
-            ConfigLoader.load_config(config_path)
+        with caplog.at_level("WARNING"):
+            config = ConfigLoader.load_config(config_path)
 
-        assert "soul.risk_elements" in str(excinfo.value)
-        assert "soul.drawer_elements" in str(excinfo.value)
+        assert config["soul"]["risk_elements"] == ["close_widget"]
+        assert config["soul"]["drawer_elements"] == ["other_drawer"]
+        assert "soul.risk_elements, soul.drawer_elements" in caplog.text

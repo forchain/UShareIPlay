@@ -1,20 +1,22 @@
+import logging
 import os
 import yaml
 
-#: config.local.yaml 不允许覆盖的元素定义（AGENTS.md：元素选择器的唯一事实源
-#: 是 config.yaml）。本地覆盖会让不同版本的机器人用不同选择器，且无声无息。
+logger = logging.getLogger(__name__)
+
+#: config.local.yaml 覆盖的元素定义键
 _ELEMENT_DEFINITION_KEYS = ("elements", "risk_elements", "drawer_elements")
 
 
 class LocalConfigOverrideRejected(ValueError):
-    """config.local.yaml 试图覆盖 config.yaml 的元素定义。"""
+    """已废弃：保留该类以防外部旧引用破坏导入。"""
 
 
-def _reject_element_overrides(local_config: dict) -> None:
-    """config.local.yaml 里出现元素定义就当场拒绝。
+def _warn_element_overrides(local_config: dict) -> None:
+    """检查 config.local.yaml 是否覆盖元素定义，若有则输出 WARNING 提醒。
 
-    元素选择器的唯一事实源是 config.yaml：本地覆盖会让机器人用上一版选择器
-    却没有任何报错，行为与配置对不上（ADR-0012）。
+    允许在 config.local.yaml 中覆盖元素选择器（用于快速应对 App 定位符变更而免于重新发版），
+    但应尽快并入 config.yaml。
     """
     offenders = []
     for scope in ("", "soul.", "qq_music."):
@@ -25,10 +27,9 @@ def _reject_element_overrides(local_config: dict) -> None:
             if key in payload:
                 offenders.append(f"{scope}{key}")
     if offenders:
-        raise LocalConfigOverrideRejected(
-            "config.local.yaml 不得覆盖元素定义："
-            + "、".join(offenders)
-            + "；UI 元素选择器的唯一事实源是 config.yaml。"
+        logger.warning(
+            f"检测到 config.local.yaml 中覆盖了元素定义: {', '.join(offenders)}。"
+            "此覆盖仅用于紧急修复定位符，请尽快在下一个版本中并入 config.yaml！"
         )
 
 
@@ -84,8 +85,7 @@ class ConfigLoader:
             with open(local_path, 'r', encoding='utf-8') as f:
                 local_config = yaml.safe_load(f)
             if local_config:
-                # 元素定义只能待在 config.yaml：本地覆盖当场拒绝，不静默合并。
-                _reject_element_overrides(local_config)
+                _warn_element_overrides(local_config)
                 config = _deep_merge(config, local_config)
 
         return config

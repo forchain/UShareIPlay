@@ -58,16 +58,11 @@ llm:
   api_key: "sk-your-actual-api-key"
 ```
 
-### Local Override Rules（本地覆盖禁止碰元素定义）
+### Local Override Rules（本地覆盖与元素覆盖策略）
 
-`config.local.yaml` 里一旦出现元素定义键 `elements`、`risk_elements` 或 `drawer_elements`
-（根级，或挂在 `soul.` / `qq_music.` 下），`ConfigLoader` 会当场抛
-`LocalConfigOverrideRejected`（`ValueError` 子类，定义在 `core/config_loader.py`），
-**不做合并**。
-
-理由：UI 元素选择器的唯一事实源是 `config.yaml`（AGENTS.md 铁律）。本地覆盖元素定义
-会让不同部署的机器人用不同选择器，且一路无声 —— 配置与行为对不上却没有任何报错。
-非元素类的本地覆盖照旧按上面的深合并规则处理。
+允许在 `config.local.yaml` 中覆盖元素选择器（用于快速应对 App 定位符变更而免于重新发版）。
+当 `config.local.yaml` 中存在 `elements`、`risk_elements` 或 `drawer_elements` 覆盖时，
+`ConfigLoader` 会照常合并，并输出一条 `WARNING` 日志提醒尽快并入下一个版本的 `config.yaml`。
 
 ## Top-Level Config Structure
 

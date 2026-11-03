@@ -14,7 +14,7 @@ import yaml
 
 import ushareiplay.__main__ as app_main
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_loader import ConfigLoader, LocalConfigOverrideRejected
+from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.config_view import (
     ConfigView,
     MissingConfigSection,
@@ -131,37 +131,46 @@ def _write_configs(tmp_path, base, local):
     return config_path
 
 
-def test_local_config_cannot_override_the_soul_elements(tmp_path):
+def test_local_config_can_override_the_soul_elements(tmp_path, caplog):
     config_path = _write_configs(
         tmp_path,
         {"soul": {"elements": {"user_count": "tv1"}}},
         {"soul": {"elements": {"user_count": "tv2"}}},
     )
 
-    with pytest.raises(LocalConfigOverrideRejected):
-        ConfigLoader.load_config(config_path)
+    with caplog.at_level("WARNING"):
+        loaded = ConfigLoader.load_config(config_path)
+
+    assert loaded["soul"]["elements"]["user_count"] == "tv2"
+    assert "soul.elements" in caplog.text
 
 
-def test_local_config_cannot_override_the_root_elements(tmp_path):
+def test_local_config_can_override_the_root_elements(tmp_path, caplog):
     config_path = _write_configs(
         tmp_path,
         {"soul": {"elements": {"user_count": "tv1"}}},
         {"elements": {"user_count": "tv2"}},
     )
 
-    with pytest.raises(LocalConfigOverrideRejected):
-        ConfigLoader.load_config(config_path)
+    with caplog.at_level("WARNING"):
+        loaded = ConfigLoader.load_config(config_path)
+
+    assert loaded["elements"]["user_count"] == "tv2"
+    assert "elements" in caplog.text
 
 
-def test_local_config_cannot_override_the_soul_risk_elements(tmp_path):
+def test_local_config_can_override_the_soul_risk_elements(tmp_path, caplog):
     config_path = _write_configs(
         tmp_path,
         {"soul": {"risk_elements": ["collapse_seats"]}},
         {"soul": {"risk_elements": ["close_widget"]}},
     )
 
-    with pytest.raises(LocalConfigOverrideRejected):
-        ConfigLoader.load_config(config_path)
+    with caplog.at_level("WARNING"):
+        loaded = ConfigLoader.load_config(config_path)
+
+    assert loaded["soul"]["risk_elements"] == ["close_widget"]
+    assert "soul.risk_elements" in caplog.text
 
 
 def test_local_config_without_element_override_is_still_merged(tmp_path):
