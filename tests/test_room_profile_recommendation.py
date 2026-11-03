@@ -24,6 +24,7 @@ from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 # 抽屉刚打开时的屏幕：推荐分发那一行 + 派对类型那一行。
 DRAWER_SCREEN = (
@@ -104,7 +105,7 @@ class _Handler:
         self.logger = MagicMock()
         self.key_actions = SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: None)
         self.element_finder = screen if screen is not None else _Screen()
-        self.config = CONFIG if config is None else config
+        self.config = ConfigSectionView("soul", CONFIG if config is None else config)
 
 
 @pytest.fixture(autouse=True)

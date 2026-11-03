@@ -30,6 +30,7 @@ from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
 from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
@@ -953,9 +954,8 @@ class RoomProfileManager(Singleton):
         的 `:notice` 占着时，默认公告排队而不是覆盖它。
         """
         try:
-            default_notice = (getattr(self.handler, 'config', None) or {}).get(
-                'default_notice'
-            )
+            config = getattr(self.handler, 'config', None)
+            default_notice = config.value('default_notice') if config is not None else None
             if not default_notice:
                 self.logger.warning("未找到default_notice配置")
                 return {'error': 'No default_notice configuration found'}
@@ -982,24 +982,17 @@ class RoomProfileManager(Singleton):
     def get_system_default_notices(self) -> List[str]:
         """系统默认公告文案：房间公告里出现这些内容说明被系统重置了。"""
         cfg = getattr(self.handler, 'config', None)
-        if not cfg:
-            return list(SYSTEM_DEFAULT_NOTICES_FALLBACK)
-        if 'system_default_notices' in cfg:
-            return cfg.get('system_default_notices', [])
-        if 'soul' in cfg and isinstance(cfg['soul'], dict):
-            return cfg['soul'].get('system_default_notices', [])
+        notices = cfg.value('system_default_notices') if cfg is not None else None
+        if notices is not None:
+            return list(notices)
         return list(SYSTEM_DEFAULT_NOTICES_FALLBACK)
 
     def get_default_notice(self) -> str:
         """默认公告文案，被系统重置后恢复成它。"""
         cfg = getattr(self.handler, 'config', None)
-        if not cfg:
+        if cfg is None:
             return DEFAULT_NOTICE_FALLBACK
-        if 'default_notice' in cfg:
-            return cfg.get('default_notice', DEFAULT_NOTICE_FALLBACK)
-        if 'soul' in cfg and isinstance(cfg['soul'], dict):
-            return cfg['soul'].get('default_notice', DEFAULT_NOTICE_FALLBACK)
-        return DEFAULT_NOTICE_FALLBACK
+        return cfg.value('default_notice', DEFAULT_NOTICE_FALLBACK)
 
     def _read_notice_text_from_ui(self) -> str:
         """读一次抽屉里当前公告的文案。
@@ -1195,24 +1188,27 @@ class RoomProfileManager(Singleton):
     def current_theme(self, value):
         self._current_theme = value
 
-    def _soul_config(self) -> dict:
-        """`soul` 段配置。
+    def _soul_config(self) -> ConfigSectionView:
+        """`soul` 段配置视图。
 
-        优先问 handler 的配置快照（组合根用 `config["soul"]` 构造 handler），
+        优先问 handler 的配置快照（组合根用 `config.soul` 构造 handler），
         拿不到再读一次全局配置 —— 与公告那两条判定读同一个形状。
         """
         cfg = getattr(self.handler, 'config', None)
-        if isinstance(cfg, dict) and cfg:
-            if isinstance(cfg.get('soul'), dict):
-                return cfg['soul']
+        if isinstance(cfg, ConfigSectionView):
             return cfg
-        return ConfigLoader.load_config().get('soul', {})
+        if isinstance(cfg, ConfigView):
+            section = cfg.maybe_section('soul')
+            return section if section is not None else ConfigSectionView('soul', {})
+        loaded = ConfigLoader.load_config()
+        section = loaded.get('soul') if isinstance(loaded, dict) else None
+        return ConfigSectionView('soul', section if isinstance(section, dict) else {})
 
     def get_default_theme(self) -> str:
-        return self._soul_config().get('default_theme', DEFAULT_THEME_FALLBACK)
+        return self._soul_config().value('default_theme', DEFAULT_THEME_FALLBACK)
 
     def get_default_title(self) -> str:
-        return self._soul_config().get('default_title', DEFAULT_TITLE_FALLBACK)
+        return self._soul_config().value('default_title', DEFAULT_TITLE_FALLBACK)
 
     def get_current_theme(self):
         return self.current_theme
@@ -1838,8 +1834,10 @@ class RoomProfileManager(Singleton):
 
     def _target_party_type_key(self) -> str:
         """二级弹窗里目标类型的 selector key（既有配置项，不新造）。"""
-        config = getattr(self.handler, 'config', None) or {}
-        return config.get('target_party_type_element', DEFAULT_TARGET_PARTY_TYPE_KEY)
+        config = getattr(self.handler, 'config', None)
+        if config is None:
+            return DEFAULT_TARGET_PARTY_TYPE_KEY
+        return config.value('target_party_type_element', DEFAULT_TARGET_PARTY_TYPE_KEY)
 
     def _read_room_type_text_from_ui(self) -> str:
         """读一次抽屉里当前派对类型的文案。

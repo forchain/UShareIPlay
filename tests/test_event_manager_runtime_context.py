@@ -5,6 +5,7 @@ from selenium.common.exceptions import WebDriverException
 
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 SOUL_PAGE = '<hierarchy><node package="cn.soulapp.android" /></hierarchy>'
@@ -30,10 +31,10 @@ class FakeHandler:
     def __init__(self):
         self.logger = FakeLogger()
         self.controller = object()
-        self.config = {
+        self.config = ConfigSectionView("soul", {
             "package_name": "cn.soulapp.android",
             "elements": {},
-        }
+        })
         self.driver = SimpleNamespace(page_source=SOUL_PAGE)
         self.switch_to_app_calls = 0
         self.press_back_calls = 0

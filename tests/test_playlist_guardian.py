@@ -18,6 +18,7 @@ from ushareiplay.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 from tortoise import Tortoise
 import pytest_asyncio
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
 
 @pytest_asyncio.fixture
@@ -77,13 +78,13 @@ async def test_radio_empty_params_blocked_when_user_is_playing(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = RadioCommand(mock_controller)
     msg = MessageInfo(content="/radio", nickname="Timer")
@@ -110,13 +111,13 @@ async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = RadioCommand(mock_controller)
     msg = MessageInfo(content="/radio", nickname="Timer")
@@ -147,13 +148,13 @@ async def test_playlist_guardian_protects_with_avatar_online(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = RadioCommand(mock_controller)
     msg = MessageInfo(content="/radio", nickname="Timer")
@@ -180,13 +181,13 @@ async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = RadioCommand(mock_controller)
 
@@ -216,13 +217,13 @@ async def test_playlist_guardian_released_when_all_avatars_leave(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = RadioCommand(mock_controller)
 
@@ -260,7 +261,10 @@ def playback_engine(clean_info_manager):
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=SimpleNamespace(info=lambda *_a: None), config={}),
+        SimpleNamespace(
+            logger=SimpleNamespace(info=lambda *_a: None),
+            config=ConfigSectionView("soul", {}),
+        ),
         SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
         SimpleNamespace(state=lambda: False, set_active=lambda *_a: None,
                         ensure_active=lambda: None),
@@ -370,13 +374,13 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = PlaylistCommand(mock_controller)
 
@@ -412,13 +416,13 @@ async def test_normal_user_can_play_when_admin_or_owner_is_playing(
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
     mock_controller.music_handler = MagicMock()
-    mock_controller.config = {
+    mock_controller.config = ConfigView({
         "soul": {
             "room_owner": "Joyer",
             "admin_users": ["Outlier", "Chainer"],
             "system_users": ["Timer", "Agent"],
         }
-    }
+    })
 
     command = PlaylistCommand(mock_controller)
 

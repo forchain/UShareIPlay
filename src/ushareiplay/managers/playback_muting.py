@@ -51,15 +51,12 @@ class PlaybackMuting(Singleton):
         """
         settings = dict(self.DEFAULT_SETTINGS)
         config = getattr(self.soul_handler, "config", None)
-        section = None
-        if isinstance(config, dict):
-            soul_cfg = config.get("soul")
-            if isinstance(soul_cfg, dict):
-                section = soul_cfg.get("playback_mute")
-            if not isinstance(section, dict):
-                section = config.get("playback_mute")
-        if isinstance(section, dict):
-            settings.update({key: section[key] for key in settings if key in section})
+        section = config.maybe_section("playback_mute") if config is not None else None
+        if section is not None:
+            for key in settings:
+                value = section.value(key)
+                if value is not None:
+                    settings[key] = value
         return settings
 
     @property
@@ -129,7 +126,7 @@ class PlaybackMuting(Singleton):
         不构成「别人在麦上」，否则一次抢麦就把静音保护永久锁死。
         """
         config = getattr(self.soul_handler, "config", None)
-        owner = RolePolicy(config if isinstance(config, dict) else None).configured_room_owner
+        owner = RolePolicy(config).configured_room_owner
         return {owner.strip().lower()} if owner else set()
 
     @contextmanager

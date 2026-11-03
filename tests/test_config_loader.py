@@ -1,6 +1,8 @@
 import os
 import tempfile
 import yaml
+
+import pytest
 from ushareiplay.core.config_loader import ConfigLoader, _deep_merge
 
 
@@ -136,8 +138,9 @@ def test_config_loader_loads_and_merges_local_yaml():
         assert loaded["commands"][1]["level"] == 1
 
 
-def test_config_loader_warns_on_elements_override(caplog):
-    import logging
+def test_config_loader_rejects_elements_override():
+    """元素选择器只能待在 config.yaml：本地覆盖当场拒绝，不静默合并。"""
+    from ushareiplay.core.config_loader import LocalConfigOverrideRejected
 
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
@@ -163,16 +166,15 @@ def test_config_loader_warns_on_elements_override(caplog):
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with caplog.at_level(logging.WARNING):
-            loaded = ConfigLoader.load_config(config_path)
+        with pytest.raises(LocalConfigOverrideRejected) as excinfo:
+            ConfigLoader.load_config(config_path)
 
-        assert loaded["soul"]["elements"]["user_count"] == "tv1"
-        assert any("config.local.yaml overrides 'soul.elements'" in record.message for record in caplog.records)
+        assert "soul.elements" in str(excinfo.value)
 
 
-def test_config_loader_warns_on_element_list_override(caplog):
+def test_config_loader_rejects_element_list_override():
     """元素列表（risk_elements / drawer_elements）同样是元素定义，不能被本地配置覆盖。"""
-    import logging
+    from ushareiplay.core.config_loader import LocalConfigOverrideRejected
 
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = os.path.join(tmpdir, "config.yaml")
@@ -197,15 +199,8 @@ def test_config_loader_warns_on_element_list_override(caplog):
         with open(local_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(local_yaml, f)
 
-        with caplog.at_level(logging.WARNING):
-            loaded = ConfigLoader.load_config(config_path)
+        with pytest.raises(LocalConfigOverrideRejected) as excinfo:
+            ConfigLoader.load_config(config_path)
 
-        assert loaded["soul"]["risk_elements"] == ["close_widget"]
-        assert any(
-            "config.local.yaml overrides 'soul.risk_elements'" in record.message
-            for record in caplog.records
-        )
-        assert any(
-            "config.local.yaml overrides 'soul.drawer_elements'" in record.message
-            for record in caplog.records
-        )
+        assert "soul.risk_elements" in str(excinfo.value)
+        assert "soul.drawer_elements" in str(excinfo.value)

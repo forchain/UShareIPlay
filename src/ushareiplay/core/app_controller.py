@@ -13,6 +13,7 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
 from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
@@ -49,7 +50,12 @@ class AppController(Singleton):
     _ui_lock_depth: int = 0
 
     def __init__(self, config):
-        self.config = config
+        # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
+        # 出去，下游拿到的是类型化视图而不是裸 dict（ADR-0012）。
+        self.config = config if isinstance(config, ConfigView) else ConfigView(config)
+        # 启动即校验：必需的元素选择器缺任何一项都当场失败，
+        # 而不是等到运行期操作 UI 时才炸。
+        self.config.validate_required_elements()
 
         self.run_id = new_run_id()
         self.obs = Observability(run_id=self.run_id)
@@ -192,8 +198,8 @@ class AppController(Singleton):
             print("正在通过Appium server启动QQ Music...")
 
             # 启动QQ Music
-            qq_music_package = self.config["qq_music"]["package_name"]
-            qq_music_activity = self.config["qq_music"]["search_activity"]
+            qq_music_package = self.config.music.require("package_name")
+            qq_music_activity = self.config.music.require("search_activity")
             print(f"正在启动QQ Music: {qq_music_package}/{qq_music_activity}")
 
             # 兼容：某些环境下 driver 可能是 Selenium WebDriver（无 start_activity）。
@@ -206,8 +212,8 @@ class AppController(Singleton):
             time.sleep(1)  # 等待应用启动
 
             # 切换回Soul app（主driver默认指向Soul app）
-            soul_package = self.config["soul"]["package_name"]
-            soul_activity = self.config["soul"]["chat_activity"]
+            soul_package = self.config.soul.require("package_name")
+            soul_activity = self.config.soul.require("chat_activity")
             print(f"切换回Soul app: {soul_package}/{soul_activity}")
 
             self.driver.execute_script(
@@ -227,24 +233,27 @@ class AppController(Singleton):
     def _init_driver(self):
         options = AppiumOptions()
 
+        device = self.config.section("device")
+
         # 设置基本能力
-        options.set_capability("platformName", self.config["device"]["platform_name"])
+        options.set_capability("platformName", device.require("platform_name"))
         options.set_capability(
-            "platformVersion", self.config["device"]["platform_version"]
+            "platformVersion", device.require("platform_version")
         )
-        options.set_capability("deviceName", self.config["device"]["name"])
+        options.set_capability("deviceName", device.require("name"))
         options.set_capability(
-            "automationName", self.config["device"]["automation_name"]
+            "automationName", device.require("automation_name")
         )
-        options.set_capability("noReset", self.config["device"]["no_reset"])
+        options.set_capability("noReset", device.require("no_reset"))
 
         # 设置应用信息
-        options.set_capability("appPackage", self.config["soul"]["package_name"])
-        options.set_capability("appActivity", self.config["soul"]["chat_activity"])
+        options.set_capability("appPackage", self.config.soul.require("package_name"))
+        options.set_capability("appActivity", self.config.soul.require("chat_activity"))
 
         # 优先从环境变量读取，如果没有再从配置文件读取
-        appium_host = os.getenv("APPIUM_HOST") or self.config["appium"]["host"]
-        appium_port = os.getenv("APPIUM_PORT") or str(self.config["appium"]["port"])
+        appium = self.config.section("appium")
+        appium_host = os.getenv("APPIUM_HOST") or appium.require("host")
+        appium_port = os.getenv("APPIUM_PORT") or str(appium.require("port"))
 
         from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
         try:
@@ -425,11 +434,11 @@ class AppController(Singleton):
         try:
             # Initialize handlers using singleton pattern
             self.soul_handler = SoulHandler.initialize(
-                self.driver, self.config["soul"], self
+                self.driver, self.config.soul, self
             )
             self.register_driver_subscriber(self.soul_handler)
             self.music_handler = QQMusicHandler.initialize(
-                self.driver, self.config["qq_music"], self
+                self.driver, self.config.music, self
             )
             self.register_driver_subscriber(self.music_handler)
             self.logger = self.soul_handler.logger
@@ -574,23 +583,21 @@ class AppController(Singleton):
         """构造配置热重载的编排者（#469）。
 
         依赖在这里显式注入（ADR-0009 §1），注入的必须是各组件手里那个「活的」
-        配置 dict：热重载靠原地换内容生效，写进副本的话机器人照旧用旧选择器，
+        视图：热重载靠原地换内容生效，写进副本的话机器人照旧用旧选择器，
         而控制台还会报「重载成功」—— 所以这里直接把身份不符挡在启动时。
         """
-        if self.soul_handler.config is not self.config["soul"]:
+        if self.soul_handler.config is not self.config.soul:
             raise AssertionError(
-                "soul_handler.config 必须是 controller.config['soul'] 同一个对象，"
+                "soul_handler.config 必须是 controller.config.soul 同一个视图，"
                 "否则热重载写不进机器人真正在用的配置"
             )
-        if self.music_handler.config is not self.config["qq_music"]:
+        if self.music_handler.config is not self.config.music:
             raise AssertionError(
-                "music_handler.config 必须是 controller.config['qq_music'] 同一个对象，"
+                "music_handler.config 必须是 controller.config.music 同一个视图，"
                 "否则热重载写不进机器人真正在用的配置"
             )
         return ConfigReloadManager(
-            root_config=self.config,
-            soul_config=self.soul_handler.config,
-            qq_music_config=self.music_handler.config,
+            config=self.config,
             event_manager=self.event_manager,
             command_manager=self.command_manager,
         )

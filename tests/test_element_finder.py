@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.ui.element_finder import ElementFinder
 
 
@@ -7,7 +8,7 @@ class _Owner:
     def __init__(self):
         self.driver = MagicMock()
         self.logger = MagicMock()
-        self.config = {"elements": {"child": "child-id"}}
+        self.config = ConfigSectionView("soul", {"elements": {"child": "child-id"}})
 
 
 def test_find_child_element_can_suppress_failure_log():
@@ -73,12 +74,15 @@ def test_wait_for_any_element_with_distinct_element_instances():
     without failing on element ID equality.
     """
     owner = _Owner()
-    owner.config = {
-        "elements": {
-            "party_back": "cn.soulapp.android:id/tv_look",
-            "search_entry": "cn.soulapp.android:id/ivSearch",
-        }
-    }
+    owner.config = ConfigSectionView(
+        "soul",
+        {
+            "elements": {
+                "party_back": "cn.soulapp.android:id/tv_look",
+                "search_entry": "cn.soulapp.android:id/ivSearch",
+            }
+        },
+    )
     finder = ElementFinder(owner)
 
     elem_found = MagicMock()
@@ -105,12 +109,15 @@ def test_wait_for_any_element_with_distinct_element_instances():
 def test_wait_for_any_element_respects_priority_order():
     """When multiple elements are present, the one specified earlier in element_keys takes precedence."""
     owner = _Owner()
-    owner.config = {
-        "elements": {
-            "party_back": "cn.soulapp.android:id/tv_look",
-            "search_entry": "cn.soulapp.android:id/ivSearch",
-        }
-    }
+    owner.config = ConfigSectionView(
+        "soul",
+        {
+            "elements": {
+                "party_back": "cn.soulapp.android:id/tv_look",
+                "search_entry": "cn.soulapp.android:id/ivSearch",
+            }
+        },
+    )
     finder = ElementFinder(owner)
 
     back_elem = MagicMock()
@@ -138,11 +145,14 @@ def test_wait_for_any_element_respects_priority_order():
 
 def test_wait_for_any_element_timeout():
     owner = _Owner()
-    owner.config = {
-        "elements": {
-            "party_back": "cn.soulapp.android:id/tv_look",
-        }
-    }
+    owner.config = ConfigSectionView(
+        "soul",
+        {
+            "elements": {
+                "party_back": "cn.soulapp.android:id/tv_look",
+            }
+        },
+    )
     finder = ElementFinder(owner)
     owner.driver.find_element.side_effect = RuntimeError("never found")
 
@@ -154,7 +164,7 @@ def test_wait_for_any_element_timeout():
 
 def test_wait_for_any_element_no_valid_keys():
     owner = _Owner()
-    owner.config = {"elements": {}}
+    owner.config = ConfigSectionView("soul", {"elements": {}})
     finder = ElementFinder(owner)
 
     key, elem = finder.wait_for_any_element(["non_existent"], timeout=1)

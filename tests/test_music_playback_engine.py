@@ -26,6 +26,7 @@ from ushareiplay.managers.playback.models import PlaybackOutcome
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _InfoManager:
@@ -112,7 +113,7 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
     probe = _ReadinessProbe(ready=ready)
     mic = _RecordingMicManager(journal, mic_state=mic_state)
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config={}),
+        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
         probe,
         mic,
     )

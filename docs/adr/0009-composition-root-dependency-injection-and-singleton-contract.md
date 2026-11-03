@@ -141,3 +141,12 @@ spec #426 拆出的第一个 ticket #428 交付了在线用户抽屉深模块 `O
 用闸门锁串行化写操作，但锁不跨弹窗的 await 持有（闸门锁与 UI 会话的获取顺序相反，
 跨 await 持有会形成 AB-BA 死锁），因此 `apply()` 按当前快照重新分类而不是沿用
 observe 时刻的旧分类。
+
+### 2026-11-03 —— §1 的配置层已由 ADR-0012 补齐
+
+§1 要求组合根统一构造与注入，但当时注入的仍是裸配置字典，配置读取这一层始终缺位
+（根/段歧义、死覆盖、XPath 判定被复述、热重载靠手工维持字典身份）。ADR-0012
+（[0012-config-view-and-locator-seam.md](0012-config-view-and-locator-seam.md)）补上了这一层：
+组合根现在构造 `ConfigView`，并把类型化的段视图（`config.soul` / `config.music`）注入给
+`SoulHandler` / `QQMusicHandler` 与各管理器，取代裸 dict；§1 的「构造一次、由组合根注入」
+原则在配置这条线上第一次真正落地。

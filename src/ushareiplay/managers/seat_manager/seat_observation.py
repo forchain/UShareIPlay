@@ -9,6 +9,7 @@ from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
+from ushareiplay.core.config_view import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager.seat_ledger import (
@@ -308,8 +309,8 @@ class SeatObservationManager(Singleton):
     def _find_child_element(self, desk, element_key: str):
         return self.panel_reader.find_child_element(desk, element_key)
 
-    def _element_selector(self, element_key: str) -> Optional[str]:
-        return self.panel_reader._element_selector(element_key)
+    def _element_locator(self, element_key: str) -> Optional[Locator]:
+        return self.panel_reader._element_locator(element_key)
 
     def _avatar_image_count(self, desk, side: str) -> int:
         return self.panel_reader._avatar_image_count(desk, side)
@@ -595,7 +596,7 @@ class SeatObservationManager(Singleton):
         try:
             from ushareiplay.core.roles import RolePolicy
             cfg = getattr(self.handler, "config", None)
-            if not isinstance(cfg, dict):
+            if cfg is None:
                 return None
             return RolePolicy(cfg).configured_room_owner or None
         except Exception:
@@ -1327,11 +1328,10 @@ class SeatObservationManager(Singleton):
             self.logger.warning(f"Failed to parse page_source XML for viewport sync: {e}")
             return {}
 
-        selector = self._element_selector("seat_desk") or "cn.soulapp.android:id/userRoot"
-        if selector.startswith("//"):
-            nodes = root.xpath(selector)
-        else:
-            nodes = root.xpath(f"//*[@resource-id='{selector}']")
+        locator = self._element_locator("seat_desk")
+        if locator is None:
+            return {}
+        nodes = root.xpath(locator.absolute_xpath)
 
         desk_wrappers = [ElementWrapper(node, self.handler, "seat_desk") for node in nodes]
         if not desk_wrappers:

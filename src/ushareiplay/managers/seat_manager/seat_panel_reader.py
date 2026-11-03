@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import logging
 from typing import ClassVar, Optional, Tuple
 
+from ushareiplay.core.config_view import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 
 
@@ -30,24 +31,6 @@ class Reading:
         return self.occupied or self.is_empty
 
 
-_FALLBACK_SELECTORS = {
-    "seat_desk": "cn.soulapp.android:id/userRoot",
-    "left_seat": "cn.soulapp.android:id/leftUserView",
-    "right_seat": "cn.soulapp.android:id/rightUserView",
-    "left_state": "cn.soulapp.android:id/leftClState",
-    "right_state": "cn.soulapp.android:id/rightClState",
-    "left_label": "cn.soulapp.android:id/leftTvLabelH",
-    "right_label": "cn.soulapp.android:id/rightTvLabelH",
-    "left_default_name": "cn.soulapp.android:id/leftTvDefaultName",
-    "right_default_name": "cn.soulapp.android:id/rightTvDefaultName",
-    "left_avatar": "cn.soulapp.android:id/leftAvatarView",
-    "right_avatar": "cn.soulapp.android:id/rightAvatarView",
-    "left_rank": "cn.soulapp.android:id/leftRankView",
-    "right_rank": "cn.soulapp.android:id/rightRankView",
-    "empty_seat": "cn.soulapp.android:id/leftTvDefaultName",
-}
-
-
 class SeatPanelReader:
     """座位面板的唯一读数器与 UI 锁门面。
 
@@ -59,7 +42,6 @@ class SeatPanelReader:
 
     EMPTY_SEAT_LABELS: ClassVar[Tuple[str, ...]] = ("点击入座", "入座")
     IMAGE_VIEW_CLASS: ClassVar[str] = "android.widget.ImageView"
-    _FALLBACK_SELECTORS: ClassVar[dict[str, str]] = _FALLBACK_SELECTORS
 
     def __init__(self, handler=None):
         self._handler = handler
@@ -202,19 +184,15 @@ class SeatPanelReader:
     # DOM 元素与选择器
     # ------------------------------------------------------------------
 
-    def _element_selector(self, element_key: str) -> Optional[str]:
+    def _element_locator(self, element_key: str) -> Optional[Locator]:
+        """从配置里的 `soul.elements` 取元素选择器。
+
+        没有硬编码兜底：UI 选择器的唯一事实源是 config.yaml（AGENTS.md）。
+        """
         config = getattr(self.handler, "config", None)
-        if isinstance(config, dict):
-            elements = config.get("elements")
-            if not isinstance(elements, dict):
-                soul = config.get("soul")
-                elements = soul.get("elements") if isinstance(soul, dict) else None
-
-            selector = elements.get(element_key) if isinstance(elements, dict) else None
-            if isinstance(selector, str) and selector.strip():
-                return selector.strip()
-
-        return self._FALLBACK_SELECTORS.get(element_key)
+        if config is None:
+            return None
+        return config.maybe_element(element_key)
 
     def find_child_element(self, desk, element_key: str):
         """按 config.yaml 的元素 key 在 desk 下查找子元素。
@@ -224,18 +202,14 @@ class SeatPanelReader:
         if desk is None:
             return None
 
-        selector = self._element_selector(element_key)
-        if selector is None:
-            self.logger.debug(f"No configured selector for seat element '{element_key}'")
-            return None
-
         if isinstance(desk, ElementWrapper):
-            if selector.startswith("//") or selector.startswith("."):
-                xpath = selector if selector.startswith(".") else f".{selector}"
-            else:
-                xpath = f".//*[@resource-id='{selector}']"
+            # 只有 DOM 快照这一路需要选择器：按相对 XPath 在本节点内查。
+            locator = self._element_locator(element_key)
+            if locator is None:
+                self.logger.debug(f"No configured selector for seat element '{element_key}'")
+                return None
             try:
-                return desk.find_child_element(xpath)
+                return desk.find_child_element(locator.relative_xpath)
             except Exception:
                 return None
 

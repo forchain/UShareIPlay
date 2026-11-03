@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from ushareiplay.core.config_view import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
@@ -98,14 +99,6 @@ class SeatPanelDriver:
     EXPAND_LABEL = EXPAND_LABEL
     COLLAPSE_LABEL = COLLAPSE_LABEL
     SEAT_CARD_EVIDENCE_KEYS = SEAT_CARD_EVIDENCE_KEYS
-
-    # config.yaml 里没有对应元素时兜底的选择器。点头像只需要这四个。
-    _FALLBACK_SELECTORS = {
-        "left_state": "cn.soulapp.android:id/leftClState",
-        "right_state": "cn.soulapp.android:id/rightClState",
-        "left_seat": "cn.soulapp.android:id/leftUserView",
-        "right_seat": "cn.soulapp.android:id/rightUserView",
-    }
 
     def __init__(self, handler=None, panel_reader=None):
         # 面板是否展开的缓存。按钮读不到时它是唯一可用的取值（见 is_expanded）。
@@ -413,22 +406,13 @@ class SeatPanelDriver:
     # 座位头像弹窗：点名、取证、安全关窗
     # ------------------------------------------------------------------
 
-    def _element_selector(self, element_key: str) -> Optional[str]:
+    def _element_locator(self, element_key: str) -> Optional[Locator]:
         """从 config.yaml 里取元素选择器。
 
-        生产上 handler.config 是 soul 段（AppController 用 self.config["soul"]
-        构造 SoulHandler），所以 elements 通常在顶层；兼容传根的 config。
+        委托给座位面板读数器：选择器只有一处来源（config.yaml 的 soul 段），
+        没有硬编码兜底（ADR-0012）。
         """
-        config = getattr(self.handler, "config", None)
-        if isinstance(config, dict):
-            elements = config.get("elements")
-            if not isinstance(elements, dict):
-                soul = config.get("soul")
-                elements = soul.get("elements") if isinstance(soul, dict) else None
-            selector = elements.get(element_key) if isinstance(elements, dict) else None
-            if isinstance(selector, str) and selector.strip():
-                return selector.strip()
-        return self._FALLBACK_SELECTORS.get(element_key)
+        return self.panel_reader._element_locator(element_key)
 
     def _find_child_element(self, desk, element_key: str):
         """按元素 key 在 desk 下查找子元素。
@@ -442,18 +426,14 @@ class SeatPanelDriver:
         if desk is None:
             return None
 
-        selector = self._element_selector(element_key)
-        if selector is None:
-            self.logger.debug(f"没有为座位元素 '{element_key}' 配置选择器")
-            return None
-
         if isinstance(desk, ElementWrapper):
-            if selector.startswith("//") or selector.startswith("."):
-                xpath = selector if selector.startswith(".") else f".{selector}"
-            else:
-                xpath = f".//*[@resource-id='{selector}']"
+            # 只有 DOM 快照这一路需要选择器：按相对 XPath 在本节点内查。
+            locator = self._element_locator(element_key)
+            if locator is None:
+                self.logger.debug(f"没有为座位元素 '{element_key}' 配置选择器")
+                return None
             try:
-                return desk.find_child_element(xpath)
+                return desk.find_child_element(locator.relative_xpath)
             except Exception:
                 return None
 

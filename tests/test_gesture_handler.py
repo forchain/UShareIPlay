@@ -5,13 +5,14 @@ import pytest
 from selenium.common.exceptions import InvalidElementStateException
 
 from ushareiplay.core.ui.gesture_handler import GestureHandler
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _Owner:
     def __init__(self, driver):
         self.driver = driver
         self.logger = MagicMock()
-        self.config = {}
+        self.config = ConfigSectionView("soul", {})
 
 
 def _make_handler(driver):
@@ -104,7 +105,7 @@ class FakeDriver:
 def test_perform_swipe_uses_driver_swipe():
     driver = FakeDriver()
     handler = GestureHandler(
-        SimpleNamespace(driver=driver, logger=FakeLogger(), config={})
+        SimpleNamespace(driver=driver, logger=FakeLogger(), config=ConfigSectionView("soul", {}))
     )
 
     assert handler.swipe(10, 20, 30, 40, duration_ms=250) is True
@@ -137,7 +138,7 @@ def test_scroll_container_reads_target_attributes_from_page_source_cache():
         </hierarchy>
     """
     handler = _make_handler(driver)
-    handler.owner.config = {"elements": {"message_content": "message"}}
+    handler.owner.config = ConfigSectionView("soul", {"elements": {"message_content": "message"}})
     handler.owner.element_finder = MagicMock()
     handler.owner.element_finder.wait_for_element_clickable.return_value = SimpleNamespace(
         location={"x": 0, "y": 0},
@@ -176,7 +177,7 @@ def test_scroll_container_returns_the_visible_element_matching_attribute_value()
         </hierarchy>
     """
     handler = _make_handler(driver)
-    handler.owner.config = {"elements": {"online_user": "online-name"}}
+    handler.owner.config = ConfigSectionView("soul", {"elements": {"online_user": "online-name"}})
     handler.owner.element_finder = MagicMock()
     container = SimpleNamespace(
         location={"x": 0, "y": 0},
@@ -284,7 +285,7 @@ class _FakePageSourceDriver:
 def _tab_strip_handler(driver, tab_element=None):
     """构造一个「横向 tab 条」场景的 handler。"""
     handler = _make_handler(driver)
-    handler.owner.config = {"elements": {"playlist_tab": "playlist"}}
+    handler.owner.config = ConfigSectionView("soul", {"elements": {"playlist_tab": "playlist"}})
     handler.owner.element_finder = MagicMock()
     handler.owner.element_finder.wait_for_element_clickable.return_value = SimpleNamespace(
         location={"x": 0, "y": 0},

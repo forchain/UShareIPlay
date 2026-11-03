@@ -7,6 +7,7 @@ import pytest
 import yaml
 from lxml import etree
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper, composed_message_text
 from ushareiplay.events.message_content import MessageContentEvent
 
@@ -139,26 +140,32 @@ _CUSTOM_IDS_MIXED_ROWS_XML = """
 </hierarchy>
 """
 
-_CUSTOM_ID_CONFIG = {
-    "soul": {
+_CUSTOM_ID_CONFIG = ConfigSectionView(
+    "soul",
+    {
         "elements": {
             "message_reply_view": "cn.soulapp.android:id/customReplyView",
             "message_reply_content": "cn.soulapp.android:id/customReplyContent",
         }
-    }
-}
+    },
+)
+
+
+def _repo_config() -> dict:
+    with open("config.yaml", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
 
 
 def _message_content_selector() -> str:
-    with open("config.yaml", encoding="utf-8") as handle:
-        config = yaml.safe_load(handle)
-    return config["soul"]["elements"][MESSAGE_CONTENT_SELECTOR_KEY]
+    return _repo_config()["soul"]["elements"][MESSAGE_CONTENT_SELECTOR_KEY]
 
 
 def _content_wrappers(page_source: str) -> list[ElementWrapper]:
     """Mirror EventManager: wrap every node matched by the message_content anchor."""
     root = etree.fromstring(page_source.encode("utf-8"))
-    return [ElementWrapper(node) for node in root.xpath(_message_content_selector())]
+    handler = MagicMock()
+    handler.config = ConfigSectionView("soul", _repo_config()["soul"])
+    return [ElementWrapper(node, handler) for node in root.xpath(_message_content_selector())]
 
 
 def _custom_id_wrappers():
@@ -241,7 +248,8 @@ class TestQuotedMessageSelectors:
         assert second.quoted_message() is None
         assert composed_message_text(second) == "souler[Carol]说：在的"
 
-    def test_default_selectors_apply_without_a_configured_handler(self):
+    def test_no_quote_without_a_configured_handler(self):
+        """没有 handler 就没有选择器来源，因此取不到引用内容。"""
         root = etree.fromstring(_CUSTOM_IDS_MIXED_ROWS_XML.encode("utf-8"))
         nodes = root.xpath("//*[@resource-id='cn.soulapp.android:id/customContent']")
 

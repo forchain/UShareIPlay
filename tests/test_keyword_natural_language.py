@@ -6,6 +6,7 @@ import pytest
 
 from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
 from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
 
 def _run(coro):
@@ -222,8 +223,11 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 
     # Simulate SoulHandler where handler.config is only root_config["soul"]
     # and handler.controller.config is root_config
-    fake_controller = SimpleNamespace(config=root_config)
-    fake_handler = SimpleNamespace(config=root_config["soul"], controller=fake_controller)
+    fake_controller = SimpleNamespace(config=ConfigView(root_config))
+    fake_handler = SimpleNamespace(
+        config=ConfigSectionView("soul", root_config["soul"]),
+        controller=fake_controller,
+    )
     keyword_manager._handler = fake_handler
 
     async def _mock_find_keyword(_keyword, _username):

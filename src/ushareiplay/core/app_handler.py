@@ -12,6 +12,7 @@ class AppHandler:
     def __init__(self, driver, config, controller):
         logging.getLogger(self.__class__.__name__).debug(f"AppHandler.__init__ 开始: {self.__class__.__name__}")
         self.driver = driver
+        # 应用段配置视图（`soul` / `qq_music` 段），取值一律走视图方法（ADR-0012）。
         self.config = config
         logging.getLogger(self.__class__.__name__).debug(f"AppHandler 设置 logger: {self.__class__.__name__}")
         self.logger = self._setup_logger()

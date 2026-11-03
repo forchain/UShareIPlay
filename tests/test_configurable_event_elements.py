@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import yaml
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.events import drawer_elements as drawer_elements_module
 from ushareiplay.events import risk_elements as risk_elements_module
 from ushareiplay.events.drawer_elements import DrawerElementsEvent
@@ -37,8 +38,12 @@ class _FakeLogger:
 
 
 def _handler(soul_config):
-    """SoulHandler 的替身：config 即 config.yaml 的 soul 段。"""
-    return SimpleNamespace(logger=_FakeLogger(), controller=None, config=soul_config)
+    """SoulHandler 的替身：config 即 config.yaml 的 soul 段（配置视图）。"""
+    return SimpleNamespace(
+        logger=_FakeLogger(),
+        controller=None,
+        config=ConfigSectionView("soul", soul_config),
+    )
 
 
 def _event_manager(soul_config):
@@ -128,7 +133,7 @@ def test_risk_elements_event_reads_the_live_config_on_every_access():
 
     assert event.elements == ["close_widget"]
 
-    handler.config["risk_elements"] = ["party_back"]
+    handler.config.data["risk_elements"] = ["party_back"]
 
     assert event.elements == ["party_back"]
 

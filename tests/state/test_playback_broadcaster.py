@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 @pytest.fixture
@@ -51,14 +52,14 @@ def test_send_playing_message_respects_broadcast_toggle(broadcaster):
     broadcaster._playback_info_cache = info
     broadcaster._music_manager.handle_song_quality_check.return_value = False
 
-    broadcaster._soul_handler.config = {"broadcast_playing_info": True}
+    broadcaster._soul_handler.config = ConfigSectionView("soul", {"broadcast_playing_info": True})
     broadcaster.send_playing_message()
     broadcaster._soul_handler.send_message.assert_called_once_with(
         "SongA - SingerA • AlbumA"
     )
 
     broadcaster._soul_handler.send_message.reset_mock()
-    broadcaster._soul_handler.config = {"broadcast_playing_info": False}
+    broadcaster._soul_handler.config = ConfigSectionView("soul", {"broadcast_playing_info": False})
     broadcaster.send_playing_message()
     broadcaster._soul_handler.send_message.assert_not_called()
 
@@ -68,7 +69,7 @@ def test_send_playing_message_skips_when_song_quality_check_skips(broadcaster):
     broadcaster._playback_info_cache = info
     broadcaster._music_manager.handle_song_quality_check.return_value = True
 
-    broadcaster._soul_handler.config = {"broadcast_playing_info": True}
+    broadcaster._soul_handler.config = ConfigSectionView("soul", {"broadcast_playing_info": True})
     broadcaster.send_playing_message()
     broadcaster._soul_handler.send_message.assert_not_called()
 
@@ -92,7 +93,7 @@ def test_update_detects_song_change_and_broadcasts(broadcaster):
         "album": "AlbumA",
     }
     broadcaster._music_manager.handle_song_quality_check.return_value = False
-    broadcaster._soul_handler.config = {"broadcast_playing_info": True}
+    broadcaster._soul_handler.config = ConfigSectionView("soul", {"broadcast_playing_info": True})
 
     # First update establishes baseline
     broadcaster.update()

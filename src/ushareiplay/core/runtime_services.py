@@ -382,7 +382,7 @@ class StatusReporter:
                     "party_id_current": getattr(self.soul_handler, "party_id", None)
                     if self.soul_handler
                     else None,
-                    "party_id_target": (self.config.get("soul", {}) or {}).get("default_party_id"),
+                    "party_id_target": self.config.soul.value("default_party_id"),
                     "timers_running": bool(self.timer_manager and self.timer_manager.is_running()),
                     "playback_info_summary": None,
                 },

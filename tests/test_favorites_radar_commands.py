@@ -26,6 +26,7 @@ from ushareiplay.managers.playback.models import (
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 QUEUE_TEXT = "喜帖街 - 谢安琪\n富士山下 - 陈奕迅"
 
@@ -100,7 +101,7 @@ def _wire_engine(*, driver=None, protection_error=None):
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config={}),
+        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
         SimpleNamespace(wait_for_playback_ready=lambda **_k: True),
         _MicManager(journal),
     )

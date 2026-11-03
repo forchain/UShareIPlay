@@ -268,7 +268,7 @@ class CommandManager(Singleton):
             
             # 角色与权限策略检查
             cfg = getattr(self.handler, "config", None)
-            role_policy = RolePolicy(cfg if isinstance(cfg, dict) else None)
+            role_policy = RolePolicy(cfg)
 
             is_human_op = role_policy.is_human_operator(message_info.nickname)
 

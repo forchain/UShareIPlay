@@ -25,6 +25,7 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 from ushareiplay.models.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
+from ushareiplay.core.config_view import ConfigSectionView
 
 QUEUE_TEXT = "似是故人来 - 梅艳芳\n如风 - 王菲"
 
@@ -113,7 +114,7 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config={}),
+        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
         _ReadinessProbe(),
         _RecordingMicManager(journal),
     )

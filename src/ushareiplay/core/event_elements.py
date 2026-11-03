@@ -8,26 +8,29 @@
 （逗号分隔的多个 key）。
 """
 
-from typing import Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional
+
+if TYPE_CHECKING:
+    from ushareiplay.core.config_view import ConfigSectionView
 
 
 def resolve_event_elements(
-    config: Optional[dict],
+    config: Optional["ConfigSectionView"],
     config_key: Optional[str],
     default_elements: Iterable[str],
 ) -> List[str]:
     """返回事件当前生效的元素 key 列表。
 
     Args:
-        config: Soul 配置（handler.config，即 config.yaml 的 soul 段）
+        config: Soul 段的配置视图（handler.config，即 config.yaml 的 soul 段）
         config_key: 配置项名称；None 表示该事件不支持配置覆盖
         default_elements: 配置缺省时的回退列表
 
     Returns:
         元素 key 列表
     """
-    if config_key and isinstance(config, dict):
-        declared = config.get(config_key)
+    if config_key and config is not None:
+        declared = config.value(config_key)
         if (
             isinstance(declared, list)
             and declared

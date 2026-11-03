@@ -22,6 +22,7 @@ from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
 from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 from ushareiplay.managers.playlist_adoption import primary_topic
 from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
 # 老歌过滤的判定基准。与 config.yaml 的默认值一致，让测试里的「1995 年」
 # 与「2021 年」分别落在截止线两侧。
@@ -113,7 +114,7 @@ def radio_engine(initialized_test_singletons):
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config={}),
+        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
         SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
         _RecordingMicManager(journal),
     )
@@ -309,7 +310,7 @@ def music_manager(initialized_test_singletons):
     from ushareiplay.managers.music_manager import MusicManager
 
     manager = MusicManager.initialize()
-    manager.music_handler = SimpleNamespace(config={})
+    manager.music_handler = SimpleNamespace(config=ConfigView({}))
     manager._song_release_lookup = _ReleaseLookup({})
     return manager
 
@@ -527,7 +528,7 @@ def _collection_setup(playing=False):
 
 def test_collection_channel_plays_the_station(music_manager):
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     music_manager._song_release_lookup = _ReleaseLookup({"新歌": "2021-05-01"})
     driver, _ = _driver(
         _collection_elements(actions), actions, setup=_collection_setup(),
@@ -557,7 +558,7 @@ def test_collection_channel_plays_the_station(music_manager):
 
 def test_collection_refreshes_the_recommendation_when_it_is_old(music_manager):
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     lookup = _ReleaseLookup({"老歌": "1995-03-01", "新歌": "2021-05-01"})
     music_manager._song_release_lookup = lookup
     elements = _collection_elements(actions, texts=["老歌 - 歌手丙", "新歌 - 歌手甲"])
@@ -577,7 +578,7 @@ def test_collection_refreshes_the_recommendation_when_it_is_old(music_manager):
 
 def test_collection_stops_refreshing_once_the_budget_is_spent(music_manager):
     actions = []
-    music_manager.music_handler.config = _filter_config(radio_max_refreshes=2)
+    music_manager.music_handler.config = ConfigView(_filter_config(radio_max_refreshes=2))
     music_manager._song_release_lookup = _ReleaseLookup({"老歌": "1995-03-01"})
     elements = _collection_elements(actions, texts=["老歌 - 歌手丙"] * 4)
     driver, _ = _driver(
@@ -594,7 +595,7 @@ def test_collection_stops_refreshing_once_the_budget_is_spent(music_manager):
 
 def test_collection_honours_the_configured_refresh_budget(music_manager):
     actions = []
-    music_manager.music_handler.config = _filter_config(radio_max_refreshes=0)
+    music_manager.music_handler.config = ConfigView(_filter_config(radio_max_refreshes=0))
     music_manager._song_release_lookup = _ReleaseLookup({"老歌": "1995-03-01"})
     driver, _ = _driver(
         _collection_elements(actions, texts=["老歌 - 歌手丙"] * 2), actions,
@@ -611,7 +612,7 @@ def test_collection_honours_the_configured_refresh_budget(music_manager):
 def test_collection_re_reads_a_stale_recommendation_element(music_manager):
     """频道自己刷新了卡片：元素失效要重新找，而不是让整条电台失败。"""
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     music_manager._song_release_lookup = _ReleaseLookup({"新歌": "2021-05-01"})
     driver, _ = _driver(
         _collection_elements(actions, stale_reads=1), actions,
@@ -627,7 +628,7 @@ def test_collection_re_reads_a_stale_recommendation_element(music_manager):
 def test_collection_reads_the_station_name_from_the_qq_music_handler(music_manager):
     """控件在 QQ Music 屏幕上，就该问 QQ Music 的 finder —— 迁移前借的是 Soul 的。"""
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     music_manager._song_release_lookup = _ReleaseLookup({"新歌": "2021-05-01"})
     driver, handler = _driver(
         _collection_elements(actions), actions, setup=_collection_setup(),
@@ -670,7 +671,7 @@ def test_collection_leaves_the_home_page_when_the_station_is_already_playing(
 ):
     """频道正在播「精选」时，点开卡片不会换歌 —— 必须先回首页让它换。"""
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     music_manager._song_release_lookup = _ReleaseLookup({"新歌": "2021-05-01"})
     driver, _ = _driver(
         _collection_elements(actions, playing=True), actions,
@@ -735,7 +736,7 @@ async def test_allowed_radio_mutes_only_around_the_track_change(radio_engine):
 def test_collection_accepts_a_recommendation_with_no_release_date(music_manager):
     """查不到发行日期就照播 —— 宁可放一首查不到年代的歌，也不要让房间开不了台。"""
     actions = []
-    music_manager.music_handler.config = _filter_config()
+    music_manager.music_handler.config = ConfigView(_filter_config())
     music_manager._song_release_lookup = _ReleaseLookup({})
     driver, _ = _driver(
         _collection_elements(actions, texts=["未知歌 - 歌手甲"]), actions,

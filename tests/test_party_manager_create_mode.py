@@ -1,4 +1,5 @@
 from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.core.config_view import ConfigSectionView
 
 
 class _Logger:
@@ -25,7 +26,7 @@ class _Element:
 
 class _Handler:
     def __init__(self, config, any_results=None, elements=None):
-        self.config = config
+        self.config = ConfigSectionView("soul", config)
         self.logger = _Logger()
         self._any_results = any_results or []
         self._elements = elements if elements is not None else {

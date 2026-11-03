@@ -4,6 +4,7 @@ import datetime as dt
 from dataclasses import dataclass
 
 from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.singleton import Singleton
 
 
@@ -70,12 +71,16 @@ class SleepManager(Singleton):
     DEFAULT_WINDOW_END = dt.time(6, 0)
 
     def __init__(self, config: dict | None = None, catalogue: CommandCatalogue | None = None):
-        self._config = config or {}
+        if isinstance(config, ConfigView):
+            self._config = config
+            sleep_section = config.maybe_section("sleep")
+            sleep_cfg = dict(sleep_section.data) if sleep_section else {}
+        else:
+            self._config = config or {}
+            sleep_cfg = self._config.get("sleep")
+            if not isinstance(sleep_cfg, dict):
+                sleep_cfg = {}
         self._catalogue = catalogue or CommandCatalogue.from_config(self._config)
-
-        sleep_cfg = self._config.get("sleep")
-        if not isinstance(sleep_cfg, dict):
-            sleep_cfg = {}
 
         self._enabled = _parse_enabled(sleep_cfg.get("enabled"), self.DEFAULT_ENABLED)
         self._override_enabled: bool | None = None

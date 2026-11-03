@@ -5,6 +5,7 @@ from queue import Queue
 import pytest
 
 from ushareiplay.core.app_controller import AppController
+from ushareiplay.core.config_view import ConfigView
 
 
 class DriverAware:
@@ -95,6 +96,25 @@ def controller_without_init(driver=None):
     return controller
 
 
+def _minimal_config() -> dict:
+    """一份能通过启动期元素校验的最小配置。"""
+    soul_elements = {
+        key: f"cn.soulapp.android:id/{key}"
+        for key in (
+            "message_content",
+            "message_list",
+            "input_box",
+            "button_send",
+            "message_reply_view",
+            "message_reply_content",
+        )
+    }
+    return {
+        "soul": {"elements": soul_elements},
+        "qq_music": {"elements": {"search_entry": "com.tencent.qqmusic:id/sub_edit_text"}},
+    }
+
+
 def test_start_up_closes_driver_when_starting_apps_fails(monkeypatch):
     """启动期设备 I/O 在 start_up() 里：失败必须关掉驱动再抛出。"""
     driver = FakeDriver("startup-driver")
@@ -106,8 +126,8 @@ def test_start_up_closes_driver_when_starting_apps_fails(monkeypatch):
 
     monkeypatch.setattr(AppController, "_start_apps", fail_to_start_apps)
 
-    # 构造本身不做设备 I/O
-    AppController.__init__(controller, {})
+    # 构造本身不做设备 I/O（配置要能通过启动期的元素选择器校验）
+    AppController.__init__(controller, _minimal_config())
 
     with pytest.raises(RuntimeError, match="startup failed"):
         controller.start_up()
@@ -234,7 +254,7 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
 
 def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monkeypatch):
     controller = controller_without_init()
-    controller.config = {"commands": []}
+    controller.config = ConfigView({"commands": []})
     controller.input_queue = Queue()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
@@ -292,7 +312,7 @@ def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monke
 
 def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(monkeypatch):
     controller = controller_without_init()
-    controller.config = {"commands": []}
+    controller.config = ConfigView({"commands": []})
     controller.input_queue = Queue()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
@@ -366,7 +386,7 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
     测试能钉住。
     """
     controller = controller_without_init()
-    controller.config = {"commands": []}
+    controller.config = ConfigView({"commands": []})
     controller.input_queue = Queue()
     controller.soul_handler = SimpleNamespace(
         error_count=0,

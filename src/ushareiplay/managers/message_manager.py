@@ -111,7 +111,7 @@ class MessageManager(Singleton):
         就检测不到「送给房主」的礼物）。
         """
         config = getattr(self.handler, "config", None)
-        owner = RolePolicy(config if isinstance(config, dict) else None).configured_room_owner
+        owner = RolePolicy(config).configured_room_owner
         if owner:
             return owner
 
@@ -203,7 +203,7 @@ class MessageManager(Singleton):
     def get_party_id(self):
         party_id = self.handler.party_id
         if not party_id:
-            party_id = self.handler.config['default_party_id']
+            party_id = self.handler.config.require('default_party_id')
         return party_id
 
     # ------------------------------------------------------------------

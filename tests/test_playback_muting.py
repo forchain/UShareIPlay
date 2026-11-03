@@ -7,6 +7,7 @@ microphone restore — plus the guest-room bypass policy.
 
 import pytest
 
+from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.state.room_state import RoomState
 
@@ -32,7 +33,7 @@ class _SoulHandler:
 
     def __init__(self, events, config=None):
         self.events = events
-        self.config = config if config is not None else {}
+        self.config = ConfigSectionView("soul", config if config is not None else {})
         self.logger = _Logger()
 
 
@@ -212,9 +213,9 @@ def test_settings_fall_back_to_documented_defaults():
 
 
 def test_settings_are_read_from_the_soul_section_like_the_shipped_config():
-    """config.yaml 把这一节放在 `soul:` 下；只读顶层键会让整节静默取默认值。"""
+    """config.yaml 把这一节放在 `soul:` 下，handler 拿到的是 soul 段视图。"""
     coordinator, _events = _make_coordinator(
-        config={"soul": {"playback_mute": {"enabled": False, "ignore_users": ["Timer"]}}}
+        config={"playback_mute": {"enabled": False, "ignore_users": ["Timer"]}}
     )
 
     assert coordinator.settings["enabled"] is False

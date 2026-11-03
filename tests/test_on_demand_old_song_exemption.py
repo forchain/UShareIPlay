@@ -9,6 +9,7 @@ exemption expires once the requested song has played.
 from types import SimpleNamespace
 
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
 
 class _Logger:
@@ -36,7 +37,7 @@ class _FakeMusicHandler:
         self.logger = _Logger()
         self.list_mode = "unknown"
         self.no_skip = 0
-        self.config = {"old_song_filter": {"enabled": True, "cutoff_date": "2000-01-01"}}
+        self.config = ConfigView({"old_song_filter": {"enabled": True, "cutoff_date": "2000-01-01"}})
         self.release_date = release_date
 
 
@@ -70,7 +71,9 @@ def _make_broadcaster(manager):
     broadcaster = PlaybackBroadcaster.initialize()
     broadcaster._logger = _Logger()
     broadcaster._music_manager = manager
-    broadcaster._soul_handler = SimpleNamespace(config={"broadcast_playing_info": True})
+    broadcaster._soul_handler = SimpleNamespace(
+        config=ConfigSectionView("soul", {"broadcast_playing_info": True})
+    )
     broadcaster._message_dispatch = _FakeDispatch()
     return broadcaster
 

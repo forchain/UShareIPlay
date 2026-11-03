@@ -2089,7 +2089,7 @@ async def test_owner_ghost_render_cannot_book_the_room_owner_on_two_seats():
         _raw_desk_sides(("群主", True), ("12", False), 600),
     ]
     handler = make_handler(desks=desks)
-    handler.config["room_owner"] = "Joyer"
+    handler.config.data["room_owner"] = "Joyer"
     manager = SeatObservationManager.initialize(handler)
     manager._seat_ui = FakeSeatUI(desks=desks)
     manager._reconciled_focus_count = 1

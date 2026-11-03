@@ -219,15 +219,11 @@ class GestureHandler:
                     return "", 0
 
             def target_values(source: str) -> tuple[list[str], bool]:
-                selector = (self.config.get("elements") or {}).get(element_key)
-                if not source or not selector:
+                locator = self.config.maybe_element(element_key)
+                if not source or locator is None:
                     return [], False
                 root = etree.fromstring(source.encode("utf-8"))
-                elements = (
-                    root.xpath(selector)
-                    if selector.startswith("//")
-                    else root.xpath(f"//*[@resource-id='{selector}']")
-                )
+                elements = root.xpath(locator.absolute_xpath)
                 attrs = attribute_name.split("|") if attribute_name else ["content-desc", "text"]
                 values = []
                 matched = False

@@ -7,6 +7,7 @@
 """
 
 from types import SimpleNamespace
+from ushareiplay.core.config_view import ConfigView
 
 
 class _Logger:
@@ -37,12 +38,12 @@ class _FakeMusicHandler:
         self.logger = _Logger()
         self.list_mode = "playlist"
         self.no_skip = 0
-        self.config = {
+        self.config = ConfigView({
             "old_song_filter": {
                 "enabled": True,
                 "cutoff_date": "2000-01-01",
             }
-        }
+        })
 
 
 def _make_music_manager_for_quality_check():
@@ -68,7 +69,7 @@ def test_quality_check_skips_old_song_for_any_playback_mode(monkeypatch):
 
 def test_quality_check_accepts_old_song_for_whitelisted_artist(monkeypatch):
     manager = _make_music_manager_for_quality_check()
-    manager.music_handler.config["old_song_filter"]["artist_whitelist"] = ["歌手A"]
+    manager.music_handler.config.data["old_song_filter"]["artist_whitelist"] = ["歌手A"]
     manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1999-01-01")
     song_info = {"song": "老歌", "singer": "歌手A/歌手B", "album": "专辑A"}
 
@@ -80,15 +81,15 @@ def test_quality_check_accepts_old_song_for_whitelisted_artist(monkeypatch):
 
 def test_quality_check_reads_artist_whitelist_from_controller_config(monkeypatch):
     manager = _make_music_manager_for_quality_check()
-    manager.music_handler.config = {}
+    manager.music_handler.config = ConfigView({})
     manager.music_handler.controller = SimpleNamespace(
-        config={
+        config=ConfigView({
             "old_song_filter": {
                 "enabled": True,
                 "cutoff_date": "2000-01-01",
                 "artist_whitelist": ["王菲", "911"],
             }
-        }
+        })
     )
     manager._song_release_lookup = SimpleNamespace(get_release_date=lambda _song: "1993-09-07")
     song_info = {"song": "如风", "singer": "王菲", "album": "十万个为什么？(日本版）"}
