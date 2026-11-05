@@ -218,7 +218,8 @@ soul:
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
-    heat_exchange_entry: "cn.soulapp.android:id/tvStepInfo"
+    heat_exchange_entry: "cn.soulapp.android:id/tvStepInfo" # 房间热力阶梯 banner（轮播出现，需等待）
+    heat_exchange_tab: '//android.view.View[@text="兑换福袋"]' # 橱窗默认停在「兑换流量卡」，福袋档位需切页才显示
     heat_remaining_value: '//android.widget.TextView[@text="每日0点清零"]/preceding-sibling::android.widget.TextView'
     heat_exchange_buttons: '//android.widget.TextView[@text="600" or @text="3000" or @text="9999" or @text="29999" or @text="99999"]'
     heat_exchange_back: '//android.widget.TextView[@text="兑换橱窗"]/preceding-sibling::android.view.View'

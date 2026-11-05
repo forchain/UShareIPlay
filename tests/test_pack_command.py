@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.commands import pack as pack_module
 from ushareiplay.commands.pack import PackCommand, _parse_heat
@@ -16,6 +17,23 @@ class FakeElement:
 
     def click(self):
         self.clicks += 1
+
+
+class StaleElement(FakeElement):
+    """Element that goes stale before its text can be read."""
+
+    def __init__(self, text=""):
+        super().__init__(text=text)
+        self.text_reads = 0
+
+    @property
+    def text(self):
+        self.text_reads += 1
+        raise StaleElementReferenceException("stale heat value")
+
+    @text.setter
+    def text(self, value):
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -37,8 +55,10 @@ def mock_controller():
     soul_handler.log_error = MagicMock()
     soul_handler.element_finder = SimpleNamespace(
         try_find_element=MagicMock(),
+        wait_for_element=MagicMock(return_value=None),
         wait_for_element_clickable=MagicMock(),
         find_elements=MagicMock(),
+        get_element_text=MagicMock(side_effect=lambda element: element.text if element else ""),
     )
     soul_handler.key_actions = SimpleNamespace(
         press_back=MagicMock(),
@@ -48,11 +68,12 @@ def mock_controller():
     return controller
 
 
-def _heat_finder(finder, heat_values):
+def _heat_finder(finder, heat_values, tab=True):
     """Mock the finder with a clamped heat sequence and an optional back button."""
     state = {"idx": 0}
     entry_btn = FakeElement(text="步数兑换")
     back_btn = FakeElement(text="返回")
+    tab_btn = FakeElement(text="兑换福袋")
 
     def mock_try_find(key, **kwargs):
         if key == "heat_exchange_entry":
@@ -65,8 +86,16 @@ def _heat_finder(finder, heat_values):
             return FakeElement(text=value) if value is not None else None
         return None
 
+    def mock_wait(key, **kwargs):
+        if key == "heat_exchange_entry":
+            return entry_btn
+        if key == "heat_exchange_tab":
+            return tab_btn if tab else None
+        return None
+
     finder.try_find_element.side_effect = mock_try_find
-    return entry_btn, back_btn
+    finder.wait_for_element.side_effect = mock_wait
+    return entry_btn, back_btn, tab_btn
 
 
 # --- heat text parsing ---
@@ -161,7 +190,7 @@ async def test_pack_redeem_rejects_extra_parameters(mock_controller):
 @pytest.mark.asyncio
 async def test_pack_redeem_multi_round_picks_highest_affordable_tier(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, ["35999", "6000", "3000", "0"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["35999", "6000", "3000", "0"])
 
     btn_99999 = FakeElement(text="99999")
     btn_29999 = FakeElement(text="29999")
@@ -197,7 +226,7 @@ async def test_pack_redeem_multi_round_picks_highest_affordable_tier(mock_contro
 @pytest.mark.asyncio
 async def test_pack_redeem_waits_for_window_to_open(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, [None, None, None, "100"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, [None, None, None, "100"])
 
     cmd = PackCommand(mock_controller)
     msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
@@ -212,7 +241,7 @@ async def test_pack_redeem_waits_for_window_to_open(mock_controller):
 async def test_pack_redeem_waits_for_balance_to_drop_after_click(mock_controller):
     """Reading the stale balance right after a click must not abort the loop."""
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, _ = _heat_finder(finder, ["35999", "35999", "6000", "6000", "0"])
+    entry_btn, _, tab_btn = _heat_finder(finder, ["35999", "35999", "6000", "6000", "0"])
 
     btn_29999 = FakeElement(text="29999")
     btn_3000 = FakeElement(text="3000")
@@ -232,7 +261,7 @@ async def test_pack_redeem_waits_for_balance_to_drop_after_click(mock_controller
 @pytest.mark.asyncio
 async def test_pack_redeem_case_insensitive_flag(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, ["100"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["100"])
 
     cmd = PackCommand(mock_controller)
     msg_info = MessageInfo(content=":pack REDEEM", nickname="Tester")
@@ -246,7 +275,7 @@ async def test_pack_redeem_case_insensitive_flag(mock_controller):
 @pytest.mark.asyncio
 async def test_pack_redeem_entry_not_found(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    finder.try_find_element.return_value = None
+    finder.wait_for_element.return_value = None
 
     cmd = PackCommand(mock_controller)
     msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
@@ -260,22 +289,53 @@ async def test_pack_redeem_entry_not_found(mock_controller):
 async def test_pack_redeem_window_not_opened_does_not_press_back(mock_controller):
     """Without a confirmed open window, BACK could leave the party room."""
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, [None])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, [None], tab=False)
 
     cmd = PackCommand(mock_controller)
     msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
     result = await cmd.do_process(msg_info, ["redeem"])
 
-    assert result == {"error": "兑换橱窗未打开，未读取到热力值"}
+    assert result == {"error": "兑换橱窗未打开，未找到兑换福袋标签页"}
     assert entry_btn.clicks == 1
     assert back_btn.clicks == 0
     mock_controller.soul_handler.key_actions.press_back.assert_not_called()
 
 
 @pytest.mark.asyncio
+async def test_pack_redeem_opens_lucky_bag_tab_before_reading_tiers(mock_controller):
+    """橱窗默认停在「兑换流量卡」；不切到「兑换福袋」就会把流量卡价格当档位。"""
+    finder = mock_controller.soul_handler.element_finder
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["42998"])
+
+    cmd = PackCommand(mock_controller)
+    msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
+    await cmd.do_process(msg_info, ["redeem"])
+
+    assert entry_btn.clicks == 1
+    assert tab_btn.clicks == 1
+    assert finder.wait_for_element.call_args_list[0].args[0] == "heat_exchange_entry"
+    assert finder.wait_for_element.call_args_list[1].args[0] == "heat_exchange_tab"
+
+
+@pytest.mark.asyncio
+async def test_pack_redeem_closes_window_when_heat_unreadable_but_tab_found(mock_controller):
+    """标签页出现 ⇒ 橱窗确实打开；此时不关窗，后台兜底 back 才会去关它。"""
+    finder = mock_controller.soul_handler.element_finder
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, [None])
+
+    cmd = PackCommand(mock_controller)
+    msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
+    result = await cmd.do_process(msg_info, ["redeem"])
+
+    assert result == {"error": "兑换橱窗已打开，未读取到热力值"}
+    assert tab_btn.clicks == 1
+    assert back_btn.clicks == 1
+
+
+@pytest.mark.asyncio
 async def test_pack_redeem_dead_loop_defense_when_heat_not_decreasing(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, ["1000"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["1000"])
 
     btn_600 = FakeElement(text="600")
     finder.find_elements.side_effect = lambda key: [btn_600] if key == "heat_exchange_buttons" else []
@@ -293,7 +353,7 @@ async def test_pack_redeem_dead_loop_defense_when_heat_not_decreasing(mock_contr
 @pytest.mark.asyncio
 async def test_pack_redeem_stops_when_no_affordable_tier(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, ["100"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["100"])
 
     btn_600 = FakeElement(text="600")
     finder.find_elements.side_effect = lambda key: [btn_600] if key == "heat_exchange_buttons" else []
@@ -327,6 +387,10 @@ async def test_pack_redeem_stops_at_max_redemptions(mock_controller, monkeypatch
         back_btn if key == "heat_exchange_back" else
         FakeElement(text=str(state["heat"])) if key == "heat_remaining_value" else None
     )
+    finder.wait_for_element.side_effect = lambda key, **kwargs: (
+        entry_btn if key == "heat_exchange_entry" else
+        FakeElement(text="兑换福袋") if key == "heat_exchange_tab" else None
+    )
     finder.find_elements.side_effect = lambda key: [btn_600] if key == "heat_exchange_buttons" else []
 
     cmd = PackCommand(mock_controller)
@@ -351,6 +415,10 @@ async def test_pack_redeem_navigation_safety_press_back_fallback(mock_controller
         entry_btn if key == "heat_exchange_entry" else
         FakeElement(text="50") if key == "heat_remaining_value" else None
     )
+    finder.wait_for_element.side_effect = lambda key, **kwargs: (
+        entry_btn if key == "heat_exchange_entry" else
+        FakeElement(text="兑换福袋") if key == "heat_exchange_tab" else None
+    )
 
     cmd = PackCommand(mock_controller)
     msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
@@ -364,7 +432,7 @@ async def test_pack_redeem_navigation_safety_press_back_fallback(mock_controller
 @pytest.mark.asyncio
 async def test_pack_redeem_exception_handling_safely_exits(mock_controller):
     finder = mock_controller.soul_handler.element_finder
-    entry_btn, back_btn = _heat_finder(finder, ["1000"])
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["1000"])
 
     def failing_click():
         raise RuntimeError("Click failed")
@@ -398,6 +466,10 @@ async def test_pack_redeem_exit_paths_failing_does_not_raise(mock_controller):
         back_btn if key == "heat_exchange_back" else
         FakeElement(text="50") if key == "heat_remaining_value" else None
     )
+    finder.wait_for_element.side_effect = lambda key, **kwargs: (
+        entry_btn if key == "heat_exchange_entry" else
+        FakeElement(text="兑换福袋") if key == "heat_exchange_tab" else None
+    )
     mock_controller.soul_handler.key_actions.press_back.side_effect = RuntimeError("back key failed")
 
     cmd = PackCommand(mock_controller)
@@ -406,6 +478,93 @@ async def test_pack_redeem_exit_paths_failing_does_not_raise(mock_controller):
 
     assert result == {"message": "成功兑换 0 个福袋，剩余热力值: 50"}
     assert back_btn.clicks == 0
+
+
+@pytest.mark.asyncio
+async def test_pack_redeem_stale_balance_is_retried_not_fatal(mock_controller):
+    """余额节点被 App 重建时 .text 会抛 Stale；必须重试而不是整条命令失败。"""
+    finder = mock_controller.soul_handler.element_finder
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["42998"])
+
+    stale = StaleElement()
+    calls = {"n": 0}
+    heat_after = ["42998", "42998", "9999"]
+
+    def mock_try_find(key, **kwargs):
+        if key == "heat_remaining_value":
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return stale
+            return FakeElement(text=heat_after[min(calls["n"] - 2, len(heat_after) - 1)])
+        if key == "heat_exchange_entry":
+            return entry_btn
+        if key == "heat_exchange_back":
+            return back_btn
+        return None
+
+    def mock_get_text(element):
+        try:
+            return element.text
+        except StaleElementReferenceException:
+            return ""
+
+    finder.try_find_element.side_effect = mock_try_find
+    finder.get_element_text.side_effect = mock_get_text
+
+    btn_12000 = FakeElement(text="12000")
+    finder.find_elements.side_effect = lambda key: (
+        [btn_12000] if key == "heat_exchange_buttons" else []
+    )
+
+    cmd = PackCommand(mock_controller)
+    msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
+    result = await cmd.do_process(msg_info, ["redeem"])
+
+    assert result == {"message": "成功兑换 1 个福袋，剩余热力值: 9999"}
+    assert btn_12000.clicks == 1
+    mock_controller.soul_handler.log_error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_redeem_skips_locked_tier_without_numeric_price(mock_controller):
+    """锁定档位没有具体数值，只能跳过；兑换后继续检测下一轮。"""
+    finder = mock_controller.soul_handler.element_finder
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["42998", "42998", "9999"])
+
+    btn_locked = FakeElement(text="锁定")
+    btn_10000 = FakeElement(text="10000")
+    btn_100000 = FakeElement(text="100000")
+    finder.find_elements.side_effect = lambda key: (
+        [btn_locked, btn_10000, btn_100000] if key == "heat_exchange_buttons" else []
+    )
+
+    cmd = PackCommand(mock_controller)
+    msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
+    result = await cmd.do_process(msg_info, ["redeem"])
+
+    assert result == {"message": "成功兑换 1 个福袋，剩余热力值: 9999"}
+    assert btn_locked.clicks == 0
+    assert btn_100000.clicks == 0
+    assert btn_10000.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_pack_redeem_closes_window_when_tab_click_fails(mock_controller):
+    """标签页存在 ⇒ 橱窗已打开；切页失败也要关窗，否则错误消息发不出去。"""
+    finder = mock_controller.soul_handler.element_finder
+    entry_btn, back_btn, tab_btn = _heat_finder(finder, ["42998"])
+
+    def failing_click():
+        raise RuntimeError("Tab click failed")
+
+    tab_btn.click = failing_click
+
+    cmd = PackCommand(mock_controller)
+    msg_info = MessageInfo(content=":pack redeem", nickname="Tester")
+    result = await cmd.do_process(msg_info, ["redeem"])
+
+    assert result == {"error": "切换到兑换福袋标签页失败"}
+    assert back_btn.clicks == 1
 
 
 # --- config wiring ---
@@ -423,6 +582,7 @@ def test_pack_config_declarations():
 
     elements = config["soul"]["elements"]
     assert elements["heat_exchange_entry"] == "cn.soulapp.android:id/tvStepInfo"
+    assert elements["heat_exchange_tab"] == '//android.view.View[@text="兑换福袋"]'
     assert "每日0点清零" in elements["heat_remaining_value"]
     assert "600" in elements["heat_exchange_buttons"]
     assert "兑换橱窗" in elements["heat_exchange_back"]

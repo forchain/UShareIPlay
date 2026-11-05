@@ -7,6 +7,7 @@ from ushareiplay.core.base_command import BaseCommand
 MAX_REDEMPTIONS = 50
 HEAT_WAIT_SECONDS = 5.0
 HEAT_POLL_SECONDS = 0.3
+ENTRY_WAIT_SECONDS = 10
 
 _HEAT_PATTERN = re.compile(r'(\d+(?:\.\d+)?)\s*([万wW])?')
 
@@ -122,67 +123,101 @@ class PackCommand(BaseCommand):
 
     def redeem_heat(self):
         """Redeem heat for luck packs, preferring the highest affordable tier."""
-        entry = self.handler.element_finder.try_find_element('heat_exchange_entry', log=False)
+        # 房间顶部的热力进度条是轮播 banner，出现的时机不定，要等它渲染出来
+        entry = self.handler.element_finder.wait_for_element(
+            'heat_exchange_entry', timeout=ENTRY_WAIT_SECONDS
+        )
         if not entry:
             self.handler.logger.warning("Heat exchange entry not found")
             return {'error': '未找到热力兑换入口'}
 
+        opened = False
         try:
             entry.click()
+            tab = self._wait_for_lucky_bag_tab()
+            if tab is None:
+                return {'error': '兑换橱窗未打开，未找到兑换福袋标签页'}
+            # 标签页找得到 ⇒ 橱窗确实打开了
+            opened = True
+            try:
+                tab.click()
+            except Exception as e:
+                self.handler.logger.warning(f"点击兑换福袋标签页失败: {e}")
+                return {'error': '切换到兑换福袋标签页失败'}
+            self.handler.logger.info("已切换到兑换福袋标签页")
+
             current_heat = self._wait_for_heat()
             if current_heat is None:
-                # 没确认橱窗打开就绝不能按返回键，否则可能误退出派对房间
-                return {'error': '兑换橱窗未打开，未读取到热力值'}
+                return {'error': '兑换橱窗已打开，未读取到热力值'}
 
-            try:
-                redeemed_count = 0
-                capped = True
-                for _ in range(MAX_REDEMPTIONS):
-                    # shortcut: page-global XPath; scope it to the exchange container once a real hierarchy dump is available.
-                    buttons = self.handler.element_finder.find_elements('heat_exchange_buttons')
-                    affordable = {}
-                    for btn in buttons:
-                        cost = _parse_heat(btn.text)
-                        if cost is not None and cost <= current_heat:
-                            affordable[cost] = btn
-                    if not affordable:
-                        capped = False
-                        break
+            redeemed_count = 0
+            capped = True
+            for _ in range(MAX_REDEMPTIONS):
+                # shortcut: page-global XPath; scope it to the exchange container once a real hierarchy dump is available.
+                buttons = self.handler.element_finder.find_elements('heat_exchange_buttons')
+                affordable = {}
+                for btn in buttons:
+                    cost = _parse_heat(self.handler.element_finder.get_element_text(btn))
+                    if cost is not None and cost <= current_heat:
+                        affordable[cost] = btn
+                if not affordable:
+                    capped = False
+                    break
 
-                    target_btn = affordable[max(affordable)]
-                    target_btn.click()
-                    redeemed_count += 1
+                target_btn = affordable[max(affordable)]
+                target_btn.click()
+                redeemed_count += 1
 
-                    next_heat = self._wait_for_heat(below=current_heat)
-                    if next_heat is None:
-                        self.handler.logger.warning(
-                            f"Heat points did not decrease after redemption ({current_heat}), aborting loop"
-                        )
-                        capped = False
-                        break
-                    current_heat = next_heat
-
-                if capped:
+                next_heat = self._wait_for_heat(below=current_heat)
+                if next_heat is None:
                     self.handler.logger.warning(
-                        f"Reached redemption cap of {MAX_REDEMPTIONS}, stopping"
+                        f"Heat points did not decrease after redemption ({current_heat}), aborting loop"
                     )
-                self.handler.logger.info(
-                    f"Redeemed {redeemed_count} luck packs, remaining heat {current_heat}"
-                )
-                message = f'成功兑换 {redeemed_count} 个福袋，剩余热力值: {current_heat}'
-                if capped:
-                    message += f'（已达单次上限 {MAX_REDEMPTIONS}）'
-                return {'message': message}
-            finally:
-                self._exit_exchange_window()
+                    capped = False
+                    break
+                current_heat = next_heat
 
+            if capped:
+                self.handler.logger.warning(
+                    f"Reached redemption cap of {MAX_REDEMPTIONS}, stopping"
+                )
+            self.handler.logger.info(
+                f"Redeemed {redeemed_count} luck packs, remaining heat {current_heat}"
+            )
+            message = f'成功兑换 {redeemed_count} 个福袋，剩余热力值: {current_heat}'
+            if capped:
+                message += f'（已达单次上限 {MAX_REDEMPTIONS}）'
+            return {'message': message}
         except Exception as e:
             self.handler.log_error(f"Error redeeming heat: {traceback.format_exc()}")
             return {'error': 'Failed to redeem heat'}
+        finally:
+            # 只有确认橱窗打开了才关窗；否则这次返回可能把机器人踢出派对房间
+            if opened:
+                self._exit_exchange_window()
+
+    def _wait_for_lucky_bag_tab(self):
+        """等「兑换福袋」标签页渲染出来。
+
+        兑换橱窗默认停在「兑换流量卡」，福袋档位按钮不渲染；
+        不切页就会把流量卡的价格当成福袋档位点下去。橱窗是 WebView，
+        入口点击后要等它把标签页画出来。
+
+        Returns:
+            标签页元素；橱窗没打开时返回 None。
+        """
+        tab = self.handler.element_finder.wait_for_element('heat_exchange_tab', timeout=10)
+        if not tab:
+            self.handler.logger.warning("兑换福袋标签页未找到")
+        return tab
 
     def _read_remaining_heat(self):
         heat_elem = self.handler.element_finder.try_find_element('heat_remaining_value', log=False)
-        return _parse_heat(heat_elem.text) if heat_elem else None
+        if not heat_elem:
+            return None
+        # 余额节点会被 App 周期性重建，直接取 .text 会抛 StaleElementReferenceException；
+        # get_element_text 吞掉异常并返回空串，_parse_heat 返回 None，由 _wait_for_heat 重试。
+        return _parse_heat(self.handler.element_finder.get_element_text(heat_elem))
 
     def _wait_for_heat(self, below=None):
         """Poll until the heat value parses (and, if given, drops below `below`)."""
