@@ -265,9 +265,8 @@ def test_queue_grammar_producers_still_split_silent_and_private_parts():
 def test_intake_and_queue_producers_coexist_in_one_drain():
     """A single tick can carry both grammars; each keeps its own rules.
 
-    Order is grouped by grammar (queue-grammar first, then intake), not global
-    FIFO — commands are independent, so the grouping carries no semantics. What
-    matters here is that neither grammar is applied to the other's producer.
+    Commands run in global FIFO order. What matters here is that neither
+    grammar is applied to the other's producer.
     """
     queue = MessageQueue.instance()
     _run(queue.clear_queue())
@@ -280,8 +279,8 @@ def test_intake_and_queue_producers_coexist_in_one_drain():
     assert command_count == 2
     # Queue-grammar entry splits and substitutes; the screen entry does not.
     assert sorted(m.content for m in captured) == [":play a;b", ":timer list"]
-    assert [m.content for m in captured] == [":timer list", ":play a;b"]
-    assert [m.nickname for m in captured] == ["Timer", "Bob"]
+    assert [m.content for m in captured] == [":play a;b", ":timer list"]
+    assert [m.nickname for m in captured] == ["Bob", "Timer"]
     assert handler.sent == ["hi Timer"]
 
 

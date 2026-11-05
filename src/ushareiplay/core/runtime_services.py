@@ -85,7 +85,6 @@ class RuntimeQueueDrainer:
         obs=None,
         logger=None,
         runtime_input=None,
-        is_paused=None,
         drain_agent_spool=None,
     ):
         self.handler = handler
@@ -94,18 +93,11 @@ class RuntimeQueueDrainer:
         self.obs = obs
         self.logger = logger or getattr(handler, "logger", None)
         self.runtime_input = runtime_input
-        self._is_paused = is_paused
         self.drain_agent_spool = drain_agent_spool
         self.active_task: asyncio.Task | None = None
-        if self.runtime_input and hasattr(self.runtime_input, "register_interruption_hook"):
-            self.runtime_input.register_interruption_hook(self.cancel_active_command)
 
     def is_paused(self) -> bool:
-        if callable(self._is_paused):
-            return bool(self._is_paused())
-        if self.runtime_input is not None:
-            return bool(getattr(self.runtime_input, "paused", False))
-        return False
+        return bool(self.runtime_input and self.runtime_input.paused)
 
     def cancel_active_command(self) -> None:
         """中断当前执行中的命令任务。"""
@@ -117,21 +109,11 @@ class RuntimeQueueDrainer:
             return 0, 0
 
         queue = MessageQueue.instance()
-        if queue.is_empty():
-            return 0, 0
-
-        items = []
-        while not queue.is_empty():
-            msg = await queue.get_next_message()
-            if msg:
-                items.append(msg)
-
+        items = list((await queue.get_all_messages()).values())
         if not items:
             return 0, 0
 
-        queue_items = [m for m in items if not getattr(m, "intake_classified", False)]
-        intake_items = [m for m in items if getattr(m, "intake_classified", False)]
-        ordered_items = deque(queue_items + intake_items)
+        ordered_items = deque(items)
 
         if self.obs:
             self.obs.emit("queue.drain.start", ctx={"count": len(ordered_items)})
@@ -144,48 +126,41 @@ class RuntimeQueueDrainer:
                 message_info = ordered_items.popleft()
                 drained_count += 1
 
-                coro = self.command_manager.execute_runtime_queue_messages(
-                    [message_info],
-                    send_screen_message=self.send_screen_message,
+                self.active_task = asyncio.create_task(
+                    self.command_manager.execute_runtime_queue_messages(
+                        [message_info],
+                        send_screen_message=self.send_screen_message,
+                    )
                 )
-                self.active_task = asyncio.create_task(coro)
 
                 watcher = None
                 if self.runtime_input or self.drain_agent_spool:
-                    async def _watch():
-                        while self.active_task and not self.active_task.done():
-                            if self.drain_agent_spool:
-                                self.drain_agent_spool()
-                            if self.runtime_input:
-                                await self.runtime_input.drain()
-                            if self.is_paused():
-                                self.cancel_active_command()
-                                break
-                            await asyncio.sleep(0.02)
-                    watcher = asyncio.create_task(_watch())
+                    watcher = asyncio.create_task(self._watch_active_command())
 
                 try:
-                    cmd_count = await self.active_task
-                    total_commands += cmd_count
+                    total_commands += await self.active_task
                 except asyncio.CancelledError:
-                    if self.active_task and not self.active_task.done():
-                        self.active_task.cancel()
-                        try:
-                            await self.active_task
-                        except asyncio.CancelledError:
-                            pass
-                    content = getattr(message_info, "content", "")
+                    # 只有 drainer 自己发起的取消才是 !stop 的硬中断；服务停止等
+                    # 外部取消必须继续向上传播。
+                    if asyncio.current_task().cancelling():
+                        raise
                     if self.logger:
                         self.logger.warning(
-                            f"Command '{content}' cancelled by administrative !stop"
+                            f"Command '{message_info.content}' cancelled by administrative !stop"
                         )
                     self._restore_foreground()
                     break
                 finally:
-                    if watcher and not watcher.done():
+                    if watcher:
                         watcher.cancel()
                         try:
                             await watcher
+                        except asyncio.CancelledError:
+                            pass
+                    if self.active_task and not self.active_task.done():
+                        self.active_task.cancel()
+                        try:
+                            await self.active_task
                         except asyncio.CancelledError:
                             pass
                     self.active_task = None
@@ -202,16 +177,21 @@ class RuntimeQueueDrainer:
 
         return drained_count, total_commands
 
+    async def _watch_active_command(self) -> None:
+        """命令执行期间只处理 !stop / !start，其余输入原样留在队列里。"""
+        while self.active_task and not self.active_task.done():
+            if self.drain_agent_spool:
+                self.drain_agent_spool()
+            if self.runtime_input:
+                await self.runtime_input.drain_meta_only()
+            if self.is_paused():
+                self.cancel_active_command()
+                break
+            await asyncio.sleep(0.02)
+
     def _restore_foreground(self) -> None:
         """后置恢复：确保应用切回 Soul 房间前台。"""
-        handler = getattr(self.handler, "soul_handler", self.handler)
-        key_actions = getattr(handler, "key_actions", None)
-        if key_actions and hasattr(key_actions, "switch_to_app"):
-            try:
-                key_actions.switch_to_app()
-            except Exception as exc:
-                if self.logger:
-                    self.logger.warning(f"Failed to restore Soul foreground: {exc}")
+        self.handler.key_actions.switch_to_app()
 
 
 class RuntimeInputPipeline:
@@ -238,8 +218,6 @@ class RuntimeInputPipeline:
         dump_artifacts=None,
         reload_config=None,
         is_admin=None,
-        interrupt_hook=None,
-        resume_event=None,
     ):
         self.input_queue = input_queue
         self.room_owner_provider = room_owner_provider
@@ -251,9 +229,7 @@ class RuntimeInputPipeline:
         self._reload_config = reload_config
         self._is_admin = is_admin
         self.paused = False
-        self._interruption_hooks = [interrupt_hook] if interrupt_hook else []
-        self.resume_event = resume_event or asyncio.Event()
-        self.resume_event.set()
+        self._interruption_hooks = []
 
     def register_interruption_hook(self, hook) -> None:
         """注册中断钩子，在收到 !stop 时触发。"""
@@ -268,6 +244,22 @@ class RuntimeInputPipeline:
             except queue.Empty:
                 return
             await self._handle_item(item)
+
+    async def drain_meta_only(self) -> None:
+        """命令执行期间的并发监听：只消费 !stop / !start，其余条目原样留在队列。"""
+        retained = []
+        while True:
+            try:
+                item = self.input_queue.get_nowait()
+            except queue.Empty:
+                break
+            message, source, nickname = self._normalize(item)
+            if message in ('!stop', 'stop', '!start', 'start'):
+                await self._handle_meta_command(message, source, nickname)
+            else:
+                retained.append(item)
+        for item in retained:
+            self.input_queue.put(item)
 
     def _normalize(self, item) -> tuple[str, str, str]:
         """dict / tuple / 裸字符串 → (message, source, nickname)。
@@ -301,8 +293,6 @@ class RuntimeInputPipeline:
         if message in ('!stop', 'stop'):
             was_paused = self.paused
             self.paused = True
-            if self.resume_event:
-                self.resume_event.clear()
             self.logger.critical(f'paused: {self.paused}')
             timer_mgr = self.timer_manager
             if timer_mgr is None:
@@ -324,8 +314,6 @@ class RuntimeInputPipeline:
         if message in ('!start', 'start'):
             was_paused = self.paused
             self.paused = False
-            if self.resume_event:
-                self.resume_event.set()
             self.logger.critical(f'paused: {self.paused}')
             timer_mgr = self.timer_manager
             if timer_mgr is None:

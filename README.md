@@ -112,7 +112,8 @@ The `!` prefix is **console-only**. It is not a chat prefix: `!` commands are ty
 
 | Command | Description |
 |---|---|
-| `!stop` | Pause / resume the runtime loop (and the timer manager). |
+| `!stop` | Pause the runtime loop (idempotent) and cancel the command currently running; the timer manager is paused too. |
+| `!start` | Resume the runtime loop and the timer manager; commands left in the queue continue in order. |
 | `!timer` | Toggle the scheduled-timer manager on or off. |
 | `!dump` | Dump diagnostic artifacts (screenshots, logs) for debugging. |
 | `!reload` | Re-read `config.yaml` and hot-refresh the element mapping, the UI selectors and the command definitions — no bot restart needed. |

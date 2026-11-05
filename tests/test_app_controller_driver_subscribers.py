@@ -414,6 +414,9 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
             if self.drains == 3:
                 controller.is_running = False
 
+        def register_interruption_hook(self, _hook):
+            pass
+
     monkeypatch.setattr(
         "ushareiplay.core.app_controller.RuntimeInputPipeline", _SpyPipeline
     )

@@ -129,16 +129,6 @@ class AppController(Singleton):
         )
         # 运行时输入管线在 start_monitoring 里构造：它需要 handler 与 timer_manager
         self.runtime_input = None
-        self.resume_event = None
-
-    @property
-    def active_command_task(self) -> Optional[asyncio.Task]:
-        return self._runtime_queue_drainer.active_task if self._runtime_queue_drainer else None
-
-    def cancel_active_command(self) -> None:
-        """中断当前正在执行的命令任务。"""
-        if self._runtime_queue_drainer:
-            self._runtime_queue_drainer.cancel_active_command()
 
     def start_up(self) -> None:
         """建立 Appium 驱动并拉起目标应用（唯一一处设备 I/O）。
@@ -557,15 +547,6 @@ class AppController(Singleton):
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
-            self._runtime_queue_drainer = RuntimeQueueDrainer(
-                handler=self.soul_handler,
-                command_manager=self.command_manager,
-                send_screen_message=self.message_dispatch.send_screen_message,
-                obs=self.obs,
-                logger=self.logger,
-                runtime_input=self.runtime_input,
-                drain_agent_spool=self._drain_agent_command_spool,
-            )
             self._status_reporter.soul_handler = self.soul_handler
             self._status_reporter.timer_manager = self.timer_manager
 
@@ -590,6 +571,36 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.error(f"Error initializing handlers: {traceback.format_exc()}")
             raise
+
+    def _init_runtime_queue(self) -> None:
+        """构造运行时输入管线与队列 drainer。
+
+        drainer 需要管线来观察暂停状态并轮询 !stop，因此先建管线再接线；
+        !stop 的中断钩子在组合根显式注册一次。
+        """
+        self.runtime_input = RuntimeInputPipeline(
+            input_queue=self.input_queue,
+            room_owner_provider=lambda: self.room_owner,
+            logger=self.logger,
+            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
+            timer_manager=self.timer_manager,
+            obs=self.obs,
+            dump_artifacts=self._dump_readonly_artifacts,
+            reload_config=lambda: self.config_reload_manager.reload().render(),
+            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
+        )
+        self._runtime_queue_drainer = RuntimeQueueDrainer(
+            handler=self.soul_handler,
+            command_manager=self.command_manager,
+            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
+            obs=self.obs,
+            logger=self.logger,
+            runtime_input=self.runtime_input,
+            drain_agent_spool=self._drain_agent_command_spool,
+        )
+        self.runtime_input.register_interruption_hook(
+            self._runtime_queue_drainer.cancel_active_command
+        )
 
     def _build_config_reload_manager(self) -> ConfigReloadManager:
         """构造配置热重载的编排者（#469）。
@@ -659,35 +670,7 @@ class AppController(Singleton):
         # Detect initial room state on startup
         await self._detect_initial_room_state()
 
-        self.resume_event = asyncio.Event()
-        self.resume_event.set()
-
-        self.runtime_input = RuntimeInputPipeline(
-            input_queue=self.input_queue,
-            room_owner_provider=lambda: self.room_owner,
-            logger=self.logger,
-            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
-            timer_manager=self.timer_manager,
-            obs=self.obs,
-            dump_artifacts=self._dump_readonly_artifacts,
-            reload_config=lambda: self.config_reload_manager.reload().render(),
-            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
-        )
-        if hasattr(self.runtime_input, "register_interruption_hook"):
-            self.runtime_input.register_interruption_hook(self.cancel_active_command)
-        if hasattr(self.runtime_input, "resume_event"):
-            self.runtime_input.resume_event = self.resume_event
-        if self._runtime_queue_drainer:
-            if hasattr(self._runtime_queue_drainer, "runtime_input"):
-                self._runtime_queue_drainer.runtime_input = self.runtime_input
-            if hasattr(self._runtime_queue_drainer, "drain_agent_spool"):
-                self._runtime_queue_drainer.drain_agent_spool = self._drain_agent_command_spool
-            if hasattr(self.runtime_input, "register_interruption_hook") and hasattr(
-                self._runtime_queue_drainer, "cancel_active_command"
-            ):
-                self.runtime_input.register_interruption_hook(
-                    self._runtime_queue_drainer.cancel_active_command
-                )
+        self._init_runtime_queue()
 
         self.logger.info("开始主监控循环...")
 
@@ -698,14 +681,8 @@ class AppController(Singleton):
                 await self.runtime_input.drain()
 
                 if self.runtime_input.paused:
-                    # 避免空转烧满 CPU，等待恢复信号
-                    if hasattr(self, "resume_event") and self.resume_event is not None:
-                        try:
-                            await asyncio.wait_for(self.resume_event.wait(), timeout=0.5)
-                        except asyncio.TimeoutError:
-                            pass
-                    else:
-                        await asyncio.sleep(0.5)
+                    # 暂停期间仍要轮询输入队列，等待 !start 恢复；让出时间片避免空转。
+                    await asyncio.sleep(0.5)
                     continue
 
                 if self._runtime_queue_drainer:
