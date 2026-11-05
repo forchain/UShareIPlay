@@ -218,6 +218,11 @@ soul:
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
+    heat_exchange_entry: "cn.soulapp.android:id/tvStepInfo" # 房间热力阶梯 banner（轮播出现，需等待）
+    heat_exchange_tab: '//android.view.View[@text="兑换福袋"]' # 橱窗默认停在「兑换流量卡」，福袋档位需切页才显示
+    heat_remaining_value: '//android.widget.TextView[@text="每日0点清零"]/preceding-sibling::android.widget.TextView'
+    heat_exchange_buttons: '//android.widget.TextView[@text="600" or @text="3000" or @text="9999" or @text="29999" or @text="99999"]'
+    heat_exchange_back: '//android.widget.TextView[@text="兑换橱窗"]/preceding-sibling::android.view.View'
     back_pack: '//android.widget.LinearLayout[@content-desc="背包"]'
     give_gift: "cn.soulapp.android:id/btnSend" # 赠送
     use_item: "cn.soulapp.android:id/mConfirm" # 使用
@@ -582,9 +587,12 @@ commands:
     error_template: "Failed to set microphone: {error}"
   - prefix: "pack"
     level: 1
-    description: "打开背包中的幸运礼包（在线人数≥5时系统也会自动触发开启）。无参数，例如 :pack"
-    response_template: "Successfully opened luck pack {item}"
-    error_template: "Failed to open luck pack: {error}"
+    subcommands:
+      'redeem':
+        level: 2
+    description: "打开背包中的幸运礼包（在线人数≥5时系统自动触发开启），或将热力值兑换为福袋（需等级2）。参数: [redeem]，无参数开启背包中的幸运礼包，例如 :pack、:pack redeem"
+    response_template: "{message}"
+    error_template: "{error}"
   - prefix: "timer"
     level: 9
     description: "定时任务管理。参数: <add/remove/list/enable/disable/start/stop/reset/reload> [参数]，例如 :timer add 10 \":say 时间到\"(延时10秒单次任务)、:timer add morning 08:00 \":play 早安\" true(每日8点重复任务)、:timer remove morning、:timer list、:timer disable morning"
