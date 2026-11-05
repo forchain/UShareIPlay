@@ -182,7 +182,10 @@ class TimerManager(Singleton):
 
             message_info = MessageInfo(
                 content=message,
-                nickname="Timer"
+                nickname="Timer",
+                # 定时器是房主事先排好的计划（夜间助眠歌单等），不是听众的临时
+                # 请求，因此不受睡眠保护拦截。
+                sleep_exempt=True,
             )
 
             message_queue = MessageQueue.instance()
