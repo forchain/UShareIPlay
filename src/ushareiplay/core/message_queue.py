@@ -51,6 +51,19 @@ class MessageQueue(Singleton):
     def get_queue_size(self) -> int:
         """获取队列大小"""
         return self._queue.qsize()
+
+    def is_empty(self) -> bool:
+        """检查队列是否为空"""
+        return self._queue.empty()
+
+    async def get_next_message(self):
+        """获取队列中的下一条消息，若为空返回 None"""
+        if self._queue.empty():
+            return None
+        try:
+            return self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
     
     async def clear_queue(self):
         """清空队列"""

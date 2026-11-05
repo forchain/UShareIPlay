@@ -1,7 +1,9 @@
 import asyncio
-from types import SimpleNamespace
 import logging
 from collections import deque
+from types import SimpleNamespace
+
+import pytest
 
 
 def _run(coro):
@@ -799,3 +801,195 @@ def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_
 
     assert fake_command_manager.received == []
     assert [m.content for m in _run(queue.get_all_messages()).values()] == ["$info"]
+
+
+# --------------------------------------------------------------------------
+# Issue #498: !stop 即时响应与硬中断测试
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue():
+    import queue
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+
+    await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
+    await msg_queue.put_message(MessageInfo(content=":quick_skip", nickname="Bob"))
+
+    slow_started = asyncio.Event()
+    slow_completed = False
+    executed_commands = []
+
+    class MockCommandManager:
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            nonlocal slow_completed
+            for msg in messages:
+                executed_commands.append(msg.content)
+                if msg.content == ":slow_search":
+                    slow_started.set()
+                    try:
+                        await asyncio.sleep(2.0)
+                        slow_completed = True
+                    except asyncio.CancelledError:
+                        raise
+                elif msg.content == ":quick_skip":
+                    pass
+            return len(messages)
+
+    input_q = queue.Queue()
+    logger = _FakeHandler().logger
+    pipeline = RuntimeInputPipeline(
+        input_queue=input_q,
+        room_owner_provider=lambda: "Owner",
+        logger=logger,
+        send_screen_message=lambda msg: None,
+    )
+
+    drainer = RuntimeQueueDrainer(
+        handler=_FakeHandler(),
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=logger,
+        runtime_input=pipeline,
+    )
+
+    # 1. 后台启动 drainer 任务
+    drain_task = asyncio.create_task(drainer.drain())
+
+    # 等待慢命令开始执行
+    await slow_started.wait()
+
+    # 2. 并发向输入队列注入 !stop
+    input_q.put({"content": "!stop", "source": "console"})
+
+    # 等待 drain_task 结束（被即时中断）
+    drained, count = await drain_task
+
+    # 3. 验证执行中任务被硬中断，未执行完成
+    assert slow_completed is False
+    assert pipeline.paused is True
+
+    # 4. 验证后续未执行消息安全留在 MessageQueue 中
+    assert msg_queue.get_queue_size() == 1
+    remaining = list((await msg_queue.get_all_messages()).values())
+    assert [m.content for m in remaining] == [":quick_skip"]
+    await msg_queue.put_message(remaining[0])
+
+    # 5. 验证连续 !stop 保持 paused == True（幂等性）
+    input_q.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is True
+
+    # 暂停期间不会 drain 队列中的剩余项
+    drained_paused, count_paused = await drainer.drain()
+    assert (drained_paused, count_paused) == (0, 0)
+    assert msg_queue.get_queue_size() == 1
+
+    # 6. 验证 !start 解除暂停，并允许后续剩余消息执行完毕
+    input_q.put({"content": "!start", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
+
+    drained_resumed, count_resumed = await drainer.drain()
+    assert (drained_resumed, count_resumed) == (1, 1)
+    assert msg_queue.get_queue_size() == 0
+    assert ":quick_skip" in executed_commands
+
+
+@pytest.mark.asyncio
+async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
+    import queue
+    from contextlib import contextmanager
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+    await msg_queue.put_message(MessageInfo(content=":play_song", nickname="Alice"))
+
+    ui_lock = asyncio.Lock()
+    mic_active = [True]
+    switched_to_app = [False]
+
+    class FakeKeyActions:
+        def switch_to_app(self):
+            switched_to_app[0] = True
+            return True
+
+    class FakeHandler:
+        def __init__(self):
+            self.key_actions = FakeKeyActions()
+            self.logger = logging.getLogger("test_safety")
+
+    handler = FakeHandler()
+
+    class FakePlaybackMuting:
+        def _mute_if_active(self):
+            if mic_active[0]:
+                mic_active[0] = False
+                return True
+            return False
+
+        def _restore_mic(self):
+            mic_active[0] = True
+
+        @contextmanager
+        def guard(self, expected_song=None):
+            self._mute_if_active()
+            try:
+                yield
+            except BaseException:
+                self._restore_mic()
+                raise
+            self._restore_mic()
+
+    started = asyncio.Event()
+
+    class MockCommandManager:
+        def __init__(self):
+            self._muting = FakePlaybackMuting()
+
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            async with ui_lock:
+                with self._muting.guard():
+                    started.set()
+                    await asyncio.sleep(5.0)
+
+    input_q = queue.Queue()
+    pipeline = RuntimeInputPipeline(
+        input_queue=input_q,
+        room_owner_provider=lambda: "Owner",
+        logger=handler.logger,
+        send_screen_message=lambda msg: None,
+    )
+    drainer = RuntimeQueueDrainer(
+        handler=handler,
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=handler.logger,
+        runtime_input=pipeline,
+    )
+
+    drain_task = asyncio.create_task(drainer.drain())
+    await started.wait()
+
+    # 执行中状态：锁被持有，麦克风已被闭麦保护
+    assert ui_lock.locked() is True
+    assert mic_active[0] is False
+
+    # 注入 !stop 中断
+    input_q.put({"content": "!stop", "source": "console"})
+    await drain_task
+
+    # 中断后状态恢复验证：
+    # 1. ui_lock 必须已被自动释放
+    assert ui_lock.locked() is False
+    # 2. 麦克风状态必须已恢复
+    assert mic_active[0] is True
+    # 3. 必须调用了切回 Soul 前台操作
+    assert switched_to_app[0] is True

@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import queue
 import traceback
 from dataclasses import dataclass
@@ -75,33 +76,142 @@ def route_queue_text(
 class RuntimeQueueDrainer:
     """Drain MessageQueue from runtime loop (single authoritative path)."""
 
-    def __init__(self, *, handler, command_manager, send_screen_message, obs=None, logger=None):
+    def __init__(
+        self,
+        *,
+        handler,
+        command_manager,
+        send_screen_message,
+        obs=None,
+        logger=None,
+        runtime_input=None,
+        is_paused=None,
+        drain_agent_spool=None,
+    ):
         self.handler = handler
         self.command_manager = command_manager
         self.send_screen_message = send_screen_message
         self.obs = obs
         self.logger = logger or getattr(handler, "logger", None)
+        self.runtime_input = runtime_input
+        self._is_paused = is_paused
+        self.drain_agent_spool = drain_agent_spool
+        self.active_task: asyncio.Task | None = None
+        if self.runtime_input and hasattr(self.runtime_input, "register_interruption_hook"):
+            self.runtime_input.register_interruption_hook(self.cancel_active_command)
+
+    def is_paused(self) -> bool:
+        if callable(self._is_paused):
+            return bool(self._is_paused())
+        if self.runtime_input is not None:
+            return bool(getattr(self.runtime_input, "paused", False))
+        return False
+
+    def cancel_active_command(self) -> None:
+        """中断当前执行中的命令任务。"""
+        if self.active_task and not self.active_task.done():
+            self.active_task.cancel()
 
     async def drain(self) -> tuple[int, int]:
-        queue_messages = await MessageQueue.instance().get_all_messages()
-        if not queue_messages:
+        if self.is_paused():
             return 0, 0
 
-        if self.obs:
-            self.obs.emit("queue.drain.start", ctx={"count": len(queue_messages)})
+        queue = MessageQueue.instance()
+        if queue.is_empty():
+            return 0, 0
 
-        command_count = await self.command_manager.execute_runtime_queue_messages(
-            queue_messages.values(),
-            send_screen_message=self.send_screen_message,
-        )
+        items = []
+        while not queue.is_empty():
+            msg = await queue.get_next_message()
+            if msg:
+                items.append(msg)
+
+        if not items:
+            return 0, 0
+
+        queue_items = [m for m in items if not getattr(m, "intake_classified", False)]
+        intake_items = [m for m in items if getattr(m, "intake_classified", False)]
+        ordered_items = deque(queue_items + intake_items)
+
+        if self.obs:
+            self.obs.emit("queue.drain.start", ctx={"count": len(ordered_items)})
+
+        drained_count = 0
+        total_commands = 0
+
+        try:
+            while ordered_items and not self.is_paused():
+                message_info = ordered_items.popleft()
+                drained_count += 1
+
+                coro = self.command_manager.execute_runtime_queue_messages(
+                    [message_info],
+                    send_screen_message=self.send_screen_message,
+                )
+                self.active_task = asyncio.create_task(coro)
+
+                watcher = None
+                if self.runtime_input or self.drain_agent_spool:
+                    async def _watch():
+                        while self.active_task and not self.active_task.done():
+                            if self.drain_agent_spool:
+                                self.drain_agent_spool()
+                            if self.runtime_input:
+                                await self.runtime_input.drain()
+                            if self.is_paused():
+                                self.cancel_active_command()
+                                break
+                            await asyncio.sleep(0.02)
+                    watcher = asyncio.create_task(_watch())
+
+                try:
+                    cmd_count = await self.active_task
+                    total_commands += cmd_count
+                except asyncio.CancelledError:
+                    if self.active_task and not self.active_task.done():
+                        self.active_task.cancel()
+                        try:
+                            await self.active_task
+                        except asyncio.CancelledError:
+                            pass
+                    content = getattr(message_info, "content", "")
+                    if self.logger:
+                        self.logger.warning(
+                            f"Command '{content}' cancelled by administrative !stop"
+                        )
+                    self._restore_foreground()
+                    break
+                finally:
+                    if watcher and not watcher.done():
+                        watcher.cancel()
+                        try:
+                            await watcher
+                        except asyncio.CancelledError:
+                            pass
+                    self.active_task = None
+        finally:
+            # 未启动的命令完好保留在 MessageQueue 中，待 !start 恢复后继续执行
+            while ordered_items:
+                await queue.put_message(ordered_items.popleft())
 
         if self.obs:
             self.obs.emit(
                 "queue.drain.end",
-                ctx={"count": len(queue_messages), "command_count": command_count},
+                ctx={"count": drained_count, "command_count": total_commands},
             )
 
-        return len(queue_messages), command_count
+        return drained_count, total_commands
+
+    def _restore_foreground(self) -> None:
+        """后置恢复：确保应用切回 Soul 房间前台。"""
+        handler = getattr(self.handler, "soul_handler", self.handler)
+        key_actions = getattr(handler, "key_actions", None)
+        if key_actions and hasattr(key_actions, "switch_to_app"):
+            try:
+                key_actions.switch_to_app()
+            except Exception as exc:
+                if self.logger:
+                    self.logger.warning(f"Failed to restore Soul foreground: {exc}")
 
 
 class RuntimeInputPipeline:
@@ -128,6 +238,8 @@ class RuntimeInputPipeline:
         dump_artifacts=None,
         reload_config=None,
         is_admin=None,
+        interrupt_hook=None,
+        resume_event=None,
     ):
         self.input_queue = input_queue
         self.room_owner_provider = room_owner_provider
@@ -139,6 +251,14 @@ class RuntimeInputPipeline:
         self._reload_config = reload_config
         self._is_admin = is_admin
         self.paused = False
+        self._interruption_hooks = [interrupt_hook] if interrupt_hook else []
+        self.resume_event = resume_event or asyncio.Event()
+        self.resume_event.set()
+
+    def register_interruption_hook(self, hook) -> None:
+        """注册中断钩子，在收到 !stop 时触发。"""
+        if hook not in self._interruption_hooks:
+            self._interruption_hooks.append(hook)
 
     async def drain(self) -> None:
         """排空队列中的条目（非阻塞；空队列立即返回）。"""
@@ -179,26 +299,33 @@ class RuntimeInputPipeline:
     async def _handle_meta_command(self, message: str, source: str, nickname: str) -> bool:
         """处理 `!stop` / `!timer` / `!dump` / `!reload`；返回 True 表示已被消费。"""
         if message in ('!stop', 'stop'):
-            self.paused = not self.paused
+            was_paused = self.paused
+            self.paused = True
+            if self.resume_event:
+                self.resume_event.clear()
             self.logger.critical(f'paused: {self.paused}')
             timer_mgr = self.timer_manager
             if timer_mgr is None:
                 from ushareiplay.managers.timer_manager import TimerManager
                 if getattr(TimerManager, "_instance", None):
                     timer_mgr = TimerManager.instance()
-            if timer_mgr:
-                if self.paused:
-                    if hasattr(timer_mgr, "pause"):
-                        timer_mgr.pause()
-                else:
-                    if hasattr(timer_mgr, "resume"):
-                        res = timer_mgr.resume()
-                        if asyncio.iscoroutine(res):
-                            await res
+            if timer_mgr and hasattr(timer_mgr, "pause"):
+                if not was_paused:
+                    timer_mgr.pause()
+            for hook in self._interruption_hooks:
+                try:
+                    res = hook()
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as exc:
+                    self.logger.error(f"Error in interruption hook: {exc}")
             return True
 
-        if self.paused and message in ('!start', 'start'):
+        if message in ('!start', 'start'):
+            was_paused = self.paused
             self.paused = False
+            if self.resume_event:
+                self.resume_event.set()
             self.logger.critical(f'paused: {self.paused}')
             timer_mgr = self.timer_manager
             if timer_mgr is None:
@@ -206,9 +333,10 @@ class RuntimeInputPipeline:
                 if getattr(TimerManager, "_instance", None):
                     timer_mgr = TimerManager.instance()
             if timer_mgr and hasattr(timer_mgr, "resume"):
-                res = timer_mgr.resume()
-                if asyncio.iscoroutine(res):
-                    await res
+                if was_paused:
+                    res = timer_mgr.resume()
+                    if asyncio.iscoroutine(res):
+                        await res
             return True
 
         if message == '!timer':

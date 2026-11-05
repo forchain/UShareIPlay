@@ -183,7 +183,7 @@ async def test_blank_items_are_ignored():
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stop_toggles_pause_without_queueing_anything():
+async def test_stop_is_idempotent_without_queueing_anything():
     await MessageQueue.instance().clear_queue()
 
     pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}])
@@ -191,13 +191,19 @@ async def test_stop_toggles_pause_without_queueing_anything():
     assert pipeline.paused is True
     assert await MessageQueue.instance().get_all_messages() == {}
 
+    # 连续 !stop 保持 paused 为 True（严格幂等，不再翻转）
     pipeline.input_queue.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is True
+
+    # 显式 !start 解除暂停
+    pipeline.input_queue.put({"content": "!start", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is False
 
 
 @pytest.mark.asyncio
-async def test_stop_pauses_and_resumes_timer_manager():
+async def test_stop_pauses_and_start_resumes_timer_manager():
     timer = _TimerManager(running=True)
     pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}], timer_manager=timer)
 
@@ -205,7 +211,14 @@ async def test_stop_pauses_and_resumes_timer_manager():
     assert timer.calls == ["pause"]
     assert timer.is_paused() is True
 
+    # 连续 !stop 保持暂停状态，不重复调用 resume
     pipeline.input_queue.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is True
+    assert timer.calls == ["pause"]
+
+    # 显式 !start 触发 resume
+    pipeline.input_queue.put({"content": "!start", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is False
     assert timer.calls == ["pause", "resume"]
@@ -213,7 +226,7 @@ async def test_stop_pauses_and_resumes_timer_manager():
 
 
 @pytest.mark.asyncio
-async def test_bare_stop_and_start_toggle_pause():
+async def test_bare_stop_and_start_pause_and_resume():
     timer = _TimerManager(running=True)
     pipeline, _screen, _logger = await _drain([{"content": "stop", "source": "console"}], timer_manager=timer)
 
@@ -224,6 +237,19 @@ async def test_bare_stop_and_start_toggle_pause():
     await pipeline.drain()
     assert pipeline.paused is False
     assert timer.calls == ["pause", "resume"]
+
+
+@pytest.mark.asyncio
+async def test_stop_triggers_registered_interruption_hooks():
+    interrupted = []
+    pipeline, _screen, _logger = _pipeline()
+    pipeline.register_interruption_hook(lambda: interrupted.append("hook1"))
+
+    pipeline.input_queue.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+
+    assert interrupted == ["hook1"]
+    assert pipeline.paused is True
 
 
 @pytest.mark.asyncio
