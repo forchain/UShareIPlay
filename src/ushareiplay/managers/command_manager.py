@@ -270,10 +270,11 @@ class CommandManager(Singleton):
             cfg = getattr(self.handler, "config", None)
             role_policy = RolePolicy(cfg)
 
-            is_human_op = role_policy.is_human_operator(message_info.nickname)
+            # 特权角色 = 人工操作者（房主、Console、管理员）+ 系统自动化角色（Timer、Agent）
+            is_privileged = role_policy.is_privileged(message_info.nickname)
 
             # 1. 检查用户等级：人工操作者（房主、Console、管理员）与系统自动化角色不受等级限制
-            if not role_policy.is_privileged(message_info.nickname):
+            if not is_privileged:
                 prefix = command_info.get("prefix") or ""
                 required_level = (
                     self.catalogue.required_level(prefix, parameters)
@@ -293,9 +294,10 @@ class CommandManager(Singleton):
 
             # 2. 睡眠模式检查 (Sleep mode)：
             # - 人工操作者（房主、Console、管理员）具备人工判断能力，可突破睡眠保护。
+            # - 系统自动化角色（Timer、Agent）是房主预先排好的自动化任务，同样放行。
             # - 明确标记 sleep_exempt 的指令（如手动 @我 意图识别）可突破睡眠保护。
-            # - 系统自动化角色（Timer、Agent）与普通用户不得打断睡眠保护。
-            if not is_human_op:
+            # - 只有普通用户会被睡眠保护拦下。
+            if not is_privileged:
                 try:
                     prefix = command_info.get("prefix") or ""
                     sleep_exempt = bool(getattr(message_info, "sleep_exempt", False))

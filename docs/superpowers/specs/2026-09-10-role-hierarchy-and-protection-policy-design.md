@@ -137,9 +137,18 @@ Currently, administrator names (`{"Joyer", "Timer", "Outlier", "Chainer", "Conso
   - In `CommandManager.process_command`:
     - Command level bypass: Administrators, Room Owner, and configured System Users bypass command level restrictions.
     - Sleep protection check:
-      - If `is_human_operator(message_info.nickname)` is true: Sleep check is bypassed (manual human operator override: Room Owner and Admins).
+      - If `is_privileged(message_info.nickname)` is true: Sleep check is bypassed (Room Owner, Admins, and configured System Users like `Timer` / `Agent`).
       - If `message_info.sleep_exempt` is true: Sleep check is bypassed (manual @ mention resolution).
-      - Otherwise (including automated System Users like `Timer` / `Agent`, and normal attendees): If `SleepManager.is_blocked_command(prefix)` is true, execution is blocked with rest notice.
+      - Otherwise (normal attendees): If `SleepManager.is_blocked_command(prefix)` is true, execution is blocked with rest notice.
+  - **Amendment (2026-11-05) — System Users are no longer blocked by the sleep guard.**
+    The matrix above used to read `is_human_operator`, which left `Timer` / `Agent` on the
+    blocked side: a timer the owner had scheduled was rejected as if it were an unattended
+    flood. Observed 2026-11-04 01:00 — the 助眠 keyword fired from a timer, and the
+    `:playlist` it expanded to was answered with "休息中（11pm-6am）", so the scheduled task
+    silently did nothing.
+    The gate is now `is_privileged`, the same tier the command-level check already uses, so
+    the sleep guard blocks normal attendees only. Normal users and `sleep_exempt` handling are
+    unchanged. See the amendment in `docs/adr/0008-role-hierarchy-and-operator-protection.md`.
 - **Configuration Structure**:
   - Configurable under `soul.room_owner`, `soul.admin_users`, and `soul.system_users` (with fallback to top-level keys).
 

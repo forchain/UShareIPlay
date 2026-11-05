@@ -58,7 +58,7 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 ### Role Hierarchy & User Levels
 `RolePolicy` checks permission before command dispatch:
 - **Human Operators** (Host/Owner `soul.room_owner`, `Console`, and in-app room admins): bypass user level limits and can bypass late-night Sleep Guardian.
-- **System Users** (`Timer`, `Agent`, `System`): automated internal actors, bypass level checks.
+- **System Users** (`Timer`, `Agent`, `System`): automated internal actors, bypass level checks and the late-night Sleep Guardian.
 - **Normal Users**: require database `user.level >= command.level`. Unknown users default to level 0.
 
 ```

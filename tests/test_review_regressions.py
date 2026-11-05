@@ -191,7 +191,7 @@ async def test_sleep_rejection_without_error_template_still_blocks(command_manag
     command_info = {"prefix": "help", "parameters": [], "level": 0}
     command = _DummyCommand()
 
-    res = await command_manager.process_command(command, _Msg(nickname="Timer"), command_info)
+    res = await command_manager.process_command(command, _Msg(nickname="alice"), command_info)
 
     assert "休息中" in (res or "")
     assert command.called is False

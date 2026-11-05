@@ -45,3 +45,26 @@ Introduce a unified `RolePolicy` boundary with distinct user tiers and behaviora
 - Clean separation between automated automation roles, human operators, and public room members.
 - Protects accounts from risk-triggering command floods during off-hours while preserving operational control.
 - Configuration resides in `config.yaml` / `config.local.yaml` under `roles` and `soul.room_owner`.
+
+## 修订记录（Amendments）
+
+### 2026-11-05 —— 第 2 条不再拦截系统自动化角色（Timer、Agent）
+
+第 2 条把「后台定时器」与普通用户一并挡在睡眠时段之外。这条在 2026-09-10 写下时
+有明确动机（防止夜间自动指令洪水触发账号风控），但它把房主**预先排好的**定时任务
+和无人值守的自动洪水混为一谈：2026-11-04 凌晨 1 点的定时任务触发「助眠」关键字后，
+关键字展开的 `:playlist` 被睡眠保护拦下（`休息中（11pm-6am）`），定时器形同失效。
+
+现在睡眠保护只拦普通用户。判定落在 `CommandManager.process_command()` 一处，沿用
+既有的角色分层（`RolePolicy.is_privileged` = 人工操作者 + 系统自动化角色），不再新增
+机制：
+
+- 人工操作者（Owner、Console、Admin）—— 放行（不变）
+- 系统自动化角色（`Timer`、`Agent`）—— 放行（本次变更）
+- 标记 `sleep_exempt` 的指令（如直接 `@我`）—— 放行（不变）
+- 普通用户 —— 拦截（不变）
+
+这与 2026-05-08 睡眠守护最初的设计一致（`docs/superpowers/plans/2026-05-08-sleep-guardian.md`
+写明「系统用户（含 `Timer`）始终放行」）。原第 2 条与「Alternatives Considered」
+中「Applying SleepGuardian universally to all actors」的表述保持原样作为历史记录，
+不回改。

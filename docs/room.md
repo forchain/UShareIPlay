@@ -16,7 +16,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 | `RoomProfileManager` | Sole owner of the room drawer session and its field groups (room name / topic / notice / party type) plus recommendation state; owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, the batched audit, and the notice restore after a title change. Recommendation reads/writes go through a separate party-settings driver (#456) |
 | `SeatManager` | Seat reservation + seating sub-managers |
 | `MicManager` | Microphone on/off automation and off-seat preparation |
-| `SleepManager` | Sleep Guardian: blocks unprivileged automated commands during night hours (23:00 - 06:00) |
+| `SleepManager` | Sleep Guardian: blocks commands from normal users during night hours (23:00 - 06:00) |
 
 ## How It Works
 
@@ -35,8 +35,8 @@ Soul moved the recommendation toggle out of the room-info drawer and into the **
 
 ### Sleep Guardian
 `SleepManager` prevents automated command floods during rest hours (default 23:00 to 06:00).
-- Unprivileged users and background timers are blocked.
-- Human operators (Owner, Console, Admin) and explicit `@我` conversational interactions bypass sleep restrictions.
+- Normal users are blocked.
+- Human operators (Owner, Console, Admin), system automation roles (Timer, Agent) and explicit `@我` conversational interactions bypass sleep restrictions.
 - Can be controlled via `:sleep on`, `:sleep off`, or `:sleep status`.
 
 ### Guest Mode & Host Adoption

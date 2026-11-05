@@ -114,8 +114,8 @@ async def test_normal_user_all_day_window_blocked_play_is_intercepted(_patch_use
 
 
 @pytest.mark.asyncio
-async def test_timer_user_is_blocked_in_sleep_window(_patch_user_dao):
-    """系统自动化角色（Timer）在睡眠时段内触发被阻断命令，必须被拦截。"""
+async def test_timer_user_is_allowed_in_sleep_window(_patch_user_dao):
+    """系统自动化角色（Timer）是房主预先排好的任务，不被睡眠保护拦截。"""
     cm = _make_command_manager(
         {
             "system_users": ["Timer"],
@@ -139,8 +139,58 @@ async def test_timer_user_is_blocked_in_sleep_window(_patch_user_dao):
 
     res = await cm.process_command(cmd, msg, command_info)
 
-    assert cmd.called is False
-    assert "休息中（11pm-6am）" in (res or "")
+    assert cmd.called is True
+    assert "OK @Timer" == res
+
+
+@pytest.mark.asyncio
+async def test_timer_keyword_expansion_is_not_blocked_in_sleep_window(_patch_user_dao):
+    """定时器触发的关键字展开（`:playlist`）同样不受睡眠保护拦截。
+
+    复现 2026-11-04 凌晨 1 点的现场：定时器触发「助眠」关键字，关键字展开的
+    `:playlist` 被睡眠保护拦下，定时任务形同失效。
+    """
+    from types import SimpleNamespace
+
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.managers.keyword_manager import KeywordManager
+
+    cm = _make_command_manager(
+        {
+            "system_users": ["Timer"],
+            "sleep": {
+                "enabled": True,
+                "start": "00:00",
+                "end": "00:00",  # all day
+                "blocked_commands": ["playlist"],
+            },
+        }
+    )
+
+    keyword_manager = KeywordManager.initialize()
+    await keyword_manager.execute_keyword(
+        SimpleNamespace(keyword="助眠", command=":playlist 助眠", mode="sequence"),
+        "Timer",
+    )
+
+    queued = next(iter((await MessageQueue.instance().get_all_messages()).values()))
+    assert queued.nickname == "Timer"
+
+    cmd = DummyCommand()
+    res = await cm.process_command(
+        cmd,
+        queued,
+        {
+            "prefix": "playlist",
+            "parameters": ["助眠"],
+            "level": 1,
+            "error_template": "{error}",
+            "response_template": "{message}",
+        },
+    )
+
+    assert cmd.called is True
+    assert "休息中" not in (res or "")
 
 
 @pytest.mark.asyncio
