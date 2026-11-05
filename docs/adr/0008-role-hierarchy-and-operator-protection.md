@@ -31,6 +31,7 @@ Introduce a unified `RolePolicy` boundary with distinct user tiers and behaviora
 2. **Late-Night Sleep Guardian Protection**:
    - Automated commands from normal users or background timers are blocked during sleep hours (default 23:00 to 06:00).
    - Human operators (Owner, Console, Admin) and explicit natural language interactions marked `sleep_exempt` (e.g. direct `@我` mentions) are permitted to break through sleep locks.
+   - **Amendment (2026-11-04) — scheduled timers are exempt.** `TimerManager` marks every message it injects as `sleep_exempt`: a timer is a plan the room owner scheduled ahead of time (the 23:00 助眠 playlist is exactly that), not a request that arrives at night and disturbs the room. The exemption travels with the *message*, not with the `Timer` nickname, so an attendee who renames themselves `Timer` is still blocked. Live automation that reacts to what attendees say at night (the `Agent` path without an explicit `@我` mention) stays blocked.
 
 3. **Backend Room Owner Identity**:
    - Configurable `soul.room_owner` defines the authoritative backend owner identity regardless of in-app nickname or temporary room host transfers.

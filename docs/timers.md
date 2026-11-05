@@ -27,7 +27,7 @@ Every tick, the loop checks enabled timers whose `next_trigger` has arrived (`no
    - Semicolon `;` chained commands (executed sequentially).
    - `{user_name}` template expansion.
    - Preserves silent prefixes (`/`, `／`) and private-reply prefixes (`$`, `＄`).
-2. Injects the message into `MessageQueue` with sender=`"Timer"`.
+2. Injects the message into `MessageQueue` with sender=`"Timer"` and `sleep_exempt=True` — a scheduled plan is the room owner's own intent, so the night sleep guard does not block it (see ADR-0008).
 3. If `repeat=True`, calculates the next trigger time; otherwise, removes or disables the one-shot timer.
 
 ### Schedule Formats

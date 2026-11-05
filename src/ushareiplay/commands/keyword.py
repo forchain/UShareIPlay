@@ -130,7 +130,8 @@ class KeywordCommand(BaseCommand):
             # 立即执行关键字
             await self.keyword_manager.execute_keyword(
                 keyword_record,
-                message_info.nickname
+                message_info.nickname,
+                sleep_exempt=message_info.sleep_exempt,
             )
             
             return {'message': f'已执行关键字 "{keyword}"'}

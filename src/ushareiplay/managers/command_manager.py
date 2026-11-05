@@ -293,8 +293,8 @@ class CommandManager(Singleton):
 
             # 2. 睡眠模式检查 (Sleep mode)：
             # - 人工操作者（房主、Console、管理员）具备人工判断能力，可突破睡眠保护。
-            # - 明确标记 sleep_exempt 的指令（如手动 @我 意图识别）可突破睡眠保护。
-            # - 系统自动化角色（Timer、Agent）与普通用户不得打断睡眠保护。
+            # - 明确标记 sleep_exempt 的指令（手动 @我 意图识别、定时器排程）可突破睡眠保护。
+            # - 其余系统自动化角色（Agent 等）与普通用户不得打断睡眠保护。
             if not is_human_op:
                 try:
                     prefix = command_info.get("prefix") or ""

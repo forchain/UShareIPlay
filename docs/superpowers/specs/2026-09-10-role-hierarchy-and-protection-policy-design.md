@@ -140,6 +140,7 @@ Currently, administrator names (`{"Joyer", "Timer", "Outlier", "Chainer", "Conso
       - If `is_human_operator(message_info.nickname)` is true: Sleep check is bypassed (manual human operator override: Room Owner and Admins).
       - If `message_info.sleep_exempt` is true: Sleep check is bypassed (manual @ mention resolution).
       - Otherwise (including automated System Users like `Timer` / `Agent`, and normal attendees): If `SleepManager.is_blocked_command(prefix)` is true, execution is blocked with rest notice.
+      - **Amendment (2026-11-04)**: `TimerManager` marks the messages it injects as `sleep_exempt`, so a scheduled plan (e.g. the 23:00 助眠 playlist) is no longer blocked by the night guard. The exemption rides on the message, not on the `Timer` nickname; the `Agent` path without an explicit `@我` mention stays blocked. See ADR-0008.
 - **Configuration Structure**:
   - Configurable under `soul.room_owner`, `soul.admin_users`, and `soul.system_users` (with fallback to top-level keys).
 
