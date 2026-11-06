@@ -133,9 +133,10 @@ class PackCommand(BaseCommand):
             chosen = self._select_pack(level)
             if chosen is None:
                 return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
+            # 使用按钮在选中福袋之前是灰的：等不到可点的「使用」就是没选中。
             use = self.handler.element_finder.wait_for_element_clickable('use_pack')
             if not use:
-                return {'error': '未找到使用按钮'}
+                return {'error': '福袋未选中，使用按钮不可用'}
             use.click()
             used = True
             self.handler.logger.info(f'已开启 {chosen} 级福袋')
@@ -396,23 +397,44 @@ class PackCommand(BaseCommand):
         return packs
 
     def _scan_packs(self):
-        """滑动扫描福袋列表，返回 [(等级, 名称)]。"""
+        """滑动扫描福袋列表（上下两个方向都扫），返回 [(等级, 名称)]。
+
+        列表倒序（等级从大到小），抽屉可能停在中间：只朝一个方向扫会漏掉
+        视口之外的福袋，所以两个方向都要扫。
+        """
         packs = []
+        for direction in ('up', 'down'):
+            for level, name, _element in self._sweep_packs(direction):
+                if (level, name) not in packs:
+                    packs.append((level, name))
+        return packs
+
+    def _sweep_packs(self, direction, target_level=None):
+        """朝一个方向扫福袋列表，返回 [(等级, 名称, 元素)]。
+
+        给了 target_level 时，扫到那一档立刻返回（元素此刻在屏上，可以直接点）；
+        没给时扫到头，把沿途见过的都返回。
+        """
+        seen = []
         previous = None
         for _ in range(PACK_SCAN_MAX):
             entries = self._visible_packs()
             signature = tuple((level, name) for level, name, _ in entries)
-            for level, name, _element in entries:
-                if (level, name) not in packs:
-                    packs.append((level, name))
+            for level, name, element in entries:
+                seen.append((level, name, element))
+                if target_level is not None and level == target_level:
+                    return seen
             if signature == previous:
                 break
             previous = signature
-            self._swipe_pack_list()
-        return packs
+            self._swipe_pack_list(direction)
+        return seen
 
-    def _swipe_pack_list(self):
-        """在福袋列表里向上滑一屏。"""
+    def _swipe_pack_list(self, direction='down'):
+        """在福袋列表里滑动一屏。
+
+        direction='down' 露出列表更靠后的条目，'up' 露出更靠前的条目。
+        """
         drawer = self.handler.element_finder.try_find_element('pack_list', log=False)
         if not drawer:
             return False
@@ -420,8 +442,12 @@ class PackCommand(BaseCommand):
             location = drawer.location
             size = drawer.size
             center_x = int(location['x'] + size['width'] / 2)
-            start_y = int(location['y'] + size['height'] * 0.85)
-            end_y = int(location['y'] + size['height'] * 0.15)
+            top = int(location['y'])
+            height = int(size['height'])
+            if direction == 'up':
+                start_y, end_y = top + int(height * 0.15), top + int(height * 0.85)
+            else:
+                start_y, end_y = top + int(height * 0.85), top + int(height * 0.15)
             return self.handler.gesture_handler.swipe(
                 center_x, start_y, center_x, end_y, duration_ms=300
             )
@@ -431,27 +457,14 @@ class PackCommand(BaseCommand):
 
     def _scroll_to_bottom(self):
         """滑到福袋列表末尾；可见条目不再变化即到底。"""
-        previous = None
-        for _ in range(PACK_SCAN_MAX):
-            signature = tuple(pack[0] for pack in self._visible_packs())
-            if signature == previous:
-                return
-            previous = signature
-            self._swipe_pack_list()
+        self._sweep_packs('down')
 
     def _find_pack(self, level):
-        """从上往下找指定等级的福袋条目；找不到返回 None。"""
-        previous = None
-        for _ in range(PACK_SCAN_MAX):
-            packs = self._visible_packs()
-            signature = tuple(pack[0] for pack in packs)
-            for pack in packs:
-                if pack[0] == level:
-                    return pack
-            if signature == previous:
-                return None
-            previous = signature
-            self._swipe_pack_list()
+        """在列表里定位指定等级的福袋条目；上下两个方向都扫。"""
+        for direction in ('up', 'down'):
+            found = self._sweep_packs(direction, level)
+            if found and found[-1][0] == level:
+                return found[-1]
         return None
 
     def _smallest_pack(self):

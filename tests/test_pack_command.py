@@ -724,15 +724,16 @@ class FakeDrawer:
         self.size = {"width": 720, "height": 700}
 
 
-def _pack_setup(mock_controller, screens, countdown="即刻抢 | 所有人"):
+def _pack_setup(mock_controller, screens, countdown="即刻抢 | 所有人", start=0):
     """摆一个会滚动的福袋抽屉场景。
 
-    screens 是逐屏可见的条目列表，每项为 (等级, 名称)；滑动一次前进一屏。
+    screens 是列表自上而下逐屏可见的条目，每项为 (等级, 名称)；
+    start 是抽屉打开时停在第几屏。滑动一屏就前进/后退一屏。
     """
     finder = mock_controller.soul_handler.element_finder
     gesture = mock_controller.soul_handler.gesture_handler
     drawer = FakeDrawer()
-    state = {"screen": 0}
+    state = {"screen": start}
     contents = []
 
     entry = FakeElement(text="福袋")
@@ -762,8 +763,12 @@ def _pack_setup(mock_controller, screens, countdown="即刻抢 | 所有人"):
             return [FakeElement(text=name) for _level, name in current()]
         return []
 
-    def swipe(*_args, **_kwargs):
-        state["screen"] += 1
+    def swipe(_x1, start_y, _x2, end_y, **_kwargs):
+        # 手指上滑（start_y > end_y）露出更靠后的条目；下滑露出更靠前的条目
+        if start_y > end_y:
+            state["screen"] = min(state["screen"] + 1, len(screens) - 1)
+        else:
+            state["screen"] = max(state["screen"] - 1, 0)
         return True
 
     gesture.swipe.side_effect = swipe
@@ -891,6 +896,51 @@ async def test_pack_list_closes_drawer_when_scan_fails(mock_controller):
     )
 
 
+@pytest.mark.asyncio
+async def test_pack_list_scans_packs_above_the_initial_viewport(mock_controller):
+    """抽屉停在列表中间时，更高等级的福袋在视口上方，必须往回扫到。"""
+    _pack_setup(
+        mock_controller,
+        [
+            [(5, "至尊福袋"), (4, "钻石福袋")],
+            [(4, "钻石福袋"), (3, "高级福袋")],
+            [(3, "高级福袋"), (2, "中级福袋")],
+            [(2, "中级福袋"), (1, "初级福袋")],
+        ],
+        start=2,
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack list", nickname="Tester"), ["list"])
+
+    assert result == {
+        "message": "福袋列表（共5个）：至尊福袋（5级）、钻石福袋（4级）、高级福袋（3级）、"
+                   "中级福袋（2级）、初级福袋（1级）"
+    }
+
+
+@pytest.mark.asyncio
+async def test_pack_open_finds_level_above_the_initial_viewport(mock_controller):
+    parts = _pack_setup(
+        mock_controller,
+        [
+            [(5, "至尊福袋"), (4, "钻石福袋")],
+            [(4, "钻石福袋"), (3, "高级福袋")],
+            [(3, "高级福袋"), (2, "中级福袋")],
+        ],
+        start=2,
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 5", nickname="Tester"), ["open", "5"]
+    )
+
+    assert result == {"message": "已开启5级福袋"}
+    assert [element.text for element in parts.contents if element.clicks] == ["第五阶段奖励"]
+    assert parts.use.clicks == 1
+
+
 # --- :pack open ---
 
 
@@ -1011,7 +1061,7 @@ async def test_pack_open_without_use_button_closes_drawer(mock_controller):
         MessageInfo(content=":pack open 1", nickname="Tester"), ["open", "1"]
     )
 
-    assert result == {"error": "未找到使用按钮"}
+    assert result == {"error": "福袋未选中，使用按钮不可用"}
     mock_controller.soul_handler.gesture_handler.click_element_at.assert_called_once_with(
         parts.handle, x_ratio=0.5, y_ratio=0, y_offset=-200
     )
@@ -1077,6 +1127,27 @@ async def test_pack_list_falls_back_to_level_label_without_names(mock_controller
     result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
 
     assert result == {"message": "福袋列表（共1个）：1级福袋（1级）"}
+
+
+@pytest.mark.asyncio
+async def test_pack_list_tolerates_missing_names(mock_controller):
+    """名称与阶段对不上时（名称更少），后面的福袋退化成「N级福袋」，不报错。"""
+    finder = mock_controller.soul_handler.element_finder
+    _pack_setup(mock_controller, [[(2, "中级福袋"), (1, "初级福袋")]])
+    finder.find_child_elements.side_effect = lambda _parent, key, **_kwargs: (
+        [FakeElement(text="第二阶段奖励"), FakeElement(text="第一阶段奖励")]
+        if key == "pack_content" else
+        [FakeElement(text="中级福袋")]
+        if key == "luck_item" else
+        []
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {
+        "message": "福袋列表（共2个）：中级福袋（2级）、1级福袋（1级）"
+    }
 
 
 # --- 权限 ---
