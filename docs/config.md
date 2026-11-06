@@ -70,7 +70,7 @@ llm:
 
 | Key | Description |
 |---|---|
-| `soul` | Soul App 段：`soul.room_owner`、`soul.package_name`、`soul.launcher_packages`、`soul.chat_activity`、`soul.default_party_id`、`soul.default_notice`、`soul.default_theme`、`soul.default_title`、`soul.broadcast_playing_info`、`soul.playback_mute.*`、`soul.admin_users`、`soul.system_users`、`soul.system_default_notices`、`soul.party_restart_minutes`、`soul.party_create_mode`、`soul.create_party_recommendation`、`soul.change_party_type`、`soul.post_party_create.*`、`soul.risk_elements`、`soul.drawer_elements`、`soul.elements` |
+| `soul` | Soul App 段：`soul.room_owner`、`soul.package_name`、`soul.launcher_packages`、`soul.unknown_page_force_close_threshold`、`soul.chat_activity`、`soul.default_party_id`、`soul.default_notice`、`soul.default_theme`、`soul.default_title`、`soul.broadcast_playing_info`、`soul.playback_mute.*`、`soul.admin_users`、`soul.system_users`、`soul.system_default_notices`、`soul.party_restart_minutes`、`soul.party_create_mode`、`soul.create_party_recommendation`、`soul.change_party_type`、`soul.post_party_create.*`、`soul.risk_elements`、`soul.drawer_elements`、`soul.elements` |
 | `qq_music` | QQ 音乐段：`qq_music.package_name`、`qq_music.search_activity`、`qq_music.tab_max_swipes`、`qq_music.elements` |
 | `lyrics` | 歌词排版：`lyrics.line_max_width` |
 | `commands` | 命令表（38 条）。每条命令可含 `prefix`、`level`、`subcommands`、`guest_allowed`、`description`、`help`、`help_order`、`retry`、`response_template`、`error_template` |
@@ -90,6 +90,7 @@ llm:
 | `soul.system_users` | 系统自动化角色昵称列表（如 `Timer`、`Agent`） |
 | `soul.package_name` / `soul.chat_activity` | Soul 包名与聊天 Activity，用于拉起 App |
 | `soul.launcher_packages` | 判定「Soul 不在前台」时用来切回桌面用的包名列表 |
+| `soul.unknown_page_force_close_threshold` | 连续 N 次返回键仍未能退出未知页面时，强制关闭 Soul 应用以恢复；取值须 >= 1（默认 10） |
 | `soul.default_party_id` | 默认派对房间 ID |
 | `soul.default_notice` / `soul.default_theme` / `soul.default_title` | 默认公告 / 主题 / 标题 |
 | `soul.broadcast_playing_info` | 是否把当前播放信息播报到公屏 |

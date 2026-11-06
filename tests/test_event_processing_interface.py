@@ -27,6 +27,10 @@ class FakeAutomation:
         self.ready_calls += 1
 
 
+SOUL_PAGE = '<hierarchy><node package="cn.soulapp.android" /></hierarchy>'
+LAUNCHER_PAGE = '<hierarchy><node package="com.sec.android.app.launcher" /></hierarchy>'
+
+
 class FakeLogger:
     def debug(self, *_args, **_kwargs):
         return None
@@ -57,15 +61,20 @@ def make_event_manager(config=None):
             },
         ),
     )
-    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: True)
+    manager._handler.key_actions = SimpleNamespace(
+        switch_to_app=lambda: True,
+        press_back=lambda: True,
+        close_app=lambda: True,
+    )
     manager._logger = manager._handler.logger
     manager._config = manager._handler.config
-    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
     manager.events_path = None
     manager.event_modules = {}
     manager.element_to_event = {}
     manager._initialized = True
     manager._consecutive_unknown_pages = 0
+    manager._back_sent_to_background = False
     return manager
 
 
@@ -107,7 +116,6 @@ def test_process_current_screen_retries_empty_page_source_and_returns_outcome(mo
                 "suppressed": None,
                 "pressed_back": False,
                 "ready_rechecked": False,
-                "backoff_seconds": 0,
             },
         }
 
@@ -134,7 +142,6 @@ def test_process_current_screen_retries_empty_page_source_and_returns_outcome(mo
             "suppressed": None,
             "pressed_back": False,
             "ready_rechecked": False,
-            "backoff_seconds": 0,
         },
     }
     assert processed == [page_source]
@@ -165,7 +172,7 @@ def test_process_current_screen_without_page_source_reports_no_page_source_recov
             "suppressed": "no_page_source",
             "pressed_back": False,
             "ready_rechecked": False,
-            "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
 
@@ -198,7 +205,7 @@ def test_process_current_screen_reports_ui_busy_suppressed_recovery(monkeypatch)
             "suppressed": "ui_busy",
             "pressed_back": False,
             "ready_rechecked": False,
-            "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
 
@@ -206,11 +213,10 @@ def test_process_current_screen_reports_ui_busy_suppressed_recovery(monkeypatch)
 def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatch):
     manager = make_event_manager()
     manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
-    manager._consecutive_unknown_pages = 10
+    manager._consecutive_unknown_pages = 0
     pressed_back = []
     switch_calls = []
     process_calls = []
-    sleep_calls = []
 
     async def fake_process_once(page_source):
         process_calls.append(page_source)
@@ -219,15 +225,10 @@ def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatc
     async def fake_wait_ready(**_kwargs):
         return "<ready />"
 
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-        return None
-
     manager._process_events_once = fake_process_once
     manager._wait_page_source_ready_async = fake_wait_ready
     manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
     manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
-    monkeypatch.setattr("ushareiplay.managers.event_manager.asyncio.sleep", fake_sleep)
 
     outcome = asyncio.run(manager.react_to_page("<initial />"))
 
@@ -238,13 +239,13 @@ def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatc
             "suppressed": None,
             "pressed_back": True,
             "ready_rechecked": True,
-            "backoff_seconds": 0.5,
+            "force_closed": False,
         },
     }
     assert process_calls == ["<initial />", "<ready />"]
     assert switch_calls == [True]
     assert pressed_back == [True]
-    assert sleep_calls == [0.5]
+    assert manager._consecutive_unknown_pages == 1
 
 
 def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_handles_event():
@@ -276,11 +277,230 @@ def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_hand
             "suppressed": None,
             "pressed_back": False,
             "ready_rechecked": True,
-            "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
     assert process_calls == ["<initial />", "<ready />"]
     assert switch_calls == [True]
+
+
+def test_react_to_page_force_closes_app_on_reaching_consecutive_threshold():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
+    manager._consecutive_unknown_pages = 9
+    pressed_back = []
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True) or True
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True) or True
+
+    outcome = asyncio.run(manager.react_to_page(SOUL_PAGE))
+
+    assert outcome["recovery"]["pressed_back"] is True
+    assert outcome["recovery"]["force_closed"] is True
+    assert pressed_back == [True]
+    assert closed_app == [True]
+    assert manager._consecutive_unknown_pages == 0
+
+
+def test_react_to_page_force_closes_when_back_keeps_bouncing_to_launcher():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
+    pressed_back = []
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True) or True
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True) or True
+
+    # 真实主循环里 back 退出 Soul 后，下一轮初始页面就是桌面；切回后再次按 back 又退回桌面。
+    for round_index in range(30):
+        asyncio.run(manager.react_to_page(SOUL_PAGE if round_index % 2 == 0 else LAUNCHER_PAGE))
+
+    assert closed_app, "反复 back 退回桌面时兜底必须最终触发"
+    assert len(pressed_back) == 15
+
+
+def test_react_to_page_uses_configured_force_close_threshold():
+    manager = make_event_manager(
+        {
+            "package_name": "cn.soulapp.android",
+            "launcher_packages": [],
+            "unknown_page_force_close_threshold": 3,
+        }
+    )
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
+    manager._consecutive_unknown_pages = 2
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: True
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True) or True
+
+    outcome = asyncio.run(manager.react_to_page(SOUL_PAGE))
+
+    assert outcome["recovery"]["force_closed"] is True
+    assert closed_app == [True]
+
+
+def test_react_to_page_normalizes_string_force_close_threshold():
+    manager = make_event_manager(
+        {
+            "package_name": "cn.soulapp.android",
+            "launcher_packages": [],
+            "unknown_page_force_close_threshold": "3",
+        }
+    )
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
+    manager._consecutive_unknown_pages = 2
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: True
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True) or True
+
+    outcome = asyncio.run(manager.react_to_page(SOUL_PAGE))
+
+    assert outcome["recovery"]["force_closed"] is True
+    assert closed_app == [True]
+
+
+def test_react_to_page_rechecks_ui_busy_before_force_close():
+    manager = make_event_manager()
+    busy = {"value": False}
+    manager._runtime = SimpleNamespace(
+        is_ui_busy=lambda: busy["value"], is_paused=lambda: False
+    )
+    manager._consecutive_unknown_pages = 9
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        # 模拟 switch_to_app 后的 2.5s 等待窗口里命令拿到了 ui_lock
+        busy["value"] = True
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: True
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True) or True
+
+    outcome = asyncio.run(manager.react_to_page(SOUL_PAGE))
+
+    assert outcome["recovery"]["force_closed"] is False
+    assert outcome["recovery"]["suppressed"] == "ui_busy"
+    assert closed_app == []
+    assert manager._consecutive_unknown_pages == 10
+
+
+def test_react_to_page_keeps_counter_when_force_close_fails():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False, is_paused=lambda: False)
+    manager._consecutive_unknown_pages = 9
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return SOUL_PAGE
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: True
+    manager.handler.key_actions.close_app = lambda: None  # driver 恢复装饰器失败时的返回
+
+    outcome = asyncio.run(manager.react_to_page(SOUL_PAGE))
+
+    assert outcome["recovery"]["force_closed"] is False
+    assert manager._consecutive_unknown_pages == 10
+
+
+def test_react_to_page_resets_counter_and_suppresses_back_when_switched_from_launcher():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._consecutive_unknown_pages = 5
+    switch_calls = []
+    pressed_back = []
+    closed_app = []
+
+    launcher_source = """
+    <hierarchy>
+      <node package="com.sec.android.app.launcher" resource-id="com.sec.android.app.launcher:id/workspace" />
+    </hierarchy>
+    """
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return "<ready />"
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True)
+
+    outcome = asyncio.run(manager.react_to_page(launcher_source))
+
+    assert manager._consecutive_unknown_pages == 0
+    assert outcome["recovery"]["suppressed"] == "switched_from_non_soul"
+    assert outcome["recovery"]["pressed_back"] is False
+    assert outcome["recovery"]["force_closed"] is False
+    assert switch_calls == [True]
+    assert pressed_back == []
+    assert closed_app == []
+
+
+def test_react_to_page_resets_counter_when_event_triggers():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._consecutive_unknown_pages = 9
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 1
+
+    manager._process_events_once = fake_process_once
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True)
+
+    outcome = asyncio.run(manager.react_to_page("<initial />"))
+
+    assert outcome["triggered_count"] == 1
+    assert manager._consecutive_unknown_pages == 0
+    assert outcome["recovery"]["force_closed"] is False
+    assert closed_app == []
 
 
 def test_status_reporter_uses_supplied_screen_description():

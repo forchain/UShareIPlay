@@ -43,6 +43,7 @@ class KeyActions:
     def close_app(self):
         """关闭应用"""
         self.driver.terminate_app(self.config.require("package_name"))
+        return True
 
     @with_driver_recovery(retry=False, op="write")
     def switch_to_activity(self, activity):

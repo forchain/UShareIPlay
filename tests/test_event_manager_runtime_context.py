@@ -101,6 +101,7 @@ def make_event_manager(runtime):
     manager.element_to_event = {}
     manager._initialized = True
     manager._consecutive_unknown_pages = 0
+    manager._back_sent_to_background = False
     return manager
 
 
