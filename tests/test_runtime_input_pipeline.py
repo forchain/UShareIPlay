@@ -183,7 +183,7 @@ async def test_blank_items_are_ignored():
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stop_is_idempotent_without_queueing_anything():
+async def test_stop_toggles_paused_state_without_queueing_anything():
     await MessageQueue.instance().clear_queue()
 
     pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}])
@@ -191,7 +191,12 @@ async def test_stop_is_idempotent_without_queueing_anything():
     assert pipeline.paused is True
     assert await MessageQueue.instance().get_all_messages() == {}
 
-    # 连续 !stop 保持 paused 为 True（严格幂等，不再翻转）
+    # 再次输入 !stop 切换为恢复运行 (toggle)
+    pipeline.input_queue.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
+
+    # 第三次输入 !stop 再次暂停
     pipeline.input_queue.put({"content": "!stop", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is True
@@ -211,18 +216,17 @@ async def test_stop_pauses_and_start_resumes_timer_manager():
     assert timer.calls == ["pause"]
     assert timer.is_paused() is True
 
-    # 连续 !stop 保持暂停状态，不重复调用 resume
+    # 再次输入 !stop 切换启停，触发 resume
     pipeline.input_queue.put({"content": "!stop", "source": "console"})
-    await pipeline.drain()
-    assert pipeline.paused is True
-    assert timer.calls == ["pause"]
-
-    # 显式 !start 触发 resume
-    pipeline.input_queue.put({"content": "!start", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is False
     assert timer.calls == ["pause", "resume"]
     assert timer.is_paused() is False
+
+    # 显式 !start 保持运行
+    pipeline.input_queue.put({"content": "!start", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
 
 
 @pytest.mark.asyncio

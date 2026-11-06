@@ -426,6 +426,12 @@ class EventManager(Singleton):
 
         # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
         if triggered_count == 0:
+            if self.runtime and hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+                recovery["suppressed"] = "paused"
+                return {
+                    "triggered_count": 0,
+                    "recovery": recovery,
+                }
             try:
                 # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
                 if self.runtime.is_ui_busy():
@@ -517,6 +523,9 @@ class EventManager(Singleton):
                 keys_ordered.append(k)
 
         for element_key in keys_ordered:
+            if self.runtime and hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+                self.logger.info("Stopping event processing: runtime is paused by !stop")
+                break
             module_name = self.element_to_event[element_key]
             try:
                 module = self.event_modules.get(module_name)

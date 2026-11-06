@@ -873,18 +873,13 @@ async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue()
     # 4. 验证后续未执行消息安全留在 MessageQueue 中
     assert msg_queue.get_queue_size() == 1
 
-    # 5. 验证连续 !stop 保持 paused == True（幂等性）
-    input_q.put({"content": "!stop", "source": "console"})
-    await pipeline.drain()
-    assert pipeline.paused is True
-
     # 暂停期间不会 drain 队列中的剩余项
     drained_paused, count_paused = await drainer.drain()
     assert (drained_paused, count_paused) == (0, 0)
     assert msg_queue.get_queue_size() == 1
 
-    # 6. 验证 !start 解除暂停，并允许后续剩余消息执行完毕
-    input_q.put({"content": "!start", "source": "console"})
+    # 5. 验证再次输入 !stop 切换为解除暂停 (toggle)，并允许后续剩余消息执行完毕
+    input_q.put({"content": "!stop", "source": "console"})
     await pipeline.drain()
     assert pipeline.paused is False
 

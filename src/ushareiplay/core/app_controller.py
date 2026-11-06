@@ -113,7 +113,7 @@ class AppController(Singleton):
             obs=self.obs,
         )
         self.command_runtime_context = CommandRuntimeContext(controller=self)
-        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock)
+        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock, controller=self)
 
         self._runtime_queue_drainer = None
         self._agent_command_spool = AgentCommandSpool(
@@ -169,6 +169,10 @@ class AppController(Singleton):
         会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
         ui_lock.locked()，兜底 back 的抑制语义因此不变。
         """
+        ri = getattr(self, "runtime_input", None)
+        if ri and ri.paused:
+            raise asyncio.CancelledError(f"UI session '{reason}' blocked: runtime paused by !stop")
+
         task = asyncio.current_task()
         if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
             self._ui_lock_depth += 1
@@ -340,6 +344,12 @@ class AppController(Singleton):
             self.logger.info("Exiting console mode...")
             self.in_console_mode = False
 
+    def _dispatch_meta_if_needed(self, text: str) -> None:
+        if self.runtime_input and text.strip() in ('!stop', 'stop', '!start', 'start'):
+            loop = getattr(self, "loop", None)
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.runtime_input.drain_meta_only(), loop)
+
     def _console_input(self):
         """Background thread for console input"""
         if hasattr(sys.stdin, "reconfigure"):
@@ -356,6 +366,7 @@ class AppController(Singleton):
                     user_input = input("Console> ")
                     if user_input.strip():
                         self.input_queue.put((user_input, "console"))
+                        self._dispatch_meta_if_needed(user_input)
                         if self.logger:
                             self.logger.critical(f"{user_input}")
                 else:
@@ -367,6 +378,7 @@ class AppController(Singleton):
                             command = input("Command> ")
                             if command.strip():
                                 self.input_queue.put((command, "console"))
+                                self._dispatch_meta_if_needed(command)
                                 if self.logger:
                                     self.logger.critical(f"{command}")
                         finally:
@@ -374,6 +386,7 @@ class AppController(Singleton):
                     else:
                         # User directly entered something without pressing Enter first
                         self.input_queue.put((user_input, "console"))
+                        self._dispatch_meta_if_needed(user_input)
                         if self.logger:
                             self.logger.critical(f"{user_input}")
             except UnicodeDecodeError as e:
@@ -671,6 +684,7 @@ class AppController(Singleton):
         await self._detect_initial_room_state()
 
         self._init_runtime_queue()
+        self.loop = asyncio.get_running_loop()
 
         self.logger.info("开始主监控循环...")
 
