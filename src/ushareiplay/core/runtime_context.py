@@ -31,6 +31,20 @@ class EventRuntimeContext:
         ri = getattr(self.controller, "runtime_input", None)
         return bool(ri and ri.paused)
 
+    @asynccontextmanager
+    async def ui_session(self, reason: str = ""):
+        if self.controller and hasattr(self.controller, "ui_session"):
+            async with self.controller.ui_session(reason):
+                yield
+        elif self.ui_lock:
+            await self.ui_lock.acquire()
+            try:
+                yield
+            finally:
+                self.ui_lock.release()
+        else:
+            yield
+
 
 @dataclass(frozen=True)
 class CommandRuntimeContext:

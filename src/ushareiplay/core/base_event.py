@@ -13,6 +13,7 @@
 """
 
 from abc import ABC
+from contextlib import asynccontextmanager
 from typing import List, Optional, Sequence
 
 from ushareiplay.core.event_elements import resolve_event_elements
@@ -57,6 +58,21 @@ class BaseEvent(ABC):
         if self.runtime is None:
             return False
         return self.runtime.is_ui_busy()
+
+    @asynccontextmanager
+    async def ui_session(self, reason: str = ""):
+        if self.runtime and hasattr(self.runtime, "ui_session"):
+            async with self.runtime.ui_session(reason):
+                yield
+        elif self.controller and hasattr(self.controller, "ui_session"):
+            async with self.controller.ui_session(reason):
+                yield
+        else:
+            yield
+
+    async def on_element_absent(self, key: str):
+        """当元素 key 未在当前页面源码中检测到时调用（默认无操作，供状态机感知元素消失）。"""
+        pass
 
     async def handle(self, key: str, element_wrapper):
         """

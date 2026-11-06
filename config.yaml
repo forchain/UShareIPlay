@@ -42,6 +42,11 @@ soul:
 
   # 派对智能重启配置
   party_restart_minutes: 60 # 触发重启的时间（分钟），默认20小时
+  # 派对房间自动抢福袋配置
+  lucky_bag:
+    enabled: true            # 是否启用自动抢福袋
+    countdown_seconds: 10    # 检测到福袋后的防封倒计时秒数
+    claim_timeout: 5.0       # 弹窗内等待领取按钮的最长超时秒数
   # 派对创建模式：new_party_entry(新建) / restore_party(恢复)
   party_create_mode: "new_party_entry"
   # 创建派对时是否开启推荐：true(开启) / false(关闭)
@@ -228,6 +233,9 @@ soul:
     pack_countdown_item: "cn.soulapp.android:id/settingCountDown" # 倒计时设置项
     pack_countdown_option: "cn.soulapp.android:id/tvLabel" # 倒计时选项（即刻抢/1分钟/3分钟/5分钟/10分钟）
     pack_countdown_confirm: "cn.soulapp.android:id/tvConfirm" # 确认保存
+    lucky_bag_entry: '//android.widget.FrameLayout[@resource-id="cn.soulapp.android:id/countDownLuckyBagView"]' # 派对房间福袋入口
+    lucky_bag_claim_operation: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOperation"]' # 福袋弹窗操作按钮（领取）
+    lucky_bag_claim_open: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tvOpenFortuneBag"]' # 福袋弹窗开福袋按钮
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
     heat_exchange_entry: "cn.soulapp.android:id/tvStepInfo" # 房间热力阶梯 banner（轮播出现，需等待）
     heat_exchange_tab: '//android.view.View[@text="兑换福袋"]' # 橱窗默认停在「兑换流量卡」，福袋档位需切页才显示
