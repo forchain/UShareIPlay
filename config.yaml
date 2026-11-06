@@ -217,6 +217,15 @@ soul:
     luck_pack: "cn.soulapp.android:id/tvLbLabelPack" # 福袋 / 2个奖励
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
+    pack_entry: "cn.soulapp.android:id/tvLbLabelPackNormal" # 福袋抽屉入口
+    pack_list: "cn.soulapp.android:id/listUser" # 福袋列表（倒序，最后一个等级最小）
+    pack_content: "cn.soulapp.android:id/tvContent" # 卡片阶段文案「第X阶段奖励」
+    pack_drawer_handle: "cn.soulapp.android:id/touch_close" # 福袋抽屉抓手（点其上沿遮罩关闭）
+    pack_countdown_text: "cn.soulapp.android:id/tvSettingContent" # 当前倒计时「1分钟 | 所有人」
+    pack_countdown_entry: "cn.soulapp.android:id/tvSetting" # 去设置
+    pack_countdown_item: "cn.soulapp.android:id/settingCountDown" # 倒计时设置项
+    pack_countdown_option: "cn.soulapp.android:id/tvLabel" # 倒计时选项（即刻抢/1分钟/3分钟/5分钟/10分钟）
+    pack_countdown_confirm: "cn.soulapp.android:id/tvConfirm" # 确认保存
     soul_power: "cn.soulapp.android:id/soulPower" # +12灵魂力
     heat_exchange_entry: "cn.soulapp.android:id/tvStepInfo" # 房间热力阶梯 banner（轮播出现，需等待）
     heat_exchange_tab: '//android.view.View[@text="兑换福袋"]' # 橱窗默认停在「兑换流量卡」，福袋档位需切页才显示
@@ -586,11 +595,15 @@ commands:
     response_template: "Microphone set to {state}"
     error_template: "Failed to set microphone: {error}"
   - prefix: "pack"
-    level: 1
+    level: 3
     subcommands:
+      'list':
+        level: 3
+      'open':
+        level: 3
       'redeem':
         level: 2
-    description: "打开背包中的幸运礼包（在线人数≥5时系统自动触发开启），或将热力值兑换为福袋（需等级2）。参数: [redeem]，无参数开启背包中的幸运礼包，例如 :pack、:pack redeem"
+    description: "查看福袋列表（需等级3）、开启福袋（需等级3），或将热力值兑换为福袋（需等级2）。参数: [list|open [level] [countdown]|redeem]，例如 :pack、:pack list、:pack open 3 5、:pack redeem"
     response_template: "{message}"
     error_template: "{error}"
   - prefix: "timer"

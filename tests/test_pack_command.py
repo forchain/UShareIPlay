@@ -5,7 +5,14 @@ import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.commands import pack as pack_module
-from ushareiplay.commands.pack import PackCommand, _parse_heat
+from ushareiplay.commands.pack import (
+    OPEN_USAGE,
+    PACK_USAGE,
+    PackCommand,
+    _parse_countdown,
+    _parse_heat,
+    _parse_pack_level,
+)
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -58,10 +65,15 @@ def mock_controller():
         wait_for_element=MagicMock(return_value=None),
         wait_for_element_clickable=MagicMock(),
         find_elements=MagicMock(),
+        find_child_elements=MagicMock(return_value=[]),
         get_element_text=MagicMock(side_effect=lambda element: element.text if element else ""),
     )
     soul_handler.key_actions = SimpleNamespace(
         press_back=MagicMock(),
+    )
+    soul_handler.gesture_handler = SimpleNamespace(
+        click_element_at=MagicMock(return_value=True),
+        swipe=MagicMock(return_value=True),
     )
     controller.soul_handler = soul_handler
     controller.music_handler = SimpleNamespace()
@@ -127,7 +139,8 @@ def test_parse_heat_returns_none_without_digits():
 
 
 @pytest.mark.asyncio
-async def test_pack_command_no_args_opens_luck_pack(mock_controller):
+async def test_open_luck_pack_opens_backpack_pack_for_auto_mode(mock_controller):
+    """自动触发（在线人数≥5）仍走背包里的幸运礼包，不受 :pack 形态变化影响。"""
     finder = mock_controller.soul_handler.element_finder
     luck_pack_btn = FakeElement(text="幸运礼包 奖励")
     luck_item_btn = FakeElement(text="高级福袋")
@@ -139,8 +152,7 @@ async def test_pack_command_no_args_opens_luck_pack(mock_controller):
     )
 
     cmd = PackCommand(mock_controller)
-    msg_info = MessageInfo(content=":pack", nickname="Tester")
-    result = await cmd.do_process(msg_info, [])
+    result = cmd.open_luck_pack(user_count=6)
 
     assert result == {
         "item": "高级福袋",
@@ -152,13 +164,12 @@ async def test_pack_command_no_args_opens_luck_pack(mock_controller):
 
 
 @pytest.mark.asyncio
-async def test_pack_command_no_luck_pack_available(mock_controller):
+async def test_open_luck_pack_reports_no_pack_available(mock_controller):
     finder = mock_controller.soul_handler.element_finder
     finder.try_find_element.return_value = None
 
     cmd = PackCommand(mock_controller)
-    msg_info = MessageInfo(content=":pack", nickname="Tester")
-    result = await cmd.do_process(msg_info, [])
+    result = cmd.open_luck_pack()
 
     assert result == {"error": "No luck pack available"}
 
@@ -169,7 +180,7 @@ async def test_pack_command_invalid_subcommand_is_usage_hint(mock_controller):
     msg_info = MessageInfo(content=":pack invalid", nickname="Tester")
     result = await cmd.do_process(msg_info, ["invalid"])
 
-    assert result == {"message": "未知子命令，用法: :pack [redeem]"}
+    assert result == {"message": f"未知子命令，{PACK_USAGE}"}
 
 
 @pytest.mark.asyncio
@@ -180,7 +191,7 @@ async def test_pack_redeem_rejects_extra_parameters(mock_controller):
     msg_info = MessageInfo(content=":pack redeem 99999", nickname="Tester")
     result = await cmd.do_process(msg_info, ["redeem", "99999"])
 
-    assert result == {"message": "用法: :pack [redeem]"}
+    assert result == {"message": PACK_USAGE}
     finder.try_find_element.assert_not_called()
 
 
@@ -587,12 +598,31 @@ def test_pack_config_declarations():
     assert "600" in elements["heat_exchange_buttons"]
     assert "兑换橱窗" in elements["heat_exchange_back"]
 
+    # 福袋抽屉与倒计时的元素定位器
+    assert elements["pack_entry"] == "cn.soulapp.android:id/tvLbLabelPackNormal"
+    assert elements["pack_list"] == "cn.soulapp.android:id/listUser"
+    assert elements["pack_content"] == "cn.soulapp.android:id/tvContent"
+    assert elements["pack_drawer_handle"] == "cn.soulapp.android:id/touch_close"
+    assert elements["pack_countdown_text"] == "cn.soulapp.android:id/tvSettingContent"
+    assert elements["pack_countdown_entry"] == "cn.soulapp.android:id/tvSetting"
+    assert elements["pack_countdown_item"] == "cn.soulapp.android:id/settingCountDown"
+    assert elements["pack_countdown_option"] == "cn.soulapp.android:id/tvLabel"
+    assert elements["pack_countdown_confirm"] == "cn.soulapp.android:id/tvConfirm"
+
     pack_cmd = next(c for c in config["commands"] if c["prefix"] == "pack")
-    assert pack_cmd["level"] == 1
-    assert pack_cmd["subcommands"] == {"redeem": {"level": 2}}
+    assert pack_cmd["level"] == 3
+    assert pack_cmd["subcommands"] == {
+        "list": {"level": 3},
+        "open": {"level": 3},
+        "redeem": {"level": 2},
+    }
     assert pack_cmd["response_template"] == "{message}"
     assert pack_cmd["error_template"] == "{error}"
-    assert resolve_command_level(pack_cmd, []) == 1
+    assert resolve_command_level(pack_cmd, []) == 3
+    assert resolve_command_level(pack_cmd, ["list"]) == 3
+    assert resolve_command_level(pack_cmd, ["LIST"]) == 3
+    assert resolve_command_level(pack_cmd, ["open"]) == 3
+    assert resolve_command_level(pack_cmd, ["open", "3", "5"]) == 3
     assert resolve_command_level(pack_cmd, ["redeem"]) == 2
     assert resolve_command_level(pack_cmd, ["REDEEM"]) == 2
 
@@ -648,3 +678,460 @@ async def test_pack_redeem_error_renders_without_generic_prefix():
         response = await manager.process_command(FakePackCommand(), msg, command_info)
 
     assert response == "未找到热力兑换入口"
+
+
+# --- 福袋阶段文案与倒计时解析 ---
+
+
+def test_parse_pack_level_reads_phase_text():
+    assert _parse_pack_level("第一阶段奖励") == 1
+    assert _parse_pack_level("第二阶段奖励") == 2
+    assert _parse_pack_level("第三阶段奖励") == 3
+    assert _parse_pack_level("第四阶段奖励") == 4
+    assert _parse_pack_level("第五阶段奖励") == 5
+
+
+def test_parse_pack_level_ignores_other_text():
+    assert _parse_pack_level("初级福袋") is None
+    assert _parse_pack_level("") is None
+    assert _parse_pack_level(None) is None
+
+
+def test_parse_countdown_reads_option_text():
+    assert _parse_countdown("即刻抢 | 所有人") == 0
+    assert _parse_countdown("1分钟 | 所有人") == 1
+    assert _parse_countdown("3分钟 | 所有人") == 3
+    assert _parse_countdown("10分钟 | 所有人") == 10
+
+
+def test_parse_countdown_rejects_unknown_text():
+    assert _parse_countdown("") is None
+    assert _parse_countdown("随时") is None
+    assert _parse_countdown(None) is None
+
+
+# --- 福袋抽屉场景 ---
+
+#: 福袋等级 → 阶段文案里的汉字
+_PHASE_CN = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五"}
+
+
+class FakeDrawer:
+    """福袋列表容器。"""
+
+    def __init__(self):
+        self.location = {"x": 0, "y": 600}
+        self.size = {"width": 720, "height": 700}
+
+
+def _pack_setup(mock_controller, screens, countdown="即刻抢 | 所有人"):
+    """摆一个会滚动的福袋抽屉场景。
+
+    screens 是逐屏可见的条目列表，每项为 (等级, 名称)；滑动一次前进一屏。
+    """
+    finder = mock_controller.soul_handler.element_finder
+    gesture = mock_controller.soul_handler.gesture_handler
+    drawer = FakeDrawer()
+    state = {"screen": 0}
+    contents = []
+
+    entry = FakeElement(text="福袋")
+    handle = FakeElement(text="")
+    use = FakeElement(text="使用")
+    setting = FakeElement(text="去设置")
+    countdown_item = FakeElement(text="倒计时")
+    confirm = FakeElement(text="确认")
+    countdown_text = FakeElement(text=countdown)
+    options = [
+        FakeElement(text=text)
+        for text in ("即刻抢", "1分钟", "3分钟", "5分钟", "10分钟")
+    ]
+
+    def current():
+        return screens[min(state["screen"], len(screens) - 1)]
+
+    def find_children(_parent, key, **_kwargs):
+        if key == "pack_content":
+            elements = [
+                FakeElement(text=f"第{_PHASE_CN[level]}阶段奖励")
+                for level, _name in current()
+            ]
+            contents.extend(elements)
+            return elements
+        if key == "luck_item":
+            return [FakeElement(text=name) for _level, name in current()]
+        return []
+
+    def swipe(*_args, **_kwargs):
+        state["screen"] += 1
+        return True
+
+    gesture.swipe.side_effect = swipe
+    finder.find_child_elements.side_effect = find_children
+    finder.wait_for_element_clickable.side_effect = lambda key, **_kwargs: (
+        use if key == "use_pack" else None
+    )
+    finder.wait_for_element.side_effect = lambda key, **_kwargs: {
+        "pack_entry": entry,
+        "pack_list": drawer,
+        "pack_drawer_handle": handle,
+        "pack_countdown_entry": setting,
+        "pack_countdown_item": countdown_item,
+        "pack_countdown_confirm": confirm,
+    }.get(key)
+    finder.try_find_element.side_effect = lambda key, **_kwargs: (
+        countdown_text if key == "pack_countdown_text" else
+        drawer if key == "pack_list" else
+        None
+    )
+    finder.find_elements.side_effect = lambda key: (
+        options if key == "pack_countdown_option" else []
+    )
+
+    return SimpleNamespace(
+        entry=entry,
+        handle=handle,
+        use=use,
+        setting=setting,
+        countdown_item=countdown_item,
+        confirm=confirm,
+        countdown_text=countdown_text,
+        options=options,
+        contents=contents,
+        state=state,
+    )
+
+
+# --- :pack / :pack list ---
+
+
+@pytest.mark.asyncio
+async def test_pack_no_args_lists_packs_and_closes_drawer(mock_controller):
+    parts = _pack_setup(
+        mock_controller, [[(3, "高级福袋"), (2, "中级福袋"), (1, "初级福袋")]]
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {
+        "message": "福袋列表（共3个）：高级福袋（3级）、中级福袋（2级）、初级福袋（1级）"
+    }
+    assert parts.entry.clicks == 1
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_called_once_with(
+        parts.handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+    )
+
+
+@pytest.mark.asyncio
+async def test_pack_list_alias_matches_no_arg_form(mock_controller):
+    _pack_setup(mock_controller, [[(1, "初级福袋")]])
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack list", nickname="Tester"), ["list"])
+
+    assert result == {"message": "福袋列表（共1个）：初级福袋（1级）"}
+
+
+@pytest.mark.asyncio
+async def test_pack_list_scrolls_until_bottom_and_merges_screens(mock_controller):
+    parts = _pack_setup(
+        mock_controller,
+        [
+            [(3, "高级福袋"), (2, "中级福袋")],
+            [(2, "中级福袋"), (1, "初级福袋")],
+        ],
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack list", nickname="Tester"), ["list"])
+
+    assert result == {
+        "message": "福袋列表（共3个）：高级福袋（3级）、中级福袋（2级）、初级福袋（1级）"
+    }
+    assert parts.state["screen"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_pack_list_without_packs_returns_friendly_hint(mock_controller):
+    _pack_setup(mock_controller, [[]])
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"message": "当前没有福袋"}
+
+
+@pytest.mark.asyncio
+async def test_pack_list_reports_missing_entry(mock_controller):
+    finder = mock_controller.soul_handler.element_finder
+    finder.wait_for_element.side_effect = lambda key, **_kwargs: (
+        None if key == "pack_entry" else FakeElement(text=key)
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"error": "未找到福袋入口"}
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_list_closes_drawer_when_scan_fails(mock_controller):
+    parts = _pack_setup(mock_controller, [[(1, "初级福袋")]])
+    finder = mock_controller.soul_handler.element_finder
+    finder.find_child_elements.side_effect = RuntimeError("列表读取失败")
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"error": "Failed to list luck packs"}
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_called_once_with(
+        parts.handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+    )
+
+
+# --- :pack open ---
+
+
+@pytest.mark.asyncio
+async def test_pack_open_defaults_to_smallest_pack_with_instant_countdown(mock_controller):
+    parts = _pack_setup(
+        mock_controller,
+        [
+            [(3, "高级福袋"), (2, "中级福袋")],
+            [(2, "中级福袋"), (1, "初级福袋")],
+        ],
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack open", nickname="Tester"), ["open"])
+
+    assert result == {"message": "已开启1级福袋"}
+    # 倒计时已经是即刻抢，不必改设置
+    assert parts.setting.clicks == 0
+    assert parts.confirm.clicks == 0
+    # 点中的是等级最小的那一个
+    assert [element.text for element in parts.contents if element.clicks] == ["第一阶段奖励"]
+    assert parts.use.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_pack_open_switches_countdown_when_mismatch(mock_controller):
+    parts = _pack_setup(
+        mock_controller, [[(1, "初级福袋")]], countdown="1分钟 | 所有人"
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 1 5", nickname="Tester"), ["open", "1", "5"]
+    )
+
+    assert result == {"message": "已开启1级福袋"}
+    assert parts.setting.clicks == 1
+    assert parts.countdown_item.clicks == 1
+    assert parts.options[3].clicks == 1  # 5分钟
+    assert parts.options[1].clicks == 0  # 1分钟
+    assert parts.confirm.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_pack_open_keeps_countdown_when_already_matching(mock_controller):
+    parts = _pack_setup(
+        mock_controller, [[(2, "中级福袋")]], countdown="3分钟 | 所有人"
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 2 3", nickname="Tester"), ["open", "2", "3"]
+    )
+
+    assert result == {"message": "已开启2级福袋"}
+    assert parts.setting.clicks == 0
+    assert parts.confirm.clicks == 0
+
+
+@pytest.mark.asyncio
+async def test_pack_open_selects_requested_level(mock_controller):
+    parts = _pack_setup(
+        mock_controller,
+        [
+            [(3, "高级福袋"), (2, "中级福袋")],
+            [(2, "中级福袋"), (1, "初级福袋")],
+        ],
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 3", nickname="Tester"), ["open", "3"]
+    )
+
+    assert result == {"message": "已开启3级福袋"}
+    assert [element.text for element in parts.contents if element.clicks] == ["第三阶段奖励"]
+    assert parts.use.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_pack_open_success_leaves_drawer_to_settle_itself(mock_controller):
+    _pack_setup(mock_controller, [[(1, "初级福袋")]])
+
+    cmd = PackCommand(mock_controller)
+    await cmd.do_process(MessageInfo(content=":pack open 1", nickname="Tester"), ["open", "1"])
+
+    # 开启成功后抽屉会自己落定，不再手动点抓手
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_open_missing_pack_closes_drawer_manually(mock_controller):
+    parts = _pack_setup(mock_controller, [[(1, "初级福袋")]])
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 5", nickname="Tester"), ["open", "5"]
+    )
+
+    assert result == {"error": "未找到5级福袋"}
+    assert parts.use.clicks == 0
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_called_once_with(
+        parts.handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+    )
+
+
+@pytest.mark.asyncio
+async def test_pack_open_without_use_button_closes_drawer(mock_controller):
+    parts = _pack_setup(mock_controller, [[(1, "初级福袋")]])
+    finder = mock_controller.soul_handler.element_finder
+    finder.wait_for_element_clickable.side_effect = lambda key, **_kwargs: (
+        None if key == "use_pack" else FakeElement(text=key)
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 1", nickname="Tester"), ["open", "1"]
+    )
+
+    assert result == {"error": "未找到使用按钮"}
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_called_once_with(
+        parts.handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+    )
+
+
+@pytest.mark.asyncio
+async def test_pack_open_rejects_invalid_level(mock_controller):
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 9", nickname="Tester"), ["open", "9"]
+    )
+
+    assert result == {"message": OPEN_USAGE}
+    mock_controller.soul_handler.element_finder.wait_for_element_clickable.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_open_rejects_invalid_countdown(mock_controller):
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 1 2", nickname="Tester"), ["open", "1", "2"]
+    )
+
+    assert result == {"message": OPEN_USAGE}
+    mock_controller.soul_handler.element_finder.wait_for_element_clickable.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_open_rejects_too_many_parameters(mock_controller):
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 1 5 9", nickname="Tester"), ["open", "1", "5", "9"]
+    )
+
+    assert result == {"message": OPEN_USAGE}
+    mock_controller.soul_handler.element_finder.wait_for_element_clickable.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_open_reports_missing_entry(mock_controller):
+    finder = mock_controller.soul_handler.element_finder
+    finder.wait_for_element.side_effect = lambda key, **_kwargs: (
+        None if key == "pack_entry" else FakeElement(text=key)
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack open", nickname="Tester"), ["open"])
+
+    assert result == {"error": "未找到福袋入口"}
+    mock_controller.soul_handler.gesture_handler.click_element_at.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pack_list_falls_back_to_level_label_without_names(mock_controller):
+    """福袋卡片没有名称时退化成「N级福袋」，不至于整条命令失败。"""
+    finder = mock_controller.soul_handler.element_finder
+    _pack_setup(mock_controller, [[(1, "初级福袋")]])
+    finder.find_child_elements.side_effect = lambda _parent, key, **_kwargs: (
+        [FakeElement(text="第一阶段奖励")] if key == "pack_content" else []
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"message": "福袋列表（共1个）：1级福袋（1级）"}
+
+
+# --- 权限 ---
+
+
+@pytest.mark.asyncio
+async def test_pack_requires_level_three_for_normal_users():
+    """普通用户等级不足 3 时，`:pack` 必须被权限门禁拦下。"""
+    from contextlib import asynccontextmanager
+    from pathlib import Path
+
+    import yaml
+
+    from ushareiplay.managers.command_manager import CommandManager
+
+    class RuntimeStub:
+        def emit(self, *args, **kwargs):
+            return None
+
+        @asynccontextmanager
+        async def ui_session(self, *_args, **_kwargs):
+            yield
+
+    class HandlerStub:
+        config = {"system_users": ["Timer"]}
+        logger = SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+            debug=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        )
+        controller = None
+
+    class FakePackCommand:
+        async def process(self, *_args, **_kwargs):
+            return {"message": "不该执行到这里"}
+
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8")
+    )
+    pack_cmd = next(c for c in config["commands"] if c["prefix"] == "pack")
+    command_info = {
+        **pack_cmd,
+        "parameters": [],
+        "response_template": pack_cmd["response_template"],
+        "error_template": pack_cmd["error_template"],
+    }
+
+    manager = CommandManager.instance()
+    manager.configure_runtime(RuntimeStub())
+    manager._handler = HandlerStub()
+    msg = MessageInfo(content=":pack", nickname="Alice")
+
+    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+        mock_user.return_value = SimpleNamespace(level=2)
+        response = await manager.process_command(FakePackCommand(), msg, command_info)
+
+    assert response == "需要等级 3 才能使用此命令，您当前等级为 2"

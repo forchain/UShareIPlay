@@ -53,7 +53,7 @@ Soul moved the recommendation toggle out of the room-info drawer and into the **
 | `notice` | 1 | `<message>` | Set room announcement |
 | `seat` | 1 | `1 <n> / 2 <n> / 4 [n]` | Reserve (1), immediately take (2), or remove seat occupant (4) |
 | `mic` | 2 | `0/1` | Turn microphone off (0) or on (1); seats bot first if off-seat |
-| `pack` | 1 / 2 | `[redeem]` | Open luck pack from backpack (auto-triggered at ≥ 5 online users); `redeem` converts heat into luck packs (level 2) |
+| `pack` | 3 / 2 | `[list\|open [level] [countdown]\|redeem]` | List the luck packs you own (level 3); `open [level] [countdown]` opens a pack (level 1–5, countdown 0/1/3/5/10 minutes); `redeem` converts heat into luck packs (level 2) |
 | `recommend`| 1 | `[on/off]` | Toggle room recommendation distribution (no argument toggles; also accepts `开启`/`关闭`, `所有人`/`关闭推荐分发`) |
 | `sleep` | 4 | `on/off/status` | Manage Sleep Guardian night rest mode (overrides 23:00 - 06:00 window) |
 | `end` | 4 | — | Close party (requires owner's friend present) |

@@ -8,6 +8,19 @@ MAX_REDEMPTIONS = 50
 HEAT_WAIT_SECONDS = 5.0
 HEAT_POLL_SECONDS = 0.3
 ENTRY_WAIT_SECONDS = 10
+DRAWER_WAIT_SECONDS = 10
+CLOSE_WAIT_SECONDS = 3
+PACK_SCAN_MAX = 8
+
+PACK_USAGE = '用法: :pack [list|open [level] [countdown]|redeem]'
+OPEN_USAGE = '用法: :pack open [level] [countdown]（level 取 1~5，countdown 取 0/1/3/5/10）'
+
+#: 阶段文案 → 福袋等级：「第一阶段奖励」即 1 级福袋。
+_PHASE_PATTERN = re.compile(r'第([一二三四五])阶段')
+_PHASE_LEVELS = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5}
+
+#: 倒计时选项：0 表示即刻抢，其余是分钟数。
+COUNTDOWN_OPTIONS = {0: '即刻抢', 1: '1分钟', 3: '3分钟', 5: '5分钟', 10: '10分钟'}
 
 _HEAT_PATTERN = re.compile(r'(\d+(?:\.\d+)?)\s*([万wW])?')
 
@@ -21,6 +34,21 @@ def _parse_heat(text):
     return int(value * 10000) if match.group(2) else int(value)
 
 
+def _parse_pack_level(text):
+    """从「第X阶段奖励」里读出福袋等级；不是阶段文案返回 None。"""
+    match = _PHASE_PATTERN.search(text or '')
+    return _PHASE_LEVELS[match.group(1)] if match else None
+
+
+def _parse_countdown(text):
+    """从「即刻抢 | 所有人」/「3分钟 | 所有人」里读出倒计时分钟数（即刻抢 = 0）。"""
+    text = (text or '').strip()
+    if '即刻抢' in text:
+        return 0
+    match = re.search(r'(\d+)\s*分钟', text)
+    return int(match.group(1)) if match else None
+
+
 class PackCommand(BaseCommand):
     handler_attr = 'soul_handler'
     error_message = 'Failed to open luck pack'
@@ -31,16 +59,22 @@ class PackCommand(BaseCommand):
         self.previous_count = 0  # Track previous user count
 
     async def do_process(self, message_info, parameters):
-        """Process pack command to open luck pack or redeem heat points"""
+        """Process pack command to list/open luck packs or redeem heat points"""
         self.auto_mode = False  # Manual mode
         subcommand = parameters[0].lower() if parameters else ''
         if subcommand == 'redeem':
             if len(parameters) > 1:
-                return {'message': '用法: :pack [redeem]'}
+                return {'message': PACK_USAGE}
             return self.redeem_heat()
+        if subcommand == 'list':
+            if len(parameters) > 1:
+                return {'message': PACK_USAGE}
+            return self.list_packs()
+        if subcommand == 'open':
+            return self.open_pack(parameters[1:])
         if subcommand:
-            return {'message': '未知子命令，用法: :pack [redeem]'}
-        return self.open_luck_pack()
+            return {'message': f'未知子命令，{PACK_USAGE}'}
+        return self.list_packs()
 
     def update(self):
         """Check room count and auto open pack if needed"""
@@ -62,6 +96,57 @@ class PackCommand(BaseCommand):
 
         except Exception as e:
             self.handler.log_error(f"Error in pack update: {traceback.format_exc()}")
+
+    def list_packs(self):
+        """打开福袋抽屉，扫描出当前拥有的福袋列表。"""
+        if not self._open_pack_drawer():
+            return {'error': '未找到福袋入口'}
+        try:
+            if not self._wait_pack_list():
+                return {'error': '福袋抽屉未打开'}
+            packs = self._scan_packs()
+        except Exception:
+            self.handler.log_error(f"Error listing packs: {traceback.format_exc()}")
+            return {'error': 'Failed to list luck packs'}
+        finally:
+            # 抽屉必须收干净：留在屏幕上会挡住后面的操作。
+            self._close_pack_drawer()
+        if not packs:
+            return {'message': '当前没有福袋'}
+        return {'message': self._format_packs(packs)}
+
+    def open_pack(self, parameters):
+        """开启福袋。参数：[level] [countdown]；level 省略时选等级最小的福袋。"""
+        level, countdown, error = self._parse_open_args(parameters)
+        if error:
+            return {'message': error}
+        if not self._open_pack_drawer():
+            return {'error': '未找到福袋入口'}
+        used = False
+        try:
+            if not self._wait_pack_list():
+                return {'error': '福袋抽屉未打开'}
+            if not self._sync_countdown(countdown):
+                return {'error': '倒计时设置失败'}
+            if not self._wait_pack_list():  # 改完倒计时抽屉会重绘，列表要重新取
+                return {'error': '福袋抽屉未打开'}
+            chosen = self._select_pack(level)
+            if chosen is None:
+                return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
+            use = self.handler.element_finder.wait_for_element_clickable('use_pack')
+            if not use:
+                return {'error': '未找到使用按钮'}
+            use.click()
+            used = True
+            self.handler.logger.info(f'已开启 {chosen} 级福袋')
+            return {'message': f'已开启{chosen}级福袋'}
+        except Exception as e:
+            self.handler.log_error(f"Error opening pack: {traceback.format_exc()}")
+            return {'error': 'Failed to open luck pack'}
+        finally:
+            # 开启成功后抽屉会自己落定；其余路径必须手动收掉，不能把抽屉留在屏幕上。
+            if not used:
+                self._close_pack_drawer()
 
     def open_luck_pack(self, user_count=None):
         """Open luck pack if available
@@ -243,3 +328,230 @@ class PackCommand(BaseCommand):
             self.handler.key_actions.press_back()
         except Exception as e:
             self.handler.logger.warning(f"Failed to press back key: {e}")
+
+    # --- 福袋抽屉 ---
+
+    def _open_pack_drawer(self):
+        """点开福袋抽屉；入口不在或点不开返回 False。"""
+        entry = self.handler.element_finder.wait_for_element(
+            'pack_entry', timeout=ENTRY_WAIT_SECONDS
+        )
+        if not entry:
+            self.handler.logger.warning("未找到福袋入口")
+            return False
+        try:
+            entry.click()
+        except Exception as e:
+            self.handler.logger.warning(f"点击福袋入口失败: {e}")
+            return False
+        self.handler.logger.info("已打开福袋抽屉")
+        return True
+
+    def _wait_pack_list(self):
+        """等福袋列表渲染出来；抽屉没打开返回 None。"""
+        drawer = self.handler.element_finder.wait_for_element(
+            'pack_list', timeout=DRAWER_WAIT_SECONDS
+        )
+        if not drawer:
+            self.handler.logger.warning("福袋抽屉未打开")
+        return drawer
+
+    def _close_pack_drawer(self):
+        """点抓手上沿的遮罩区关闭福袋抽屉。"""
+        handle = self.handler.element_finder.wait_for_element(
+            'pack_drawer_handle', timeout=CLOSE_WAIT_SECONDS
+        )
+        if not handle:
+            self.handler.logger.warning("未找到福袋抽屉抓手")
+            return False
+        closed = self.handler.gesture_handler.click_element_at(
+            handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+        )
+        if closed:
+            self.handler.logger.info("已关闭福袋抽屉")
+        return closed
+
+    def _visible_packs(self):
+        """当前可见的福袋条目：(等级, 名称, 阶段文案元素)。
+
+        列表元素每次都重新取：滑动后 RecyclerView 的节点可能被 App 重建，
+        攥着旧引用只会读到空列表。
+        """
+        finder = self.handler.element_finder
+        drawer = finder.try_find_element('pack_list', log=False)
+        if not drawer:
+            return []
+        contents = finder.find_child_elements(drawer, 'pack_content')
+        names = [
+            finder.get_element_text(name)
+            for name in finder.find_child_elements(drawer, 'luck_item')
+        ]
+        packs = []
+        for index, content in enumerate(contents):
+            level = _parse_pack_level(finder.get_element_text(content))
+            if level is None:
+                continue
+            # shortcut: 名称与阶段按列表出现顺序配对；卡片结构变化导致错位时改为按卡片容器定位。
+            packs.append((level, names[index] if index < len(names) else '', content))
+        return packs
+
+    def _scan_packs(self):
+        """滑动扫描福袋列表，返回 [(等级, 名称)]。"""
+        packs = []
+        previous = None
+        for _ in range(PACK_SCAN_MAX):
+            entries = self._visible_packs()
+            signature = tuple((level, name) for level, name, _ in entries)
+            for level, name, _element in entries:
+                if (level, name) not in packs:
+                    packs.append((level, name))
+            if signature == previous:
+                break
+            previous = signature
+            self._swipe_pack_list()
+        return packs
+
+    def _swipe_pack_list(self):
+        """在福袋列表里向上滑一屏。"""
+        drawer = self.handler.element_finder.try_find_element('pack_list', log=False)
+        if not drawer:
+            return False
+        try:
+            location = drawer.location
+            size = drawer.size
+            center_x = int(location['x'] + size['width'] / 2)
+            start_y = int(location['y'] + size['height'] * 0.85)
+            end_y = int(location['y'] + size['height'] * 0.15)
+            return self.handler.gesture_handler.swipe(
+                center_x, start_y, center_x, end_y, duration_ms=300
+            )
+        except Exception as e:
+            self.handler.logger.warning(f"福袋列表滑动失败: {e}")
+            return False
+
+    def _scroll_to_bottom(self):
+        """滑到福袋列表末尾；可见条目不再变化即到底。"""
+        previous = None
+        for _ in range(PACK_SCAN_MAX):
+            signature = tuple(pack[0] for pack in self._visible_packs())
+            if signature == previous:
+                return
+            previous = signature
+            self._swipe_pack_list()
+
+    def _find_pack(self, level):
+        """从上往下找指定等级的福袋条目；找不到返回 None。"""
+        previous = None
+        for _ in range(PACK_SCAN_MAX):
+            packs = self._visible_packs()
+            signature = tuple(pack[0] for pack in packs)
+            for pack in packs:
+                if pack[0] == level:
+                    return pack
+            if signature == previous:
+                return None
+            previous = signature
+            self._swipe_pack_list()
+        return None
+
+    def _smallest_pack(self):
+        """可见条目里等级最小的那个（列表倒序，最小等级在末尾）。"""
+        packs = self._visible_packs()
+        if not packs:
+            return None
+        return min(packs, key=lambda pack: pack[0])
+
+    def _select_pack(self, level):
+        """定位并点击福袋条目；level 为 None 时选等级最小的那个。"""
+        if level is None:
+            self._scroll_to_bottom()
+            target = self._smallest_pack()
+        else:
+            target = self._find_pack(level)
+        if target is None:
+            return None
+        target[2].click()
+        return target[0]
+
+    def _format_packs(self, packs):
+        """把扫描结果渲染成一行可读文案。"""
+        counts = {}
+        names = {}
+        for level, name in packs:
+            counts[level] = counts.get(level, 0) + 1
+            names.setdefault(level, name)
+        parts = []
+        for level in sorted(counts, reverse=True):
+            label = names[level] or f'{level}级福袋'
+            suffix = f'×{counts[level]}' if counts[level] > 1 else ''
+            parts.append(f'{label}（{level}级）{suffix}')
+        return f'福袋列表（共{len(packs)}个）：' + '、'.join(parts)
+
+    def _parse_open_args(self, parameters):
+        """解析 :pack open 的参数：level（1~5，可省略）、countdown（0/1/3/5/10，默认即刻抢）。"""
+        if len(parameters) > 2:
+            return None, None, OPEN_USAGE
+        level = None
+        countdown = 0
+        if parameters:
+            level, error = self.coerce_int(parameters[0], 1, 5)
+            if error:
+                return None, None, OPEN_USAGE
+        if len(parameters) > 1:
+            countdown, error = self.coerce_int(parameters[1])
+            if error or countdown not in COUNTDOWN_OPTIONS:
+                return None, None, OPEN_USAGE
+        return level, countdown, None
+
+    # --- 倒计时 ---
+
+    def _read_countdown(self):
+        """当前倒计时（分钟；即刻抢 = 0）；读不到返回 None。"""
+        element = self.handler.element_finder.try_find_element(
+            'pack_countdown_text', log=False
+        )
+        if not element:
+            return None
+        return _parse_countdown(self.handler.element_finder.get_element_text(element))
+
+    def _sync_countdown(self, target):
+        """把倒计时调成目标值；已经是目标值就不动。"""
+        current = self._read_countdown()
+        if current == target:
+            return True
+        finder = self.handler.element_finder
+        try:
+            setting = finder.wait_for_element('pack_countdown_entry')
+            if not setting:
+                self.handler.logger.warning("未找到倒计时设置入口")
+                return False
+            setting.click()
+            item = finder.wait_for_element('pack_countdown_item')
+            if not item:
+                self.handler.logger.warning("未找到倒计时设置项")
+                return False
+            item.click()
+            option = self._find_countdown_option(target)
+            if not option:
+                self.handler.logger.warning(f"未找到倒计时选项 {COUNTDOWN_OPTIONS[target]}")
+                return False
+            option.click()
+            confirm = finder.wait_for_element('pack_countdown_confirm')
+            if not confirm:
+                self.handler.logger.warning("未找到倒计时确认按钮")
+                return False
+            confirm.click()
+        except Exception as e:
+            self.handler.logger.warning(f"倒计时设置失败: {e}")
+            return False
+        self.handler.logger.info(f"倒计时已设置为 {COUNTDOWN_OPTIONS[target]}")
+        return True
+
+    def _find_countdown_option(self, target):
+        """在倒计时选项里找到目标文案。"""
+        finder = self.handler.element_finder
+        wanted = COUNTDOWN_OPTIONS[target]
+        for option in finder.find_elements('pack_countdown_option'):
+            if finder.get_element_text(option) == wanted:
+                return option
+        return None

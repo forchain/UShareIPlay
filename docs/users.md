@@ -64,9 +64,9 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 ```
 Level  Role
   0    Guest (playback requests, :info, :level query, :help)
-  1    Regular user (:vol, :fav, :skip, :lyrics, :say, :keyword, :enter, :exit, :return, :receive, :focus, :seat, :pack, :recommend)
+  1    Regular user (:vol, :fav, :skip, :lyrics, :say, :keyword, :enter, :exit, :return, :receive, :focus, :seat, :recommend)
   2    Trusted user (:mode, :acc, :playlist, :album, :radio, :mic, :pack redeem)
-  3    VIP (:theme, :title)
+  3    VIP (:theme, :title, :pack, :pack list, :pack open)
   4    Moderator (:end room, :sleep override)
   5    Sub-admin (:gift)
   9    Owner / Admin (:admin, :alias, :timer)
