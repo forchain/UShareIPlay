@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import queue
 import pytest
 from unittest.mock import MagicMock
@@ -300,4 +301,69 @@ def test_agent_command_spool_dispatches_meta_stop_immediately(tmp_path):
     assert input_q.qsize() == 1
     item = input_q.get_nowait()
     assert item["content"] == ":lyrics 晴天"
+
+
+def test_console_prompt_stop_logs_critical_paused(monkeypatch):
+    """验证在控制台 Command> 提示符输入 !stop 时，能正常输出 CRITICAL paused 日志，
+
+    不能因为处于输入静音期被 ConsoleLogMuter 过滤掉。
+    """
+    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.core.console_log_muter import ConsoleLogMuter
+
+    muter = ConsoleLogMuter.get_instance()
+    muter.unmute()
+
+    logger = logging.getLogger("test_console_prompt_stop")
+    logger.setLevel(logging.DEBUG)
+    logs = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record):
+            logs.append(self.format(record))
+
+    handler = CapturingHandler()
+    handler.addFilter(muter)
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+    logger.addHandler(handler)
+
+    pipeline = RuntimeInputPipeline(
+        input_queue=queue.Queue(),
+        room_owner_provider=lambda: "Owner",
+        logger=logger,
+        send_screen_message=lambda msg: None,
+    )
+    controller = AppController.__new__(AppController)
+    controller.runtime_input = pipeline
+    controller.logger = logger
+    controller.is_running = True
+    controller.in_console_mode = False
+    controller.input_queue = queue.Queue()
+    controller.loop = MagicMock()
+    controller.loop.is_running.return_value = True
+
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.asyncio.run_coroutine_threadsafe",
+        lambda coro, loop: coro.close(),
+    )
+
+    inputs = iter(["", "!stop"])
+
+    def fake_input(prompt=""):
+        try:
+            return next(inputs)
+        except StopIteration:
+            controller.is_running = False
+            return ""
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    controller._console_input()
+
+    assert any("CRITICAL:paused: True" in line for line in logs)
+
+    controller.is_running = True
+    inputs = iter(["", "!stop"])
+    controller._console_input()
+    assert any("CRITICAL:paused: False" in line for line in logs)
+
 

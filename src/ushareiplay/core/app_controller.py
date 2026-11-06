@@ -392,13 +392,13 @@ class AppController(Singleton):
                         muter.mute()
                         try:
                             command = input("Command> ")
-                            if command.strip():
-                                if not self._dispatch_meta_if_needed(command):
-                                    self.input_queue.put((command, "console"))
-                                if self.logger:
-                                    self.logger.critical(f"{command}")
                         finally:
                             muter.unmute()
+                        if command.strip():
+                            if not self._dispatch_meta_if_needed(command):
+                                self.input_queue.put((command, "console"))
+                            if self.logger:
+                                self.logger.critical(f"{command}")
                     else:
                         # User directly entered something without pressing Enter first
                         if not self._dispatch_meta_if_needed(user_input):

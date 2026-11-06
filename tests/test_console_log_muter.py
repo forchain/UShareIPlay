@@ -30,6 +30,21 @@ def test_console_log_muter_filter_record():
     assert muter.filter(record) is True
 
 
+def test_console_log_muter_allows_critical_even_when_muted():
+    muter = ConsoleLogMuter()
+    record = logging.LogRecord(
+        name="test",
+        level=logging.CRITICAL,
+        pathname=__file__,
+        lineno=10,
+        msg="critical message",
+        args=(),
+        exc_info=None,
+    )
+    muter.mute()
+    assert muter.filter(record) is True
+
+
 def test_console_log_muter_context():
     muter = ConsoleLogMuter()
     assert muter.is_muted() is False
