@@ -603,7 +603,7 @@ commands:
         level: 3
       'redeem':
         level: 2
-    description: "查看福袋列表（需等级3）、开启福袋（需等级3），或将热力值兑换为福袋（需等级2）。参数: [list|open [level] [countdown]|redeem]，例如 :pack、:pack list、:pack open 3 5、:pack redeem"
+    description: "查看福袋列表（需等级3）、开启福袋（需等级3），或将热力值兑换为福袋（需等级2）。参数: [list|open [level] [countdown]|redeem]，例如 :pack、:pack list、:pack open 3 5、:pack redeem。countdown 省略即 0（即刻抢），会改写房间倒计时设置；手动开启不受在线人数 ≤10 的限制"
     response_template: "{message}"
     error_template: "{error}"
   - prefix: "timer"

@@ -10,7 +10,10 @@ HEAT_POLL_SECONDS = 0.3
 ENTRY_WAIT_SECONDS = 10
 DRAWER_WAIT_SECONDS = 10
 CLOSE_WAIT_SECONDS = 3
+COUNTDOWN_WAIT_SECONDS = 3
 PACK_SCAN_MAX = 8
+RENDER_WAIT_SECONDS = 1.0
+RENDER_POLL_SECONDS = 0.1
 
 PACK_USAGE = '用法: :pack [list|open [level] [countdown]|redeem]'
 OPEN_USAGE = '用法: :pack open [level] [countdown]（level 取 1~5，countdown 取 0/1/3/5/10）'
@@ -104,6 +107,7 @@ class PackCommand(BaseCommand):
         try:
             if not self._wait_pack_list():
                 return {'error': '福袋抽屉未打开'}
+            self.handler.logger.info("已打开福袋抽屉")
             packs = self._scan_packs()
         except Exception:
             self.handler.log_error(f"Error listing packs: {traceback.format_exc()}")
@@ -126,21 +130,29 @@ class PackCommand(BaseCommand):
         try:
             if not self._wait_pack_list():
                 return {'error': '福袋抽屉未打开'}
-            if not self._sync_countdown(countdown):
-                return {'error': '倒计时设置失败'}
-            if not self._wait_pack_list():  # 改完倒计时抽屉会重绘，列表要重新取
-                return {'error': '福袋抽屉未打开'}
-            chosen = self._select_pack(level)
-            if chosen is None:
+            self.handler.logger.info("已打开福袋抽屉")
+            # 先确认福袋存在再改倒计时：倒计时是房间级的持久设置，失败路径不能留下副作用。
+            target = self._locate_pack(level)
+            if target is None:
                 return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
+            changed = self._sync_countdown(countdown)
+            if changed is None:
+                return {'error': '倒计时设置失败'}
+            if changed:  # 改完倒计时抽屉会重绘，条目要重新定位
+                if not self._wait_pack_list():
+                    return {'error': '福袋抽屉未打开'}
+                target = self._locate_pack(level)
+                if target is None:
+                    return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
+            target[2].click()
             # 使用按钮在选中福袋之前是灰的：等不到可点的「使用」就是没选中。
             use = self.handler.element_finder.wait_for_element_clickable('use_pack')
             if not use:
                 return {'error': '福袋未选中，使用按钮不可用'}
             use.click()
             used = True
-            self.handler.logger.info(f'已开启 {chosen} 级福袋')
-            return {'message': f'已开启{chosen}级福袋'}
+            self.handler.logger.info(f'已开启 {target[0]} 级福袋')
+            return {'message': f'已开启{target[0]}级福袋'}
         except Exception as e:
             self.handler.log_error(f"Error opening pack: {traceback.format_exc()}")
             return {'error': 'Failed to open luck pack'}
@@ -345,7 +357,6 @@ class PackCommand(BaseCommand):
         except Exception as e:
             self.handler.logger.warning(f"点击福袋入口失败: {e}")
             return False
-        self.handler.logger.info("已打开福袋抽屉")
         return True
 
     def _wait_pack_list(self):
@@ -358,22 +369,26 @@ class PackCommand(BaseCommand):
         return drawer
 
     def _close_pack_drawer(self):
-        """点抓手上沿的遮罩区关闭福袋抽屉。"""
-        handle = self.handler.element_finder.wait_for_element(
-            'pack_drawer_handle', timeout=CLOSE_WAIT_SECONDS
-        )
-        if not handle:
-            self.handler.logger.warning("未找到福袋抽屉抓手")
-            return False
-        closed = self.handler.gesture_handler.click_element_at(
-            handle, x_ratio=0.5, y_ratio=0, y_offset=-200
-        )
+        """点抓手上沿的遮罩区关闭福袋抽屉；没关掉就按返回兜底。"""
+        finder = self.handler.element_finder
+        handle = finder.wait_for_element('pack_drawer_handle', timeout=CLOSE_WAIT_SECONDS)
+        if handle:
+            self.handler.gesture_handler.click_element_at(
+                handle, x_ratio=0.5, y_ratio=0, y_offset=-200
+            )
+        # 手势送达不等于抽屉关掉：以列表消失为准，否则抽屉会挡着后面的操作。
+        closed = finder.wait_for_element_disappear('pack_list', timeout=CLOSE_WAIT_SECONDS)
+        if not closed:
+            self.handler.key_actions.press_back()
+            closed = not finder.try_find_element('pack_list', log=False)
         if closed:
             self.handler.logger.info("已关闭福袋抽屉")
+        else:
+            self.handler.logger.warning("福袋抽屉未能关闭")
         return closed
 
     def _visible_packs(self):
-        """当前可见的福袋条目：(等级, 名称, 阶段文案元素)。
+        """当前可见的福袋条目：(等级, 名称, 阶段文案元素, 元素 y 坐标)。
 
         列表元素每次都重新取：滑动后 RecyclerView 的节点可能被 App 重建，
         攥着旧引用只会读到空列表。
@@ -392,9 +407,54 @@ class PackCommand(BaseCommand):
             level = _parse_pack_level(finder.get_element_text(content))
             if level is None:
                 continue
+            try:
+                y = content.location['y']
+            except Exception:
+                y = -1
             # shortcut: 名称与阶段按列表出现顺序配对；卡片结构变化导致错位时改为按卡片容器定位。
-            packs.append((level, names[index] if index < len(names) else '', content))
+            packs.append((level, names[index] if index < len(names) else '', content, y))
         return packs
+
+    def _wait_visible_packs(self, changed_from=None):
+        """等列表子项渲染出来；给了 changed_from 时等这一屏真的换了。"""
+        deadline = time.monotonic() + RENDER_WAIT_SECONDS
+        while True:
+            packs = self._visible_packs()
+            if packs and (changed_from is None or not self._same_screen(changed_from, packs)):
+                return packs
+            if time.monotonic() >= deadline:
+                return packs
+            time.sleep(RENDER_POLL_SECONDS)
+
+    @staticmethod
+    def _same_screen(previous, current):
+        """两屏可见条目完全一致（含位置），说明滑动没有产生位移。"""
+        return len(previous) == len(current) and all(
+            left[:2] == right[:2] and abs(left[3] - right[3]) <= 2
+            for left, right in zip(previous, current)
+        )
+
+    def _overlap(self, previous, current, direction, expected_shift):
+        """相邻两屏有几条是同一件福袋。
+
+        同档位福袋文案完全一样，只靠文案对齐会把新条目当成旧条目；
+        用滑动位移把上一屏的坐标换算过来，才能对上身份。
+        """
+        backwards = 1 if direction == 'up' else -1
+        moves = [
+            right[3] - left[3]
+            for left in previous for right in current
+            if left[:2] == right[:2] and (right[3] - left[3]) * backwards > 0
+        ]
+        if not moves:
+            return 0
+        shift = min(moves, key=lambda move: abs(abs(move) - expected_shift))
+        ordered = current if direction == 'down' else list(reversed(current))
+        seen = {(level, name, y) for level, name, _element, y in previous}
+        for count, (level, name, _element, y) in enumerate(ordered, start=1):
+            if (level, name, y - shift) not in seen:
+                return count - 1
+        return len(ordered)
 
     def _scan_packs(self):
         """滑动扫描福袋列表（上下两个方向都扫），返回 [(等级, 名称)]。
@@ -402,43 +462,54 @@ class PackCommand(BaseCommand):
         列表倒序（等级从大到小），抽屉可能停在中间：只朝一个方向扫会漏掉
         视口之外的福袋，所以两个方向都要扫。
         """
-        packs = []
-        for direction in ('up', 'down'):
-            for level, name, _element in self._sweep_packs(direction):
-                if (level, name) not in packs:
-                    packs.append((level, name))
-        return packs
+        self._sweep_packs('up')  # 先滑到顶部，向下扫一遍就是完整列表
+        return [(level, name) for level, name, _element, _y in self._sweep_packs('down')]
 
     def _sweep_packs(self, direction, target_level=None):
-        """朝一个方向扫福袋列表，返回 [(等级, 名称, 元素)]。
+        """朝一个方向扫福袋列表，返回 [(等级, 名称, 元素, y)]。
 
-        给了 target_level 时，扫到那一档立刻返回（元素此刻在屏上，可以直接点）；
-        没给时扫到头，把沿途见过的都返回。
+        到底的判据是「滑动后可见条目没有位移」：同档位福袋文案完全一样，
+        拿文案当签名会把连续两屏当成没滑动，提前收工。
+        给了 target_level 时，扫到那一档立刻返回（元素此刻在屏上，可以直接点）。
         """
-        seen = []
+        collected = []
         previous = None
+        expected_shift = 0
+        screen = self._wait_visible_packs()
         for _ in range(PACK_SCAN_MAX):
-            entries = self._visible_packs()
-            signature = tuple((level, name) for level, name, _ in entries)
-            for level, name, element in entries:
-                seen.append((level, name, element))
-                if target_level is not None and level == target_level:
-                    return seen
-            if signature == previous:
+            if not screen:
                 break
-            previous = signature
-            self._swipe_pack_list(direction)
-        return seen
+            if previous is None:
+                fresh = screen
+            else:
+                overlap = self._overlap(previous, screen, direction, expected_shift)
+                fresh = screen[overlap:] if direction == 'down' else screen[:len(screen) - overlap]
+            for entry in fresh:
+                collected.append(entry)
+                if entry[0] == target_level:
+                    return collected
+            previous = screen
+            expected_shift = self._swipe_pack_list(direction)
+            if not expected_shift:
+                break
+            screen = self._wait_visible_packs(previous)
+            if self._same_screen(previous, screen):
+                break
+        else:
+            self.handler.logger.warning(
+                f"福袋列表扫描达到 {PACK_SCAN_MAX} 屏上限，结果可能不完整"
+            )
+        return collected
 
     def _swipe_pack_list(self, direction='down'):
-        """在福袋列表里滑动一屏。
+        """在福袋列表里滑动一屏，返回滑动距离（滑不了返回 0）。
 
         direction='down' 露出列表更靠后的条目，'up' 露出更靠前的条目。
         """
-        drawer = self.handler.element_finder.try_find_element('pack_list', log=False)
-        if not drawer:
-            return False
         try:
+            drawer = self.handler.element_finder.try_find_element('pack_list', log=False)
+            if not drawer:
+                return 0
             location = drawer.location
             size = drawer.size
             center_x = int(location['x'] + size['width'] / 2)
@@ -448,16 +519,14 @@ class PackCommand(BaseCommand):
                 start_y, end_y = top + int(height * 0.15), top + int(height * 0.85)
             else:
                 start_y, end_y = top + int(height * 0.85), top + int(height * 0.15)
-            return self.handler.gesture_handler.swipe(
+            if not self.handler.gesture_handler.swipe(
                 center_x, start_y, center_x, end_y, duration_ms=300
-            )
+            ):
+                return 0
+            return abs(end_y - start_y)
         except Exception as e:
             self.handler.logger.warning(f"福袋列表滑动失败: {e}")
-            return False
-
-    def _scroll_to_bottom(self):
-        """滑到福袋列表末尾；可见条目不再变化即到底。"""
-        self._sweep_packs('down')
+            return 0
 
     def _find_pack(self, level):
         """在列表里定位指定等级的福袋条目；上下两个方向都扫。"""
@@ -474,17 +543,12 @@ class PackCommand(BaseCommand):
             return None
         return min(packs, key=lambda pack: pack[0])
 
-    def _select_pack(self, level):
-        """定位并点击福袋条目；level 为 None 时选等级最小的那个。"""
-        if level is None:
-            self._scroll_to_bottom()
-            target = self._smallest_pack()
-        else:
-            target = self._find_pack(level)
-        if target is None:
-            return None
-        target[2].click()
-        return target[0]
+    def _locate_pack(self, level):
+        """定位福袋条目；level 为 None 时滑到底选等级最小的那个。"""
+        if level is not None:
+            return self._find_pack(level)
+        self._sweep_packs('down')
+        return self._smallest_pack()
 
     def _format_packs(self, packs):
         """把扫描结果渲染成一行可读文案。"""
@@ -495,9 +559,9 @@ class PackCommand(BaseCommand):
             names.setdefault(level, name)
         parts = []
         for level in sorted(counts, reverse=True):
-            label = names[level] or f'{level}级福袋'
+            name = names[level]
             suffix = f'×{counts[level]}' if counts[level] > 1 else ''
-            parts.append(f'{label}（{level}级）{suffix}')
+            parts.append(f'{name}（{level}级）{suffix}' if name else f'{level}级福袋{suffix}')
         return f'福袋列表（共{len(packs)}个）：' + '、'.join(parts)
 
     def _parse_open_args(self, parameters):
@@ -520,51 +584,59 @@ class PackCommand(BaseCommand):
 
     def _read_countdown(self):
         """当前倒计时（分钟；即刻抢 = 0）；读不到返回 None。"""
-        element = self.handler.element_finder.try_find_element(
-            'pack_countdown_text', log=False
+        # 列表容器出现时倒计时行可能还没渲染，一次性查询会误判成「不匹配」。
+        element = self.handler.element_finder.wait_for_element(
+            'pack_countdown_text', timeout=COUNTDOWN_WAIT_SECONDS
         )
         if not element:
             return None
         return _parse_countdown(self.handler.element_finder.get_element_text(element))
 
     def _sync_countdown(self, target):
-        """把倒计时调成目标值；已经是目标值就不动。"""
+        """把倒计时调成目标值。
+
+        返回 None 表示设置失败，否则返回是否真的改动了设置（已经匹配就不动）。
+        """
         current = self._read_countdown()
         if current == target:
-            return True
+            return False
         finder = self.handler.element_finder
         try:
             setting = finder.wait_for_element('pack_countdown_entry')
             if not setting:
                 self.handler.logger.warning("未找到倒计时设置入口")
-                return False
+                return None
             setting.click()
             item = finder.wait_for_element('pack_countdown_item')
             if not item:
                 self.handler.logger.warning("未找到倒计时设置项")
-                return False
+                return None
             item.click()
             option = self._find_countdown_option(target)
             if not option:
                 self.handler.logger.warning(f"未找到倒计时选项 {COUNTDOWN_OPTIONS[target]}")
-                return False
+                return None
             option.click()
             confirm = finder.wait_for_element('pack_countdown_confirm')
             if not confirm:
                 self.handler.logger.warning("未找到倒计时确认按钮")
-                return False
+                return None
             confirm.click()
         except Exception as e:
             self.handler.logger.warning(f"倒计时设置失败: {e}")
-            return False
+            return None
         self.handler.logger.info(f"倒计时已设置为 {COUNTDOWN_OPTIONS[target]}")
         return True
 
     def _find_countdown_option(self, target):
-        """在倒计时选项里找到目标文案。"""
+        """等倒计时选项渲染出来，找到目标文案。"""
         finder = self.handler.element_finder
         wanted = COUNTDOWN_OPTIONS[target]
-        for option in finder.find_elements('pack_countdown_option'):
-            if finder.get_element_text(option) == wanted:
-                return option
-        return None
+        deadline = time.monotonic() + COUNTDOWN_WAIT_SECONDS
+        while True:
+            for option in finder.find_elements('pack_countdown_option'):
+                if finder.get_element_text(option) == wanted:
+                    return option
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(RENDER_POLL_SECONDS)
