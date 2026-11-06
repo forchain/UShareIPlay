@@ -43,6 +43,8 @@ class EventManager(Singleton):
         self._consecutive_unknown_pages = 0
         self._runtime = None
 
+    UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD: int = 10
+
     # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
     _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
         "accidental_touch_locker",
@@ -288,6 +290,18 @@ class EventManager(Singleton):
             return None
         return self._packages_from_parsed_root(root)
 
+    def _is_soul_foreground(self, page_source: str) -> bool:
+        if not page_source:
+            return False
+        pkgs = self._packages_from_page_source(page_source)
+        if pkgs is None:
+            return False
+        if not pkgs:
+            return True
+        soul_pkg = self._soul_package_name()
+        launchers = set(self._launcher_packages())
+        return (soul_pkg in pkgs) and not bool(pkgs & launchers)
+
     def _selector_present(self, root: etree._Element, page_source: str, locator: Locator) -> bool:
         selector = locator.value
         if not selector:
@@ -400,8 +414,13 @@ class EventManager(Singleton):
                     "pressed_back": False,
                     "ready_rechecked": False,
                     "backoff_seconds": 0,
+                    "force_closed": False,
                 },
             }
+
+        is_soul_initial = self._is_soul_foreground(page_source)
+        if not is_soul_initial:
+            self._consecutive_unknown_pages = 0
 
         triggered_count = 0
         recovery = {
@@ -410,6 +429,7 @@ class EventManager(Singleton):
             "pressed_back": False,
             "ready_rechecked": False,
             "backoff_seconds": 0,
+            "force_closed": False,
         }
 
         try:
@@ -450,22 +470,33 @@ class EventManager(Singleton):
                     else:
                         recovery["ready_rechecked"] = True
                         second_triggered = await self._process_events_once(ready_source)
-                        if second_triggered == 0:
+                        if second_triggered > 0:
+                            triggered_count = second_triggered
+                            self._consecutive_unknown_pages = 0
+                        elif not is_soul_initial:
+                            # 初始不是 Soul（例如从桌面切回），界面可能仍在初始化加载中，
+                            # 严禁按返回键，否则会导致“返回桌面 -> 切回 -> 返回桌面”的死循环。
+                            recovery["suppressed"] = "switched_from_non_soul"
+                            self.logger.debug(
+                                "Page was not Soul initially; switched to Soul, skip press_back this round."
+                            )
+                        else:
                             self.handler.key_actions.press_back()
                             recovery["pressed_back"] = True
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
                             self._consecutive_unknown_pages += 1
-                            if self._consecutive_unknown_pages > 10:
-                                backoff_s = min(10.0, 0.5 * (self._consecutive_unknown_pages - 10))
-                                recovery["backoff_seconds"] = backoff_s
+                            threshold = (
+                                self.config.value("unknown_page_force_close_threshold")
+                                or self.UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD
+                            )
+                            if self._consecutive_unknown_pages >= threshold:
                                 self.logger.warning(
-                                    f"连续未知页面已达 {self._consecutive_unknown_pages} 次，"
-                                    f"非阻塞退避 {backoff_s:.1f}s 后继续"
+                                    f"连续 {self._consecutive_unknown_pages} 次返回键均未能退出未知页面且持续处于 Soul 前台，"
+                                    f"强制关闭 Soul 应用以恢复"
                                 )
-                                await asyncio.sleep(backoff_s)
-                        else:
-                            triggered_count = second_triggered
-                            self._consecutive_unknown_pages = 0
+                                self.handler.key_actions.close_app()
+                                recovery["force_closed"] = True
+                                self._consecutive_unknown_pages = 0
 
             except Exception as e:
                 self.logger.debug(f"Failed to press back: {str(e)}")
@@ -492,6 +523,7 @@ class EventManager(Singleton):
                     "pressed_back": False,
                     "ready_rechecked": False,
                     "backoff_seconds": 0,
+                    "force_closed": False,
                 },
             }
 

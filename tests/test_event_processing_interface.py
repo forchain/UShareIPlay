@@ -57,7 +57,11 @@ def make_event_manager(config=None):
             },
         ),
     )
-    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True, press_back=lambda: True)
+    manager._handler.key_actions = SimpleNamespace(
+        switch_to_app=lambda: True,
+        press_back=lambda: True,
+        close_app=lambda: True,
+    )
     manager._logger = manager._handler.logger
     manager._config = manager._handler.config
     manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
@@ -166,6 +170,7 @@ def test_process_current_screen_without_page_source_reports_no_page_source_recov
             "pressed_back": False,
             "ready_rechecked": False,
             "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
 
@@ -199,6 +204,7 @@ def test_process_current_screen_reports_ui_busy_suppressed_recovery(monkeypatch)
             "pressed_back": False,
             "ready_rechecked": False,
             "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
 
@@ -206,11 +212,10 @@ def test_process_current_screen_reports_ui_busy_suppressed_recovery(monkeypatch)
 def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatch):
     manager = make_event_manager()
     manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
-    manager._consecutive_unknown_pages = 10
+    manager._consecutive_unknown_pages = 0
     pressed_back = []
     switch_calls = []
     process_calls = []
-    sleep_calls = []
 
     async def fake_process_once(page_source):
         process_calls.append(page_source)
@@ -219,15 +224,10 @@ def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatc
     async def fake_wait_ready(**_kwargs):
         return "<ready />"
 
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-        return None
-
     manager._process_events_once = fake_process_once
     manager._wait_page_source_ready_async = fake_wait_ready
     manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
     manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
-    monkeypatch.setattr("ushareiplay.managers.event_manager.asyncio.sleep", fake_sleep)
 
     outcome = asyncio.run(manager.react_to_page("<initial />"))
 
@@ -238,13 +238,14 @@ def test_process_current_screen_reports_unknown_page_recovery_actions(monkeypatc
             "suppressed": None,
             "pressed_back": True,
             "ready_rechecked": True,
-            "backoff_seconds": 0.5,
+            "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
     assert process_calls == ["<initial />", "<ready />"]
     assert switch_calls == [True]
     assert pressed_back == [True]
-    assert sleep_calls == [0.5]
+    assert manager._consecutive_unknown_pages == 1
 
 
 def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_handles_event():
@@ -277,10 +278,95 @@ def test_react_to_page_reports_second_pass_trigger_count_when_ready_recheck_hand
             "pressed_back": False,
             "ready_rechecked": True,
             "backoff_seconds": 0,
+            "force_closed": False,
         },
     }
     assert process_calls == ["<initial />", "<ready />"]
     assert switch_calls == [True]
+
+
+def test_react_to_page_force_closes_app_on_reaching_consecutive_threshold():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._consecutive_unknown_pages = 9
+    pressed_back = []
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return "<ready />"
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True)
+
+    outcome = asyncio.run(manager.react_to_page("<initial />"))
+
+    assert outcome["recovery"]["pressed_back"] is True
+    assert outcome["recovery"]["force_closed"] is True
+    assert pressed_back == [True]
+    assert closed_app == [True]
+    assert manager._consecutive_unknown_pages == 0
+
+
+def test_react_to_page_resets_counter_and_suppresses_back_when_switched_from_launcher():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._consecutive_unknown_pages = 5
+    switch_calls = []
+    pressed_back = []
+    closed_app = []
+
+    launcher_source = """
+    <hierarchy>
+      <node package="com.sec.android.app.launcher" resource-id="com.sec.android.app.launcher:id/workspace" />
+    </hierarchy>
+    """
+
+    async def fake_process_once(_page_source):
+        return 0
+
+    async def fake_wait_ready(**_kwargs):
+        return "<ready />"
+
+    manager._process_events_once = fake_process_once
+    manager._wait_page_source_ready_async = fake_wait_ready
+    manager.handler.key_actions.switch_to_app = lambda: switch_calls.append(True)
+    manager.handler.key_actions.press_back = lambda: pressed_back.append(True)
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True)
+
+    outcome = asyncio.run(manager.react_to_page(launcher_source))
+
+    assert manager._consecutive_unknown_pages == 0
+    assert outcome["recovery"]["suppressed"] == "switched_from_non_soul"
+    assert outcome["recovery"]["pressed_back"] is False
+    assert outcome["recovery"]["force_closed"] is False
+    assert switch_calls == [True]
+    assert pressed_back == []
+    assert closed_app == []
+
+
+def test_react_to_page_resets_counter_when_event_triggers():
+    manager = make_event_manager()
+    manager._runtime = SimpleNamespace(is_ui_busy=lambda: False)
+    manager._consecutive_unknown_pages = 9
+    closed_app = []
+
+    async def fake_process_once(_page_source):
+        return 1
+
+    manager._process_events_once = fake_process_once
+    manager.handler.key_actions.close_app = lambda: closed_app.append(True)
+
+    outcome = asyncio.run(manager.react_to_page("<initial />"))
+
+    assert outcome["triggered_count"] == 1
+    assert manager._consecutive_unknown_pages == 0
+    assert outcome["recovery"]["force_closed"] is False
+    assert closed_app == []
 
 
 def test_status_reporter_uses_supplied_screen_description():
