@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import traceback
@@ -149,6 +150,9 @@ class PackCommand(BaseCommand):
             use = self.handler.element_finder.wait_for_element_clickable('use_pack')
             if not use:
                 return {'error': '福袋未选中，使用按钮不可用'}
+            if os.getenv("VERIFY_ONLY_PACK") == "1":
+                self.handler.logger.info(f"[VERIFY_ONLY] 已检测到使用按钮可用（目标 {target[0]} 级福袋），按验证要求不点击开启并安全关闭抽屉")
+                return {'message': f'[验证成功] 已检测到{target[0]}级福袋使用按钮，已安全关闭'}
             use.click()
             used = True
             self.handler.logger.info(f'已开启 {target[0]} 级福袋')

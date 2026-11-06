@@ -1285,6 +1285,21 @@ async def test_pack_open_waits_for_countdown_options_to_render(mock_controller):
     assert parts.options[3].clicks == 1  # 5分钟
 
 
+@pytest.mark.asyncio
+async def test_pack_open_verify_only_detects_use_and_safely_closes_drawer(mock_controller, monkeypatch):
+    """VERIFY_ONLY_PACK=1 模式下检测到使用按钮后不点击，安全关闭抽屉。"""
+    monkeypatch.setenv("VERIFY_ONLY_PACK", "1")
+    parts = _pack_setup(mock_controller, [(1, "初级福袋")], countdown="即刻抢 | 所有人")
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(
+        MessageInfo(content=":pack open 1", nickname="Tester"), ["open", "1"]
+    )
+
+    assert result == {"message": "[验证成功] 已检测到1级福袋使用按钮，已安全关闭"}
+    assert parts.use.clicks == 0
+    assert mock_controller.soul_handler.gesture_handler.click_element_at.call_count >= 1
+
+
 # --- 权限 ---
 
 
