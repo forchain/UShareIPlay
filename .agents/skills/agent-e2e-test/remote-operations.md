@@ -8,6 +8,6 @@ Run `remote-status` when production behavior, a stale remote-silence proof, or r
 
 ## Pause and recovery
 
-Before a local run that could contend for the shared device, use `remote-pause`. It discovers UShareIPlay processes rooted at the deployment path and sends `SIGINT`; a successful pause records a local session receipt. When it cannot pause every discovered process, preserve the status and logs, report the PIDs, and ask the user before `remote-force-stop --confirm`.
+Before a local run that could contend for the shared device, use `remote-pause`. It queues a `!stop` command in the deployment's `.agent/commands/` spool, and the runtime treats `!stop` as a toggle: the service pauses but stays alive. A successful pause records a local session receipt. When it cannot pause every discovered process, preserve the status and logs, report the PIDs, and ask the user before `remote-force-stop --confirm`.
 
-Restore only a remote service paused by the current E2E session. If automatic discovery cannot prove a safe restart method, leave it paused and report the recovery blocker.
+Restore only a remote service paused by the current E2E session. `remote-resume` first looks for a live process at the deployment path: if one is alive it queues another `!stop` so that same process resumes, and only when nothing is alive does it start a new service. If automatic discovery cannot prove a safe restart method, leave it paused and report the recovery blocker.
