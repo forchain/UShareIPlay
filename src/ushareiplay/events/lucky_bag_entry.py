@@ -137,19 +137,10 @@ class LuckyBagEntryEvent(BaseEvent):
             entry.click()
             self.logger.info("已点击派对福袋入口，等待领取窗口弹出...")
 
-            deadline = self._clock() + self.claim_timeout
-            claim_btn = None
-
-            while self._clock() < deadline:
-                for candidate_key in ("lucky_bag_claim_operation", "lucky_bag_claim_open"):
-                    btn = self.handler.element_finder.wait_for_element_clickable(
-                        candidate_key, timeout=1
-                    )
-                    if btn:
-                        claim_btn = btn
-                        break
-                if claim_btn:
-                    break
+            _key, claim_btn = self.handler.element_finder.wait_for_any_element(
+                ["lucky_bag_claim_operation", "lucky_bag_claim_open"],
+                timeout=int(self.claim_timeout),
+            )
 
             if claim_btn:
                 claim_btn.click()

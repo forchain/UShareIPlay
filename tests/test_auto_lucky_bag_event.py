@@ -137,14 +137,8 @@ async def test_lucky_bag_claim_success_with_operation_button():
     entry_btn = DummyElement("lucky_bag_entry")
     op_btn = DummyElement("lucky_bag_claim_operation")
 
-    def mock_wait_clickable(key, timeout=None):
-        if key == "lucky_bag_entry":
-            return entry_btn
-        if key == "lucky_bag_claim_operation":
-            return op_btn
-        return None
-
-    handler.element_finder.wait_for_element_clickable.side_effect = mock_wait_clickable
+    handler.element_finder.wait_for_element_clickable.return_value = entry_btn
+    handler.element_finder.wait_for_any_element.return_value = ("lucky_bag_claim_operation", op_btn)
 
     event = LuckyBagEntryEvent(handler, clock=clock)
     await event.handle("lucky_bag_entry", MagicMock())
@@ -166,14 +160,8 @@ async def test_lucky_bag_claim_success_with_open_fortune_button():
     entry_btn = DummyElement("lucky_bag_entry")
     open_btn = DummyElement("lucky_bag_claim_open")
 
-    def mock_wait_clickable(key, timeout=None):
-        if key == "lucky_bag_entry":
-            return entry_btn
-        if key == "lucky_bag_claim_open":
-            return open_btn
-        return None
-
-    handler.element_finder.wait_for_element_clickable.side_effect = mock_wait_clickable
+    handler.element_finder.wait_for_element_clickable.return_value = entry_btn
+    handler.element_finder.wait_for_any_element.return_value = ("lucky_bag_claim_open", open_btn)
 
     event = LuckyBagEntryEvent(handler, clock=clock)
     await event.handle("lucky_bag_entry", MagicMock())
@@ -193,14 +181,8 @@ async def test_lucky_bag_claim_timeout_presses_back():
     handler = make_dummy_handler()
     entry_btn = DummyElement("lucky_bag_entry")
 
-    def mock_wait_clickable(key, timeout=None):
-        if key == "lucky_bag_entry":
-            return entry_btn
-        # Modal buttons never appear
-        clock.advance(2.0)
-        return None
-
-    handler.element_finder.wait_for_element_clickable.side_effect = mock_wait_clickable
+    handler.element_finder.wait_for_element_clickable.return_value = entry_btn
+    handler.element_finder.wait_for_any_element.return_value = (None, None)
 
     event = LuckyBagEntryEvent(handler, clock=clock)
     await event.handle("lucky_bag_entry", MagicMock())
@@ -220,15 +202,12 @@ async def test_lucky_bag_claim_timeout_skips_back_when_soul_left_foreground():
     handler = make_dummy_handler()
     entry_btn = DummyElement("lucky_bag_entry")
 
-    def mock_wait_clickable(key, timeout=None):
-        if key == "lucky_bag_entry":
-            return entry_btn
-        # Modal buttons never appear, and the user switches to another app meanwhile.
+    handler.element_finder.wait_for_element_clickable.return_value = entry_btn
+    def mock_wait_any(keys, timeout=None):
         handler.driver.current_package = "com.tencent.mobileqq"
-        clock.advance(2.0)
-        return None
+        return None, None
 
-    handler.element_finder.wait_for_element_clickable.side_effect = mock_wait_clickable
+    handler.element_finder.wait_for_any_element.side_effect = mock_wait_any
 
     event = LuckyBagEntryEvent(handler, clock=clock)
     await event.handle("lucky_bag_entry", MagicMock())
