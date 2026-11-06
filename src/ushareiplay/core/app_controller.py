@@ -728,6 +728,14 @@ class AppController(Singleton):
                 self.soul_handler.log_error(
                     f"[start_monitoring]stale element, traceback: {traceback.format_exc()}"
                 )
+            except asyncio.CancelledError:
+                # ui_session 在 !stop 暂停态下用 CancelledError 硬中断在途 UI 操作。
+                # 它是 BaseException，事件链路里的 except Exception 都接不住；必须在
+                # 循环边界消费掉，否则会一路逃出 asyncio.run 把进程打死。真正的任务
+                # 取消（关停）仍然照常向上传播。
+                if asyncio.current_task().cancelling() or not self.runtime_input.paused:
+                    raise
+                self.logger.info("!stop 中断了本轮处理，运行时进入暂停")
             except WebDriverException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]unknown error, traceback: {traceback.format_exc()}"

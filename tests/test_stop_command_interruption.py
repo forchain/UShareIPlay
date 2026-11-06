@@ -159,3 +159,71 @@ async def test_stop_command_halts_element_finder_subsequent_ui_calls():
     assert finder.wait_for_element("any_key") is None
     assert finder.wait_for_element_clickable("any_key") is None
     assert finder.try_find_element("any_key") is None
+
+
+@pytest.mark.asyncio
+async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch):
+    """!stop 在事件处理中途触发时，ui_session 抛出的中断信号只能结束本轮处理。
+
+    `CancelledError` 是 BaseException，事件链路里所有 `except Exception` 都接不住；
+    若监控循环也不消费它，它就会一路逃出 `asyncio.run`，进程带着 traceback 退出。
+    """
+    from types import SimpleNamespace
+    from ushareiplay.core.app_controller import AppController
+
+    async def _noop(*_args, **_kwargs):
+        return None
+
+    controller = AppController.__new__(AppController)
+    controller.logger = MagicMock()
+    controller.soul_handler = SimpleNamespace(
+        error_count=0,
+        log_error=lambda *_a, **_kw: None,
+        logger=MagicMock(),
+    )
+    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+    controller.timer_manager = SimpleNamespace(
+        start=_noop, is_running=lambda: True
+    )
+    controller.in_console_mode = False
+    controller.is_running = True
+    controller._drain_agent_command_spool = lambda: None
+    controller._runtime_queue_drainer = None
+    controller.runtime_input = SimpleNamespace(paused=False, drain=_noop)
+
+    screens = []
+
+    async def process_current_screen():
+        screens.append(True)
+        if len(screens) == 1:
+            # 模拟事件处理途中控制台线程派发 !stop，随后的嵌套 ui_session 被拒。
+            controller.runtime_input.paused = True
+            raise asyncio.CancelledError(
+                "UI session 'state:scrape_online_users' blocked: runtime paused by !stop"
+            )
+        return {"page_source": "", "screen": {}, "triggered_count": 0}
+
+    controller.event_manager = SimpleNamespace(
+        process_current_screen=process_current_screen
+    )
+
+    async def fake_sleep(*_args, **_kwargs):
+        if controller.runtime_input.paused:
+            controller.is_running = False
+
+    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.threading.Thread",
+        lambda target: SimpleNamespace(daemon=False, start=lambda: None),
+    )
+    monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
+    monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
+    monkeypatch.setattr(AppController, "_detect_initial_room_state", lambda _self: _noop())
+    monkeypatch.setattr(
+        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
+        lambda: SimpleNamespace(load_keywords_from_config=_noop),
+    )
+
+    # 不应抛出：中断信号在监控循环边界被消费，进程进入暂停而非退出。
+    await controller.start_monitoring()
+    assert screens == [True]
