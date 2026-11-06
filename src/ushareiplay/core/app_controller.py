@@ -381,10 +381,10 @@ class AppController(Singleton):
                 if self.in_console_mode:
                     user_input = input("Console> ")
                     if user_input.strip():
-                        if not self._dispatch_meta_if_needed(user_input):
-                            self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
                 else:
                     user_input = input("")
                     if not user_input.strip():
@@ -395,16 +395,16 @@ class AppController(Singleton):
                         finally:
                             muter.unmute()
                         if command.strip():
-                            if not self._dispatch_meta_if_needed(command):
-                                self.input_queue.put((command, "console"))
                             if self.logger:
                                 self.logger.critical(f"{command}")
+                            if not self._dispatch_meta_if_needed(command):
+                                self.input_queue.put((command, "console"))
                     else:
                         # User directly entered something without pressing Enter first
-                        if not self._dispatch_meta_if_needed(user_input):
-                            self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
             except UnicodeDecodeError as e:
                 muter.unmute()
                 if self.logger:

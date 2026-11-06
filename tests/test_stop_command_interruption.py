@@ -359,11 +359,20 @@ def test_console_prompt_stop_logs_critical_paused(monkeypatch):
     monkeypatch.setattr("builtins.input", fake_input)
     controller._console_input()
 
-    assert any("CRITICAL:paused: True" in line for line in logs)
+    # 验证日志时序：先记录接收到的控制台命令 !stop，再记录状态切换 paused: True
+    assert logs == [
+        "CRITICAL:!stop",
+        "CRITICAL:paused: True",
+    ]
 
     controller.is_running = True
     inputs = iter(["", "!stop"])
     controller._console_input()
-    assert any("CRITICAL:paused: False" in line for line in logs)
+    assert logs == [
+        "CRITICAL:!stop",
+        "CRITICAL:paused: True",
+        "CRITICAL:!stop",
+        "CRITICAL:paused: False",
+    ]
 
 
