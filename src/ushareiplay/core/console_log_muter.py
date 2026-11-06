@@ -44,9 +44,15 @@ class ConsoleLogMuter(logging.Filter):
             return self._muted
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Return False to drop the record if muted, True otherwise."""
+        """Return False to drop the record if muted, True otherwise.
+
+        CRITICAL logs are always delivered so critical state transitions
+        and administrative commands are never silenced.
+        """
         with self._mutex:
-            return not self._muted
+            if not self._muted:
+                return True
+            return record.levelno >= logging.CRITICAL
 
     @contextmanager
     def paused(self):

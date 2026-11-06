@@ -185,6 +185,9 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
             if self.drain_count >= 3:
                 controller.is_running = False
 
+        def register_interruption_hook(self, _hook):
+            pass
+
     from queue import Queue
     controller._runtime_queue_drainer = _Drainer()
     controller.input_queue = Queue()

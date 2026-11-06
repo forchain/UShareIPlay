@@ -424,8 +424,7 @@ class CommandManager(Singleton):
           是裸文本，`;` 拆分与 `{user_name}` 替换正是它们要的，照旧走
           `route_queue_text`。
 
-        两种来源各自内部保持队列顺序，但一个 tick 之内先执行 queue 文法来源、
-        再执行 intake 来源 —— 命令彼此独立，混排执行顺序没有语义差别。
+        drainer 按队列顺序逐条调用本方法，两种来源各自保留自己的文法规则。
 
         Returns:
             本次路由出去执行的命令条数（不是成功条数）。

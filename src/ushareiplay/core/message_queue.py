@@ -51,7 +51,7 @@ class MessageQueue(Singleton):
     def get_queue_size(self) -> int:
         """获取队列大小"""
         return self._queue.qsize()
-    
+
     async def clear_queue(self):
         """清空队列"""
         while not self._queue.empty():

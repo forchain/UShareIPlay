@@ -113,7 +113,7 @@ class AppController(Singleton):
             obs=self.obs,
         )
         self.command_runtime_context = CommandRuntimeContext(controller=self)
-        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock)
+        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock, controller=self)
 
         self._runtime_queue_drainer = None
         self._agent_command_spool = AgentCommandSpool(
@@ -121,6 +121,7 @@ class AppController(Singleton):
             command_dir=self.agent_command_dir,
             obs=self.obs,
             config=self.config,
+            dispatch_meta=self._dispatch_meta_if_needed,
         )
         self._status_reporter = StatusReporter(
             config=self.config,
@@ -169,6 +170,10 @@ class AppController(Singleton):
         会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
         ui_lock.locked()，兜底 back 的抑制语义因此不变。
         """
+        ri = getattr(self, "runtime_input", None)
+        if ri and ri.paused:
+            raise asyncio.CancelledError(f"UI session '{reason}' blocked: runtime paused by !stop")
+
         task = asyncio.current_task()
         if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
             self._ui_lock_depth += 1
@@ -340,6 +345,27 @@ class AppController(Singleton):
             self.logger.info("Exiting console mode...")
             self.in_console_mode = False
 
+    def _dispatch_meta_if_needed(self, text: str) -> bool:
+        """控制台线程入口：立即切换暂停标志，定时器/中断钩子留给事件循环。
+
+        QQ Music 的 UI 编排是同步 Appium 调用，会把事件循环堵住整段操作时长；
+        暂停标志必须在这里同步落下，同步 UI 代码下一次查 `is_interrupted()`
+        才能看到。返回 True 表示已消费，不要再投递到输入队列（否则会被再切换
+        一次）。
+        """
+        if not self.runtime_input:
+            return False
+        loop = getattr(self, "loop", None)
+        if not (loop and loop.is_running()):
+            return False
+        paused = self.runtime_input.toggle_paused(text.strip())
+        if paused is None:
+            return False
+        asyncio.run_coroutine_threadsafe(
+            self.runtime_input.apply_pause_side_effects(paused), loop
+        )
+        return True
+
     def _console_input(self):
         """Background thread for console input"""
         if hasattr(sys.stdin, "reconfigure"):
@@ -355,9 +381,10 @@ class AppController(Singleton):
                 if self.in_console_mode:
                     user_input = input("Console> ")
                     if user_input.strip():
-                        self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
                 else:
                     user_input = input("")
                     if not user_input.strip():
@@ -365,17 +392,19 @@ class AppController(Singleton):
                         muter.mute()
                         try:
                             command = input("Command> ")
-                            if command.strip():
-                                self.input_queue.put((command, "console"))
-                                if self.logger:
-                                    self.logger.critical(f"{command}")
                         finally:
                             muter.unmute()
+                        if command.strip():
+                            if self.logger:
+                                self.logger.critical(f"{command}")
+                            if not self._dispatch_meta_if_needed(command):
+                                self.input_queue.put((command, "console"))
                     else:
                         # User directly entered something without pressing Enter first
-                        self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
             except UnicodeDecodeError as e:
                 muter.unmute()
                 if self.logger:
@@ -402,6 +431,16 @@ class AppController(Singleton):
 
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
+
+    def _spool_input_loop(self) -> None:
+        """Background thread for agent command spool."""
+        while self.is_running:
+            try:
+                self._drain_agent_command_spool()
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"Spool input error: {e}")
+            time.sleep(0.05)
 
     async def _detect_initial_room_state(self):
         """启动时：找到房间 ID 并交给 PartyManager 核对（与运行期同一判定）。
@@ -547,13 +586,6 @@ class AppController(Singleton):
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
-            self._runtime_queue_drainer = RuntimeQueueDrainer(
-                handler=self.soul_handler,
-                command_manager=self.command_manager,
-                send_screen_message=self.message_dispatch.send_screen_message,
-                obs=self.obs,
-                logger=self.logger,
-            )
             self._status_reporter.soul_handler = self.soul_handler
             self._status_reporter.timer_manager = self.timer_manager
 
@@ -578,6 +610,36 @@ class AppController(Singleton):
             if self.logger:
                 self.logger.error(f"Error initializing handlers: {traceback.format_exc()}")
             raise
+
+    def _init_runtime_queue(self) -> None:
+        """构造运行时输入管线与队列 drainer。
+
+        drainer 需要管线来观察暂停状态并轮询 !stop，因此先建管线再接线；
+        !stop 的中断钩子在组合根显式注册一次。
+        """
+        self.runtime_input = RuntimeInputPipeline(
+            input_queue=self.input_queue,
+            room_owner_provider=lambda: self.room_owner,
+            logger=self.logger,
+            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
+            timer_manager=self.timer_manager,
+            obs=self.obs,
+            dump_artifacts=self._dump_readonly_artifacts,
+            reload_config=lambda: self.config_reload_manager.reload().render(),
+            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
+        )
+        self._runtime_queue_drainer = RuntimeQueueDrainer(
+            handler=self.soul_handler,
+            command_manager=self.command_manager,
+            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
+            obs=self.obs,
+            logger=self.logger,
+            runtime_input=self.runtime_input,
+            drain_agent_spool=self._drain_agent_command_spool,
+        )
+        self.runtime_input.register_interruption_hook(
+            self._runtime_queue_drainer.cancel_active_command
+        )
 
     def _build_config_reload_manager(self) -> ConfigReloadManager:
         """构造配置热重载的编排者（#469）。
@@ -642,22 +704,16 @@ class AppController(Singleton):
         input_thread = threading.Thread(target=self._console_input)
         input_thread.daemon = True
         input_thread.start()
+        spool_thread = threading.Thread(target=self._spool_input_loop)
+        spool_thread.daemon = True
+        spool_thread.start()
         self.logger.info("控制台输入线程已启动")
 
         # Detect initial room state on startup
         await self._detect_initial_room_state()
 
-        self.runtime_input = RuntimeInputPipeline(
-            input_queue=self.input_queue,
-            room_owner_provider=lambda: self.room_owner,
-            logger=self.logger,
-            send_screen_message=lambda text: self.message_dispatch.send_screen_message(text),
-            timer_manager=self.timer_manager,
-            obs=self.obs,
-            dump_artifacts=self._dump_readonly_artifacts,
-            reload_config=lambda: self.config_reload_manager.reload().render(),
-            is_admin=lambda name: RolePolicy(self.config).is_admin(name),
-        )
+        self._init_runtime_queue()
+        self.loop = asyncio.get_running_loop()
 
         self.logger.info("开始主监控循环...")
 
@@ -668,8 +724,8 @@ class AppController(Singleton):
                 await self.runtime_input.drain()
 
                 if self.runtime_input.paused:
-                    # 暂停时这里会连着下一圈：让出时间片，否则空转烧满一颗核
-                    await asyncio.sleep(0)
+                    # 暂停期间仍要轮询输入队列，等待 !start 恢复；让出时间片避免空转。
+                    await asyncio.sleep(0.5)
                     continue
 
                 if self._runtime_queue_drainer:
@@ -701,6 +757,14 @@ class AppController(Singleton):
                 self.soul_handler.log_error(
                     f"[start_monitoring]stale element, traceback: {traceback.format_exc()}"
                 )
+            except asyncio.CancelledError:
+                # ui_session 在 !stop 暂停态下用 CancelledError 硬中断在途 UI 操作。
+                # 它是 BaseException，事件链路里的 except Exception 都接不住；必须在
+                # 循环边界消费掉，否则会一路逃出 asyncio.run 把进程打死。真正的任务
+                # 取消（关停）仍然照常向上传播。
+                if asyncio.current_task().cancelling() or not self.runtime_input.paused:
+                    raise
+                self.logger.info("!stop 中断了本轮处理，运行时进入暂停")
             except WebDriverException:
                 self.soul_handler.log_error(
                     f"[start_monitoring]unknown error, traceback: {traceback.format_exc()}"

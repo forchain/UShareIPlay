@@ -31,9 +31,19 @@ class ElementFinder:
     def logger(self):
         return self.owner.logger
 
+    def is_interrupted(self) -> bool:
+        ctrl = getattr(self.owner, "controller", None)
+        ri = getattr(ctrl, "runtime_input", None)
+        return bool(ri and ri.paused)
+
     @with_driver_recovery(op="read")
     def wait_for_element(self, element_key: str, timeout: int = 10) -> WebElement:
         """Enhanced wait_for_element using just element key"""
+        if self.is_interrupted():
+            self.logger.warning(
+                f"UI wait_for_element skipped for '{element_key}': runtime paused by !stop"
+            )
+            return None
         try:
             locator_type, value = self._get_locator(element_key).appium
             element = WebDriverWait(self.driver, timeout).until(
@@ -79,6 +89,11 @@ class ElementFinder:
             self, element_key: str, timeout: int = 10
     ) -> WebElement:
         """Enhanced wait_for_element using just element key"""
+        if self.is_interrupted():
+            self.logger.warning(
+                f"UI wait_for_element_clickable skipped for '{element_key}': runtime paused by !stop"
+            )
+            return None
         try:
             locator_type, value = self._get_locator(element_key).appium
             element = WebDriverWait(self.driver, timeout).until(
@@ -131,6 +146,8 @@ class ElementFinder:
             self, element_key: str, log=False, clickable=False
     ) -> WebElement:
         """Enhanced try_find_element using just element key"""
+        if self.is_interrupted():
+            return None
         try:
             if log:
                 self.logger.info(f"Looking for element '{element_key}'")
@@ -348,8 +365,14 @@ class ElementFinder:
 
         Returns:
             (key, element): 若找到则返回对应的元素key和元素对象
-            (None, None): 超时或未找到时返回
+            (None, None): 超时、未找到或运行时已暂停时返回
         """
+        if self.is_interrupted():
+            self.logger.warning(
+                f"UI wait_for_any_element skipped for {element_keys}: runtime paused by !stop"
+            )
+            return None, None
+
         locators = []
         for key in element_keys:
             locator = self.config.maybe_element(key)
@@ -362,6 +385,8 @@ class ElementFinder:
             return None, None
 
         def _condition(driver):
+            if self.is_interrupted():
+                return None, None
             for key, locator in locators:
                 try:
                     element = driver.find_element(*locator)

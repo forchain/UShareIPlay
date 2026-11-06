@@ -1,10 +1,11 @@
 import asyncio
+from collections import deque
 import queue
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
 import json
-
+import threading
 from ushareiplay.core.chat_intake import (
     ChatIntakeKind,
     command_message,
@@ -75,33 +76,122 @@ def route_queue_text(
 class RuntimeQueueDrainer:
     """Drain MessageQueue from runtime loop (single authoritative path)."""
 
-    def __init__(self, *, handler, command_manager, send_screen_message, obs=None, logger=None):
+    def __init__(
+        self,
+        *,
+        handler,
+        command_manager,
+        send_screen_message,
+        obs=None,
+        logger=None,
+        runtime_input=None,
+        drain_agent_spool=None,
+    ):
         self.handler = handler
         self.command_manager = command_manager
         self.send_screen_message = send_screen_message
         self.obs = obs
         self.logger = logger or getattr(handler, "logger", None)
+        self.runtime_input = runtime_input
+        self.drain_agent_spool = drain_agent_spool
+        self.active_task: asyncio.Task | None = None
+
+    def is_paused(self) -> bool:
+        return bool(self.runtime_input and self.runtime_input.paused)
+
+    def cancel_active_command(self) -> None:
+        """中断当前执行中的命令任务。"""
+        if self.active_task and not self.active_task.done():
+            self.active_task.cancel()
 
     async def drain(self) -> tuple[int, int]:
-        queue_messages = await MessageQueue.instance().get_all_messages()
-        if not queue_messages:
+        if self.is_paused():
             return 0, 0
 
-        if self.obs:
-            self.obs.emit("queue.drain.start", ctx={"count": len(queue_messages)})
+        queue = MessageQueue.instance()
+        items = list((await queue.get_all_messages()).values())
+        if not items:
+            return 0, 0
 
-        command_count = await self.command_manager.execute_runtime_queue_messages(
-            queue_messages.values(),
-            send_screen_message=self.send_screen_message,
-        )
+        ordered_items = deque(items)
+
+        if self.obs:
+            self.obs.emit("queue.drain.start", ctx={"count": len(ordered_items)})
+
+        drained_count = 0
+        total_commands = 0
+
+        try:
+            while ordered_items and not self.is_paused():
+                message_info = ordered_items.popleft()
+                drained_count += 1
+
+                self.active_task = asyncio.create_task(
+                    self.command_manager.execute_runtime_queue_messages(
+                        [message_info],
+                        send_screen_message=self.send_screen_message,
+                    )
+                )
+
+                watcher = None
+                if self.runtime_input or self.drain_agent_spool:
+                    watcher = asyncio.create_task(self._watch_active_command())
+
+                try:
+                    total_commands += await self.active_task
+                except asyncio.CancelledError:
+                    # 只有 drainer 自己发起的取消才是 !stop 的硬中断；服务停止等
+                    # 外部取消必须继续向上传播。
+                    if asyncio.current_task().cancelling():
+                        raise
+                    if self.logger:
+                        self.logger.warning(
+                            f"Command '{message_info.content}' cancelled by administrative !stop"
+                        )
+                    self._restore_foreground()
+                    break
+                finally:
+                    if watcher:
+                        watcher.cancel()
+                        try:
+                            await watcher
+                        except asyncio.CancelledError:
+                            pass
+                    if self.active_task and not self.active_task.done():
+                        self.active_task.cancel()
+                        try:
+                            await self.active_task
+                        except asyncio.CancelledError:
+                            pass
+                    self.active_task = None
+        finally:
+            # 未启动的命令完好保留在 MessageQueue 中，待 !start 恢复后继续执行
+            while ordered_items:
+                await queue.put_message(ordered_items.popleft())
 
         if self.obs:
             self.obs.emit(
                 "queue.drain.end",
-                ctx={"count": len(queue_messages), "command_count": command_count},
+                ctx={"count": drained_count, "command_count": total_commands},
             )
 
-        return len(queue_messages), command_count
+        return drained_count, total_commands
+
+    async def _watch_active_command(self) -> None:
+        """命令执行期间只处理 !stop / !start，其余输入原样留在队列里。"""
+        while self.active_task and not self.active_task.done():
+            if self.drain_agent_spool:
+                self.drain_agent_spool()
+            if self.runtime_input:
+                await self.runtime_input.drain_meta_only()
+            if self.is_paused():
+                self.cancel_active_command()
+                break
+            await asyncio.sleep(0.02)
+
+    def _restore_foreground(self) -> None:
+        """后置恢复：确保应用切回 Soul 房间前台。"""
+        self.handler.key_actions.switch_to_app()
 
 
 class RuntimeInputPipeline:
@@ -115,6 +205,9 @@ class RuntimeInputPipeline:
     管线只做输入侧的事：把队列排空、把文本路由到 `MessageQueue` 或公屏。
     命令的执行仍然由 `RuntimeQueueDrainer` + `CommandManager` 负责。
     """
+
+    # `!stop` / `!start` 的两种写法；控制台即时派发与队列消费共用一份。
+    PAUSE_COMMANDS = ('!stop', 'stop', '!start', 'start')
 
     def __init__(
         self,
@@ -139,6 +232,12 @@ class RuntimeInputPipeline:
         self._reload_config = reload_config
         self._is_admin = is_admin
         self.paused = False
+        self._interruption_hooks = []
+
+    def register_interruption_hook(self, hook) -> None:
+        """注册中断钩子，在收到 !stop 时触发。"""
+        if hook not in self._interruption_hooks:
+            self._interruption_hooks.append(hook)
 
     async def drain(self) -> None:
         """排空队列中的条目（非阻塞；空队列立即返回）。"""
@@ -148,6 +247,67 @@ class RuntimeInputPipeline:
             except queue.Empty:
                 return
             await self._handle_item(item)
+
+    async def drain_meta_only(self) -> None:
+        """命令执行期间的并发监听：只消费 !stop / !start，其余条目原样留在队列。"""
+        retained = []
+        while True:
+            try:
+                item = self.input_queue.get_nowait()
+            except queue.Empty:
+                break
+            message, source, nickname = self._normalize(item)
+            if message in self.PAUSE_COMMANDS:
+                await self._handle_meta_command(message, source, nickname)
+            else:
+                retained.append(item)
+        for item in retained:
+            self.input_queue.put(item)
+
+    def toggle_paused(self, message: str) -> bool | None:
+        """同步切换暂停标志，返回新状态；非启停命令或状态未变时返回 None。
+
+        `!stop` 是 toggle。控制台线程直接调用它：QQ Music 的 UI 编排全是同步
+        Appium 调用，会把事件循环整段堵住；暂停标志若留给循环里的协程去写，
+        要等操作做完才生效 —— !stop 就形同虚设。
+        """
+        if message not in self.PAUSE_COMMANDS:
+            return None
+        paused = not self.paused if message in ('!stop', 'stop') else False
+        if paused == self.paused:
+            return None
+        self.paused = paused
+        self.logger.critical(f'paused: {self.paused}')
+        return paused
+
+    async def apply_pause_side_effects(self, paused: bool) -> None:
+        """补暂停标志之外的副作用（定时器与中断钩子），必须在事件循环里执行。
+
+        `paused` 用切换时捕获的状态，不在这里读 `self.paused`：事件循环被堵住
+        期间控制台可能又翻转了一次，读实时值会把旧状态应用错。
+        """
+        timer_mgr = self.timer_manager
+        if timer_mgr is None:
+            from ushareiplay.managers.timer_manager import TimerManager
+            if getattr(TimerManager, "_instance", None):
+                timer_mgr = TimerManager.instance()
+
+        if paused:
+            if timer_mgr and hasattr(timer_mgr, "pause"):
+                timer_mgr.pause()
+            for hook in self._interruption_hooks:
+                try:
+                    res = hook()
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as exc:
+                    self.logger.error(f"Error in interruption hook: {exc}")
+            return
+
+        if timer_mgr and hasattr(timer_mgr, "resume"):
+            res = timer_mgr.resume()
+            if asyncio.iscoroutine(res):
+                await res
 
     def _normalize(self, item) -> tuple[str, str, str]:
         """dict / tuple / 裸字符串 → (message, source, nickname)。
@@ -178,37 +338,10 @@ class RuntimeInputPipeline:
 
     async def _handle_meta_command(self, message: str, source: str, nickname: str) -> bool:
         """处理 `!stop` / `!timer` / `!dump` / `!reload`；返回 True 表示已被消费。"""
-        if message in ('!stop', 'stop'):
-            self.paused = not self.paused
-            self.logger.critical(f'paused: {self.paused}')
-            timer_mgr = self.timer_manager
-            if timer_mgr is None:
-                from ushareiplay.managers.timer_manager import TimerManager
-                if getattr(TimerManager, "_instance", None):
-                    timer_mgr = TimerManager.instance()
-            if timer_mgr:
-                if self.paused:
-                    if hasattr(timer_mgr, "pause"):
-                        timer_mgr.pause()
-                else:
-                    if hasattr(timer_mgr, "resume"):
-                        res = timer_mgr.resume()
-                        if asyncio.iscoroutine(res):
-                            await res
-            return True
-
-        if self.paused and message in ('!start', 'start'):
-            self.paused = False
-            self.logger.critical(f'paused: {self.paused}')
-            timer_mgr = self.timer_manager
-            if timer_mgr is None:
-                from ushareiplay.managers.timer_manager import TimerManager
-                if getattr(TimerManager, "_instance", None):
-                    timer_mgr = TimerManager.instance()
-            if timer_mgr and hasattr(timer_mgr, "resume"):
-                res = timer_mgr.resume()
-                if asyncio.iscoroutine(res):
-                    await res
+        if message in self.PAUSE_COMMANDS:
+            paused = self.toggle_paused(message)
+            if paused is not None:
+                await self.apply_pause_side_effects(paused)
             return True
 
         if message == '!timer':
@@ -295,13 +428,31 @@ class RuntimeInputPipeline:
 
 
 class AgentCommandSpool:
-    def __init__(self, *, input_queue, command_dir: Path, obs=None, config=None):
+    def __init__(
+        self,
+        *,
+        input_queue,
+        command_dir: Path,
+        obs=None,
+        config=None,
+        dispatch_meta=None,
+    ):
         self.input_queue = input_queue
         self.command_dir = command_dir
         self.obs = obs
         self.config = config
+        self.dispatch_meta = dispatch_meta
+        self._lock = threading.Lock()
 
     def drain(self) -> None:
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
+            self._do_drain()
+        finally:
+            self._lock.release()
+
+    def _do_drain(self) -> None:
         try:
             from ushareiplay.core.roles import RolePolicy
             owner = RolePolicy(self.config).room_owner
@@ -338,7 +489,6 @@ class AgentCommandSpool:
                 else:
                     payload = {"content": raw, "source": "agent_spool", "nickname": owner}
 
-                self.input_queue.put(payload)
                 if self.obs:
                     self.obs.emit(
                         "agent.inject.received",
@@ -348,6 +498,11 @@ class AgentCommandSpool:
                             "nickname": payload["nickname"],
                         },
                     )
+
+                if self.dispatch_meta and self.dispatch_meta(payload["content"]):
+                    continue
+
+                self.input_queue.put(payload)
         except Exception:
             if self.obs:
                 self.obs.emit(

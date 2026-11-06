@@ -67,6 +67,7 @@ def started_controller(initialized_test_singletons):
     controller.__init__(_real_config())
     controller.driver = MagicMock()
     controller._init_handlers()
+    controller._init_runtime_queue()
     yield controller
     Singleton.reset_all_instances()
 

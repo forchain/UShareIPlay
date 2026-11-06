@@ -1,7 +1,9 @@
 import asyncio
-from types import SimpleNamespace
 import logging
 from collections import deque
+from types import SimpleNamespace
+
+import pytest
 
 
 def _run(coro):
@@ -29,6 +31,7 @@ class _FakeHandler:
         self.logger = logging.getLogger("test_runtime_queue")
         self.config = {"logging": {"directory": "logs"}}
         self.controller = None
+        self.key_actions = SimpleNamespace(switch_to_app=lambda: True)
 
     def send_message(self, message):
         self.sent.append(message)
@@ -420,6 +423,7 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
 
     monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
     monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
+    monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
     monkeypatch.setattr(
         "ushareiplay.managers.keyword_manager.KeywordManager.instance",
         lambda: SimpleNamespace(load_keywords_from_config=_noop),
@@ -799,3 +803,310 @@ def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_
 
     assert fake_command_manager.received == []
     assert [m.content for m in _run(queue.get_all_messages()).values()] == ["$info"]
+
+
+# --------------------------------------------------------------------------
+# Issue #498: !stop 即时响应与硬中断测试
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue():
+    import queue
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+
+    await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
+    await msg_queue.put_message(MessageInfo(content=":quick_skip", nickname="Bob"))
+
+    slow_started = asyncio.Event()
+    slow_completed = False
+    executed_commands = []
+
+    class MockCommandManager:
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            nonlocal slow_completed
+            for msg in messages:
+                executed_commands.append(msg.content)
+                if msg.content == ":slow_search":
+                    slow_started.set()
+                    await asyncio.sleep(2.0)
+                    slow_completed = True
+            return len(messages)
+
+    input_q = queue.Queue()
+    logger = _FakeHandler().logger
+    pipeline = RuntimeInputPipeline(
+        input_queue=input_q,
+        room_owner_provider=lambda: "Owner",
+        logger=logger,
+        send_screen_message=lambda msg: None,
+    )
+
+    drainer = RuntimeQueueDrainer(
+        handler=_FakeHandler(),
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=logger,
+        runtime_input=pipeline,
+    )
+
+    # 1. 后台启动 drainer 任务
+    drain_task = asyncio.create_task(drainer.drain())
+
+    # 等待慢命令开始执行
+    await slow_started.wait()
+
+    # 2. 并发向输入队列注入 !stop
+    input_q.put({"content": "!stop", "source": "console"})
+
+    # 等待 drain_task 结束（被即时中断）
+    await drain_task
+
+    # 3. 验证执行中任务被硬中断，未执行完成
+    assert slow_completed is False
+    assert pipeline.paused is True
+
+    # 4. 验证后续未执行消息安全留在 MessageQueue 中
+    assert msg_queue.get_queue_size() == 1
+
+    # 暂停期间不会 drain 队列中的剩余项
+    drained_paused, count_paused = await drainer.drain()
+    assert (drained_paused, count_paused) == (0, 0)
+    assert msg_queue.get_queue_size() == 1
+
+    # 5. 验证再次输入 !stop 切换为解除暂停 (toggle)，并允许后续剩余消息执行完毕
+    input_q.put({"content": "!stop", "source": "console"})
+    await pipeline.drain()
+    assert pipeline.paused is False
+
+    drained_resumed, count_resumed = await drainer.drain()
+    assert (drained_resumed, count_resumed) == (1, 1)
+    assert msg_queue.get_queue_size() == 0
+    assert ":quick_skip" in executed_commands
+
+
+@pytest.mark.asyncio
+async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
+    import queue
+    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.managers.playback_muting import PlaybackMuting
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+    await msg_queue.put_message(MessageInfo(content=":play_song", nickname="Alice"))
+
+    class FakeMicManager:
+        def __init__(self):
+            self.active = True
+
+        def state(self):
+            return self.active
+
+        def set_active(self, active):
+            self.active = active
+            return {}
+
+        def ensure_active(self):
+            self.active = True
+            return {}
+
+    class FakeMusicManager:
+        def wait_for_playback_ready(self, **_kwargs):
+            return True
+
+    switched_to_app = [False]
+
+    class FakeKeyActions:
+        def switch_to_app(self):
+            switched_to_app[0] = True
+            return True
+
+    class FakeHandler:
+        def __init__(self):
+            self.key_actions = FakeKeyActions()
+            self.logger = logging.getLogger("test_safety")
+
+    handler = FakeHandler()
+    mic = FakeMicManager()
+    # 用真实的 PlaybackMuting.guard：取消时靠它的 except BaseException 恢复开麦。
+    muting = PlaybackMuting.initialize(
+        handler, music_manager=FakeMusicManager(), mic_manager=mic
+    )
+
+    # 真实 AppController.ui_session：取消时由它的 finally 释放锁。
+    controller = AppController.__new__(AppController)
+    controller.ui_lock = asyncio.Lock()
+    controller.logger = handler.logger
+    AppController._ui_lock_owner = None
+    AppController._ui_lock_depth = 0
+
+    started = asyncio.Event()
+
+    class MockCommandManager:
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            async with controller.ui_session("test"):
+                with muting.guard():
+                    started.set()
+                    await asyncio.sleep(5.0)
+
+    input_q = queue.Queue()
+    pipeline = RuntimeInputPipeline(
+        input_queue=input_q,
+        room_owner_provider=lambda: "Owner",
+        logger=handler.logger,
+        send_screen_message=lambda msg: None,
+    )
+    drainer = RuntimeQueueDrainer(
+        handler=handler,
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=handler.logger,
+        runtime_input=pipeline,
+    )
+
+    drain_task = asyncio.create_task(drainer.drain())
+    await started.wait()
+
+    # 执行中状态：锁被持有，麦克风已被闭麦保护
+    assert controller.ui_lock.locked() is True
+    assert mic.active is False
+
+    # 注入 !stop 中断
+    input_q.put({"content": "!stop", "source": "console"})
+    await drain_task
+
+    # 中断后状态恢复验证：
+    # 1. ui_lock 必须已被自动释放
+    assert controller.ui_lock.locked() is False
+    # 2. 麦克风状态必须已恢复
+    assert mic.active is True
+    # 3. 必须调用了切回 Soul 前台操作
+    assert switched_to_app[0] is True
+
+
+@pytest.mark.asyncio
+async def test_external_cancellation_propagates_and_cancels_active_command():
+    import queue
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+    await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
+    await msg_queue.put_message(MessageInfo(content=":quick_skip", nickname="Bob"))
+
+    started = asyncio.Event()
+    command_cancelled = []
+    switched_to_app = []
+
+    class MockCommandManager:
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            for msg in messages:
+                if msg.content == ":slow_search":
+                    started.set()
+                    try:
+                        await asyncio.sleep(5.0)
+                    except asyncio.CancelledError:
+                        command_cancelled.append(True)
+                        raise
+            return len(messages)
+
+    handler = _FakeHandler()
+    handler.key_actions = SimpleNamespace(switch_to_app=lambda: switched_to_app.append(True))
+
+    pipeline = RuntimeInputPipeline(
+        input_queue=queue.Queue(),
+        room_owner_provider=lambda: "Owner",
+        logger=handler.logger,
+        send_screen_message=lambda msg: None,
+    )
+    drainer = RuntimeQueueDrainer(
+        handler=handler,
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=handler.logger,
+        runtime_input=pipeline,
+    )
+
+    drain_task = asyncio.create_task(drainer.drain())
+    await started.wait()
+
+    # 外部取消（服务停止）不是 !stop：必须原样向上传播。
+    drain_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await drain_task
+
+    assert command_cancelled == [True]
+    assert switched_to_app == []
+    # 未启动的命令仍然保留在队列里。
+    assert msg_queue.get_queue_size() == 1
+
+
+@pytest.mark.asyncio
+async def test_watcher_consumes_only_stop_and_start_during_command():
+    import queue
+    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.models.message_info import MessageInfo
+
+    msg_queue = MessageQueue.instance()
+    await msg_queue.clear_queue()
+    await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
+
+    started = asyncio.Event()
+    screen = []
+    dumps = []
+
+    async def dump_artifacts(*, reason):
+        dumps.append(reason)
+
+    class MockCommandManager:
+        async def execute_runtime_queue_messages(self, messages, send_screen_message=None):
+            started.set()
+            await asyncio.sleep(5.0)
+            return len(messages)
+
+    handler = _FakeHandler()
+    handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
+
+    input_q = queue.Queue()
+    pipeline = RuntimeInputPipeline(
+        input_queue=input_q,
+        room_owner_provider=lambda: "Owner",
+        logger=handler.logger,
+        send_screen_message=screen.append,
+        dump_artifacts=dump_artifacts,
+    )
+    drainer = RuntimeQueueDrainer(
+        handler=handler,
+        command_manager=MockCommandManager(),
+        send_screen_message=lambda msg: None,
+        logger=handler.logger,
+        runtime_input=pipeline,
+    )
+
+    drain_task = asyncio.create_task(drainer.drain())
+    await started.wait()
+
+    # 命令执行期间注入的普通文本与 !dump 必须原样留在队列，不能上公屏或被执行。
+    input_q.put({"content": "hello", "source": "console"})
+    input_q.put({"content": "!dump", "source": "console"})
+    await asyncio.sleep(0.1)
+
+    assert screen == []
+    assert dumps == []
+
+    input_q.put({"content": "!stop", "source": "console"})
+    await drain_task
+
+    assert pipeline.paused is True
+    retained = [input_q.get_nowait() for _ in range(input_q.qsize())]
+    assert [item["content"] for item in retained] == ["hello", "!dump"]

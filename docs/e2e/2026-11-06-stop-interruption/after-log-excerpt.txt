@@ -1,0 +1,22 @@
+11-06 13:32:34 [I]_route_text:421 - agent_spool message added to queue: :lyrics 晴天
+11-06 13:32:35 [D]wait_for_element_clickable:102 - Found clickable element: input_box_entry
+11-06 13:32:36 [D]wait_for_element_clickable:102 - Found clickable element: input_box
+11-06 13:32:36 [D]wait_for_element_clickable:102 - Found clickable element: button_send
+11-06 13:32:37 [D]ui_session:191 - [ui_lock] acquired: command:lyrics
+11-06 13:32:37 [C]toggle_paused:280 - paused: True
+11-06 13:32:37 [I]query_music:276 - Switched to QQ Music app
+11-06 13:32:37 [I]navigate_to_element:54 - 开始导航到目标元素: search_box
+11-06 13:32:37 [D]navigate_to_element:58 - 导航尝试 1/10
+11-06 13:32:37 [W]wait_for_any_element:371 - UI wait_for_any_element skipped for ['play_all', 'play_all_playlist', 'play_all_compact', 'play_all_frame', 'fav_entry', 'search_box', 'go_back', 'minimize_screen', 'home_nav']: runtime paused by !stop
+11-06 13:32:37 [W]navigate_to_element:67 - 第 1 次尝试：未检测到任何元素
+11-06 13:32:38 [W]wait_for_element_clickable:93 - UI wait_for_element_clickable skipped for 'search_box': runtime paused by !stop
+11-06 13:32:38 [E]query_music:301 - failed to find search box
+11-06 13:32:38 [D]ui_session:197 - [ui_lock] released: command:lyrics
+11-06 13:32:38 [I]pause:52 - Timer manager paused
+11-06 13:32:38 [W]drain:148 - Command ':lyrics 晴天' cancelled by administrative !stop
+11-06 13:32:39 [I]_process_events_once:527 - Stopping event processing: runtime is paused by !stop
+11-06 13:32:43 [C]toggle_paused:280 - paused: False
+11-06 13:32:43 [I]resume:58 - Timer manager resumed
+11-06 13:32:47 [D]wait_for_element_clickable:102 - Found clickable element: input_box_entry
+11-06 13:32:49 [D]wait_for_element_clickable:102 - Found clickable element: input_box
+11-06 13:32:49 [D]wait_for_element_clickable:102 - Found clickable element: button_send
