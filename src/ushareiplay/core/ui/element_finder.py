@@ -365,8 +365,14 @@ class ElementFinder:
 
         Returns:
             (key, element): 若找到则返回对应的元素key和元素对象
-            (None, None): 超时或未找到时返回
+            (None, None): 超时、未找到或运行时已暂停时返回
         """
+        if self.is_interrupted():
+            self.logger.warning(
+                f"UI wait_for_any_element skipped for {element_keys}: runtime paused by !stop"
+            )
+            return None, None
+
         locators = []
         for key in element_keys:
             locator = self.config.maybe_element(key)
@@ -379,6 +385,8 @@ class ElementFinder:
             return None, None
 
         def _condition(driver):
+            if self.is_interrupted():
+                return None, None
             for key, locator in locators:
                 try:
                     element = driver.find_element(*locator)

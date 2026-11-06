@@ -1,0 +1,6 @@
+{"schema_version": 1, "ts": "2026-11-06T13:32:33+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": ":lyrics 晴天", "nickname": "Joyer"}}
+{"schema_version": 1, "ts": "2026-11-06T13:32:37+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": "!stop", "nickname": "Joyer"}}
+{"schema_version": 1, "ts": "2026-11-06T13:32:39+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": "!dump", "nickname": "Joyer"}}
+{"schema_version": 1, "ts": "2026-11-06T13:32:43+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": "!start", "nickname": "Joyer"}}
+{"schema_version": 1, "ts": "2026-11-06T13:33:16+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": "!stop", "nickname": "Joyer"}}
+{"schema_version": 1, "ts": "2026-11-06T13:33:29+08:00", "level": "INFO", "event": "agent.inject.received", "run_id": "20261106-133112-78e59e7d", "ctx": {"source": "agent_spool", "content": "!start", "nickname": "Joyer"}}

@@ -159,6 +159,43 @@ async def test_stop_command_halts_element_finder_subsequent_ui_calls():
     assert finder.wait_for_element("any_key") is None
     assert finder.wait_for_element_clickable("any_key") is None
     assert finder.try_find_element("any_key") is None
+    assert finder.wait_for_any_element(["any_key"]) == (None, None)
+
+
+def test_console_stop_sets_pause_flag_before_the_loop_is_free(monkeypatch):
+    """QQ Music 的同步 UI 编排会堵住事件循环，!stop 的标志不能在循环里等。
+
+    控制台线程必须同步落下暂停标志，否则同步 UI 代码下一次查
+    `is_interrupted()` 仍看不到暂停，!stop 对 QQ Music 形同虚设。
+    """
+    from ushareiplay.core.app_controller import AppController
+
+    pipeline = RuntimeInputPipeline(
+        input_queue=queue.Queue(),
+        room_owner_provider=lambda: "Owner",
+        logger=MagicMock(),
+        send_screen_message=lambda msg: None,
+    )
+    controller = AppController.__new__(AppController)
+    controller.runtime_input = pipeline
+    controller.loop = MagicMock()
+    controller.loop.is_running.return_value = True
+
+    deferred = []
+    monkeypatch.setattr(
+        "ushareiplay.core.app_controller.asyncio.run_coroutine_threadsafe",
+        lambda coro, loop: deferred.append(coro),
+    )
+
+    assert controller._dispatch_meta_if_needed("!stop") is True
+    # 标志立即生效，不依赖事件循环被调度；副作用（定时器/钩子）才延后。
+    assert pipeline.paused is True
+    assert len(deferred) == 1
+    for coro in deferred:
+        coro.close()
+
+    # 非启停命令不消费，仍走正常入队路径。
+    assert controller._dispatch_meta_if_needed(":play 晴天") is False
 
 
 @pytest.mark.asyncio
@@ -227,3 +264,40 @@ async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch)
     # 不应抛出：中断信号在监控循环边界被消费，进程进入暂停而非退出。
     await controller.start_monitoring()
     assert screens == [True]
+
+
+def test_agent_command_spool_dispatches_meta_stop_immediately(tmp_path):
+    """后台 spool 管道 (.agent/commands/*.cmd) 必须能即时派发 !stop，
+
+    这样在无交互终端运行（E2E、systemd 等）且 QQ Music 同步操作阻塞事件循环时，
+    后台通道注入的 !stop 也能立即生效，而不必留在队列里等到操作结束。
+    """
+    from ushareiplay.core.runtime_services import AgentCommandSpool
+
+    input_q = queue.Queue()
+    dispatched = []
+
+    def fake_dispatch_meta(text: str) -> bool:
+        if text.strip() in ("!stop", "stop", "!start", "start"):
+            dispatched.append(text.strip())
+            return True
+        return False
+
+    spool = AgentCommandSpool(
+        input_queue=input_q,
+        command_dir=tmp_path,
+        dispatch_meta=fake_dispatch_meta,
+    )
+
+    # 1. 写入普通命令与 !stop
+    (tmp_path / "1-cmd.cmd").write_text(":lyrics 晴天\n", encoding="utf-8")
+    (tmp_path / "2-stop.cmd").write_text("!stop\n", encoding="utf-8")
+
+    spool.drain()
+
+    # !stop 被 dispatch_meta 拦截消费，未入队
+    assert dispatched == ["!stop"]
+    assert input_q.qsize() == 1
+    item = input_q.get_nowait()
+    assert item["content"] == ":lyrics 晴天"
+

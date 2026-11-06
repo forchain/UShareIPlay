@@ -105,6 +105,7 @@ def test_console_input_flow_empty_enter_then_command(monkeypatch):
     muter.unmute()
 
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -143,6 +144,7 @@ def test_console_input_flow_direct_command_without_enter(monkeypatch):
     muter.unmute()
 
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -176,6 +178,7 @@ def test_console_input_flow_cancel_with_empty_enter(monkeypatch):
     muter.unmute()
 
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -205,6 +208,7 @@ def test_console_input_handles_unicode_decode_error_without_crashing(monkeypatch
     muter.unmute()
 
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -243,6 +247,7 @@ def test_console_input_handles_unicode_decode_error_in_command_prompt(monkeypatc
     muter.unmute()
 
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -272,6 +277,7 @@ def test_console_input_reconfigures_sys_stdin(monkeypatch):
     _console_input reconfigures sys.stdin to use errors='replace' if supported.
     """
     controller = AppController.__new__(AppController)
+    controller.runtime_input = None
     controller.is_running = False
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()

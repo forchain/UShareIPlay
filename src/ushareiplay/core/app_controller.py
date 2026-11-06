@@ -121,6 +121,7 @@ class AppController(Singleton):
             command_dir=self.agent_command_dir,
             obs=self.obs,
             config=self.config,
+            dispatch_meta=self._dispatch_meta_if_needed,
         )
         self._status_reporter = StatusReporter(
             config=self.config,
@@ -344,11 +345,26 @@ class AppController(Singleton):
             self.logger.info("Exiting console mode...")
             self.in_console_mode = False
 
-    def _dispatch_meta_if_needed(self, text: str) -> None:
-        if self.runtime_input and text.strip() in ('!stop', 'stop', '!start', 'start'):
-            loop = getattr(self, "loop", None)
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(self.runtime_input.drain_meta_only(), loop)
+    def _dispatch_meta_if_needed(self, text: str) -> bool:
+        """控制台线程入口：立即切换暂停标志，定时器/中断钩子留给事件循环。
+
+        QQ Music 的 UI 编排是同步 Appium 调用，会把事件循环堵住整段操作时长；
+        暂停标志必须在这里同步落下，同步 UI 代码下一次查 `is_interrupted()`
+        才能看到。返回 True 表示已消费，不要再投递到输入队列（否则会被再切换
+        一次）。
+        """
+        if not self.runtime_input:
+            return False
+        loop = getattr(self, "loop", None)
+        if not (loop and loop.is_running()):
+            return False
+        paused = self.runtime_input.toggle_paused(text.strip())
+        if paused is None:
+            return False
+        asyncio.run_coroutine_threadsafe(
+            self.runtime_input.apply_pause_side_effects(paused), loop
+        )
+        return True
 
     def _console_input(self):
         """Background thread for console input"""
@@ -365,8 +381,8 @@ class AppController(Singleton):
                 if self.in_console_mode:
                     user_input = input("Console> ")
                     if user_input.strip():
-                        self.input_queue.put((user_input, "console"))
-                        self._dispatch_meta_if_needed(user_input)
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
                 else:
@@ -377,16 +393,16 @@ class AppController(Singleton):
                         try:
                             command = input("Command> ")
                             if command.strip():
-                                self.input_queue.put((command, "console"))
-                                self._dispatch_meta_if_needed(command)
+                                if not self._dispatch_meta_if_needed(command):
+                                    self.input_queue.put((command, "console"))
                                 if self.logger:
                                     self.logger.critical(f"{command}")
                         finally:
                             muter.unmute()
                     else:
                         # User directly entered something without pressing Enter first
-                        self.input_queue.put((user_input, "console"))
-                        self._dispatch_meta_if_needed(user_input)
+                        if not self._dispatch_meta_if_needed(user_input):
+                            self.input_queue.put((user_input, "console"))
                         if self.logger:
                             self.logger.critical(f"{user_input}")
             except UnicodeDecodeError as e:
@@ -415,6 +431,16 @@ class AppController(Singleton):
 
     def _drain_agent_command_spool(self) -> None:
         self._agent_command_spool.drain()
+
+    def _spool_input_loop(self) -> None:
+        """Background thread for agent command spool."""
+        while self.is_running:
+            try:
+                self._drain_agent_command_spool()
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"Spool input error: {e}")
+            time.sleep(0.05)
 
     async def _detect_initial_room_state(self):
         """启动时：找到房间 ID 并交给 PartyManager 核对（与运行期同一判定）。
@@ -678,6 +704,9 @@ class AppController(Singleton):
         input_thread = threading.Thread(target=self._console_input)
         input_thread.daemon = True
         input_thread.start()
+        spool_thread = threading.Thread(target=self._spool_input_loop)
+        spool_thread.daemon = True
+        spool_thread.start()
         self.logger.info("控制台输入线程已启动")
 
         # Detect initial room state on startup
