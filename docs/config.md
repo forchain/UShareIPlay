@@ -102,7 +102,7 @@ llm:
 | `soul.post_party_create.enabled` / `soul.post_party_create.wait_for_command_ready` / `soul.post_party_create.commands` | 新建派对成功后的自动化（仅投递命令到 MessageQueue） |
 | `soul.risk_elements` | 风险元素 key 列表（关弹窗、收起面板等自动处理） |
 | `soul.drawer_elements` | 抽屉式弹窗 key 列表（检测到即自动关闭） |
-| `soul.elements` | UI 元素选择器映射（188 项），**唯一事实源** |
+| `soul.elements` | UI 元素选择器映射（203 项），**唯一事实源** |
 
 `soul.risk_elements` / `soul.drawer_elements` 里写的每个 key 都必须在 `soul.elements`
 里有对应选择器，否则机器人永远找不到它；留空（`[]`）或删除本项会回退到事件层的默认列表。
