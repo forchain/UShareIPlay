@@ -16,7 +16,7 @@ Run a real UShareIPlay workflow and make the pass/fail decision from fresh runti
 - Treat a live PID, successful file injection, old logs, or a stale screenshot as insufficient evidence.
 - Use structured events first; use logs, DB, page source, and screenshots to answer the test-specific oracle. Read [agent/event_taxonomy.md](../../../agent/event_taxonomy.md).
 - Establish exclusive Device Lease ownership before starting a service. The cleanup unit is the whole E2E Session, including service, runner, toolbelt, and session helpers.
-- When production state matters, collect a remote status/log snapshot before pausing it. A remote pause uses graceful stop; only the user can authorize remote force-stop.
+- When production state matters, collect a remote status/log snapshot before pausing it. A remote pause toggles the runtime into a paused state and leaves the process alive; only the user can authorize remote force-stop.
 
 ## Workflow
 
@@ -48,7 +48,7 @@ Never promote an old `CommandReady`, log line, screenshot, or artifact to curren
 
 Treat the Android/Appium target as a shared resource across every local worktree and remote deployment. Before any local start, inspect and clear prior local E2E Sessions, including manually started UShareIPlay processes, then acquire the user-wide Device Lease. The toolbelt reports every cleared PID, group, command, and worktree.
 
-When production behavior, remote logs, a changed remote configuration, or an expired remote-silence proof makes the remote state relevant, run `remote-status` and `remote-logs` before local execution. Pause the discovered remote service with `remote-pause`; if it remains alive, preserve evidence, report the candidate processes, and request approval before `remote-force-stop --confirm`.
+When production behavior, remote logs, a changed remote configuration, or an expired remote-silence proof makes the remote state relevant, run `remote-status` and `remote-logs` before local execution. Pause the discovered remote service with `remote-pause`; it stays alive in a paused state, so if it is still active afterwards, preserve evidence, report the candidate processes, and request approval before `remote-force-stop --confirm`.
 
 Remote setup needs only `agent_e2e.remote.host` and `deploy_path` in the ignored `config.local.yaml`. Read [remote-operations.md](remote-operations.md) whenever remote access, pause, recovery, or logs are in scope.
 
@@ -127,7 +127,7 @@ remote-status                        inspect configured remote deployment (read-
 remote-logs                          save redacted recent remote logs as a local artifact
 remote-pause                         gracefully pause the configured remote deployment
 remote-force-stop --confirm          force-stop remote only after user approval
-remote-resume                        restore a deployment paused by this E2E session
+remote-resume                        resume the paused deployment, or start one if none is alive
 inject --text '...'                  background console/queue input
 request-dump                         current process page source + screenshot
 adb-devices | adb-current            device and focused activity

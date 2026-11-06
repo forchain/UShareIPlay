@@ -220,13 +220,23 @@ def remote_command(target: RemoteTarget, action: str) -> list[str]:
     elif action == "force-stop":
         script = f"set -eu; cd -- {root}; {find_pids}; for pid in $(find_pids); do kill -KILL \"$pid\" || true; done"
     elif action == "resume":
+        # pause 只是把运行时的 paused 标志翻成 True，远端进程并未退出；`!stop`
+        # 是 toggle，再投一次才会把同一个进程切回运行态。若这里直接拉起新进程，
+        # 暂停中的旧进程仍然活着，共享设备上就会同时跑着两个服务。
         script = (
-            f"set -eu; cd -- {root}; mkdir -p .agent; "
+            f"set -eu; cd -- {root}; {find_pids}; "
+            "live=$(find_pids); "
+            "if [ -n \"$live\" ]; then "
+            "mkdir -p .agent/commands; "
+            "target=.agent/commands/$(date +%s%N)-remote-resume.cmd; tmp=\"$target.tmp.$$\"; "
+            "printf '!stop\\n' > \"$tmp\"; mv \"$tmp\" \"$target\"; "
+            "printf 'resumed=existing queued=%s pids=%s\\n' \"$target\" \"$live\"; "
+            "else mkdir -p .agent; "
             "if command -v uv >/dev/null 2>&1; then "
             "nohup bash ./run.sh > .agent/e2e-remote-resume.log 2>&1 & "
             "else test -x ./.venv/bin/ushareiplay; "
             "nohup ./.venv/bin/ushareiplay > .agent/e2e-remote-resume.log 2>&1 & fi; "
-            "printf 'pid=%s\\n' \"$!\""
+            "printf 'pid=%s\\n' \"$!\"; fi"
         )
     elif action == "logs":
         script = (
