@@ -340,7 +340,6 @@ def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(m
                 "suppressed": None,
                 "pressed_back": True,
                 "ready_rechecked": True,
-                "backoff_seconds": 0.5,
             },
         }
 

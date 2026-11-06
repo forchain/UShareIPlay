@@ -41,9 +41,11 @@ class EventManager(Singleton):
         self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
         self._initialized = False
         self._consecutive_unknown_pages = 0
+        # 上一轮 press_back 是否把 Soul 送回了后台；用于区分「back 对页面无效」与「主动切走 App」
+        self._back_sent_to_background = False
         self._runtime = None
 
-    UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD: int = 10
+    DEFAULT_UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD: int = 10
 
     # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
     _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
@@ -392,6 +394,44 @@ class EventManager(Singleton):
             self.logger.debug(f"Error finding element {element_key}: {str(e)}")
             return None
 
+    def _maybe_force_close(self, recovery: dict) -> None:
+        """连续未知页面达到阈值后强制关闭 Soul；关闭前复检 UI 占用，避免杀到执行中的命令。"""
+        raw_threshold = self.config.value(
+            "unknown_page_force_close_threshold",
+            self.DEFAULT_UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD,
+        )
+        try:
+            threshold = max(1, int(raw_threshold))
+        except (TypeError, ValueError):
+            self.logger.warning(
+                f"配置 soul.unknown_page_force_close_threshold={raw_threshold!r} 无效，跳过强制关闭兜底"
+            )
+            return
+
+        if self._consecutive_unknown_pages < threshold:
+            return
+        if self.runtime.is_ui_busy():
+            recovery["suppressed"] = "ui_busy"
+            return
+        if hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+            recovery["suppressed"] = "paused"
+            return
+
+        self.logger.warning(
+            f"连续 {self._consecutive_unknown_pages} 次返回失败，强制关闭 Soul 应用以恢复"
+        )
+        try:
+            closed = self.handler.key_actions.close_app() is True
+        except Exception as e:
+            self.logger.warning(f"强制关闭 Soul 失败: {str(e)}")
+            return
+        recovery["force_closed"] = closed
+        if not closed:
+            self.logger.warning("强制关闭 Soul 未确认成功（close_app 返回空）")
+            return
+        self._consecutive_unknown_pages = 0
+        self._back_sent_to_background = False
+
     async def react_to_page(self, page_source: str) -> dict:
         """
         处理事件：解析 page_source，检测元素并触发对应事件
@@ -413,13 +453,17 @@ class EventManager(Singleton):
                     "suppressed": "no_page_source",
                     "pressed_back": False,
                     "ready_rechecked": False,
-                    "backoff_seconds": 0,
                     "force_closed": False,
                 },
             }
 
         is_soul_initial = self._is_soul_foreground(page_source)
-        if not is_soul_initial:
+        # 上一轮自己按的 back 若把 Soul 送回了后台，说明 back 对该页面无效，必须计入失败次数；
+        # 只有「没有待确认的 back」时，初始不在 Soul 才视为用户/命令主动切走，可清零计数。
+        back_bounced = not is_soul_initial and self._back_sent_to_background
+        if is_soul_initial:
+            self._back_sent_to_background = False
+        elif not back_bounced:
             self._consecutive_unknown_pages = 0
 
         triggered_count = 0
@@ -428,7 +472,6 @@ class EventManager(Singleton):
             "suppressed": None,
             "pressed_back": False,
             "ready_rechecked": False,
-            "backoff_seconds": 0,
             "force_closed": False,
         }
 
@@ -443,6 +486,7 @@ class EventManager(Singleton):
         # 只要本轮触发了事件，就认为不在“连续未知页面”状态
         if triggered_count > 0:
             self._consecutive_unknown_pages = 0
+            self._back_sent_to_background = False
 
         # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
         if triggered_count == 0:
@@ -473,6 +517,17 @@ class EventManager(Singleton):
                         if second_triggered > 0:
                             triggered_count = second_triggered
                             self._consecutive_unknown_pages = 0
+                            self._back_sent_to_background = False
+                        elif back_bounced:
+                            # 上一轮自己按的 back 把 Soul 送回了桌面：同样的「切换到桌面 -> 切回」
+                            # 循环若不升级，兜底永远不可达。
+                            recovery["suppressed"] = "back_bounced_to_non_soul"
+                            self.logger.debug(
+                                "Previous back sent Soul to background; count as unknown-page failure."
+                            )
+                            self._consecutive_unknown_pages += 1
+                            self._back_sent_to_background = False
+                            self._maybe_force_close(recovery)
                         elif not is_soul_initial:
                             # 初始不是 Soul（例如从桌面切回），界面可能仍在初始化加载中，
                             # 严禁按返回键，否则会导致“返回桌面 -> 切回 -> 返回桌面”的死循环。
@@ -485,21 +540,11 @@ class EventManager(Singleton):
                             recovery["pressed_back"] = True
                             self.logger.warning("No events triggered, pressed back to exit unknown page")
                             self._consecutive_unknown_pages += 1
-                            threshold = (
-                                self.config.value("unknown_page_force_close_threshold")
-                                or self.UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD
-                            )
-                            if self._consecutive_unknown_pages >= threshold:
-                                self.logger.warning(
-                                    f"连续 {self._consecutive_unknown_pages} 次返回键均未能退出未知页面且持续处于 Soul 前台，"
-                                    f"强制关闭 Soul 应用以恢复"
-                                )
-                                self.handler.key_actions.close_app()
-                                recovery["force_closed"] = True
-                                self._consecutive_unknown_pages = 0
+                            self._back_sent_to_background = True
+                            self._maybe_force_close(recovery)
 
             except Exception as e:
-                self.logger.debug(f"Failed to press back: {str(e)}")
+                self.logger.warning(f"Unknown page recovery failed: {str(e)}")
 
         return {
             "triggered_count": triggered_count,
@@ -522,7 +567,6 @@ class EventManager(Singleton):
                     "suppressed": "no_page_source",
                     "pressed_back": False,
                     "ready_rechecked": False,
-                    "backoff_seconds": 0,
                     "force_closed": False,
                 },
             }
