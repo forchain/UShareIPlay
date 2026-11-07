@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prepare the worktree this script lives in: sync local main from origin/main,
-# rebase the current branch onto it, and link the main repo's config.local.yaml.
+# rebase the current branch onto it, link the main repo's config.local.yaml and .codegraph,
+# and sync the codegraph index.
 #
 # Works from any worktree and any working directory: the target worktree is the
 # one that contains this script, and the main worktree is discovered through
@@ -27,26 +28,28 @@ that worktree):
      `git -C <main> merge --ff-only`, never `git fetch origin main:main`);
   3. rebase the current branch onto origin/main -- on conflict the rebase is
      aborted, the branch is left untouched and the script exits non-zero;
-  4. link config.local.yaml to the main repo's copy.
+  4. link config.local.yaml and .codegraph to the main repo's copies;
+  5. sync .codegraph if present and codegraph is available.
 
 options:
-  -f, --force   replace an existing config.local.yaml after backing it up to
-                config.local.yaml.bak.<timestamp>
+  -f, --force   replace an existing config.local.yaml or .codegraph after backing
+                it up to <path>.bak.<timestamp>
   -h, --help    show this help and exit
 
-config.local.yaml symlink policy:
+symlink policy (config.local.yaml and .codegraph):
   * missing target           -> symlink is created
-  * symlink to main config   -> no-op (the script is idempotent)
-  * symlink somewhere else   -> refreshed to point at the main config
-  * regular file             -> refused; nothing is destroyed. Pass --force to
-                                back it up (config.local.yaml.bak.<timestamp>)
+  * symlink to main copy     -> no-op (the script is idempotent)
+  * symlink somewhere else   -> refreshed to point at the main copy
+  * regular file/dir         -> refused; nothing is destroyed. Pass --force to
+                                back it up (<path>.bak.<timestamp>)
                                 and replace it with the symlink.
+  * main repo has none       -> skipped with a friendly note
 
 exit codes:
   0  done (or nothing to do; a non-fast-forwardable main is reported and the
      branch is still rebased onto origin/main)
   1  stopped: rebase conflict, uncommitted changes in this worktree, or a
-     config.local.yaml that would have to be overwritten without --force
+     file/dir that would have to be overwritten without --force
 EOF
 }
 
@@ -205,46 +208,84 @@ else
   fi
 fi
 
-# -- link config.local.yaml ---------------------------------------------
+# -- link config.local.yaml and .codegraph -------------------------------
 if [[ "${WORKTREE_DIR}" == "${MAIN_WORKTREE}" ]]; then
-  log "this is the main worktree; config.local.yaml is used in place"
-  exit 0
-fi
+  log "this is the main worktree; config.local.yaml and .codegraph are used in place"
+else
+  link_item() {
+    local name="$1"
+    local main_path="$2"
+    local target_path="$3"
 
-MAIN_CONFIG="${MAIN_WORKTREE}/config.local.yaml"
-TARGET_CONFIG="${WORKTREE_DIR}/config.local.yaml"
+    if [[ -L "${target_path}" ]]; then
+      local current_target
+      current_target="$(readlink "${target_path}")"
+      local current_target_abs
+      case "${current_target}" in
+        /*) current_target_abs="${current_target}" ;;
+        *) current_target_abs="${WORKTREE_DIR}/${current_target}" ;;
+      esac
+      if [[ "${current_target_abs}" == "${main_path}" ]]; then
+        log "${name} already links to ${main_path}"
+        return 0
+      fi
+      ln -sfn "${main_path}" "${target_path}"
+      log "refreshed ${name}: ${current_target} -> ${main_path}"
+      return 0
+    fi
 
-if [[ ! -e "${MAIN_CONFIG}" ]]; then
-  log "no ${MAIN_CONFIG} to link"
-  log "hint: create it in ${MAIN_WORKTREE} with only the fields that differ from config.yaml, then re-run this script"
-  exit 0
-fi
+    if [[ -e "${target_path}" ]]; then
+      if [[ "${FORCE}" -ne 1 ]]; then
+        local kind="a regular file"
+        if [[ -d "${target_path}" && ! -L "${target_path}" ]]; then
+          kind="a directory"
+        fi
+        err "${target_path} is ${kind}, not a symlink; refusing to overwrite it"
+        err "back it up and re-run with --force to back it up and replace it with a symlink to ${main_path}"
+        return 1
+      fi
+      local backup="${target_path}.bak.$(date +%Y%m%d%H%M%S)"
+      mv "${target_path}" "${backup}"
+      log "backed up ${target_path} to ${backup}"
+    fi
 
-if [[ -L "${TARGET_CONFIG}" ]]; then
-  CURRENT_TARGET="$(readlink "${TARGET_CONFIG}")"
-  case "${CURRENT_TARGET}" in
-    /*) CURRENT_TARGET_ABS="${CURRENT_TARGET}" ;;
-    *) CURRENT_TARGET_ABS="${WORKTREE_DIR}/${CURRENT_TARGET}" ;;
-  esac
-  if [[ "${CURRENT_TARGET_ABS}" == "${MAIN_CONFIG}" ]]; then
-    log "config.local.yaml already links to ${MAIN_CONFIG}"
-    exit 0
+    ln -s "${main_path}" "${target_path}"
+    log "linked ${name} -> ${main_path}"
+  }
+
+  MAIN_CONFIG="${MAIN_WORKTREE}/config.local.yaml"
+  TARGET_CONFIG="${WORKTREE_DIR}/config.local.yaml"
+
+  if [[ ! -e "${MAIN_CONFIG}" ]]; then
+    log "no ${MAIN_CONFIG} to link"
+    log "hint: create it in ${MAIN_WORKTREE} with only the fields that differ from config.yaml, then re-run this script"
+  else
+    link_item "config.local.yaml" "${MAIN_CONFIG}" "${TARGET_CONFIG}" || exit 1
   fi
-  ln -sfn "${MAIN_CONFIG}" "${TARGET_CONFIG}"
-  log "refreshed config.local.yaml: ${CURRENT_TARGET} -> ${MAIN_CONFIG}"
-  exit 0
-fi
 
-if [[ -e "${TARGET_CONFIG}" ]]; then
-  if [[ "${FORCE}" -ne 1 ]]; then
-    err "${TARGET_CONFIG} is a regular file, not a symlink; refusing to overwrite it"
-    err "back it up and re-run with --force to back it up and replace it with a symlink to ${MAIN_CONFIG}"
-    exit 1
+  MAIN_CODEGRAPH="${MAIN_WORKTREE}/.codegraph"
+  TARGET_CODEGRAPH="${WORKTREE_DIR}/.codegraph"
+
+  if [[ ! -e "${MAIN_CODEGRAPH}" ]]; then
+    log "no ${MAIN_CODEGRAPH} to link; skipping"
+  else
+    link_item ".codegraph" "${MAIN_CODEGRAPH}" "${TARGET_CODEGRAPH}" || exit 1
   fi
-  BACKUP="${TARGET_CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
-  mv "${TARGET_CONFIG}" "${BACKUP}"
-  log "backed up ${TARGET_CONFIG} to ${BACKUP}"
 fi
 
-ln -s "${MAIN_CONFIG}" "${TARGET_CONFIG}"
-log "linked config.local.yaml -> ${MAIN_CONFIG}"
+# -- sync codegraph -----------------------------------------------------
+if [[ -e "${WORKTREE_DIR}/.codegraph" ]]; then
+  if command -v codegraph >/dev/null 2>&1; then
+    if SYNC_OUT="$(cd "${WORKTREE_DIR}" && codegraph sync -q "${WORKTREE_DIR}" 2>&1)"; then
+      if [[ -n "${SYNC_OUT}" ]]; then
+        printf '%s\n' "${SYNC_OUT}"
+      fi
+      log "synced codegraph"
+    else
+      warn "codegraph sync failed:"
+      printf '%s\n' "${SYNC_OUT}" >&2
+    fi
+  else
+    warn "codegraph not found in PATH; skipping sync"
+  fi
+fi

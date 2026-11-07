@@ -385,3 +385,238 @@ def test_diverged_local_main_is_left_alone(sandbox: Sandbox):
     assert result.returncode == 0, output
     assert sandbox.rev(sandbox.main, "main") == local_sha
     assert (sandbox.feature / "from_main.txt").exists()
+
+
+# (n) symlink points at the main repo's .codegraph directory
+def test_creates_codegraph_symlink_to_main_repo(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    result = sandbox.run_script()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    link = sandbox.feature / ".codegraph"
+    assert link.is_symlink()
+    assert Path(os.readlink(link)) == main_cdg
+    assert (link / "codegraph.db").read_text(encoding="utf-8") == "db\n"
+
+
+# (o) .codegraph second run is idempotent
+def test_codegraph_second_run_is_idempotent(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+    assert sandbox.run_script().returncode == 0
+
+    link = sandbox.feature / ".codegraph"
+    target_after_first = os.readlink(link)
+
+    second = sandbox.run_script()
+
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert "already" in second.stdout.lower()
+    assert link.is_symlink()
+    assert os.readlink(link) == target_after_first
+
+
+# (p) missing .codegraph in main repo is skipped cleanly
+def test_missing_main_codegraph_is_skipped(sandbox: Sandbox):
+    result = sandbox.run_script()
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert ".codegraph" in output
+    assert not (sandbox.feature / ".codegraph").exists()
+    assert not (sandbox.feature / ".codegraph").is_symlink()
+
+
+# (q) regular directory .codegraph is not clobbered unless forced
+def test_refuses_to_clobber_regular_codegraph_directory_unless_forced(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("main\n", encoding="utf-8")
+
+    feature_cdg = sandbox.feature / ".codegraph"
+    feature_cdg.mkdir()
+    (feature_cdg / "local.db").write_text("mine\n", encoding="utf-8")
+
+    refused = sandbox.run_script()
+
+    assert refused.returncode != 0
+    assert ".codegraph" in (refused.stdout + refused.stderr)
+    assert feature_cdg.is_dir() and not feature_cdg.is_symlink()
+    assert (feature_cdg / "local.db").read_text(encoding="utf-8") == "mine\n"
+
+    forced = sandbox.run_script("--force")
+
+    assert forced.returncode == 0, forced.stdout + forced.stderr
+    assert feature_cdg.is_symlink()
+    assert Path(os.readlink(feature_cdg)) == main_cdg
+    backups = sorted(sandbox.feature.glob(".codegraph.bak.*"))
+    assert len(backups) == 1
+    assert (backups[0] / "local.db").read_text(encoding="utf-8") == "mine\n"
+
+
+# (r) regular file .codegraph is not clobbered unless forced
+def test_refuses_to_clobber_regular_codegraph_file_unless_forced(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("main\n", encoding="utf-8")
+
+    feature_file = sandbox.feature / ".codegraph"
+    feature_file.write_text("regular file\n", encoding="utf-8")
+
+    refused = sandbox.run_script()
+
+    assert refused.returncode != 0
+    assert ".codegraph" in (refused.stdout + refused.stderr)
+    assert feature_file.is_file() and not feature_file.is_symlink()
+    assert feature_file.read_text(encoding="utf-8") == "regular file\n"
+
+    forced = sandbox.run_script("--force")
+
+    assert forced.returncode == 0, forced.stdout + forced.stderr
+    assert feature_file.is_symlink()
+    assert Path(os.readlink(feature_file)) == main_cdg
+    backups = sorted(sandbox.feature.glob(".codegraph.bak.*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "regular file\n"
+
+
+# (s) symlink pointing elsewhere is refreshed
+def test_refreshes_codegraph_symlink_pointing_elsewhere(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    elsewhere = sandbox.root / "elsewhere_cdg"
+    elsewhere.mkdir()
+    link = sandbox.feature / ".codegraph"
+    link.symlink_to(elsewhere)
+
+    result = sandbox.run_script()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert Path(os.readlink(link)) == main_cdg
+
+
+# (t) running in main worktree skips .codegraph symlink
+def test_main_worktree_run_skips_codegraph_symlink(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+
+    result = sandbox.run_script(cwd=sandbox.main, script_repo=sandbox.main)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (sandbox.main / ".codegraph").is_dir()
+    assert not (sandbox.main / ".codegraph").is_symlink()
+
+
+# (u) both config.local.yaml and .codegraph linked in one run
+def test_both_config_and_codegraph_linked_together(sandbox: Sandbox):
+    sandbox.main.joinpath("config.local.yaml").write_text("device: {}\n", encoding="utf-8")
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    result = sandbox.run_script()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    cfg_link = sandbox.feature / "config.local.yaml"
+    cdg_link = sandbox.feature / ".codegraph"
+    assert cfg_link.is_symlink()
+    assert Path(os.readlink(cfg_link)) == sandbox.main / "config.local.yaml"
+    assert cdg_link.is_symlink()
+    assert Path(os.readlink(cdg_link)) == main_cdg
+
+
+# (v) syncs codegraph when CLI is present in PATH
+def test_syncs_codegraph_when_cli_present(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    bin_dir = sandbox.root / "mock_bin_sync"
+    bin_dir.mkdir()
+    mock_cg = bin_dir / "codegraph"
+    mock_cg.write_text('#!/bin/sh\necho "mock codegraph synced args: $@"\nexit 0\n', encoding="utf-8")
+    mock_cg.chmod(0o755)
+    sandbox.env["PATH"] = f"{bin_dir}:{sandbox.env.get('PATH', '')}"
+
+    result = sandbox.run_script()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"mock codegraph synced args: sync -q {sandbox.feature}" in result.stdout
+    assert "synced codegraph" in result.stdout
+
+
+# (w) skips codegraph sync when CLI is not in PATH
+def test_skips_codegraph_sync_when_cli_not_in_path(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    sandbox.env["PATH"] = "/usr/bin:/bin"
+
+    result = sandbox.run_script()
+
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode == 0, output
+    assert "warning:" in output
+    assert "not found in path; skipping sync" in output
+
+
+# (x) warns when codegraph sync fails without breaking worktree init
+def test_warns_when_codegraph_sync_fails(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    bin_dir = sandbox.root / "mock_bin_fail"
+    bin_dir.mkdir()
+    mock_cg = bin_dir / "codegraph"
+    mock_cg.write_text("#!/bin/sh\necho 'mock index error' >&2\nexit 1\n", encoding="utf-8")
+    mock_cg.chmod(0o755)
+    sandbox.env["PATH"] = f"{bin_dir}:{sandbox.env.get('PATH', '')}"
+
+    result = sandbox.run_script()
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "codegraph sync failed" in (result.stdout + result.stderr).lower()
+    assert (sandbox.feature / ".codegraph").is_symlink()
+
+
+# (y) main worktree syncs codegraph in place when CLI is present
+def test_main_worktree_syncs_codegraph_when_cli_present(sandbox: Sandbox):
+    main_cdg = sandbox.main / ".codegraph"
+    main_cdg.mkdir()
+    (main_cdg / "codegraph.db").write_text("db\n", encoding="utf-8")
+
+    bin_dir = sandbox.root / "mock_bin_main"
+    bin_dir.mkdir()
+    mock_cg = bin_dir / "codegraph"
+    mock_cg.write_text('#!/bin/sh\necho "mock codegraph synced in main args: $@"\nexit 0\n', encoding="utf-8")
+    mock_cg.chmod(0o755)
+    sandbox.env["PATH"] = f"{bin_dir}:{sandbox.env.get('PATH', '')}"
+
+    result = sandbox.run_script(cwd=sandbox.main, script_repo=sandbox.main)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"mock codegraph synced in main args: sync -q {sandbox.main}" in result.stdout
+    assert "synced codegraph" in result.stdout
+
+
+# (z) skips codegraph sync when .codegraph was skipped (main has none)
+def test_skips_codegraph_sync_when_main_has_no_codegraph(sandbox: Sandbox):
+    bin_dir = sandbox.root / "mock_bin_never"
+    bin_dir.mkdir()
+    mock_cg = bin_dir / "codegraph"
+    mock_cg.write_text("#!/bin/sh\necho 'MOCK_CODEGRAPH_CALLED' >&2\nexit 1\n", encoding="utf-8")
+    mock_cg.chmod(0o755)
+    sandbox.env["PATH"] = f"{bin_dir}:{sandbox.env.get('PATH', '')}"
+
+    result = sandbox.run_script()
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "MOCK_CODEGRAPH_CALLED" not in output
+    assert "synced codegraph" not in output
