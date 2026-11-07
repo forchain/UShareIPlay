@@ -608,6 +608,8 @@ class EventManager(Singleton):
                 xml_element = self._find_element_in_page_source(root, element_key, module)
 
                 if xml_element is None:
+                    if module and hasattr(module, "event") and hasattr(module.event, "on_element_absent"):
+                        await module.event.on_element_absent(element_key)
                     continue
 
                 if module and hasattr(module, "event"):
