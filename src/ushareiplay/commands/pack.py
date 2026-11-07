@@ -27,6 +27,12 @@ _PHASE_LEVELS = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5}
 COUNTDOWN_OPTIONS = {0: '即刻抢', 1: '1分钟', 3: '3分钟', 5: '5分钟', 10: '10分钟'}
 
 _HEAT_PATTERN = re.compile(r'(\d+(?:\.\d+)?)\s*([万wW])?')
+_ZERO_PACK_PATTERN = re.compile(r'(?<!\d)0\s*个')
+
+
+def _is_zero_packs(text):
+    """福袋标签文案是否为 0 个（如「礼物福袋  (0个)」）。"""
+    return bool(_ZERO_PACK_PATTERN.search(text or ''))
 
 
 def _parse_heat(text):
@@ -106,10 +112,16 @@ class PackCommand(BaseCommand):
         if not self._open_pack_drawer():
             return {'error': '未找到福袋入口'}
         try:
-            if not self._wait_pack_list():
+            tab = self._wait_pack_tab()
+            if not tab:
                 return {'error': '福袋抽屉未打开'}
             self.handler.logger.info("已打开福袋抽屉")
-            packs = self._scan_packs()
+            if _is_zero_packs(self.handler.element_finder.get_element_text(tab)):
+                packs = []
+            else:
+                if not self._wait_pack_list():
+                    return {'error': '未找到福袋列表'}
+                packs = self._scan_packs()
         except Exception:
             self.handler.log_error(f"Error listing packs: {traceback.format_exc()}")
             return {'error': 'Failed to list luck packs'}
@@ -129,9 +141,14 @@ class PackCommand(BaseCommand):
             return {'error': '未找到福袋入口'}
         used = False
         try:
-            if not self._wait_pack_list():
+            tab = self._wait_pack_tab()
+            if not tab:
                 return {'error': '福袋抽屉未打开'}
             self.handler.logger.info("已打开福袋抽屉")
+            if _is_zero_packs(self.handler.element_finder.get_element_text(tab)):
+                return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
+            if not self._wait_pack_list():
+                return {'error': '未找到福袋列表'}
             # 先确认福袋存在再改倒计时：倒计时是房间级的持久设置，失败路径不能留下副作用。
             target = self._locate_pack(level)
             if target is None:
@@ -141,7 +158,7 @@ class PackCommand(BaseCommand):
                 return {'error': '倒计时设置失败'}
             if changed:  # 改完倒计时抽屉会重绘，条目要重新定位
                 if not self._wait_pack_list():
-                    return {'error': '福袋抽屉未打开'}
+                    return {'error': '未找到福袋列表'}
                 target = self._locate_pack(level)
                 if target is None:
                     return {'error': f'未找到{level}级福袋' if level else '未找到可用的福袋'}
@@ -363,13 +380,22 @@ class PackCommand(BaseCommand):
             return False
         return True
 
+    def _wait_pack_tab(self):
+        """等福袋抽屉标签渲染出来；抽屉没打开返回 None。"""
+        tab = self.handler.element_finder.wait_for_element(
+            'pack_tab', timeout=DRAWER_WAIT_SECONDS
+        )
+        if not tab:
+            self.handler.logger.warning("福袋抽屉未打开")
+        return tab
+
     def _wait_pack_list(self):
-        """等福袋列表渲染出来；抽屉没打开返回 None。"""
+        """等福袋列表渲染出来；未找到返回 None。"""
         drawer = self.handler.element_finder.wait_for_element(
             'pack_list', timeout=DRAWER_WAIT_SECONDS
         )
         if not drawer:
-            self.handler.logger.warning("福袋抽屉未打开")
+            self.handler.logger.warning("未找到福袋列表")
         return drawer
 
     def _close_pack_drawer(self):
