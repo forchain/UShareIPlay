@@ -68,12 +68,21 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, 
     handler.playlist_entry = _Element("entry")
     handler.playlist_current_queries = 0
     handler.element_finder.find_elements_calls = 0
+    handler.element_finder.wait_for_element_calls = []
 
     handler.key_actions.switch_to_app = lambda: True
     handler.key_actions.press_back = lambda: None
     monkeypatch.setattr(handler, "get_current_playing", lambda: {"song": current_song})
     handler.element_finder.wait_for_element_clickable = lambda key: handler.playlist_entry
     handler.element_finder.try_find_any_element = lambda keys: (None, None)
+
+    def wait_for_element(key, timeout=10):
+        handler.element_finder.wait_for_element_calls.append((key, timeout))
+        if key == "playlist_item_container":
+            return _Element("container")
+        return None
+
+    handler.element_finder.wait_for_element = wait_for_element
 
     def try_find_element(key):
         if key == "playlist_entry":
@@ -176,6 +185,17 @@ def test_get_playlist_info_does_not_press_back(monkeypatch):
     handler.get_playlist_info()
 
     assert not back_pressed
+
+
+def test_get_playlist_info_waits_for_playlist_item_container(monkeypatch):
+    handler = _make_handler(
+        monkeypatch,
+        visible_items=[_playlist_item("第一首", " - 歌手A")],
+        current_song="第一首",
+    )
+    handler.get_playlist_info()
+
+    assert ("playlist_item_container", 10) in handler.element_finder.wait_for_element_calls
 
 
 def test_query_music_waits_for_search_entry_with_20s_timeout():

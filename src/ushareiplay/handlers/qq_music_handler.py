@@ -516,6 +516,8 @@ class QQMusicHandler(AppHandler, Singleton):
             return {'error': 'Failed to find play list entry'}
         playlist_entry.click()
 
+        self.element_finder.wait_for_element('playlist_item_container')
+
         detected = None
         detected_key, _ = self.element_finder.try_find_any_element(
             [
