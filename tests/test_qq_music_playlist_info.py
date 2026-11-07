@@ -160,6 +160,24 @@ def test_get_playlist_info_scrolls_and_updates_playlist_when_current_title_visib
     assert handler.element_finder.find_elements_calls == 2
 
 
+def test_get_playlist_info_does_not_press_back(monkeypatch):
+    handler = _make_handler(
+        monkeypatch,
+        visible_items=[_playlist_item("第一首", " - 歌手A")],
+        current_song="第一首",
+    )
+    back_pressed = False
+
+    def _press_back():
+        nonlocal back_pressed
+        back_pressed = True
+
+    handler.key_actions.press_back = _press_back
+    handler.get_playlist_info()
+
+    assert not back_pressed
+
+
 def test_query_music_waits_for_search_entry_with_20s_timeout():
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()

@@ -511,11 +511,6 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error("Cannot switch to QQ music")
             return {'error': 'Failed to switch to QQ Music app'}
 
-        # Try to find playlist entry in playing panel first
-        playlist_entry = self.element_finder.try_find_element('playlist_entry')
-        if not playlist_entry:
-            self.key_actions.press_back()
-
         playlist_entry = self.element_finder.wait_for_element_clickable('playlist_entry')
         if not playlist_entry:
             return {'error': 'Failed to find play list entry'}
