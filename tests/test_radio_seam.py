@@ -431,11 +431,19 @@ def test_sleep_channel_scrolls_to_the_healing_tab(music_manager):
 
 def test_radar_channel_reads_the_streaming_song(music_manager):
     actions = []
+
+    class _StaleAfterQueueElement(_FakeElement):
+        @property
+        def text(self):
+            if "queue" in actions:
+                raise StaleElementReferenceException("stale after queue navigation")
+            return super().text
+
     driver, _ = _driver(
         {
             "radar_nav": _FakeElement("radar_nav", actions=actions),
-            "radar_song": _FakeElement("radar_song", "正在播出", actions),
-            "radar_singer": _FakeElement("radar_singer", "歌手甲", actions),
+            "radar_song": _StaleAfterQueueElement("radar_song", "正在播出", actions),
+            "radar_singer": _StaleAfterQueueElement("radar_singer", "歌手甲", actions),
         },
         actions,
         queue="正在播出 - 歌手甲",

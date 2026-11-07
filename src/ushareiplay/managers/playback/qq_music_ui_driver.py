@@ -1097,14 +1097,13 @@ class QQMusicUIDriver(MusicUIDriverPort):
                 "Failed to locate radar song or singer elements"
             )
 
+        song = song_element.text or ""
+        singer = singer_element.text or ""
         playlist_text, _ = self._read_queue(RADIO_RADAR_ROOM_NAME)
         return PlaybackOutcome.started(
-            PlaybackTrack(
-                song=song_element.text or "",
-                singer=singer_element.text or "",
-            ),
+            PlaybackTrack(song=song, singer=singer),
             title=RADIO_RADAR_ROOM_NAME,
-            topic=song_element.text,
+            topic=song,
             playlist=RADIO_RADAR_ROOM_NAME,
             extra={"playlist": playlist_text},
         )
