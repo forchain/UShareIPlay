@@ -605,6 +605,7 @@ def test_pack_config_declarations():
 
     # 福袋抽屉与倒计时的元素定位器
     assert elements["pack_entry"] == "cn.soulapp.android:id/tvLbLabelPackNormal"
+    assert elements["pack_tab"] == '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_tab" and starts-with(@text, "礼物福袋")]'
     assert elements["pack_list"] == "cn.soulapp.android:id/listUser"
     assert elements["pack_content"] == "cn.soulapp.android:id/tvContent"
     assert elements["pack_drawer_handle"] == "cn.soulapp.android:id/touch_close"
@@ -748,6 +749,7 @@ def _pack_setup(mock_controller, packs, countdown="即刻抢 | 所有人", start
     contents = []
 
     entry = FakeElement(text="福袋")
+    tab = FakeElement(text=f"礼物福袋  ({len(packs)}个)")
     handle = FakeElement(text="")
     use = FakeElement(text="使用")
     setting = FakeElement(text="去设置")
@@ -795,7 +797,8 @@ def _pack_setup(mock_controller, packs, countdown="即刻抢 | 所有人", start
     )
     finder.wait_for_element.side_effect = lambda key, **_kwargs: {
         "pack_entry": entry,
-        "pack_list": drawer,
+        "pack_tab": tab,
+        "pack_list": drawer if packs else None,
         "pack_drawer_handle": handle,
         "pack_countdown_text": countdown_text,
         "pack_countdown_entry": setting,
@@ -811,6 +814,7 @@ def _pack_setup(mock_controller, packs, countdown="即刻抢 | 所有人", start
 
     return SimpleNamespace(
         entry=entry,
+        tab=tab,
         handle=handle,
         use=use,
         setting=setting,
@@ -872,12 +876,74 @@ async def test_pack_list_scrolls_until_bottom_and_merges_screens(mock_controller
 
 @pytest.mark.asyncio
 async def test_pack_list_without_packs_returns_friendly_hint(mock_controller):
-    _pack_setup(mock_controller, [])
+    parts = _pack_setup(mock_controller, [])
 
     cmd = PackCommand(mock_controller)
     result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
 
     assert result == {"message": "当前没有福袋"}
+    # 0个福袋时不应该等待/查询 pack_list
+    call_keys = [call.args[0] for call in mock_controller.soul_handler.element_finder.wait_for_element.call_args_list]
+    assert "pack_tab" in call_keys
+    assert "pack_list" not in call_keys
+
+
+@pytest.mark.asyncio
+async def test_pack_open_without_packs_returns_error_without_waiting_list(mock_controller):
+    parts = _pack_setup(mock_controller, [])
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack open", nickname="Tester"), ["open"])
+
+    assert result == {"error": "未找到可用的福袋"}
+    call_keys = [call.args[0] for call in mock_controller.soul_handler.element_finder.wait_for_element.call_args_list]
+    assert "pack_tab" in call_keys
+    assert "pack_list" not in call_keys
+
+
+@pytest.mark.asyncio
+async def test_pack_list_when_tab_missing_reports_drawer_not_opened(mock_controller):
+    parts = _pack_setup(mock_controller, [(1, "初级福袋")])
+    finder = mock_controller.soul_handler.element_finder
+    prev_wait = finder.wait_for_element.side_effect
+    finder.wait_for_element.side_effect = lambda key, **_kwargs: (
+        None if key == "pack_tab" else prev_wait(key, **_kwargs)
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"error": "福袋抽屉未打开"}
+
+
+@pytest.mark.asyncio
+async def test_pack_list_when_tab_has_packs_but_list_missing_reports_list_missing(mock_controller):
+    parts = _pack_setup(mock_controller, [(1, "初级福袋")])
+    finder = mock_controller.soul_handler.element_finder
+    prev_wait = finder.wait_for_element.side_effect
+    finder.wait_for_element.side_effect = lambda key, **_kwargs: (
+        None if key == "pack_list" else prev_wait(key, **_kwargs)
+    )
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert result == {"error": "未找到福袋列表"}
+
+
+@pytest.mark.asyncio
+async def test_pack_list_ten_packs_not_treated_as_zero(mock_controller):
+    parts = _pack_setup(mock_controller, [(1, "初级福袋")] * 10)
+    # tab 文本为 10个，确保不会被错误匹配为 0个
+    parts.tab.text = "礼物福袋  (10个)"
+
+    cmd = PackCommand(mock_controller)
+    result = await cmd.do_process(MessageInfo(content=":pack", nickname="Tester"), [])
+
+    assert "福袋列表（共10个）" in result.get("message", "")
+    call_keys = [call.args[0] for call in mock_controller.soul_handler.element_finder.wait_for_element.call_args_list]
+    assert "pack_tab" in call_keys
+    assert "pack_list" in call_keys
 
 
 @pytest.mark.asyncio

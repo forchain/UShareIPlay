@@ -225,6 +225,7 @@ soul:
     luck_item: "cn.soulapp.android:id/name" # 初级福袋/中级福袋/高级福袋/小黄鸭
     use_pack: "cn.soulapp.android:id/tvUse" # 使用
     pack_entry: "cn.soulapp.android:id/tvLbLabelPackNormal" # 福袋抽屉入口
+    pack_tab: '//android.widget.TextView[@resource-id="cn.soulapp.android:id/tv_tab" and starts-with(@text, "礼物福袋")]' # 福袋抽屉标签（如「礼物福袋  (0个)」）
     pack_list: "cn.soulapp.android:id/listUser" # 福袋列表（倒序，最后一个等级最小）
     pack_content: "cn.soulapp.android:id/tvContent" # 卡片阶段文案「第X阶段奖励」
     pack_drawer_handle: "cn.soulapp.android:id/touch_close" # 福袋抽屉抓手（点其上沿遮罩关闭）
