@@ -2788,6 +2788,190 @@ async def test_expand_rescan_and_collapse_concurrency_no_deadlock():
     await asyncio.wait_for(asyncio.gather(holding_task(), rescan_task()), timeout=1.0)
 
 
+# ---------------------------------------------------------------------------
+# 「变更去向不明」的日志去重（AGENTS.md 日志静默铁律）
+# ---------------------------------------------------------------------------
 
 
+def _unexplained_logs(logger) -> list:
+    """挑出「变更去向不明」这条 debug 日志。"""
+    return [call for call in logger.debug.call_args_list if "变更去向不明" in str(call)]
+
+
+def _fragment_desk(handler, left: str, right: str, y: int):
+    """面板底缘漏出的残片桌位：读得到座位号，但高度不足，点不到头像。
+
+    高度 18px 取自真机裁切残片（远低于 MIN_INTERACTABLE_DESK_HEIGHT=100），
+    所以昵称永远读不出来 —— 每轮都是同一份「去向不明」读数。
+    """
+    return build_desk_wrapper(
+        handler,
+        left=left,
+        right=right,
+        left_occupied=True,
+        bounds=f"[40,{y}][349,{y + 18}]",
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_unexplained_readings_are_logged_once():
+    """同一份「去向不明」读数连来几轮：日志只打一次，不逐轮刷屏。
+
+    真机形态：面板收起后底缘漏出下一排残片桌位（9 号位），高度不足点不到头像，
+    昵称读不出来 → 每轮都是 (9, "appear")。写保护让快照不落这一位，于是这份
+    读数在轮询里一直重复；指纹闸门挡住了重复重扫，日志却每轮都打（刷屏）。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    fragment = _fragment_desk(handler, "9", "10", y=900)
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([fragment])
+            await manager.observe_visible_desks([fragment])
+            await manager.observe_visible_desks([fragment])
+
+    # 写保护：这一位不落快照，所以读数每轮都一样
+    assert manager.seats[9].occupied is False
+    assert len(_unexplained_logs(handler.logger)) == 1
+
+
+@pytest.mark.asyncio
+async def test_new_unexplained_change_is_logged_again():
+    """读数真的变了（换了一位子去向不明）→ 照旧打一条日志。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    fragment_9 = _fragment_desk(handler, "9", "10", y=900)
+    fragment_11 = _fragment_desk(handler, "11", "12", y=940)
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([fragment_9])
+            await manager.observe_visible_desks([fragment_11])
+
+    logs = _unexplained_logs(handler.logger)
+    assert len(logs) == 2
+    assert "(9, 'appear')" in str(logs[0])
+    assert "(11, 'appear')" in str(logs[1])
+
+
+@pytest.mark.asyncio
+async def test_clear_resets_unexplained_log_memory():
+    """换房重置（RoomState.clear → SeatObservationManager.clear）后记忆归零。
+
+    同一份读数在新房间里仍要打一条 —— 记忆只用于抑制重复，不许把日志永久压掉。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    fragment = _fragment_desk(handler, "9", "10", y=900)
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([fragment])
+            await manager.observe_visible_desks([fragment])
+            assert len(_unexplained_logs(handler.logger)) == 1
+
+            manager.clear()
+
+            await manager.observe_visible_desks([fragment])
+
+    assert len(_unexplained_logs(handler.logger)) == 2
+
+
+@pytest.mark.asyncio
+async def test_unreadable_round_does_not_reopen_the_unexplained_log():
+    """盲轮（读不出任何座位号）不重开日志：记忆跨过盲轮。
+
+    盲轮里账本自己的重扫指纹被清掉了，等重扫冷却过去，下一轮同一份残片读数仍会
+    重新升级为全量重扫（INFO 级）—— debug 这条只是它的影子，绝不能比它更频繁
+    （AGENTS.md 日志静默铁律）。
+    """
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    fragment = _fragment_desk(handler, "9", "10", y=900)
+    # 盲轮：桌位上没有座位号锚点，整屏读数被丢弃
+    blind = build_desk_wrapper(handler, left="", right="")
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([fragment])
+            assert len(_unexplained_logs(handler.logger)) == 1
+
+            await manager.observe_visible_desks([blind])
+            # 盲轮把账本的重扫指纹清掉了，下一轮仍可重新升级为重扫
+            assert manager._scanned_seat_change_fingerprint is None
+
+            await manager.observe_visible_desks([fragment])
+
+    # debug 这条不重开：面板在可读/不可读之间抖动也不许变成刷屏
+    assert len(_unexplained_logs(handler.logger)) == 1
+
+
+@pytest.mark.asyncio
+async def test_unexplained_reappearing_after_clearing_is_logged_again():
+    """去向不明异常消失（清零）后再次出现：重新打一条日志（新事件）。"""
+    handler = make_handler()
+    manager = SeatObservationManager.initialize(handler)
+    manager.inspect_occupant = AsyncMock(return_value=None)
+
+    fragment = _fragment_desk(handler, "9", "10", y=900)
+    empty_desk = build_desk_wrapper(
+        handler, left="1", right="2", left_occupied=False, right_occupied=False
+    )
+
+    async def _landed_scan(*_args, **_kwargs):
+        manager._last_rescan_ok = True
+        return True
+
+    with patch.object(
+        manager, "expand_rescan_and_collapse", new_callable=AsyncMock, side_effect=_landed_scan
+    ):
+        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+            await manager.observe_visible_desks([fragment])
+            assert len(_unexplained_logs(handler.logger)) == 1
+
+            # 异常读数消失，读数恢复正常且归零
+            await manager.observe_visible_desks([empty_desk])
+            assert manager._last_unexplained == set()
+
+            # 异常读数再次出现，应重新输出一条
+            await manager.observe_visible_desks([fragment])
+            assert len(_unexplained_logs(handler.logger)) == 2
 

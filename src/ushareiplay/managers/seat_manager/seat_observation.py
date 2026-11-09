@@ -72,6 +72,9 @@ class SeatObservationManager(Singleton):
         self._controller = None
         self._seat_ui = seat_ui
         self._panel_reader = panel_reader
+        # 上一轮的「变更去向不明」读数：只用于日志去重。残片桌位（面板底缘漏出的
+        # 下一排）读数每轮都一样，逐轮打日志就是刷屏（AGENTS.md 日志静默铁律）。
+        self._last_unexplained: Set[Tuple[int, str]] = set()
         # 12 个号位的状态与策略都在账本里；本类只做 UI 协调与日志。
         self.ledger = SeatLedger(
             cooldown_policy=cooldown_policy,
@@ -270,6 +273,7 @@ class SeatObservationManager(Singleton):
     def clear(self):
         """重置所有麦位状态与决策闸门状态"""
         self.ledger.clear()
+        self._last_unexplained = set()
         self.logger.info("Cleared seat observation snapshot")
 
     def read_focus_count_from_ui(self) -> Optional[int]:
@@ -943,6 +947,10 @@ class SeatObservationManager(Singleton):
             # 没 dump 进来）时就是这个情形，靠放大镜也读不出编号，只能拿可见带的
             # 内容指纹比对：指纹变了就升级为全量重扫（重扫相位已知，能对上座位号）。
             self._note_band_change(desk_wrappers)
+            # 盲轮不重开日志：_last_unexplained 原样留着。这一轮压根没有读数可比，
+            # 「读数变了」这件事没发生；账本自己的重扫指纹在盲轮里被清掉了，等冷却
+            # 过去下一轮仍会重新升级为重扫（INFO 级）—— debug 这条只是它的影子，
+            # 绝不能比它更频繁（AGENTS.md 日志静默铁律）。
             return False, set()
 
         # 身份可解析的轮次不需要指纹兜底，但基线必须照样刷新（按屏形状比对，
@@ -982,8 +990,14 @@ class SeatObservationManager(Singleton):
         if focus_count is not None:
             self._last_focus_count = focus_count
 
-        if diff.unexplained:
-            self.logger.debug(f"[seat-obs] 变更去向不明 {sorted(diff.unexplained)}")
+        if diff.unexplained != self._last_unexplained:
+            # 只有读数真的变了才落日志：残片桌位（面板底缘漏出的下一排）每轮读到
+            # 的是同一份「去向不明」，逐轮打就是刷屏（AGENTS.md 日志静默铁律）。
+            # 「变空」也算一次变化：读数归零之后又出现同一份残片读数，那是新事件，
+            # 该重新打一条。
+            self._last_unexplained = set(diff.unexplained)
+            if diff.unexplained:
+                self.logger.debug(f"[seat-obs] 变更去向不明 {sorted(diff.unexplained)}")
 
         return diff.has_changes, diff.unexplained
 
