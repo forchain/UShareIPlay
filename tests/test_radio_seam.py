@@ -41,6 +41,9 @@ class _InfoManager:
         """`PlaylistAdoption.guard_switch` 要的是错误 dict，不是字符串。"""
         return {"error": self.protection_error} if self.protection_error else None
 
+    def clear_next_queue(self):
+        pass
+
 
 class _RoomProfileManager:
     def __init__(self):

@@ -76,6 +76,7 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
         player_name=None,
         current_playlist_name=None,
         check_playlist_protection=_check,
+        clear_next_queue=lambda: None,
     )
     room_profile = SimpleNamespace(titles=[], topics=[])
     room_profile.set_title = room_profile.titles.append
