@@ -3,10 +3,12 @@
 这里替代了原先六份 mock 链：房间同步现在只有一个实现，因此也只需要一套断言。
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption, primary_topic
 
 
@@ -250,6 +252,25 @@ async def test_guard_switch_keeps_protection_for_an_unknown_incoming_mode(adopti
     result = await adoption.guard_switch("不约儿童", incoming_mode=None)
 
     assert result == {"error": "被守护"}
+
+
+@pytest.mark.asyncio
+async def test_guard_switch_reads_system_roles_from_the_live_config(adoption):
+    """未显式传 config 时，系统角色从 InfoManager 的 handler 配置里取。
+
+    自定义的 system_users 名字必须被当作系统角色：它的单曲请求仍受守护，
+    而不是借「单曲」豁免逃过去。
+    """
+    live_config = ConfigView({"soul": {"system_users": ["NightShift"]}})
+    info = MagicMock()
+    info.handler = SimpleNamespace(config=live_config)
+    info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption._info = info
+
+    result = await adoption.guard_switch("NightShift", incoming_mode="song")
+
+    assert result == {"error": "被守护"}
+    info.check_playlist_protection.assert_awaited_once_with("NightShift", config=None)
 
 
 @pytest.mark.asyncio

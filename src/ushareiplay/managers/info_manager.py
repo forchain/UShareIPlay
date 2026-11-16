@@ -114,10 +114,6 @@ class InfoManager(Singleton):
         """记录一次成功的 :next"""
         self._playlist_state.record_next(requester)
 
-    def consume_track(self):
-        """消费一次曲目切换"""
-        self._playlist_state.consume_track()
-
     def clear_next_queue(self):
         """清空 Next Queue"""
         self._playlist_state.clear_next_queue()
@@ -252,10 +248,7 @@ class InfoManager(Singleton):
         online_users = self.get_online_users()
         online_contributor = None
         for contributor in contributors:
-            try:
-                contributor_avatars = await UserDAO.get_all_avatar_usernames(contributor)
-            except Exception:
-                contributor_avatars = {contributor}
+            contributor_avatars = await UserDAO.get_all_avatar_usernames(contributor)
             if caller_nickname in contributor_avatars:
                 return None
             if online_contributor is None and contributor_avatars & online_users:

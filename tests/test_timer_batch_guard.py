@@ -22,6 +22,7 @@ import pytest
 
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
@@ -170,6 +171,13 @@ def batch_seam(clean_info_manager, monkeypatch):
     config = ConfigLoader.load_config()
     driver = InMemoryMusicUIDriver()
 
+    # 守护现在会让 Next Queue 的 avatar 查询失败即暴露；本 seam 不接 DB，
+    # 因此把这一条数据边界替换成「每个名字就是自己的唯一分身」。
+    async def _avatars(username):
+        return {username}
+
+    monkeypatch.setattr(UserDAO, "get_all_avatar_usernames", _avatars)
+
     music_handler = SimpleNamespace(
         logger=LOGGER,
         play_next=lambda query: {
@@ -275,6 +283,21 @@ def test_unguarded_batch_runs_the_interrupting_commands(batch_seam):
         "radio",
         "song",
     ]
+
+
+def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
+    """Timer's `:play` is automated interruption, so single-song exemption doesn't apply.
+
+    `:playlist <query>` is a continuous-queue switch and is guarded like radio.
+    """
+    batch_seam.info.player_name = "Alice"
+    batch_seam.info.update_online_users(["Alice", "Joyer"])
+
+    routed, dispatch = batch_seam.run(":play 晴天;:playlist 晚安歌单")
+
+    assert routed == 2
+    assert all("Alice 正在播放歌单" in response for response in dispatch.outputs)
+    assert batch_seam.driver.requests == []
 
 
 def test_guarded_batch_blocks_skip_and_pause_without_touching_playback(batch_seam):

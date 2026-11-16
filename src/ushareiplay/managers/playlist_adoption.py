@@ -37,6 +37,7 @@
 
 from typing import Optional
 
+from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playback.models import PlaybackMode
 
@@ -152,9 +153,11 @@ class PlaylistAdoption(Singleton):
             error dict 表示这次切歌应当被阻断；None 表示放行。
         """
         if self._is_single_song(incoming_mode):
-            from ushareiplay.core.roles import RolePolicy
-
-            if not RolePolicy(config).is_system_user(requester):
+            resolved_config = config
+            if resolved_config is None:
+                handler = self._info_manager.handler
+                resolved_config = handler.config if handler is not None else None
+            if not RolePolicy(resolved_config).is_system_user(requester):
                 return None
         return await self._info_manager.check_playlist_protection(requester, config=config)
 
