@@ -618,19 +618,19 @@ def test_pack_config_declarations():
     pack_cmd = next(c for c in config["commands"] if c["prefix"] == "pack")
     assert pack_cmd["level"] == 3
     assert pack_cmd["subcommands"] == {
-        "list": {"level": 3},
-        "open": {"level": 3},
-        "redeem": {"level": 2},
+        "list": {"level": 2},
+        "open": {"level": 9},
+        "redeem": {"level": 3},
     }
     assert pack_cmd["response_template"] == "{message}"
     assert pack_cmd["error_template"] == "{error}"
     assert resolve_command_level(pack_cmd, []) == 3
-    assert resolve_command_level(pack_cmd, ["list"]) == 3
-    assert resolve_command_level(pack_cmd, ["LIST"]) == 3
-    assert resolve_command_level(pack_cmd, ["open"]) == 3
-    assert resolve_command_level(pack_cmd, ["open", "3", "5"]) == 3
-    assert resolve_command_level(pack_cmd, ["redeem"]) == 2
-    assert resolve_command_level(pack_cmd, ["REDEEM"]) == 2
+    assert resolve_command_level(pack_cmd, ["list"]) == 2
+    assert resolve_command_level(pack_cmd, ["LIST"]) == 2
+    assert resolve_command_level(pack_cmd, ["open"]) == 9
+    assert resolve_command_level(pack_cmd, ["open", "3", "5"]) == 9
+    assert resolve_command_level(pack_cmd, ["redeem"]) == 3
+    assert resolve_command_level(pack_cmd, ["REDEEM"]) == 3
 
 
 @pytest.mark.asyncio
@@ -680,7 +680,7 @@ async def test_pack_redeem_error_renders_without_generic_prefix():
     msg = MessageInfo(content=":pack redeem", nickname="Alice")
 
     with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
-        mock_user.return_value = SimpleNamespace(level=2)
+        mock_user.return_value = SimpleNamespace(level=3)
         response = await manager.process_command(FakePackCommand(), msg, command_info)
 
     assert response == "未找到热力兑换入口"
