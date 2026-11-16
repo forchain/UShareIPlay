@@ -184,6 +184,27 @@ def test_broadcaster_consumes_only_on_non_initial_track_changes(
     assert playlist_state.next_queue_contributors == {"Alice"}
 
 
+def test_broadcaster_does_not_consume_on_an_error_cache_entry(
+    broadcaster, playlist_state
+):
+    """一次读取失败不是曲目切换，不能侵蚀待播计数。"""
+    playlist_state.record_next("Alice")
+    broadcaster._playback_info_cache = {"song": "A", "singer": "X", "album": "Y"}
+    broadcaster.update()  # 首次初始化
+    assert playlist_state.pending_next_count == 1
+
+    broadcaster._playback_info_cache = {
+        "error": "transient read failure",
+        "song": "Unknown",
+        "singer": "Unknown",
+        "album": "Unknown",
+    }
+    broadcaster.update()
+
+    assert playlist_state.pending_next_count == 1
+    assert playlist_state.next_queue_contributors == {"Alice"}
+
+
 # --------------------------------------------------------------------------
 # NextCommand：只在 play_next 成功（非 error dict）时记录
 # --------------------------------------------------------------------------
@@ -222,5 +243,34 @@ async def test_next_command_does_not_record_when_play_next_fails(
     )
 
     assert result == {"error": "Not found"}
+    assert playlist_state.pending_next_count == 0
+    assert playlist_state.next_queue_contributors == set()
+
+
+@pytest.mark.asyncio
+async def test_next_command_does_not_record_when_the_handler_play_next_raises(
+    stateful_info_manager, playlist_state
+):
+    """handler 的异常必须变成 error dict 再回到命令层。
+
+    之前异常路径返回不带 'error' 的 {'song': ..., 'singer': 'unknown'}，
+    于是 NextCommand 把一次失败的入队当成成功记了一笔。
+    """
+    from ushareiplay.commands.next import NextCommand
+    from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+    from ushareiplay.models.message_info import MessageInfo
+
+    handler = QQMusicHandler.__new__(QQMusicHandler)
+    handler.logger = _fake_logger()[0]
+    handler._prepare_music_playback = MagicMock(side_effect=RuntimeError("boom"))
+    command = NextCommand(
+        SimpleNamespace(soul_handler=MagicMock(), music_handler=handler)
+    )
+
+    result = await command.do_process(
+        MessageInfo(content="/next 晴天", nickname="Alice"), ["晴天"]
+    )
+
+    assert result == {"error": "Error playing next music: boom"}
     assert playlist_state.pending_next_count == 0
     assert playlist_state.next_queue_contributors == set()

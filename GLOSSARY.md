@@ -147,7 +147,7 @@ An ad-hoc playback queue accumulated by one or more users requesting `:next <son
 _Avoid_: Temp playlist, next-song cache, ad-hoc song lock
 
 **Playlist Guard**:
-The protection gate that blocks playback-interrupting commands when a non-privileged user's continuous **Playlist Context** or **Next Queue** is active and at least one protected contributor (or their avatar) remains in the room. Non-interrupting commands (such as `:next` and room/chat actions) bypass the guard, while human operators (room owner, admins, Console) and active contributors themselves can override it.
+The protection gate that blocks playback-interrupting commands when a non-privileged user's continuous **Playlist Context** or **Next Queue** is active and at least one protected contributor (or their avatar) remains in the room. Non-interrupting commands (such as `:next` and room/chat actions) bypass the guard, while human operators (room owner, admins) and active contributors themselves can override it.
 _Avoid_: Song protection lock, timer blocker, music mutex
 
 **Playback Muting**:

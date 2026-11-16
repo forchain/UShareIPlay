@@ -4,6 +4,7 @@
 不碰播放器、不暂停/恢复，也不动麦克风。
 """
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -39,6 +40,27 @@ def _fake_music(monkeypatch, module):
     return music
 
 
+class _FakeMuting:
+    """Counts entries into the PlaybackMuting guard without touching a mic."""
+
+    def __init__(self):
+        self.entries = 0
+
+    @contextmanager
+    def guard(self):
+        self.entries += 1
+        yield False
+
+
+@pytest.fixture
+def muting(monkeypatch):
+    fake = _FakeMuting()
+    monkeypatch.setattr(
+        skip_module.PlaybackMuting, "instance", staticmethod(lambda: fake)
+    )
+    return fake
+
+
 @pytest.fixture
 def skip_command():
     command = SkipCommand(_make_controller())
@@ -59,7 +81,7 @@ def pause_command():
 
 @pytest.mark.asyncio
 async def test_skip_blocked_by_guard_never_touches_the_player(
-    skip_command, monkeypatch
+    skip_command, muting, monkeypatch
 ):
     music = _fake_music(monkeypatch, skip_module)
     skip_command._playlist_adoption.guard_switch.return_value = _guard_error()
@@ -70,11 +92,14 @@ async def test_skip_blocked_by_guard_never_touches_the_player(
 
     assert result == _guard_error()
     skip_command._playlist_adoption.guard_switch.assert_awaited_once_with("房客")
+    assert muting.entries == 0
     music.skip_song.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_skip_allowed_by_guard_reaches_the_player(skip_command, monkeypatch):
+async def test_skip_allowed_by_guard_reaches_the_player(
+    skip_command, muting, monkeypatch
+):
     music = _fake_music(monkeypatch, skip_module)
 
     result = await skip_command.do_process(
@@ -83,6 +108,7 @@ async def test_skip_allowed_by_guard_reaches_the_player(skip_command, monkeypatc
 
     assert result == {"song": "晴天", "singer": "周杰伦"}
     skip_command._playlist_adoption.guard_switch.assert_awaited_once_with("房客")
+    assert muting.entries == 1
     music.skip_song.assert_called_once_with()
 
 
