@@ -161,8 +161,8 @@ class _ModeSpec:
     """一种播放模式的声明式编排。
 
     `enter` 切前台并走到可操作的面，`trigger` 真正让音乐响起来，`collect` 读回
-    UI 上观察到的事实，`restore` 把 QQ 音乐收回干净状态。各模式只声明这四步，
-    顺序与善后由 `_PlaybackSession` 统一保证。
+    UI 上观察到的事实，`restore` 决定播完后 QQ 音乐停在哪（单曲停在播放页，
+    其余模式收干净）。各模式只声明这四步，顺序与善后由 `_PlaybackSession` 统一保证。
     """
 
     enter: Callable[["_PlaybackSession"], Optional[str]]
@@ -176,7 +176,8 @@ class _PlaybackSession:
     """一次播放的 UI 生命周期：trigger → collect → restore（保证执行）。
 
     `restore` 放在 finally 而不是各模式 happy path 的末尾：中途任何一步失败或
-    抛异常，QQ 音乐都不会停在搜索页/详情页上，挡住引擎随后对 Soul 房间的同步。
+    抛异常都照样收尾，别让 QQ 音乐停在半路。单曲模式例外 —— 它停在播放页上，
+    因为后续同步切回 Soul 时会自己 `switch_to_app`。
 
     `took_over` 记录 enter 是否真的把 QQ 音乐切到了前台：没切成功时前台还是
     Soul，善后一律不许按返回/回首页 —— 那会把房间界面点掉。
@@ -236,6 +237,14 @@ def _restore_home(session: _PlaybackSession) -> None:
     session.handler.navigate_to_home()
 
 
+def _stay_on_player_page(session: _PlaybackSession) -> None:
+    """单曲播完就停在播放页：回首页只是一次多步返回 + 等元素的往返。
+
+    后续同步不依赖 QQ 音乐停在哪 —— 发公屏消息与恢复开麦都会自己
+    `switch_to_app` 切回 Soul，下一次点歌也由 `query_music` 从当前页面导航。
+    """
+
+
 def _restore_back(session: _PlaybackSession) -> None:
     if not session.took_over:
         return
@@ -279,7 +288,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
                 self._song_enter,
                 self._song_trigger,
                 self._song_collect,
-                _restore_home,
+                _stay_on_player_page,
                 lambda exc: f"Failed to query music: {query}: {exc}",
             )
         if request.mode is PlaybackMode.FAVORITES:

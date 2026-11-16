@@ -299,10 +299,15 @@ def test_driver_leaves_the_release_date_out_when_the_quality_check_finds_none(
     assert dict(outcome.extra) == {}
 
 
-def test_driver_returns_home_after_a_single_song_playback(
+def test_driver_stays_on_the_playing_page_after_a_single_song_playback(
     initialized_test_singletons, quality_checked
 ):
-    """播完单曲也要回首页：播放页留着会挡住引擎随后对 Soul 房间的同步。"""
+    """播完单曲就停在播放页，不回首页。
+
+    回首页对后续同步没有作用：引擎发公屏消息与恢复开麦都自己 switch_to_app
+    切回 Soul，下一次点歌也由 query_music 从当前页面导航。而 navigate_to_home
+    是一次多步返回 + 等元素的往返，只会把每次点歌拖慢。
+    """
     handler = _QQMusicHandlerFake(
         playing_info={"song": "似是故人来", "singer": "梅艳芳", "album": "戏剧人生"}
     )
@@ -311,7 +316,7 @@ def test_driver_returns_home_after_a_single_song_playback(
         PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
     )
 
-    assert handler.home_visits == 1
+    assert handler.home_visits == 0
 
 
 # ---------------------------------------------------------------------------
