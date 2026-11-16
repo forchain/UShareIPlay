@@ -1,6 +1,6 @@
 ---
 covers: [TimerManager, TimerCommand, Timer, TimerDAO]
-last-synced: 2026-09-23
+last-synced: 2026-11-17
 ---
 
 ## Overview
@@ -38,6 +38,7 @@ Every tick, the loop checks enabled timers whose `next_trigger` has arrived (`no
 
 | Prefix | Level | Params | Description |
 |---|---|---|---|
+| `timer` | 9 | — | Show scheduler running/paused/stopped status |
 | `timer` | 9 | `add <key?> <time> <command...> [repeat]` | Add a scheduled timer (key optional; time in seconds or HH:MM) |
 | `timer` | 9 | `remove <key>` | Delete a timer by key |
 | `timer` | 9 | `list` | List all active timers with next trigger times |

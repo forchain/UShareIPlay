@@ -16,7 +16,7 @@ class TimerCommand(BaseCommand):
     async def do_process(self, message_info, parameters):
         """Process timer command"""
         if not parameters:
-            return self._list_timers()
+            return {'timer': self.timer_manager.status_line()}
 
         command = parameters[0].lower()
 
@@ -172,6 +172,7 @@ class TimerCommand(BaseCommand):
         """
         help_text = """命令帮助:
 
+• timer - 查看启停状态
 • timer list - 列出所有
 • timer add <ID?> <时间> <消息> [repeat] - 添加（ID可省略，系统自动生成）
 • timer remove <ID> - 删除

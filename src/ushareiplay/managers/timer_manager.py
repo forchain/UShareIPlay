@@ -46,6 +46,15 @@ class TimerManager(Singleton):
     def is_paused(self) -> bool:
         return self._paused
 
+    def status_line(self) -> str:
+        """启停状态摘要，供 timer / info 命令共用"""
+        total = len(self._timers)
+        if not self._running:
+            return f"定时器: 已停止，共 {total} 个"
+        if self._paused:
+            return f"定时器: 已暂停，共 {total} 个"
+        return f"定时器: 运行中，共 {total} 个"
+
     def pause(self):
         """暂停定时器检查与触发"""
         self._paused = True
