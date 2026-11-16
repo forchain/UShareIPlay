@@ -522,7 +522,7 @@ commands:
     description: "查看房间当前播放歌曲、播放循环模式、待播歌单、在线用户、时长与定时器状态。无参数，例如 :info"
     help: ":info"
     help_order: 9
-    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{song} - {singer} • {album} • {release_date}"
+    response_template: "播放模式: {play_mode}\n{current_playlist}\n{online_users}\n{party_duration}\n派对推荐: {party_recommendation}\n{timer_status}\n{song} - {singer} • {album} • {release_date}"
     error_template: "Failed to get playback info, because {error}"
   - prefix: "singer"
     level: 3
@@ -609,17 +609,17 @@ commands:
     level: 3
     subcommands:
       'list':
-        level: 3
-      'open':
-        level: 3
-      'redeem':
         level: 2
+      'open':
+        level: 9
+      'redeem':
+        level: 3
     description: "查看福袋列表（需等级3）、开启福袋（需等级3），或将热力值兑换为福袋（需等级2）。参数: [list|open [level] [countdown]|redeem]，例如 :pack、:pack list、:pack open 3 5、:pack redeem。countdown 省略即 0（即刻抢），会改写房间倒计时设置；手动开启不受在线人数 ≤10 的限制"
     response_template: "{message}"
     error_template: "{error}"
   - prefix: "timer"
     level: 9
-    description: "定时任务管理。参数: <add/remove/list/enable/disable/start/stop/reset/reload> [参数]，例如 :timer add 10 \":say 时间到\"(延时10秒单次任务)、:timer add morning 08:00 \":play 早安\" true(每日8点重复任务)、:timer remove morning、:timer list、:timer disable morning"
+    description: "定时任务管理。无参数查看启停状态；参数: <add/remove/list/enable/disable/start/stop/reset/reload> [参数]，例如 :timer add 10 \":say 时间到\"(延时10秒单次任务)、:timer add morning 08:00 \":play 早安\" true(每日8点重复任务)、:timer remove morning、:timer list、:timer disable morning"
     response_template: "{timer}"
     error_template: "{error}"
   - prefix: "keyword"

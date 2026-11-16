@@ -1,4 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.managers.timer_manager import TimerManager
 
 
 class InfoCommand(BaseCommand):
@@ -71,6 +72,8 @@ class InfoCommand(BaseCommand):
             result["party_recommendation"] = "关闭"
         else:
             result["party_recommendation"] = "未知"
+
+        result["timer_status"] = TimerManager.instance().status_line()
 
         return result
 

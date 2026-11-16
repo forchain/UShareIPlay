@@ -165,6 +165,17 @@ async def test_info_online_users_all_combinations():
 
 
 @pytest.mark.asyncio
+async def test_info_includes_timer_status():
+    controller = make_dummy_controller()
+    cmd = InfoCommand(controller)
+    msg = MessageInfo(content=":info", nickname="Alice")
+
+    res = await cmd.process(msg, [])
+
+    assert res["timer_status"] == "定时器: 已停止，共 0 个"
+
+
+@pytest.mark.asyncio
 async def test_info_online_users_without_optional_managers_initialized():
     PresenceTracker.instance().update_online_users(["Alice", "Bob"])
     # AdminManager and SeatObservationManager are NOT initialized

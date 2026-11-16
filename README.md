@@ -181,6 +181,7 @@ User levels range from `0` (guest / unprivileged) to `9` (owner / system adminis
 | Command | Level | Params | Description |
 |---|---|---|---|
 | `:sleep` | 4 | `on/off/status` | Sleep Guardian: block automated commands during night hours (23:00 - 06:00) |
+| `:timer` | 9 | — | Show scheduler running/paused/stopped status |
 | `:timer` | 9 | `add <key?> <time> <cmd...> [rep]` | Add scheduled timer (delay in seconds or clock time `HH:MM`) |
 | `:timer` | 9 | `remove <key>` | Delete timer |
 | `:timer` | 9 | `list` | List all active timers with next trigger times |
