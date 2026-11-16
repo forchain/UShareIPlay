@@ -100,6 +100,28 @@ class InfoManager(Singleton):
         """设置当前歌单名称"""
         self._playlist_state.current_playlist_name = value
 
+    @property
+    def pending_next_count(self) -> int:
+        """Next Queue 中尚未消费的曲目数量"""
+        return self._playlist_state.pending_next_count
+
+    @property
+    def next_queue_contributors(self) -> Set[str]:
+        """往 Next Queue 点过歌的用户"""
+        return self._playlist_state.next_queue_contributors
+
+    def record_next(self, requester: str):
+        """记录一次成功的 :next"""
+        self._playlist_state.record_next(requester)
+
+    def consume_track(self):
+        """消费一次曲目切换"""
+        self._playlist_state.consume_track()
+
+    def clear_next_queue(self):
+        """清空 Next Queue"""
+        self._playlist_state.clear_next_queue()
+
     # ------------------------------------------------------------------
     # 在线用户（委托给 PresenceTracker）
     # ------------------------------------------------------------------

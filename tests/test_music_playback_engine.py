@@ -42,6 +42,9 @@ class _InfoManager:
         self.guard_calls.append(requester)
         return self.protection_error
 
+    def clear_next_queue(self):
+        pass
+
 
 class _RoomProfileManager:
     def __init__(self):

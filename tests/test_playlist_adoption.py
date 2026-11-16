@@ -14,6 +14,10 @@ class _Info:
     def __init__(self):
         self.player_name = None
         self.current_playlist_name = None
+        self.next_queue_cleared = False
+
+    def clear_next_queue(self):
+        self.next_queue_cleared = True
 
 
 class _RoomProfile:

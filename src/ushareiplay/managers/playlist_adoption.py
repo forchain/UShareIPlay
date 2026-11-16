@@ -190,6 +190,9 @@ class PlaylistAdoption(Singleton):
         if mode == PlaybackMode.SONG.value:
             return None
 
+        # 新的连续歌单接管房间，遗留的临时点歌队列随之作废。
+        self._info_manager.clear_next_queue()
+
         # 1. 纯状态：与真实播放保持一致，不依赖 Soul 侧 UI 成败
         if requester:
             self._info_manager.player_name = requester

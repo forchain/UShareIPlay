@@ -356,6 +356,12 @@ class _NextMusicHandler:
 def test_next_command_leaves_microphone_untouched(monkeypatch):
     """Ticket #319: driving the real NextCommand never mutes or restores the mic."""
     from ushareiplay.commands.next import NextCommand
+    from ushareiplay.managers.info_manager import InfoManager
+    from ushareiplay.state.playlist_state import PlaylistState
+
+    # 成功的 :next 现在会记入 Next Queue；这里启动状态门面即可。
+    PlaylistState.initialize()
+    InfoManager.initialize()
 
     coordinator = _make_coordinator([])
     events = coordinator.soul_handler.events
