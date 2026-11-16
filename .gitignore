@@ -21,3 +21,4 @@ config.local.yaml.bak.*
 .antigravitycli
 .orca
 .DS_Store
+.codegraph
