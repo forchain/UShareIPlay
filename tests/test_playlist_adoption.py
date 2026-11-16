@@ -250,3 +250,25 @@ async def test_guard_switch_keeps_protection_for_an_unknown_incoming_mode(adopti
     result = await adoption.guard_switch("不约儿童", incoming_mode=None)
 
     assert result == {"error": "被守护"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system_user", ["Timer", "Agent"])
+async def test_guard_switch_does_not_exempt_a_system_role_single_song(
+    adoption, system_user
+):
+    """Timer/Agent 的单曲请求仍要过守护：单曲豁免只给人工房客。
+
+    定时器/Agent 的 `:play <歌名>` 也是自动打断，不能借“单曲”逃过歌单守护。
+    """
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch(
+        system_user, incoming_mode="song", config={"soul": {}}
+    )
+
+    assert result == {"error": "被守护"}
+    adoption._info.check_playlist_protection.assert_awaited_once_with(
+        system_user, config={"soul": {}}
+    )
