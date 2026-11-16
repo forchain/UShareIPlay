@@ -497,10 +497,7 @@ class QQMusicHandler(AppHandler, Singleton):
 
         except Exception as e:
             self.logger.error(f"Error playing next music: {str(e)}")
-            return {
-                'song': music_query,
-                'singer': 'unknown'
-            }
+            return {'error': f'Error playing next music: {e}'}
 
     def get_playlist_info(self):
         """Get current playlist information

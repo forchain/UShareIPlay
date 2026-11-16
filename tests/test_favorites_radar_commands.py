@@ -42,6 +42,9 @@ class _InfoManager:
     async def check_playlist_protection(self, requester, config=None):
         return self.protection_error
 
+    def clear_next_queue(self):
+        pass
+
 
 class _RoomProfileManager:
     def __init__(self):

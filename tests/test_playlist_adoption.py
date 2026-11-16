@@ -3,10 +3,12 @@
 这里替代了原先六份 mock 链：房间同步现在只有一个实现，因此也只需要一套断言。
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ushareiplay.core.config_view import ConfigView
 from ushareiplay.managers.playlist_adoption import PlaylistAdoption, primary_topic
 
 
@@ -14,6 +16,10 @@ class _Info:
     def __init__(self):
         self.player_name = None
         self.current_playlist_name = None
+        self.next_queue_cleared = False
+
+    def clear_next_queue(self):
+        self.next_queue_cleared = True
 
 
 class _RoomProfile:
@@ -246,3 +252,44 @@ async def test_guard_switch_keeps_protection_for_an_unknown_incoming_mode(adopti
     result = await adoption.guard_switch("不约儿童", incoming_mode=None)
 
     assert result == {"error": "被守护"}
+
+
+@pytest.mark.asyncio
+async def test_guard_switch_reads_system_roles_from_the_live_config(adoption):
+    """未显式传 config 时，系统角色从 InfoManager 的 handler 配置里取。
+
+    自定义的 system_users 名字必须被当作系统角色：它的单曲请求仍受守护，
+    而不是借「单曲」豁免逃过去。
+    """
+    live_config = ConfigView({"soul": {"system_users": ["NightShift"]}})
+    info = MagicMock()
+    info.handler = SimpleNamespace(config=live_config)
+    info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption._info = info
+
+    result = await adoption.guard_switch("NightShift", incoming_mode="song")
+
+    assert result == {"error": "被守护"}
+    info.check_playlist_protection.assert_awaited_once_with("NightShift", config=None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system_user", ["Timer", "Agent"])
+async def test_guard_switch_does_not_exempt_a_system_role_single_song(
+    adoption, system_user
+):
+    """Timer/Agent 的单曲请求仍要过守护：单曲豁免只给人工房客。
+
+    定时器/Agent 的 `:play <歌名>` 也是自动打断，不能借“单曲”逃过歌单守护。
+    """
+    adoption._info = MagicMock()
+    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+
+    result = await adoption.guard_switch(
+        system_user, incoming_mode="song", config={"soul": {}}
+    )
+
+    assert result == {"error": "被守护"}
+    adoption._info.check_playlist_protection.assert_awaited_once_with(
+        system_user, config={"soul": {}}
+    )

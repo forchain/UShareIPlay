@@ -75,4 +75,8 @@ class PauseCommand(BaseCommand):
                     'error': 'Invalid parameter, must be 0 or 1',
                 }
 
+        error = await self.playlist_adoption.guard_switch(message_info.nickname)
+        if error:
+            return error
+
         return self.pause_song(pause_state)

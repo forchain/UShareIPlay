@@ -253,7 +253,6 @@ def test_playback_command_without_expected_song_still_guards_microphone(monkeypa
 # --------------------------------------------------------------------------
 
 PLAYBACK_COMMANDS = [
-    ("skip", "SkipCommand"),
     ("playlist", "PlaylistCommand"),
 ]
 
@@ -293,6 +292,21 @@ def test_commands_migrated_into_the_engine_do_not_mute_at_command_level(
     assert command_class.playback_muting is False
     # 逐分支判定静音归属的钩子也随之失去存在理由（基类的默认实现直接读类属性）
     assert "playback_muting_applies" not in vars(command_class)
+
+
+def test_skip_command_owns_muting_after_its_guard():
+    """`:skip` 不能在命令级闭麦：被守护拒绝的切歌不该响一次无来由的静音。
+
+    守护通过后由 `do_process` 自己进入 PlaybackMuting。
+    """
+    import inspect
+    from ushareiplay.commands.skip import SkipCommand
+
+    assert SkipCommand.playback_muting is False
+
+    source = inspect.getsource(SkipCommand.do_process)
+    assert source.index("guard_switch") < source.index("PlaybackMuting.instance().guard()")
+    assert "skip_song" in source
 
 
 def test_next_command_does_not_participate_in_muting():
@@ -356,6 +370,12 @@ class _NextMusicHandler:
 def test_next_command_leaves_microphone_untouched(monkeypatch):
     """Ticket #319: driving the real NextCommand never mutes or restores the mic."""
     from ushareiplay.commands.next import NextCommand
+    from ushareiplay.managers.info_manager import InfoManager
+    from ushareiplay.state.playlist_state import PlaylistState
+
+    # 成功的 :next 现在会记入 Next Queue；这里启动状态门面即可。
+    PlaylistState.initialize()
+    InfoManager.initialize()
 
     coordinator = _make_coordinator([])
     events = coordinator.soul_handler.events

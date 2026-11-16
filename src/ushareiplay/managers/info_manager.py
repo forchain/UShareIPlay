@@ -100,6 +100,24 @@ class InfoManager(Singleton):
         """设置当前歌单名称"""
         self._playlist_state.current_playlist_name = value
 
+    @property
+    def pending_next_count(self) -> int:
+        """Next Queue 中尚未消费的曲目数量"""
+        return self._playlist_state.pending_next_count
+
+    @property
+    def next_queue_contributors(self) -> Set[str]:
+        """往 Next Queue 点过歌的用户"""
+        return self._playlist_state.next_queue_contributors
+
+    def record_next(self, requester: str):
+        """记录一次成功的 :next"""
+        self._playlist_state.record_next(requester)
+
+    def clear_next_queue(self):
+        """清空 Next Queue"""
+        self._playlist_state.clear_next_queue()
+
     # ------------------------------------------------------------------
     # 在线用户（委托给 PresenceTracker）
     # ------------------------------------------------------------------
@@ -186,16 +204,14 @@ class InfoManager(Singleton):
         self, caller_nickname: str, config: Optional[dict] = None
     ) -> Optional[dict]:
         """
-        检查当前歌单是否处于守护状态。
+        检查当前歌单或 Next Queue 是否处于守护状态。
         - 房主、管理员、系统角色播放时无需保护，允许切歌。
-        - 普通用户播放且在线时受保护；但房主、管理员、Console 可突破保护切歌。
+        - 普通用户播放且在线时受保护；但房主、管理员可突破保护切歌。
         - 系统角色（Timer、Agent）与普通用户不得打断在场普通用户的歌单。
+        - Next Queue 由非特权贡献者独立守护，仅贡献者本人/分身与人工操作者可突破。
         """
-        player_name = self.player_name
-        if not player_name:
-            return None
-
         from ushareiplay.core.roles import RolePolicy
+        from ushareiplay.dal.user_dao import UserDAO
 
         cfg = config
         if cfg is None and self._handler is not None and hasattr(self._handler, "config"):
@@ -203,32 +219,43 @@ class InfoManager(Singleton):
 
         role_policy = RolePolicy(cfg)
 
-        # 1. 若当前播放者为人工角色（房主、管理员、Console）或系统自动化角色，其播放无需保护，允许切歌
-        if role_policy.is_privileged(player_name):
-            return None
-
-        # 2. 若调用者为人工操作者（房主、管理员、Console），允许突破在场普通用户的歌单守护
+        # 1. 人工操作者（房主、管理员）可突破歌单与 Next Queue 两重守护
         if role_policy.is_human_operator(caller_nickname):
             return None
 
-        # 3. 如果调用者与当前播放者是同一人（同名），允许切换
-        if caller_nickname == player_name:
+        # 2. Playlist Context：特权播放者无需保护，本人/分身允许切换，播放者在线则守护
+        player_name = self.player_name
+        if (
+            player_name
+            and not role_policy.is_privileged(player_name)
+            and caller_nickname != player_name
+        ):
+            try:
+                player_avatars = await UserDAO.get_all_avatar_usernames(player_name)
+                is_online = bool(player_avatars & self.get_online_users())
+            except Exception:
+                player_avatars = {player_name}
+                is_online = self.is_user_online(player_name)
+            if caller_nickname not in player_avatars and is_online:
+                return {'error': f'{player_name} 正在播放歌单，请等待'}
+
+        # 3. Next Queue：仅非特权贡献者在线时守护，贡献者本人/分身可突破自己的队列
+        if self.pending_next_count <= 0:
             return None
-
-        # 4. 检查调用者是否为当前播放者的分身，或者当前播放者（及分身）是否仍在房间
-        try:
-            from ushareiplay.dal.user_dao import UserDAO
-            player_avatars = await UserDAO.get_all_avatar_usernames(player_name)
-            if caller_nickname in player_avatars:
+        contributors = sorted(
+            c for c in self.next_queue_contributors if not role_policy.is_privileged(c)
+        )
+        online_users = self.get_online_users()
+        online_contributor = None
+        for contributor in contributors:
+            contributor_avatars = await UserDAO.get_all_avatar_usernames(contributor)
+            if caller_nickname in contributor_avatars:
                 return None
-            online_users = self.get_online_users()
-            is_online = bool(player_avatars & online_users)
-        except Exception:
-            is_online = self.is_user_online(player_name)
+            if online_contributor is None and contributor_avatars & online_users:
+                online_contributor = contributor
 
-        if is_online:
-            return {'error': f'{player_name} 正在播放歌单，请等待'}
-
+        if online_contributor:
+            return {'error': f'{online_contributor} 正在点歌，请等待'}
         return None
 
     # ------------------------------------------------------------------

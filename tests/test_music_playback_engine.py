@@ -36,11 +36,15 @@ class _InfoManager:
         self.protection_error = protection_error
         self.player_name = None
         self.current_playlist_name = None
+        self.handler = None
         self.guard_calls = []
 
     async def check_playlist_protection(self, requester, config=None):
         self.guard_calls.append(requester)
         return self.protection_error
+
+    def clear_next_queue(self):
+        pass
 
 
 class _RoomProfileManager:

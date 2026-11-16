@@ -142,6 +142,14 @@ _Avoid_: Memory sync, log summarizer, batch updater
 The room's record of the continuous queue that is currently playing — its type (`list_mode`), its owner (`player_name`), its full name (`current_playlist_name`), and the room title/topic adopted with it. It is written only by `PlaylistAdoption.adopt()`, and only by continuous queues (favorites, radar, playlist, singer, album, radio). A single-song request (`:play <song>`) is an **interlude** inside the queue that is already playing, not a new queue: QQ Music keeps advancing the radio/playlist afterwards, so the interlude writes nothing to the playlist context.
 _Avoid_: Now-playing metadata, song mode, playlist lock
 
+**Next Queue**:
+An ad-hoc playback queue accumulated by one or more users requesting `:next <song>`, tracked by a pending track counter and a set of contributors layered alongside the active **Playlist Context**. Each successful `:next` increments the pending count and records the requester, each observed track transition decrements the count until it clears, and switching to a new continuous queue clears it.
+_Avoid_: Temp playlist, next-song cache, ad-hoc song lock
+
+**Playlist Guard**:
+The protection gate that blocks playback-interrupting commands when a non-privileged user's continuous **Playlist Context** or **Next Queue** is active and at least one protected contributor (or their avatar) remains in the room. Non-interrupting commands (such as `:next` and room/chat actions) bypass the guard, while human operators (room owner, admins) and active contributors themselves can override it.
+_Avoid_: Song protection lock, timer blocker, music mutex
+
 **Playback Muting**:
 The microphone lifecycle guard that closes the bot's mic for the duration of a song-switching operation — from the start of a play/skip command until Android MediaSession confirms the new track is playing — and then safely restores microphone activity. It does not mute during steady-state playback.
 _Avoid_: Temporary mute, anti-noise hack, mic delay script

@@ -37,6 +37,7 @@
 
 from typing import Optional
 
+from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playback.models import PlaybackMode
 
@@ -144,14 +145,20 @@ class PlaylistAdoption(Singleton):
                 守护拦：它不采纳歌单上下文，也就没有「顶掉别人队列」这回事；别人
                 的歌单也就不该拿它当理由，把一次 `:play <歌名>` 挡在门外
                 （2026-10-16 线上：不约儿童 在放歌单，石碘 单点被回以
-                「正在播放歌单，请等待」）。None / 说不清类型时照旧走守护。
+                「正在播放歌单，请等待」）。但 Timer/Agent 等系统角色的单曲
+                请求是自动打断，不享受这项豁免。None / 说不清类型时照旧走守护。
             config: 角色策略用的配置，原样转交。
 
         Returns:
             error dict 表示这次切歌应当被阻断；None 表示放行。
         """
         if self._is_single_song(incoming_mode):
-            return None
+            resolved_config = config
+            if resolved_config is None:
+                handler = self._info_manager.handler
+                resolved_config = handler.config if handler is not None else None
+            if not RolePolicy(resolved_config).is_system_user(requester):
+                return None
         return await self._info_manager.check_playlist_protection(requester, config=config)
 
     def adopt(
@@ -189,6 +196,9 @@ class PlaylistAdoption(Singleton):
         """
         if mode == PlaybackMode.SONG.value:
             return None
+
+        # 新的连续歌单接管房间，遗留的临时点歌队列随之作废。
+        self._info_manager.clear_next_queue()
 
         # 1. 纯状态：与真实播放保持一致，不依赖 Soul 侧 UI 成败
         if requester:
