@@ -585,9 +585,9 @@ class AppController(Singleton):
             # 契约适配层上的 collapse_seats()。
             self.seat_observation_manager = SeatObservationManager.initialize(
                 self.soul_handler,
-                seat_ui=self.seat_manager.subsystem.panel,
-                panel_reader=self.seat_manager.subsystem.panel_reader,
-                panel_driver=self.seat_manager.subsystem.panel_driver,
+                seat_ui=self.seat_manager.panel,
+                panel_reader=self.seat_manager.panel_reader,
+                panel_driver=self.seat_manager.panel_driver,
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 

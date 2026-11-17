@@ -506,7 +506,6 @@ def test_seat_manager_does_not_initialize_seat_observation_singleton():
     observation = SeatObservationManager.initialize(handler)
     assert SeatObservationManager.is_initialized()
     assert seat_mgr.observation is observation
-    assert seat_mgr._observation is observation
 
 
 @pytest.mark.asyncio

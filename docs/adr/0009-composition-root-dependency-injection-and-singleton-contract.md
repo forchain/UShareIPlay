@@ -142,6 +142,15 @@ spec #426 拆出的第一个 ticket #428 交付了在线用户抽屉深模块 `O
 跨 await 持有会形成 AB-BA 死锁），因此 `apply()` 按当前快照重新分类而不是沿用
 observe 时刻的旧分类。
 
+### 2026-11-17 —— §1/§5：`SeatManager` 与 `SeatSubsystem` 合并（#536）
+
+`SeatManager` 不再是逐方法转发 10 个接口的门面：它继承 `SeatSubsystem`，直接持有
+真实实现，并把 `@guest_room_guard` 与 `find_verified_isolated_empty_desk` 的
+`seat_empty_desk` UI 会话锁放进实现本身（#536）。`SeatSubsystem` 仍是可自由构造的
+实现基类（同一进程可并存多个实例），`SeatManager` 只负责受保护单例契约
+（`initialize` / `instance`）与组合根注入；`subsystem` 属性是既有接线使用的只读
+别名，指向同一实例。`tests/test_singleton.py` 已按这个统一契约更新。
+
 ### 2026-11-03 —— §1 的配置层已由 ADR-0012 补齐
 
 §1 要求组合根统一构造与注入，但当时注入的仍是裸配置字典，配置读取这一层始终缺位

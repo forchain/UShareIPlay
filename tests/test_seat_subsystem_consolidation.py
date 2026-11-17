@@ -25,6 +25,7 @@ from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
 from ushareiplay.managers.seat_manager.guard import (
     GUEST_ROOM_CHAT_SCAN_RESULT,
+    GUEST_ROOM_EMPTY_DESK_RESULT,
     GUEST_ROOM_ENTRY_CHECK_RESULT,
     GUEST_ROOM_ERROR_RESULT,
 )
@@ -324,27 +325,25 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(
     def _explode(*_args, **_kwargs):
         raise AssertionError("他人房间里不该跑到位子子系统的实现")
 
+    # 守卫与实现在同一个方法上：能替换的是公开入口背后的内部实现。
     for name in (
-        "reserve_seat",
         "sit_at_specific_seat",
         "seat_off_owner",
         "seat_off_specific_seat",
-        "find_owner_seat",
-        "remove_user_reservation",
-        "accompany_user",
-        "check_seats_on_entry",
-        "prepare_for_chat_scan",
+        "_find_verified_isolated_empty_desk",
     ):
-        monkeypatch.setattr(manager.subsystem, name, _explode)
+        monkeypatch.setattr(manager, name, _explode)
 
     assert await manager.reserve_seat("Alice", 1) == GUEST_ROOM_ERROR_RESULT
     assert await manager.take_seat(1) == GUEST_ROOM_ERROR_RESULT
     assert await manager.find_owner_seat() == GUEST_ROOM_ERROR_RESULT
     assert await manager.accompany_user("Bob") == GUEST_ROOM_ERROR_RESULT
     assert await manager.remove_seat_occupant(1) == GUEST_ROOM_ERROR_RESULT
+    assert await manager.remove_seat_occupant(None) == GUEST_ROOM_ERROR_RESULT
     assert await manager.remove_user_reservation("Alice") == GUEST_ROOM_ERROR_RESULT
     assert await manager.check_seats_on_entry("Alice") == GUEST_ROOM_ENTRY_CHECK_RESULT
     assert await manager.prepare_for_chat_scan() == GUEST_ROOM_CHAT_SCAN_RESULT
+    assert await manager.find_verified_isolated_empty_desk() == GUEST_ROOM_EMPTY_DESK_RESULT
 
 
 async def test_check_seats_on_entry_without_a_handler_returns_quietly():
@@ -467,6 +466,5 @@ def test_observation_stays_a_lazy_lookup():
 
         observation = SeatObservationManager.initialize(make_handler())
         assert manager.observation is observation
-        assert manager._observation is observation
     finally:
         SeatObservationManager.reset_instance()
