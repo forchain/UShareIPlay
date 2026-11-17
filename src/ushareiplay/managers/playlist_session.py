@@ -73,7 +73,7 @@ class PlaylistSession(Singleton):
         avatar_usernames: Optional[Callable[[str], set]] = None,
     ):
         self.handler = handler
-        self._logger = getattr(handler, "logger", None)
+        self._logger = handler.logger if handler is not None else None
         self._room_profile = room_profile
         self._online_users = online_users
         self._avatar_usernames = avatar_usernames
@@ -86,9 +86,9 @@ class PlaylistSession(Singleton):
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = getattr(self.handler, "logger", None) or logging.getLogger(
-                "ushareiplay.managers.playlist_session"
-            )
+            self._logger = (
+                self.handler.logger if self.handler is not None else None
+            ) or logging.getLogger("ushareiplay.managers.playlist_session")
         return self._logger
 
     # ------------------------------------------------------------------
@@ -177,7 +177,7 @@ class PlaylistSession(Singleton):
     def _config(self, config=None):
         if config is not None:
             return config
-        return getattr(self.handler, "config", None)
+        return self.handler.config if self.handler is not None else None
 
     def _online(self) -> set:
         if self._online_users is not None:

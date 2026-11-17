@@ -151,9 +151,6 @@ class SeatSubsystem:
         self._lease = lease
         self._observation = observation
         self._message_dispatch = None
-        # 运行期上下文（UI 独占锁的读法），由组合根经 configure_runtime 注入 ——
-        # 与 EventManager / CommandManager 同一套接线（ADR-0009 第 3 条）。
-        self._runtime = None
         # 占座游标：占座侧原本持有的两个状态，合并后归子系统所有。
         self.current_desk_index = 0
         self.current_side = None
@@ -260,14 +257,6 @@ class SeatSubsystem:
         """独占 UI 执行权，委托给 reader.session。"""
         async with self.panel_reader.session(reason):
             yield
-
-    def configure_runtime(self, runtime):
-        """注入运行期上下文（UI 独占锁的读法）。
-
-        与 `EventManager` / `CommandManager` 同一套接线：依赖只从构造函数或
-        `configure_runtime` 进入（ADR-0009 第 3 条）。
-        """
-        self._runtime = runtime
 
     # ------------------------------------------------------------------
     # 面板

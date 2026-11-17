@@ -933,8 +933,7 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     controller = AppController.__new__(AppController)
     controller.ui_lock = asyncio.Lock()
     controller.logger = handler.logger
-    AppController._ui_lock_owner = None
-    AppController._ui_lock_depth = 0
+    AppController._ui_session_lease = None
 
     started = asyncio.Event()
 

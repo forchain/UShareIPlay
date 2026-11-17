@@ -81,9 +81,9 @@ class AvatarTapPolicy(str, Enum):
     - `SEAT_NODE`：只点 UserView（`{side}_seat`）。要读「请下麦」的那条链路用它。
     - `STATE_ONLY`：只点 ClState（`{side}_state`）；读不到就**一次都别点**。
       「不点」与「改点别的」是两回事，这条链路原来就是 ClState 缺席即跳过整张桌位。
-    - `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测链路的长期行为，
-      也是本方法的默认值 —— `SeatObservationManager.inspect_occupant` 按同样顺序
-      自己读这两个节点（那一处在观测器模块内，不走本驱动），两者必须一起改。
+    - `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测链路与主动命令
+      的默认值 —— `SeatObservationManager.inspect_occupant` 也委托本驱动的
+      `read_occupant`，两者共用同一份实现。
     """
 
     SEAT_NODE = "seat_node"

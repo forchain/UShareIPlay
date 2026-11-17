@@ -20,7 +20,6 @@ import pytest
 from tests.seat_fixtures import FakeController, make_handler, soul_elements
 
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.runtime_context import EventRuntimeContext
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
 from ushareiplay.managers.seat_manager.guard import (
@@ -41,6 +40,8 @@ PUBLIC_SEAT_INTERFACES = (
     "accompany_user",
     "check_seats_on_entry",
     "prepare_for_chat_scan",
+    "invite_user_to_seat",
+    "find_verified_isolated_empty_desk",
 )
 
 # #402 之后座位子系统只剩门面这一个单例；`SeatObservationManager` 是另一个单例，
@@ -105,7 +106,7 @@ def _manager_with_panel(panel):
 # 结构：真实实现只有一处
 # ---------------------------------------------------------------------------
 def test_seat_manager_owns_a_single_seat_subsystem():
-    """八个公开接口背后是同一个子系统的方法，不是四个互相独立的单例。"""
+    """十个受守卫的公开接口背后是同一个子系统的方法，不是四个互相独立的单例。"""
     manager = SeatManager.initialize()
     subsystem = manager.subsystem
 
@@ -120,6 +121,8 @@ def test_seat_manager_owns_a_single_seat_subsystem():
         "accompany_user": "accompany_user",
         "check_seats_on_entry": "check_seats_on_entry",
         "prepare_for_chat_scan": "prepare_for_chat_scan",
+        "invite_user_to_seat": "invite_user_to_seat",
+        "find_verified_isolated_empty_desk": "_find_verified_isolated_empty_desk",
     }
     assert set(wiring) == set(PUBLIC_SEAT_INTERFACES)
     for facade_name, subsystem_name in wiring.items():
@@ -195,7 +198,7 @@ def test_panel_expanded_state_tracks_the_driver():
 
 
 # ---------------------------------------------------------------------------
-# 对外契约：八个公开方法没有动
+# 对外契约：公开方法没有动
 # ---------------------------------------------------------------------------
 async def test_prepare_for_chat_scan_only_collapses_when_the_panel_is_open():
     panel = _RecordingPanel(expanded=True)
@@ -221,8 +224,6 @@ async def test_prepare_for_chat_scan_leaves_the_panel_alone_while_the_ui_lock_is
         seat_ui=panel,
         lease=controller.ui_session_lease,
     )
-    # 与生产同一套接线：组合根把运行期上下文交给子系统。
-    manager.configure_runtime(EventRuntimeContext(lease=controller.ui_session_lease))
 
     acquired = asyncio.Event()
     release = asyncio.Event()
@@ -243,7 +244,7 @@ async def test_prepare_for_chat_scan_leaves_the_panel_alone_while_the_ui_lock_is
 
 
 async def test_public_interfaces_keep_their_canonical_return_shapes(monkeypatch):
-    """八个公开接口的返回形状来自真实实现，不再经过任何转发替身（#402）。
+    """公开接口的返回形状来自真实实现，不再经过任何转发替身（#402）。
 
     转发替身删掉之前，这个用例断言的是**替身自己**的返回值 —— 也就是说它对生产
     代码什么都没说。现在断言真实实现走真实路径时返回的形状。
@@ -330,6 +331,7 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(
         "sit_at_specific_seat",
         "seat_off_owner",
         "seat_off_specific_seat",
+        "_prepare_empty_seat_click",
         "_find_verified_isolated_empty_desk",
     ):
         monkeypatch.setattr(manager, name, _explode)
@@ -343,6 +345,7 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(
     assert await manager.remove_user_reservation("Alice") == GUEST_ROOM_ERROR_RESULT
     assert await manager.check_seats_on_entry("Alice") == GUEST_ROOM_ENTRY_CHECK_RESULT
     assert await manager.prepare_for_chat_scan() == GUEST_ROOM_CHAT_SCAN_RESULT
+    assert await manager.invite_user_to_seat(1, "Bob") == GUEST_ROOM_ERROR_RESULT
     assert await manager.find_verified_isolated_empty_desk() == GUEST_ROOM_EMPTY_DESK_RESULT
 
 

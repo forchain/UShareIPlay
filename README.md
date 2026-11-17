@@ -222,7 +222,7 @@ src/
   ushareiplay/                 # Root Python package
     core/                      # AppController, DriverLifecycle, AppHandler, CommandManager, ChatIntake, RolePolicy
     handlers/                  # SoulHandler, QQMusicHandler
-    state/                     # RoomState, PresenceTracker, PlaylistState, PlaybackBroadcaster, OnlineListScraper
+    state/                     # RoomState, PresenceTracker, PlaybackBroadcaster, OnlineListScraper
     managers/                  # Business logic (Music, RoomName, Seat, Memory, Mic, Sleep, Recommendation, etc.) — 20+ managers
     commands/                  # 37+ command implementations subclassing BaseCommand
     models/                    # Tortoise ORM models (User, UserMemory, Timer, Events)

@@ -326,6 +326,22 @@ class ClickableNode:
         self.clicked = True
 
 
+class _RecordingLease(UISessionLease):
+    """记录真正取到锁的 session；嵌套直通与 skip_if_busy 跳过都不记。"""
+
+    def __init__(self, sessions, **kwargs):
+        super().__init__(**kwargs)
+        self._sessions = sessions
+
+    @asynccontextmanager
+    async def acquire(self, reason="", *, skip_if_busy=False):
+        already_held = self.holds_session
+        async with super().acquire(reason, skip_if_busy=skip_if_busy) as executed:
+            if executed and not already_held:
+                self._sessions.append(reason)
+            yield executed
+
+
 class FakeController:
     """与 AppController 同形的独占接口：ui_session 异步上下文管理器。
 
@@ -341,8 +357,8 @@ class FakeController:
     def __init__(self):
         self.logger = MagicMock()
         self.sessions = []
-        self.ui_session_lease = UISessionLease(
-            logger=lambda: self.logger, on_acquire=self.sessions.append
+        self.ui_session_lease = _RecordingLease(
+            self.sessions, logger=lambda: self.logger
         )
         self.ui_lock = self.ui_session_lease.lock
 

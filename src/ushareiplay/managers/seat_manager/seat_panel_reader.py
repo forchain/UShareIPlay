@@ -152,7 +152,7 @@ class SeatPanelReader:
         return ""
 
     @staticmethod
-    def _is_seat_number_label(label: str) -> bool:
+    def is_seat_number_label(label: str) -> bool:
         return label.isdigit() and 1 <= int(label) <= 12
 
     # ------------------------------------------------------------------
@@ -177,7 +177,7 @@ class SeatPanelReader:
             occupied = True
         elif (
             bool(cleaned_label)
-            and not self._is_seat_number_label(cleaned_label)
+            and not self.is_seat_number_label(cleaned_label)
             and cleaned_label not in self.EMPTY_SEAT_LABELS
         ):
             occupied = True
@@ -188,7 +188,7 @@ class SeatPanelReader:
                 is_empty = True
             elif cleaned_label in self.EMPTY_SEAT_LABELS:
                 is_empty = True
-            elif self._is_seat_number_label(cleaned_label):
+            elif self.is_seat_number_label(cleaned_label):
                 is_empty = seat_number is None or int(cleaned_label) == seat_number
             elif avatar_images == 1:
                 is_empty = True

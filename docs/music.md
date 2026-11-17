@@ -39,9 +39,9 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 - An explicit user request (`:play <song>` or `:next <song>`) registers an on-demand intent (`MusicManager.mark_on_demand`), exempting the user's chosen song from the old-song filter for that play. Once the song finishes, standard filtering resumes.
 
 ### Playlist Context & Single-Song Interludes
-- The room's playlist context — `list_mode`, `player_name`, `current_playlist_name`, plus the room title/topic — describes a **continuous queue** (favorites / radar / playlist / singer / album / radio) that someone is playing. Only `PlaylistAdoption.adopt()` writes it, and only continuous queues are adopted.
+- The room's playlist context — `list_mode`, `player_name`, `current_playlist_name`, plus the room title/topic — describes a **continuous queue** (favorites / radar / playlist / singer / album / radio) that someone is playing. Only `PlaylistSession.adopt()` writes it, and only continuous queues are adopted.
 - `:play <song>` is an **interlude** in the queue that is already playing, not a new queue: QQ Music keeps advancing the radio/playlist after the requested song. It therefore writes nothing to that context, so `/info` keeps showing e.g. `[电台] 猜你喜欢-沉浸刷歌 (by Timer)` while the interlude plays.
-- `PlaylistAdoption.guard_switch()` only asks whether the incoming request is a single song: single-song requests bypass playlist protection (a point-play must never be blocked by someone else's queue), every other request asks the role policy.
+- `PlaylistSession.guard_switch()` only asks whether the incoming request is a single song: single-song requests bypass playlist protection (a point-play must never be blocked by someone else's queue), every other request asks the role policy.
 
 ### Play-All Button Forms
 - QQ Music renders the "play all" button differently per page: a `TextView` with the text `全部播放` on album detail / favourites / daily-radio pages, an `ImageView` icon on some versions, and a `FrameLayout` with `content-desc="播放"` on the **playlist detail** page.
@@ -74,4 +74,4 @@ Music playback is controlled via QQ Music, automated through `QQMusicHandler`. `
 ## Extension Points
 
 - **New music source**: Add UI interaction methods to `QQMusicHandler`, expose them through `MusicManager`, and create a new command in `src/ushareiplay/commands/`.
-- **New command**: Create `src/ushareiplay/commands/<name>.py` subclassing `BaseCommand`, implement `do_process()`. If it interrupts playback, set `playback_muting = True`. Auto-discovered by `CommandManager`.
+- **New command**: Create `src/ushareiplay/commands/<name>.py` subclassing `BaseCommand`, implement `do_process()`. Playback muting is engine-owned (`MusicManager.play()` / `skip()`); commands no longer declare `playback_muting`. Auto-discovered by `CommandManager`.

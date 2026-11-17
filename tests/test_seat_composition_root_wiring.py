@@ -59,9 +59,8 @@ def started_controller(initialized_test_singletons):
     构造函数只碰 driver 表面属性，不做设备 I/O（见 app_controller.start_up 的注释）。
     """
     Singleton.reset_all_instances()
-    # 类属性兜底的 ui_lock 深度是跨实例的，上一个测试漏下值就会自锁死。
-    AppController._ui_lock_owner = None
-    AppController._ui_lock_depth = 0
+    # 类属性兜底的 lease 是跨实例的，上一个测试漏下对象就会串到下一个。
+    AppController._ui_session_lease = None
 
     controller = AppController.__new__(AppController)
     controller.__init__(_real_config())

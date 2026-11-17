@@ -1,6 +1,6 @@
 ---
-covers: [AppController, DriverLifecycle, AppHandler, SoulHandler, QQMusicHandler, CommandManager, ChatIntake, EventManager, MessageManager, MessageQueue, PlaybackMuting, DatabaseManager, Singleton, BaseCommand, RecoveryManager, InfoManager, RoomState, PresenceTracker, PlaylistState, PlaybackBroadcaster, OnlineListScraper, RolePolicy, main.py]
-last-synced: 2026-10-02
+covers: [AppController, DriverLifecycle, AppHandler, SoulHandler, QQMusicHandler, CommandManager, ChatIntake, EventManager, MessageManager, MessageQueue, PlaybackMuting, DatabaseManager, Singleton, BaseCommand, RecoveryManager, InfoManager, RoomState, PresenceTracker, PlaylistSession, PlaybackBroadcaster, OnlineListScraper, RolePolicy, main.py]
+last-synced: 2026-11-17
 ---
 
 ## Overview
@@ -23,7 +23,7 @@ last-synced: 2026-10-02
 | `EventManager` | Background UI monitor (page classification, drawer auto-dismissal, focus/entry events) |
 | `MessageQueue` | Thread-safe async queue for outbound Soul App messages |
 | `MessageManager` | Dequeues messages, formats tags (`[智能]`, `[人工]`), and sends them via `SoulHandler` |
-| `InfoManager` | Explicit facade over `RoomState`, `PresenceTracker`, `PlaylistState`, `PlaybackBroadcaster`, and `OnlineListScraper` |
+| `InfoManager` | Explicit facade over `RoomState`, `PresenceTracker`, `PlaylistSession`, `PlaybackBroadcaster`, and `OnlineListScraper` |
 | `DatabaseManager` | Tortoise ORM initialization and schema management |
 | `Singleton` | Thread-safe base class ensuring explicit composition root initialisation |
 | `BaseCommand` | Base class for all 37+ commands; handles permissions, error wrapping, response templates |
@@ -55,7 +55,7 @@ ConfigLoader.load_config('config.yaml')
    - Checks `SleepManager` (blocks non-exempt commands between 23:00 and 06:00).
    - Enforces guest room restrictions if not in the default party room.
    - Acquires `controller.ui_session()` lock to prevent race conditions.
-   - Executes the command under `PlaybackMuting` guard if the command touches music playback.
+   - Playback muting is engine-owned: `MusicManager.play()` / `skip()` evaluate the guard, then mute the microphone. The command layer no longer declares it.
 
 ### Message Tagging
 Outbound messages dispatched by `MessageManager` are tagged automatically to maintain transparency:
@@ -66,10 +66,10 @@ Outbound messages dispatched by `MessageManager` are tagged automatically to mai
 Following ADR-0004, state concerns are separated into dedicated modules:
 - `RoomState`: Tracks party ID, host/guest mode, and room capabilities.
 - `PresenceTracker`: Maintains online user counts, follower presence, and entrant timestamps.
-- `PlaylistState`: Tracks current playlist, queue items, and on-demand exemptions.
+- `PlaylistSession` (`managers/playlist_session.py`, per ADR-0004): Owns playlist context (`list_mode`, `player_name`, `current_playlist_name`), the Next Queue, and the Playlist Guard.
 - `PlaybackBroadcaster`: Observes track changes and triggers song announcements.
 - `OnlineListScraper`: Extracts usernames and levels from the Soul App online user drawer.
-`InfoManager` serves as a clean, unified facade delegating to these state modules.
+`InfoManager` serves as a clean, unified facade delegating to these state modules and the playlist session.
 
 ### Crash Recovery & macOS Network Bridge
 - `@with_driver_recovery` wraps Appium UI operations, automatically recovering from transient connection drops.

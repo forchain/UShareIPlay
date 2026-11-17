@@ -518,8 +518,6 @@ class AppController(Singleton):
             self.seat_manager = SeatManager.initialize(
                 self.soul_handler, lease=self.ui_session_lease
             )
-            # 运行期上下文（UI 独占锁的读法）与 EventManager 同一套接线。
-            self.seat_manager.configure_runtime(self.event_runtime_context)
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.

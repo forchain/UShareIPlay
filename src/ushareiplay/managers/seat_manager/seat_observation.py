@@ -415,7 +415,7 @@ class SeatObservationManager(Singleton):
         昵称（「小明7」）不算；纯数字昵称的误读由下面的奇偶/配对校验兜住。
         """
         label_text = self.panel_reader._get_label_text(desk, side).strip()
-        if not SeatPanelReader._is_seat_number_label(label_text):
+        if not SeatPanelReader.is_seat_number_label(label_text):
             return None
         return int(label_text)
 

@@ -346,8 +346,7 @@ def test_composition_root_injects_the_production_driver(initialized_test_singlet
     from ushareiplay.managers.music_manager import MusicManager
 
     Singleton.reset_all_instances()
-    AppController._ui_lock_owner = None
-    AppController._ui_lock_depth = 0
+    AppController._ui_session_lease = None
 
     controller = AppController.__new__(AppController)
     controller.__init__(_real_config())
