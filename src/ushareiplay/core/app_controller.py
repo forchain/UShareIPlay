@@ -33,6 +33,7 @@ from ushareiplay.core.runtime_context import (
 )
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
@@ -44,10 +45,9 @@ from ushareiplay.managers.playlist_adoption import PlaylistAdoption
 
 
 class AppController(Singleton):
-    # ui_lock 的持有者与嵌套深度（见 ui_session）。用类属性兜底，让绕过
-    # __init__ 直接构造的测试替身也能安全走 ui_session。
-    _ui_lock_owner: Optional[asyncio.Task] = None
-    _ui_lock_depth: int = 0
+    # UI 独占会话租赁。类属性兜底，让绕过 __init__ 直接构造的测试替身也能安全走
+    # ui_session（首次访问时按需创建）。
+    _ui_session_lease: Optional[UISessionLease] = None
 
     def __init__(self, config):
         # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
@@ -158,6 +158,27 @@ class AppController(Singleton):
         from ushareiplay.core.roles import RolePolicy
         return RolePolicy(self.config).room_owner
 
+    @property
+    def ui_session_lease(self) -> UISessionLease:
+        """UI 独占会话租赁（按需创建，便于 __new__ 构造的测试替身）。"""
+        if self._ui_session_lease is None:
+            self._ui_session_lease = UISessionLease(
+                is_paused=lambda: bool(
+                    getattr(self, "runtime_input", None)
+                    and self.runtime_input.paused
+                ),
+                logger=lambda: self.logger,
+            )
+        return self._ui_session_lease
+
+    @property
+    def ui_lock(self) -> asyncio.Lock:
+        return self.ui_session_lease.lock
+
+    @ui_lock.setter
+    def ui_lock(self, value: asyncio.Lock):
+        self.ui_session_lease.lock = value
+
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
         """
@@ -170,32 +191,8 @@ class AppController(Singleton):
         会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
         ui_lock.locked()，兜底 back 的抑制语义因此不变。
         """
-        ri = getattr(self, "runtime_input", None)
-        if ri and ri.paused:
-            raise asyncio.CancelledError(f"UI session '{reason}' blocked: runtime paused by !stop")
-
-        task = asyncio.current_task()
-        if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
-            self._ui_lock_depth += 1
-            try:
-                yield
-            finally:
-                self._ui_lock_depth -= 1
-            return
-
-        await self.ui_lock.acquire()
-        self._ui_lock_owner = task
-        self._ui_lock_depth = 1
-        try:
-            if self.logger and reason:
-                self.logger.debug(f"[ui_lock] acquired: {reason}")
+        async with self.ui_session_lease.acquire(reason):
             yield
-        finally:
-            self._ui_lock_owner = None
-            self._ui_lock_depth = 0
-            if self.logger and reason:
-                self.logger.debug(f"[ui_lock] released: {reason}")
-            self.ui_lock.release()
 
     def _start_apps(self):
         """通过Appium server启动QQ Music（Soul app已在创建driver时自动启动）"""
