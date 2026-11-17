@@ -17,7 +17,7 @@ from ushareiplay.managers.playback.models import (
     PlaybackResult,
     PlaybackStatus,
 )
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 class MusicManager(Singleton):
@@ -41,7 +41,7 @@ class MusicManager(Singleton):
     _ON_DEMAND_REQUESTS_MAX = 20
     _on_demand_requests: Optional[deque] = None
 
-    def __init__(self, ui_driver=None, playlist_adoption=None, playback_muting=None):
+    def __init__(self, ui_driver=None, playlist_session=None, playback_muting=None):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
         # 播放引擎的离线测试不需要 Appium，因此 handler 缺失不再是构造期错误；
         # 真正要用到 driver 的地方由 `driver` 属性给出明确的装配错误。
@@ -55,7 +55,7 @@ class MusicManager(Singleton):
         # 播放引擎的协作者。构造注入优先，未注入时按需从单例取 —— MusicManager
         # 与 PlaybackMuting 互相需要，无法在 __init__ 传齐依赖（见 playback_muting 属性）。
         self._ui_driver = ui_driver
-        self._playlist_adoption = playlist_adoption
+        self._playlist_session = playlist_session
         self._playback_muting = playback_muting
 
     @property
@@ -95,11 +95,7 @@ class MusicManager(Singleton):
 
     @property
     def list_mode(self):
-        return getattr(self.music_handler, "list_mode", "unknown")
-
-    @list_mode.setter
-    def list_mode(self, value):
-        self.music_handler.list_mode = value
+        return self.playlist_session.list_mode
 
     @property
     def no_skip(self):
@@ -362,14 +358,14 @@ class MusicManager(Singleton):
         return self._ui_driver
 
     @property
-    def playlist_adoption(self):
-        """房间歌单同步协议。
+    def playlist_session(self):
+        """歌单会话（上下文 + Next Queue + 守护）。
 
         构造注入优先；未注入时取已初始化的单例 —— 与 `BaseCommand` 同一套按需查找。
         """
-        if self._playlist_adoption is None:
-            self._playlist_adoption = PlaylistAdoption.instance()
-        return self._playlist_adoption
+        if self._playlist_session is None:
+            self._playlist_session = PlaylistSession.instance()
+        return self._playlist_session
 
     @property
     def playback_muting(self):
@@ -409,8 +405,8 @@ class MusicManager(Singleton):
             )
 
         # 守护要知道「这次要来切的是什么」：单曲请求不受歌单守护拦，见
-        # `PlaylistAdoption.guard_switch`。
-        guard_error = await self.playlist_adoption.guard_switch(
+        # `PlaylistSession.guard_switch`。
+        guard_error = await self.playlist_session.guard_switch(
             request.requester, incoming_mode=request.mode.value
         )
         if guard_error:
@@ -437,9 +433,9 @@ class MusicManager(Singleton):
                     error=outcome.error,
                 )
 
-            # 「单曲不写歌单上下文」这条规则归 `PlaylistAdoption.adopt()`：引擎这里
+            # 「单曲不写歌单上下文」这条规则归 `PlaylistSession.adopt()`：引擎这里
             # 照常把观察到的标题/话题/歌单名交出去，由采纳协议决定什么该落进房间。
-            adopt_error = self.playlist_adoption.adopt(
+            adopt_error = self.playlist_session.adopt(
                 request.requester,
                 mode=request.mode.value,
                 title=outcome.title or request.room_title,
@@ -471,6 +467,17 @@ class MusicManager(Singleton):
                 playlist=outcome.playlist or request.playlist,
                 extra=outcome.extra,
             )
+
+    async def skip(self, requester: str) -> dict:
+        """`:skip` 的唯一切片点：先过 Playlist Guard，再闭麦切歌。
+
+        被守护拒绝时不碰麦克风 —— 闭麦只覆盖真正的切歌过程（ADR-0007）。
+        """
+        guard_error = await self.playlist_session.guard_switch(requester)
+        if guard_error:
+            return guard_error
+        with self.playback_muting.guard():
+            return self.skip_song()
 
     @staticmethod
     def _song_key(song_info) -> str:

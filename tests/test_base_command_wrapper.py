@@ -35,8 +35,6 @@ class _EchoCommand(BaseCommand):
 
 
 class _PlaybackCommand(BaseCommand):
-    playback_muting = True
-
     async def do_process(self, message_info, parameters):
         return {'message': 'ok'}
 
@@ -64,9 +62,8 @@ def test_process_calls_do_process_and_returns_result():
     assert result == {'message': 'a b'}
 
 
-def test_process_leaves_microphone_to_playback_muting():
-    """The shell owns no mic prelude: CommandManager runs playback commands
-    inside PlaybackMuting, whose contract covers mute and restore."""
+def test_process_has_no_microphone_prelude():
+    """The shell owns no mic prelude; microphone lifecycle belongs to MusicManager."""
     plain_controller = _make_controller()
     plain = _EchoCommand(plain_controller)
     asyncio.run(plain.process(None, []))

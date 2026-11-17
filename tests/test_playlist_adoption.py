@@ -1,25 +1,15 @@
-"""PlaylistAdoption 的接口级测试。
+"""PlaylistSession 的接口级测试。
 
 这里替代了原先六份 mock 链：房间同步现在只有一个实现，因此也只需要一套断言。
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from ushareiplay.core.config_view import ConfigView
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption, primary_topic
-
-
-class _Info:
-    def __init__(self):
-        self.player_name = None
-        self.current_playlist_name = None
-        self.next_queue_cleared = False
-
-    def clear_next_queue(self):
-        self.next_queue_cleared = True
+from ushareiplay.managers.playlist_session import PlaylistSession, primary_topic
 
 
 class _RoomProfile:
@@ -40,18 +30,15 @@ class _RoomProfile:
         return self.topic_result
 
 
-class _Music:
-    def __init__(self):
-        self.list_mode = None
-
-
 @pytest.fixture
 def adoption():
-    """把 PlaylistAdoption 的三个协作者替换为替身（模块级注入，见 ADR-0004）。"""
-    module = PlaylistAdoption.instance()
-    module._info = _Info()
+    """把房名/话题写入端替换为替身；歌单上下文与 Next Queue 由会话自己持有。"""
+    module = PlaylistSession.instance()
     module._room_profile = _RoomProfile()
-    module._music = _Music()
+    module.player_name = None
+    module.current_playlist_name = None
+    module.list_mode = "unknown"
+    module.clear_next_queue()
     return module
 
 
@@ -87,23 +74,23 @@ def test_adopt_writes_all_five_fields(adoption):
         topic="晴天 - 周杰伦", playlist="O Radio",
     ) is None
 
-    assert adoption._info.player_name == "张三"
-    assert adoption._music.list_mode == "radio"
-    assert adoption._info.current_playlist_name == "O Radio"
+    assert adoption.player_name == "张三"
+    assert adoption.list_mode == "radio"
+    assert adoption.current_playlist_name == "O Radio"
     assert adoption._room_profile.titles == ["O Radio"]
     assert adoption._room_profile.topics == ["晴天"]
 
 
 def test_adopt_without_requester_leaves_the_current_player_untouched(adoption):
-    adoption._info.player_name = "原播放者"
+    adoption.player_name = "原播放者"
     adoption.adopt(requester=None, mode="album", title="范特西")
-    assert adoption._info.player_name == "原播放者"
+    assert adoption.player_name == "原播放者"
 
 
 def test_adopt_leaves_playlist_name_untouched_when_not_given(adoption):
-    adoption._info.current_playlist_name = "上一份歌单"
+    adoption.current_playlist_name = "上一份歌单"
     adoption.adopt(requester="张三", mode="radar", title="O Radio")
-    assert adoption._info.current_playlist_name == "上一份歌单"
+    assert adoption.current_playlist_name == "上一份歌单"
 
 
 def test_adopt_skips_empty_title_and_topic(adoption):
@@ -122,17 +109,17 @@ def test_adopt_ignores_single_song_playback(adoption):
     被写成 `[song] 猜你喜欢-沉浸刷歌 (by Joyer)`）。#442 的「单曲不改话题」
     是这条规则的一半，这里是它的补全。
     """
-    adoption._info.player_name = "Timer"
-    adoption._music.list_mode = "radio"
-    adoption._info.current_playlist_name = "猜你喜欢-沉浸刷歌"
+    adoption.player_name = "Timer"
+    adoption.list_mode = "radio"
+    adoption.current_playlist_name = "猜你喜欢-沉浸刷歌"
 
     assert adoption.adopt(
         requester="Joyer", mode="song", title="", topic="晴天 - 周杰伦"
     ) is None
 
-    assert adoption._info.player_name == "Timer"
-    assert adoption._music.list_mode == "radio"
-    assert adoption._info.current_playlist_name == "猜你喜欢-沉浸刷歌"
+    assert adoption.player_name == "Timer"
+    assert adoption.list_mode == "radio"
+    assert adoption.current_playlist_name == "猜你喜欢-沉浸刷歌"
     assert adoption._room_profile.titles == []
     assert adoption._room_profile.topics == []
 
@@ -144,9 +131,9 @@ def test_adopt_writes_pure_state_before_soul_side_writes(adoption):
     error = adoption.adopt(requester="张三", mode="radio", title="O Radio", playlist="O Radio")
 
     assert error == {"error": "Cannot switch to Soul app"}
-    assert adoption._info.player_name == "张三"
-    assert adoption._music.list_mode == "radio"
-    assert adoption._info.current_playlist_name == "O Radio"
+    assert adoption.player_name == "张三"
+    assert adoption.list_mode == "radio"
+    assert adoption.current_playlist_name == "O Radio"
     assert adoption._room_profile.topics == []  # 标题失败后不再继续写话题
 
 
@@ -179,12 +166,11 @@ def test_adopt_treats_non_error_result_as_success(adoption):
 
 @pytest.mark.asyncio
 async def test_guard_switch_forwards_to_the_protection_check(adoption):
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("Timer", config={"soul": {}})
 
-    adoption._info.check_playlist_protection.assert_awaited_once_with(
+    adoption.check_playlist_protection.assert_awaited_once_with(
         "Timer", config={"soul": {}}
     )
     assert result == {"error": "被守护"}
@@ -196,9 +182,8 @@ async def test_guard_switch_forwards_to_the_protection_check(adoption):
 )
 async def test_guard_switch_asks_the_role_policy_for_continuous_queues(adoption, mode):
     """连续队列（收藏/雷达/歌单/歌手/专辑/电台）照旧受守护：放开单曲不等于取消守护。"""
-    adoption._music.list_mode = mode
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.list_mode = mode
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("不约儿童", incoming_mode=mode)
 
@@ -213,14 +198,13 @@ async def test_guard_switch_releases_a_single_song_request_over_a_protected_queu
     You Lie` 被回以「不约儿童 正在播放歌单，请等待」。一次单点只是插一首歌
     （`UNPROTECTED_PLAYBACK_MODES`），不该反过来被那张队列挡在门外。
     """
-    adoption._music.list_mode = "playlist"
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.list_mode = "playlist"
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("石碘", incoming_mode="song")
 
     assert result is None
-    adoption._info.check_playlist_protection.assert_not_awaited()
+    adoption.check_playlist_protection.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -231,14 +215,13 @@ async def test_guard_switch_still_asks_the_role_policy_for_queue_requests(
     adoption, incoming_mode
 ):
     """连续队列（以及说不清类型的请求）照旧要问角色策略：放开单点不等于放开歌单。"""
-    adoption._music.list_mode = "playlist"
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.list_mode = "playlist"
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("石碘", incoming_mode=incoming_mode)
 
     assert result == {"error": "被守护"}
-    adoption._info.check_playlist_protection.assert_awaited_once_with(
+    adoption.check_playlist_protection.assert_awaited_once_with(
         "石碘", config=None
     )
 
@@ -246,8 +229,7 @@ async def test_guard_switch_still_asks_the_role_policy_for_queue_requests(
 @pytest.mark.asyncio
 async def test_guard_switch_keeps_protection_for_an_unknown_incoming_mode(adoption):
     """入参说不清类型时保持守护 —— 只有明确知道「这是一次单点」才放开。"""
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("不约儿童", incoming_mode=None)
 
@@ -262,15 +244,13 @@ async def test_guard_switch_reads_system_roles_from_the_live_config(adoption):
     而不是借「单曲」豁免逃过去。
     """
     live_config = ConfigView({"soul": {"system_users": ["NightShift"]}})
-    info = MagicMock()
-    info.handler = SimpleNamespace(config=live_config)
-    info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
-    adoption._info = info
+    adoption.handler = SimpleNamespace(config=live_config)
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("NightShift", incoming_mode="song")
 
     assert result == {"error": "被守护"}
-    info.check_playlist_protection.assert_awaited_once_with("NightShift", config=None)
+    adoption.check_playlist_protection.assert_awaited_once_with("NightShift", config=None)
 
 
 @pytest.mark.asyncio
@@ -282,14 +262,13 @@ async def test_guard_switch_does_not_exempt_a_system_role_single_song(
 
     定时器/Agent 的 `:play <歌名>` 也是自动打断，不能借“单曲”逃过歌单守护。
     """
-    adoption._info = MagicMock()
-    adoption._info.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
+    adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch(
         system_user, incoming_mode="song", config={"soul": {}}
     )
 
     assert result == {"error": "被守护"}
-    adoption._info.check_playlist_protection.assert_awaited_once_with(
+    adoption.check_playlist_protection.assert_awaited_once_with(
         system_user, config={"soul": {}}
     )

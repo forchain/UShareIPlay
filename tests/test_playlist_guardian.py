@@ -11,7 +11,7 @@ from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 from ushareiplay.models.user import User
@@ -40,7 +40,7 @@ def clean_info_manager():
         InfoManager,
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -53,7 +53,7 @@ def clean_info_manager():
     for cls in (
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -72,7 +72,7 @@ async def test_radio_empty_params_blocked_when_user_is_playing(
     必须被歌单守护拦截，不得顶掉当前用户的歌单。
     """
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer", "Chainer"])
 
     mock_controller = MagicMock()
@@ -105,7 +105,7 @@ async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
     当当前播放者是 Timer 或系统管理员（如 Joyer）时，整点定时器触发 /radio 应该被允许执行。
     """
     info_manager = clean_info_manager
-    info_manager.player_name = "Timer"
+    PlaylistSession.instance().player_name = "Timer"
     info_manager.update_online_users(["Joyer", "Chainer"])
 
     mock_controller = MagicMock()
@@ -141,7 +141,7 @@ async def test_playlist_guardian_protects_with_avatar_online(
     await User.create(username="儿童不易~🐏🐏", level=0, canonical_user_id=canonical.id)
 
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     # 房间在线列表中只有分身 "儿童不易~🐏🐏"
     info_manager.update_online_users(["儿童不易~🐏🐏", "Joyer"])
 
@@ -175,7 +175,7 @@ async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
     await User.create(username="儿童不易~🐏🐏", level=0, canonical_user_id=canonical.id)
 
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["儿童不易~🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
@@ -210,7 +210,7 @@ async def test_playlist_guardian_released_when_all_avatars_leave(
     await User.create(username="儿童不易~🐏🐏", level=0, canonical_user_id=canonical.id)
 
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     # 主账号和分身均不在在线列表中
     info_manager.update_online_users(["其他房客", "Joyer"])
 
@@ -238,26 +238,24 @@ def playback_engine(clean_info_manager):
     """迁进引擎的切歌命令的引擎台：真守护（InfoManager）+ 内存 UI 驱动。
 
     #434 之后 `:playlist <query>`、#431 之后 `:radio`、#437 之后 `:singer` / `:album`
-    都走 `MusicManager.play()`，守护因而由引擎调 `PlaylistAdoption.guard_switch`。
+    都走 `MusicManager.play()`，守护因而由引擎调 `PlaylistSession.guard_switch`。
     这里只把 UI 换成内存替身 —— 守护判定仍然是真的
-    `InfoManager.check_playlist_protection`，因此这些用例考的是「守护还管不管
+    `PlaylistSession.check_playlist_protection`，因此这些用例考的是「守护还管不管
     得住」，不是「命令层有没有再自己判一次」。
     """
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+    from ushareiplay.managers.playlist_session import PlaylistSession
     from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
     driver = InMemoryMusicUIDriver()
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = clean_info_manager
+    session = PlaylistSession.instance()
     # 房名/话题的落地归 RoomProfileManager 与 Soul UI 那一层，守护用例不管它：
     # 这里给一个只记调用、不碰 UI 的替身。
-    adoption._room_profile = SimpleNamespace(
+    session._room_profile = SimpleNamespace(
         set_title=lambda title: None, set_topic=lambda topic: None
     )
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -275,7 +273,7 @@ def playback_engine(clean_info_manager):
 @pytest.mark.asyncio
 async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
@@ -293,7 +291,7 @@ async def test_playlist_command_blocked_when_other_user_playing(clean_info_manag
 @pytest.mark.asyncio
 async def test_album_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
@@ -311,7 +309,7 @@ async def test_album_command_blocked_when_other_user_playing(clean_info_manager,
 @pytest.mark.asyncio
 async def test_singer_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
-    info_manager.player_name = "不约儿童🐏🐏"
+    PlaylistSession.instance().player_name = "不约儿童🐏🐏"
     info_manager.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
@@ -340,14 +338,14 @@ async def test_allowed_commands_hand_the_requester_to_the_playback_engine(
 ):
     """守护放行后，请求者一路交到引擎的 `PlaybackRequest.requester` 上。
 
-    命令不再自己写 player_name（那次写入归 `PlaylistAdoption.adopt`），因此这里
-    断言的是「请求者被正确传下去」，播放者写入本身由 tests/test_playlist_adoption.py
+    命令不再自己写 player_name（那次写入归 `PlaylistSession.adopt`），因此这里
+    断言的是「请求者被正确传下去」，播放者写入本身由 tests/test_playlist_session.py
     在模块接口层覆盖。
 
     这三条命令（#434 的 `:playlist`、#437 的 `:singer`/`:album`）都已迁进引擎，
     没有可 mock 的播放方法了 —— 断言点因此落在引擎入口上。
     """
-    clean_info_manager.player_name = None
+    PlaylistSession.instance().player_name = None
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -368,7 +366,7 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
     可以突破守护，执行切歌操作。
     """
     info_manager = clean_info_manager
-    info_manager.player_name = "普通用户"
+    PlaylistSession.instance().player_name = "普通用户"
     info_manager.update_online_users(["普通用户", "Joyer", "Outlier"])
 
     mock_controller = MagicMock()
@@ -390,13 +388,13 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
     assert "error" not in res
 
     # 2. 房主 Joyer 切歌 -> 允许突破保护
-    info_manager.player_name = "普通用户"
+    PlaylistSession.instance().player_name = "普通用户"
     msg_owner = MessageInfo(content="/playlist 房主歌单", nickname="Joyer")
     res_owner = await command.do_process(msg_owner, ["房主歌单"])
     assert "error" not in res_owner
 
     # 3. 管理员 Chainer 切歌 -> 允许突破保护
-    info_manager.player_name = "普通用户"
+    PlaylistSession.instance().player_name = "普通用户"
     msg_admin2 = MessageInfo(content="/playlist 管理员歌单2", nickname="Chainer")
     res_admin2 = await command.do_process(msg_admin2, ["管理员歌单2"])
     assert "error" not in res_admin2
@@ -410,7 +408,7 @@ async def test_normal_user_can_play_when_admin_or_owner_is_playing(
     当管理员（Outlier）或房主（Joyer）正在播放歌单时，无需保护，普通用户点歌可自由切入。
     """
     info_manager = clean_info_manager
-    info_manager.player_name = "Outlier"
+    PlaylistSession.instance().player_name = "Outlier"
     info_manager.update_online_users(["普通用户", "Outlier"])
 
     mock_controller = MagicMock()
@@ -498,7 +496,7 @@ async def test_single_song_request_interrupts_another_user_playlist(
     assert len(playback_engine.requests) == 2
     assert playback_engine.requests[1].mode is PlaybackMode.SONG
     # 插播不改写歌单上下文：歌单主人还是那张队列的，播放类型也仍是 playlist
-    #（`PlaylistAdoption.adopt()` 对单曲整条跳过）。
+    #（`PlaylistSession.adopt()` 对单曲整条跳过）。
     assert info_manager.player_name == "不约儿童"
 
 

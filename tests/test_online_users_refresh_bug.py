@@ -13,22 +13,22 @@ from ushareiplay.state.room_state import RoomState
 def reset_singletons():
     from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.playlist_state import PlaylistState
+    from ushareiplay.managers.playlist_session import PlaylistSession
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
     InfoManager.reset_instance()
     PlaybackBroadcaster.reset_instance()
-    PlaylistState.reset_instance()
+    PlaylistSession.reset_instance()
     PlaybackBroadcaster.initialize()
-    PlaylistState.initialize()
+    PlaylistSession.initialize()
     yield
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
     InfoManager.reset_instance()
     PlaybackBroadcaster.reset_instance()
-    PlaylistState.reset_instance()
+    PlaylistSession.reset_instance()
 
 
 @pytest.mark.asyncio

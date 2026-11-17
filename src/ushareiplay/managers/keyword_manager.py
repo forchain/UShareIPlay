@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 from ushareiplay.core.config_view import ConfigView
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.dal import KeywordDAO, UserDAO
 from ushareiplay.models.keyword import Keyword
 
@@ -410,9 +411,7 @@ class KeywordManager(Singleton):
             pass
 
         try:
-            from ushareiplay.state.playlist_state import PlaylistState
-
-            playlist_state = PlaylistState.instance()
+            playlist_state = PlaylistSession.instance()
             if playlist_state:
                 if playlist_state.player_name:
                     info["player"] = playlist_state.player_name
@@ -426,7 +425,7 @@ class KeywordManager(Singleton):
 
             music_handler = QQMusicHandler.instance()
             if music_handler:
-                list_mode = getattr(music_handler, "list_mode", None)
+                list_mode = PlaylistSession.instance().list_mode
                 if list_mode:
                     playlist_type_map = {
                         "singer": "歌手",

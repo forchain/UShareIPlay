@@ -11,7 +11,7 @@ class FavCommand(BaseCommand):
 
     命令层只做一件事：把用户敲的子命令翻成播放请求。进收藏页、筛选、收藏内搜索、
     点播放全部、读歌单、回首页这些 UI 动作全在 `QQMusicUIDriver` 里，房间标题/话题/
-    歌单的同步也归引擎的标准流水线（`playlist_adoption.adopt`），因此这里既没有
+    歌单的同步也归引擎的标准流水线（`playlist_session.adopt`），因此这里既没有
     守护调用也没有 `playback_muting`：
 
     - 守护：`MusicManager.play()` 第一段就问 `guard_switch(requester)`，命令再问一遍

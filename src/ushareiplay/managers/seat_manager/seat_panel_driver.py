@@ -470,15 +470,16 @@ class SeatPanelDriver:
         所以退回按 bounds 坐标点击：左侧点四分之一处，右侧点四分之三处，取高度的
         中点。
         """
-        if not self.is_desk_interactable(desk):
-            return False
-
         if target_element is not None and not isinstance(target_element, ElementWrapper):
             try:
                 target_element.click()
                 return True
             except Exception:
                 pass
+
+        # 坐标点击才需要渲染区域；残片桌位的头像已被裁切，绝不按坐标盲点。
+        if not self.is_desk_interactable(desk):
+            return False
 
         pt = self.panel_reader.tap_point(desk, side)
         if pt is None:

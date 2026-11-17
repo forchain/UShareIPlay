@@ -61,7 +61,7 @@ class PlaybackMode(str, Enum):
     """房间支持的全部播放意图。
 
     连续队列（收藏/雷达/歌单/歌手/专辑/电台）的值即写入 `list_mode` 的字符串，
-    与 `PlaylistAdoption.adopt()` 的既有约定一致。`SONG` 是例外：单曲点播不是
+    与 `PlaylistSession.adopt()` 的既有约定一致。`SONG` 是例外：单曲点播不是
     一次歌单切换，`adopt()` 会跳过它，因此房间的播放类型里不会出现 `song`。
     """
 
@@ -111,7 +111,7 @@ class PlaybackRequest:
             关键字仍走 `query`，形态只回答「这些字怎么用」。
         channel: 电台频道（daily/guess/sleep/radar/collection），仅 RADIO 模式使用。
         requester: 触发播放的用户名，连续队列时写入房间的 `player_name`；单曲点播
-            不写（房间里那张队列并没有换人，见 `PlaylistAdoption.adopt()`）。
+            不写（房间里那张队列并没有换人，见 `PlaylistSession.adopt()`）。
         room_title: 要采纳的房间标题（如 "O Station"）；驱动若观察到更准确的值则以其为准。
         playlist: 完整歌单名，写入 `current_playlist_name`。
     """
@@ -199,7 +199,7 @@ class PlaybackTrack:
     def queue_line(self) -> str:
         """播放队列行文本 —— QQ Music 的歌单行形如「歌名 - 歌手」。
 
-        `PlaylistAdoption.primary_topic()` 按 " - " 取前半段作为房间话题，
+        `PlaylistSession.primary_topic()` 按 " - " 取前半段作为房间话题，
         所以这里保持同一约定，不要改成裸连字符（见该函数 docstring）。
         """
         if self.song and self.singer:

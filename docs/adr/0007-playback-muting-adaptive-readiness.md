@@ -23,6 +23,15 @@ are implemented as `MicManager.set_active(False)` and `MicManager.ensure_active(
 ## Date
 2026-09-21
 
+### Amendment (2026-11-17, #535)
+`PlaybackMuting` is owned by the engine, not the command layer. `MusicManager.play()`
+and `MusicManager.skip()` run Playlist Guard first and only then enter
+`PlaybackMuting.guard()`, so a rejected `:playlist <query>` or `:skip` never mutes the
+room microphone. `CommandManager` and `BaseCommand` no longer declare
+`playback_muting`, `playback_muting_applies`, or `playback_expected_song`; step 1
+("explicit command declaration") and the command-level wrapper in step 2 below are
+superseded by the engine-owned pipeline.
+
 ## Context
 When UShareIPlay executes music-switching commands (`:play`, `:skip`, `:fav`, `:album`, `:playlist`, `:singer`, `:radio`), the bot navigates QQ Music UI to select a track, switch playlists, or trigger playback. During this transition, audio output momentarily interrupts, loops, or picks up unwanted ambient mic artifacts. Unmuting the bot's Soul microphone too early broadcasts transient UI sounds or silence; waiting too long introduces unnatural silence after the music starts.
 

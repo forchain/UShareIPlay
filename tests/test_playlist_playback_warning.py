@@ -6,7 +6,7 @@
 的歌单名/房名/话题照原样交给引擎。
 
 房间状态的落地（`list_mode`/`current_playlist_name`/房名/话题）由
-`tests/test_playlist_adoption.py` 在模块接口层覆盖，`tests/test_playlist_command_migration.py`
+`tests/test_playlist_session.py` 在模块接口层覆盖，`tests/test_playlist_command_migration.py`
 覆盖引擎把它接起来的那一段；这里刻意不再重复断言那些写入。
 """
 

@@ -13,7 +13,7 @@ class NextCommand(BaseCommand):
         info = self.play_next(query)
         # 只有真正入队成功才记账；:next 不打断当前播放，因此不调用 guard_switch。
         if 'error' not in info:
-            self.info_manager.record_next(message_info.nickname)
+            self.playlist_session.record_next(message_info.nickname)
         return info
 
     def play_next(self, query):

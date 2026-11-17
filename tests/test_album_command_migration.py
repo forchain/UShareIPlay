@@ -17,7 +17,7 @@ from ushareiplay.commands.album import AlbumCommand
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackTrack
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
@@ -77,10 +77,11 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
     room_profile.set_title = room_profile.titles.append
     room_profile.set_topic = room_profile.topics.append
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = info
-    adoption._room_profile = room_profile
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    session._room_profile = room_profile
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session.check_playlist_protection = info.check_playlist_protection
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -93,6 +94,7 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
         driver=driver,
         info=info,
         room_profile=room_profile,
+        session=session,
         journal=journal,
         guards=guards,
     )
@@ -169,8 +171,8 @@ async def test_album_adopts_the_room_state_through_the_engine(initialized_test_s
 
     await _command().do_process(_message(), ["范特西"])
 
-    assert engine.info.player_name == "小明"
-    assert engine.info.current_playlist_name == "周杰伦 - 范特西"
+    assert engine.session.player_name == "小明"
+    assert engine.session.current_playlist_name == "周杰伦 - 范特西"
     assert engine.room_profile.titles == ["周杰伦"]
     assert engine.room_profile.topics == ["范特西"]
 
@@ -191,7 +193,7 @@ def test_album_declares_no_command_level_muting(initialized_test_singletons):
     """命令级闭麦发生在守护之前，被守护拒绝的切歌也会响一次无来由的静音。"""
     command = _command()
 
-    assert command.playback_muting is False
+    assert not hasattr(command, "playback_muting")
     assert "playback_muting_applies" not in vars(type(command))
 
 

@@ -18,7 +18,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -268,23 +268,32 @@ class _DispatchStub:
 
 
 class _PlaybackCommand:
-    """`:play` 的替身：静音保护的参与由命令自己声明。"""
-
-    playback_muting = True
+    """`:play` 的替身：命令层只转发请求，守护与闭麦归 `MusicManager.skip()`。"""
 
     def __init__(self, events):
         self.events = events
 
     async def process(self, message_info, parameters):
-        self.events.append("playback")
-        return {"song": "稻香", "singer": "周杰伦", "album": "叶惠美"}
+        from ushareiplay.managers.music_manager import MusicManager
 
-    def playback_expected_song(self, parameters):
-        return " ".join(parameters)
+        return await MusicManager.instance().skip(message_info.nickname)
 
 
 def _run_play_command(monkeypatch, r) -> None:
     """让真实 CommandManager 跑一条 `:play`，事件记进 r.events。"""
+    from ushareiplay.managers.music_manager import MusicManager
+
+    MusicManager.reset_instance()
+    music = MusicManager.initialize(
+        playlist_session=SimpleNamespace(guard_switch=AsyncMock(return_value=None)),
+        playback_muting=r.muting,
+    )
+    music.skip_song = lambda: r.events.append("playback") or {
+        "song": "稻香",
+        "singer": "周杰伦",
+        "album": "叶惠美",
+    }
+
     monkeypatch.setattr("ushareiplay.managers.command_manager.MessageDispatch", _DispatchStub)
     _DispatchStub.recorder = _Recorder(r.events)
     manager = CommandManager.instance()
@@ -323,7 +332,7 @@ def test_playback_command_after_an_on_mic_line_follows_the_muting_lifecycle(monk
     """端到端验收：收到「XXX 已上麦」后，`:play` 立刻走闭麦-切换-就绪-开麦。
 
     走的是真实命令路径（`CommandManager.execute_command_messages` ->
-    `playback_muting_guard` -> 真实 PlaybackMuting），不是直接调 `guard()`。
+    `MusicManager.skip` -> 真实 PlaybackMuting），不是直接调 `guard()`。
     """
     r = room(**MUTING_OFF)
     _dispatch(r, ["荒草 已上麦"])
@@ -335,9 +344,9 @@ def test_playback_command_after_an_on_mic_line_follows_the_muting_lifecycle(monk
         "screen",
         "mute:False",
         "playback",
-        "notify:稻香 - 周杰伦 @Console",
-        "wait:稻香",
+        "wait:None",
         "restore",
+        "notify:稻香 - 周杰伦 @Console",
     ]
 
 

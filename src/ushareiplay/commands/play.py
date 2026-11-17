@@ -9,18 +9,12 @@ class PlayCommand(BaseCommand):
     三条分支都交给 `MusicManager.play()`：查歌与点歌的 UI 编排在
     `QQMusicUIDriver`，守护、静音与房间同步在引擎的同一条流水线上。
 
-    因此本命令不再声明 `playback_muting`，也没有 `playback_muting_applies()`：
+    因此本命令不声明任何静音钩子：
     命令级闭麦发生在守护之前，被守护拒绝的切歌也会在房间里响一次无来由的静音
     （ADR-0007 把闭麦的边界定在真正的切歌过程上，那正是引擎守卫管的事）。
     """
 
     handler_attr = 'music_handler'
-
-    def playback_expected_song(self, parameters):
-        query = ' '.join(parameters or [])
-        if not query or query == '?':
-            return None
-        return query
 
     async def do_process(self, message_info, parameters):
         query = ' '.join(parameters)

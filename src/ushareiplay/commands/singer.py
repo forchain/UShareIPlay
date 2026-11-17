@@ -9,7 +9,7 @@ class SingerCommand(BaseCommand):
     「播放全部」、读队列都在 `QQMusicUIDriver`（见 `playback/`），守护、静音与
     房间同步由引擎的同一条流水线负责。
 
-    因此本命令不再声明 `playback_muting`，也没有 `playback_muting_applies()`：
+    因此本命令不声明任何静音钩子：
     命令级闭麦发生在守护之前，被守护拒绝的切歌也会在房间里响一次无来由的静音
     （ADR-0007 把闭麦的边界定在真正的切歌过程上，那正是引擎守卫管的事）。
 

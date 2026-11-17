@@ -298,11 +298,11 @@ async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
 def test_get_playback_info_enrichment(monkeypatch):
     from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.playlist_state import PlaylistState
+    from ushareiplay.managers.playlist_session import PlaylistSession
 
     keyword_manager = KeywordManager.initialize()
     broadcaster = PlaybackBroadcaster.initialize()
-    playlist_state = PlaylistState.initialize()
+    playlist_session = PlaylistSession.instance()
 
     broadcaster._playback_info_cache = {
         "song": "Fictional (Stripped)",
@@ -310,8 +310,9 @@ def test_get_playback_info_enrichment(monkeypatch):
         "album": "Fictional (Stripped)",
         "release_date": "2023-05-12",
     }
-    playlist_state.player_name = "不约儿童🐏🐏"
-    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session.player_name = "不约儿童🐏🐏"
+    playlist_session.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session.list_mode = "playlist"
 
     fake_music_handler = SimpleNamespace(
         list_mode="playlist",
@@ -347,7 +348,7 @@ def test_get_playback_info_handles_exceptions_gracefully(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        "ushareiplay.state.playlist_state.PlaylistState.instance",
+        "ushareiplay.managers.playlist_session.PlaylistSession.instance",
         _raise,
     )
 
@@ -362,7 +363,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.playlist_state import PlaylistState
+    from ushareiplay.managers.playlist_session import PlaylistSession
 
     keyword_manager = KeywordManager.initialize()
     keyword_manager._logger = SimpleNamespace(
@@ -387,9 +388,10 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         "album": "Fictional (Stripped)",
         "release_date": "2023-05-12",
     }
-    playlist_state = PlaylistState.initialize()
-    playlist_state.player_name = "不约儿童🐏🐏"
-    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session = PlaylistSession.instance()
+    playlist_session.player_name = "不约儿童🐏🐏"
+    playlist_session.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session.list_mode = "playlist"
 
     fake_music_handler = SimpleNamespace(
         list_mode="playlist",
@@ -463,7 +465,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.playlist_state import PlaylistState
+    from ushareiplay.managers.playlist_session import PlaylistSession
 
     keyword_manager = KeywordManager.initialize()
     keyword_manager._logger = SimpleNamespace(
@@ -486,9 +488,10 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         "song": "Fictional (Stripped)",
         "singer": "Khloe Rose",
     }
-    playlist_state = PlaylistState.initialize()
-    playlist_state.player_name = "不约儿童🐏🐏"
-    playlist_state.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session = PlaylistSession.instance()
+    playlist_session.player_name = "不约儿童🐏🐏"
+    playlist_session.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
+    playlist_session.list_mode = "playlist"
 
     fake_music_handler = SimpleNamespace(
         list_mode="playlist",

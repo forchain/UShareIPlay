@@ -18,7 +18,7 @@ from ushareiplay.commands.singer import SingerCommand
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackTrack
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
@@ -82,10 +82,11 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
     room_profile.set_title = room_profile.titles.append
     room_profile.set_topic = room_profile.topics.append
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = info
-    adoption._room_profile = room_profile
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    session._room_profile = room_profile
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session.check_playlist_protection = info.check_playlist_protection
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -98,6 +99,7 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
         driver=driver,
         info=info,
         room_profile=room_profile,
+        session=session,
         journal=journal,
         guards=guards,
     )
@@ -148,7 +150,7 @@ async def test_singer_returns_the_queue_the_engine_reported(initialized_test_sin
 
 @pytest.mark.asyncio
 async def test_singer_adopts_the_room_state_through_the_engine(initialized_test_singletons):
-    """房间同步归引擎的流水线：驱动观察到的事实由引擎交给 `PlaylistAdoption`。"""
+    """房间同步归引擎的流水线：驱动观察到的事实由引擎交给 `PlaylistSession`。"""
     driver = InMemoryMusicUIDriver(
         playlists={PlaybackMode.SINGER: "张天赋"},
         titles={PlaybackMode.SINGER: "张天赋"},
@@ -158,8 +160,8 @@ async def test_singer_adopts_the_room_state_through_the_engine(initialized_test_
 
     await _command().do_process(_message(), ["张天赋"])
 
-    assert engine.info.player_name == "小明"
-    assert engine.info.current_playlist_name == "张天赋"
+    assert engine.session.player_name == "小明"
+    assert engine.session.current_playlist_name == "张天赋"
     assert engine.room_profile.titles == ["张天赋"]
     assert engine.room_profile.topics == ["张天赋"]
 
@@ -168,7 +170,7 @@ async def test_singer_adopts_the_room_state_through_the_engine(initialized_test_
 async def test_singer_guards_exactly_once_through_the_engine(initialized_test_singletons):
     """守护只在引擎里判一次。
 
-    命令层自己那一次判不出是谁调的（它与引擎共用同一个 `PlaylistAdoption`
+    命令层自己那一次判不出是谁调的（它与引擎共用同一个 `PlaylistSession`
     单例），能断言的是**次数**：迁移前命令判一次、引擎再判一次，同一次请求会被
     判两遍，弹两次窗，还丢掉命令侧传下去的 config 变体。
     """
@@ -185,7 +187,7 @@ def test_singer_declares_no_command_level_muting(initialized_test_singletons):
     """命令级闭麦发生在守护之前，被守护拒绝的切歌也会响一次无来由的静音。"""
     command = _command()
 
-    assert command.playback_muting is False
+    assert not hasattr(command, "playback_muting")
     assert "playback_muting_applies" not in vars(type(command))
 
 

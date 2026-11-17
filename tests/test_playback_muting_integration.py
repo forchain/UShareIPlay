@@ -102,46 +102,6 @@ class _MicManager:
         return {"state": "1"}
 
 
-class _PlaybackCommand:
-    """Stands in for :play / :next / :skip and friends."""
-
-    playback_muting = True
-
-    def __init__(self, events, expected_from_parameters=True):
-        self.events = events
-        self.expected_from_parameters = expected_from_parameters
-
-    async def process(self, message_info, parameters):
-        self.events.append("playback")
-        return {"song": "海阔天空", "singer": "Beyond", "album": "乐与怒"}
-
-    def playback_expected_song(self, parameters):
-        if not self.expected_from_parameters:
-            return None
-        return " ".join(parameters)
-
-
-class _FailingPlaybackCommand(_PlaybackCommand):
-    """A playback command whose search came back empty or VIP-blocked."""
-
-    async def process(self, message_info, parameters):
-        self.events.append("playback")
-        return {"error": "Song not found"}
-
-
-class _PlainCommand:
-    """Stands in for a non-playback command such as :info."""
-
-    playback_muting = False
-
-    def __init__(self, events):
-        self.events = events
-
-    async def process(self, message_info, parameters):
-        self.events.append("playback")
-        return {"message": "ok"}
-
-
 def _make_coordinator(events):
     coordinator = PlaybackMuting.__new__(PlaybackMuting)
     coordinator.logger = _Logger()
@@ -156,7 +116,6 @@ def _make_manager(monkeypatch, command, coordinator):
     manager.__init__()
     _DispatchStub.recorder = _Recorder(coordinator.soul_handler.events)
     monkeypatch.setattr("ushareiplay.managers.command_manager.MessageDispatch", _DispatchStub)
-    monkeypatch.setattr(PlaybackMuting, "instance", staticmethod(lambda: coordinator))
     manager.configure_runtime(_Runtime())
     manager._logger = _Logger()
     manager._handler = SimpleNamespace(
@@ -178,181 +137,63 @@ def _make_manager(monkeypatch, command, coordinator):
     return manager
 
 
-def test_playback_command_mutes_notifies_waits_then_restores_mic(monkeypatch):
-    coordinator = _make_coordinator([])
-    events = coordinator.soul_handler.events
-    manager = _make_manager(monkeypatch, _PlaybackCommand(events), coordinator)
-
-    asyncio.run(
-        manager.execute_command_messages([MessageInfo(content=":play 海阔天空", nickname="Console")])
-    )
-
-    assert events == [
-        "screen",
-        "mute:False",
-        "playback",
-        "notify:海阔天空 - Beyond @Console",
-        "wait:海阔天空",
-        "restore",
-    ]
-
-
-def test_failed_playback_restores_mic_without_waiting_for_readiness(monkeypatch):
-    """User story 11: a not-found or VIP-blocked request returns the mic at once."""
-    coordinator = _make_coordinator([])
-    events = coordinator.soul_handler.events
-    manager = _make_manager(monkeypatch, _FailingPlaybackCommand(events), coordinator)
-
-    asyncio.run(
-        manager.execute_command_messages([MessageInfo(content=":play 不存在", nickname="Console")])
-    )
-
-    assert events == [
-        "screen",
-        "mute:False",
-        "playback",
-        "notify:Failed to play music, because Song not found",
-        "restore",
-    ]
-
-
-def test_non_playback_command_leaves_microphone_untouched(monkeypatch):
-    coordinator = _make_coordinator([])
-    events = coordinator.soul_handler.events
-    manager = _make_manager(monkeypatch, _PlainCommand(events), coordinator)
-
-    asyncio.run(
-        manager.execute_command_messages([MessageInfo(content=":info", nickname="Console")])
-    )
-
-    assert events == ["screen", "playback", "notify:ok @Console"]
-
-
-def test_playback_command_without_expected_song_still_guards_microphone(monkeypatch):
-    coordinator = _make_coordinator([])
-    events = coordinator.soul_handler.events
-    command = _PlaybackCommand(events, expected_from_parameters=False)
-    manager = _make_manager(monkeypatch, command, coordinator)
-
-    asyncio.run(
-        manager.execute_command_messages([MessageInfo(content=":skip", nickname="Console")])
-    )
-
-    assert events == [
-        "screen",
-        "mute:False",
-        "playback",
-        "notify:海阔天空 - Beyond @Console",
-        "wait:None",
-        "restore",
-    ]
-
-
-# --------------------------------------------------------------------------
-# Declarations on the real command classes
-# --------------------------------------------------------------------------
-
 PLAYBACK_COMMANDS = [
-    ("playlist", "PlaylistCommand"),
-]
-
-# #425：`:play` 三条分支与整个 `:fav` 都迁进了 `MusicManager.play()`，麦克风
-# 生命周期由引擎的守卫按切歌边界接管，命令层不再声明参与。
-# #431/#434/#437：`:radio`、`:playlist <query>`、`:singer`、`:album` 同样搬进了驱动，迁法相同。
-ENGINE_OWNED_PLAYBACK_COMMANDS = [
     ("play", "PlayCommand"),
-    ("fav", "FavCommand"),
+    ("playlist", "PlaylistCommand"),
     ("radio", "RadioCommand"),
     ("album", "AlbumCommand"),
     ("singer", "SingerCommand"),
+    ("fav", "FavCommand"),
+    ("skip", "SkipCommand"),
+    ("next", "NextCommand"),
 ]
 
 
 @pytest.mark.parametrize("module_name,class_name", PLAYBACK_COMMANDS)
-def test_playback_commands_declare_muting_participation(module_name, class_name):
+def test_playback_commands_declare_no_command_level_muting(module_name, class_name):
+    """ADR-0007：麦克风生命周期只归 `MusicManager`，命令层不再声明静音钩子。"""
     module = importlib.import_module(f"ushareiplay.commands.{module_name}")
     command_class = getattr(module, class_name)
 
-    assert command_class.playback_muting is True
+    assert not hasattr(command_class, "playback_muting")
+    assert not hasattr(command_class, "playback_muting_applies")
+    assert not hasattr(command_class, "playback_expected_song")
     assert not hasattr(command_class, "requires_mic")
 
 
-@pytest.mark.parametrize("module_name,class_name", ENGINE_OWNED_PLAYBACK_COMMANDS)
-def test_commands_migrated_into_the_engine_do_not_mute_at_command_level(
-    module_name, class_name
-):
-    """命令级闭麦发生在守护之前，被守护拒绝的切歌也会响一次无来由的静音。
-
-    迁到引擎后由 `MusicManager.play()` 在守护通过后自己闭麦（ADR-0007），命令层
-    再声明一次只会把静音包两遍。
-    """
-    module = importlib.import_module(f"ushareiplay.commands.{module_name}")
-    command_class = getattr(module, class_name)
-
-    assert command_class.playback_muting is False
-    # 逐分支判定静音归属的钩子也随之失去存在理由（基类的默认实现直接读类属性）
-    assert "playback_muting_applies" not in vars(command_class)
-
-
-def test_skip_command_owns_muting_after_its_guard():
-    """`:skip` 不能在命令级闭麦：被守护拒绝的切歌不该响一次无来由的静音。
-
-    守护通过后由 `do_process` 自己进入 PlaybackMuting。
-    """
+def test_skip_command_delegates_guard_and_mute_to_the_engine():
+    """:skip 的守护与闭麦都在 `MusicManager.skip()`，命令层只转发请求者。"""
     import inspect
     from ushareiplay.commands.skip import SkipCommand
 
-    assert SkipCommand.playback_muting is False
-
     source = inspect.getsource(SkipCommand.do_process)
-    assert source.index("guard_switch") < source.index("PlaybackMuting.instance().guard()")
-    assert "skip_song" in source
+    assert "MusicManager.instance().skip(" in source
+    assert "PlaybackMuting" not in source
+    assert "guard_switch" not in source
 
 
-def test_next_command_does_not_participate_in_muting():
-    """Ticket #319: :next only queues the song behind the current one.
-
-    Nothing interrupts the audio stream, so the mic must stay untouched.
-    """
-    module = importlib.import_module("ushareiplay.commands.next")
-    command_class = module.NextCommand
-
-    assert command_class.playback_muting is False
-    assert not hasattr(command_class, "requires_mic")
-
-
-@pytest.mark.parametrize("module_name,class_name", PLAYBACK_COMMANDS)
-def test_playback_commands_leave_mic_activation_to_the_coordinator(module_name, class_name):
+def test_playback_commands_leave_mic_activation_to_the_coordinator():
     """Mic work declared inline in a playback command re-opens the mic mid-playback,
     undoing the guard mute — the microphone belongs to PlaybackMuting + MicManager."""
-    module_path = (
-        Path(__file__).resolve().parents[1]
-        / "src"
-        / "ushareiplay"
-        / "commands"
-        / f"{module_name}.py"
-    )
-
-    source = module_path.read_text(encoding="utf-8")
-
-    for mic_api in ("ensure_mic_active", "ensure_active", "set_active", "toggle_mic"):
-        assert mic_api not in source
-
-
-def test_play_command_reports_requested_song_for_readiness_check():
-    from ushareiplay.commands.play import PlayCommand
-
-    command = PlayCommand.__new__(PlayCommand)
-
-    assert command.playback_expected_song(["海阔天空", "Beyond"]) == "海阔天空 Beyond"
-    assert command.playback_expected_song([]) is None
-    assert command.playback_expected_song(["?"]) is None
+    for module_name, _class_name in PLAYBACK_COMMANDS:
+        module_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "ushareiplay"
+            / "commands"
+            / f"{module_name}.py"
+        )
+        source = module_path.read_text(encoding="utf-8")
+        for mic_api in ("ensure_mic_active", "ensure_active", "set_active", "toggle_mic"):
+            assert mic_api not in source, f"{module_name} declares inline mic work"
 
 
-def test_base_command_does_not_participate_in_muting_by_default():
+def test_base_command_declares_no_muting_hooks():
     from ushareiplay.core.base_command import BaseCommand
 
-    assert BaseCommand.playback_muting is False
+    assert not hasattr(BaseCommand, "playback_muting")
+    assert not hasattr(BaseCommand, "playback_expected_song")
+    assert not hasattr(BaseCommand, "playback_muting_applies")
     assert not hasattr(BaseCommand, "requires_mic")
 
 
@@ -371,10 +212,10 @@ def test_next_command_leaves_microphone_untouched(monkeypatch):
     """Ticket #319: driving the real NextCommand never mutes or restores the mic."""
     from ushareiplay.commands.next import NextCommand
     from ushareiplay.managers.info_manager import InfoManager
-    from ushareiplay.state.playlist_state import PlaylistState
+    from ushareiplay.managers.playlist_session import PlaylistSession
 
     # 成功的 :next 现在会记入 Next Queue；这里启动状态门面即可。
-    PlaylistState.initialize()
+    PlaylistSession.instance()
     InfoManager.initialize()
 
     coordinator = _make_coordinator([])

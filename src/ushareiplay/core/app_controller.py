@@ -41,7 +41,7 @@ from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 class AppController(Singleton):
@@ -508,7 +508,6 @@ class AppController(Singleton):
             from ushareiplay.managers.user_event_hooks import UserEventHooks
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-            from ushareiplay.state.playlist_state import PlaylistState
             from ushareiplay.state.presence_tracker import PresenceTracker
             from ushareiplay.state.room_state import RoomState
 
@@ -547,12 +546,11 @@ class AppController(Singleton):
             self.command_manager.configure_runtime(self.command_runtime_context)
             RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
             PresenceTracker.initialize(self.soul_handler)
-            PlaylistState.initialize(self.soul_handler)
             PlaybackBroadcaster.initialize(self.soul_handler)
             OnlineListScraper.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
-            PlaylistAdoption.initialize()
+            PlaylistSession.initialize(self.soul_handler)
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(

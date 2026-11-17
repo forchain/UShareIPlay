@@ -24,7 +24,7 @@ from ushareiplay.managers.playback.models import (
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from ushareiplay.managers.playback.models import PlaybackOutcome
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
 
@@ -108,10 +108,16 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
     info = _InfoManager(protection_error=protection_error)
     room_profile = _RoomProfileManager()
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = info
-    adoption._room_profile = room_profile
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session._room_profile = room_profile
+
+    async def _check_protection(requester, config=None):
+        info.guard_calls.append(requester)
+        return info.protection_error
+
+    session.check_playlist_protection = _check_protection
 
     manager = MusicManager.initialize(ui_driver=driver)
     probe = _ReadinessProbe(ready=ready)
@@ -127,6 +133,7 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
         driver=driver,
         info=info,
         room_profile=room_profile,
+        session=session,
         probe=probe,
         mic=mic,
         journal=journal,
@@ -426,8 +433,8 @@ async def test_play_records_player_playlist_and_title_after_playback_is_confirme
         )
     )
 
-    assert engine.info.player_name == "小明"
-    assert engine.info.current_playlist_name == "轻音乐 · 治愈白噪音"
+    assert engine.session.player_name == "小明"
+    assert engine.session.current_playlist_name == "轻音乐 · 治愈白噪音"
     assert engine.room_profile.titles == ["O Playlist"]
 
 
@@ -442,7 +449,7 @@ async def test_play_does_not_adopt_room_context_when_the_ui_fails(initialized_te
 
     assert engine.room_profile.topics == []
     assert engine.room_profile.titles == []
-    assert engine.info.player_name is None
+    assert engine.session.player_name is None
 
 
 async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
@@ -629,7 +636,7 @@ async def test_play_command_hands_the_requester_to_the_engine_without_claiming_t
     await _make_play_command().do_process(_sender("小明"), ["稻香"])
 
     assert engine.driver.requests[0].requester == "小明"
-    assert engine.info.player_name is None
+    assert engine.session.player_name is None
 
 
 async def test_play_command_reports_a_rejected_switch_without_muting_or_ui(
@@ -662,41 +669,39 @@ async def test_play_command_lets_the_engine_own_the_mic_lifecycle(initialized_te
     assert engine.probe.waits == ["青花瓷"]
 
 
-async def test_command_manager_does_not_mute_for_the_song_branch(initialized_test_singletons):
-    """命令级静音守卫要在点歌分支上完全让路，否则闭麦会提前到守护之前。"""
+async def test_command_manager_owns_no_playback_muting_hooks(initialized_test_singletons):
+    """命令层不再声明静音钩子：麦克风生命周期完全归 `MusicManager`（ADR-0007）。"""
+    from ushareiplay.core.base_command import BaseCommand
     from ushareiplay.managers.command_manager import CommandManager
 
-    engine = _build_engine()
+    manager = CommandManager.instance()
+    assert not hasattr(manager, "playback_muting_guard")
+    assert not hasattr(manager, "_playback_muting")
+    assert not hasattr(BaseCommand, "playback_muting")
+    assert not hasattr(BaseCommand, "playback_expected_song")
+    assert not hasattr(BaseCommand, "playback_muting_applies")
 
-    with CommandManager.instance().playback_muting_guard(
-        _make_play_command(), {"parameters": ["青花瓷", "周杰伦"]}
-    ):
-        pass
 
+async def test_skip_guards_before_muting(initialized_test_singletons):
+    """`:skip` 先过守护再闭麦：被拒绝时一次麦克风动作都没有。"""
+    engine = _build_engine(protection_error={"error": "正在播放歌单，请等待"})
+    engine.manager.skip_song = MagicMock(return_value={"song": "晴天"})
+
+    result = await engine.manager.skip("小明")
+
+    assert result == {"error": "正在播放歌单，请等待"}
     assert engine.journal == []
+    engine.manager.skip_song.assert_not_called()
 
 
-@pytest.mark.parametrize("parameters", [[], ["?"], ["稻香"]])
-async def test_command_manager_never_mutes_for_play(
-    parameters, initialized_test_singletons
-):
-    """#425 之后 `:play` 的三条分支都归引擎管，命令级静音守卫一律让路。
-
-    收藏（`:play ""`）与雷达（`:play ?`）原本靠命令级静音兜着切歌；它们迁进
-    `MusicManager.play()` 之后这条保护就是重复的 —— 命令级闭麦发生在守护之前，
-    被守护拒绝的切歌也会在房间里响一次无来由的静音。
-
-    main 侧 #442 有一条反向断言（`:play ""` / `:play ?` 仍需命令级静音
-    `["mute", "restore"]`），那是 #425 迁移完成前的过渡状态；本分支把收藏与雷达
-    收进引擎后该前提不再成立，因此保留本用例。
-    """
-    from ushareiplay.managers.command_manager import CommandManager
-
+async def test_skip_mutes_only_after_the_guard_passes(initialized_test_singletons):
+    """守护放行后闭麦、切歌、等就绪、开麦；顺序与 `play()` 一致。"""
     engine = _build_engine()
+    engine.manager.skip_song = MagicMock(
+        side_effect=lambda: engine.journal.append("ui:skip") or {"song": "晴天"}
+    )
 
-    with CommandManager.instance().playback_muting_guard(
-        _make_play_command(), {"parameters": parameters}
-    ):
-        pass
+    result = await engine.manager.skip("小明")
 
-    assert engine.journal == []
+    assert result == {"song": "晴天"}
+    assert engine.journal == ["mute", "ui:skip", "restore"]
