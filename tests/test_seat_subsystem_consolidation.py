@@ -42,6 +42,7 @@ PUBLIC_SEAT_INTERFACES = (
     "prepare_for_chat_scan",
     "invite_user_to_seat",
     "find_verified_isolated_empty_desk",
+    "chat_scan_session",
 )
 
 # #402 之后座位子系统只剩门面这一个单例；`SeatObservationManager` 是另一个单例，
@@ -123,6 +124,7 @@ def test_seat_manager_owns_a_single_seat_subsystem():
         "prepare_for_chat_scan": "prepare_for_chat_scan",
         "invite_user_to_seat": "invite_user_to_seat",
         "find_verified_isolated_empty_desk": "_find_verified_isolated_empty_desk",
+        "chat_scan_session": "chat_scan_session",
     }
     assert set(wiring) == set(PUBLIC_SEAT_INTERFACES)
     for facade_name, subsystem_name in wiring.items():
@@ -347,6 +349,9 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(
     assert await manager.prepare_for_chat_scan() == GUEST_ROOM_CHAT_SCAN_RESULT
     assert await manager.invite_user_to_seat(1, "Bob") == GUEST_ROOM_ERROR_RESULT
     assert await manager.find_verified_isolated_empty_desk() == GUEST_ROOM_EMPTY_DESK_RESULT
+    # 补漏会话在他人房间直接放行，不碰座位 UI
+    async with manager.chat_scan_session():
+        pass
 
 
 async def test_check_seats_on_entry_without_a_handler_returns_quietly():
