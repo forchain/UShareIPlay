@@ -106,6 +106,9 @@ class _DriverSeatPanel:
     async def expand_and_find_desks(self) -> Optional[list]:
         return await self.driver.expand_and_find_desks()
 
+    async def read_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
+        return await self.driver.read_occupant(desk, side, seat_number)
+
     def scroll_to_row(self, desk_index, seat_desks=None, duration=100) -> bool:
         return self.driver.scroll_to_row(desk_index, seat_desks, duration=duration)
 

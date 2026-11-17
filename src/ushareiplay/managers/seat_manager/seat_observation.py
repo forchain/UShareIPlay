@@ -20,6 +20,7 @@ from ushareiplay.managers.seat_manager.seat_ledger import (
     claimed_usernames,
     evidence_weight,
 )
+from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 专注人数文案：主形态「7人专注中」，兜底取任意数字（文案变形时不至于整个读不到）。
@@ -41,8 +42,6 @@ class SeatObservationManager(Singleton):
     负责麦位被动观测、全量 12 麦位状态维护、3 排视觉快照日志输出、
     以及专注人数与可视麦位背离时的自动展开探测。
     """
-
-    MIN_INTERACTABLE_DESK_HEIGHT: ClassVar[int] = 100
 
     # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
     # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
@@ -66,12 +65,14 @@ class SeatObservationManager(Singleton):
         cooldown_policy: Optional[SeatRescanCooldownPolicy] = None,
         gate_state: Optional[SeatObservationGateState] = None,
         panel_reader: Optional[SeatPanelReader] = None,
+        panel_driver: Optional[SeatPanelDriver] = None,
     ):
         self.handler = handler
         self._logger = None
         self._controller = None
         self._seat_ui = seat_ui
         self._panel_reader = panel_reader
+        self._panel_driver = panel_driver
         # 上一轮的「变更去向不明」读数：只用于日志去重。残片桌位（面板底缘漏出的
         # 下一排）读数每轮都一样，逐轮打日志就是刷屏（AGENTS.md 日志静默铁律）。
         self._last_unexplained: Set[Tuple[int, str]] = set()
@@ -212,6 +213,8 @@ class SeatObservationManager(Singleton):
             self.handler = handler
             if self._panel_reader is not None:
                 self._panel_reader.handler = handler
+            if self._panel_driver is not None:
+                self._panel_driver.handler = handler
             if self._seat_ui:
                 self._seat_ui.handler = handler
             if hasattr(self.handler, "logger") and self.handler.logger:
@@ -245,6 +248,15 @@ class SeatObservationManager(Singleton):
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
+
+    @property
+    def panel_driver(self) -> SeatPanelDriver:
+        """座位头像弹窗的驱动：与读数器共用同一份实现，注入优先、缺省按需自建。"""
+        if self._panel_driver is None:
+            self._panel_driver = SeatPanelDriver(self.handler, panel_reader=self.panel_reader)
+        elif self.handler and self._panel_driver.handler is not self.handler:
+            self._panel_driver.handler = self.handler
+        return self._panel_driver
 
     @property
     def logger(self):
@@ -663,17 +675,10 @@ class SeatObservationManager(Singleton):
         读不出 bounds（既没有 bounds 属性，也没有 location/size）同样判为不可交互：
         渲染尺寸未知就无法证明它在视口内，与「绝不盲目点击」同源 —— 宁可这一轮
         不点头像（身份留空交给下一轮），也不在未知坐标上盲点（见 #450）。
+
+        阈值与点名驱动共用一份实现（`SeatPanelDriver.is_desk_interactable`）。
         """
-        bounds = self._desk_bounds(desk)
-        if not bounds:
-            return False
-        w = bounds.get("width", 0)
-        h = bounds.get("height", 0)
-        if h < self.MIN_INTERACTABLE_DESK_HEIGHT:
-            return False
-        if w > 0 and (h / w) < 0.4:
-            return False
-        return True
+        return self.panel_driver.is_desk_interactable(desk)
 
     def _is_desk_visible(self, desk) -> bool:
         """桌位是否可用作麦位读数 —— 只由 DOM 决定。
@@ -692,54 +697,6 @@ class SeatObservationManager(Singleton):
                 pass
         return self._has_desk_content(desk)
 
-    def _click_seat_avatar(self, desk, side: str, target_element) -> bool:
-        """点开麦位头像弹窗。
-
-        raw WebElement 直接点；ElementWrapper 的 click() 取不到真实元素（子元素
-        wrapper 没有 element key，get_web_element() 返回 None 且静默 False），
-        所以退回按 bounds 坐标点击。
-        """
-        if not self._is_desk_interactable(desk):
-            return False
-
-        if target_element is not None and not isinstance(target_element, ElementWrapper):
-            try:
-                target_element.click()
-                return True
-            except Exception:
-                pass
-
-        pt = self.panel_reader.tap_point(desk, side)
-        if pt is None:
-            return False
-        x, y = pt
-
-        gesture = getattr(self.handler, "gesture_handler", None)
-        if gesture is None or not hasattr(gesture, "click_at"):
-            return False
-        return bool(gesture.click_at(x, y))
-
-    # 麦位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
-    # 与房间档案模块的 DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
-    SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
-
-    def _seat_card_still_present(self) -> bool:
-        """头像名片此刻是否还在屏幕上 —— 关它的那次 back 只能由这个证据授权。
-
-        反过来说：拿不到证据就绝不按 back。房间界面上的一次盲按 back 就是退出
-        派对房间（`RoomProfileManager.ensure_closed` 记过同一笔账）。
-        """
-        finder = getattr(self.handler, "element_finder", None)
-        if finder is None:
-            return False
-        for key in self.SEAT_CARD_EVIDENCE_KEYS:
-            try:
-                if finder.try_find_element(key, log=False):
-                    return True
-            except Exception:
-                continue
-        return False
-
     async def inspect_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
         """点击麦位弹窗读取用户昵称；只有弹窗真的开了才按 back 关它。
 
@@ -749,51 +706,15 @@ class SeatObservationManager(Singleton):
         房间（见 `RoomProfileManager.ensure_closed` 的同款告诫），所以 back 必须由证据授权：
         读到昵称节点才算弹窗开着；点都没点出去时同样不按。读不到昵称的弹窗不在屏幕上
         的可能性远大于它就是房间本身 —— 宁可留「身份未知」给下一轮，不可拿房间去赌。
+
+        点名、取证与关窗全部委托给 `SeatPanelDriver.read_occupant`：主动座位命令与
+        被动观测必须共用同一份「证据授权 back」的实现。
         """
         if not self.handler:
             return None
 
         self.logger.info(f"Inspecting occupant on seat {seat_number} ({side} side)")
-        popup_open = False
-        try:
-            target_element = self._find_child_element(desk, f"{side}_state")
-            if target_element is None:
-                target_element = self._find_child_element(desk, f"{side}_seat")
-            if not self._click_seat_avatar(desk, side, target_element):
-                self.logger.warning(
-                    f"Seat {seat_number} ({side} side): avatar tap never landed "
-                    f"(no bounds / gesture failed); nothing to close"
-                )
-                return None
-
-            await asyncio.sleep(0.3)
-
-            username = None
-            if hasattr(self.handler, "element_finder"):
-                _found_key, name_elem = self.handler.element_finder.wait_for_any_element(
-                    list(self.SEAT_CARD_EVIDENCE_KEYS), timeout=1.5
-                )
-                popup_open = name_elem is not None
-                if name_elem and hasattr(name_elem, "text") and name_elem.text:
-                    username = name_elem.text.strip()
-
-            if not popup_open:
-                # 超时不等于没开：卡片可能刚过 1.5s 才渲染出来。留在屏幕上的卡片
-                # 会挡住后面的麦位读数，甚至被下一个号位读成自己的占座人。
-                popup_open = self._seat_card_still_present()
-
-            return username
-
-        except Exception as e:
-            self.logger.error(f"Error inspecting occupant on seat {seat_number}: {e}")
-            return None
-        finally:
-            try:
-                if popup_open and hasattr(self.handler, "key_actions"):
-                    self.handler.key_actions.press_back()
-                await asyncio.sleep(0.2)
-            except Exception:
-                pass
+        return await self.panel_driver.read_occupant(desk, side, seat_number)
 
     def _visible_band_signature(self, desk_wrappers: list) -> Optional[Tuple]:
         """可见麦位带的内容指纹（只记读数，不含座位号），用于身份未知时的变更检测。

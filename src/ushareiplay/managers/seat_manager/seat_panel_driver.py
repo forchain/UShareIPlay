@@ -54,6 +54,8 @@ SEAT_CARD_TIMEOUT = 1.5
 SEAT_CARD_TAP_SETTLE_SECONDS = 0.3
 # 关掉弹窗后的回场延迟。
 SEAT_CARD_DISMISS_SETTLE_SECONDS = 0.2
+# 可点击桌位的最小渲染高度：低于它的残片头像已被视口裁切（真机 10~56px）。
+MIN_INTERACTABLE_DESK_HEIGHT = 100
 
 
 @dataclass
@@ -442,6 +444,23 @@ class SeatPanelDriver:
             return None
         return finder.find_child_element(desk, element_key, log_failure=False)
 
+    def is_desk_interactable(self, desk) -> bool:
+        """桌位是否具备足够的可点击交互高度。
+
+        DOM 读取不限高度（Android 会 dump 残片节点的 DOM），但点头像弹窗必须依赖
+        屏幕真实渲染区域：低于阈值的残片头像已被视口裁切，按中心点击只会击中视口
+        边缘外的空白。读不出 bounds 同样判为不可交互 —— 渲染尺寸未知就无法证明
+        它在视口内，宁可这一轮不点名。
+        """
+        bounds = self._desk_bounds(desk)
+        if not bounds:
+            return False
+        width = bounds.get("width", 0)
+        height = bounds.get("height", 0)
+        if height < MIN_INTERACTABLE_DESK_HEIGHT:
+            return False
+        return not (width > 0 and (height / width) < 0.4)
+
     def _tap_avatar(self, desk, side: str, target_element) -> bool:
         """点开座位头像弹窗。
 
@@ -450,6 +469,9 @@ class SeatPanelDriver:
         所以退回按 bounds 坐标点击：左侧点四分之一处，右侧点四分之三处，取高度的
         中点。
         """
+        if not self.is_desk_interactable(desk):
+            return False
+
         if target_element is not None and not isinstance(target_element, ElementWrapper):
             try:
                 target_element.click()

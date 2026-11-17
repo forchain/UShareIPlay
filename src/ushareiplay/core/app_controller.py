@@ -583,6 +583,7 @@ class AppController(Singleton):
                 self.soul_handler,
                 seat_ui=self.seat_manager.subsystem.panel,
                 panel_reader=self.seat_manager.subsystem.panel_reader,
+                panel_driver=self.seat_manager.subsystem.panel_driver,
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 

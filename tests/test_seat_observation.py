@@ -223,6 +223,20 @@ async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session(
 
 
 @pytest.mark.asyncio
+async def test_inspect_occupant_delegates_to_the_seat_panel_driver():
+    """被动观测的头像点名必须走 SeatPanelDriver 的同一份实现。"""
+    handler = make_handler()
+    driver = MagicMock()
+    driver.read_occupant = AsyncMock(return_value="Bob")
+    driver.handler = handler
+    manager = SeatObservationManager.initialize(handler, panel_driver=driver)
+    desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
+
+    assert await manager.inspect_occupant(desk, "left", 9) == "Bob"
+    driver.read_occupant.assert_awaited_once_with(desk, "left", 9)
+
+
+@pytest.mark.asyncio
 async def test_inspect_occupant_never_presses_back_when_no_popup_opened():
     """点名没打开弹窗时绝不能按 back：房间界面上的一次 back 就是退出派对。
 
