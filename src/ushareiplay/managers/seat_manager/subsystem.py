@@ -40,6 +40,13 @@ from typing import ClassVar, Optional, Tuple
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.dal import SeatReservationDAO, UserDAO
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.managers.seat_manager.guard import (
+    GUEST_ROOM_CHAT_SCAN_RESULT,
+    GUEST_ROOM_EMPTY_DESK_RESULT,
+    GUEST_ROOM_ENTRY_CHECK_RESULT,
+    GUEST_ROOM_ERROR_RESULT,
+    guest_room_guard,
+)
 from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_invite_driver import SeatInviteDriver
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
@@ -106,6 +113,9 @@ class _DriverSeatPanel:
     async def expand_and_find_desks(self) -> Optional[list]:
         return await self.driver.expand_and_find_desks()
 
+    async def read_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
+        return await self.driver.read_occupant(desk, side, seat_number)
+
     def scroll_to_row(self, desk_index, seat_desks=None, duration=100) -> bool:
         return self.driver.scroll_to_row(desk_index, seat_desks, duration=duration)
 
@@ -133,15 +143,14 @@ class SeatSubsystem:
         seat_ui=None,
         invite_driver=None,
         panel_reader=None,
+        lease=None,
     ):
         self._handler = handler
         self._panel_reader = panel_reader
         self._panel_driver = panel_driver
+        self._lease = lease
         self._observation = observation
         self._message_dispatch = None
-        # 运行期上下文（UI 独占锁的读法），由组合根经 configure_runtime 注入 ——
-        # 与 EventManager / CommandManager 同一套接线（ADR-0009 第 3 条）。
-        self._runtime = None
         # 占座游标：占座侧原本持有的两个状态，合并后归子系统所有。
         self.current_desk_index = 0
         self.current_side = None
@@ -174,7 +183,7 @@ class SeatSubsystem:
     def panel_reader(self) -> SeatPanelReader:
         """座位面板的唯一读数器与 UI 锁门面。"""
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
@@ -186,7 +195,9 @@ class SeatSubsystem:
         构造注入优先，缺省时按需自建并缓存。驱动刻意不是单例（它没有全局状态）。
         """
         if self._panel_driver is None:
-            self._panel_driver = SeatPanelDriver(self.handler, panel_reader=self.panel_reader)
+            self._panel_driver = SeatPanelDriver(
+                self.handler, panel_reader=self.panel_reader, lease=self._lease
+            )
         elif getattr(self._panel_driver, "_panel_reader", None) is None:
             self._panel_driver._panel_reader = self.panel_reader
         return self._panel_driver
@@ -247,14 +258,6 @@ class SeatSubsystem:
         async with self.panel_reader.session(reason):
             yield
 
-    def configure_runtime(self, runtime):
-        """注入运行期上下文（UI 独占锁的读法）。
-
-        与 `EventManager` / `CommandManager` 同一套接线：依赖只从构造函数或
-        `configure_runtime` 进入（ADR-0009 第 3 条）。
-        """
-        self._runtime = runtime
-
     # ------------------------------------------------------------------
     # 面板
     # ------------------------------------------------------------------
@@ -273,6 +276,7 @@ class SeatSubsystem:
     def scroll_to_row(self, desk_index, seat_desks=None, duration=100) -> bool:
         return self.panel.scroll_to_row(desk_index, seat_desks, duration=duration)
 
+    @guest_room_guard(GUEST_ROOM_CHAT_SCAN_RESULT)
     async def prepare_for_chat_scan(self) -> bool:
         """聊天历史扫描前把座位面板收回原状。
 
@@ -293,6 +297,7 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     # 预约数据（ReservationManager 合并进来）
     # ------------------------------------------------------------------
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def reserve_seat(self, username: str, seat_number: int) -> dict:
         """给用户预留一个座位。"""
         try:
@@ -346,6 +351,7 @@ class SeatSubsystem:
             self.handler.log_error(f"Error reserving seat: {traceback.format_exc()}")
             return {'error': f'Failed to reserve seat: {str(e)}'}
 
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def remove_user_reservation(self, username: str) -> dict:
         """删除某个用户的座位预留（纯数据操作）。"""
         try:
@@ -371,6 +377,7 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     # 进房检查与占座人清退（SeatCheckManager 合并进来）
     # ------------------------------------------------------------------
+    @guest_room_guard(GUEST_ROOM_ENTRY_CHECK_RESULT)
     async def check_seats_on_entry(self, username: str = None):
         """用户进房/回房时检查其预留座位。"""
         # 两个前提必须分开判：handler 缺席时 `self.handler.logger` 本身就是
@@ -552,7 +559,7 @@ class SeatSubsystem:
             if user_names & owner_aliases:
                 return True
 
-        seats = getattr(obs, "seats", None) or {}
+        seats = obs.ledger.slots
         for slot in seats.values():
             if not getattr(slot, "occupied", False):
                 continue
@@ -704,6 +711,11 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     # 占座与下麦（SeatingManager 合并进来）
     # ------------------------------------------------------------------
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
+    async def take_seat(self, seat_number: int) -> dict:
+        """`:seat <n>` 的公开入口：自己入座指定号位。"""
+        return await self.sit_at_specific_seat(seat_number)
+
     async def sit_at_specific_seat(self, seat_number: int) -> dict:
         """Sit at a specific seat position (1-12) with viewport sync and page-source verification."""
         if self.handler is None:
@@ -850,6 +862,7 @@ class SeatSubsystem:
             return f'Seat {seat_number} is already occupied by {plan.occupied_label or "occupant"}'
         return f'Seat {seat_number} could not be verified in viewport'
 
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def invite_user_to_seat(self, seat_number: int, target_visible_name: str) -> dict:
         """邀请房间里的某个用户入座某个**空座位**。
 
@@ -937,7 +950,13 @@ class SeatSubsystem:
     # ------------------------------------------------------------------
     # 独立空桌（社恐模式）
     # ------------------------------------------------------------------
+    @guest_room_guard(GUEST_ROOM_EMPTY_DESK_RESULT)
     async def find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
+        """挑一张独立空桌；展开/滚动属于 UI 写操作，由本方法自己取 UI 会话锁。"""
+        async with self._ui_session("seat_empty_desk"):
+            return await self._find_verified_isolated_empty_desk()
+
+    async def _find_verified_isolated_empty_desk(self) -> Optional[Tuple[int, int]]:
         """挑一张左右两座都空、且经真机 DOM 核验过的独立桌位。
 
         「独立空桌」= 同一张桌子的左右两个座位都没有人在座。房间里 6 张桌子对应
@@ -949,11 +968,9 @@ class SeatSubsystem:
         现场发现有人就换下一张候选桌；现场读不出证据的座位一律不算「核验通过」——
         没核验过的空桌不能当成空桌。
 
-        **UI 独占**：本方法会展开面板并滚动视口，属于会改页面结构的 UI 动作，
-        调用方必须已经持有 UI 锁（持锁的是 `_auto_invite_to_isolated_desk`；门面
-        上的 `SeatManager.find_verified_isolated_empty_desk` 会自己取锁）。
-        这里不再自己申请一次锁：`AppController.ui_session` 是**可重入**的，同一个
-        task 嵌套进入时直通，不会自锁死。
+        **UI 独占**：展开面板并滚动视口会改页面结构，公开入口
+        `find_verified_isolated_empty_desk` 自己取 `seat_empty_desk` 会话锁；
+        `_auto_invite_to_isolated_desk` 已在锁内时靠租赁器的同 task 重入直通。
 
         Returns:
             (桌号 0..5, 推荐空座号)；没有可用独立空桌时返回 None。
@@ -1002,7 +1019,7 @@ class SeatSubsystem:
     @staticmethod
     def _isolated_empty_desk_candidates(obs) -> list:
         """从缓存座次表里挑出左右两座都空的候选桌（桌号 0..5，顺序即核验顺序）。"""
-        seats = getattr(obs, "seats", None) or {}
+        seats = obs.ledger.slots
         candidates = []
         for desk_index in range(6):
             left = seats.get(desk_index * 2 + 1)
@@ -1037,6 +1054,7 @@ class SeatSubsystem:
                 return (False, False)
         return (True, False)
 
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def find_owner_seat(self, force_relocate: bool = False) -> dict:
         """Find and take an available seat for owner"""
         if self.handler is None:
@@ -1118,6 +1136,7 @@ class SeatSubsystem:
             self.handler.log_error(f"Error finding seat: {traceback.format_exc()}")
             return {'error': f'Failed to find seat: {str(e)}'}
 
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
     async def accompany_user(self, target_username: str, sender_username: str = None) -> dict:
         """Find a specific user on seats and sit next to them"""
         if self.handler is None:
@@ -1239,6 +1258,13 @@ class SeatSubsystem:
             except Exception as e:
                 if hasattr(self.handler, "logger") and self.handler.logger:
                     self.handler.logger.error(f"Failed to collapse seats: {e}")
+
+    @guest_room_guard(GUEST_ROOM_ERROR_RESULT)
+    async def remove_seat_occupant(self, seat_number=None) -> dict:
+        """`:seat 4 [n]` 的公开入口：不带号位清房主，带号位清指定占座人。"""
+        if seat_number is None:
+            return await self.seat_off_owner()
+        return await self.seat_off_specific_seat(seat_number)
 
     async def seat_off_owner(self) -> dict:
         """Remove the owner from their current seat."""

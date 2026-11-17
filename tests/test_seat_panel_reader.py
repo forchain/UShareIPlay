@@ -202,7 +202,7 @@ async def test_session_reentrant_and_depth():
     """验证 ui_session 可重入与 reader 自身的 depth 追踪。"""
     ctrl = FakeController()
     handler = make_handler(controller=ctrl)
-    reader = SeatPanelReader(handler)
+    reader = SeatPanelReader(handler, lease=ctrl.ui_session_lease)
 
     assert reader.holds_session is False
     assert reader.busy_elsewhere is False
@@ -231,7 +231,7 @@ async def test_session_skip_if_busy():
     """验证 skip_if_busy=True 时被占用直出 False，空闲时成功持锁。"""
     ctrl = FakeController()
     handler = make_handler(controller=ctrl)
-    reader = SeatPanelReader(handler)
+    reader = SeatPanelReader(handler, lease=ctrl.ui_session_lease)
 
     # 1. 空闲时
     async with reader.session("free_task", skip_if_busy=True) as held:
@@ -482,7 +482,7 @@ async def test_prepare_for_chat_scan_when_busy_elsewhere():
 
     ctrl = FakeController()
     handler = make_handler(controller=ctrl)
-    subsystem = SeatSubsystem(handler)
+    subsystem = SeatSubsystem(handler, lease=ctrl.ui_session_lease)
 
     class DummyPanel:
         def __init__(self):
@@ -496,13 +496,26 @@ async def test_prepare_for_chat_scan_when_busy_elsewhere():
     panel = DummyPanel()
     subsystem._panel = panel
 
-    # 外部任务持有 controller.ui_session
-    async with ctrl.ui_session("other_worker"):
+    # 另一个 task 持有 controller.ui_session（共享同一份 lease）
+    acquired = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with ctrl.ui_session("other_worker"):
+            acquired.set()
+            await release.wait()
+
+    task = asyncio.create_task(holder())
+    await acquired.wait()
+    try:
         assert subsystem.panel_reader.busy_elsewhere is True
         res = await subsystem.prepare_for_chat_scan()
         assert res is True
         # 面板保持原状，未收起
         assert panel.collapsed is False
+    finally:
+        release.set()
+        await task
 
 
 def test_semantic_consistency_across_subsystem_and_observation():

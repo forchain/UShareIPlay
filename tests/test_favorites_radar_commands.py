@@ -24,7 +24,7 @@ from ushareiplay.managers.playback.models import (
     PlaybackVariant,
 )
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
 
@@ -97,10 +97,12 @@ def _wire_engine(*, driver=None, protection_error=None):
         journal=journal,
     )
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = _InfoManager(protection_error=protection_error)
-    adoption._room_profile = _RoomProfileManager()
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    info = _InfoManager(protection_error=protection_error)
+    session._room_profile = _RoomProfileManager()
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session.check_playlist_protection = info.check_playlist_protection
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -111,8 +113,9 @@ def _wire_engine(*, driver=None, protection_error=None):
     return SimpleNamespace(
         manager=MusicManager.instance(),
         driver=driver,
-        info=adoption._info,
-        room_profile=adoption._room_profile,
+        info=info,
+        session=session,
+        room_profile=session._room_profile,
         journal=journal,
     )
 
@@ -239,7 +242,7 @@ async def test_fav_adopts_the_requester_the_room_title_and_the_playlist(initiali
 
     await FavCommand(_Controller()).do_process(_message("阿花"), ["type", "粤语"])
 
-    assert engine.info.player_name == "阿花"
+    assert engine.session.player_name == "阿花"
     assert engine.room_profile.titles == ["粤音"]
     assert engine.room_profile.topics == ["喜帖街"]
 
@@ -355,7 +358,7 @@ def test_migrated_commands_no_longer_ask_for_command_level_muting(command_class)
     迁到引擎后由 `MusicManager.play()` 在守护通过后自己闭麦（ADR-0007），命令层再
     声明一次只会把静音包两遍。
     """
-    assert command_class.playback_muting is False
+    assert not hasattr(command_class, "playback_muting")
 
 
 async def test_fav_reports_the_guard_message_when_someone_else_is_playing(

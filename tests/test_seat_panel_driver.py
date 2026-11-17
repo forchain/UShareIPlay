@@ -911,7 +911,7 @@ async def test_press_back_is_authorized_only_by_live_evidence(scenario, setup, e
 async def test_ui_session_holds_the_controller_lock():
     controller = FakeController()
     handler = make_panel_handler(popup_name="Bob", controller=controller)
-    driver = SeatPanelDriver(handler)
+    driver = SeatPanelDriver(handler, lease=controller.ui_session_lease)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
     lock_states = []
     handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())

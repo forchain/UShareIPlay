@@ -5,7 +5,7 @@ import pytest
 from ushareiplay.commands.info import InfoCommand
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
@@ -15,13 +15,13 @@ def info_manager():
     for cls in (
         InfoManager,
         PlaybackBroadcaster,
-        PlaylistState,
+        PlaylistSession,
         PresenceTracker,
         RoomState,
     ):
         cls.reset_instance()
     PlaybackBroadcaster.initialize()
-    PlaylistState.initialize()
+    PlaylistSession.initialize()
     PresenceTracker.initialize()
     RoomState.initialize()
     manager = InfoManager.initialize()

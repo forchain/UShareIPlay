@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 def _fake_logger(logs=None):
@@ -22,89 +22,89 @@ def _fake_logger(logs=None):
 
 
 @pytest.fixture
-def playlist_state():
-    PlaylistState.reset_instance()
-    state = PlaylistState.initialize()
+def playlist_session():
+    PlaylistSession.reset_instance()
+    state = PlaylistSession.initialize()
     state._logger, _ = _fake_logger()
     return state
 
 
 # --------------------------------------------------------------------------
-# PlaylistState：记录 / 消费 / 清空
+# PlaylistSession：记录 / 消费 / 清空
 # --------------------------------------------------------------------------
 
-def test_record_next_increments_and_tracks_each_contributor(playlist_state):
-    playlist_state.record_next("Alice")
-    assert playlist_state.pending_next_count == 1
-    assert playlist_state.next_queue_contributors == {"Alice"}
+def test_record_next_increments_and_tracks_each_contributor(playlist_session):
+    playlist_session.record_next("Alice")
+    assert playlist_session.pending_next_count == 1
+    assert playlist_session.next_queue_contributors == {"Alice"}
 
-    playlist_state.record_next("Bob")
-    assert playlist_state.pending_next_count == 2
-    assert playlist_state.next_queue_contributors == {"Alice", "Bob"}
-
-
-def test_next_queue_starts_empty(playlist_state):
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    playlist_session.record_next("Bob")
+    assert playlist_session.pending_next_count == 2
+    assert playlist_session.next_queue_contributors == {"Alice", "Bob"}
 
 
-def test_consume_track_decrements_and_clamps_at_zero(playlist_state):
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Alice")
-
-    playlist_state.consume_track()
-    assert playlist_state.pending_next_count == 1
-
-    playlist_state.consume_track()
-    assert playlist_state.pending_next_count == 0
-
-    playlist_state.consume_track()
-    assert playlist_state.pending_next_count == 0
+def test_next_queue_starts_empty(playlist_session):
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()
 
 
-def test_reaching_zero_clears_the_contributors(playlist_state):
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Bob")
+def test_consume_track_decrements_and_clamps_at_zero(playlist_session):
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Alice")
 
-    playlist_state.consume_track()
-    assert playlist_state.next_queue_contributors == {"Alice", "Bob"}
+    playlist_session.consume_track()
+    assert playlist_session.pending_next_count == 1
 
-    playlist_state.consume_track()
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    playlist_session.consume_track()
+    assert playlist_session.pending_next_count == 0
 
-
-def test_clear_next_queue_resets_count_and_contributors(playlist_state):
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Bob")
-
-    playlist_state.clear_next_queue()
-
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    playlist_session.consume_track()
+    assert playlist_session.pending_next_count == 0
 
 
-def test_consume_logs_only_when_the_queue_empties(playlist_state):
+def test_reaching_zero_clears_the_contributors(playlist_session):
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Bob")
+
+    playlist_session.consume_track()
+    assert playlist_session.next_queue_contributors == {"Alice", "Bob"}
+
+    playlist_session.consume_track()
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()
+
+
+def test_clear_next_queue_resets_count_and_contributors(playlist_session):
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Bob")
+
+    playlist_session.clear_next_queue()
+
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()
+
+
+def test_consume_logs_only_when_the_queue_empties(playlist_session):
     logs = []
-    playlist_state._logger, _ = _fake_logger(logs)
+    playlist_session._logger, _ = _fake_logger(logs)
 
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Bob")
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Bob")
     logs.clear()
 
-    playlist_state.consume_track()  # 2 -> 1：队列仍在，不应刷日志
+    playlist_session.consume_track()  # 2 -> 1：队列仍在，不应刷日志
     assert logs == []
 
-    playlist_state.consume_track()  # 1 -> 0：队列清空，属于行为触发
+    playlist_session.consume_track()  # 1 -> 0：队列清空，属于行为触发
     assert logs
 
 
 # --------------------------------------------------------------------------
-# PlaylistAdoption.adopt：采纳连续歌单时清空 Next Queue
+# PlaylistSession.adopt：采纳连续歌单时清空 Next Queue
 # --------------------------------------------------------------------------
 
 @pytest.fixture
-def stateful_info_manager(playlist_state):
+def stateful_info_manager(playlist_session):
     from ushareiplay.managers.info_manager import InfoManager
 
     InfoManager.reset_instance()
@@ -115,37 +115,35 @@ def stateful_info_manager(playlist_state):
 
 @pytest.fixture
 def adoption(stateful_info_manager):
-    from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+    from ushareiplay.managers.playlist_session import PlaylistSession
 
-    module = PlaylistAdoption.instance()
-    module._info = stateful_info_manager
+    module = PlaylistSession.instance()
     module._room_profile = SimpleNamespace(
         set_title=lambda _title: None, set_topic=lambda _topic: None
     )
-    module._music = SimpleNamespace(list_mode=None)
     return module
 
 
-def test_adopt_continuous_queue_clears_the_next_queue(adoption, playlist_state):
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Bob")
+def test_adopt_continuous_queue_clears_the_next_queue(adoption, playlist_session):
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Bob")
 
     assert adoption.adopt(requester="Carol", mode="radio", title="O Radio") is None
 
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()
 
 
-def test_adopt_single_song_keeps_the_next_queue(adoption, playlist_state):
+def test_adopt_single_song_keeps_the_next_queue(adoption, playlist_session):
     """单曲插播不是歌单切换：别人的 :next 队列不该被它清掉。"""
-    playlist_state.record_next("Alice")
+    playlist_session.record_next("Alice")
 
     assert adoption.adopt(
         requester="Carol", mode="song", title="", topic="晴天 - 周杰伦"
     ) is None
 
-    assert playlist_state.pending_next_count == 1
-    assert playlist_state.next_queue_contributors == {"Alice"}
+    assert playlist_session.pending_next_count == 1
+    assert playlist_session.next_queue_contributors == {"Alice"}
 
 
 # --------------------------------------------------------------------------
@@ -153,7 +151,7 @@ def test_adopt_single_song_keeps_the_next_queue(adoption, playlist_state):
 # --------------------------------------------------------------------------
 
 @pytest.fixture
-def broadcaster(playlist_state):
+def broadcaster(playlist_session):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
     PlaybackBroadcaster.reset_instance()
@@ -165,33 +163,33 @@ def broadcaster(playlist_state):
 
 
 def test_broadcaster_consumes_only_on_non_initial_track_changes(
-    broadcaster, playlist_state
+    broadcaster, playlist_session
 ):
-    playlist_state.record_next("Alice")
-    playlist_state.record_next("Alice")
+    playlist_session.record_next("Alice")
+    playlist_session.record_next("Alice")
     broadcaster._playback_info_cache = {"song": "A", "singer": "X", "album": "Y"}
 
     broadcaster.update()  # 首次初始化：不消费
-    assert playlist_state.pending_next_count == 2
+    assert playlist_session.pending_next_count == 2
 
     broadcaster._playback_info_cache = {"song": "A", "singer": "X", "album": "Y"}
     broadcaster.update()  # 曲目未变：不消费
-    assert playlist_state.pending_next_count == 2
+    assert playlist_session.pending_next_count == 2
 
     broadcaster._playback_info_cache = {"song": "B", "singer": "X", "album": "Y"}
     broadcaster.update()  # 非首次的曲目切换：消费一次
-    assert playlist_state.pending_next_count == 1
-    assert playlist_state.next_queue_contributors == {"Alice"}
+    assert playlist_session.pending_next_count == 1
+    assert playlist_session.next_queue_contributors == {"Alice"}
 
 
 def test_broadcaster_does_not_consume_on_an_error_cache_entry(
-    broadcaster, playlist_state
+    broadcaster, playlist_session
 ):
     """一次读取失败不是曲目切换，不能侵蚀待播计数。"""
-    playlist_state.record_next("Alice")
+    playlist_session.record_next("Alice")
     broadcaster._playback_info_cache = {"song": "A", "singer": "X", "album": "Y"}
     broadcaster.update()  # 首次初始化
-    assert playlist_state.pending_next_count == 1
+    assert playlist_session.pending_next_count == 1
 
     broadcaster._playback_info_cache = {
         "error": "transient read failure",
@@ -201,8 +199,8 @@ def test_broadcaster_does_not_consume_on_an_error_cache_entry(
     }
     broadcaster.update()
 
-    assert playlist_state.pending_next_count == 1
-    assert playlist_state.next_queue_contributors == {"Alice"}
+    assert playlist_session.pending_next_count == 1
+    assert playlist_session.next_queue_contributors == {"Alice"}
 
 
 # --------------------------------------------------------------------------
@@ -211,7 +209,7 @@ def test_broadcaster_does_not_consume_on_an_error_cache_entry(
 
 @pytest.mark.asyncio
 async def test_next_command_records_a_successful_enqueue(
-    stateful_info_manager, playlist_state
+    stateful_info_manager, playlist_session
 ):
     from ushareiplay.commands.next import NextCommand
     from ushareiplay.models.message_info import MessageInfo
@@ -224,13 +222,13 @@ async def test_next_command_records_a_successful_enqueue(
     )
 
     assert result == {"success": True}
-    assert playlist_state.pending_next_count == 1
-    assert playlist_state.next_queue_contributors == {"Alice"}
+    assert playlist_session.pending_next_count == 1
+    assert playlist_session.next_queue_contributors == {"Alice"}
 
 
 @pytest.mark.asyncio
 async def test_next_command_does_not_record_when_play_next_fails(
-    stateful_info_manager, playlist_state
+    stateful_info_manager, playlist_session
 ):
     from ushareiplay.commands.next import NextCommand
     from ushareiplay.models.message_info import MessageInfo
@@ -243,13 +241,13 @@ async def test_next_command_does_not_record_when_play_next_fails(
     )
 
     assert result == {"error": "Not found"}
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()
 
 
 @pytest.mark.asyncio
 async def test_next_command_does_not_record_when_the_handler_play_next_raises(
-    stateful_info_manager, playlist_state
+    stateful_info_manager, playlist_session
 ):
     """handler 的异常必须变成 error dict 再回到命令层。
 
@@ -272,5 +270,5 @@ async def test_next_command_does_not_record_when_the_handler_play_next_raises(
     )
 
     assert result == {"error": "Error playing next music: boom"}
-    assert playlist_state.pending_next_count == 0
-    assert playlist_state.next_queue_contributors == set()
+    assert playlist_session.pending_next_count == 0
+    assert playlist_session.next_queue_contributors == set()

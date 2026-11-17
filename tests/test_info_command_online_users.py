@@ -5,10 +5,11 @@ from unittest.mock import MagicMock
 from ushareiplay.commands.info import InfoCommand
 from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager, SeatSlot
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
@@ -18,7 +19,7 @@ def setup_info_env():
     for cls in (
         InfoManager,
         PlaybackBroadcaster,
-        PlaylistState,
+        PlaylistSession,
         PresenceTracker,
         RoomState,
         AdminManager,
@@ -27,7 +28,7 @@ def setup_info_env():
         cls.reset_instance()
 
     PlaybackBroadcaster.initialize()
-    PlaylistState.initialize()
+    PlaylistSession.initialize()
     presence = PresenceTracker.initialize()
     presence._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, critical=lambda _msg: None)
     presence._online_users = set()
@@ -51,7 +52,7 @@ def setup_info_env():
     for cls in (
         InfoManager,
         PlaybackBroadcaster,
-        PlaylistState,
+        PlaylistSession,
         PresenceTracker,
         RoomState,
         AdminManager,
@@ -113,7 +114,7 @@ async def test_info_online_users_seat_only():
     PresenceTracker.instance().update_online_users(["SeatedUser", "NormalUser"])
     controller = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
-    obs.seats[3] = SeatSlot(seat_number=3, occupied=True, username="SeatedUser")
+    obs.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="SeatedUser")
 
     cmd = InfoCommand(controller)
     msg = MessageInfo(content=":info", nickname="NormalUser")
@@ -130,7 +131,7 @@ async def test_info_online_users_admin_and_seat():
 
     controller = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
-    obs.seats[5] = SeatSlot(seat_number=5, occupied=True, username="AdminOnSeat")
+    obs.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="AdminOnSeat")
 
     cmd = InfoCommand(controller)
     msg = MessageInfo(content=":info", nickname="AdminOnSeat")
@@ -150,8 +151,8 @@ async def test_info_online_users_all_combinations():
 
     controller = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
-    obs.seats[1] = SeatSlot(seat_number=1, occupied=True, username="AdminOnSeat")
-    obs.seats[4] = SeatSlot(seat_number=4, occupied=True, username="NormalOnSeat")
+    obs.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="AdminOnSeat")
+    obs.ledger.slots[4] = SeatSlot(seat_number=4, occupied=True, username="NormalOnSeat")
 
     cmd = InfoCommand(controller)
     msg = MessageInfo(content=":info", nickname="NormalOffSeat")

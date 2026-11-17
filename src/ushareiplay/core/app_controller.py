@@ -33,6 +33,7 @@ from ushareiplay.core.runtime_context import (
 )
 from ushareiplay.core.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.observability import Observability, new_run_id
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
@@ -40,14 +41,13 @@ from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 class AppController(Singleton):
-    # ui_lock 的持有者与嵌套深度（见 ui_session）。用类属性兜底，让绕过
-    # __init__ 直接构造的测试替身也能安全走 ui_session。
-    _ui_lock_owner: Optional[asyncio.Task] = None
-    _ui_lock_depth: int = 0
+    # UI 独占会话租赁。类属性兜底，让绕过 __init__ 直接构造的测试替身也能安全走
+    # ui_session（首次访问时按需创建）。
+    _ui_session_lease: Optional[UISessionLease] = None
 
     def __init__(self, config):
         # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
@@ -112,8 +112,13 @@ class AppController(Singleton):
             reinitialize_driver=self.reinitialize_driver,
             obs=self.obs,
         )
-        self.command_runtime_context = CommandRuntimeContext(controller=self)
-        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock, controller=self)
+        self.command_runtime_context = CommandRuntimeContext(
+            lease=self.ui_session_lease, controller=self
+        )
+        self.event_runtime_context = EventRuntimeContext(
+            lease=self.ui_session_lease,
+            paused=lambda: bool(self.runtime_input and self.runtime_input.paused),
+        )
 
         self._runtime_queue_drainer = None
         self._agent_command_spool = AgentCommandSpool(
@@ -125,7 +130,7 @@ class AppController(Singleton):
         )
         self._status_reporter = StatusReporter(
             config=self.config,
-            ui_lock=self.ui_lock,
+            lease=self.ui_session_lease,
             obs=self.obs,
         )
         # 运行时输入管线在 start_monitoring 里构造：它需要 handler 与 timer_manager
@@ -158,6 +163,27 @@ class AppController(Singleton):
         from ushareiplay.core.roles import RolePolicy
         return RolePolicy(self.config).room_owner
 
+    @property
+    def ui_session_lease(self) -> UISessionLease:
+        """UI 独占会话租赁（按需创建，便于 __new__ 构造的测试替身）。"""
+        if self._ui_session_lease is None:
+            self._ui_session_lease = UISessionLease(
+                is_paused=lambda: bool(
+                    getattr(self, "runtime_input", None)
+                    and self.runtime_input.paused
+                ),
+                logger=lambda: self.logger,
+            )
+        return self._ui_session_lease
+
+    @property
+    def ui_lock(self) -> asyncio.Lock:
+        return self.ui_session_lease.lock
+
+    @ui_lock.setter
+    def ui_lock(self, value: asyncio.Lock):
+        self.ui_session_lease.lock = value
+
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
         """
@@ -170,32 +196,8 @@ class AppController(Singleton):
         会自锁死。外层仍真实持锁，EventRuntimeContext.is_ui_busy() 读的是
         ui_lock.locked()，兜底 back 的抑制语义因此不变。
         """
-        ri = getattr(self, "runtime_input", None)
-        if ri and ri.paused:
-            raise asyncio.CancelledError(f"UI session '{reason}' blocked: runtime paused by !stop")
-
-        task = asyncio.current_task()
-        if self._ui_lock_depth > 0 and self._ui_lock_owner is task:
-            self._ui_lock_depth += 1
-            try:
-                yield
-            finally:
-                self._ui_lock_depth -= 1
-            return
-
-        await self.ui_lock.acquire()
-        self._ui_lock_owner = task
-        self._ui_lock_depth = 1
-        try:
-            if self.logger and reason:
-                self.logger.debug(f"[ui_lock] acquired: {reason}")
+        async with self.ui_session_lease.acquire(reason):
             yield
-        finally:
-            self._ui_lock_owner = None
-            self._ui_lock_depth = 0
-            if self.logger and reason:
-                self.logger.debug(f"[ui_lock] released: {reason}")
-            self.ui_lock.release()
 
     def _start_apps(self):
         """通过Appium server启动QQ Music（Soul app已在创建driver时自动启动）"""
@@ -506,7 +508,6 @@ class AppController(Singleton):
             from ushareiplay.managers.user_event_hooks import UserEventHooks
             from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-            from ushareiplay.state.playlist_state import PlaylistState
             from ushareiplay.state.presence_tracker import PresenceTracker
             from ushareiplay.state.room_state import RoomState
 
@@ -514,9 +515,9 @@ class AppController(Singleton):
             self.logger.info("创建 manager 实例...")
             # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
             # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
-            self.seat_manager = SeatManager.initialize(self.soul_handler)
-            # 运行期上下文（UI 独占锁的读法）与 EventManager 同一套接线。
-            self.seat_manager.configure_runtime(self.event_runtime_context)
+            self.seat_manager = SeatManager.initialize(
+                self.soul_handler, lease=self.ui_session_lease
+            )
 
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
@@ -543,12 +544,11 @@ class AppController(Singleton):
             self.command_manager.configure_runtime(self.command_runtime_context)
             RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
             PresenceTracker.initialize(self.soul_handler)
-            PlaylistState.initialize(self.soul_handler)
             PlaybackBroadcaster.initialize(self.soul_handler)
             OnlineListScraper.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
-            PlaylistAdoption.initialize()
+            PlaylistSession.initialize(self.soul_handler)
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(
@@ -581,8 +581,9 @@ class AppController(Singleton):
             # 契约适配层上的 collapse_seats()。
             self.seat_observation_manager = SeatObservationManager.initialize(
                 self.soul_handler,
-                seat_ui=self.seat_manager.subsystem.panel,
-                panel_reader=self.seat_manager.subsystem.panel_reader,
+                seat_ui=self.seat_manager.panel,
+                panel_reader=self.seat_manager.panel_reader,
+                panel_driver=self.seat_manager.panel_driver,
             )
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 

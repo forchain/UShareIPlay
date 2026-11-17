@@ -20,6 +20,7 @@ from lxml import etree
 
 from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 DESK_RESOURCE_ID = "cn.soulapp.android:id/userRoot"
@@ -216,7 +217,7 @@ def build_real_raw_desks(fixture_name: str) -> list:
     """同一份真机 DOM 的 raw WebElement 形状（展开重扫路径的 find_elements 返回物）。
 
     子节点按 resource-id 建索引，与 Appium 的 parent.find_element 一样返回文档序第一个；
-    头像子树不在 raw 路径里数图（生产契约见 seat_observation._avatar_image_count）。
+    头像子树不在 raw 路径里数图（生产契约见 seat_observation.panel_reader._avatar_image_count）。
     """
     desks = []
     for node in load_real_desk_nodes(fixture_name):
@@ -325,6 +326,22 @@ class ClickableNode:
         self.clicked = True
 
 
+class _RecordingLease(UISessionLease):
+    """记录真正取到锁的 session；嵌套直通与 skip_if_busy 跳过都不记。"""
+
+    def __init__(self, sessions, **kwargs):
+        super().__init__(**kwargs)
+        self._sessions = sessions
+
+    @asynccontextmanager
+    async def acquire(self, reason="", *, skip_if_busy=False):
+        already_held = self.holds_session
+        async with super().acquire(reason, skip_if_busy=skip_if_busy) as executed:
+            if executed and not already_held:
+                self._sessions.append(reason)
+            yield executed
+
+
 class FakeController:
     """与 AppController 同形的独占接口：ui_session 异步上下文管理器。
 
@@ -338,33 +355,17 @@ class FakeController:
     """
 
     def __init__(self):
-        self.ui_lock = asyncio.Lock()
         self.logger = MagicMock()
         self.sessions = []
-        self._owner = None
-        self._depth = 0
+        self.ui_session_lease = _RecordingLease(
+            self.sessions, logger=lambda: self.logger
+        )
+        self.ui_lock = self.ui_session_lease.lock
 
     @asynccontextmanager
     async def ui_session(self, reason=""):
-        task = asyncio.current_task()
-        if self._depth > 0 and self._owner is task:
-            self._depth += 1
-            try:
-                yield
-            finally:
-                self._depth -= 1
-            return
-
-        await self.ui_lock.acquire()
-        self._owner = task
-        self._depth = 1
-        self.sessions.append(reason)
-        try:
+        async with self.ui_session_lease.acquire(reason):
             yield
-        finally:
-            self._owner = None
-            self._depth = 0
-            self.ui_lock.release()
 
 
 class FakeSeatUI:
@@ -416,6 +417,8 @@ class FakeSeatObservation:
 
     def __init__(self, seats=None, observed=None, owner=None, panel_reader=None):
         self.seats = seats if seats is not None else {}
+        # 生产调用方直接读账本（#532）；替身与它同形。
+        self.ledger = SimpleNamespace(slots=self.seats)
         self.observed = observed or {}
         self.owner = owner
         self.bands = []

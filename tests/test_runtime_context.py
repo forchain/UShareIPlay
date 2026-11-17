@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.runtime_context import (
     CommandRuntimeContext,
     DriverRecoveryContext,
@@ -36,7 +37,7 @@ class FakeController:
 
 def test_command_runtime_context_delegates_observer_and_controller():
     controller = FakeController()
-    runtime = CommandRuntimeContext(controller=controller)
+    runtime = CommandRuntimeContext(lease=UISessionLease(), controller=controller)
 
     runtime.emit("command.received", ctx={"prefix": ":play"})
 
@@ -48,7 +49,7 @@ def test_command_runtime_context_delegates_observer_and_controller():
 
 def test_event_runtime_context_reports_ui_busy_from_lock():
     lock = asyncio.Lock()
-    runtime = EventRuntimeContext(ui_lock=lock)
+    runtime = EventRuntimeContext(lease=UISessionLease(lock=lock))
 
     assert runtime.is_ui_busy() is False
 

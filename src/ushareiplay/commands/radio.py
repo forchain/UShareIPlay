@@ -8,7 +8,7 @@ class RadioCommand(BaseCommand):
     命令层只做一件事：把用户敲的子命令翻成播放请求。进首页、找频道入口、点播放、
     读队列这些 UI 动作全在 `QQMusicUIDriver` 里（见 `playback/`），老歌过滤走
     `MusicManager` 的统一歌曲质量检查，房间标题/话题/歌单的同步也归引擎流水线
-    （`playlist_adoption.adopt`），因此这里既没有守护调用也没有 `playback_muting`：
+    （`playlist_session.adopt`），因此这里既没有守护调用也没有 `playback_muting`：
 
     - 守护：`MusicManager.play()` 第一段就问 `guard_switch(requester)`，命令再问一遍
       等于同一件事跑两遍，还会丢掉带 `config=` 的那次判定。

@@ -16,10 +16,8 @@
 import pytest
 
 from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.managers.seat_manager.seat_observation import (
-    SeatObservationManager,
-    SeatSlot,
-)
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.managers.user_manager import UserManager
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
@@ -68,7 +66,7 @@ def _seat_user(nickname, seat_number=10):
     人在座位上就绕过在线列表」——座位上不见得有所有人，且缓存有滞后。
     """
     obs = SeatObservationManager.initialize(_Handler())
-    obs.seats[seat_number] = SeatSlot(
+    obs.ledger.slots[seat_number] = SeatSlot(
         seat_number=seat_number, occupied=True, username=nickname, label="管理"
     )
     return obs

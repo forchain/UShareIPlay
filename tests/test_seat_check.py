@@ -83,7 +83,12 @@ def _desk():
 
 
 def _manager(handler):
-    return SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    controller = getattr(handler, "controller", None)
+    return SeatSubsystem(
+        handler,
+        seat_ui=DummySeatUI(handler),
+        lease=controller.ui_session_lease if controller else None,
+    )
 
 
 def test_check_user_specific_seat_stops_when_expansion_shows_four_desks():
@@ -222,7 +227,7 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
     controller.ui_lock = asyncio.Lock()
     controller.logger = None  # ui_session only logs when a logger is attached
     handler.controller = controller
-    event_runtime = EventRuntimeContext(ui_lock=controller.ui_lock)
+    event_runtime = EventRuntimeContext(lease=controller.ui_session_lease)
 
     async def fallback_back():
         """Replica of EventManager.react_to_page's recovery branch.

@@ -5,7 +5,7 @@ import pytest
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
@@ -16,7 +16,7 @@ def info_manager():
         InfoManager,
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -30,7 +30,7 @@ def info_manager():
     for cls in (
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -58,16 +58,14 @@ def test_facade_delegates_room_id(info_manager):
     assert info_manager._room_state.room_id == "FM123"
 
 
-def test_facade_delegates_player_name(info_manager):
-    info_manager.player_name = "Alice"
+def test_facade_reads_player_name_from_the_session(info_manager):
+    info_manager._playlist_session.player_name = "Alice"
     assert info_manager.player_name == "Alice"
-    assert info_manager._playlist_state.player_name == "Alice"
 
 
-def test_facade_delegates_current_playlist_name(info_manager):
-    info_manager.current_playlist_name = "My Playlist"
+def test_facade_reads_current_playlist_name_from_the_session(info_manager):
+    info_manager._playlist_session.current_playlist_name = "My Playlist"
     assert info_manager.current_playlist_name == "My Playlist"
-    assert info_manager._playlist_state.current_playlist_name == "My Playlist"
 
 
 def test_facade_delegates_online_users(info_manager):

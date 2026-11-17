@@ -31,7 +31,7 @@ from tests.seat_fixtures import (
 from tests.test_seat_invite_driver import InviteRow, make_invite_handler
 
 from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
-from ushareiplay.managers.seat_manager.seat_observation import SeatSlot
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
 # 同一个人的两个命名域：DB 侧是 canonical 名（主账号名），Soul UI 上是可见昵称。
@@ -466,7 +466,10 @@ async def test_the_whole_auto_invite_flow_runs_under_one_ui_session(monkeypatch)
         }
     )
     subsystem = SeatSubsystem(
-        handler=handler, seat_ui=seat_ui, observation=observation
+        handler=handler,
+        seat_ui=seat_ui,
+        observation=observation,
+        lease=controller.ui_session_lease,
     )
 
     monkeypatch.setattr(seat_subsystem_module, "InfoManager", FakeInfoManager({CANONICAL: VISIBLE}))

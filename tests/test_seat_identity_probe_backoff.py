@@ -19,10 +19,8 @@ import time
 import pytest
 
 from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
-from ushareiplay.managers.seat_manager.seat_observation import (
-    SeatObservationManager,
-    SeatRescanCooldownPolicy,
-)
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatRescanCooldownPolicy
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +47,7 @@ async def test_unreadable_occupied_seat_is_not_reinspected_every_round():
     clock = FakeClock()
     handler = make_handler(popup_name=None)  # 弹窗开了但读不出昵称节点
     manager = SeatObservationManager.initialize(handler)
-    manager.cooldown_policy = SeatRescanCooldownPolicy(
+    manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
     )
@@ -79,7 +77,7 @@ async def test_successful_identity_is_not_suppressed_by_probe_backoff():
     clock = FakeClock()
     handler = make_handler(popup_name="Bob")
     manager = SeatObservationManager.initialize(handler)
-    manager.cooldown_policy = SeatRescanCooldownPolicy(
+    manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
     )
@@ -91,14 +89,14 @@ async def test_successful_identity_is_not_suppressed_by_probe_backoff():
     await manager.observe_visible_desks(desks, current_focus_count=7)
 
     assert probe.count_for(11) == 1
-    assert manager.seats[11].username == "Bob"
+    assert manager.ledger.slots[11].username == "Bob"
 
     # 后续轮次靠快照沿用，不再弹窗
     for _ in range(3):
         await manager.observe_visible_desks(desks, current_focus_count=7)
 
     assert probe.count_for(11) == 1
-    assert manager.seats[11].username == "Bob"
+    assert manager.ledger.slots[11].username == "Bob"
 
 
 @pytest.mark.asyncio
@@ -107,7 +105,7 @@ async def test_probe_backoff_expires_when_seat_becomes_readable():
     clock = FakeClock()
     handler = make_handler(popup_name=None)
     manager = SeatObservationManager.initialize(handler)
-    manager.cooldown_policy = SeatRescanCooldownPolicy(
+    manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
     )
@@ -123,7 +121,7 @@ async def test_probe_backoff_expires_when_seat_becomes_readable():
     named_desks = build_live_desk_wrappers_for(handler, {11: "Carol", 10: True}, "bottom")
     await manager.observe_visible_desks(named_desks, current_focus_count=7)
 
-    assert manager.seats[11].username == "Carol", "读得出昵称时绝不依赖弹窗，冷却不得挡住"
+    assert manager.ledger.slots[11].username == "Carol", "读得出昵称时绝不依赖弹窗，冷却不得挡住"
     assert probe.count_for(11) == 1
 
 

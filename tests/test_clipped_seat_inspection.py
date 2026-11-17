@@ -7,12 +7,12 @@
 反复死循环报错。
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 import pytest
 
-from tests.seat_fixtures import make_handler, build_live_desk_wrapper, build_desk_wrapper
+from tests.seat_fixtures import make_handler, build_live_desk_wrapper
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 
 
 @pytest.fixture(autouse=True)
@@ -92,18 +92,19 @@ async def test_clipped_seat_should_not_be_inspected_blindly():
 
 
 @pytest.mark.asyncio
-async def test_click_seat_avatar_refuses_clipped_desk():
-    """_click_seat_avatar 对高度不足的残片桌位直接返回 False，绝不向 Appium 发送无效点击。"""
+async def test_driver_refuses_clipped_desk():
+    """驱动对高度不足的残片桌位直接返回 None，绝不向 Appium 发送无效点击。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    driver = SeatPanelDriver(handler)
 
     # 残片桌位
     d5 = build_live_desk_wrapper(handler, left=(11, False, None), right=(12, True, None), y=845, bounds="[383,845][692,890]")
-    target = manager._find_child_element(d5, "right_state")
 
-    assert manager._click_seat_avatar(d5, "right", target) is False
+    assert await driver.read_occupant(d5, "right", 12) is None
     # gesture_handler 未被触发点击
     handler.gesture_handler.click_at.assert_not_called()
+    # 也不做无谓的 1.5s 超时等待
+    assert handler.element_finder.wait_calls == 0
 
 
 @pytest.mark.asyncio

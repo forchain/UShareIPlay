@@ -7,7 +7,7 @@
 | `:playlist <query>` | 切歌：搜歌单、点开、整张播放 | 该（引擎 `PlaybackMuting.guard` 负责） |
 | `:playlist` | 查询：读当前播放队列 | 不该 |
 
-测试面只有命令的 `do_process`/`playback_muting_applies` 与 `CommandManager` 真正
+测试面只有命令的 `do_process` 与 `CommandManager` 真正
 使用的那层静音上下文；引擎与守护用真模块，UI 用 `InMemoryMusicUIDriver`，麦克风
 用记录动作的替身。因此「裸 `:playlist` 不闭麦」是观察出来的，不是注释出来的。
 """
@@ -22,7 +22,7 @@ from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackTrack
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
@@ -108,10 +108,11 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
     room_profile.set_title = _set_title
     room_profile.set_topic = _set_topic
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = info
-    adoption._room_profile = room_profile
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    session._room_profile = room_profile
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session.check_playlist_protection = info.check_playlist_protection
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -121,7 +122,11 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
     )
 
     return SimpleNamespace(
-        driver=driver, info=info, room_profile=room_profile, journal=journal
+        driver=driver,
+        info=info,
+        room_profile=room_profile,
+        session=session,
+        journal=journal,
     )
 
 
@@ -180,7 +185,7 @@ async def test_playlist_with_a_query_returns_the_formatted_response(initialized_
 
 @pytest.mark.asyncio
 async def test_playlist_adopts_the_room_state_through_the_engine(initialized_test_singletons):
-    """房间同步归引擎的流水线：驱动读到的事实由引擎交给 `PlaylistAdoption`。"""
+    """房间同步归引擎的流水线：驱动读到的事实由引擎交给 `PlaylistSession`。"""
     driver = InMemoryMusicUIDriver(
         playlists={PlaybackMode.PLAYLIST: "学习|英语"},
         titles={PlaybackMode.PLAYLIST: "学习"},
@@ -190,8 +195,8 @@ async def test_playlist_adopts_the_room_state_through_the_engine(initialized_tes
 
     await _command().do_process(_message("/playlist 学习"), ["学习"])
 
-    assert engine.info.player_name == "小明"
-    assert engine.info.current_playlist_name == "学习|英语"
+    assert engine.session.player_name == "小明"
+    assert engine.session.current_playlist_name == "学习|英语"
     assert engine.room_profile.titles == ["学习"]
     assert engine.room_profile.topics == ["英语"]
 
@@ -233,28 +238,19 @@ async def test_bare_playlist_leaves_the_microphone_completely_alone(initialized_
     assert engine.journal == []
 
 
-def test_bare_playlist_declares_no_command_level_muting(initialized_test_singletons):
-    """命令级闭麦发生在守护之前；查询路径既不切歌也不该占用麦克风。"""
+def test_playlist_command_declares_no_command_level_muting(initialized_test_singletons):
+    """命令级闭麦已删除；切歌路径的守护与静音都归 `MusicManager.play()`。"""
     command = _command()
 
-    assert command.playback_muting is True, "切歌路径仍然参与静音"
-    assert command.playback_muting_applies(["学习"]) is True
-    assert command.playback_muting_applies([]) is False
+    assert not hasattr(command, "playback_muting")
+    assert not hasattr(command, "playback_muting_applies")
 
 
-def test_command_manager_keeps_the_microphone_out_of_a_bare_playlist_query(
-    initialized_test_singletons,
-):
-    """走 `CommandManager` 真正使用的那层上下文：`retry: true` 之外也不该有静音。"""
-    journal = []
-    _build_engine(journal=journal)
-    command = _command()
+def test_command_manager_owns_no_playback_muting_guard(initialized_test_singletons):
+    """`CommandManager` 不再知道 `PlaybackMuting` 的存在（ADR-0007）。"""
     manager = CommandManager.instance()
 
-    with manager.playback_muting_guard(command, {"parameters": []}):
-        pass
-
-    assert journal == []
+    assert not hasattr(manager, "playback_muting_guard")
 
 
 @pytest.mark.asyncio

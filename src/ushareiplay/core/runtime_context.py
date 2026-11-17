@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from ushareiplay.core.ui_session_lease import UISessionLease
+
 
 @dataclass(frozen=True)
 class DriverRecoveryContext:
@@ -17,38 +19,25 @@ class DriverRecoveryContext:
 
 @dataclass(frozen=True)
 class EventRuntimeContext:
-    ui_lock: Any = None
-    controller: Any = None
+    lease: UISessionLease
+    paused: Callable[[], bool] = lambda: False
 
     def is_ui_busy(self) -> bool:
-        if self.ui_lock is None:
-            return False
-        return bool(self.ui_lock.locked())
+        return bool(self.lease.lock.locked())
 
     def is_paused(self) -> bool:
-        if self.controller is None:
-            return False
-        ri = getattr(self.controller, "runtime_input", None)
-        return bool(ri and ri.paused)
+        return bool(self.paused())
 
     @asynccontextmanager
     async def ui_session(self, reason: str = ""):
-        if self.controller and hasattr(self.controller, "ui_session"):
-            async with self.controller.ui_session(reason):
-                yield
-        elif self.ui_lock:
-            await self.ui_lock.acquire()
-            try:
-                yield
-            finally:
-                self.ui_lock.release()
-        else:
+        async with self.lease.acquire(reason):
             yield
 
 
 @dataclass(frozen=True)
 class CommandRuntimeContext:
-    controller: Any
+    lease: UISessionLease
+    controller: Any = None
 
     @property
     def obs(self):
@@ -56,7 +45,7 @@ class CommandRuntimeContext:
 
     @asynccontextmanager
     async def ui_session(self, reason: str):
-        async with self.controller.ui_session(reason):
+        async with self.lease.acquire(reason):
             yield
 
     def emit(self, event: str, **kwargs) -> None:

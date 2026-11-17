@@ -90,7 +90,7 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
     handler.driver.page_source = _load_xml("expanded_top_with_anchor.xml")  # 6 号位为空
 
     observation = SeatObservationManager.initialize(handler)
-    observation._last_focus_count = 1
+    observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
     seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
@@ -110,17 +110,17 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
     # sit_at_specific_seat 是一次移动：旧位必须腾出，专注人数不变。
     # （真机 09-28 18:07:08：10→11 换座被当成新增 +1，凭空把 RoomState
     # 推成 2，随即被真实读数 1 判背离、引爆全量重扫。）
-    assert observation.seats[1].occupied is False
+    assert observation.ledger.slots[1].occupied is False
     handler.gesture_handler.click_at.assert_called_once()
     click_x, click_y = handler.gesture_handler.click_at.call_args.args
     # 6 号位 bounds=[170,810][305,977]（desk 2 右座）
     assert 170 <= click_x <= 305
     assert 810 <= click_y <= 977
 
-    assert observation.seats[6].occupied is True
-    assert observation.seats[6].is_owner is True
-    assert observation._last_focus_count == 1
-    assert observation._reconciled_focus_count == 1
+    assert observation.ledger.slots[6].occupied is True
+    assert observation.ledger.slots[6].is_owner is True
+    assert observation.ledger.gate_state.last_focus_count == 1
+    assert observation.ledger.gate_state.reconciled_focus_count == 1
     assert fake_seat_ui.collapsed is True
 
 
@@ -146,8 +146,8 @@ async def test_sit_at_specific_seat_aborts_without_clicking_when_seat_is_occupie
     handler.gesture_handler.click_at.assert_not_called()
 
     # 快照已同步为已占用
-    assert observation.seats[1].occupied is True
-    assert observation.seats[1].is_owner is True
+    assert observation.ledger.slots[1].occupied is True
+    assert observation.ledger.slots[1].is_owner is True
 
     # 失败后面板仍必须收起
     assert fake_seat_ui.collapsed is True
@@ -163,7 +163,7 @@ async def test_sit_at_specific_seat_clicks_coordinate_bounds_and_confirms_when_e
     handler.driver.page_source = top_xml
 
     observation = SeatObservationManager.initialize(handler)
-    observation._last_focus_count = 1
+    observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
     seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
@@ -188,14 +188,14 @@ async def test_sit_at_specific_seat_clicks_coordinate_bounds_and_confirms_when_e
     confirm_elem.click.assert_called_once()
 
     # 快照被标记为群主占用；1 号位（夹具里房主的旧位）被移动腾出
-    assert observation.seats[2].occupied is True
-    assert observation.seats[2].is_owner is True
-    assert observation.seats[2].username == "群主"
-    assert observation.seats[1].occupied is False
+    assert observation.ledger.slots[2].occupied is True
+    assert observation.ledger.slots[2].is_owner is True
+    assert observation.ledger.slots[2].username == "群主"
+    assert observation.ledger.slots[1].occupied is False
 
     # 房主原本就在座（夹具 1 号位群主）：换座净人数为 0，基准不许动
-    assert observation._last_focus_count == 1
-    assert observation._reconciled_focus_count == 1
+    assert observation.ledger.gate_state.last_focus_count == 1
+    assert observation.ledger.gate_state.reconciled_focus_count == 1
 
     # 面板收起
     assert fake_seat_ui.collapsed is True
@@ -241,7 +241,7 @@ async def test_sit_at_specific_seat_reports_error_when_gesture_click_unavailable
     assert result == {"error": "Gesture handler cannot click; seat 2 was not selected"}
     handler.element_finder.wait_for_element_clickable.assert_not_called()
     # 快照不得被标记为已就座
-    assert observation.seats[2].occupied is False
+    assert observation.ledger.slots[2].occupied is False
     assert fake_seat_ui.collapsed is True
 
 
@@ -273,7 +273,7 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
     handler.driver.page_source = top_xml
 
     observation = SeatObservationManager.initialize(handler)
-    observation._last_focus_count = 1
+    observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
     seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
@@ -285,8 +285,8 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
 
     # 就座 2 号位：夹具里房主已坐 1 号位 → 这是一次移动，净人数不变
     await seating.sit_at_specific_seat(2)
-    assert observation._last_focus_count == 1
-    assert observation._reconciled_focus_count == 1
+    assert observation.ledger.gate_state.last_focus_count == 1
+    assert observation.ledger.gate_state.reconciled_focus_count == 1
 
     # 模拟 FocusCountEvent 处理「1人专注中」：换座后房间真实读数仍是 1
     event = FocusCountEvent(handler)

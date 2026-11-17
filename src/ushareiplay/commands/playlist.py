@@ -15,19 +15,7 @@ class PlaylistCommand(BaseCommand):
     点卡片、播放全部等 UI 编排归 `QQMusicUIDriver`（见 `playback/`）。
     """
 
-    playback_muting = True
     handler_attr = 'music_handler'
-
-    def playback_muting_applies(self, parameters) -> bool:
-        """只有带查询词的那条路径参与命令级闭麦。
-
-        带参数时这条路径已迁进 `MusicManager.play()`，由引擎在守护通过之后自己
-        闭麦；命令级闭麦发生在守护之前，只会让「被守护拒绝的那一次」也响一次
-        无来由的静音（见 `BaseCommand.playback_muting_applies`）。
-
-        不带参数是纯查询：一个字都不该被切，也不该占用麦克风。
-        """
-        return bool(parameters) and bool(getattr(self, "playback_muting", False))
 
     async def do_process(self, message_info, parameters):
         if not parameters:

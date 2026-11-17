@@ -5,7 +5,7 @@ from typing import Optional
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 class PlaybackBroadcaster(Singleton):
@@ -172,7 +172,7 @@ class PlaybackBroadcaster(Singleton):
                     # 非首次的曲目切换消费一次 Next Queue 待播计数；读取失败不是
                     # 曲目切换，不能侵蚀计数。
                     if 'error' not in info:
-                        PlaylistState.instance().consume_track()
+                        PlaylistSession.instance().consume_track()
                     self.send_playing_message()
 
         except Exception:

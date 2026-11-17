@@ -23,10 +23,8 @@ from tests.seat_fixtures import (
     build_live_page_source,
     make_handler,
 )
-from ushareiplay.managers.seat_manager.seat_observation import (
-    SeatObservationManager,
-    SeatSlot,
-)
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.managers.seat_manager import SeatManager
 
@@ -104,7 +102,7 @@ def _make_subsystem(cached_occupied=(), live_occupants=None, top_source=None):
 
     observation = SeatObservationManager.initialize(handler)
     for seat in cached_occupied:
-        observation.seats[seat] = SeatSlot(
+        observation.ledger.slots[seat] = SeatSlot(
             seat_number=seat, occupied=True, username="Someone", label=str(seat)
         )
 

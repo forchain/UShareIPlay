@@ -15,10 +15,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tests.seat_fixtures import FakeSeatUI, make_handler
-from ushareiplay.managers.seat_manager.seat_observation import (
-    SeatObservationManager,
-    SeatSlot,
-)
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.state.room_state import RoomState
 
 
@@ -124,7 +122,7 @@ class TestRescanReconcilesAgainstLiveCount:
         handler = _with_live_focus(make_handler(), "7人专注中")
         manager = SeatObservationManager.initialize(handler)
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
-        manager._last_focus_count = None
+        manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -147,7 +145,7 @@ class TestRescanReconcilesAgainstLiveCount:
         handler = _with_live_focus(make_handler(), "7人专注中")
         manager = SeatObservationManager.initialize(handler)
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
-        manager._last_focus_count = None
+        manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -158,7 +156,7 @@ class TestRescanReconcilesAgainstLiveCount:
 
         warnings = [str(c) for c in handler.logger.warning.call_args_list]
         assert any("not self-consistent" in w for w in warnings), warnings
-        assert manager._consistency_retry_due is True
+        assert manager.ledger.gate_state.consistency_retry_due is True
 
     @pytest.mark.asyncio
     async def test_rescan_agrees_when_counts_match(self):
@@ -166,7 +164,7 @@ class TestRescanReconcilesAgainstLiveCount:
         handler = _with_live_focus(make_handler(), "4人专注中")
         manager = SeatObservationManager.initialize(handler)
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
-        manager._last_focus_count = None
+        manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -177,7 +175,7 @@ class TestRescanReconcilesAgainstLiveCount:
 
         warnings = [str(c) for c in handler.logger.warning.call_args_list]
         assert not any("not self-consistent" in w for w in warnings), warnings
-        assert manager._consistency_retry_due is False
+        assert manager.ledger.gate_state.consistency_retry_due is False
 
     @pytest.mark.asyncio
     async def test_explicit_target_wins_over_live_read(self):
@@ -203,7 +201,7 @@ class TestRescanReconcilesAgainstLiveCount:
                 await manager.expand_rescan_and_collapse(4)
 
         assert calls == [], "已有 target 时不该再读界面"
-        assert manager._last_focus_count == 4
+        assert manager.ledger.gate_state.last_focus_count == 4
 
     @pytest.mark.asyncio
     async def test_unreadable_count_stays_unknown_but_scan_still_lands(self):
@@ -221,7 +219,7 @@ class TestRescanReconcilesAgainstLiveCount:
                 changed = await manager.expand_rescan_and_collapse(None)
 
         assert changed is True
-        assert manager._last_rescan_ok is True
+        assert manager.ledger.gate_state.last_rescan_ok is True
         logged = "".join(str(c) for c in handler.logger.info.call_args_list)
         assert "专注人数: 未知" in logged
 

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
 from ushareiplay.core.runtime_context import EventRuntimeContext
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.ui.element_finder import ElementFinder
 from ushareiplay.managers.event_manager import EventManager
@@ -95,7 +96,10 @@ async def test_stop_command_halts_subsequent_events_in_event_manager():
         send_screen_message=lambda msg: None,
     )
     controller = FakeController(pipeline)
-    runtime_ctx = EventRuntimeContext(ui_lock=asyncio.Lock(), controller=controller)
+    runtime_ctx = EventRuntimeContext(
+        lease=UISessionLease(),
+        paused=lambda: controller.runtime_input.paused,
+    )
 
     handler = MagicMock()
     handler.logger = MagicMock()

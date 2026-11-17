@@ -8,13 +8,12 @@ class BaseCommand(ABC):
 
     Subclasses implement do_process() with only their decision logic.
     The concrete process() wrapper provides, driven by class attributes:
-      - playback_muting: declare the command as a song-switching operation so
-        CommandManager runs it inside PlaybackMuting's mute/readiness lifecycle
       - handler_attr: 'soul_handler' | 'music_handler', exposed as self.handler
       - error_message: template (may contain {error}) returned when do_process raises
+
+    Playback muting is owned by MusicManager (ADR-0007); commands declare nothing.
     """
 
-    playback_muting = False
     handler_attr = None
     error_message = 'Failed to process command: {error}'
 
@@ -27,15 +26,12 @@ class BaseCommand(ABC):
         self._info_manager = None
         self._room_profile_manager = None
         self._music_manager = None
-        self._playlist_adoption = None
+        self._playlist_session = None
         self._mic_manager = None
         self._message_dispatch = None
 
     async def process(self, message_info, parameters):
         """Command shell: do_process -> exception-to-error mapping.
-
-        Microphone lifecycle for playback commands is owned by PlaybackMuting,
-        which CommandManager applies around command execution.
 
         Args:
             message_info: MessageInfo object containing message details
@@ -51,23 +47,6 @@ class BaseCommand(ABC):
             error_result = {'error': self.error_message.format(error=e)}
             error_result.update(self.error_context(message_info, parameters))
             return error_result
-
-    def playback_expected_song(self, parameters):
-        """播放静音保护期间用于校验播放就绪的目标歌曲。
-
-        返回 None 表示只校验底层播放状态，不校验曲目元数据。
-        """
-        return None
-
-    def playback_muting_applies(self, parameters) -> bool:
-        """本次调用是否需要命令级的播放静音保护。
-
-        默认就是类属性 `playback_muting` —— 声明参与静音的命令整体参与。
-        一个命令内部有多条播放路径、且只有部分路径已迁到 `MusicManager.play()`
-        时覆盖本方法：迁走的那条由引擎在守护通过后自己闭麦，提前闭麦会在
-        守护拒绝时留下一次无来由的静音。
-        """
-        return bool(getattr(self, "playback_muting", False))
 
     def error_context(self, message_info, parameters):
         """Extra fields merged into the error result when do_process raises.
@@ -120,11 +99,11 @@ class BaseCommand(ABC):
         return self._music_manager
 
     @property
-    def playlist_adoption(self):
-        if self._playlist_adoption is None:
-            from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-            self._playlist_adoption = PlaylistAdoption.instance()
-        return self._playlist_adoption
+    def playlist_session(self):
+        if self._playlist_session is None:
+            from ushareiplay.managers.playlist_session import PlaylistSession
+            self._playlist_session = PlaylistSession.instance()
+        return self._playlist_session
 
     @property
     def mic_manager(self):

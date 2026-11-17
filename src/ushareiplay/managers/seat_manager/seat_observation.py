@@ -4,22 +4,20 @@ import asyncio
 import logging
 import re
 import traceback
-from contextlib import asynccontextmanager
 from typing import ClassVar, Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
-from ushareiplay.core.config_view import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager.seat_ledger import (
     SeatLedger,
     SeatObservationGateState,
     SeatRescanCooldownPolicy,
-    SeatSlot,
     claimed_usernames,
     evidence_weight,
 )
+from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 专注人数文案：主形态「7人专注中」，兜底取任意数字（文案变形时不至于整个读不到）。
@@ -41,8 +39,6 @@ class SeatObservationManager(Singleton):
     负责麦位被动观测、全量 12 麦位状态维护、3 排视觉快照日志输出、
     以及专注人数与可视麦位背离时的自动展开探测。
     """
-
-    MIN_INTERACTABLE_DESK_HEIGHT: ClassVar[int] = 100
 
     # AvatarView 里的头像图片节点：空座恰好一张占位图，占座是头像 + 挂件/边框。
     # 这是 Android 框架的类名，不是目标 App 的选择器（App 改版不会动它），
@@ -66,12 +62,16 @@ class SeatObservationManager(Singleton):
         cooldown_policy: Optional[SeatRescanCooldownPolicy] = None,
         gate_state: Optional[SeatObservationGateState] = None,
         panel_reader: Optional[SeatPanelReader] = None,
+        panel_driver: Optional[SeatPanelDriver] = None,
+        lease=None,
     ):
         self.handler = handler
         self._logger = None
         self._controller = None
         self._seat_ui = seat_ui
         self._panel_reader = panel_reader
+        self._panel_driver = panel_driver
+        self._lease = lease
         # 上一轮的「变更去向不明」读数：只用于日志去重。残片桌位（面板底缘漏出的
         # 下一排）读数每轮都一样，逐轮打日志就是刷屏（AGENTS.md 日志静默铁律）。
         self._last_unexplained: Set[Tuple[int, str]] = set()
@@ -85,133 +85,13 @@ class SeatObservationManager(Singleton):
             record_room_admin=self._admin_manager_add,
         )
 
-    @property
-    def seats(self) -> Dict[int, SeatSlot]:
-        """兼容旧调用方的活快照字典；只读新代码请用 `snapshot()`。"""
-        return self.ledger.slots
-
-    @property
-    def gate_state(self) -> SeatObservationGateState:
-        return self.ledger.gate_state
-
-    @property
-    def cooldown_policy(self) -> SeatRescanCooldownPolicy:
-        return self.ledger.cooldown_policy
-
-    @cooldown_policy.setter
-    def cooldown_policy(self, val: SeatRescanCooldownPolicy):
-        self.ledger.cooldown_policy = val
-
-    # 旧属性兼容：测试与少量调用方仍按旧名字读写账本闸门。
-    @property
-    def _last_focus_count(self) -> Optional[int]:
-        return self.gate_state.last_focus_count
-
-    @_last_focus_count.setter
-    def _last_focus_count(self, val: Optional[int]):
-        self.gate_state.last_focus_count = val
-
-    @property
-    def _reconciled_focus_count(self) -> Optional[int]:
-        return self.gate_state.reconciled_focus_count
-
-    @_reconciled_focus_count.setter
-    def _reconciled_focus_count(self, val: Optional[int]):
-        self.gate_state.reconciled_focus_count = val
-
-    @property
-    def _scanned_seat_change_fingerprint(self) -> Optional[frozenset]:
-        return self.gate_state.scanned_seat_change_fingerprint
-
-    @_scanned_seat_change_fingerprint.setter
-    def _scanned_seat_change_fingerprint(self, val: Optional[frozenset]):
-        self.gate_state.scanned_seat_change_fingerprint = val
-
-    @property
-    def _last_rescan_ok(self) -> bool:
-        return self.gate_state.last_rescan_ok
-
-    @_last_rescan_ok.setter
-    def _last_rescan_ok(self, val: bool):
-        self.gate_state.last_rescan_ok = val
-
-    @property
-    def _last_rescan_time(self) -> float:
-        return self.gate_state.last_rescan_time
-
-    @_last_rescan_time.setter
-    def _last_rescan_time(self, val: float):
-        self.gate_state.last_rescan_time = val
-
-    @property
-    def _last_visible_band(self) -> Optional[Tuple]:
-        return self.gate_state.last_visible_band
-
-    @_last_visible_band.setter
-    def _last_visible_band(self, val: Optional[Tuple]):
-        self.gate_state.last_visible_band = val
-
-    @property
-    def _band_change_reason(self) -> Optional[str]:
-        return self.gate_state.band_change_reason
-
-    @_band_change_reason.setter
-    def _band_change_reason(self, val: Optional[str]):
-        self.gate_state.band_change_reason = val
-
-    @property
-    def _residual_seats(self) -> Dict[int, str]:
-        return self.gate_state.residual_seats
-
-    @_residual_seats.setter
-    def _residual_seats(self, val: Dict[int, str]):
-        self.gate_state.residual_seats = val
-
-    @property
-    def _residual_seats_inspected_at(self) -> Dict[int, float]:
-        return self.gate_state.residual_seats_inspected_at
-
-    @_residual_seats_inspected_at.setter
-    def _residual_seats_inspected_at(self, val: Dict[int, float]):
-        self.gate_state.residual_seats_inspected_at = val
-
-    @property
-    def _unknown_identity_probed_at(self) -> Dict[int, float]:
-        return self.gate_state.unknown_identity_probed_at
-
-    @_unknown_identity_probed_at.setter
-    def _unknown_identity_probed_at(self, val: Dict[int, float]):
-        self.gate_state.unknown_identity_probed_at = val
-
-    @property
-    def _last_scan_fingerprint(self) -> Optional[frozenset]:
-        return self.gate_state.last_scan_fingerprint
-
-    @_last_scan_fingerprint.setter
-    def _last_scan_fingerprint(self, val: Optional[frozenset]):
-        self.gate_state.last_scan_fingerprint = val
-
-    @property
-    def _consistency_retry_due(self) -> bool:
-        return self.gate_state.consistency_retry_due
-
-    @_consistency_retry_due.setter
-    def _consistency_retry_due(self, val: bool):
-        self.gate_state.consistency_retry_due = val
-
-    @property
-    def _lock(self) -> asyncio.Lock:
-        return self.gate_state.lock
-
-    @_lock.setter
-    def _lock(self, val: asyncio.Lock):
-        self.gate_state.lock = val
-
     def bind_handler(self, handler):
         if handler:
             self.handler = handler
             if self._panel_reader is not None:
                 self._panel_reader.handler = handler
+            if self._panel_driver is not None:
+                self._panel_driver.handler = handler
             if self._seat_ui:
                 self._seat_ui.handler = handler
             if hasattr(self.handler, "logger") and self.handler.logger:
@@ -241,10 +121,21 @@ class SeatObservationManager(Singleton):
     def panel_reader(self) -> SeatPanelReader:
         """座位面板唯一读数器。注入优先，缺省按需自建。"""
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
+
+    @property
+    def panel_driver(self) -> SeatPanelDriver:
+        """座位头像弹窗的驱动：与读数器共用同一份实现，注入优先、缺省按需自建。"""
+        if self._panel_driver is None:
+            self._panel_driver = SeatPanelDriver(
+                self.handler, panel_reader=self.panel_reader, lease=self._lease
+            )
+        elif self.handler and self._panel_driver.handler is not self.handler:
+            self._panel_driver.handler = self.handler
+        return self._panel_driver
 
     @property
     def logger(self):
@@ -304,28 +195,6 @@ class SeatObservationManager(Singleton):
             return None
         return parse_focus_count_text(getattr(element, "text", ""))
 
-    @asynccontextmanager
-    async def _ui_session(self, reason: str):
-        """独占 UI 执行权，委托给 reader.session。"""
-        async with self.panel_reader.session(reason):
-            yield
-
-    def _find_child_element(self, desk, element_key: str):
-        return self.panel_reader.find_child_element(desk, element_key)
-
-    def _element_locator(self, element_key: str) -> Optional[Locator]:
-        return self.panel_reader._element_locator(element_key)
-
-    def _avatar_image_count(self, desk, side: str) -> int:
-        return self.panel_reader._avatar_image_count(desk, side)
-
-    def _get_label_text(self, desk, side: str) -> str:
-        return self.panel_reader._get_label_text(desk, side)
-
-    @staticmethod
-    def _is_seat_number_label(label: str) -> bool:
-        return SeatPanelReader._is_seat_number_label(label)
-
     def format_3row_layout(
         self,
         trigger_source: str = "可视区域变更",
@@ -340,7 +209,7 @@ class SeatObservationManager(Singleton):
         在有/无颜色的两个 sink 上必须逐字一致（文件日志的转义码由 ColoredFormatter 剥离）。
         """
         if focus_count is None:
-            focus_count = self._last_focus_count
+            focus_count = self.ledger.gate_state.last_focus_count
         if focus_count is None:
             try:
                 from ushareiplay.state.room_state import RoomState
@@ -359,7 +228,7 @@ class SeatObservationManager(Singleton):
             pass
 
         def format_seat(num: int) -> str:
-            slot = self.seats.get(num)
+            slot = self.ledger.slots.get(num)
             if not slot or not slot.occupied:
                 return f"{self.SEAT_COLOR_IDLE}[{num}号: 空闲]{self.SEAT_COLOR_RESET}"
             if slot.is_owner:
@@ -510,7 +379,7 @@ class SeatObservationManager(Singleton):
         fragment_keys = [
             self._desk_sort_key(desk)
             for desk, _reason in dropped
-            if self._desk_bounds(desk) is not None
+            if self.panel_reader._desk_bounds(desk) is not None
         ]
 
         if band == "top":
@@ -545,8 +414,8 @@ class SeatObservationManager(Singleton):
         房间里只有空座位显示编号，占座后 label 换成昵称/群主/管理，所以带数字的
         昵称（「小明7」）不算；纯数字昵称的误读由下面的奇偶/配对校验兜住。
         """
-        label_text = self._get_label_text(desk, side).strip()
-        if not self._is_seat_number_label(label_text):
+        label_text = self.panel_reader._get_label_text(desk, side).strip()
+        if not SeatPanelReader.is_seat_number_label(label_text):
             return None
         return int(label_text)
 
@@ -631,10 +500,6 @@ class SeatObservationManager(Singleton):
             "avatar_images": reading.avatar_images,
         }
 
-    def _desk_bounds(self, desk) -> Optional[dict]:
-        """desk 的屏幕坐标（ElementWrapper 给 bounds，raw WebElement 给 location/size）。"""
-        return self.panel_reader._desk_bounds(desk)
-
     def _has_desk_content(self, desk) -> bool:
         """桌位是否有任何麦位 DOM 证据（占座、麦位标签、空座占位）。
 
@@ -663,17 +528,10 @@ class SeatObservationManager(Singleton):
         读不出 bounds（既没有 bounds 属性，也没有 location/size）同样判为不可交互：
         渲染尺寸未知就无法证明它在视口内，与「绝不盲目点击」同源 —— 宁可这一轮
         不点头像（身份留空交给下一轮），也不在未知坐标上盲点（见 #450）。
+
+        阈值与点名驱动共用一份实现（`SeatPanelDriver.is_desk_interactable`）。
         """
-        bounds = self._desk_bounds(desk)
-        if not bounds:
-            return False
-        w = bounds.get("width", 0)
-        h = bounds.get("height", 0)
-        if h < self.MIN_INTERACTABLE_DESK_HEIGHT:
-            return False
-        if w > 0 and (h / w) < 0.4:
-            return False
-        return True
+        return self.panel_driver.is_desk_interactable(desk)
 
     def _is_desk_visible(self, desk) -> bool:
         """桌位是否可用作麦位读数 —— 只由 DOM 决定。
@@ -692,54 +550,6 @@ class SeatObservationManager(Singleton):
                 pass
         return self._has_desk_content(desk)
 
-    def _click_seat_avatar(self, desk, side: str, target_element) -> bool:
-        """点开麦位头像弹窗。
-
-        raw WebElement 直接点；ElementWrapper 的 click() 取不到真实元素（子元素
-        wrapper 没有 element key，get_web_element() 返回 None 且静默 False），
-        所以退回按 bounds 坐标点击。
-        """
-        if not self._is_desk_interactable(desk):
-            return False
-
-        if target_element is not None and not isinstance(target_element, ElementWrapper):
-            try:
-                target_element.click()
-                return True
-            except Exception:
-                pass
-
-        pt = self.panel_reader.tap_point(desk, side)
-        if pt is None:
-            return False
-        x, y = pt
-
-        gesture = getattr(self.handler, "gesture_handler", None)
-        if gesture is None or not hasattr(gesture, "click_at"):
-            return False
-        return bool(gesture.click_at(x, y))
-
-    # 麦位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
-    # 与房间档案模块的 DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
-    SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
-
-    def _seat_card_still_present(self) -> bool:
-        """头像名片此刻是否还在屏幕上 —— 关它的那次 back 只能由这个证据授权。
-
-        反过来说：拿不到证据就绝不按 back。房间界面上的一次盲按 back 就是退出
-        派对房间（`RoomProfileManager.ensure_closed` 记过同一笔账）。
-        """
-        finder = getattr(self.handler, "element_finder", None)
-        if finder is None:
-            return False
-        for key in self.SEAT_CARD_EVIDENCE_KEYS:
-            try:
-                if finder.try_find_element(key, log=False):
-                    return True
-            except Exception:
-                continue
-        return False
-
     async def inspect_occupant(self, desk, side: str, seat_number: int) -> Optional[str]:
         """点击麦位弹窗读取用户昵称；只有弹窗真的开了才按 back 关它。
 
@@ -749,51 +559,15 @@ class SeatObservationManager(Singleton):
         房间（见 `RoomProfileManager.ensure_closed` 的同款告诫），所以 back 必须由证据授权：
         读到昵称节点才算弹窗开着；点都没点出去时同样不按。读不到昵称的弹窗不在屏幕上
         的可能性远大于它就是房间本身 —— 宁可留「身份未知」给下一轮，不可拿房间去赌。
+
+        点名、取证与关窗全部委托给 `SeatPanelDriver.read_occupant`：主动座位命令与
+        被动观测必须共用同一份「证据授权 back」的实现。
         """
         if not self.handler:
             return None
 
         self.logger.info(f"Inspecting occupant on seat {seat_number} ({side} side)")
-        popup_open = False
-        try:
-            target_element = self._find_child_element(desk, f"{side}_state")
-            if target_element is None:
-                target_element = self._find_child_element(desk, f"{side}_seat")
-            if not self._click_seat_avatar(desk, side, target_element):
-                self.logger.warning(
-                    f"Seat {seat_number} ({side} side): avatar tap never landed "
-                    f"(no bounds / gesture failed); nothing to close"
-                )
-                return None
-
-            await asyncio.sleep(0.3)
-
-            username = None
-            if hasattr(self.handler, "element_finder"):
-                _found_key, name_elem = self.handler.element_finder.wait_for_any_element(
-                    list(self.SEAT_CARD_EVIDENCE_KEYS), timeout=1.5
-                )
-                popup_open = name_elem is not None
-                if name_elem and hasattr(name_elem, "text") and name_elem.text:
-                    username = name_elem.text.strip()
-
-            if not popup_open:
-                # 超时不等于没开：卡片可能刚过 1.5s 才渲染出来。留在屏幕上的卡片
-                # 会挡住后面的麦位读数，甚至被下一个号位读成自己的占座人。
-                popup_open = self._seat_card_still_present()
-
-            return username
-
-        except Exception as e:
-            self.logger.error(f"Error inspecting occupant on seat {seat_number}: {e}")
-            return None
-        finally:
-            try:
-                if popup_open and hasattr(self.handler, "key_actions"):
-                    self.handler.key_actions.press_back()
-                await asyncio.sleep(0.2)
-            except Exception:
-                pass
+        return await self.panel_driver.read_occupant(desk, side, seat_number)
 
     def _visible_band_signature(self, desk_wrappers: list) -> Optional[Tuple]:
         """可见麦位带的内容指纹（只记读数，不含座位号），用于身份未知时的变更检测。
@@ -844,9 +618,9 @@ class SeatObservationManager(Singleton):
         """
         geometry = self._visible_band_geometry_key(desk_wrappers)
         signature = self._visible_band_signature(desk_wrappers)
-        previous = self._last_visible_band
+        previous = self.ledger.gate_state.last_visible_band
         if signature is not None:
-            self._last_visible_band = (geometry, signature)
+            self.ledger.gate_state.last_visible_band = (geometry, signature)
         return previous, geometry, signature
 
     def _note_band_change(self, desk_wrappers: list) -> None:
@@ -862,7 +636,7 @@ class SeatObservationManager(Singleton):
         if previous_geometry != geometry:
             return
         if previous_signature != signature:
-            self._band_change_reason = (
+            self.ledger.gate_state.band_change_reason = (
                 "Visible seat band changed while seat identity is unknown "
                 "(no numeric seat label anchor); triggering full rescan."
             )
@@ -963,7 +737,7 @@ class SeatObservationManager(Singleton):
         # 锁只罩 apply：observe → 弹窗 → apply 之间不能持锁，否则闸门锁与 UI
         # 会话会形成 AB-BA 死锁；apply 会按当前快照重新分类，并发落下的视口
         # 同步不会被这一轮的旧分类覆盖。
-        async with self._lock:
+        async with self.ledger.gate_state.lock:
             diff = self.ledger.apply(change)
 
         if diff.has_changes:
@@ -981,14 +755,14 @@ class SeatObservationManager(Singleton):
                     # 被动观测没有新的人数，用最新在座数作为 after
                     notify_after = self.ledger.total_seated()
                 await CommandManager.instance().notify_focus_count_change(
-                    self._last_focus_count,
+                    self.ledger.gate_state.last_focus_count,
                     notify_after,
                     changed_users=diff.changed_users,
                     seat_info=diff.seat_info,
                 )
 
         if focus_count is not None:
-            self._last_focus_count = focus_count
+            self.ledger.gate_state.last_focus_count = focus_count
 
         if diff.unexplained != self._last_unexplained:
             # 只有读数真的变了才落日志：残片桌位（面板底缘漏出的下一排）每轮读到
@@ -1020,8 +794,8 @@ class SeatObservationManager(Singleton):
             "可视区域变更",
             current_focus_count,
         )
-        band_change_reason = self._band_change_reason
-        self._band_change_reason = None
+        band_change_reason = self.ledger.gate_state.band_change_reason
+        self.ledger.gate_state.band_change_reason = None
 
         target_focus = self._resolve_target_focus(current_focus_count)
 
@@ -1030,11 +804,11 @@ class SeatObservationManager(Singleton):
         scanned = await self._reconcile_focus_count(target_focus)
         if band_change_reason is not None and not scanned:
             await self._request_full_scan(target_focus=target_focus, reason=band_change_reason)
-            if not self._last_rescan_ok:
+            if not self.ledger.gate_state.last_rescan_ok:
                 # 重扫没落地（展开按钮找不到/半截快照）时读数还是旧的：把信号留着，
                 # 下一轮再试（重试间隔由 _request_full_scan 的冷却兜住）。否则这次
                 # 变更就永久丢了 —— 真机上「换座后快照停在旧位子」就是这么来的。
-                self._band_change_reason = band_change_reason
+                self.ledger.gate_state.band_change_reason = band_change_reason
         await self._resolve_unexplained_changes(
             unexplained, target_focus, already_scanned=scanned
         )
@@ -1045,8 +819,8 @@ class SeatObservationManager(Singleton):
         """本轮观测对应的人数：优先用事件带过来的，其次最近已知的，最后问 RoomState。"""
         if current_focus_count is not None:
             return current_focus_count
-        if self._last_focus_count is not None:
-            return self._last_focus_count
+        if self.ledger.gate_state.last_focus_count is not None:
+            return self.ledger.gate_state.last_focus_count
         try:
             from ushareiplay.state.room_state import RoomState
             return RoomState.instance().focus_count
@@ -1055,7 +829,7 @@ class SeatObservationManager(Singleton):
 
     async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
         """专注人数发生变化时调用。与在座人数背离时打破被动规则，主动展开全量扫描。"""
-        self._last_focus_count = current_focus_count
+        self.ledger.gate_state.last_focus_count = current_focus_count
         return await self._reconcile_focus_count(current_focus_count)
 
     async def _reconcile_focus_count(self, target_focus: Optional[int]) -> bool:
@@ -1071,10 +845,10 @@ class SeatObservationManager(Singleton):
                 "Triggering active expansion rescan."
             ),
         )
-        if not attempted or not self._last_rescan_ok:
+        if not attempted or not self.ledger.gate_state.last_rescan_ok:
             # 被冷却挡下、或扫描没真正落地：撤掉登记，留给下一轮重试
             self.ledger.rollback_focus_reconciliation()
-        return attempted and self._last_rescan_ok
+        return attempted and self.ledger.gate_state.last_rescan_ok
 
     async def _resolve_unexplained_changes(
         self,
@@ -1114,7 +888,7 @@ class SeatObservationManager(Singleton):
             return False
         self.logger.info(reason)
         await self.expand_rescan_and_collapse(target_focus)
-        if not self._last_rescan_ok and fingerprint is not None:
+        if not self.ledger.gate_state.last_rescan_ok and fingerprint is not None:
             # 扫描没落地（展开失败/半截快照）：撤掉指纹，留给下一轮重试
             self.ledger.clear_scanned_fingerprint()
         # 返回值表示「扫描确实执行过」，成败一律看 _last_rescan_ok
@@ -1238,11 +1012,11 @@ class SeatObservationManager(Singleton):
             return False
 
         # 记为「没落地」：中途失败/半截快照时调用方要据此保留闸门、下轮重试
-        self._last_rescan_ok = False
+        self.ledger.gate_state.last_rescan_ok = False
         # 这一扫就是那次补扫本身：先撤销欠账，结不结由 _verify_focus_consistency 说
-        self._consistency_retry_due = False
+        self.ledger.gate_state.consistency_retry_due = False
 
-        async with self._ui_session("seat_expansion"):
+        async with self.panel_reader.session("seat_expansion"):
             try:
                 # 人数是「这遍扫对没有」的唯一判据，而调用方带进来的值在冷启动/
                 # RoomState.clear() 之后是 None。这里已在 ui_session 内，可以安全地
@@ -1270,13 +1044,13 @@ class SeatObservationManager(Singleton):
                 if not observed:
                     return False
 
-                async with self._lock:
+                async with self.ledger.gate_state.lock:
                     # 权威路径：两个相位把 12 个座位都读过，明确空座即可判下座
                     change = self.ledger.observe(
                         observed, resolve_identity=False, authoritative=True
                     )
                     diff = self.ledger.apply(change)
-                    self._last_rescan_ok = True
+                    self.ledger.gate_state.last_rescan_ok = True
 
                 # 重扫是十几秒的主动行为，落地就得给出结论：没有变更也打印，否则没人
                 # 能判断这次到底读到了什么（真机 23:00:0x：扫完一个字节都没输出，
@@ -1292,14 +1066,14 @@ class SeatObservationManager(Singleton):
                 if diff.changed_users:
                     from ushareiplay.managers.command_manager import CommandManager
                     await CommandManager.instance().notify_focus_count_change(
-                        self._last_focus_count,
+                        self.ledger.gate_state.last_focus_count,
                         target_focus_count,
                         changed_users=diff.changed_users,
                         seat_info=diff.seat_info,
                     )
 
                 if target_focus_count is not None:
-                    self._last_focus_count = target_focus_count
+                    self.ledger.gate_state.last_focus_count = target_focus_count
 
                 # 重扫的结论必须跟房间唯一的硬数字自洽，否则这次账没对上
                 self.ledger.verify_focus_consistency(observed, target_focus_count)
@@ -1342,7 +1116,7 @@ class SeatObservationManager(Singleton):
             self.logger.warning(f"Failed to parse page_source XML for viewport sync: {e}")
             return {}
 
-        locator = self._element_locator("seat_desk")
+        locator = self.panel_reader._element_locator("seat_desk")
         if locator is None:
             return {}
         nodes = root.xpath(locator.absolute_xpath)
@@ -1351,7 +1125,7 @@ class SeatObservationManager(Singleton):
         if not desk_wrappers:
             return {}
 
-        async with self._lock:
+        async with self.ledger.gate_state.lock:
             observed = self._read_visible_seats(desk_wrappers, band=band)
             if not observed:
                 return {}
@@ -1359,7 +1133,7 @@ class SeatObservationManager(Singleton):
             # 沿用快照中已知的昵称
             for seat_num, (desk, side, info) in observed.items():
                 if info["occupied"] and not info.get("username"):
-                    old_slot = self.seats.get(seat_num)
+                    old_slot = self.ledger.slots.get(seat_num)
                     if old_slot and old_slot.occupied and old_slot.username:
                         info["username"] = old_slot.username
 
@@ -1370,7 +1144,7 @@ class SeatObservationManager(Singleton):
                 self.logger.info(
                     self.format_3row_layout(
                         trigger_source="视口同步",
-                        focus_count=self._last_focus_count,
+                        focus_count=self.ledger.gate_state.last_focus_count,
                         changed_seats=diff.changed_seats,
                     )
                 )
@@ -1389,7 +1163,7 @@ class SeatObservationManager(Singleton):
 
         delta = self.ledger.mark_owner_seated(seat_number, owner_username)
 
-        current = self._last_focus_count
+        current = self.ledger.gate_state.last_focus_count
         if current is None:
             try:
                 from ushareiplay.state.room_state import RoomState
@@ -1404,8 +1178,8 @@ class SeatObservationManager(Singleton):
         else:
             new_count = self.ledger.total_seated()
 
-        self._last_focus_count = new_count
-        self._reconciled_focus_count = new_count
+        self.ledger.gate_state.last_focus_count = new_count
+        self.ledger.gate_state.reconciled_focus_count = new_count
 
         try:
             from ushareiplay.state.room_state import RoomState

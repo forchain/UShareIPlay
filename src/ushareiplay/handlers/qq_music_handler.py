@@ -10,6 +10,7 @@ from selenium.common import StaleElementReferenceException
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playback.models import PLAY_MODE_NAMES
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 
 
@@ -22,7 +23,6 @@ class QQMusicHandler(AppHandler, Singleton):
         super().__init__(driver, config, controller)
 
         self.no_skip = 0
-        self.list_mode = 'unknown'
         self.play_mode_key = 'unknown'
 
     @staticmethod
@@ -363,7 +363,7 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        if self.list_mode == 'singer':
+        if PlaylistSession.instance().list_mode == 'singer':
             singer_text = (playing_info.get('singer') or "").strip()
             artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
             if (

@@ -88,11 +88,11 @@ def test_thread_safe_concurrent_creation():
 
 
 def test_seat_management_follows_singleton_contract():
-    """座位子系统只剩门面一个单例；实现类刻意不是单例（依赖全部构造注入）。
+    """座位管理的唯一实现由 `SeatManager` 绑定为受保护单例。
 
-    #402 删掉面板/占座/进房检查/预约四个内部单例后，座位子系统对外的唯一单例是
-    `SeatManager`。`SeatSubsystem` 反而必须**不**是单例：它没有全局状态，
-    同一进程里可以并存多个实例（接线层一个 + 单元测试各自一个）。
+    `SeatManager` 继承 `SeatSubsystem`（#536）：守卫、UI 会话锁与全部座位流程都在
+    实现上，门面不再逐方法转发。`SeatSubsystem` 本身仍**不**是单例：它没有全局
+    状态，同一进程里可以并存多个实例（接线层一个 + 单元测试各自一个）。
     """
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
@@ -104,6 +104,7 @@ def test_seat_management_follows_singleton_contract():
     sm = SeatManager.initialize(handler=None)
 
     assert SeatManager.instance() is sm
+    assert isinstance(sm, SeatSubsystem)
 
     with pytest.raises(SingletonError, match="already initialized"):
         SeatManager.initialize()
@@ -135,7 +136,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.online_drawer import OnlineDrawerManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+    from ushareiplay.managers.playlist_session import PlaylistSession
     from ushareiplay.managers.recovery_manager import RecoveryManager
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
@@ -146,7 +147,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.playlist_state import PlaylistState
     from ushareiplay.state.presence_tracker import PresenceTracker
     from ushareiplay.state.room_state import RoomState
 
@@ -165,12 +165,11 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         CommandManager,
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
         InfoManager,
         PartyManager,
-        PlaylistAdoption,
         AdminManager,
         KeywordManager,
         EventManager,

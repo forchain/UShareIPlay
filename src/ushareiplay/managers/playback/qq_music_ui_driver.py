@@ -1018,7 +1018,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
     def _radio_subtitle_topic(raw_topic: Optional[str]) -> Optional[str]:
         """电台卡片副标题 → 话题文案。
 
-        **刻意不等于 `PlaylistAdoption.primary_topic()`**：那边按 `" - "` 拆，因为
+        **刻意不等于 `PlaylistSession.primary_topic()`**：那边按 `" - "` 拆，因为
         队列行「歌名 - 歌手」里的分隔符必须原样保留，裸连字符是 Lo-Fi 之类歌名的
         组成部分；而电台卡片上那行副标题本身就是「题材 - 年代」的写法，分隔符就是
         一个裸的 `-`。两套约定各有道理（`primary_topic` 的 docstring 专门警告过别
@@ -1317,7 +1317,7 @@ class QQMusicUIDriver(MusicUIDriverPort):
         return PlaybackOutcome.started(
             PlaybackTrack(song=song, singer=singer),
             title=session.singer_name,
-            # 队列首行形如「歌名 - 歌手」，`PlaylistAdoption` 按 " - " 取歌名做话题。
+            # 队列首行形如「歌名 - 歌手」，`PlaylistSession` 按 " - " 取歌名做话题。
             topic=first_line or session.singer_name,
             playlist=session.singer_name,
             extra={"playlist": queue_text},

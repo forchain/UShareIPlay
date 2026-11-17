@@ -4,7 +4,6 @@ import importlib.util
 import logging
 import sys
 import traceback
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +17,6 @@ from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.sleep_manager import SleepManager
 from ushareiplay.managers.user_event_hooks import (
     ENTER,
@@ -196,49 +194,6 @@ class CommandManager(Singleton):
         )
         return module.command if module else None
 
-    @staticmethod
-    def _playback_muting():
-        return PlaybackMuting.instance()
-
-    @staticmethod
-    def _declares_playback_muting(command) -> bool:
-        """该命令是否声明参与播放静音保护。
-
-        读的是类属性而不是方法存在性：这里的 command 只要求「命令形状」（有
-        `process()` 与 `playback_muting`），不少调用方与测试传的是鸭子类型替身，
-        没有 `BaseCommand` 的方法。判定按能力回退，不要求替身补全整个基类。
-        """
-        return bool(getattr(command, "playback_muting", False))
-
-    @contextmanager
-    def playback_muting_guard(self, command, command_info):
-        """播放类命令的静音保护上下文。
-
-        未声明 playback_muting 的命令不触碰麦克风；声明了则闭麦执行命令，
-        公屏通知发送完毕后等待底层播放就绪再开麦。
-
-        命令可用 `playback_muting_applies(parameters)` 按本次调用再判一次：一个命令里
-        只有部分播放路径迁到 `MusicManager.play()` 时，已迁移的那条由引擎在守护通过后
-        自己闭麦 —— 命令级闭麦发生在守护之前，只会让被拒绝的切歌也响一次静音。
-        """
-        parameters = command_info.get("parameters") or []
-        applies = getattr(command, "playback_muting_applies", None)
-        should_mute = applies(parameters) if callable(applies) else self._declares_playback_muting(command)
-        if not should_mute:
-            yield
-            return
-
-        with self._playback_muting().guard(
-            expected_song=command.playback_expected_song(parameters)
-        ):
-            yield
-
-    def _report_playback_failure(self, command):
-        """播放类命令以错误结果结束时，让静音保护跳过就绪等待并立即开麦。"""
-        if not getattr(command, "playback_muting", False):
-            return
-        self._playback_muting().report_failure()
-
     async def process_command(self, command, message_info, command_info):
         """Process command using module if available
         Args:
@@ -366,7 +321,6 @@ class CommandManager(Singleton):
                         result = await command.process(message_info, parameters)
 
             if 'error' in result:
-                self._report_playback_failure(command)
                 # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染
                 format_kwargs = {'error': result['error'], 'user': message_info.nickname, **result}
                 res = command_info['error_template'].format(**format_kwargs)
@@ -523,14 +477,12 @@ class CommandManager(Singleton):
 
                 command = self.get_command(cmd)
                 if command:
-                    # 播放静音保护：闭麦 -> 点歌/切歌 -> 公屏通知 -> 等待播放就绪 -> 开麦
-                    with self.playback_muting_guard(command, command_info):
-                        response = await self.process_command(command, message_info, command_info)
-                        if response:
-                            # 私聊回复要经抽屉会话进出，因此这条出口是异步的（#435）。
-                            await self.message_dispatch.send_for_message_info(
-                                message_info, response, silent=silent
-                            )
+                    response = await self.process_command(command, message_info, command_info)
+                    if response:
+                        # 私聊回复要经抽屉会话进出，因此这条出口是异步的（#435）。
+                        await self.message_dispatch.send_for_message_info(
+                            message_info, response, silent=silent
+                        )
                     success_count += 1
                 else:
                     self.logger.error(f"Unknown command: {cmd}")

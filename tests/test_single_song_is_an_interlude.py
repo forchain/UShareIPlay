@@ -7,7 +7,7 @@
     [song] 猜你喜欢-沉浸刷歌 (by Joyer)   <- 房间歌单变成「歌曲」，还换了主人
     ...（跳过这首之后 QQ 音乐接着放电台，16:13 那首仍是电台推的歌）
 
-根因在 `PlaylistAdoption.adopt()`：它对**每一种**播放模式都写 `player_name` 与
+根因在 `PlaylistSession.adopt()`：它对**每一种**播放模式都写 `player_name` 与
 `list_mode`，于是单曲点播把正在放的电台改写成「点播者的歌曲」。#421 把 `:play
 <歌名>` 迁进统一引擎时就是这样接的线，迁移前 `play_song()` 根本不碰歌单上下文。
 
@@ -25,8 +25,8 @@ from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.core.config_view import ConfigSectionView
 
@@ -68,32 +68,13 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
     monkeypatch, initialized_test_singletons
 ):
     """电台在放时点一首歌：`/info` 的歌单行仍是电台与它的播放者。"""
-    PlaylistState.initialize()
     info = InfoManager.initialize(
         SimpleNamespace(config=ConfigSectionView("soul", {}), logger=MagicMock())
     )
-    info.current_playlist_name = RADIO_NAME
 
-    # `/info` 的歌单类型直接读 `QQMusicHandler.list_mode`；这里让替身与引擎同源。
-    music = {"list_mode": "unknown"}
-
-    class _MusicHandlerStub:
-        @property
-        def list_mode(self):
-            return music["list_mode"]
-
-        @list_mode.setter
-        def list_mode(self, value):
-            music["list_mode"] = value
-
-    monkeypatch.setattr(
-        QQMusicHandler, "instance", classmethod(lambda cls: _MusicHandlerStub())
-    )
-
-    adoption = PlaylistAdoption.instance()
-    adoption._info = info
+    adoption = PlaylistSession.instance()
+    adoption.current_playlist_name = RADIO_NAME
     adoption._room_profile = _RoomProfile()
-    adoption._music = _MusicHandlerStub()
 
     MusicManager.initialize(ui_driver=InMemoryMusicUIDriver())
     PlaybackMuting.initialize(

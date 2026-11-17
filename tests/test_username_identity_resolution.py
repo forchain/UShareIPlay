@@ -166,6 +166,8 @@ class DummySeatUI:
 
 def _desk(left_label="", left_occupied=False, right_label="", right_occupied=False):
     return {
+        # 真机桌位有渲染区域；点头像弹窗的交互门禁按它判定（#450/#529）。
+        "bounds": {"x": 40, "y": 100, "width": 309, "height": 207},
         "left_seat": DummyElement(),
         "right_seat": DummyElement(),
         "left_state": DummyElement() if left_occupied else None,

@@ -20,7 +20,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 from ushareiplay.commands.radio import RadioCommand
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
 from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
-from ushareiplay.managers.playlist_adoption import primary_topic
+from ushareiplay.managers.playlist_session import primary_topic
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.core.config_view import ConfigSectionView, ConfigView
 
@@ -38,7 +38,7 @@ class _InfoManager:
         self.current_playlist_name = None
 
     async def check_playlist_protection(self, requester, config=None):
-        """`PlaylistAdoption.guard_switch` 要的是错误 dict，不是字符串。"""
+        """`PlaylistSession.guard_switch` 要的是错误 dict，不是字符串。"""
         return {"error": self.protection_error} if self.protection_error else None
 
     def clear_next_queue(self):
@@ -92,14 +92,14 @@ def _controller():
 def radio_engine(initialized_test_singletons):
     """`:radio` 的引擎台：真守护 + 真房间同步 + 内存 UI 驱动。
 
-    守护判定仍由 `PlaylistAdoption.guard_switch` 发给替身的 `_InfoManager`，
+    守护判定仍由 `PlaylistSession.guard_switch` 发给替身的 `_InfoManager`，
     因此「守护还管不管得住 `:radio`」考的是引擎与命令的接线，而不是命令层
     有没有再自己判一次。驱动替身把房间标题/话题/歌单都报成固定值，好让
     「驱动观察到的事实一路进了房间」这件事看得见。
     """
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+    from ushareiplay.managers.playlist_session import PlaylistSession
     from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
     journal = []
@@ -110,10 +110,12 @@ def radio_engine(initialized_test_singletons):
         playlists={PlaybackMode.RADIO: "每日猜你喜欢"},
     )
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = _InfoManager()
-    adoption._room_profile = _RoomProfileManager()
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    info = _InfoManager()
+    session._room_profile = _RoomProfileManager()
+    session.player_name = info.player_name
+    session.current_playlist_name = info.current_playlist_name
+    session.check_playlist_protection = info.check_playlist_protection
 
     MusicManager.initialize(ui_driver=driver)
     PlaybackMuting.initialize(
@@ -124,8 +126,9 @@ def radio_engine(initialized_test_singletons):
     return SimpleNamespace(
         driver=driver,
         journal=journal,
-        info=adoption._info,
-        room_profile=adoption._room_profile,
+        info=info,
+        session=session,
+        room_profile=session._room_profile,
     )
 
 
@@ -180,7 +183,7 @@ async def test_unknown_radio_channel_is_reported_as_an_error(radio_engine):
 
 async def test_radio_does_not_mute_at_command_level(initialized_test_singletons):
     """麦克风生命周期归引擎的切歌边界，命令层不再声明参与。"""
-    assert RadioCommand.playback_muting is False
+    assert not hasattr(RadioCommand, "playback_muting")
 
 
 # ---------------------------------------------------------------------------
@@ -657,7 +660,7 @@ def test_radio_subtitles_keep_their_own_hyphen_convention(music_manager):
 
     `Lo-Fi` 里的裸连字符是歌名的一部分：在队列行约定下它必须原样保留，在电台
     副标题约定下它却是「题材 - 年代」的分隔符。两套约定各有道理，
-    `PlaylistAdoption.primary_topic` 的 docstring 也警告过别混用，因此这里
+    `PlaylistSession.primary_topic` 的 docstring 也警告过别混用，因此这里
     钉住电台自己的拆法，防止有人顺手「统一」成那一个。
     """
     actions = []
@@ -737,8 +740,8 @@ async def test_allowed_radio_mutes_only_around_the_track_change(radio_engine):
     assert "error" not in result
     assert radio_engine.journal == ["mute", "ui:radio", "restore"]
     # 房间采纳的是驱动观察到的事实，不是命令层手拼的。
-    assert radio_engine.info.player_name == "小明"
-    assert radio_engine.info.current_playlist_name == "每日猜你喜欢"
+    assert radio_engine.session.player_name == "小明"
+    assert radio_engine.session.current_playlist_name == "每日猜你喜欢"
     assert radio_engine.room_profile.titles == ["每日猜你喜欢"]
     assert radio_engine.room_profile.topics == ["新歌"]
     assert result["playlist"] == "每日猜你喜欢"

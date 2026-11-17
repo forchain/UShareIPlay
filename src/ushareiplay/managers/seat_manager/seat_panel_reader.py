@@ -1,11 +1,10 @@
-import asyncio
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import logging
 from typing import ClassVar, Optional, Tuple
 
 from ushareiplay.core.config_view import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.core.ui_session_lease import UISessionLease
 
 
 @dataclass(frozen=True)
@@ -43,10 +42,10 @@ class SeatPanelReader:
     EMPTY_SEAT_LABELS: ClassVar[Tuple[str, ...]] = ("点击入座", "入座")
     IMAGE_VIEW_CLASS: ClassVar[str] = "android.widget.ImageView"
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, lease: Optional[UISessionLease] = None):
         self._handler = handler
         self._logger = None
-        self._session_depths: dict[asyncio.Task, int] = {}
+        self.lease = lease or UISessionLease()
 
     @property
     def handler(self):
@@ -66,12 +65,6 @@ class SeatPanelReader:
             )
         return self._logger
 
-    @property
-    def controller(self):
-        if self._handler:
-            return getattr(self._handler, "controller", None)
-        return None
-
     # ------------------------------------------------------------------
     # UI 会话与独占锁租赁
     # ------------------------------------------------------------------
@@ -79,106 +72,21 @@ class SeatPanelReader:
     @property
     def holds_session(self) -> bool:
         """当前 task 是否通过本 reader 持有会话。"""
-        try:
-            task = asyncio.current_task()
-        except RuntimeError:
-            return False
-        if task is None:
-            return False
-        return self._session_depths.get(task, 0) > 0
-
-    def _lock_owner(self):
-        ctrl = self.controller
-        if ctrl is None:
-            return None
-        return getattr(ctrl, "_ui_lock_owner", None) or getattr(ctrl, "_owner", None)
+        return self.lease.holds_session
 
     @property
     def busy_elsewhere(self) -> bool:
-        """UI 锁是否被并非当前 reader 会话的其他流程持有。"""
-        ctrl = self.controller
-        if ctrl is None:
-            return False
-        ui_lock = getattr(ctrl, "ui_lock", None)
-        if ui_lock is None or not ui_lock.locked():
-            return False
-        try:
-            task = asyncio.current_task()
-        except RuntimeError:
-            task = None
-        if task is not None and self._session_depths.get(task, 0) > 0:
-            return False
-        return True
+        """UI 锁是否被并非当前 task 的其他流程持有。"""
+        return self.lease.busy_elsewhere
 
     @property
     def can_probe_ui(self) -> bool:
         """是否允许探测 UI（自己持锁，或无人驱动屏幕）。"""
         return self.holds_session or not self.busy_elsewhere
 
-    def _is_locked_by_other_task(self, task) -> bool:
-        ctrl = self.controller
-        if ctrl is None:
-            return False
-        ui_lock = getattr(ctrl, "ui_lock", None)
-        if ui_lock is None or not ui_lock.locked():
-            return False
-        owner = self._lock_owner()
-        if owner is not None:
-            return owner is not task
-        if task is not None:
-            return self._session_depths.get(task, 0) == 0
-        return True
-
-    @asynccontextmanager
-    async def session(self, reason: str = "", *, skip_if_busy: bool = False):
-        """独占 UI 执行权。
-
-        - 委托给 handler.controller.ui_session(reason)；
-        - controller 缺席时退化为不加锁；
-        - skip_if_busy=True 时，若有其他 task 持锁则直出 yield False；否则 yield True；
-        - 同 task 嵌套进入直通并计数。
-        """
-        try:
-            task = asyncio.current_task()
-        except RuntimeError:
-            task = None
-
-        current_depth = self._session_depths.get(task, 0) if task else 0
-        if current_depth > 0:
-            self._session_depths[task] = current_depth + 1
-            try:
-                yield True
-            finally:
-                new_depth = self._session_depths[task] - 1
-                if new_depth <= 0:
-                    self._session_depths.pop(task, None)
-                else:
-                    self._session_depths[task] = new_depth
-            return
-
-        ctrl = self.controller
-        if ctrl is None:
-            if task:
-                self._session_depths[task] = 1
-            try:
-                yield True
-            finally:
-                if task:
-                    self._session_depths.pop(task, None)
-            return
-
-        if skip_if_busy and self.busy_elsewhere:
-            yield False
-            return
-
-        async with ctrl.ui_session(reason):
-            if task:
-                self._session_depths[task] = 1
-            try:
-                yield True
-            finally:
-                if task:
-                    self._session_depths.pop(task, None)
+    def session(self, reason: str = "", *, skip_if_busy: bool = False):
+        """独占 UI 执行权；同 task 嵌套进入直通并计数。"""
+        return self.lease.acquire(reason, skip_if_busy=skip_if_busy)
 
     # ------------------------------------------------------------------
     # DOM 元素与选择器
@@ -244,7 +152,7 @@ class SeatPanelReader:
         return ""
 
     @staticmethod
-    def _is_seat_number_label(label: str) -> bool:
+    def is_seat_number_label(label: str) -> bool:
         return label.isdigit() and 1 <= int(label) <= 12
 
     # ------------------------------------------------------------------
@@ -269,7 +177,7 @@ class SeatPanelReader:
             occupied = True
         elif (
             bool(cleaned_label)
-            and not self._is_seat_number_label(cleaned_label)
+            and not self.is_seat_number_label(cleaned_label)
             and cleaned_label not in self.EMPTY_SEAT_LABELS
         ):
             occupied = True
@@ -280,7 +188,7 @@ class SeatPanelReader:
                 is_empty = True
             elif cleaned_label in self.EMPTY_SEAT_LABELS:
                 is_empty = True
-            elif self._is_seat_number_label(cleaned_label):
+            elif self.is_seat_number_label(cleaned_label):
                 is_empty = seat_number is None or int(cleaned_label) == seat_number
             elif avatar_images == 1:
                 is_empty = True

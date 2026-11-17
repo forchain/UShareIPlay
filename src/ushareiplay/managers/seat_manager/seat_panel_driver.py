@@ -54,6 +54,8 @@ SEAT_CARD_TIMEOUT = 1.5
 SEAT_CARD_TAP_SETTLE_SECONDS = 0.3
 # 关掉弹窗后的回场延迟。
 SEAT_CARD_DISMISS_SETTLE_SECONDS = 0.2
+# 可点击桌位的最小渲染高度：低于它的残片头像已被视口裁切（真机 10~56px）。
+MIN_INTERACTABLE_DESK_HEIGHT = 100
 
 
 @dataclass
@@ -79,9 +81,9 @@ class AvatarTapPolicy(str, Enum):
     - `SEAT_NODE`：只点 UserView（`{side}_seat`）。要读「请下麦」的那条链路用它。
     - `STATE_ONLY`：只点 ClState（`{side}_state`）；读不到就**一次都别点**。
       「不点」与「改点别的」是两回事，这条链路原来就是 ClState 缺席即跳过整张桌位。
-    - `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测链路的长期行为，
-      也是本方法的默认值 —— `SeatObservationManager.inspect_occupant` 按同样顺序
-      自己读这两个节点（那一处在观测器模块内，不走本驱动），两者必须一起改。
+    - `STATE_THEN_SEAT`：先点 ClState，缺席退到 UserView。面板观测链路与主动命令
+      的默认值 —— `SeatObservationManager.inspect_occupant` 也委托本驱动的
+      `read_occupant`，两者共用同一份实现。
     """
 
     SEAT_NODE = "seat_node"
@@ -100,10 +102,11 @@ class SeatPanelDriver:
     COLLAPSE_LABEL = COLLAPSE_LABEL
     SEAT_CARD_EVIDENCE_KEYS = SEAT_CARD_EVIDENCE_KEYS
 
-    def __init__(self, handler=None, panel_reader=None):
+    def __init__(self, handler=None, panel_reader=None, lease=None):
         # 面板是否展开的缓存。按钮读不到时它是唯一可用的取值（见 is_expanded）。
         self.expanded = False
         self._panel_reader = panel_reader
+        self._lease = lease
         self.handler = handler
 
     @property
@@ -123,7 +126,7 @@ class SeatPanelDriver:
     @property
     def panel_reader(self) -> SeatPanelReader:
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
@@ -442,6 +445,23 @@ class SeatPanelDriver:
             return None
         return finder.find_child_element(desk, element_key, log_failure=False)
 
+    def is_desk_interactable(self, desk) -> bool:
+        """桌位是否具备足够的可点击交互高度。
+
+        DOM 读取不限高度（Android 会 dump 残片节点的 DOM），但点头像弹窗必须依赖
+        屏幕真实渲染区域：低于阈值的残片头像已被视口裁切，按中心点击只会击中视口
+        边缘外的空白。读不出 bounds 同样判为不可交互 —— 渲染尺寸未知就无法证明
+        它在视口内，宁可这一轮不点名。
+        """
+        bounds = self._desk_bounds(desk)
+        if not bounds:
+            return False
+        width = bounds.get("width", 0)
+        height = bounds.get("height", 0)
+        if height < MIN_INTERACTABLE_DESK_HEIGHT:
+            return False
+        return not (width > 0 and (height / width) < 0.4)
+
     def _tap_avatar(self, desk, side: str, target_element) -> bool:
         """点开座位头像弹窗。
 
@@ -456,6 +476,10 @@ class SeatPanelDriver:
                 return True
             except Exception:
                 pass
+
+        # 坐标点击才需要渲染区域；残片桌位的头像已被裁切，绝不按坐标盲点。
+        if not self.is_desk_interactable(desk):
+            return False
 
         pt = self.panel_reader.tap_point(desk, side)
         if pt is None:

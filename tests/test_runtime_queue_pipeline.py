@@ -440,19 +440,16 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
 def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfilled_one(
     chat_window, monkeypatch
 ):
-    """Both sources reach `process_command` under the same playback-muting guard.
+    """Both sources reach `process_command`.
 
     Role checks, permission level, the sleep guard and the guest-room guard all
-    live in `process_command` (`command_manager.py`), which is wrapped by
-    `playback_muting_guard`. Before #398 both sources already converged there, but
-    real-time commands reached it inline and unsynchronised; this pins that a
-    queued screen command is guarded exactly like a backfilled one.
+    live in `process_command` (`command_manager.py`). Before #398 both sources
+    already converged there, but real-time commands reached it inline and
+    unsynchronised; this pins that a queued screen command is guarded exactly
+    like a backfilled one. Playback muting no longer wraps this path (#535).
     """
-    from contextlib import contextmanager
-
     from ushareiplay.managers.command_manager import CommandManager
 
-    guarded = []
     entered = []
 
     real_manager = CommandManager.__new__(CommandManager)
@@ -462,7 +459,7 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
     real_manager.initialize_parser(
         [{"prefix": "play", "level": 1, "response_template": "{song}", "error_template": "{error}"}]
     )
-    monkeypatch.setattr(real_manager, "get_command", lambda _cmd: SimpleNamespace(playback_muting=True))
+    monkeypatch.setattr(real_manager, "get_command", lambda _cmd: SimpleNamespace())
 
     # `message_dispatch` is a read-only property, so the outbound seam is swapped
     # at the singleton seam. It is not what this test is about; keep it inert.
@@ -483,13 +480,6 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
         _inert_dispatch,
     )
 
-    @contextmanager
-    def _recording_guard(_command, _command_info):
-        guarded.append(True)
-        yield
-
-    monkeypatch.setattr(real_manager, "playback_muting_guard", _recording_guard)
-
     async def _process_command(_command, message_info, _command_info):
         entered.append(message_info.content)
         return None
@@ -504,9 +494,8 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
 
     _run(drainer.drain())
 
-    # Both commands executed, in order, each inside the muting guard.
+    # Both commands executed, in order.
     assert entered == ["$play 1", "$play 2"]
-    assert len(guarded) == 2
 
 
 async def _noop(*_args, **_kwargs):
@@ -944,8 +933,7 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     controller = AppController.__new__(AppController)
     controller.ui_lock = asyncio.Lock()
     controller.logger = handler.logger
-    AppController._ui_lock_owner = None
-    AppController._ui_lock_depth = 0
+    AppController._ui_session_lease = None
 
     started = asyncio.Event()
 

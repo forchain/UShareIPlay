@@ -18,7 +18,7 @@ from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 
@@ -42,7 +42,7 @@ def test_composition_root_services_receive_identical_injected_handler():
         CommandManager.initialize(fake_soul_handler),
         RoomState.initialize(fake_soul_handler),
         PresenceTracker.initialize(fake_soul_handler),
-        PlaylistState.initialize(fake_soul_handler),
+        PlaylistSession.initialize(fake_soul_handler),
         PlaybackBroadcaster.initialize(fake_soul_handler),
         OnlineListScraper.initialize(fake_soul_handler),
         InfoManager.initialize(fake_soul_handler),

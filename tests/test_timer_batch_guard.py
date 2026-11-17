@@ -7,7 +7,7 @@ guarded batch must still run `:say` / `:title` / `:topic` / `:vol` / `:next`
 while only the playback-interrupting parts are rejected.
 
 The seam is the production one: `CommandManager.execute_runtime_queue_messages`
-with real command classes and the real `InfoManager` / `PlaylistAdoption`
+with real command classes and the real `InfoManager` / `PlaylistSession`
 guard. Only the UI edges are replaced (in-memory music driver, fake controller
 handlers).
 """
@@ -27,11 +27,11 @@ from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_adoption import PlaylistAdoption
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.state.playlist_state import PlaylistState
+from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
@@ -46,7 +46,7 @@ def clean_info_manager():
         InfoManager,
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -59,7 +59,7 @@ def clean_info_manager():
     for cls in (
         RoomState,
         PresenceTracker,
-        PlaylistState,
+        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
@@ -230,17 +230,15 @@ def batch_seam(clean_info_manager, monkeypatch):
         SimpleNamespace(state=lambda: False, set_active=lambda *_a: {}, ensure_active=lambda: {}),
     )
 
-    adoption = PlaylistAdoption.instance()
-    adoption._info = clean_info_manager
-    adoption._room_profile = room
-    adoption._music = SimpleNamespace(list_mode=None, no_skip=0)
+    session = PlaylistSession.instance()
+    session._room_profile = room
 
     return _Seam(manager, driver, room, appium, pause_mic, clean_info_manager)
 
 
 def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
     """Playlist Context owner online: say/title/topic/vol run, radio never does."""
-    batch_seam.info.player_name = "Alice"
+    PlaylistSession.instance().player_name = "Alice"
     batch_seam.info.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(
@@ -258,7 +256,7 @@ def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
 
 def test_guarded_batch_still_records_next_but_blocks_radio(batch_seam):
     """A guest's pending Next Queue guards the timer; its `:next` still records."""
-    batch_seam.info.record_next("Alice")
+    PlaylistSession.instance().record_next("Alice")
     batch_seam.info.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":say 晚安;:next 晴天;:radio sleep")
@@ -290,7 +288,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 
     `:playlist <query>` is a continuous-queue switch and is guarded like radio.
     """
-    batch_seam.info.player_name = "Alice"
+    PlaylistSession.instance().player_name = "Alice"
     batch_seam.info.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":play 晴天;:playlist 晚安歌单")
@@ -302,7 +300,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 
 def test_guarded_batch_blocks_skip_and_pause_without_touching_playback(batch_seam):
     """Skip/pause in a guarded batch never reach the player or the microphone."""
-    batch_seam.info.player_name = "Alice"
+    PlaylistSession.instance().player_name = "Alice"
     batch_seam.info.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":skip;:pause")
