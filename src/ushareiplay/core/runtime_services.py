@@ -513,9 +513,9 @@ class AgentCommandSpool:
 
 
 class StatusReporter:
-    def __init__(self, *, config, ui_lock, obs, soul_handler=None, timer_manager=None):
+    def __init__(self, *, config, lease, obs, soul_handler=None, timer_manager=None):
         self.config = config
-        self.ui_lock = ui_lock
+        self.lease = lease
         self.obs = obs
         self.soul_handler = soul_handler
         self.timer_manager = timer_manager
@@ -524,7 +524,7 @@ class StatusReporter:
         try:
             foreground_app = screen["foreground_app"]
             anchors = screen["anchors"]
-            ui_lock_state = "locked" if (self.ui_lock and self.ui_lock.locked()) else "unlocked"
+            ui_lock_state = "locked" if self.lease.lock.locked() else "unlocked"
             queue_size = MessageQueue.instance().get_queue_size()
 
             status = {

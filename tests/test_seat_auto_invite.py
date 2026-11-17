@@ -466,7 +466,10 @@ async def test_the_whole_auto_invite_flow_runs_under_one_ui_session(monkeypatch)
         }
     )
     subsystem = SeatSubsystem(
-        handler=handler, seat_ui=seat_ui, observation=observation
+        handler=handler,
+        seat_ui=seat_ui,
+        observation=observation,
+        lease=controller.ui_session_lease,
     )
 
     monkeypatch.setattr(seat_subsystem_module, "InfoManager", FakeInfoManager({CANONICAL: VISIBLE}))

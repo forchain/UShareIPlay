@@ -102,10 +102,11 @@ class SeatPanelDriver:
     COLLAPSE_LABEL = COLLAPSE_LABEL
     SEAT_CARD_EVIDENCE_KEYS = SEAT_CARD_EVIDENCE_KEYS
 
-    def __init__(self, handler=None, panel_reader=None):
+    def __init__(self, handler=None, panel_reader=None, lease=None):
         # 面板是否展开的缓存。按钮读不到时它是唯一可用的取值（见 is_expanded）。
         self.expanded = False
         self._panel_reader = panel_reader
+        self._lease = lease
         self.handler = handler
 
     @property
@@ -125,7 +126,7 @@ class SeatPanelDriver:
     @property
     def panel_reader(self) -> SeatPanelReader:
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader

@@ -136,10 +136,12 @@ class SeatSubsystem:
         seat_ui=None,
         invite_driver=None,
         panel_reader=None,
+        lease=None,
     ):
         self._handler = handler
         self._panel_reader = panel_reader
         self._panel_driver = panel_driver
+        self._lease = lease
         self._observation = observation
         self._message_dispatch = None
         # 运行期上下文（UI 独占锁的读法），由组合根经 configure_runtime 注入 ——
@@ -177,7 +179,7 @@ class SeatSubsystem:
     def panel_reader(self) -> SeatPanelReader:
         """座位面板的唯一读数器与 UI 锁门面。"""
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
@@ -189,7 +191,9 @@ class SeatSubsystem:
         构造注入优先，缺省时按需自建并缓存。驱动刻意不是单例（它没有全局状态）。
         """
         if self._panel_driver is None:
-            self._panel_driver = SeatPanelDriver(self.handler, panel_reader=self.panel_reader)
+            self._panel_driver = SeatPanelDriver(
+                self.handler, panel_reader=self.panel_reader, lease=self._lease
+            )
         elif getattr(self._panel_driver, "_panel_reader", None) is None:
             self._panel_driver._panel_reader = self.panel_reader
         return self._panel_driver

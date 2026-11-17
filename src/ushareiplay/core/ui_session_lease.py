@@ -19,6 +19,7 @@ class UISessionLease:
         is_paused: 暂停闸门；返回 True 时任何一次 `acquire()` 都直接抛
             `asyncio.CancelledError`（`!stop` 中断在途 UI 操作）。
         logger: 日志来源；每次获取/释放时按需调用，便于换 handler 后仍写对地方。
+        on_acquire: 真正取到锁时的观察钩子（同 task 嵌套直通不触发）。
     """
 
     def __init__(
@@ -26,10 +27,12 @@ class UISessionLease:
         lock: Optional[asyncio.Lock] = None,
         is_paused: Optional[Callable[[], bool]] = None,
         logger: Optional[Callable[[], logging.Logger]] = None,
+        on_acquire: Optional[Callable[[str], None]] = None,
     ):
         self._lock = lock or asyncio.Lock()
         self._is_paused = is_paused
         self._logger = logger
+        self._on_acquire = on_acquire
         self._depths: dict[asyncio.Task, int] = {}
 
     @property
@@ -85,6 +88,8 @@ class UISessionLease:
         await self._lock.acquire()
         if task is not None:
             self._depths[task] = 1
+        if self._on_acquire is not None:
+            self._on_acquire(reason)
         logger = self._logger() if self._logger is not None else None
         try:
             if logger and reason:

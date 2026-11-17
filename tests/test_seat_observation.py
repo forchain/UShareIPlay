@@ -200,7 +200,7 @@ async def test_observe_visible_desks_reads_occupancy_from_page_source():
 async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session():
     controller = FakeController()
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
     lock_states = []
     handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
 
@@ -469,7 +469,7 @@ async def test_inspection_holds_the_real_app_controller_ui_lock():
     controller.logger = None  # ui_session 只在有 logger 时打日志
 
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
     lock_states = []
     handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
 
@@ -481,20 +481,6 @@ async def test_inspection_holds_the_real_app_controller_ui_lock():
 
     assert lock_states == [True]
     assert controller.ui_lock.locked() is False
-
-
-@pytest.mark.asyncio
-async def test_controller_without_ui_session_api_fails_loudly():
-    """曾经的 hasattr 守卫会让加锁静默失效；接口不符契约时必须炸出来。"""
-    from types import SimpleNamespace as _SimpleNamespace
-
-    handler = make_handler(controller=_SimpleNamespace())
-    manager = SeatObservationManager.initialize(handler)
-
-    desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
-
-    with pytest.raises(AttributeError):
-        await manager.observe_visible_desks([desk])
 
 
 def test_seat_manager_does_not_initialize_seat_observation_singleton():
@@ -2726,13 +2712,30 @@ async def test_observe_visible_desks_skips_avatar_inspection_when_ui_is_busy():
     """UI 锁被持有时（例如进房自动邀请正在驱动屏幕），被动观测跳过点击头像弹窗，避免争抢屏幕与死锁。"""
     controller = FakeController()
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
+    # 座次表里已知「1 号座占座但身份未知」：本轮不会因变更触发全量重扫（重扫会等锁）。
+    manager.ledger.slots[1] = SeatSlot(
+        seat_number=1, occupied=True, username=None, label="管理"
+    )
     desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
 
-    async with controller.ui_session("seat_auto_invite:some_user"):
+    acquired = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with controller.ui_session("seat_auto_invite:some_user"):
+            acquired.set()
+            await release.wait()
+
+    task = asyncio.create_task(holder())
+    await acquired.wait()
+    try:
         with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             await manager.observe_visible_desks([desk])
+    finally:
+        release.set()
+        await task
 
     # UI 忙碌时，不应打开弹窗，保留身份未解析
     assert manager.ledger.slots[1].username is None

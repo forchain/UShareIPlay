@@ -215,13 +215,30 @@ async def test_prepare_for_chat_scan_leaves_the_panel_alone_while_the_ui_lock_is
     """
     controller = FakeController()
     panel = _RecordingPanel(expanded=True)
-    manager = SeatManager.initialize(make_handler(controller=controller), seat_ui=panel)
+    manager = SeatManager.initialize(
+        make_handler(controller=controller),
+        seat_ui=panel,
+        lease=controller.ui_session_lease,
+    )
     # 与生产同一套接线：组合根把运行期上下文交给子系统。
-    manager.configure_runtime(EventRuntimeContext(ui_lock=controller.ui_lock))
+    manager.configure_runtime(EventRuntimeContext(lease=controller.ui_session_lease))
 
-    async with controller.ui_session("seat_auto_invite:someone"):
+    acquired = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with controller.ui_session("seat_auto_invite:someone"):
+            acquired.set()
+            await release.wait()
+
+    task = asyncio.create_task(holder())
+    await acquired.wait()
+    try:
         assert await manager.prepare_for_chat_scan() is True
         assert panel.collapsed is False
+    finally:
+        release.set()
+        await task
 
 
 async def test_public_interfaces_keep_their_canonical_return_shapes(monkeypatch):
@@ -379,7 +396,7 @@ async def test_subsystem_ui_session_is_caller_held_and_degrades_without_controll
     """
     controller = FakeController()
     handler = make_handler(controller=controller)
-    subsystem = SeatSubsystem(handler)
+    subsystem = SeatSubsystem(handler, lease=controller.ui_session_lease)
 
     async with subsystem._ui_session("probe"):
         pass
@@ -391,7 +408,7 @@ async def test_subsystem_ui_session_is_caller_held_and_degrades_without_controll
         pass
 
     # SeatPanelDriver 不自取锁
-    driver = SeatPanelDriver(handler)
+    driver = SeatPanelDriver(handler, lease=controller.ui_session_lease)
     async with driver.ui_session("held-by-caller"):
         assert driver.handler is handler
     assert controller.sessions[-1] == "held-by-caller"
@@ -407,7 +424,7 @@ async def test_nested_ui_session_inside_a_held_command_session_does_not_self_dea
     controller.ui_lock = asyncio.Lock()
     controller.logger = None
     handler = make_handler(controller=controller)
-    subsystem = SeatSubsystem(handler)
+    subsystem = SeatSubsystem(handler, lease=controller.ui_session_lease)
 
     async with controller.ui_session("command:seat"):
         assert controller.ui_lock.locked() is True

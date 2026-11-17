@@ -63,6 +63,7 @@ class SeatObservationManager(Singleton):
         gate_state: Optional[SeatObservationGateState] = None,
         panel_reader: Optional[SeatPanelReader] = None,
         panel_driver: Optional[SeatPanelDriver] = None,
+        lease=None,
     ):
         self.handler = handler
         self._logger = None
@@ -70,6 +71,7 @@ class SeatObservationManager(Singleton):
         self._seat_ui = seat_ui
         self._panel_reader = panel_reader
         self._panel_driver = panel_driver
+        self._lease = lease
         # 上一轮的「变更去向不明」读数：只用于日志去重。残片桌位（面板底缘漏出的
         # 下一排）读数每轮都一样，逐轮打日志就是刷屏（AGENTS.md 日志静默铁律）。
         self._last_unexplained: Set[Tuple[int, str]] = set()
@@ -119,7 +121,7 @@ class SeatObservationManager(Singleton):
     def panel_reader(self) -> SeatPanelReader:
         """座位面板唯一读数器。注入优先，缺省按需自建。"""
         if self._panel_reader is None:
-            self._panel_reader = SeatPanelReader(self.handler)
+            self._panel_reader = SeatPanelReader(self.handler, lease=self._lease)
         elif self.handler and self._panel_reader.handler is not self.handler:
             self._panel_reader.handler = self.handler
         return self._panel_reader
@@ -128,7 +130,9 @@ class SeatObservationManager(Singleton):
     def panel_driver(self) -> SeatPanelDriver:
         """座位头像弹窗的驱动：与读数器共用同一份实现，注入优先、缺省按需自建。"""
         if self._panel_driver is None:
-            self._panel_driver = SeatPanelDriver(self.handler, panel_reader=self.panel_reader)
+            self._panel_driver = SeatPanelDriver(
+                self.handler, panel_reader=self.panel_reader, lease=self._lease
+            )
         elif self.handler and self._panel_driver.handler is not self.handler:
             self._panel_driver.handler = self.handler
         return self._panel_driver

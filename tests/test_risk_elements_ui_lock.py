@@ -13,6 +13,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 from ushareiplay.core.runtime_context import EventRuntimeContext
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.events.risk_elements import RiskElementsEvent
 
 
@@ -43,7 +44,7 @@ class _FakeHandler:
 
 def _event(lock):
     handler = _FakeHandler()
-    return handler, RiskElementsEvent(handler, runtime=EventRuntimeContext(ui_lock=lock))
+    return handler, RiskElementsEvent(handler, runtime=EventRuntimeContext(lease=UISessionLease(lock=lock)))
 
 
 async def test_collapse_seats_is_skipped_while_the_ui_lock_is_held():

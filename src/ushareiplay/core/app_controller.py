@@ -112,8 +112,13 @@ class AppController(Singleton):
             reinitialize_driver=self.reinitialize_driver,
             obs=self.obs,
         )
-        self.command_runtime_context = CommandRuntimeContext(controller=self)
-        self.event_runtime_context = EventRuntimeContext(ui_lock=self.ui_lock, controller=self)
+        self.command_runtime_context = CommandRuntimeContext(
+            lease=self.ui_session_lease, controller=self
+        )
+        self.event_runtime_context = EventRuntimeContext(
+            lease=self.ui_session_lease,
+            paused=lambda: bool(self.runtime_input and self.runtime_input.paused),
+        )
 
         self._runtime_queue_drainer = None
         self._agent_command_spool = AgentCommandSpool(
@@ -125,7 +130,7 @@ class AppController(Singleton):
         )
         self._status_reporter = StatusReporter(
             config=self.config,
-            ui_lock=self.ui_lock,
+            lease=self.ui_session_lease,
             obs=self.obs,
         )
         # 运行时输入管线在 start_monitoring 里构造：它需要 handler 与 timer_manager
@@ -511,7 +516,9 @@ class AppController(Singleton):
             self.logger.info("创建 manager 实例...")
             # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
             # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
-            self.seat_manager = SeatManager.initialize(self.soul_handler)
+            self.seat_manager = SeatManager.initialize(
+                self.soul_handler, lease=self.ui_session_lease
+            )
             # 运行期上下文（UI 独占锁的读法）与 EventManager 同一套接线。
             self.seat_manager.configure_runtime(self.event_runtime_context)
 

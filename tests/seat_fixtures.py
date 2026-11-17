@@ -20,6 +20,7 @@ from lxml import etree
 
 from ushareiplay.core.config_view import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 DESK_RESOURCE_ID = "cn.soulapp.android:id/userRoot"
@@ -338,33 +339,17 @@ class FakeController:
     """
 
     def __init__(self):
-        self.ui_lock = asyncio.Lock()
         self.logger = MagicMock()
         self.sessions = []
-        self._owner = None
-        self._depth = 0
+        self.ui_session_lease = UISessionLease(
+            logger=lambda: self.logger, on_acquire=self.sessions.append
+        )
+        self.ui_lock = self.ui_session_lease.lock
 
     @asynccontextmanager
     async def ui_session(self, reason=""):
-        task = asyncio.current_task()
-        if self._depth > 0 and self._owner is task:
-            self._depth += 1
-            try:
-                yield
-            finally:
-                self._depth -= 1
-            return
-
-        await self.ui_lock.acquire()
-        self._owner = task
-        self._depth = 1
-        self.sessions.append(reason)
-        try:
+        async with self.ui_session_lease.acquire(reason):
             yield
-        finally:
-            self._owner = None
-            self._depth = 0
-            self.ui_lock.release()
 
 
 class FakeSeatUI:
