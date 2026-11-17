@@ -50,6 +50,7 @@ from ushareiplay.managers.seat_manager.guard import (
 from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_invite_driver import SeatInviteDriver
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+import ushareiplay.state.room_state as room_state
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 无 handler 时 logger 的回退目标（ADR-0009 第 3 条）。
@@ -293,6 +294,29 @@ class SeatSubsystem:
             if is_expanded:
                 return await self.collapse_seats()
             return True
+
+    @asynccontextmanager
+    async def chat_scan_session(self):
+        """回溯补漏期间独占 UI：等锁 → 收起面板 → 滚动扫完再归还。
+
+        `prepare_for_chat_scan` 的 skip_if_busy 在锁被持有时只能退让，面板就留在
+        展开态 —— 补漏于是在缩小后的聊天区里慢慢滚（真机表现为「有时候往回扫描
+        时座位并没有收起来」）。补漏本身就是一段驱动屏幕的动作，按
+        `AppController.ui_session` 的约定应当持锁：等锁（而不是跳过）拿到执行权后
+        再收起面板，既不抢持锁流程的面板，也保证扫描期间没有别人把面板展开。
+
+        他人房间里与 `prepare_for_chat_scan` 同一条守卫：直接放行，不碰座位 UI。
+        """
+        if room_state.RoomState.in_guest_room():
+            yield
+            return
+        async with self.panel_reader.session("chat_backfill"):
+            try:
+                await self.prepare_for_chat_scan()
+            except Exception:
+                # 收不起面板不该让补漏整轮作废：聊天区小一点也要把漏掉的命令扫出来。
+                self.logger.error(f"收起座位失败（不影响补漏继续执行）: {traceback.format_exc()}")
+            yield
 
     # ------------------------------------------------------------------
     # 预约数据（ReservationManager 合并进来）

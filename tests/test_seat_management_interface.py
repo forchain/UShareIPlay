@@ -1,5 +1,7 @@
 import asyncio
+import logging
 from collections import deque
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -68,30 +70,45 @@ def test_seat_manager_wires_every_injected_collaborator_onto_one_subsystem():
 
 
 @pytest.mark.asyncio
-async def test_message_manager_prepares_chat_scan_through_seat_management(monkeypatch):
+async def test_message_manager_backfills_inside_the_seat_chat_scan_session(monkeypatch):
+    """回溯补漏整段跑在座位子系统的 UI 独占会话里。
+
+    收起面板与滚动聊天历史是同一段屏幕动作：会话外收起会被持锁流程随后的
+    展开顶掉，会话里才能保证「扫描期间面板是收起的」。
+    """
     from ushareiplay.managers.message_manager import MessageManager
 
+    calls = []
+
     class _FakeSeatManagement:
-        def __init__(self):
-            self.prepared = False
+        @asynccontextmanager
+        async def chat_scan_session(self):
+            calls.append("session-enter")
+            try:
+                yield
+            finally:
+                calls.append("session-exit")
 
-        async def prepare_for_chat_scan(self):
-            self.prepared = True
-            return True
+    class _FakeGesture:
+        def scroll_container_until_element(self, *_args, **_kwargs):
+            calls.append("scroll")
+            return None, None, []
 
-    seat_management = _FakeSeatManagement()
     manager = MessageManager.instance()
     manager._handler = SimpleNamespace(
         logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
+        key_actions=SimpleNamespace(switch_to_app=lambda: True),
+        gesture_handler=_FakeGesture(),
+        send_message=lambda message: calls.append("send"),
     )
-    manager._handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-    manager._chat_logger = None
+    manager._chat_logger = logging.getLogger("test_chat_scan_session")
+    manager.observe(["souler[Anchor]说：:noop"])
 
     monkeypatch.setattr(
         MessageManager,
         "_get_seat_manager",
-        lambda self: seat_management,
+        lambda self: _FakeSeatManagement(),
     )
 
     assert await manager.process_missed_messages() is None
-    assert seat_management.prepared is True
+    assert calls == ["session-enter", "scroll", "send", "session-exit"]

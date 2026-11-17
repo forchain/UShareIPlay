@@ -389,19 +389,28 @@ class MessageManager(Singleton):
             self.handler.logger.error("Failed to switch to Soul app")
             return None
 
-        # 回溯补漏前，确保座位面板收起（避免聊天区域过小导致回溯变慢）
-        try:
-            seat_manager = self._get_seat_manager()
-            if seat_manager:
-                await seat_manager.prepare_for_chat_scan()
-        except Exception:
-            self.handler.logger.error(f"收起座位失败（不影响补漏继续执行）: {traceback.format_exc()}")
-
         if anchor is None:
             anchor = self._recent[-1] if self._recent else None
         if not anchor:
             return None
 
+        try:
+            seat_manager = self._get_seat_manager()
+        except Exception:
+            seat_manager = None
+            self.handler.logger.error(f"获取座位管理器失败（不影响补漏继续执行）: {traceback.format_exc()}")
+
+        if seat_manager is None:
+            return await self._scan_missed_history(anchor)
+
+        # 补漏要滚动聊天区，是一段独占屏幕的动作：交给座位子系统在 UI 锁内跑。
+        # 拿锁后先收起座位面板 —— 面板展开时聊天区只剩一半，回溯会慢得多；整段
+        # 持锁也保证扫描途中没有别的流程把面板重新展开。
+        async with seat_manager.chat_scan_session():
+            return await self._scan_missed_history(anchor)
+
+    async def _scan_missed_history(self, anchor: str) -> set[str]:
+        """在 anchor 之前的历史里滚一遍（调用方负责 UI 独占与面板状态）。"""
         # Quoted Messages are composed onto the scanned line but never rendered
         # in the sender's own bubble, so scroll/skip on the quote-free line.
         scroll_anchor = strip_quoted_segment(anchor) or anchor

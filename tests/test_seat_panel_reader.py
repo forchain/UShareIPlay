@@ -476,6 +476,64 @@ def test_composition_root_wires_panel_reader():
 
 
 @pytest.mark.asyncio
+async def test_chat_scan_session_waits_for_the_ui_lock_then_collapses():
+    """回溯补漏独占 UI：锁被别人持有时等它，拿到锁后先收起面板再扫描。
+
+    旧路径 `prepare_for_chat_scan(skip_if_busy=True)` 在锁被持有时直接退出，
+    面板留在展开态，补漏就在缩小后的聊天区里慢慢滚 —— 真机上表现为「有时候
+    往回扫描时座位没有收起来」。
+    """
+    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+
+    ctrl = FakeController()
+    handler = make_handler(controller=ctrl)
+
+    class DummyPanel:
+        def __init__(self):
+            self.collapsed = False
+
+        def check_seats_state(self):
+            return True
+
+        async def collapse_seats(self):
+            self.collapsed = True
+            return True
+
+    panel = DummyPanel()
+    # 与组合根同一套接线：座位子系统共享 controller 的 UI 租约。
+    subsystem = SeatSubsystem(handler, seat_ui=panel, lease=ctrl.ui_session_lease)
+
+    holding = asyncio.Event()
+    release = asyncio.Event()
+
+    async def other_flow():
+        async with ctrl.ui_session("seat_auto_invite:someone"):
+            holding.set()
+            await release.wait()
+
+    other = asyncio.create_task(other_flow())
+    await holding.wait()
+
+    entered = asyncio.Event()
+
+    async def backfill():
+        async with subsystem.chat_scan_session():
+            entered.set()
+            return panel.collapsed
+
+    task = asyncio.create_task(backfill())
+    await asyncio.sleep(0.05)
+    # 持锁流程仍拥有面板：补漏在等锁，面板没被动过
+    assert entered.is_set() is False
+    assert panel.collapsed is False
+
+    release.set()
+    await other
+    assert await asyncio.wait_for(task, timeout=1) is True
+    assert entered.is_set() is True
+
+
+@pytest.mark.asyncio
 async def test_prepare_for_chat_scan_when_busy_elsewhere():
     """prepare_for_chat_scan 查验 UI 独占：外部任务持有时，退出并保持面板不动。"""
     from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
