@@ -50,19 +50,17 @@ def test_clear_resets_all_state(room_state):
 
 def test_clear_wipes_seat_observation_snapshot(room_state):
     """换房后不能拿上一间房的麦位快照做 diff。"""
-    from ushareiplay.managers.seat_manager.seat_observation import (
-        SeatObservationManager,
-        SeatSlot,
-    )
+    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+    from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 
     SeatObservationManager.reset_instance()
     observation = SeatObservationManager.initialize()
-    observation.seats[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
+    observation.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
 
     try:
         room_state.clear()
-        assert observation.seats[1].occupied is False
-        assert observation.seats[1].username is None
+        assert observation.ledger.slots[1].occupied is False
+        assert observation.ledger.slots[1].username is None
     finally:
         SeatObservationManager.reset_instance()
 

@@ -5,7 +5,8 @@ import pytest
 
 from ushareiplay.commands.seat import SeatCommand
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager, SeatSlot
+from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -35,7 +36,7 @@ def make_dummy_controller():
 async def test_seat_command_success_logs_layout():
     controller, logger = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
-    obs.seats[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
+    obs.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
 
     cmd = SeatCommand(controller)
     msg = MessageInfo(content=":seat 2 1", nickname="Alice")
@@ -59,7 +60,7 @@ async def test_seat_command_success_logs_layout():
 async def test_seat_command_failure_logs_layout():
     controller, logger = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
-    obs.seats[2] = SeatSlot(seat_number=2, occupied=True, username="Bob")
+    obs.ledger.slots[2] = SeatSlot(seat_number=2, occupied=True, username="Bob")
 
     cmd = SeatCommand(controller)
     msg = MessageInfo(content=":seat 2 2", nickname="Alice")

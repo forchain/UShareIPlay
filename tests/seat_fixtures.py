@@ -216,7 +216,7 @@ def build_real_raw_desks(fixture_name: str) -> list:
     """同一份真机 DOM 的 raw WebElement 形状（展开重扫路径的 find_elements 返回物）。
 
     子节点按 resource-id 建索引，与 Appium 的 parent.find_element 一样返回文档序第一个；
-    头像子树不在 raw 路径里数图（生产契约见 seat_observation._avatar_image_count）。
+    头像子树不在 raw 路径里数图（生产契约见 seat_observation.panel_reader._avatar_image_count）。
     """
     desks = []
     for node in load_real_desk_nodes(fixture_name):
@@ -416,6 +416,8 @@ class FakeSeatObservation:
 
     def __init__(self, seats=None, observed=None, owner=None, panel_reader=None):
         self.seats = seats if seats is not None else {}
+        # 生产调用方直接读账本（#532）；替身与它同形。
+        self.ledger = SimpleNamespace(slots=self.seats)
         self.observed = observed or {}
         self.owner = owner
         self.bands = []

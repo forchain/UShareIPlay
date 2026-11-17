@@ -7,11 +7,10 @@
 反复死循环报错。
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 import pytest
 
-from tests.seat_fixtures import make_handler, build_live_desk_wrapper, build_desk_wrapper
+from tests.seat_fixtures import make_handler, build_live_desk_wrapper
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
 

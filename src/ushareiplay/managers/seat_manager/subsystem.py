@@ -555,7 +555,7 @@ class SeatSubsystem:
             if user_names & owner_aliases:
                 return True
 
-        seats = getattr(obs, "seats", None) or {}
+        seats = obs.ledger.slots
         for slot in seats.values():
             if not getattr(slot, "occupied", False):
                 continue
@@ -1005,7 +1005,7 @@ class SeatSubsystem:
     @staticmethod
     def _isolated_empty_desk_candidates(obs) -> list:
         """从缓存座次表里挑出左右两座都空的候选桌（桌号 0..5，顺序即核验顺序）。"""
-        seats = getattr(obs, "seats", None) or {}
+        seats = obs.ledger.slots
         candidates = []
         for desk_index in range(6):
             left = seats.get(desk_index * 2 + 1)
