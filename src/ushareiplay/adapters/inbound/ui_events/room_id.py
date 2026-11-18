@@ -4,7 +4,7 @@
 本事件只负责从元素里取出文本并决定是否中断后续处理。
 """
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class RoomIdEvent(BaseEvent):

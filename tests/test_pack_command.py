@@ -15,7 +15,7 @@ from ushareiplay.modules.room import (
     parse_heat as _parse_heat,
     parse_pack_level as _parse_pack_level,
 )
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class FakeElement:
@@ -681,7 +681,9 @@ async def test_pack_redeem_error_renders_without_generic_prefix():
         "error_template": pack_cmd["error_template"],
     }
 
-    manager = CommandManager.instance()
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+    manager = CommandManager(users=TortoiseUserRepository())
     manager.configure_runtime(RuntimeStub())
     manager._handler = HandlerStub()
     msg = MessageInfo(content=":pack redeem", nickname="Alice")
@@ -1419,7 +1421,9 @@ async def test_pack_requires_level_three_for_normal_users():
         "error_template": pack_cmd["error_template"],
     }
 
-    manager = CommandManager.instance()
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+    manager = CommandManager(users=TortoiseUserRepository())
     manager.configure_runtime(RuntimeStub())
     manager._handler = HandlerStub()
     msg = MessageInfo(content=":pack", nickname="Alice")

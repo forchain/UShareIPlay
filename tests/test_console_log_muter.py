@@ -3,8 +3,8 @@ import queue
 from unittest.mock import MagicMock
 import pytest
 
+from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
-from ushareiplay.core.app_controller import AppController
 
 
 def test_console_log_muter_filter_record():
@@ -57,13 +57,14 @@ def test_console_log_muter_context():
 
 def test_app_handler_console_handler_has_muter_filter(tmp_path):
     from types import SimpleNamespace
-    from ushareiplay.handlers.soul_handler import SoulHandler
+    from ushareiplay.adapters.outbound.appium.soul.soul_handler import SoulHandler
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
 
     config = {
         "logging": {"directory": str(tmp_path)},
         "soul": {},
     }
-    controller = SimpleNamespace(config=config)
+    controller = SimpleNamespace(config=config, runtime_logging=get_runtime_logging())
 
     soul = SoulHandler.__new__(SoulHandler)
     soul.config = config
@@ -82,13 +83,14 @@ def test_app_handler_console_handler_has_muter_filter(tmp_path):
 
 def test_file_log_continues_when_console_is_muted(tmp_path):
     from types import SimpleNamespace
-    from ushareiplay.handlers.soul_handler import SoulHandler
+    from ushareiplay.adapters.outbound.appium.soul.soul_handler import SoulHandler
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
 
     config = {
         "logging": {"directory": str(tmp_path)},
         "soul": {},
     }
-    controller = SimpleNamespace(config=config)
+    controller = SimpleNamespace(config=config, runtime_logging=get_runtime_logging())
 
     soul = SoulHandler.__new__(SoulHandler)
     soul.config = config
@@ -119,8 +121,9 @@ def test_console_input_flow_empty_enter_then_command(monkeypatch):
     muter = ConsoleLogMuter.get_instance()
     muter.unmute()
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -158,8 +161,9 @@ def test_console_input_flow_direct_command_without_enter(monkeypatch):
     muter = ConsoleLogMuter.get_instance()
     muter.unmute()
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -192,8 +196,9 @@ def test_console_input_flow_cancel_with_empty_enter(monkeypatch):
     muter = ConsoleLogMuter.get_instance()
     muter.unmute()
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -222,8 +227,9 @@ def test_console_input_handles_unicode_decode_error_without_crashing(monkeypatch
     muter = ConsoleLogMuter.get_instance()
     muter.unmute()
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -261,8 +267,9 @@ def test_console_input_handles_unicode_decode_error_in_command_prompt(monkeypatc
     muter = ConsoleLogMuter.get_instance()
     muter.unmute()
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -291,8 +298,9 @@ def test_console_input_reconfigures_sys_stdin(monkeypatch):
     """
     _console_input reconfigures sys.stdin to use errors='replace' if supported.
     """
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = None
+    controller.loop = None
     controller.is_running = False
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()

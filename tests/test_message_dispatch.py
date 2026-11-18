@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.core.command_silence import command_silence
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class _Runtime:
@@ -38,17 +38,8 @@ class _UserManager:
         return True
 
 
-@pytest.fixture(autouse=True)
-def reset_message_dispatch_singleton():
-    MessageDispatch.reset_instance()
-    yield
-    MessageDispatch.reset_instance()
-
-
 def _make_dispatch():
-    dispatch = MessageDispatch.initialize()
-    dispatch._handler = _Handler()
-    dispatch._user_manager = _UserManager()
+    dispatch = MessageDispatch(handler=_Handler(), user_manager=_UserManager())
     runtime = _Runtime()
     dispatch.configure_runtime(runtime)
     return dispatch, runtime

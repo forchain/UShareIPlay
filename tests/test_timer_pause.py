@@ -29,21 +29,22 @@ class _DummyLogger:
         pass
 
 
-def _use_cases(clock, repository=None):
+def _use_cases(clock, repository=None, message_queue=None):
+    queue = message_queue or MessageQueue()
     return TimerUseCases(
         repository=repository or InMemoryTimerRepository(),
         clock=clock,
-        sink=QueueTimerMessageSink(MessageQueue.instance()),
+        sink=QueueTimerMessageSink(queue),
         logger=_DummyLogger(),
     )
 
 
 @pytest.mark.asyncio
 async def test_timer_manager_pause_prevents_trigger():
-    await MessageQueue.instance().clear_queue()
+    queue = MessageQueue()
     clock = FakeClock(NOW)
     repository = InMemoryTimerRepository()
-    use_cases = _use_cases(clock, repository)
+    use_cases = _use_cases(clock, repository, queue)
 
     await use_cases.create_timer(
         key="test_pause", message=":play 晴天", target_time="10", repeat=False
@@ -57,7 +58,7 @@ async def test_timer_manager_pause_prevents_trigger():
     await use_cases.fire_timer("test_pause")
 
     # MessageQueue must remain empty
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await queue.get_all_messages() == {}
 
     # Resume timer manager
     await use_cases.resume()
@@ -65,16 +66,16 @@ async def test_timer_manager_pause_prevents_trigger():
 
     # Now trigger works
     await use_cases.fire_timer("test_pause")
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     assert next(iter(messages.values())).content == ":play 晴天"
 
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
 
 
 @pytest.mark.asyncio
 async def test_timer_loop_skips_triggering_while_paused():
-    await MessageQueue.instance().clear_queue()
+    queue = MessageQueue()
     repository = InMemoryTimerRepository()
     await repository.create(
         key="loop_test",
@@ -84,17 +85,17 @@ async def test_timer_loop_skips_triggering_while_paused():
         enabled=True,
         next_trigger=datetime.now() - timedelta(seconds=1),
     )
-    use_cases = _use_cases(SystemClock(), repository)
+    use_cases = _use_cases(SystemClock(), repository, queue)
 
     await use_cases.start()
     use_cases.pause()
     await asyncio.sleep(0.05)
 
     # MessageQueue must NOT contain any messages because loop is paused
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await queue.get_all_messages() == {}
 
     await use_cases.stop()
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
 
 
 @pytest.mark.asyncio
@@ -128,10 +129,14 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
     """When runtime_input is paused, _runtime_queue_drainer.drain() should not be invoked."""
     from types import SimpleNamespace
 
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
-    controller = AppController.__new__(AppController)
-    controller.config = {"commands": []}
+    controller = RuntimeLoop(
+        config={"commands": []},
+        obs=None,
+        lease=SimpleNamespace(lock=SimpleNamespace(locked=lambda: False)),
+        room_owner_provider=lambda: "Owner",
+    )
     controller.logger = _DummyLogger()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
@@ -140,8 +145,6 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
     )
     controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
     controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=lambda: asyncio.sleep(0))
-    controller.in_console_mode = False
-    controller.is_running = True
     controller._drain_agent_command_spool = lambda: None
 
     drained_calls = []
@@ -164,16 +167,10 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
         def register_interruption_hook(self, _hook):
             pass
 
-    from queue import Queue
-    controller._runtime_queue_drainer = _Drainer()
-    controller.input_queue = Queue()
-    controller.role_policy = SimpleNamespace(room_owner="Owner")
-    controller.obs = None
-    controller._dump_readonly_artifacts = None
-    controller._send_screen_message = lambda _t: None
+    controller.runtime_queue_drainer = _Drainer()
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.RuntimeInputPipeline",
+        "ushareiplay.bootstrap.runtime_loop.RuntimeInputPipeline",
         lambda **_kwargs: _Pipeline(),
     )
     async def noop_sleep(*_args, **_kwargs):
@@ -183,11 +180,10 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
         return None
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
-    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
     controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_async_noop)
 
     processed_screens = []

@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from ushareiplay.adapters.outbound.appium.locator import Locator
-from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
 
 
 class ElementFinder:

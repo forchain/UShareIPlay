@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from ushareiplay.core.ui.ui_actions import UIActions
+from ushareiplay.adapters.outbound.appium.ui.ui_actions import UIActions
 
 
 def make_owner():

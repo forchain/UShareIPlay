@@ -1,7 +1,6 @@
 import shlex
 
-from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.user.domain import AliasCycleError
 from ushareiplay.modules.user.use_cases import BindAlias
 
@@ -31,7 +30,7 @@ class AliasCommand(BaseCommand):
             return {'error': '昵称不能为空。用法: :alias "<别名>" "<原始名>"'}
 
         try:
-            canonical_user = await BindAlias(TortoiseUserRepository()).execute(
+            canonical_user = await BindAlias(self.user_repository).execute(
                 alias_username, canonical_username
             )
         except AliasCycleError:

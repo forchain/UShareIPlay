@@ -1,10 +1,13 @@
-from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_loader import ConfigLoader, LocalConfigOverrideRejected
-from ushareiplay.modules.shared.config import ConfigError
-from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.core.singleton import Singleton
 import asyncio
 import sys
+
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.system.config_loader import (
+    ConfigLoader,
+    LocalConfigOverrideRejected,
+)
+from ushareiplay.bootstrap.container import AppContainer
+from ushareiplay.modules.shared.config import ConfigError
 
 
 async def init_db():
@@ -20,16 +23,15 @@ async def close_db():
 async def run_app():
     config = ConfigLoader.load_config()
     await init_db()
-    controller = None
+    app = None
     try:
-        controller = AppController.initialize(config)
+        app = AppContainer(config)
         # 设备 I/O 不在构造函数里：显式启动驱动与应用，失败交给外层重试循环
-        controller.start_up()
-        return await controller.start_monitoring()
+        app.start_up()
+        return await app.start_monitoring()
     finally:
-        if controller is not None:
-            await controller.shutdown()
-        Singleton.reset_all_instances()
+        if app is not None:
+            await app.shutdown()
 
 
 async def main():

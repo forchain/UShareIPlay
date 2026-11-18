@@ -1,4 +1,4 @@
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class InfoCommand(BaseCommand):
@@ -51,8 +51,7 @@ class InfoCommand(BaseCommand):
         else:
             result["current_playlist"] = "暂无活跃歌单"
 
-        from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
-        music_handler = QQMusicHandler.instance()
+        music_handler = self.music_handler
         play_mode_key = getattr(music_handler, 'play_mode_key', 'unknown') if music_handler else 'unknown'
         result["play_mode_key"] = play_mode_key
         result["play_mode"] = music_handler.play_mode_key_to_name(play_mode_key) if music_handler else "未知"

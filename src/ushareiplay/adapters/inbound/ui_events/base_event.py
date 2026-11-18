@@ -16,7 +16,7 @@ from abc import ABC
 from contextlib import asynccontextmanager
 from typing import List, Optional, Sequence
 
-from ushareiplay.core.event_elements import resolve_event_elements
+from ushareiplay.adapters.inbound.ui_events.event_elements import resolve_event_elements
 
 
 class BaseEvent(ABC):

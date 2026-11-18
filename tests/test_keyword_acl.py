@@ -2,7 +2,9 @@ import pytest
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.keyword_repository import TortoiseKeywordRepository
-from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+UserDAO = TortoiseUserRepository()
 
 
 repository = TortoiseKeywordRepository()
@@ -36,8 +38,7 @@ async def test_private_keyword_acl_and_canonical_alias_access():
         assert await repository.find_accessible_keyword("k1", "C") is not None
 
         alias_user = await UserDAO.get_or_create_raw("A2")
-        alias_user.canonical_user_id = user_a.id
-        await alias_user.save(update_fields=["canonical_user_id"])
+        await UserDAO.set_canonical(alias_user.id, user_a.id)
         assert await repository.find_accessible_keyword("k1", "A2") is not None
     finally:
         await db.close()

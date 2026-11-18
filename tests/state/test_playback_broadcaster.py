@@ -3,16 +3,14 @@ from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
 
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.playback.use_cases import PlaylistSession
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 @pytest.fixture
 def broadcaster():
-    MessageDispatch.reset_instance()
-    MessageDispatch.initialize()
     playlist = PlaylistSession(
         logger=SimpleNamespace(
             info=lambda _msg: None,
@@ -20,14 +18,17 @@ def broadcaster():
             error=lambda _msg: None,
         )
     )
-    PlaybackBroadcaster.reset_instance()
-    b = PlaybackBroadcaster.initialize(playlist_session=playlist)
-    b._logger = SimpleNamespace(
-        info=lambda _msg: None,
-        warning=lambda _msg: None,
-        error=lambda _msg: None,
+    soul_handler = MagicMock()
+    b = PlaybackBroadcaster(
+        playlist_session=playlist,
+        messenger=MessageDispatch(handler=soul_handler),
+        logger=SimpleNamespace(
+            info=lambda _msg: None,
+            warning=lambda _msg: None,
+            error=lambda _msg: None,
+        ),
     )
-    b._soul_handler = MagicMock()
+    b._soul_handler = soul_handler
     b._music_manager = MagicMock()
     return b
 

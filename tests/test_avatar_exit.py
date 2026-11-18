@@ -6,8 +6,10 @@ import pytest
 import pytest_asyncio
 from tortoise import Tortoise
 
-from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.outbound.persistence.models.user import User
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+UserDAO = TortoiseUserRepository()
 
 
 @pytest_asyncio.fixture

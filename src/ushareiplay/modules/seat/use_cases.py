@@ -2,7 +2,7 @@
 
 所有外部依赖（面板 UI、邀请弹窗、预约仓储、用户仓储、房间状态、房管名单、
 公屏消息、专注变更通知、身份/在线查询）均通过构造函数注入，模块内部不导入
-Appium、Tortoise 或任何适配器，也不调用 `.instance()`。
+Appium、Tortoise 或任何适配器，也不查找任何全局单例。
 """
 
 from __future__ import annotations

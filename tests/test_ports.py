@@ -9,7 +9,7 @@ from tests.fakes.fake_clock import FakeClock
 from tests.fakes.in_memory_room_messenger import InMemoryRoomMessenger
 from tests.fakes.in_memory_ui_session import InMemoryUISession
 from ushareiplay.adapters.outbound.system.clock import SystemClock
-from ushareiplay.core.message_dispatch import MessageDispatch
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.modules.shared.ports import Clock, RoomMessenger, UISession
 

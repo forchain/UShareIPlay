@@ -5,7 +5,7 @@
 __event__ = "PartyNameViolationLaterEvent"
 __elements__ = ["party_name_violation_later"]
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class PartyNameViolationLaterEvent(BaseEvent):

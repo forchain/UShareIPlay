@@ -4,10 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
-from ushareiplay.modules.room import PartyService, RoomStateService
+from ushareiplay.modules.room import PartyService, PresenceTracker, RoomStateService
 from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
@@ -63,14 +62,15 @@ async def test_command_manager_presence_schedules_memory_consolidation():
     try:
         memory = RecordingMemory()
 
-        from tests.legacy_state import PresenceTracker
+        from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
         from tests.room_support import make_hooks
 
-        cm = CommandManager.instance() if CommandManager.is_initialized() else CommandManager.initialize()
+        presence = PresenceTracker()
+        cm = CommandManager(users=TortoiseUserRepository())
         cm._logger = SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock())
         cm.user_memory = memory
         cm.user_event_hooks = make_hooks(
-            presence=PresenceTracker.instance(), memory=memory
+            presence=presence, memory=memory
         )
 
         # Test notify_user_enter
@@ -86,7 +86,7 @@ async def test_command_manager_presence_schedules_memory_consolidation():
         await User.create(username="charlie_alias", level=0, canonical_user=main_user)
 
         # When alias leaves, the exit gate resolves to charlie_main.
-        PresenceTracker.instance()._online_users = set()
+        presence._online_users = set()
 
         await cm.notify_user_leave("charlie_alias")
         assert "charlie_main" in memory.users

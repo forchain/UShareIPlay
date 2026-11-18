@@ -1,7 +1,7 @@
-"""架构护栏：`modules/` 与系统出站适配器不得依赖具体技术或上层适配器，也不得做服务定位。
+"""架构护栏：全仓 `src/ushareiplay` 边界、依赖方向与无单例守卫。
 
 AST 扫描而不是文本 grep：注释与字符串里出现 "appium" 不算违规。护栏本身用
-合成源码验证 —— 每加一条非法 import 或 `.instance()` 调用都必须被抓住。
+合成源码验证 —— 每加一条非法 import、`.instance()` 调用或 `Singleton` 继承都必须被抓住。
 """
 
 import ast
@@ -11,14 +11,49 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
-MODULES_ROOT = SRC_ROOT / "ushareiplay" / "modules"
-PERSISTENCE_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "persistence"
-SYSTEM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "system"
-LLM_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "llm"
-GUARDED_ROOTS = (MODULES_ROOT, SYSTEM_ADAPTERS_ROOT)
+PKG_ROOT = SRC_ROOT / "ushareiplay"
+MODULES_ROOT = PKG_ROOT / "modules"
+CORE_ROOT = PKG_ROOT / "core"
+BOOTSTRAP_ROOT = PKG_ROOT / "bootstrap"
+INBOUND_CHAT_ROOT = PKG_ROOT / "adapters" / "inbound" / "chat"
+INBOUND_RUNTIME_ROOT = PKG_ROOT / "adapters" / "inbound" / "runtime"
+INBOUND_UI_EVENTS_ROOT = PKG_ROOT / "adapters" / "inbound" / "ui_events"
+APPIUM_ROOT = PKG_ROOT / "adapters" / "outbound" / "appium"
+PERSISTENCE_ROOT = PKG_ROOT / "adapters" / "outbound" / "persistence"
+SYSTEM_ADAPTERS_ROOT = PKG_ROOT / "adapters" / "outbound" / "system"
+LLM_ROOT = PKG_ROOT / "adapters" / "outbound" / "llm"
 
-FORBIDDEN_MODULES = ("appium", "selenium", "tortoise", "openai", "ushareiplay.adapters")
-# 持久化适配器自己就是 Tortoise 的家，但不得卷入 UI/LLM/其他适配器或服务定位。
+FORBIDDEN_MODULES = (
+    "appium",
+    "selenium",
+    "tortoise",
+    "openai",
+    "yaml",
+    "ushareiplay.adapters",
+    "ushareiplay.bootstrap",
+)
+FORBIDDEN_IN_INBOUND_PURE = (
+    "appium",
+    "selenium",
+    "tortoise",
+    "openai",
+    "yaml",
+    "ushareiplay.adapters.outbound",
+    "ushareiplay.bootstrap",
+)
+FORBIDDEN_IN_UI_EVENTS = (
+    "appium",
+    "selenium",
+    "tortoise",
+    "openai",
+    "yaml",
+    "ushareiplay.adapters.outbound.persistence",
+    "ushareiplay.adapters.outbound.llm",
+    "ushareiplay.adapters.outbound.system",
+    "ushareiplay.adapters.outbound.appium.soul",
+    "ushareiplay.adapters.outbound.appium.qq_music",
+    "ushareiplay.bootstrap",
+)
 FORBIDDEN_IN_PERSISTENCE = (
     "appium",
     "selenium",
@@ -27,8 +62,8 @@ FORBIDDEN_IN_PERSISTENCE = (
     "ushareiplay.adapters.outbound.appium",
     "ushareiplay.adapters.outbound.llm",
     "ushareiplay.adapters.outbound.system",
+    "ushareiplay.bootstrap",
 )
-# LLM 适配器是 OpenAI/HTTP 的家，但不得卷入 UI、数据库或服务定位。
 FORBIDDEN_IN_LLM = (
     "appium",
     "selenium",
@@ -37,6 +72,27 @@ FORBIDDEN_IN_LLM = (
     "ushareiplay.adapters.outbound.appium",
     "ushareiplay.adapters.outbound.persistence",
     "ushareiplay.adapters.outbound.system",
+    "ushareiplay.bootstrap",
+)
+FORBIDDEN_IN_SYSTEM = (
+    "appium",
+    "selenium",
+    "tortoise",
+    "openai",
+    "ushareiplay.adapters.inbound",
+    "ushareiplay.adapters.outbound.appium",
+    "ushareiplay.adapters.outbound.persistence",
+    "ushareiplay.adapters.outbound.llm",
+    "ushareiplay.bootstrap",
+)
+FORBIDDEN_IN_APPIUM = (
+    "tortoise",
+    "openai",
+    "ushareiplay.adapters.inbound",
+    "ushareiplay.adapters.outbound.persistence",
+    "ushareiplay.adapters.outbound.llm",
+    "ushareiplay.adapters.outbound.system",
+    "ushareiplay.bootstrap",
 )
 
 _SYNTHETIC_PATH = MODULES_ROOT / "shared" / "_guard_fixture.py"
@@ -87,87 +143,104 @@ def find_violations(source: str, path: Path, forbidden_modules=FORBIDDEN_MODULES
             and node.func.attr == "instance"
         ):
             violations.append(f"{path}:{node.lineno}: forbidden .instance() lookup")
+        if isinstance(node, ast.Name) and node.id in ("Singleton", "SingletonMeta", "SingletonError"):
+            violations.append(f"{path}:{node.lineno}: forbidden singleton symbol {node.id}")
     return violations
 
 
-def test_guarded_packages_do_not_import_technology_or_adapters_and_do_not_locate_services():
-    guarded_files = sorted(path for root in GUARDED_ROOTS for path in root.rglob("*.py"))
-    assert guarded_files
-    assert (SYSTEM_ADAPTERS_ROOT / "network_bridge.py").exists()
-    assert (SYSTEM_ADAPTERS_ROOT / "log_rotation.py").exists()
-
-    violations = {
+def _scan_root(root: Path, forbidden_modules=FORBIDDEN_MODULES) -> dict[str, list[str]]:
+    files = sorted(root.rglob("*.py"))
+    assert files, f"expected Python files under {root}"
+    return {
         str(path): found
-        for path in guarded_files
-        if (found := find_violations(path.read_text(), path))
+        for path in files
+        if (found := find_violations(path.read_text(), path, forbidden_modules))
     }
 
-    assert violations == {}
+
+def test_all_modules_packages_are_technology_and_adapter_free():
+    """覆盖 modules/ 全部业务切片（shared/seat/mic/playback/room/user/command/timer）。"""
+    expected_modules = {"shared", "seat", "mic", "playback", "room", "user", "command", "timer"}
+    actual_modules = {p.name for p in MODULES_ROOT.iterdir() if p.is_dir() and p.name != "__pycache__"}
+    assert expected_modules <= actual_modules
+    assert _scan_root(MODULES_ROOT, FORBIDDEN_MODULES) == {}
 
 
-def test_room_package_is_covered_by_the_guard():
-    """房间切片也必须被扫描：缺了这层断言，空的违反列表无法区分「干净」和「没扫」。"""
-    room_files = sorted((MODULES_ROOT / "room").rglob("*.py"))
-    assert room_files
-
-    violations = {
-        str(path): found
-        for path in room_files
-        if (found := find_violations(path.read_text(), path))
-    }
-    assert violations == {}
+def test_shared_stdlib_core_helpers_stay_technology_and_adapter_free():
+    assert _scan_root(CORE_ROOT, FORBIDDEN_MODULES) == {}
 
 
-def test_seat_package_is_covered_by_the_guard():
-    """座位切片也必须被扫描：不得导入底层技术/适配器或调用 .instance()。"""
-    seat_files = sorted((MODULES_ROOT / "seat").rglob("*.py"))
-    assert seat_files
+def test_no_instance_lookups_or_singleton_machinery_anywhere_in_src():
+    violations = []
+    for path in sorted(PKG_ROOT.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "instance"
+            ):
+                violations.append(f"{path}:{node.lineno}: .instance()")
+            if isinstance(node, ast.Name) and node.id in (
+                "Singleton",
+                "SingletonMeta",
+                "SingletonError",
+            ):
+                violations.append(f"{path}:{node.lineno}: {node.id}")
+    assert violations == []
 
-    violations = {
-        str(path): found
-        for path in seat_files
-        if (found := find_violations(path.read_text(), path))
-    }
-    assert violations == {}
+
+def test_retired_legacy_packages_and_singleton_module_are_deleted():
+    for retired in (
+        "commands",
+        "events",
+        "dal",
+        "handlers",
+        "managers",
+        "models",
+        "state",
+        "helpers",
+    ):
+        assert not (PKG_ROOT / retired).exists(), f"retired package still exists: {retired}"
+    assert not (CORE_ROOT / "singleton.py").exists()
+    assert not (CORE_ROOT / "app_controller.py").exists()
 
 
-def test_playback_package_is_covered_by_the_guard():
-    """播放切片也必须被扫描，确保无 Appium/Tortoise/adapters 或 .instance() 泄漏。"""
-    playback_files = sorted((MODULES_ROOT / "playback").rglob("*.py"))
-    assert playback_files
+def test_inbound_chat_and_runtime_do_not_import_outbound_adapters():
+    assert _scan_root(INBOUND_CHAT_ROOT, FORBIDDEN_IN_INBOUND_PURE) == {}
+    assert _scan_root(INBOUND_RUNTIME_ROOT, FORBIDDEN_IN_INBOUND_PURE) == {}
 
-    violations = {
-        str(path): found
-        for path in playback_files
-        if (found := find_violations(path.read_text(), path))
-    }
-    assert violations == {}
+
+def test_inbound_ui_events_do_not_import_concrete_outbound_drivers_or_persistence():
+    assert _scan_root(INBOUND_UI_EVENTS_ROOT, FORBIDDEN_IN_UI_EVENTS) == {}
+
+
+def test_runtime_loop_does_not_import_concrete_outbound_adapters():
+    runtime_loop = BOOTSTRAP_ROOT / "runtime_loop.py"
+    assert runtime_loop.exists()
+    assert find_violations(
+        runtime_loop.read_text(),
+        runtime_loop,
+        FORBIDDEN_IN_INBOUND_PURE,
+    ) == []
 
 
 def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
-    persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
-    assert persistence_files
-
-    violations = {
-        str(path): found
-        for path in persistence_files
-        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_PERSISTENCE))
-    }
-
-    assert violations == {}
+    assert _scan_root(PERSISTENCE_ROOT, FORBIDDEN_IN_PERSISTENCE) == {}
 
 
 def test_llm_adapter_stays_out_of_ui_persistence_and_service_location():
-    llm_files = sorted(LLM_ROOT.rglob("*.py"))
     assert (LLM_ROOT / "memory_distiller.py").exists()
+    assert _scan_root(LLM_ROOT, FORBIDDEN_IN_LLM) == {}
 
-    violations = {
-        str(path): found
-        for path in llm_files
-        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_LLM))
-    }
 
-    assert violations == {}
+def test_system_adapters_stay_out_of_other_adapters_and_service_location():
+    assert (SYSTEM_ADAPTERS_ROOT / "network_bridge.py").exists()
+    assert (SYSTEM_ADAPTERS_ROOT / "log_rotation.py").exists()
+    assert _scan_root(SYSTEM_ADAPTERS_ROOT, FORBIDDEN_IN_SYSTEM) == {}
+
+
+def test_appium_adapters_stay_out_of_persistence_llm_and_system():
+    assert _scan_root(APPIUM_ROOT, FORBIDDEN_IN_APPIUM) == {}
 
 
 @pytest.mark.parametrize(
@@ -189,6 +262,7 @@ def test_persistence_guard_allows_tortoise(source):
         "from openai import OpenAI\n",
         "from ushareiplay.adapters.outbound.appium import locator\n",
         "value = Service.instance()\n",
+        "class Svc(Singleton):\n    pass\n",
     ],
 )
 def test_persistence_guard_rejects_a_forbidden_line(source):
@@ -205,8 +279,10 @@ def test_persistence_guard_rejects_a_forbidden_line(source):
         "from openai import OpenAI\n",
         "from ushareiplay.adapters.outbound.system.clock import SystemClock\n",
         "from ushareiplay import adapters\n",
+        "from ushareiplay.bootstrap import AppContainer\n",
         "from ...adapters.outbound.appium import locator\n",
         "value = Service.instance()\n",
+        "class Svc(Singleton):\n    pass\n",
     ],
 )
 def test_guard_rejects_a_forbidden_line(source):

@@ -5,7 +5,7 @@
 直接调用 RecoveryManager 的 handle_join_party 方法进入派对。
 """
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class PlanetTabEvent(BaseEvent):

@@ -47,9 +47,10 @@ class _FakeMusicHandler:
 
 
 def _make_music_manager_for_quality_check():
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
     manager = MusicManager.__new__(MusicManager)
     manager._handler = None
+    manager._config = None
     manager.logger = _Logger()
     manager._song_release_lookup = None
     manager.music_handler = _FakeMusicHandler()

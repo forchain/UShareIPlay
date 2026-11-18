@@ -79,7 +79,7 @@ async def test_message_manager_backfills_inside_the_seat_chat_scan_session(monke
             calls.append("scroll")
             return None, None, []
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     manager._handler = SimpleNamespace(
         logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
         key_actions=SimpleNamespace(switch_to_app=lambda: True),

@@ -12,7 +12,7 @@ import pytest
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.adapters.inbound.chat.pause import PauseCommand
 from ushareiplay.adapters.inbound.chat.skip import SkipCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.playback.use_cases import PauseResume
 
 

@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
@@ -28,7 +28,7 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
     (tmp_path / "demo.py").write_text(
         "\n".join(
             [
-                "from ushareiplay.core.base_command import BaseCommand",
+                "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
                 "",
                 "class DemoCommand(BaseCommand):",
                 "    async def do_process(self, message_info, parameters):",
@@ -65,7 +65,7 @@ def test_load_command_module_prefers_the_first_matching_root(tmp_path):
         (directory / "demo.py").write_text(
             "\n".join(
                 [
-                    "from ushareiplay.core.base_command import BaseCommand",
+                    "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
                     "",
                     "class DemoCommand(BaseCommand):",
                     "    async def do_process(self, message_info, parameters):",

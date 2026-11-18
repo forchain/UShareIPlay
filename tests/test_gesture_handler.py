@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from selenium.common.exceptions import InvalidElementStateException
 
-from ushareiplay.core.ui.gesture_handler import GestureHandler
+from ushareiplay.adapters.outbound.appium.ui.gesture_handler import GestureHandler
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
@@ -51,7 +51,7 @@ def test_click_element_at_falls_back_to_element_click_when_gestures_fail(monkeyp
             raise InvalidElementStateException("w3c failed")
 
     monkeypatch.setattr(
-        "ushareiplay.core.ui.gesture_handler.ActionChains", _FailingActions
+        "ushareiplay.adapters.outbound.appium.ui.gesture_handler.ActionChains", _FailingActions
     )
 
     handler = _make_handler(driver)

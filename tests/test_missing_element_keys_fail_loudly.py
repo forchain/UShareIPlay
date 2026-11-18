@@ -13,8 +13,8 @@ import pytest
 import yaml
 
 import ushareiplay.__main__ as app_main
-from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.bootstrap.container import AppContainer
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import (
     ConfigView,
     MissingConfigSection,
@@ -113,14 +113,11 @@ def test_composition_root_fails_loudly_on_a_missing_element():
     """组合根构造时就失败：缺选择器的机器人根本起不来。"""
     config = _config_without("soul", "button_send")
 
-    try:
-        with pytest.raises(MissingElementKey) as excinfo:
-            AppController.initialize(config)
+    with pytest.raises(MissingElementKey) as excinfo:
+        AppContainer(config)
 
-        assert excinfo.value.section == "soul"
-        assert excinfo.value.key == "button_send"
-    finally:
-        AppController.reset_instance()
+    assert excinfo.value.section == "soul"
+    assert excinfo.value.key == "button_send"
 
 
 def _write_configs(tmp_path, base, local):

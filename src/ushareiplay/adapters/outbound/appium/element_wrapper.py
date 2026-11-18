@@ -8,7 +8,6 @@
 from typing import Optional, List
 from lxml import etree
 
-from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 from ushareiplay.adapters.outbound.appium.locator import Locator
 
 # 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器
@@ -59,16 +58,6 @@ def _reply_view_text(reply_view, locator: Locator) -> Optional[str]:
         # Tolerate a reply view that carries the quoted text on the view itself.
         node = reply_view
     return _visible_text(node).strip() or None
-
-
-def composed_message_text(wrapper) -> str:
-    """The message text an event should treat as this row's content.
-
-    Quoted Message context is composed in for an ElementWrapper carrying a reply
-    view; other wrappers (e.g. test doubles) contribute their plain ``content``.
-    """
-    quoted = wrapper.quoted_message() if isinstance(wrapper, ElementWrapper) else None
-    return format_quoted_message(wrapper.content or "", quoted)
 
 
 class ElementWrapper:

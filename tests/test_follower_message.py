@@ -14,7 +14,7 @@ class TestFollowerMessageHandler:
 
     @pytest.mark.asyncio
     async def test_handle_triggers_return_when_should_trigger_return_is_true(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
 
         mock_handler = MagicMock()
         mock_handler.logger = MagicMock()
@@ -32,30 +32,28 @@ class TestFollowerMessageHandler:
         element_wrapper = MagicMock()
         element_wrapper.text = "你关注的Chainer进入房间啦，打个招呼吧～"
 
-        with (
-            patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
-            patch("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger") as mock_get_chat_logger,
-            patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
-        ):
-            mock_presence = MagicMock()
-            mock_handler.controller.presence = mock_presence
-            mock_get_chat_logger.return_value = MagicMock()
-            mock_presence.should_trigger_return.return_value = True
-            mock_presence.record_return = MagicMock()
-            mock_cmd.return_value.notify_user_return = AsyncMock()
+        mock_presence = MagicMock()
+        mock_presence.should_trigger_return.return_value = True
+        mock_presence.record_return = MagicMock()
+        mock_cmd = MagicMock()
+        mock_cmd.notify_user_return = AsyncMock()
+        mock_handler.controller.presence = mock_presence
+        mock_handler.controller.user_repository = MagicMock(get_or_create=AsyncMock())
+        mock_handler.controller.command_manager = mock_cmd
+        mock_handler.controller.message_manager = MagicMock(chat_logger=MagicMock())
 
-            result = await event.handle("follower_message", element_wrapper)
+        result = await event.handle("follower_message", element_wrapper)
 
-            assert result is True
-            mock_presence.should_trigger_return.assert_called_once_with("Chainer")
-            mock_presence.record_return.assert_called_once_with("Chainer")
-            mock_cmd.return_value.notify_user_return.assert_called_once_with("Chainer")
-            mock_greet.click.assert_called_once()
-            mock_send.click.assert_called_once()
+        assert result is True
+        mock_presence.should_trigger_return.assert_called_once_with("Chainer")
+        mock_presence.record_return.assert_called_once_with("Chainer")
+        mock_cmd.notify_user_return.assert_called_once_with("Chainer")
+        mock_greet.click.assert_called_once()
+        mock_send.click.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_handle_skips_return_when_should_trigger_return_is_false(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
 
         mock_handler = MagicMock()
         mock_handler.logger = MagicMock()
@@ -72,26 +70,24 @@ class TestFollowerMessageHandler:
         element_wrapper = MagicMock()
         element_wrapper.text = "你的兄弟 Outlier进来啦～"
 
-        with (
-            patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
-            patch("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger") as mock_get_chat_logger,
-            patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
-        ):
-            mock_presence = MagicMock()
-            mock_handler.controller.presence = mock_presence
-            mock_get_chat_logger.return_value = MagicMock()
-            # Simulate: user is newly entering or was recently entered
-            mock_presence.should_trigger_return.return_value = False
-            mock_presence.record_return = MagicMock()
-            mock_cmd.return_value.notify_user_return = AsyncMock()
+        mock_presence = MagicMock()
+        # Simulate: user is newly entering or was recently entered
+        mock_presence.should_trigger_return.return_value = False
+        mock_presence.record_return = MagicMock()
+        mock_cmd = MagicMock()
+        mock_cmd.notify_user_return = AsyncMock()
+        mock_handler.controller.presence = mock_presence
+        mock_handler.controller.user_repository = MagicMock(get_or_create=AsyncMock())
+        mock_handler.controller.command_manager = mock_cmd
+        mock_handler.controller.message_manager = MagicMock(chat_logger=MagicMock())
 
-            result = await event.handle("follower_message", element_wrapper)
+        result = await event.handle("follower_message", element_wrapper)
 
-            assert result is True
-            mock_presence.should_trigger_return.assert_called_once_with("Outlier")
-            mock_presence.record_return.assert_not_called()
-            mock_cmd.return_value.notify_user_return.assert_not_called()
-            # Greeting still happens
-            mock_greet.click.assert_called_once()
-            mock_send.click.assert_called_once()
+        assert result is True
+        mock_presence.should_trigger_return.assert_called_once_with("Outlier")
+        mock_presence.record_return.assert_not_called()
+        mock_cmd.notify_user_return.assert_not_called()
+        # Greeting still happens
+        mock_greet.click.assert_called_once()
+        mock_send.click.assert_called_once()
 

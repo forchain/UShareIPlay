@@ -30,11 +30,8 @@ async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
     first = "souler[Bob]说：「Alice：今天天气不错」 哈哈"
     second = "souler[Bob]说：「Dave：晚安」 哈哈"
 
-    with (
-        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"),
-    ):
-        await event.handle("message_content", [_FakeWrapper(first)])
-        await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
+    await event.handle("message_content", [_FakeWrapper(first)])
+    await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
 
     # Same utterance, different quote → the second must not be dropped as a duplicate.
     # 再观察一次这两行：两条都已在窗口里，因此没有新行。
@@ -43,19 +40,18 @@ async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
 
 
 @pytest.mark.asyncio
-async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_window):
+async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_window, monkeypatch):
     event = _event(chat_window)
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
-    with (
-        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
-    ):
-        await event.handle(
-            "message_content",
-            [_FakeWrapper("souler[Bob]说：「Alice：:play 晴天」 哈哈哈")],
-        )
+    notify_return = AsyncMock()
+    monkeypatch.setattr(chat_window.command_manager, "notify_user_return", notify_return)
+    await event.handle(
+        "message_content",
+        [_FakeWrapper("souler[Bob]说：「Alice：:play 晴天」 哈哈哈")],
+    )
 
-    mock_cmd.return_value.notify_user_return.assert_not_called()
+    notify_return.assert_not_called()
     chat_window.manager.focus_app_for_queued_commands.assert_not_called()
     assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：:play 晴天」 哈哈哈"
@@ -68,10 +64,7 @@ async def test_sender_command_after_a_quote_reaches_command_processing(chat_wind
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 :play 晴天"
-    with (
-        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"),
-    ):
-        await event.handle("message_content", [_FakeWrapper(composed)])
+    await event.handle("message_content", [_FakeWrapper(composed)])
 
     chat_window.manager.focus_app_for_queued_commands.assert_awaited_once()
     assert [call.args[0] for call in chat_window.logger.critical.call_args_list] == [composed]
@@ -164,18 +157,11 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
         TortoiseUserRepository,
     )
     from ushareiplay.adapters.inbound.runtime.chat_intake import classify_chat_line
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.modules.command.use_cases import KeywordUseCases
     from ushareiplay.modules.user.domain import MemorySettings
     from ushareiplay.modules.user.use_cases import UserMemoryService
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
     from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
-
-    try:
-        MessageQueue.initialize()
-    except Exception:
-        pass
-    await MessageQueue.instance().clear_queue()
 
     users = TortoiseUserRepository()
     chat_logs = TortoiseChatLogRepository()

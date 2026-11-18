@@ -27,12 +27,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.use_cases import RoomStateService
 from ushareiplay.modules.room.row_editor import (
     RowSkin,
     RowStep,
     WriteOutcome,
 )
-from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/modules/room'
@@ -86,15 +86,6 @@ GUEST_SKIP_RESULTS = {
 FIELDS = ('topic', 'notice', 'title')
 
 
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    RoomProfileManager.reset_instance()
-    RoomState.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
-    RoomState.reset_instance()
-
-
 class _RoomTextFinder:
     """判定读（房名 / 公告），与 `test_room_profile_title.py` 同一个形状。"""
 
@@ -134,8 +125,10 @@ class _Handler:
 
 
 def _profile(driver=None, handler=None):
-    profile = RoomProfileManager.initialize(
-        handler=handler or _Handler(), drawer_driver=driver
+    profile = RoomProfileManager(
+        handler=handler or _Handler(),
+        drawer_driver=driver,
+        room_state=RoomStateService(),
     )
     # 确认提交后的静默等待是真实 Appium 时序，离线测试直接跳过。
     profile.topic_settle_seconds = 0
@@ -164,9 +157,9 @@ def _flush(profile, field):
     return getattr(profile, f'update_{field}')()
 
 
-def _guest_room():
+def _guest_room(profile):
     """把房间状态临时切成「在别人的房间里」。"""
-    room_state = RoomState.initialize()
+    room_state = profile.room_state
     room_state.is_guest_room = True
     return room_state
 
@@ -186,7 +179,7 @@ def test_a_guest_room_skips_every_row_the_same_way(field):
     _queue(profile, field, '夜曲')
     assert profile.drafts.last_attempt_at(field) is None
 
-    _guest_room()
+    _guest_room(profile)
     result = _flush(profile, field)
 
     assert result == GUEST_SKIP_RESULTS[field]
@@ -205,7 +198,7 @@ def test_a_guest_room_skip_keeps_the_other_fields_budgets_intact(field):
     profile = _profile(driver)
     _queue(profile, field, '夜曲')
 
-    _guest_room()
+    _guest_room(profile)
     _flush(profile, field)
 
     for other in FIELDS:
@@ -380,7 +373,7 @@ def test_a_skipped_row_never_advances_the_cooldown_clock(field):
         original(name, now),
     )[1]
 
-    _guest_room()
+    _guest_room(profile)
     _flush(profile, field)
 
     assert calls == [], '跳过不许记账'

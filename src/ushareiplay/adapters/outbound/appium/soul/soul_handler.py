@@ -1,33 +1,22 @@
 import logging
 import time
 
-from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
-from ushareiplay.core.app_handler import AppHandler
-from ushareiplay.core.singleton import Singleton
+from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
 
 
-class SoulHandler(AppHandler, Singleton):
+class SoulHandler(AppHandler):
     # 抢麦后就座动画/界面刷新的等待上限（秒）
     SEAT_SETTLE_TIMEOUT = 3.0
 
-    def __init__(self, driver, config, controller):
+    def __init__(self, driver, config, controller, *, logger=None):
         logging.getLogger('SoulHandler').debug("SoulHandler.__init__ 开始")
-        super().__init__(driver, config, controller)
+        super().__init__(driver, config, controller, logger=logger)
         self.logger.debug("SoulHandler AppHandler 初始化完成")
-        # 延迟初始化 message_manager，避免循环依赖
-        self._message_manager = None
         self.previous_message_ids = set()  # Store previous element IDs
         self.party_id = None
         self.last_content = None  # Last message content
         self.second_last_content = None  # Second last message content
         self.logger.debug("SoulHandler.__init__ 完成")
-
-    @property
-    def message_manager(self):
-        """延迟获取 MessageManager 实例"""
-        if self._message_manager is None:
-            self._message_manager = MessageManager.instance()
-        return self._message_manager
 
     def is_chat_window_open(self) -> bool:
         """检查聊天输入窗口是否打开/可见。

@@ -11,9 +11,8 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Mapping, Optional, Tuple
+from typing import Callable, Mapping, Optional, Tuple
 
-from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import ConfigError, ConfigView
 
 
@@ -118,6 +117,7 @@ class ConfigReloadManager:
         config_path: str = "config.yaml",
         sleep_manager=None,
         room_state=None,
+        load_config: Optional[Callable[[str], dict]] = None,
     ):
         self.config = config
         self.event_manager = event_manager
@@ -125,11 +125,14 @@ class ConfigReloadManager:
         self.config_path = config_path
         self.sleep_manager = sleep_manager
         self.room_state = room_state
+        self._load_config = load_config
 
     def reload(self) -> ReloadReport:
         """重新读取配置并热更新各组件；失败时活配置一字不改。"""
+        if self._load_config is None:
+            return ReloadReport(success=False, message="配置文件读取失败：未配置 load_config")
         try:
-            new_config = ConfigLoader.load_config(self.config_path)
+            new_config = self._load_config(self.config_path)
         except Exception as exc:
             return ReloadReport(success=False, message=f"配置文件读取失败：{exc}")
 

@@ -19,12 +19,12 @@ import pytest
 
 from ushareiplay.adapters.inbound.chat.playlist import PlaylistCommand
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackTrack
 from ushareiplay.modules.playback.use_cases import PlaySong, PlaybackMuting, PlaylistSession
 
 _CURRENT_PLAY_SONG = None
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
 
@@ -256,7 +256,7 @@ def test_playlist_command_declares_no_command_level_muting(initialized_test_sing
 
 def test_command_manager_owns_no_playback_muting_guard(initialized_test_singletons):
     """`CommandManager` 不再知道 `PlaybackMuting` 的存在（ADR-0007）。"""
-    manager = CommandManager.instance()
+    manager = CommandManager()
 
     assert not hasattr(manager, "playback_muting_guard")
 

@@ -22,7 +22,7 @@ __elements__ = ["lucky_bag_entry"]
 import time
 from typing import Callable, Optional
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class LuckyBagEntryEvent(BaseEvent):

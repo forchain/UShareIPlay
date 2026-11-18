@@ -8,7 +8,7 @@ __elements__ = ["chat_room_title"]
 
 import time
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class ChatRoomTitleEvent(BaseEvent):

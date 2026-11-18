@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
 
 
 class KeyActions:

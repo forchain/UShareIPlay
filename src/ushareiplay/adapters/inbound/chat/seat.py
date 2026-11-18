@@ -1,6 +1,6 @@
 """`:seat` 入站适配器：解析参数并委派给 `SeatService` / `SeatObservationService`。"""
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class SeatCommand(BaseCommand):

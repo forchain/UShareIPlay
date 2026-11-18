@@ -50,7 +50,7 @@ class RuntimeLogging:
         self, config: Optional[dict], default_rel: str = "logs"
     ) -> Path:
         """Resolve the configured log directory, falling back to defaults."""
-        from ushareiplay.core.config_loader import ConfigLoader
+        from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
         from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
         configured = _logging_directory(config)

@@ -38,7 +38,7 @@ def _timer_use_cases(clock=None):
     use_cases = TimerUseCases(
         repository=repository,
         clock=clock or FakeClock(NOW),
-        sink=QueueTimerMessageSink(MessageQueue.instance()),
+        sink=QueueTimerMessageSink(MessageQueue()),
         logger=_DummyLogger(),
     )
     return use_cases, repository

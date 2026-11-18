@@ -7,7 +7,7 @@
 import re
 import time
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class UserCountEvent(BaseEvent):

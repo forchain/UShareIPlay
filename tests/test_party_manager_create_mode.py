@@ -1,15 +1,15 @@
 from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
-from ushareiplay.modules.room import party_create_mode
+from ushareiplay.modules.room import RoomStateService, party_create_mode
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _PartyHarness:
-    def __init__(self):
+    def __init__(self, room_state=None):
         self._handler = None
         self._logger = None
+        self.room_state = room_state or RoomStateService()
 
     def _create_party_flow(self):
-        from tests.legacy_state import RoomState
         driver = SoulPartyDriver(self._handler)
         cfg = self._handler.config
         created, actual_rec = driver.create_party_flow(
@@ -19,7 +19,7 @@ class _PartyHarness:
             target_party_type_element=cfg.value('target_party_type_element', 'party_type_singing'),
         )
         if created and actual_rec is not None:
-            RoomState.instance().recommendation_enabled = actual_rec
+            self.room_state.recommendation_enabled = actual_rec
         return created
 
 
@@ -264,8 +264,6 @@ def test_party_create_flow_skips_room_type_change_when_disabled():
 
 
 def test_party_create_flow_disables_recommendation_and_waits_disappear():
-    from tests.legacy_state import RoomState
-    RoomState.initialize()
     manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
@@ -307,7 +305,7 @@ def test_party_create_flow_disables_recommendation_and_waits_disappear():
     assert close_party_notification.clicked is True
     assert 'close_party_notification' in disappeared
     assert 'party_type_singing' in disappeared
-    assert RoomState.instance().recommendation_enabled is False
+    assert manager.room_state.recommendation_enabled is False
 
 
 def test_party_create_flow_retries_and_succeeds_when_first_type_click_misses():
@@ -387,8 +385,6 @@ def test_party_create_flow_default_skips_chat_type_and_clicks_create_party():
 
 def test_party_create_flow_disables_recommendation_and_directly_creates_party():
     """关闭推荐分发后直接点击创建房间，不依赖聊天类型按钮"""
-    from tests.legacy_state import RoomState
-    RoomState.initialize()
     manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
@@ -418,7 +414,7 @@ def test_party_create_flow_disables_recommendation_and_directly_creates_party():
     assert ok is True
     assert party_state_entry.clicked is True
     assert close_party_notification.clicked is True
-    assert RoomState.instance().recommendation_enabled is False
+    assert manager.room_state.recommendation_enabled is False
     assert create_party_btn.clicked is True
 
 

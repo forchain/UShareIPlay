@@ -7,15 +7,11 @@ from ushareiplay.adapters.inbound.chat.album import AlbumCommand
 from ushareiplay.adapters.inbound.chat.singer import SingerCommand
 from ushareiplay.adapters.inbound.chat.play import PlayCommand
 from ushareiplay.modules.playback.domain import PlaybackMode
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.modules.room import InfoManager
-from tests.legacy_state import OnlineListScraper
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomStateService
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.playback.use_cases import PlaylistSession
-from tests.legacy_state import PresenceTracker
-from tests.legacy_state import RoomState
 from ushareiplay.adapters.outbound.persistence.models.user import User
-from ushareiplay.dal.user_dao import UserDAO
 from tortoise import Tortoise
 import pytest_asyncio
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
@@ -38,21 +34,14 @@ async def user_db():
 def clean_info_manager():
     from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
-    for cls in (
-        RoomState,
-        PresenceTracker,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state._logger = fake_logger
-    presence = PresenceTracker.initialize()
+    presence = PresenceTracker()
     presence._logger = fake_logger
     playlist = PlaylistSession(
         config=ConfigView(
@@ -68,9 +57,7 @@ def clean_info_manager():
         avatar_usernames=TortoiseUserRepository().get_all_avatar_usernames,
         logger=fake_logger,
     )
-    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
-    broadcaster._logger = fake_logger
-    OnlineListScraper.initialize()._logger = fake_logger
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist, logger=fake_logger)
     return InfoManager(
         room_state=room_state,
         presence=presence,
@@ -90,7 +77,7 @@ async def test_radio_empty_params_blocked_when_user_is_playing(
     """
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
-    PresenceTracker.instance().update_online_users(["不约儿童🐏🐏", "Joyer", "Chainer"])
+    info_manager._presence.update_online_users(["不约儿童🐏🐏", "Joyer", "Chainer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -124,7 +111,7 @@ async def test_radio_empty_params_allowed_when_timer_or_admin_is_playing(
     """
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "Timer"
-    PresenceTracker.instance().update_online_users(["Joyer", "Chainer"])
+    info_manager._presence.update_online_users(["Joyer", "Chainer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -162,7 +149,7 @@ async def test_playlist_guardian_protects_with_avatar_online(
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
     # 房间在线列表中只有分身 "儿童不易~🐏🐏"
-    PresenceTracker.instance().update_online_users(["儿童不易~🐏🐏", "Joyer"])
+    info_manager._presence.update_online_users(["儿童不易~🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -196,7 +183,7 @@ async def test_playlist_guardian_allows_same_user_avatar_to_change_playlist(
 
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
-    PresenceTracker.instance().update_online_users(["儿童不易~🐏🐏", "Joyer"])
+    info_manager._presence.update_online_users(["儿童不易~🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -233,7 +220,7 @@ async def test_playlist_guardian_released_when_all_avatars_leave(
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
     # 主账号和分身均不在在线列表中
-    PresenceTracker.instance().update_online_users(["其他房客", "Joyer"])
+    info_manager._presence.update_online_users(["其他房客", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -287,7 +274,7 @@ def playback_engine(clean_info_manager):
 async def test_playlist_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
-    PresenceTracker.instance().update_online_users(["不约儿童🐏🐏", "Joyer"])
+    info_manager._presence.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -306,7 +293,7 @@ async def test_playlist_command_blocked_when_other_user_playing(clean_info_manag
 async def test_album_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
-    PresenceTracker.instance().update_online_users(["不约儿童🐏🐏", "Joyer"])
+    info_manager._presence.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -325,7 +312,7 @@ async def test_album_command_blocked_when_other_user_playing(clean_info_manager,
 async def test_singer_command_blocked_when_other_user_playing(clean_info_manager, playback_engine):
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "不约儿童🐏🐏"
-    PresenceTracker.instance().update_online_users(["不约儿童🐏🐏", "Joyer"])
+    info_manager._presence.update_online_users(["不约儿童🐏🐏", "Joyer"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -384,7 +371,7 @@ async def test_admin_and_owner_can_override_user_playlist(clean_info_manager, pl
     """
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "普通用户"
-    PresenceTracker.instance().update_online_users(["普通用户", "Joyer", "Outlier"])
+    info_manager._presence.update_online_users(["普通用户", "Joyer", "Outlier"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -427,7 +414,7 @@ async def test_normal_user_can_play_when_admin_or_owner_is_playing(
     """
     info_manager = clean_info_manager
     info_manager._playlist.player_name = "Outlier"
-    PresenceTracker.instance().update_online_users(["普通用户", "Outlier"])
+    info_manager._presence.update_online_users(["普通用户", "Outlier"])
 
     mock_controller = MagicMock()
     mock_controller.soul_handler = MagicMock()
@@ -465,7 +452,7 @@ async def test_single_song_playback_does_not_protect_the_room(
     没有歌单在放。守护保护的是「某位普通用户正在放的歌单」，单曲不在其列。
     """
     info_manager = clean_info_manager
-    PresenceTracker.instance().update_online_users(["半點心", "不约儿童", "Joyer"])
+    info_manager._presence.update_online_users(["半點心", "不约儿童", "Joyer"])
     room_player_before = info_manager.player_name
 
     command = PlayCommand(SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock(), play_song=playback_engine.play_song))
@@ -498,7 +485,7 @@ async def test_single_song_request_interrupts_another_user_playlist(
     同时它也不改写房间的歌单上下文：那张歌单仍归 不约儿童。
     """
     info_manager = clean_info_manager
-    PresenceTracker.instance().update_online_users(["石碘", "不约儿童", "Joyer"])
+    info_manager._presence.update_online_users(["石碘", "不约儿童", "Joyer"])
 
     await PlaylistCommand(SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock(), play_song=playback_engine.play_song)).do_process(
         MessageInfo(content="/playlist 乖宝的私藏歌单", nickname="不约儿童"),
@@ -525,7 +512,7 @@ async def test_playlist_command_still_protects_against_another_playlist(
 ):
     """反向兜底：连续队列之间照旧互相守护 —— 放开单点不等于放开歌单。"""
     info_manager = clean_info_manager
-    PresenceTracker.instance().update_online_users(["半點心", "不约儿童", "Joyer"])
+    info_manager._presence.update_online_users(["半點心", "不约儿童", "Joyer"])
 
     await PlaylistCommand(SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock(), play_song=playback_engine.play_song)).do_process(
         MessageInfo(content="/playlist 流行歌单", nickname="半點心"), ["流行歌单"]
@@ -546,7 +533,7 @@ async def test_favorites_request_is_still_blocked_by_another_user_playlist(
 ):
     """`:play` 不带参数是「播放全部收藏」，属于连续队列 —— 它仍然要问角色策略。"""
     info_manager = clean_info_manager
-    PresenceTracker.instance().update_online_users(["半點心", "不约儿童", "Joyer"])
+    info_manager._presence.update_online_users(["半點心", "不约儿童", "Joyer"])
 
     await PlaylistCommand(SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock(), play_song=playback_engine.play_song)).do_process(
         MessageInfo(content="/playlist 流行歌单", nickname="半點心"), ["流行歌单"]

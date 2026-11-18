@@ -19,16 +19,16 @@ from lxml import etree
 
 from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
-from ushareiplay.core.driver_decorator import with_driver_recovery
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 import asyncio
 
+_NON_EVENT_MODULES = frozenset({"event_manager", "base_event", "event_elements"})
 
-class EventManager(Singleton):
+
+class EventManager:
     """
     事件管理器 - 管理所有事件相关的逻辑
-    单例模式，提供统一的事件管理服务
     """
 
     def __init__(self, handler=None):
@@ -234,9 +234,12 @@ class EventManager(Singleton):
                 self.logger.warning(f"Events directory not found: {self.events_path}")
                 return
 
-            # 获取所有 .py 文件
-            event_files = [f.stem for f in self.events_path.glob('*.py')
-                           if f.is_file() and not f.stem.startswith('__')]
+            # 获取所有 .py 文件（排除管理器与基类模块）
+            event_files = [
+                f.stem
+                for f in self.events_path.glob('*.py')
+                if f.is_file() and not f.stem.startswith('__') and f.stem not in _NON_EVENT_MODULES
+            ]
 
             # 加载每个事件模块
             for module_name in event_files:

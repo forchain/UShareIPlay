@@ -5,8 +5,7 @@
 这里保留这一层测试适配：handler 被翻译成用例需要的端口，断言一条不改。
 """
 
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.singleton import Singleton
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
 from ushareiplay.modules.room.ports import RoomProfileSurfacePort
 from ushareiplay.modules.room.room_profile import RoomProfileManager as _RoomProfileManager
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
@@ -73,15 +72,21 @@ class _HandlerSurface(RoomProfileSurfacePort):
 
 
 class _DispatchMessenger(RoomMessenger):
-    """旧测试靠 monkeypatch `MessageDispatch` 观察公屏播报，保持同一个出口。"""
+    """直接经 MessageDispatch 发送公屏播报。"""
 
-    def __init__(self, handler):
+    def __init__(self, handler, dispatch=None):
         self._handler = handler
+        self._dispatch = dispatch
 
     def send_screen_message(self, message: str, silent: bool = False):
-        if not MessageDispatch.is_initialized():
-            return
-        MessageDispatch.instance().bind_handler(self._handler).send_screen_message(message)
+        dispatch = self._dispatch
+        if dispatch is None:
+            ctrl = getattr(self._handler, "controller", None) if self._handler is not None else None
+            dispatch = getattr(ctrl, "message_dispatch", None) if ctrl is not None else None
+        if dispatch is None and self._handler is not None:
+            dispatch = MessageDispatch(self._handler)
+        if dispatch is not None:
+            dispatch.bind_handler(self._handler).send_screen_message(message)
 
 
 def _handler_config(handler):
@@ -98,8 +103,8 @@ def _handler_config(handler):
     return ConfigSectionView('soul', {})
 
 
-class RoomProfileManager(_RoomProfileManager, Singleton):
-    """旧单例名 + 注入式用例：测试只换 import，行为断言不动。"""
+class RoomProfileManager(_RoomProfileManager):
+    """测试注入适配器：从 handler 推导端口，行为断言不动。"""
 
     def __init__(
         self,
@@ -123,6 +128,10 @@ class RoomProfileManager(_RoomProfileManager, Singleton):
             messenger=messenger or _DispatchMessenger(handler),
             logger=logger,
         )
+        # 组合根在启动时替房间档案登记「换房即作废」的副作用；这里照做，
+        # 测试直接构造用例时才有一致的换房语义。
+        if self._room_state is not None:
+            self._room_state.add_room_change_listener(self.invalidate_ui_state)
 
     def adopt_handler(self, handler, drawer_driver=None, settings_driver=None):
         super().adopt_handler(

@@ -10,7 +10,7 @@ from lxml import etree
 
 from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import SeatPanelReader
-from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 from ushareiplay.modules.seat.domain import (
     MIN_INTERACTABLE_DESK_HEIGHT,
     AvatarTapPolicy,

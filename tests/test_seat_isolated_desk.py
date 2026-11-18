@@ -279,18 +279,16 @@ async def test_method_is_reachable_through_the_seat_manager_facade():
 @pytest.mark.asyncio
 async def test_the_facade_method_returns_nothing_in_a_guest_room():
     """他人房间：客房守卫短路，返回显式命名的空结果（None）。"""
-    from tests.legacy_state import RoomState
+    from ushareiplay.modules.room.use_cases import RoomStateService
 
-    subsystem, observation, seat_ui = _make_subsystem()
-    manager = build_seat_service(handler=subsystem._panel.handler, seat_ui=seat_ui)
-
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
-    try:
-        assert await manager.find_verified_isolated_empty_desk() is None
-    finally:
-        RoomState.reset_instance()
+    subsystem, observation, seat_ui = _make_subsystem()
+    manager = build_seat_service(
+        handler=subsystem._panel.handler, seat_ui=seat_ui, room_state=room_state
+    )
+
+    assert await manager.find_verified_isolated_empty_desk() is None
 
 
 # ---------------------------------------------------------------------------

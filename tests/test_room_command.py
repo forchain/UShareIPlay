@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from ushareiplay.adapters.inbound.chat.room import RoomCommand
-from ushareiplay.models import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class _MockController:

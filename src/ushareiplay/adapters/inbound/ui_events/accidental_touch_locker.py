@@ -9,9 +9,8 @@ __elements__ = ["accidental_touch_locker"]
 
 import time
 
-from appium.webdriver.common.appiumby import AppiumBy
-
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
+from ushareiplay.adapters.outbound.appium.locator import Locator
 
 LOCKER_RESOURCE_ID = "com.android.systemui:id/locker_img_view"
 
@@ -70,7 +69,7 @@ class AccidentalTouchLockerEvent(BaseEvent):
 
                 try:
                     el2 = self.handler.driver.find_element(
-                        AppiumBy.ID, LOCKER_RESOURCE_ID
+                        *Locator.from_value(LOCKER_RESOURCE_ID).appium
                     )
                     if el2.is_displayed():
                         self.logger.warning(

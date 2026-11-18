@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from tests.legacy_state import RoomState
+from ushareiplay.modules.room.use_cases import RoomStateService
 
 
 class RuntimeStub:
@@ -53,37 +53,36 @@ class DummyCommand:
         return {"message": "OK"}
 
 
-@pytest.fixture(autouse=True)
-def _reset_singletons():
-    from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-    MessageDispatch.initialize()
-    RoomState.reset_instance()
+@pytest.fixture
+def room_state():
     from ushareiplay.modules.command.domain import CommandCatalogue
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 
-    room_state = RoomState.initialize(
+    state = RoomStateService(
         catalogue=CommandCatalogue.from_config(ConfigLoader.load_config())
     )
-    room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    yield
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-    RoomState.reset_instance()
+    state._logger = SimpleNamespace(info=lambda _msg: None)
+    return state
+
+
+def _make_command_manager(room_state):
+    from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+
+    cm = CommandManager(
+        room_state=room_state,
+        users=TortoiseUserRepository(),
+        message_dispatch=MessageDispatch(),
+    )
+    cm.configure_runtime(RuntimeStub())
+    cm._handler = HandlerStub(config={"system_users": ["Timer"]})
+    return cm
 
 
 @pytest.mark.asyncio
-async def test_guest_room_allows_music_commands():
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    cm = CommandManager.initialize()
-    cm.configure_runtime(RuntimeStub())
-    cm._handler = HandlerStub(config={"system_users": ["Timer"]})
-
-    room_state = RoomState.instance()
+async def test_guest_room_allows_music_commands(room_state):
+    cm = _make_command_manager(room_state)
     room_state.is_guest_room = True
 
     dummy_cmd = DummyCommand()
@@ -105,14 +104,8 @@ async def test_guest_room_allows_music_commands():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_room_management_commands():
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    cm = CommandManager.initialize()
-    cm.configure_runtime(RuntimeStub())
-    cm._handler = HandlerStub(config={"system_users": ["Timer"]})
-
-    room_state = RoomState.instance()
+async def test_guest_room_blocks_room_management_commands(room_state):
+    cm = _make_command_manager(room_state)
     room_state.is_guest_room = True
 
     management_prefixes = ["theme", "title", "topic", "notice", "seat", "pack", "admin", "timer", "recommend"]
@@ -137,14 +130,8 @@ async def test_guest_room_blocks_room_management_commands():
 
 
 @pytest.mark.asyncio
-async def test_host_room_allows_all_commands():
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    cm = CommandManager.initialize()
-    cm.configure_runtime(RuntimeStub())
-    cm._handler = HandlerStub(config={"system_users": ["Timer"]})
-
-    room_state = RoomState.instance()
+async def test_host_room_allows_all_commands(room_state):
+    cm = _make_command_manager(room_state)
     room_state.is_guest_room = False
 
     dummy_cmd = DummyCommand()
@@ -166,7 +153,7 @@ async def test_host_room_allows_all_commands():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_filters_commands_for_natural_language_resolver(monkeypatch):
+async def test_guest_room_filters_commands_for_natural_language_resolver(monkeypatch, room_state):
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         NaturalLanguageFallbackAdapter,
         RoomInfoProvider,
@@ -190,7 +177,6 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
         {"prefix": "vol", "level": 1},
         {"prefix": "seat", "level": 1},
     ]
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
     fallback = NaturalLanguageFallbackAdapter(
         commands_config=lambda: commands_config,
@@ -233,10 +219,9 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_all_seat_manager_actions():
+async def test_guest_room_blocks_all_seat_manager_actions(room_state):
     from tests.seat_support import build_seat_service
 
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
 
     seat_mgr = build_seat_service(room_state=room_state)
@@ -275,7 +260,7 @@ async def test_guest_room_blocks_all_seat_manager_actions():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_seat_check_on_enter_and_return():
+async def test_guest_room_blocks_seat_check_on_enter_and_return(room_state):
     """客房里进入/返回都不复核**座位**。
 
     #436 之前这条守卫挂在 `:seat` 命令的 `user_enter` / `user_return` 钩子上，靠
@@ -284,9 +269,9 @@ async def test_guest_room_blocks_seat_check_on_enter_and_return():
     """
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
-    RoomState.instance().is_guest_room = True
+    room_state.is_guest_room = True
 
-    cm = CommandManager.initialize()
+    cm = CommandManager(room_state=room_state)
     mock_check = AsyncMock()
     cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=mock_check))
 
@@ -299,7 +284,7 @@ async def test_guest_room_blocks_seat_check_on_enter_and_return():
 
 
 @pytest.mark.asyncio
-async def test_host_room_checks_seats_on_enter_and_return():
+async def test_host_room_checks_seats_on_enter_and_return(room_state):
     """本房进入/返回都要复核座位。
 
     这条是 #436 的**回归哨**：座位复核原本是 `:seat` 命令的一个副作用订阅者，只靠
@@ -308,9 +293,9 @@ async def test_host_room_checks_seats_on_enter_and_return():
     """
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
-    RoomState.instance().is_guest_room = False
+    room_state.is_guest_room = False
 
-    cm = CommandManager.initialize()
+    cm = CommandManager(room_state=room_state)
     mock_check = AsyncMock()
     cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=mock_check))
 
@@ -323,117 +308,98 @@ async def test_host_room_checks_seats_on_enter_and_return():
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_room_name_and_title_updates():
+async def test_guest_room_blocks_room_name_and_title_updates(room_state):
     from tests.room_profile_support import RoomProfileManager
 
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RoomProfileManager.reset_instance()
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager(room_state=room_state)
     profile.adopt_handler(HandlerStub(config={}))
     profile._logger = SimpleNamespace(
         info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None
     )
 
-    try:
-        # set_theme in guest room
-        res = profile.set_theme("听歌")
-        assert "error" in res
+    # set_theme in guest room
+    res = profile.set_theme("听歌")
+    assert "error" in res
 
-        # update_title in guest room
-        profile.pending_ui_update = True
-        res = profile.update_title()
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
+    # update_title in guest room
+    profile.pending_ui_update = True
+    res = profile.update_title()
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
-        # _write_title_in_drawer in guest room
-        res = profile._write_title_in_drawer("新歌速递")
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
+    # _write_title_in_drawer in guest room
+    res = profile._write_title_in_drawer("新歌速递")
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
-        # set_title in guest room
-        res = profile.set_title("新歌速递")
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
-    finally:
-        RoomProfileManager.reset_instance()
+    # set_title in guest room
+    res = profile.set_title("新歌速递")
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_notice_updates():
+async def test_guest_room_blocks_notice_updates(room_state):
     from tests.room_profile_support import RoomProfileManager
 
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RoomProfileManager.reset_instance()
-    profile = RoomProfileManager.initialize()
-    profile._handler = HandlerStub(config={})
+    profile = RoomProfileManager(handler=HandlerStub(config={}), room_state=room_state)
     profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
-    try:
-        res = profile.set_notice("欢迎来听歌")
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
+    res = profile.set_notice("欢迎来听歌")
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
-        # 已经排队的公告在别人房间里也不会被写出去（草稿留着，冷却不动）
-        profile.drafts.set_pending("notice", "欢迎来听歌")
-        res = profile.update_notice()
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
-        assert profile.drafts.pending("notice") == "欢迎来听歌"
+    # 已经排队的公告在别人房间里也不会被写出去（草稿留着，冷却不动）
+    profile.drafts.set_pending("notice", "欢迎来听歌")
+    res = profile.update_notice()
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
+    assert profile.drafts.pending("notice") == "欢迎来听歌"
 
-        res = profile.restore_notice("欢迎来听歌")
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
-    finally:
-        RoomProfileManager.reset_instance()
+    res = profile.restore_notice("欢迎来听歌")
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_recommendation_sync():
+async def test_guest_room_blocks_recommendation_sync(room_state):
     from tests.room_profile_support import RoomProfileManager
 
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    RoomProfileManager.reset_instance()
-    rm = RoomProfileManager.initialize(handler=HandlerStub(config={}))
+    rm = RoomProfileManager(handler=HandlerStub(config={}), room_state=room_state)
     rm._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
-    try:
-        res = rm.ensure_synced_on_return()
-        assert res.get("skipped") is True
-        assert res.get("reason") == "guest_room"
+    res = rm.ensure_synced_on_return()
+    assert res.get("skipped") is True
+    assert res.get("reason") == "guest_room"
 
-        res = rm.update_recommendation_ui(True)
-        assert "error" in res
-    finally:
-        RoomProfileManager.reset_instance()
+    res = rm.update_recommendation_ui(True)
+    assert "error" in res
 
 
 @pytest.mark.asyncio
-async def test_guest_room_blocks_events_and_window_audit():
+async def test_guest_room_blocks_events_and_window_audit(room_state):
     from ushareiplay.adapters.inbound.ui_events.chat_room_title import ChatRoomTitleEvent
     from ushareiplay.adapters.inbound.ui_events.party_name_violation_later import PartyNameViolationLaterEvent
     from tests.room_profile_support import RoomProfileManager
 
-    room_state = RoomState.instance()
     room_state.is_guest_room = True
 
     handler = HandlerStub(config={})
+    profile = RoomProfileManager(handler=handler, room_state=room_state)
+    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
+    handler.controller = SimpleNamespace(room_state=room_state, room_profile_manager=profile)
 
     # ChatRoomTitleEvent in guest room
     evt = ChatRoomTitleEvent(handler)
     fake_wrapper = SimpleNamespace(text="开发测试，慎入", content="开发测试，慎入")
     res = await evt.handle("chat_room_title", fake_wrapper)
     assert res is False
-
-    # 房间档案的抽屉审计在客房里
-    profile = RoomProfileManager.instance()
-    profile.adopt_handler(handler)
-    profile._logger = SimpleNamespace(info=lambda _msg: None, warning=lambda _msg: None, error=lambda _msg: None)
 
     res = profile.audit_and_repair()
     assert res.get("skipped") is True
@@ -443,7 +409,7 @@ async def test_guest_room_blocks_events_and_window_audit():
     assert res.get("skipped") == "guest_room"
 
 
-def _party_manager_with_stub_handler(monkeypatch):
+def _party_manager_with_stub_handler(monkeypatch, room_state):
     """真实的 PartyService + stub handler：房间核对判定现在归它所有。"""
     from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
     from ushareiplay.modules.room import PartyService
@@ -451,22 +417,21 @@ def _party_manager_with_stub_handler(monkeypatch):
     handler = HandlerStub(config={})
     manager = PartyService(
         driver=SoulPartyDriver(handler),
-        room_state=RoomState.instance(),
+        room_state=room_state,
         logger=handler.logger,
     )
-    handler.controller = SimpleNamespace(party_service=manager)
+    handler.controller = SimpleNamespace(party_service=manager, room_state=room_state)
     return manager, handler
 
 
 @pytest.mark.asyncio
-async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monkeypatch):
+async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monkeypatch, room_state):
     from unittest.mock import AsyncMock
     from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
-    room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, room_state)
     monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     evt = RoomIdEvent(handler)
@@ -479,14 +444,13 @@ async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_room_id_event_match_updates_state(monkeypatch):
+async def test_room_id_event_match_updates_state(monkeypatch, room_state):
     from unittest.mock import AsyncMock
     from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
-    room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, room_state)
     monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     evt = RoomIdEvent(handler)
@@ -501,14 +465,13 @@ async def test_room_id_event_match_updates_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monkeypatch):
+async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monkeypatch, room_state):
     from unittest.mock import MagicMock
     from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
-    room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, room_state)
     info_mock = MagicMock()
     debug_mock = MagicMock()
     party_manager._logger = SimpleNamespace(
@@ -534,14 +497,13 @@ async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monk
 
 
 @pytest.mark.asyncio
-async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
+async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch, room_state):
     from unittest.mock import AsyncMock
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
-    room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
 
-    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch, room_state)
     monkeypatch.setattr(party_manager, "leave_and_recreate_party", AsyncMock(return_value=True))
 
     element_finder = type('_EF', (), {
@@ -554,18 +516,17 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
         'party_id': None,
     })()
 
-    controller = SimpleNamespace(
-        soul_handler=soul_handler,
-        party_service=party_manager,
-        logger=type('_L', (), {'warning': lambda *a: None, 'info': lambda *a: None, 'debug': lambda *a: None})(),
-    )
+    loop = RuntimeLoop.__new__(RuntimeLoop)
+    loop.soul_handler = soul_handler
+    loop.party_service = party_manager
+    loop.logger = type('_L', (), {'warning': lambda *a: None, 'info': lambda *a: None, 'debug': lambda *a: None})()
 
-    await AppController._detect_initial_room_state(controller)
+    await loop._detect_initial_room_state()
     party_manager.leave_and_recreate_party.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_new_seat_entry_inherits_guest_room_guard():
+async def test_new_seat_entry_inherits_guest_room_guard(room_state):
     """证明新增座位入口无需复制守卫即可获得同样的客房行为。"""
     from ushareiplay.modules.seat.domain import (
         guest_room_guard,
@@ -593,7 +554,6 @@ async def test_new_seat_entry_inherits_guest_room_guard():
             return {"user": "checked"}
 
     mgr = DummySeatManager()
-    room_state = RoomState.instance()
     mgr.room_state = room_state
 
     # 1. 客房状态：无需复制任何客房检测样板，直接短路返回对应显式命名的返回形状

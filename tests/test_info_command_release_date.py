@@ -3,25 +3,17 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
-from ushareiplay.modules.room import InfoManager
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomStateService
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.playback.use_cases import PlaylistSession
-from tests.legacy_state import PresenceTracker
-from tests.legacy_state import RoomState
 
 
 @pytest.fixture
 def info_manager():
-    for cls in (
-        PlaybackBroadcaster,
-        PresenceTracker,
-        RoomState,
-    ):
-        cls.reset_instance()
     playlist = PlaylistSession()
-    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
-    presence = PresenceTracker.initialize()
-    room_state = RoomState.initialize()
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist)
+    presence = PresenceTracker()
+    room_state = RoomStateService()
     return InfoManager(
         room_state=room_state,
         presence=presence,
@@ -38,23 +30,18 @@ class _MusicHandler:
         return "未知"
 
 
-def _patch_common_info_dependencies(monkeypatch, info_manager):
-    monkeypatch.setattr(
-        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
-        lambda: _MusicHandler(),
-    )
-    # 直接注入目标状态模块（见 ADR-0004）
-    PresenceTracker.instance()._online_users = set()
+def _patch_common_info_dependencies(info_manager):
+    info_manager._presence._online_users = set()
     info_manager._party_manager = SimpleNamespace(init_time=None)
 
 
 @pytest.mark.asyncio
-async def test_info_command_returns_empty_release_date_when_cache_missing(monkeypatch, info_manager):
-    _patch_common_info_dependencies(monkeypatch, info_manager)
+async def test_info_command_returns_empty_release_date_when_cache_missing(info_manager):
+    _patch_common_info_dependencies(info_manager)
     command = InfoCommand(
         SimpleNamespace(
             soul_handler=SimpleNamespace(),
-            music_handler=SimpleNamespace(),
+            music_handler=_MusicHandler(),
             info_manager=info_manager,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),
@@ -67,9 +54,9 @@ async def test_info_command_returns_empty_release_date_when_cache_missing(monkey
 
 
 @pytest.mark.asyncio
-async def test_info_command_preserves_cached_release_date(monkeypatch, info_manager):
-    _patch_common_info_dependencies(monkeypatch, info_manager)
-    PlaybackBroadcaster.instance()._playback_info_cache = {
+async def test_info_command_preserves_cached_release_date(info_manager):
+    _patch_common_info_dependencies(info_manager)
+    info_manager._playback_cache._playback_info_cache = {
         "song": "泼墨桃花",
         "singer": "林峯",
         "album": "爱在记忆中找你",
@@ -78,7 +65,7 @@ async def test_info_command_preserves_cached_release_date(monkeypatch, info_mana
     command = InfoCommand(
         SimpleNamespace(
             soul_handler=SimpleNamespace(),
-            music_handler=SimpleNamespace(),
+            music_handler=_MusicHandler(),
             info_manager=info_manager,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),

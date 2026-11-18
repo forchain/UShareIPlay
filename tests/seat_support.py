@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from tests import legacy_state
 from ushareiplay.adapters.outbound.appium.soul.seat_invite_driver import SeatInviteDriver
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import SeatPanelDriver
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import SeatPanelReader
@@ -12,6 +11,7 @@ from ushareiplay.adapters.outbound.persistence.seat_reservation_repository impor
     TortoiseSeatReservationRepository,
 )
 from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+from ushareiplay.modules.room.use_cases import RoomStateService
 from ushareiplay.modules.seat.use_cases import SeatObservationService, SeatService
 from ushareiplay.modules.shared.roles import RolePolicy
 
@@ -85,7 +85,7 @@ def build_seat_observation(
         ctrl = getattr(handler, "controller", None) if handler is not None else None
         room_state = getattr(ctrl, "room_state", None)
         if room_state is None:
-            room_state = legacy_state.room_state()
+            room_state = RoomStateService()
     if owner_nickname_provider is None:
 
         def _owner():
@@ -97,11 +97,12 @@ def build_seat_observation(
         owner_nickname_provider = _owner
 
     if on_focus_change is None:
-        from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
         async def _default_on_focus_change(before, after, **kw):
-            if CommandManager.is_initialized():
-                await CommandManager.instance().notify_focus_count_change(before, after, **kw)
+            ctrl = getattr(handler, "controller", None) if handler is not None else None
+            cmd_mgr = getattr(ctrl, "command_manager", None) if ctrl is not None else None
+            if cmd_mgr is not None:
+                await cmd_mgr.notify_focus_count_change(before, after, **kw)
 
         on_focus_change = _default_on_focus_change
 
@@ -158,7 +159,7 @@ def build_seat_service(
         ctrl = getattr(handler, "controller", None) if handler is not None else None
         room_state = getattr(ctrl, "room_state", None)
         if room_state is None:
-            room_state = legacy_state.room_state()
+            room_state = RoomStateService()
     if reservations is None:
         reservations = TortoiseSeatReservationRepository()
     if users is None:

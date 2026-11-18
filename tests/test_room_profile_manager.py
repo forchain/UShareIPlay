@@ -2,7 +2,7 @@
 
 这个模块是房间档案（抽屉会话 + 草稿状态）的唯一所有者。两个接缝被测：
 
-- 组合根创建的受保护单例（ADR-0009）：`.initialize(...)` 创建、`.instance()` 只读查找
+- 组合根是唯一的构造点：用例本身不再有单例入口（架构护栏断言）
 - 抽屉 UI 驱动端口：生产适配器与内存替身共用同一组抽屉原语
 
 抽屉的真实实现（Appium 细节）不在这些测试里 —— 那是 `SoulDrawerDriver` 的事。
@@ -16,18 +16,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.core.singleton import Singleton, SingletonError
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.modules.room.domain import ProfileDraftStore
+from ushareiplay.modules.room.use_cases import RoomStateService
 from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
-
-
-@pytest.fixture(autouse=True)
-def reset_room_profile_manager():
-    RoomProfileManager.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -35,36 +28,38 @@ def reset_room_profile_manager():
 # --------------------------------------------------------------------------
 
 
-def test_direct_constructor_is_not_a_creation_api():
-    with pytest.raises(SingletonError, match="Use RoomProfileManager.initialize"):
-        RoomProfileManager()
+def _room_profile_source() -> str:
+    from pathlib import Path
+
+    package = Path(__file__).resolve().parents[1] / "src" / "ushareiplay"
+    return (package / "modules" / "room" / "room_profile.py").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_instance_before_initialize_raises_a_clear_error():
-    with pytest.raises(SingletonError, match="RoomProfileManager has not been initialized"):
-        RoomProfileManager.instance()
+def test_the_room_profile_has_no_service_locator_entry_points():
+    """用例不再有单例入口：构造就是构造，不受保护也不可再取。"""
+    source = _room_profile_source()
 
-
-def test_initialize_creates_one_instance_and_instance_returns_it():
-    created = RoomProfileManager.initialize()
-    assert RoomProfileManager.instance() is created
-    assert RoomProfileManager.is_initialized() is True
-
-
-def test_reinitializing_outside_the_composition_root_is_forbidden():
-    RoomProfileManager.initialize()
-    with pytest.raises(SingletonError, match="already initialized"):
-        RoomProfileManager.initialize()
+    for retired in (
+        "def initialize(",
+        "def instance(",
+        "def is_initialized(",
+        "def reset_instance(",
+    ):
+        assert retired not in source, f"房间档案不得再暴露单例入口：{retired}"
 
 
 def test_the_composition_root_registers_it_and_nothing_else_for_the_room_profile():
     """组合根必须构造一次房间档案，而不是在别处懒创建。"""
+    from pathlib import Path
+
     source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[1]
         / "src"
         / "ushareiplay"
-        / "core"
-        / "app_controller.py"
+        / "bootstrap"
+        / "container.py"
     ).read_text(encoding="utf-8")
 
     assert "self.room_profile_manager = RoomProfileManager(" in source
@@ -73,10 +68,13 @@ def test_the_composition_root_registers_it_and_nothing_else_for_the_room_profile
     assert "RoomInfoWindow.initialize(" not in source
 
 
-def test_reset_all_instances_also_resets_it():
-    RoomProfileManager.initialize()
-    Singleton.reset_all_instances()
-    assert RoomProfileManager.is_initialized() is False
+def test_no_singleton_machinery_is_left_in_the_source_tree():
+    """旧的受保护单例机制连同它的模块一起下线。"""
+    from pathlib import Path
+
+    package = Path(__file__).resolve().parents[1] / "src" / "ushareiplay"
+
+    assert not (package / "core" / "singleton.py").exists()
 
 
 # --------------------------------------------------------------------------
@@ -86,7 +84,11 @@ def test_reset_all_instances_also_resets_it():
 
 def _profile(driver=None, handler=None):
     handler = handler or SimpleNamespace(logger=MagicMock())
-    return RoomProfileManager.initialize(handler=handler, drawer_driver=driver)
+    return RoomProfileManager(
+        handler=handler,
+        drawer_driver=driver,
+        room_state=RoomStateService(),
+    )
 
 
 class _Handler:
@@ -102,8 +104,6 @@ class _Handler:
 
 def _stub_sync_partners(monkeypatch, journal):
     """把审计里的四个字段换成会记账的替身，好断言批处理顺序。"""
-    from tests.legacy_state import RoomState
-
     def _record(key, result):
         journal.append(f"sync:{key}")
         return result
@@ -111,7 +111,6 @@ def _stub_sync_partners(monkeypatch, journal):
     # 四个字段现在全是本模块自己的字段（推荐分发与派对类型 #393、房名 #392、
     # 公告 #391），核对发生在同一次抽屉会话里，因此直接替换这四个方法，
     # 而不是别的 manager 的单例。
-    RoomState.initialize()
     monkeypatch.setattr(
         RoomProfileManager,
         "inspect_current_ui_status",
@@ -259,12 +258,12 @@ def test_ensure_closed_never_presses_back_when_no_drawer_marker_is_present():
 
 
 def test_is_open_is_false_before_anything_is_configured():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     assert profile.is_open() is False
 
 
 def test_ensure_open_reports_the_missing_app_instead_of_touching_the_ui():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     assert profile.ensure_open() == {"error": "Soul handler is not available"}
 
@@ -349,7 +348,7 @@ def test_an_unknown_field_is_rejected_rather_than_silently_created():
 
 
 def test_set_topic_queues_the_cleaned_text_against_the_topic_budget():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.adopt_handler(_Handler())
 
     result = profile.set_topic("  晚安 | 早点睡  ")
@@ -359,7 +358,7 @@ def test_set_topic_queues_the_cleaned_text_against_the_topic_budget():
 
 
 def test_set_topic_reports_the_remaining_cooldown_once_the_budget_is_spent():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.adopt_handler(_Handler())
     profile.drafts.mark_attempted("topic")
 
@@ -378,7 +377,7 @@ def test_set_notice_queues_against_its_own_slower_budget():
     """
     from datetime import datetime, timedelta
 
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.drafts.mark_attempted("title", now=datetime.now() - timedelta(minutes=2))
 
     result = profile.set_notice("今晚八点开播")
@@ -392,7 +391,7 @@ def test_set_notice_queues_against_its_own_slower_budget():
 
 
 def test_set_notice_reports_the_remaining_cooldown():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.drafts.mark_attempted("notice")
 
     result = profile.set_notice("今晚八点开播")
@@ -403,7 +402,7 @@ def test_set_notice_reports_the_remaining_cooldown():
 
 
 def test_set_title_cleans_the_banner_text_to_the_first_separator():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     result = profile.set_title("  夜曲｜周杰伦  ")
 
@@ -412,7 +411,7 @@ def test_set_title_cleans_the_banner_text_to_the_first_separator():
 
 
 def test_set_title_reports_the_remaining_cooldown_of_the_shared_title_budget():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.drafts.mark_attempted("title")
 
     result = profile.set_title("Lofi Girl")
@@ -422,7 +421,7 @@ def test_set_title_reports_the_remaining_cooldown_of_the_shared_title_budget():
 
 def test_set_title_also_accepts_a_theme_and_composes_the_room_name_invariant():
     """ADR-0001：房间名是 `{theme}｜{title}`，主题与标题共用一份冷却。"""
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.set_title("Lofi Girl", theme="三福")
 
     assert profile.drafts.pending("title") == "Lofi Girl"
@@ -431,7 +430,7 @@ def test_set_title_also_accepts_a_theme_and_composes_the_room_name_invariant():
 
 
 def test_set_title_refuses_a_theme_that_set_theme_would_refuse():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     result = profile.set_title("Lofi Girl", theme="三福福")
 
@@ -440,7 +439,7 @@ def test_set_title_refuses_a_theme_that_set_theme_would_refuse():
 
 
 def test_set_theme_validates_and_records_a_pending_theme():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     assert profile.set_theme("听歌") == {"success": True, "theme": "听歌", "old_theme": None}
     assert profile.drafts.pending_theme() == "听歌"
@@ -450,14 +449,14 @@ def test_set_theme_validates_and_records_a_pending_theme():
 
 def test_the_theme_length_is_checked_before_stripping_like_the_legacy_manager_did():
     """既有的长度判定在 strip 之前，带空格的主题同样超限 —— 逐字保留。"""
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     assert profile.set_theme("  听歌  ") == {"error": "主题最多两个字符"}
     assert profile.drafts.pending_theme() is None
 
 
 def test_the_separator_is_the_fullwidth_vertical_line_and_only_the_first_one_splits():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
 
     assert profile.parse_room_title("三福｜Lofi Girl") == ("三福", "Lofi Girl")
     # maxsplit=1：第一个分隔符之后全部是标题（与既有实现一致）。
@@ -552,7 +551,7 @@ def test_the_ownership_rule_holds_across_a_mixed_sequence_of_openers():
 
 
 def test_the_production_adapter_maps_the_port_onto_the_real_handler():
-    from ushareiplay.managers.recovery_manager import RecoveryManager
+    from ushareiplay.adapters.outbound.appium.soul.recovery_manager import RecoveryManager
     class _Element:
         def __init__(self):
             self.clicked = False
@@ -693,12 +692,8 @@ def test_the_requester_is_advertised_in_each_setter_docstring_as_upstream_author
 )
 def test_the_requester_is_optional_so_every_existing_caller_still_works(name, args):
     """纯增量：既有调用点一个都不改，也必须继续跑得通。"""
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.adopt_handler(_Handler())
-    from tests.legacy_state import RoomState
-
-    RoomState.reset_instance()
-    RoomState.initialize()
 
     result = getattr(profile, name)(*args)
 
@@ -707,13 +702,9 @@ def test_the_requester_is_optional_so_every_existing_caller_still_works(name, ar
 
 def test_the_requester_shows_up_in_the_change_triggered_log_of_each_setter():
     """字段真的变了 = 触发了行为，因此这条 INFO 日志合规，requester 也在其中。"""
-    from tests.legacy_state import RoomState
-
     handler = _Handler()
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.adopt_handler(handler)
-    RoomState.reset_instance()
-    RoomState.initialize()
 
     for name, args in (
         ("set_topic", ("新话题",)),

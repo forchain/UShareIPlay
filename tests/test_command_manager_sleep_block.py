@@ -43,18 +43,6 @@ class DummyCommand:
         return {"message": "OK"}
 
 
-@pytest.fixture(autouse=True)
-def _reset_command_manager():
-    from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-    yield
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-
-
 @pytest.fixture
 def _patch_user_dao(monkeypatch):
     from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
@@ -71,12 +59,16 @@ def _patch_user_dao(monkeypatch):
 
 
 def _make_command_manager(config: dict):
-    from ushareiplay.core.message_dispatch import MessageDispatch
+    from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.modules.command.use_cases import SleepManager
 
-    MessageDispatch.initialize()
-    cm = CommandManager.initialize(sleep=SleepManager(config))
+    cm = CommandManager(
+        sleep=SleepManager(config),
+        users=TortoiseUserRepository(),
+        message_dispatch=MessageDispatch(),
+    )
     cm._handler = HandlerStub(config)
     cm.configure_runtime(RuntimeStub())
     return cm

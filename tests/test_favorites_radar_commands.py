@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ushareiplay.adapters.inbound.chat.fav import FavCommand
 from ushareiplay.adapters.inbound.chat.play import PlayCommand
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,

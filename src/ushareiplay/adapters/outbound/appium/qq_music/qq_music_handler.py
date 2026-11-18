@@ -7,8 +7,7 @@ import langdetect
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common import StaleElementReferenceException
 
-from ushareiplay.core.app_handler import AppHandler
-from ushareiplay.core.singleton import Singleton
+from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
 from ushareiplay.modules.playback.domain import PLAY_MODE_NAMES
 from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
 
@@ -17,12 +16,12 @@ from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLA
 langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 
-class QQMusicHandler(AppHandler, Singleton):
+class QQMusicHandler(AppHandler):
     _playlist_session = None
     _on_demand_marker = None
 
-    def __init__(self, driver, config, controller):
-        super().__init__(driver, config, controller)
+    def __init__(self, driver, config, controller, *, logger=None):
+        super().__init__(driver, config, controller, logger=logger)
 
         self.no_skip = 0
         self.play_mode_key = 'unknown'

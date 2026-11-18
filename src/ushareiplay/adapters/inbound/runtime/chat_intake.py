@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.message_tags import (
     format_ai_message as format_ai_message,
     format_manual_message as format_manual_message,

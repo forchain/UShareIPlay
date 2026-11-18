@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from ushareiplay.adapters.inbound.chat.recommend import RecommendCommand
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 COMMANDS_DIR = Path(__file__).resolve().parents[1] / "src" / "ushareiplay" / "adapters" / "inbound" / "chat"
 

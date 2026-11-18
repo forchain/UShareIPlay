@@ -5,13 +5,12 @@ import traceback
 from collections import deque
 from typing import Optional
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
 from ushareiplay.modules.playback.domain import matches_expected_song
 from ushareiplay.modules.playback.ports import MediaSessionPort
 
 
-class MusicManager(Singleton, MediaSessionPort):
+class MusicManager(MediaSessionPort):
     """
     音乐管理器 - 音乐播放的唯一公开接口。
 
@@ -32,11 +31,11 @@ class MusicManager(Singleton, MediaSessionPort):
     _ON_DEMAND_REQUESTS_MAX = 20
     _on_demand_requests: Optional[deque] = None
 
-    def __init__(self, playlist_session=None):
-        from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
+    def __init__(self, playlist_session=None, *, music_handler=None, config=None):
         # 播放引擎的离线测试不需要 Appium，因此 handler 缺失不再是构造期错误；
         # 真正要用到 driver 的地方由 `driver` 属性给出明确的装配错误。
-        self.music_handler = QQMusicHandler.instance() if QQMusicHandler.is_initialized() else None
+        self.music_handler = music_handler
+        self._config = config
         self.logger = getattr(self.music_handler, "logger", None) or logging.getLogger(
             "MusicManager"
         )
@@ -51,13 +50,13 @@ class MusicManager(Singleton, MediaSessionPort):
 
         没有 QQMusicHandler 时给出明确的装配错误，而不是让每个调用点自己撞上
         `NoneType` 的属性错误。组合根总是先初始化 handler 再初始化本类
-        （见 `AppController.initialize`），因此这条路径只在装配错误时触发。
+        （见 `AppContainer`），因此这条路径只在装配错误时触发。
         """
         driver = self._driver
         if driver is None:
             raise RuntimeError(
                 "MusicManager requires an initialized QQMusicHandler; "
-                "call QQMusicHandler.initialize(...) at the composition root first."
+                "inject music_handler at the composition root first."
             )
         return driver
 
@@ -72,6 +71,8 @@ class MusicManager(Singleton, MediaSessionPort):
         组合根的 `controller.config` 是根视图；QQ 音乐 handler 手里只有
         `qq_music` 段视图，它不含根级的 `old_song_filter` 等段。
         """
+        if isinstance(self._config, ConfigView):
+            return self._config
         controller_config = getattr(getattr(self.music_handler, "controller", None), "config", None)
         if isinstance(controller_config, ConfigView):
             return controller_config
@@ -192,7 +193,7 @@ class MusicManager(Singleton, MediaSessionPort):
     @property
     def song_release_lookup(self):
         if self._song_release_lookup is None:
-            from ushareiplay.helpers.song_release import QQMusicSongReleaseLookup
+            from ushareiplay.adapters.outbound.appium.qq_music.song_release import QQMusicSongReleaseLookup
             self._song_release_lookup = QQMusicSongReleaseLookup()
         return self._song_release_lookup
 
@@ -322,7 +323,7 @@ class MusicManager(Singleton, MediaSessionPort):
 
         query = " ".join(part for part in [song, singer, album] if part).strip()
         try:
-            from ushareiplay.helpers.song_release import parse_release_date
+            from ushareiplay.adapters.outbound.appium.qq_music.song_release import parse_release_date
             release_date = parse_release_date(self.song_release_lookup.get_release_date(query))
         except Exception as exc:
             self.logger.warning(f"Failed to query song release date for {query}: {exc}")
@@ -336,7 +337,7 @@ class MusicManager(Singleton, MediaSessionPort):
         if not config.value("enabled", True):
             return False
 
-        from ushareiplay.helpers.song_release import parse_release_date
+        from ushareiplay.adapters.outbound.appium.qq_music.song_release import parse_release_date
         cutoff = parse_release_date(config.value("cutoff_date") or "2000-01-01")
         if not cutoff or not song:
             return False

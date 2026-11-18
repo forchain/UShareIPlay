@@ -26,11 +26,6 @@ from ushareiplay.modules.seat.ledger import SeatRescanCooldownPolicy
 
 @pytest.fixture(autouse=True)
 def reset_observation():
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    CommandManager.instance().user_event_hooks = MagicMock(
-        fire=AsyncMock(return_value=0)
-    )
     yield
 
 

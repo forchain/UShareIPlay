@@ -235,8 +235,9 @@ def _playlist_command_info():
 
 async def _run(command_info, nickname, level, content=None):
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
-    cm = CommandManager.instance()
+    cm = CommandManager(users=TortoiseUserRepository())
     cm.configure_runtime(RuntimeStub())
     cm._handler = HandlerStub(config={"system_users": ["Timer"]})
 

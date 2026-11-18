@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.handlers.soul_handler import SoulHandler
+from ushareiplay.adapters.outbound.appium.soul.soul_handler import SoulHandler
 
 
 class _Logger:

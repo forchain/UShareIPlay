@@ -85,8 +85,9 @@ def test_app_handler_loggers_share_fixed_active_file(
     monkeypatch,
 ) -> None:
     from ushareiplay.adapters.outbound.system import log_rotation
-    from ushareiplay.core import app_handler
-    from ushareiplay.core.app_handler import AppHandler
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
+    from ushareiplay.adapters.outbound.appium import app_handler
+    from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
 
     old_log = tmp_path / "UShareIPlay.log"
     old_log.write_text("old handler log\n", encoding="utf-8")
@@ -108,7 +109,7 @@ def test_app_handler_loggers_share_fixed_active_file(
         pass
 
     config = {"logging": {"directory": str(tmp_path)}}
-    controller = SimpleNamespace(config=config)
+    controller = SimpleNamespace(config=config, runtime_logging=get_runtime_logging())
 
     try:
         soul = SoulHandler.__new__(SoulHandler)
@@ -151,7 +152,8 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
     monkeypatch,
 ) -> None:
     from ushareiplay.adapters.outbound.system import log_rotation
-    from ushareiplay.adapters.inbound.runtime import message_manager
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     old_log = tmp_path / "chat.log"
     old_log.write_text("old chat\n", encoding="utf-8")
@@ -161,13 +163,13 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
-    if message_manager.chat_logger is not None:
-        for handler in message_manager.chat_logger.handlers:
-            handler.close()
-        message_manager.chat_logger.handlers.clear()
-    message_manager.chat_logger = None
-
-    logger = message_manager.get_chat_logger({"logging": {"directory": str(tmp_path)}})
+    runtime_logging = get_runtime_logging()
+    runtime_logging.reset()
+    manager = MessageManager(
+        handler=SimpleNamespace(config={"logging": {"directory": str(tmp_path)}}),
+        chat_logger_factory=runtime_logging.attach_chat_logger,
+    )
+    logger = manager.chat_logger
     try:
         logger.info("new chat")
         for handler in logger.handlers:
@@ -181,4 +183,4 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
         for handler in logger.handlers:
             handler.close()
         logger.handlers.clear()
-        message_manager.chat_logger = None
+        runtime_logging.reset()

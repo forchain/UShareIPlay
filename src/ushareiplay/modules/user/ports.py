@@ -64,6 +64,10 @@ class UserRepository(ABC):
     async def set_canonical(self, alias_id: int, canonical_id: int) -> User:
         """写入别名链接；别名记录必须已存在。"""
 
+    @abstractmethod
+    async def find_first_by_level(self, level: int) -> Optional[User]:
+        """按等级查询首位匹配用户；不存在返回 None。"""
+
 
 class UserMemoryRepository(ABC):
     @abstractmethod

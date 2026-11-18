@@ -19,7 +19,7 @@ import yaml
 from lxml import etree
 
 from ushareiplay.modules.shared.config import ConfigSectionView
-from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import SeatPanelReader
 
@@ -450,9 +450,9 @@ class FakeSeatObservation:
 
 def make_handler(elements=None, desks=None, popup_name=None, controller=None):
     if controller is None:
-        from tests.legacy_state import RoomState
+        from ushareiplay.modules.room.use_cases import RoomStateService
 
-        controller = SimpleNamespace(room_state=RoomState.instance())
+        controller = SimpleNamespace(room_state=RoomStateService())
     handler = MagicMock()
     handler.logger = MagicMock()
     # 生产上传给 handler 的就是 config.yaml 的 soul 段

@@ -28,8 +28,7 @@ from ushareiplay.adapters.outbound.persistence.user_repository import (
     TortoiseUserRepository,
 )
 from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.registry import FOCUS
@@ -40,8 +39,10 @@ from ushareiplay.modules.room.use_cases import (
     PresenceTracker,
     UserProfileActions,
 )
-from tests.room_support import configured_room_state, make_hooks, wire_room_state
+from tests.room_support import configured_room_state, make_hooks
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
+
+UserDAO = TortoiseUserRepository()
 
 CANONICAL = "不约儿童~𝓨o🐏🐏"  # 主账号：DB 里 canonical 记录的 username
 AVATAR = "不约儿童🐏🐏"  # 分身：Soul UI / 麦位上真正显示的名字
@@ -61,8 +62,7 @@ async def alias_pair(db):
     """建立 分身 → 主账号 的映射，等价于运行过 `:alias "<分身>" "<主账号>"`。"""
     canonical = await UserDAO.get_or_create_raw(CANONICAL)
     avatar = await UserDAO.get_or_create_raw(AVATAR)
-    avatar.canonical_user_id = canonical.id
-    await avatar.save(update_fields=["canonical_user_id"])
+    await UserDAO.set_canonical(avatar.id, canonical.id)
     return SimpleNamespace(canonical=canonical, avatar=avatar)
 
 
@@ -79,7 +79,6 @@ def presence_env():
         info=lambda _m: None, warning=lambda _m: None, error=lambda _m: None, critical=lambda _m: None
     )
     room_state = configured_room_state()
-    wire_room_state(room_state)
     info_manager = InfoManager(
         presence=presence,
         room_state=room_state,
@@ -206,6 +205,7 @@ class DummyController:
         self.config = {}
         self.room_state = configured_room_state()
         self.info_manager = _info_manager
+        self.user_repository = UserDAO
 
 
 def _seating_manager(desks, popup_name):
@@ -293,7 +293,7 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
 @pytest.mark.asyncio
 async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair):
     await TortoiseUserEventHookRepository().create(FOCUS, AVATAR, ":say {username} 坐到了 {seat} 号 ({action})")
-    queue = MessageQueue.instance()
+    queue = MessageQueue()
     await queue.clear_queue()
 
     from ushareiplay.adapters.inbound.chat.focus import FocusCommand
@@ -303,7 +303,7 @@ async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair
         SimpleNamespace(
             soul_handler=handler,
             music_handler=None,
-            user_event_hooks=make_hooks(),
+            user_event_hooks=make_hooks(message_queue=queue),
         )
     )
     command.handler = handler

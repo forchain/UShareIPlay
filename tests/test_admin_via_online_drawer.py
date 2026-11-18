@@ -259,7 +259,7 @@ async def test_admin_command_parses_the_target_and_delegates_verbatim(
     content, parameters, expected
 ):
     """参数解析不变，且命令层把拿到的名字**原样**交下去。"""
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     fake_manager = _RecordingAdminManager()
     command = _command_with(fake_manager)
@@ -284,7 +284,7 @@ async def test_admin_command_parameter_errors_keep_their_legacy_wording(
     content, parameters, message
 ):
     """三条参数报错逐字保留：它们直接进聊天气泡，迁移不是重写。"""
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     command = _command_with(_RecordingAdminManager())
 
@@ -301,7 +301,7 @@ async def test_admin_command_does_not_resolve_the_nickname_itself():
     """
     from unittest.mock import patch
 
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     fake_manager = _RecordingAdminManager()
     command = _command_with(fake_manager)

@@ -6,31 +6,39 @@ import pytest
 
 
 MODULES = [
-    # core
-    "ushareiplay.core.singleton",
-    "ushareiplay.core.config_loader",
+    # bootstrap + stdlib core
+    "ushareiplay.bootstrap",
+    "ushareiplay.bootstrap.container",
+    "ushareiplay.bootstrap.runtime_loop",
+    "ushareiplay.core.command_silence",
+    "ushareiplay.core.console_log_muter",
+    "ushareiplay.core.observability",
+    "ushareiplay.core.paths",
+    "ushareiplay.core.ui_session_lease",
+    "ushareiplay.adapters.outbound.system.config_loader",
+    "ushareiplay.adapters.outbound.system.runtime_logging",
     "ushareiplay.adapters.outbound.persistence.db_manager",
     "ushareiplay.adapters.inbound.runtime.message_queue",
-    "ushareiplay.core.post_party_create_automation",
+    "ushareiplay.adapters.inbound.runtime.post_party_create_automation",
     "ushareiplay.adapters.inbound.runtime.runtime_services",
     "ushareiplay.core.runtime_context",
     "ushareiplay.adapters.inbound.runtime.command_parser",
     "ushareiplay.core.log_formatter",
-    "ushareiplay.core.element_wrapper",
-    "ushareiplay.core.driver_decorator",
-    "ushareiplay.core.ui",
-    "ushareiplay.core.ui.element_finder",
-    "ushareiplay.core.ui.gesture_handler",
-    "ushareiplay.core.ui.key_actions",
-    "ushareiplay.core.ui.navigation",
+    "ushareiplay.adapters.outbound.appium.element_wrapper",
+    "ushareiplay.adapters.outbound.appium.driver_decorator",
+    "ushareiplay.adapters.outbound.appium.ui",
+    "ushareiplay.adapters.outbound.appium.ui.element_finder",
+    "ushareiplay.adapters.outbound.appium.ui.gesture_handler",
+    "ushareiplay.adapters.outbound.appium.ui.key_actions",
+    "ushareiplay.adapters.outbound.appium.ui.navigation",
     # models
-    "ushareiplay.models",
+    "ushareiplay.modules.shared",
     "ushareiplay.adapters.outbound.persistence",
     "ushareiplay.adapters.outbound.persistence.models",
     "ushareiplay.adapters.outbound.persistence.models.user",
     "ushareiplay.adapters.outbound.persistence.models.seat_reservation",
     "ushareiplay.adapters.outbound.persistence.models.keyword",
-    "ushareiplay.models.message_info",
+    "ushareiplay.modules.shared.message_info",
     "ushareiplay.modules.timer.domain",
     "ushareiplay.modules.room.domain",
     "ushareiplay.modules.room.ports",
@@ -61,9 +69,8 @@ MODULES = [
     "ushareiplay.adapters.outbound.persistence.models.timer",
     "ushareiplay.adapters.outbound.persistence.models.user_chat_log",
     "ushareiplay.adapters.outbound.persistence.models.user_memory",
-    # dal
-    "ushareiplay.dal",
-    "ushareiplay.dal.user_dao",
+    # persistence user repository
+    "ushareiplay.adapters.outbound.persistence.user_repository",
     "ushareiplay.adapters.outbound.persistence.seat_reservation_repository",
     "ushareiplay.modules.seat.domain",
     "ushareiplay.modules.seat.ledger",
@@ -75,7 +82,7 @@ MODULES = [
     "ushareiplay.adapters.outbound.persistence.user_memory_repository",
     # helpers
 
-    "ushareiplay.helpers.playlist_parser",
+    "ushareiplay.adapters.outbound.appium.qq_music.playlist_parser",
     # playback (#554)
     "ushareiplay.modules.playback",
     "ushareiplay.modules.playback.domain",

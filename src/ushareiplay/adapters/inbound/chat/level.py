@@ -1,7 +1,6 @@
 import shlex
 
-from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.modules.user.domain import (
     InvalidLevelError,
@@ -33,7 +32,7 @@ class LevelCommand(BaseCommand):
             return {'error': '参数格式错误，带空格的昵称请使用引号包裹'}
 
         caller_nickname = message_info.nickname if message_info else ''
-        users = TortoiseUserRepository()
+        users = self.user_repository
 
         # 模式 1: 无参数 - 显示当前用户等级
         if len(params) == 0:

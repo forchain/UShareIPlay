@@ -1,5 +1,5 @@
-from ushareiplay.core.app_handler import AppHandler
-from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
+from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
+from ushareiplay.adapters.outbound.appium.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
 
 
 def test_app_handler_exposes_components_without_ui_delegate_methods():

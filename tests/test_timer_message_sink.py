@@ -10,7 +10,7 @@ from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
 @pytest.mark.asyncio
 async def test_queue_sink_preserves_the_timer_message_shape():
-    queue = MessageQueue.instance()
+    queue = MessageQueue()
     sink = QueueTimerMessageSink(queue)
 
     await sink.enqueue(":say 晚安")

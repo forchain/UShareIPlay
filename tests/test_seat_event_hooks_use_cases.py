@@ -16,7 +16,7 @@ import pytest
 from tests.fakes.in_memory_user_event_hook_repository import InMemoryUserEventHookRepository
 from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 from ushareiplay.adapters.inbound.chat.focus import FocusCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.ports import HookCommandSink, PresenceQuery
 from ushareiplay.modules.room.registry import (

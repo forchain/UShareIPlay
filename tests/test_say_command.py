@@ -1,7 +1,7 @@
 import pytest
 from types import SimpleNamespace
 from ushareiplay.adapters.inbound.chat.say import SayCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest.fixture

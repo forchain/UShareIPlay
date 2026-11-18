@@ -18,7 +18,7 @@ __elements__ = [
     # 其他 key 原来就注释在下面，需要时照旧打开。
 ]
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class DrawerElementsEvent(BaseEvent):
@@ -42,8 +42,7 @@ class DrawerElementsEvent(BaseEvent):
             bool: 如果点击成功返回 True，否则 False
         """
         try:
-            from ushareiplay.managers.recovery_manager import RecoveryManager
-            recovery_manager = RecoveryManager.instance()
+            recovery_manager = self.controller.recovery_manager
             return recovery_manager.close_drawer(key)
 
         except Exception as e:

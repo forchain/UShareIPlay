@@ -136,7 +136,7 @@ class _DummyCommand:
 
 @pytest.fixture
 def command_manager(monkeypatch):
-    from ushareiplay.core.message_dispatch import MessageDispatch
+    from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
     from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.modules.command.use_cases import SleepManager
@@ -160,8 +160,7 @@ def command_manager(monkeypatch):
         TortoiseUserRepository, "get_or_create", staticmethod(_get_or_create)
     )
 
-    CommandManager.reset_instance()
-    manager = CommandManager.initialize(sleep=SleepManager(config))
+    manager = CommandManager(sleep=SleepManager(config), users=TortoiseUserRepository())
     manager._handler = _Handler(config)
     manager.configure_runtime(_Runtime())
     return manager
@@ -209,9 +208,11 @@ async def test_sleep_rejection_without_error_template_still_blocks(command_manag
 
 
 def test_console_input_stops_on_eof(monkeypatch):
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
+    controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -350,7 +351,7 @@ class _DumpsysDriver:
 
 
 def test_song_title_with_comma_keeps_album_field():
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 
     manager = MusicManager.__new__(MusicManager)
     manager.logger = _Logger()

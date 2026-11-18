@@ -25,8 +25,8 @@ import pytest
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from ushareiplay.modules.playback.use_cases import PlaybackMuting
-from ushareiplay.models.message_info import MessageInfo
-from tests.legacy_state import RoomState
+from ushareiplay.modules.room import RoomStateService
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
@@ -84,8 +84,7 @@ def room(initialized_test_singletons):
             config=handler.config,
             logger=handler.logger,
         )
-        manager = MessageManager.instance()
-        manager._handler = handler
+        manager = MessageManager(handler=handler)
         manager._chat_logger = MagicMock()
         manager.configure_playback_muting(muting)
         return SimpleNamespace(events=events, handler=handler, muting=muting, manager=manager)
@@ -199,10 +198,11 @@ def test_backfilled_on_mic_line_does_not_arm(room):
 
 
 def test_dispatch_survives_an_uninitialized_playback_muting():
-    """单例未装配时聊天流照常跑完，只是没人接联动（不许把公屏带崩）。"""
-    manager = MessageManager.instance()
-    manager._handler = SimpleNamespace(
-        logger=MagicMock(), config=ConfigSectionView("soul", {}), controller=None
+    """未装配时聊天流照常跑完，只是没人接联动（不许把公屏带崩）。"""
+    manager = MessageManager(
+        handler=SimpleNamespace(
+            logger=MagicMock(), config=ConfigSectionView("soul", {}), controller=None
+        )
     )
     manager._chat_logger = MagicMock()
 
@@ -217,9 +217,9 @@ def test_dispatch_survives_an_uninitialized_playback_muting():
 # --------------------------------------------------------------------------
 
 
-def test_room_change_resets_dynamic_arming(room, initialized_test_singletons):
+def test_room_change_resets_dynamic_arming(room):
     """退房 / 切房 / 派对重启都走 RoomState.clear()，动态开启不得跨场次。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     r = room(enabled=False)
     room_state.add_clear_listener(r.muting.reset)
     _dispatch(r, ["荒草 已上麦"])
@@ -302,9 +302,7 @@ def _run_play_command(monkeypatch, r) -> None:
         playback_muting=r.muting,
     )
 
-    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch", _DispatchStub)
-    _DispatchStub.recorder = _Recorder(r.events)
-    manager = CommandManager.instance()
+    manager = CommandManager(message_dispatch=_Recorder(r.events))
     manager.configure_runtime(_Runtime())
     manager._logger = MagicMock()
     manager._handler = SimpleNamespace(

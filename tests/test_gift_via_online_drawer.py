@@ -396,7 +396,7 @@ async def test_gift_command_parses_the_target_and_delegates_verbatim(
     from unittest.mock import MagicMock, patch
 
     from ushareiplay.adapters.inbound.chat.gift import GiftCommand
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     fake_user_manager = _RecordingUserManager()
     controller = SimpleNamespace(
@@ -424,7 +424,7 @@ async def test_gift_command_does_not_resolve_the_nickname_itself():
     from unittest.mock import MagicMock, patch
 
     from ushareiplay.adapters.inbound.chat.gift import GiftCommand
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     fake_user_manager = _RecordingUserManager()
     controller = SimpleNamespace(

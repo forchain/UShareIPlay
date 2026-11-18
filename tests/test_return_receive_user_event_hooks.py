@@ -28,13 +28,13 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
 )
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.modules.room.registry import RECEIVE, RETURN
 from tests.room_support import make_hooks
 from ushareiplay.adapters.outbound.persistence.models import User
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest_asyncio.fixture
@@ -46,8 +46,13 @@ async def db_init():
 
 
 @pytest.fixture
-def hooks(db_init):
-    return make_hooks()
+def queue():
+    return MessageQueue()
+
+
+@pytest.fixture
+def hooks(db_init, queue):
+    return make_hooks(message_queue=queue)
 
 
 def _logger_stub():
@@ -63,9 +68,9 @@ def _controller(hooks):
     )
 
 
-async def _drain():
+async def _drain(queue: MessageQueue):
     """取出队列里全部消息（`get_all_messages` 本身会清空队列），保持入队顺序。"""
-    return list((await MessageQueue.instance().get_all_messages()).values())
+    return list((await queue.get_all_messages()).values())
 
 
 # --------------------------------------------------------------------------
@@ -162,8 +167,8 @@ async def test_receive_command_keeps_prefix_example_text(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_receive_command_alias_resolution_through_adapter(db_init, hooks):
-    outlier = await UserDAO.get_or_create_raw("Outlier")
+async def test_receive_command_alias_resolution_through_adapter(db_init, hooks, queue):
+    outlier = await TortoiseUserRepository().get_or_create_raw("Outlier")
     await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
 
     cmd = ReceiveCommand(_controller(hooks))
@@ -176,10 +181,10 @@ async def test_receive_command_alias_resolution_through_adapter(db_init, hooks):
     assert ":say 谢谢" in listed["message"]
 
     # 分身名触发也要入队
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
     await cmd.user_gift_receive("Chainer")
 
-    queued = await _drain()
+    queued = await _drain(queue)
     assert [(m.nickname, m.content) for m in queued] == [("Chainer", ":say 谢谢")]
 
 
@@ -188,12 +193,12 @@ async def test_return_and_receive_keep_different_user_resolution(db_init, hooks)
     """收礼物按 alias-group、返回按 single-id，两者不统一 —— 别"顺手对齐"。
 
     差别只在**直接挂在分身 id 名下**的历史数据：alias-group 认，返回命令不认。
-    主账号挂的数据两边都能查到，因为 `UserDAO.get_or_create` 本就解析 canonical。
+    主账号挂的数据两边都能查到，因为 `TortoiseUserRepository.get_or_create` 本就解析 canonical。
     """
     from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
     from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
 
-    outlier = await UserDAO.get_or_create_raw("Outlier")
+    outlier = await TortoiseUserRepository().get_or_create_raw("Outlier")
     chainer = await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
 
     # 历史数据：直接挂在分身 id 名下
@@ -220,17 +225,16 @@ async def test_return_and_receive_keep_different_user_resolution(db_init, hooks)
 
 
 @pytest.mark.asyncio
-async def test_fire_enqueues_message_info_for_return_and_receive(db_init, hooks):
+async def test_fire_enqueues_message_info_for_return_and_receive(db_init, hooks, queue):
     await hooks.execute_crud(RETURN, "Bob", ':return add ":play 稻香"')
     await hooks.execute_crud(RECEIVE, "Bob", ':receive add ":say 谢谢"')
 
-    queue = MessageQueue.instance()
     await queue.clear_queue()
 
     assert await hooks.fire(RETURN, "Bob") == 1
     assert await hooks.fire(RECEIVE, "Bob") == 1
 
-    queued = await _drain()
+    queued = await _drain(queue)
     assert [(m.nickname, m.content) for m in queued] == [
         ("Bob", ":play 稻香"),
         ("Bob", ":say 谢谢"),
@@ -244,7 +248,7 @@ async def test_fire_returns_zero_when_no_commands_configured(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_hook_methods_enqueue_through_message_queue(db_init, hooks):
+async def test_hook_methods_enqueue_through_message_queue(db_init, hooks, queue):
     """钩子方法必须经 MessageQueue 入队：drain 时才展开 `{user_name}` 宏。"""
     return_cmd = ReturnCommand(_controller(hooks))
     receive_cmd = ReceiveCommand(_controller(hooks))
@@ -255,13 +259,12 @@ async def test_hook_methods_enqueue_through_message_queue(db_init, hooks):
         MessageInfo(content=':receive add ":say 谢谢 {user_name}"', nickname="Bob"), []
     )
 
-    queue = MessageQueue.instance()
     await queue.clear_queue()
 
     await return_cmd.user_return("Bob")
     await receive_cmd.user_gift_receive("Bob")
 
-    queued = await _drain()
+    queued = await _drain(queue)
     assert [(m.nickname, m.content) for m in queued] == [
         ("Bob", ":say 回来啦 {user_name}"),
         ("Bob", ":say 谢谢 {user_name}"),
@@ -274,23 +277,22 @@ async def test_hook_methods_enqueue_through_message_queue(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_notify_user_return_enqueues_once_and_checks_seats(db_init, hooks):
+async def test_notify_user_return_enqueues_once_and_checks_seats(db_init, hooks, queue):
     cmd = ReturnCommand(_controller(hooks))
     await cmd.do_process(
         MessageInfo(content=':return add ":play 稻香"', nickname="Bob"), []
     )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
 
     seat_check = AsyncMock()
     cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=seat_check))
 
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
     await cm.notify_user_return("Bob")
 
-    queued = await _drain()
+    queued = await _drain(queue)
     assert [m.content for m in queued] == [":play 稻香"]
 
     # 返回命令只入队一次；座位复核仍会发生 —— #436 起它是 notify_* 里的显式调用，
@@ -299,33 +301,31 @@ async def test_notify_user_return_enqueues_once_and_checks_seats(db_init, hooks)
 
 
 @pytest.mark.asyncio
-async def test_notify_gift_receive_enqueues_receive_command(db_init, hooks):
+async def test_notify_gift_receive_enqueues_receive_command(db_init, hooks, queue):
     cmd = ReceiveCommand(_controller(hooks))
     await cmd.do_process(
         MessageInfo(content=':receive add ":say 谢谢"', nickname="Bob"), []
     )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
 
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
     await cm.notify_gift_receive("Bob")
 
-    queued = await _drain()
+    queued = await _drain(queue)
     assert [(m.nickname, m.content) for m in queued] == [("Bob", ":say 谢谢")]
 
 
 @pytest.mark.asyncio
-async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_init, hooks):
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_init, hooks, queue):
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
 
-    await MessageQueue.instance().clear_queue()
+    await queue.clear_queue()
     await cm.notify_gift_receive("Bob")
 
-    assert await _drain() == []
+    assert await _drain(queue) == []
 
 
 # --------------------------------------------------------------------------
@@ -337,8 +337,7 @@ async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_i
 async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init, hooks):
     scheduled = []
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
     cm.user_memory = SimpleNamespace(schedule_user=scheduled.append)
 

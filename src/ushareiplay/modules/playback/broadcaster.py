@@ -2,22 +2,28 @@ import logging
 import traceback
 from typing import Optional
 
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.music_manager import MusicManager
 
-
-class PlaybackBroadcaster(Singleton):
+class PlaybackBroadcaster:
     """播放信息缓存、质量检查与广播发送。"""
 
-    def __init__(self, handler=None, playlist_session=None):
+    def __init__(
+        self,
+        handler=None,
+        playlist_session=None,
+        *,
+        music_manager=None,
+        messenger=None,
+        config=None,
+        logger=None,
+    ):
         self._soul_handler = handler
-        self._logger = getattr(handler, "logger", None)
-        self._music_manager = None
+        self._logger = logger or getattr(handler, "logger", None)
+        self._music_manager = music_manager
         self._playlist_session = playlist_session
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
-        self._message_dispatch = None
+        self._message_dispatch = messenger
+        self._config = config
 
     @property
     def handler(self):
@@ -27,7 +33,7 @@ class PlaybackBroadcaster(Singleton):
     def logger(self):
         """获取 logger 实例"""
         if self._logger is None:
-            self._logger = getattr(self._soul_handler, "logger", None) or logging.getLogger("ushareiplay.state.playback_broadcaster")
+            self._logger = getattr(self._soul_handler, "logger", None) or logging.getLogger("ushareiplay.modules.playback.broadcaster")
         return self._logger
 
     @property
@@ -36,14 +42,10 @@ class PlaybackBroadcaster(Singleton):
 
     @property
     def music_manager(self):
-        if self._music_manager is None:
-            self._music_manager = MusicManager.instance()
         return self._music_manager
 
     @property
     def message_dispatch(self):
-        if self._message_dispatch is None:
-            self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
         return self._message_dispatch
 
     def update_playback_info_cache(self):
@@ -113,9 +115,9 @@ class PlaybackBroadcaster(Singleton):
             if not song_skipped:
                 playback_message = self._format_playback_message(info)
                 # 检查是否开启了广播
-                # 运行时 self.soul_handler.config 是 soul 段视图，
+                # 运行时 self._config / self.soul_handler.config 是 soul 段视图，
                 # 广播开关就在这一段里。
-                cfg = self.soul_handler.config
+                cfg = self._config if self._config is not None else self.soul_handler.config
                 broadcast_enabled = cfg.value('broadcast_playing_info', True)
                 if not broadcast_enabled:
                     self.logger.info(f'Hidden "{playback_message}"')

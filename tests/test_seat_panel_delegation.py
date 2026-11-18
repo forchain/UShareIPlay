@@ -33,7 +33,6 @@ from tests.seat_fixtures import (
     soul_elements,
 )
 
-from ushareiplay.dal.user_dao import UserDAO
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
 from tests.seat_support import _SeatPanelWithCustomUI, build_seat_service
 from ushareiplay.modules.seat.domain import AvatarTapPolicy, SeatCardView

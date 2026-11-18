@@ -505,7 +505,7 @@ def test_react_to_page_resets_counter_when_event_triggers():
 
 
 def test_status_reporter_uses_supplied_screen_description():
-    asyncio.run(MessageQueue.instance().clear_queue())
+    queue = MessageQueue()
     obs = FakeObserver()
     reporter = StatusReporter(
         config=ConfigView({"soul": {"default_party_id": "123"}}),
@@ -513,6 +513,7 @@ def test_status_reporter_uses_supplied_screen_description():
         obs=obs,
         soul_handler=SimpleNamespace(party_id="456"),
         timer_manager=SimpleNamespace(is_running=lambda: True),
+        message_queue=queue,
     )
     automation = FakeAutomation()
 

@@ -180,3 +180,7 @@ class TortoiseUserRepository(UserRepository):
     async def set_canonical(self, alias_id: int, canonical_id: int) -> User:
         await UserModel.filter(id=alias_id).update(canonical_user_id=canonical_id)
         return await self.get_by_id(alias_id)
+
+    async def find_first_by_level(self, level: int) -> Optional[User]:
+        row = await UserModel.filter(level=level).first()
+        return None if row is None else _to_domain(row)
