@@ -10,7 +10,7 @@ from selenium.common import StaleElementReferenceException
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.modules.playback.domain import PLAY_MODE_NAMES
-from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
 
 
 # 在导入后设置种子
@@ -19,6 +19,7 @@ langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 class QQMusicHandler(AppHandler, Singleton):
     _playlist_session = None
+    _on_demand_marker = None
 
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
@@ -26,6 +27,7 @@ class QQMusicHandler(AppHandler, Singleton):
         self.no_skip = 0
         self.play_mode_key = 'unknown'
         self._playlist_session = None
+        self._on_demand_marker = None
 
     @staticmethod
     def play_mode_key_to_name(key: str) -> str:
@@ -383,10 +385,11 @@ class QQMusicHandler(AppHandler, Singleton):
 
     def _record_on_demand_request(self, playing_info) -> None:
         """登记单点意图；登记失败不应影响播放本身。"""
+        marker = getattr(self, "_on_demand_marker", None)
+        if marker is None:
+            return
         try:
-            from ushareiplay.managers.music_manager import MusicManager
-
-            MusicManager.instance().mark_on_demand(playing_info)
+            marker(playing_info)
         except Exception as e:
             self.logger.warning(f"Failed to record on-demand request: {e}")
 

@@ -94,7 +94,7 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
     )
-    with patch("ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance", return_value=None):
+    with patch("ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance", return_value=None):
         msg = MessageInfo(content=":info", nickname="Alice")
         res = await cmd.process(msg, [])
         assert res["online_users"] != "列表暂未更新"

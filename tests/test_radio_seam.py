@@ -19,7 +19,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.adapters.inbound.chat.radio import RadioCommand
 from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackRequest
-from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
 from ushareiplay.modules.playback.use_cases import primary_topic
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
@@ -335,12 +335,18 @@ def _filter_config(**overrides):
 
 
 def _driver(elements, actions, setup=None, **kwargs):
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.managers.music_manager import MusicManager
 
     handler = _RadioHandlerFake(elements, actions, **kwargs)
     if setup is not None:
         setup(handler)
-    return QQMusicUIDriver(handler), handler
+    manager = MusicManager.instance() if MusicManager.is_initialized() else None
+    return QQMusicUIDriver(
+        handler,
+        quality_checker=manager,
+        config=manager.config if manager is not None else None,
+    ), handler
 
 
 def _radio(channel, **kwargs):

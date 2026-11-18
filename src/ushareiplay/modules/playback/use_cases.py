@@ -2,11 +2,17 @@
 
 import inspect
 import logging
+import traceback
 from contextlib import contextmanager
 from typing import Awaitable, Callable, Iterator, Optional, Union
 
 from ushareiplay.modules.mic.ports import MicControl
 from ushareiplay.modules.playback.domain import (
+    ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
+    PLAY_MODE_BY_INDEX,
+    PLAY_MODE_INDEX_BY_KEY,
+    PLAY_MODE_INVALID_PARAMETER_ERROR,
+    PLAY_MODE_NAMES,
     PlaybackMode,
     PlaybackMutingPolicy,
     PlaybackMutingSettings,
@@ -21,6 +27,7 @@ from ushareiplay.modules.playback.ports import (
     MediaSessionPort,
     MusicUIDriverPort,
     NextTrackPort,
+    PlaybackControlPort,
     RoomProfileWriter,
 )
 from ushareiplay.modules.shared.config import ConfigView
@@ -425,3 +432,263 @@ class PlayNext:
         if isinstance(info, dict) and "error" not in info:
             self._playlist_session.record_next(requester)
         return info
+
+
+class SetPlayMode:
+    """`:mode` 播放模式切换用例。"""
+
+    def __init__(
+        self,
+        ui_driver: Optional[MusicUIDriverPort],
+        get_play_mode_key: Optional[Callable[[], str]] = None,
+        note_play_mode: Optional[Callable[[str, str], None]] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._ui_driver = ui_driver
+        self._get_play_mode_key = get_play_mode_key or (lambda: "unknown")
+        self._note_play_mode = note_play_mode or (lambda _mode, _reason: None)
+        self._logger = logger or logging.getLogger("SetPlayMode")
+
+    @staticmethod
+    def _normalize_play_mode(mode) -> Optional[str]:
+        if isinstance(mode, bool):
+            return None
+        if isinstance(mode, int):
+            return PLAY_MODE_BY_INDEX.get(mode)
+        if isinstance(mode, str):
+            text = mode.strip()
+            if text in PLAY_MODE_INDEX_BY_KEY:
+                return text
+            if text.lstrip("+") in {"0", "1", "-1"}:
+                return PLAY_MODE_BY_INDEX[int(text)]
+        return None
+
+    async def execute(self, mode) -> dict:
+        target_key = self._normalize_play_mode(mode)
+        if target_key is None:
+            return {"error": PLAY_MODE_INVALID_PARAMETER_ERROR}
+
+        mode_name = PLAY_MODE_NAMES[target_key]
+        if (self._get_play_mode_key() or "unknown") == target_key:
+            return {
+                "success": True,
+                "mode": mode_name,
+                "message": f"已经是{mode_name}模式",
+            }
+
+        if self._ui_driver is None:
+            raise RuntimeError(
+                "SetPlayMode requires a MusicUIDriverPort adapter; "
+                "construct SetPlayMode with ui_driver=... at the composition root."
+            )
+
+        outcome = self._ui_driver.set_play_mode(target_key)
+
+        if outcome.mode and outcome.mode != "unknown":
+            self._note_play_mode(outcome.mode, "mode_ui_detect")
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        message = (
+            f"已经是{mode_name}模式"
+            if outcome.already_target
+            else f"成功切换到{mode_name}模式"
+        )
+        if not outcome.already_target:
+            self._logger.info(
+                f"Play mode switched: target={target_key}, observed={outcome.mode}, "
+                f"already_target={outcome.already_target}"
+            )
+        return {"success": True, "mode": mode_name, "message": message}
+
+
+class SetAccompaniment:
+    """`:acc` 伴唱/伴奏模式开关用例。"""
+
+    def __init__(
+        self,
+        ui_driver: Optional[MusicUIDriverPort],
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._ui_driver = ui_driver
+        self._logger = logger or logging.getLogger("SetAccompaniment")
+
+    @staticmethod
+    def _normalize_accompaniment(enable) -> Optional[bool]:
+        if isinstance(enable, bool):
+            return enable
+        if isinstance(enable, int) and enable in (0, 1):
+            return bool(enable)
+        if isinstance(enable, str) and enable.strip() in {"0", "1"}:
+            return enable.strip() == "1"
+        return None
+
+    async def execute(self, enable) -> dict:
+        target = self._normalize_accompaniment(enable)
+        if target is None:
+            return {"error": ACCOMPANIMENT_INVALID_PARAMETER_ERROR}
+
+        if self._ui_driver is None:
+            raise RuntimeError(
+                "SetAccompaniment requires a MusicUIDriverPort adapter; "
+                "construct SetAccompaniment with ui_driver=... at the composition root."
+            )
+
+        outcome = self._ui_driver.set_accompaniment(target)
+        if not outcome.ok:
+            return {"error": outcome.error}
+
+        if not outcome.already_target:
+            self._logger.info(
+                f"Accompaniment toggled: target={'on' if target else 'off'}, "
+                f"observed={'on' if outcome.enabled else 'off'}"
+            )
+        return {"enabled": "on" if target else "off"}
+
+
+class QueryLyrics:
+    """`:lyrics` 歌词查询用例。"""
+
+    def __init__(
+        self,
+        ui_driver: Optional[MusicUIDriverPort],
+        media_session: Optional[MediaSessionPort],
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._ui_driver = ui_driver
+        self._media_session = media_session
+        self._logger = logger or logging.getLogger("QueryLyrics")
+
+    def execute(self, query: Optional[str] = None) -> dict:
+        if self._ui_driver is None:
+            raise RuntimeError(
+                "QueryLyrics requires a MusicUIDriverPort adapter; "
+                "construct QueryLyrics with ui_driver=... at the composition root."
+            )
+
+        text = (query or "").strip()
+        if not text:
+            if self._media_session is None:
+                self._logger.error("Lyrics lookup skipped: playback info unavailable")
+                return {"error": "Failed to get playback info"}
+            info = self._media_session.get_playback_info() or {}
+            if "error" in info:
+                self._logger.error("Lyrics lookup skipped: playback info unavailable")
+                return {"error": "Failed to get playback info"}
+            text = " ".join(
+                str(info.get(key) or "")
+                for key in ("song", "singer", "album")
+            ).strip()
+            self._logger.info(f"Using current song info as lyrics query: {text}")
+
+        outcome = self._ui_driver.query_lyrics(text)
+        if not outcome.ok:
+            self._logger.error(f"Lyrics lookup failed: query={text}, error={outcome.error}")
+            return {"error": outcome.error}
+
+        self._logger.info(f"Lyrics found: query={text}, characters={len(outcome.text)}")
+        return {"lyrics": outcome.text}
+
+
+class PauseResume:
+    """`:pause` 暂停/恢复播放用例：先过歌单守护，再联动麦克风与系统媒体按键。"""
+
+    def __init__(
+        self,
+        media_session: MediaSessionPort,
+        playback_control: PlaybackControlPort,
+        playlist_session: PlaylistSession,
+        mic: MicControl,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._media_session = media_session
+        self._playback_control = playback_control
+        self._playlist_session = playlist_session
+        self._mic = mic
+        self._logger = logger or logging.getLogger("PauseResume")
+
+    async def execute(self, requester: str, pause_state: Optional[int] = None) -> dict:
+        guard_error = await self._playlist_session.guard_switch(requester)
+        if guard_error:
+            return guard_error
+
+        if pause_state is not None and (isinstance(pause_state, bool) or pause_state not in (0, 1)):
+            return {"error": "Invalid parameter, must be 0 or 1"}
+
+        try:
+            current_info = self._media_session.get_playback_info()
+            if "error" in current_info:
+                return current_info
+
+            is_playing = current_info["state"] == "Playing"
+            if pause_state is None:
+                should_pause = is_playing
+            else:
+                should_pause = pause_state == 1
+                if (should_pause and not is_playing) or (not should_pause and is_playing):
+                    return {
+                        "song": current_info["song"],
+                        "singer": current_info["singer"],
+                        "action": "Paused" if not is_playing else "Resumed",
+                    }
+
+            if should_pause:
+                mic_result = self._mic.set_active(False)
+                if isinstance(mic_result, dict) and "error" in mic_result:
+                    self._logger.warning(f"Failed to turn off mic: {mic_result['error']}")
+
+            pause_result = self._playback_control.pause_resume(should_pause)
+            if isinstance(pause_result, dict) and "error" in pause_result:
+                return pause_result
+
+            if not should_pause:
+                mic_result = self._mic.set_active(True)
+                if isinstance(mic_result, dict) and "error" in mic_result:
+                    self._logger.warning(f"Failed to turn on mic: {mic_result['error']}")
+
+            return {
+                "song": current_info["song"],
+                "singer": current_info["singer"],
+                "action": "Paused" if should_pause else "Resumed",
+            }
+        except Exception:
+            self._logger.error(f"Error controlling playback: {traceback.format_exc()}")
+            return {"error": f"Failed to pause/resume song, {pause_state}"}
+
+
+class AdjustVolume:
+    """`:vol` 音量查询与调节用例。"""
+
+    def __init__(
+        self,
+        playback_control: PlaybackControlPort,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._playback_control = playback_control
+        self._logger = logger or logging.getLogger("AdjustVolume")
+
+    def execute(self, target_volume: Optional[int] = None) -> dict:
+        if target_volume is None:
+            current_volume = self._playback_control.get_volume_level()
+            if current_volume is None:
+                return {"error": "Failed to get current volume level"}
+            return {"volume": current_volume, "current": True}
+
+        if isinstance(target_volume, bool) or not isinstance(target_volume, int) or target_volume < 0 or target_volume > 15:
+            return {"error": f"Invalid target volume: {target_volume}. Must be integer between 0-15"}
+
+        current_volume = self._playback_control.get_volume_level()
+        if current_volume is None:
+            return {"error": "Failed to get current volume level"}
+
+        delta = target_volume - current_volume
+        if delta == 0:
+            return {"volume": current_volume}
+
+        self._playback_control.step_volume(delta)
+
+        final_volume = self._playback_control.get_volume_level()
+        if final_volume is None:
+            final_volume = current_volume
+        self._logger.info(f"Adjusted volume to {final_volume}")
+        return {"volume": final_volume, "delta": delta}

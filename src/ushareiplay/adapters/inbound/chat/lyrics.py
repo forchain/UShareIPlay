@@ -54,7 +54,7 @@ class LyricsCommand(BaseCommand):
         Returns:
             dict: `{'groups': [...]}` 或 `{'error': ...}`（原样透出接缝的错误）
         """
-        result = self.music_manager.query_lyrics(query) or {}
+        result = self.controller.query_lyrics.execute(query) or {}
         if 'error' in result:
             return result
 

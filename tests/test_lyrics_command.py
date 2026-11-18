@@ -8,7 +8,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ushareiplay.commands.lyrics import LyricsCommand
+from ushareiplay.adapters.inbound.chat.lyrics import LyricsCommand
 from ushareiplay.modules.shared.config import ConfigView
 
 
@@ -16,23 +16,24 @@ def _make_command():
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()  # soul handler
     command.music_handler = MagicMock()
+    query_lyrics = MagicMock(return_value={"lyrics": "第一行\n第二行"})
     command.controller = SimpleNamespace(
-        config=ConfigView({"lyrics": {"line_max_width": 18}})
+        config=ConfigView({"lyrics": {"line_max_width": 18}}),
+        query_lyrics=SimpleNamespace(execute=query_lyrics),
     )
     command._music_manager = MagicMock()
-    command._music_manager.query_lyrics.return_value = {"lyrics": "第一行\n第二行"}
     command.music_handler.key_actions.switch_to_app.return_value = True
     command.music_handler.query_music.return_value = True
     return command
 
 
-def test_query_lyrics_asks_music_manager_for_the_lyrics():
+def test_query_lyrics_asks_the_use_case_for_the_lyrics():
     """取歌词是接缝的职责：命令只递查询词，拿到文本后自己排版。"""
     command = _make_command()
 
     result = command.query_lyrics("some song")
 
-    command._music_manager.query_lyrics.assert_called_once_with("some song")
+    command.controller.query_lyrics.execute.assert_called_once_with("some song")
     assert result == {"groups": ["第一行\n第二行"]}
 
 
@@ -52,7 +53,7 @@ def test_query_lyrics_leaves_every_ui_action_to_the_driver():
 def test_query_lyrics_returns_the_seam_error_without_chunking():
     """接缝说「没找到歌词」时原样透出，一个字符都不该被发到公屏。"""
     command = _make_command()
-    command._music_manager.query_lyrics.return_value = {
+    command.controller.query_lyrics.execute.return_value = {
         "error": 'No lyrics found for "some song"'
     }
 

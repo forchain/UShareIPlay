@@ -97,7 +97,7 @@ def info_cmd_setup():
 async def test_info_command_does_not_fetch_recommendation_from_drawer_when_unknown(monkeypatch, info_cmd_setup):
     cmd, room_state, info_manager = info_cmd_setup
     monkeypatch.setattr(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
         lambda: SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知"),
     )
 

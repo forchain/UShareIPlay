@@ -17,7 +17,7 @@ from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
 )
-from ushareiplay.managers.playback.qq_music_ui_driver import (
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import (
     ALBUM_RESULT_KEYS,
     PLAY_ALL_KEYS,
     SINGER_RESULT_KEYS,
@@ -220,9 +220,8 @@ class _SingerAlbumHandler:
 
 
 @pytest.fixture
-def category_tab(initialized_test_singletons):
+def category_tab(initialized_test_singletons, monkeypatch):
     """脚本化的分类 tab 选择：驱动只看到 True/False，这里负责记录与注入。"""
-    from ushareiplay.managers.music_manager import MusicManager
 
     class _TabSelection:
         def __init__(self):
@@ -234,14 +233,13 @@ def category_tab(initialized_test_singletons):
             return self.available
 
     tabs = _TabSelection()
-    MusicManager.initialize().select_tab = tabs
+    monkeypatch.setattr(_SingerAlbumHandler, "select_tab", tabs, raising=False)
     return tabs
 
 
 @pytest.fixture
 def current_playback(initialized_test_singletons):
     """`:album` 不带参数时兜底读的「现在在放什么」。"""
-    from ushareiplay.managers.music_manager import MusicManager
 
     class _PlaybackInfo:
         def __init__(self):
@@ -252,15 +250,7 @@ def current_playback(initialized_test_singletons):
             self.calls += 1
             return self.info
 
-    probe = _PlaybackInfo()
-    # 分类 tab 的 fixture 可能已经初始化过同一个单例，这里不能再 initialize。
-    manager = (
-        MusicManager.instance()
-        if MusicManager.is_initialized()
-        else MusicManager.initialize()
-    )
-    manager.get_playback_info = probe
-    return probe
+    return _PlaybackInfo()
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +478,10 @@ def test_driver_resolves_an_empty_album_query_from_what_is_playing_now(
     """`:album` 不带参数 = 「播现在这首所在的专辑」，查询词由当前播放拼出来。"""
     handler = _SingerAlbumHandler()
 
-    QQMusicUIDriver(handler).start_playback(_album_request(""))
+    QQMusicUIDriver(
+        handler,
+        media_session=SimpleNamespace(get_playback_info=current_playback),
+    ).start_playback(_album_request(""))
 
     assert current_playback.calls == 1
     assert handler.queries == ["简单爱 周杰伦 范特西"]
@@ -501,7 +494,10 @@ def test_driver_reports_an_empty_album_query_with_nothing_playing(
     current_playback.info = None
     handler = _SingerAlbumHandler()
 
-    outcome = QQMusicUIDriver(handler).start_playback(_album_request(""))
+    outcome = QQMusicUIDriver(
+        handler,
+        media_session=SimpleNamespace(get_playback_info=current_playback),
+    ).start_playback(_album_request(""))
 
     assert outcome.ok is False
     assert handler.queries == []

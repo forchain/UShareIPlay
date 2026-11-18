@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ushareiplay.commands.mode import ModeCommand
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.adapters.inbound.chat.mode import ModeCommand
 from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.use_cases import SetPlayMode
 from ushareiplay.modules.playback.domain import NO_PLAYING_MUSIC_ERROR
-from ushareiplay.managers.playback.player_page import (
+from ushareiplay.adapters.outbound.appium.qq_music.player_page import (
     PLAYER_PAGE_PROBE_KEYS,
     ensure_player_page,
 )
@@ -40,12 +40,16 @@ class _PlayModeCache:
 
 
 def _build_manager(*, driver=None, play_mode_key="unknown"):
-    """真实 MusicManager + 内存驱动替身；缓存替身承担「房间当前在哪个模式」。"""
+    """真实 SetPlayMode 用例 + 内存驱动替身；缓存替身承担「房间当前在哪个模式」。"""
     driver = driver or InMemoryMusicUIDriver()
     cache = _PlayModeCache(play_mode_key)
-    manager = MusicManager.initialize(ui_driver=driver)
-    manager.music_handler = cache
-    return SimpleNamespace(manager=manager, cache=cache, driver=driver)
+    use_case = SetPlayMode(
+        ui_driver=driver,
+        get_play_mode_key=lambda: cache.play_mode_key,
+        note_play_mode=cache.note_play_mode,
+    )
+    manager = SimpleNamespace(set_play_mode=use_case.execute, _use_case=use_case)
+    return SimpleNamespace(manager=manager, cache=cache, driver=driver, use_case=use_case)
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +162,6 @@ async def test_set_play_mode_propagates_driver_failures_without_crashing(initial
 async def test_set_play_mode_accepts_both_index_and_key_forms(initialized_test_singletons):
     """0/1/-1 与 list/single/random 是同一件事的两种写法。"""
     for value in (1, "1", "single"):
-        MusicManager.reset_instance()
         engine = _build_manager(play_mode_key="list")
 
         result = await engine.manager.set_play_mode(value)
@@ -170,7 +173,6 @@ async def test_set_play_mode_accepts_both_index_and_key_forms(initialized_test_s
 async def test_set_play_mode_rejects_unknown_targets_without_touching_the_ui(initialized_test_singletons):
     """非法目标当场被拒：不进播放页，也不点任何东西。"""
     for value in (2, "replay", None, "顺序播放", True):
-        MusicManager.reset_instance()
         engine = _build_manager(play_mode_key="list")
 
         result = await engine.manager.set_play_mode(value)
@@ -187,10 +189,10 @@ async def test_set_play_mode_without_a_driver_raises_an_assembly_error(
 
     #421 把生产适配器接到组合根之后，这条路径才第一次被真正走到。
     """
-    manager = MusicManager.initialize()
+    use_case = SetPlayMode(ui_driver=None)
 
     with pytest.raises(RuntimeError, match="MusicUIDriverPort"):
-        await manager.set_play_mode(1)
+        await use_case.execute(1)
 
 
 async def test_set_play_mode_only_logs_when_a_switch_actually_happened(
@@ -207,15 +209,14 @@ async def test_set_play_mode_only_logs_when_a_switch_actually_happened(
         driver=InMemoryMusicUIDriver(play_mode="single"),
         play_mode_key="list",
     )
-    already_on.manager.logger = SimpleNamespace(
+    already_on.use_case._logger = SimpleNamespace(
         info=logs.append, warning=logs.append, error=logs.append
     )
     await already_on.manager.set_play_mode(1)
     assert logs == []
 
-    MusicManager.reset_instance()
     toggled = _build_manager(play_mode_key="list")
-    toggled.manager.logger = SimpleNamespace(
+    toggled.use_case._logger = SimpleNamespace(
         info=logs.append, warning=logs.append, error=logs.append
     )
     await toggled.manager.set_play_mode(-1)
@@ -230,10 +231,13 @@ async def test_set_play_mode_only_logs_when_a_switch_actually_happened(
 
 def _make_command():
     command = ModeCommand.__new__(ModeCommand)
-    command._music_manager = MagicMock()
-    command._music_manager.set_play_mode = AsyncMock(
+    set_play_mode = AsyncMock(
         return_value={"success": True, "mode": "单曲循环", "message": "成功切换到单曲循环模式"}
     )
+    command.controller = SimpleNamespace(
+        set_play_mode=SimpleNamespace(execute=set_play_mode)
+    )
+    command._music_manager = SimpleNamespace(set_play_mode=set_play_mode)
     return command
 
 

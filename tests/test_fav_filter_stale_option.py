@@ -15,7 +15,7 @@ import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
 from ushareiplay.modules.playback.domain import PlaybackRequest, PlaybackVariant
-from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
 
 class _Element:

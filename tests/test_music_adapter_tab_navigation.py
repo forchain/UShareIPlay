@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 import pytest
 
-from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 

@@ -274,7 +274,7 @@ class _FakeElementFinder:
 
 
 def _make_qq_handler(playing_info):
-    from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
 
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
@@ -289,15 +289,12 @@ def _make_qq_handler(playing_info):
     return handler
 
 
-def test_explicit_play_marks_the_requested_song_on_demand(monkeypatch):
+def test_explicit_play_marks_the_requested_song_on_demand():
     """`:play <song>` goes through the shared request seam and registers intent."""
     playing_info = dict(OLD_SONG)
     handler = _make_qq_handler(playing_info)
     manager = _RecordingMusicManager()
-    monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.MusicManager.instance",
-        staticmethod(lambda: manager),
-    )
+    handler._on_demand_marker = manager.mark_on_demand
 
     result = handler._prepare_music_playback("老歌 歌手A")
 
@@ -305,29 +302,23 @@ def test_explicit_play_marks_the_requested_song_on_demand(monkeypatch):
     assert manager.marked == [playing_info]
 
 
-def test_explicit_next_marks_the_queued_song_on_demand(monkeypatch):
+def test_explicit_next_marks_the_queued_song_on_demand():
     """`:next <song>` shares the same seam, so the queued song is exempt too."""
     playing_info = dict(OLD_SONG)
     handler = _make_qq_handler(playing_info)
     manager = _RecordingMusicManager()
-    monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.MusicManager.instance",
-        staticmethod(lambda: manager),
-    )
+    handler._on_demand_marker = manager.mark_on_demand
 
     handler.play_next("老歌 歌手A")
 
     assert manager.marked == [playing_info]
 
 
-def test_failed_search_does_not_register_on_demand_intent(monkeypatch):
+def test_failed_search_does_not_register_on_demand_intent():
     handler = _make_qq_handler(dict(OLD_SONG))
     handler.query_music = lambda _query: None
     manager = _RecordingMusicManager()
-    monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.MusicManager.instance",
-        staticmethod(lambda: manager),
-    )
+    handler._on_demand_marker = manager.mark_on_demand
 
     result = handler._prepare_music_playback("不存在")
 

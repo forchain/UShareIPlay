@@ -42,7 +42,7 @@ def setup_info_env():
 
     from unittest.mock import patch
     patcher = patch(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
         return_value=SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知"),
     )
     patcher.start()

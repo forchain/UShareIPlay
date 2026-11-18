@@ -37,7 +37,7 @@ from ushareiplay.modules.playback.domain import (
     PlaybackRequest,
     PlaybackTrack,
 )
-from ushareiplay.managers.playback.player_page import (
+from ushareiplay.adapters.outbound.appium.qq_music.player_page import (
     ACCOMPANIMENT_MENU_CONTAINER_KEY,
     ACCOMPANIMENT_MENU_KEY,
     ACCOMPANIMENT_MORE_ENTRY_KEY,
@@ -259,8 +259,11 @@ class QQMusicUIDriver(MusicUIDriverPort):
             handler 由 `AppController` 负责构造与注册。
     """
 
-    def __init__(self, handler):
+    def __init__(self, handler, media_session=None, quality_checker=None, config=None):
         self._handler = handler
+        self._media_session = media_session
+        self._quality_checker = quality_checker
+        self._config = config
         self.logger = getattr(handler, "logger", None) or logging.getLogger(
             "QQMusicUIDriver"
         )
@@ -993,8 +996,10 @@ class QQMusicUIDriver(MusicUIDriverPort):
 
     def _radio_refresh_budget(self) -> int:
         """精选推荐最多换几次。配置缺失或非法时退回既有默认 5 次。"""
-        manager = self._music_manager()
-        config = getattr(manager, "config", None)
+        config = self._config
+        if config is None:
+            controller = getattr(self._handler, "controller", None)
+            config = getattr(controller, "config", None) if controller is not None else None
         filter_config = config.maybe_section("old_song_filter") if config is not None else None
         try:
             return int(filter_config.value("radio_max_refreshes", 5)) if filter_config else 5
@@ -1002,17 +1007,10 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return 5
 
     def _collection_candidate_is_old(self, candidate: str) -> bool:
-        """精选推荐算不算老歌 —— 判定归 `MusicManager`，这里不再实现一遍。
-
-        迁移前 `RadioCommand` 自带一份发行日期查询 + 截止日期比较，与
-        `MusicManager._is_old_song` 逐字重复：两份实现意味着艺人白名单与「用户单点
-        的歌不跳过」这两条既定规则只在 `:radio` 上失效。现在这里只调用它，
-        全仓库的老歌判定因此只剩一个实现。
-        """
-        manager = self._music_manager()
-        if manager is None:
+        """精选推荐算不算老歌 —— 判定归注入的质量检查器，这里不再实现一遍。"""
+        if self._quality_checker is None:
             return False
-        return bool(manager._is_old_song(candidate))
+        return bool(self._quality_checker._is_old_song(candidate))
 
     @staticmethod
     def _radio_subtitle_topic(raw_topic: Optional[str]) -> Optional[str]:
@@ -1253,18 +1251,10 @@ class QQMusicUIDriver(MusicUIDriverPort):
             return fallback, None
         return playlist_text, first_line
 
-    @staticmethod
-    def _select_category_tab(tab_name: str) -> bool:
-        """切到搜索结果的分类页。tab 选择是 `MusicManager` 上的既有委派，不重写一遍。
-
-        与 `_select_lyrics_tab` 同样在函数体内 import：`music_manager` 顶层会 import
-        本模块，静态 import 会形成 `driver → music_manager → driver` 的循环引用
-        （模块 docstring 里那个环同型）。
-        """
+    def _select_category_tab(self, tab_name: str) -> bool:
+        """切到搜索结果的分类页。"""
         try:
-            from ushareiplay.managers.music_manager import MusicManager
-
-            return bool(MusicManager.instance().select_tab(tab_name))
+            return bool(self._handler.select_tab(tab_name))
         except Exception as exc:
             logging.getLogger("QQMusicUIDriver").warning(f"切换{tab_name}分类失败: {exc}")
             return False
@@ -1443,10 +1433,11 @@ class QQMusicUIDriver(MusicUIDriverPort):
         """
         if query:
             return query
+        if self._media_session is None:
+            self.logger.warning("没有正在播放的歌曲，无法推断要播哪张专辑")
+            return ""
         try:
-            from ushareiplay.managers.music_manager import MusicManager
-
-            info = MusicManager.instance().get_playback_info()
+            info = self._media_session.get_playback_info()
         except Exception as exc:
             self.logger.warning(f"读取当前播放信息失败: {exc}")
             return ""
@@ -1687,28 +1678,12 @@ class QQMusicUIDriver(MusicUIDriverPort):
         element.click()
         return LyricsOutcome.found(unescape(element.text or ""))
 
-    def _music_manager(self):
-        """取 `MusicManager` 单例；取不到时如实返回 None。
-
-        与 `_select_category_tab` 同样在函数体内 import：`music_manager` 顶层会
-        import 本模块，静态 import 会形成 `driver → music_manager → driver` 的
-        循环引用（见本模块的 docstring）。
-        """
-        try:
-            from ushareiplay.managers.music_manager import MusicManager
-
-            return MusicManager.instance()
-        except Exception as exc:
-            self.logger.warning(f"MusicManager 不可用: {exc}")
-            return None
-
     def _quality_check(self, playing_info: dict) -> None:
         """把解析出的曲目交给老歌过滤；失败不应阻断播放本身。"""
-        manager = self._music_manager()
-        if manager is None:
+        if self._quality_checker is None:
             return
         try:
-            manager.handle_song_quality_check(playing_info)
+            self._quality_checker.handle_song_quality_check(playing_info)
         except Exception as exc:
             self.logger.warning(f"歌曲质量检查失败: {exc}")
 
