@@ -16,6 +16,8 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 from ushareiplay.adapters.inbound.runtime.keyword_command_sink import QueueKeywordCommandSink
 from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
     NaturalLanguageFallbackAdapter,
+    PlaybackInfoProvider,
+    RoomInfoProvider,
 )
 from ushareiplay.adapters.inbound.runtime.keyword_presence import InfoManagerPresence
 from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
@@ -571,13 +573,15 @@ class AppController(Singleton):
             )
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
+            self.room_state = RoomState.initialize(
+                self.soul_handler, catalogue=self.command_catalogue
+            )
             PresenceTracker.initialize(self.soul_handler)
-            PlaybackBroadcaster.initialize(self.soul_handler)
+            self.playback_broadcaster = PlaybackBroadcaster.initialize(self.soul_handler)
             OnlineListScraper.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(self.soul_handler)
             self.party_manager = PartyManager.initialize(self.soul_handler)
-            PlaylistSession.initialize(self.soul_handler)
+            self.playlist_session = PlaylistSession.initialize(self.soul_handler)
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(
@@ -649,7 +653,14 @@ class AppController(Singleton):
                 chat_logs=UserMemoryChatLogRecorder(self.user_memory),
                 config_source=YamlKeywordConfigSource(),
                 fallback=NaturalLanguageFallbackAdapter(
-                    self.config,
+                    commands_config=lambda: self.config.command_entries,
+                    catalogue=lambda: self.command_manager.catalogue,
+                    room_info=RoomInfoProvider(self.room_state),
+                    playback_info=PlaybackInfoProvider(
+                        self.playback_broadcaster,
+                        self.playlist_session,
+                        self.music_handler,
+                    ),
                     resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
                     memory=self.user_memory,
                 ),
