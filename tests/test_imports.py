@@ -64,7 +64,11 @@ MODULES = [
     # dal
     "ushareiplay.dal",
     "ushareiplay.dal.user_dao",
-    "ushareiplay.dal.seat_reservation_dao",
+    "ushareiplay.adapters.outbound.persistence.seat_reservation_repository",
+    "ushareiplay.modules.seat.domain",
+    "ushareiplay.modules.seat.ledger",
+    "ushareiplay.modules.seat.ports",
+    "ushareiplay.modules.seat.use_cases",
     "ushareiplay.adapters.outbound.llm.memory_distiller",
     "ushareiplay.adapters.outbound.persistence.chat_log_repository",
     "ushareiplay.adapters.outbound.persistence.user_memory_repository",

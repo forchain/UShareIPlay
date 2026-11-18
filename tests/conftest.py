@@ -63,14 +63,10 @@ def _install_state_defaults():
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
     from tests.room_profile_support import RoomProfileManager
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 
     for cls in (
-        SeatSubsystem,
         PartyManager,
         RoomProfileManager,
-        SeatObservationManager,
         PlaybackMuting,
         CommandManager,
     ):

@@ -32,7 +32,6 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 
@@ -102,7 +101,8 @@ class MessageManager(Singleton):
         return self._chat_logger
 
     def _get_seat_manager(self):
-        return SeatManager.instance()
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "seat_service", None) if controller else None
 
     async def resolve_room_owner(self) -> str | None:
         """房间房主名：配置优先（走 ADR-0008 的 RolePolicy），否则回落到库里的房主。

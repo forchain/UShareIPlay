@@ -25,8 +25,6 @@ def wire_room_state(room_state: RoomStateService) -> None:
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from tests.room_profile_support import RoomProfileManager
-    from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
     for cls, attr in (
         (CommandManager, "room_state"),
@@ -34,8 +32,6 @@ def wire_room_state(room_state: RoomStateService) -> None:
         (RoomProfileManager, "_room_state"),
         (InfoManager, "_room_state"),
         (PlaybackMuting, "room_state"),
-        (SeatManager, "_room_state"),
-        (SeatObservationManager, "room_state"),
     ):
         if cls.is_initialized():
             setattr(cls.instance(), attr, room_state)

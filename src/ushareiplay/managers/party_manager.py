@@ -813,9 +813,9 @@ class PartyManager(Singleton):
         else:
             self.logger.warning(f"默认notice设置失败: {result.get('error', 'Unknown error')}")
 
-        seat_manager = self.handler.controller.seat_manager
+        seat_service = self.handler.controller.seat_service
         self.logger.info("Attempting to seat owner after party creation")
-        result = await seat_manager.find_owner_seat()
+        result = await seat_service.find_owner_seat()
         if 'success' in result:
             self.logger.info("Owner successfully seated")
         else:

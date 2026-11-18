@@ -467,9 +467,9 @@ class CommandManager(Singleton):
         if self.room_state is not None and self.room_state.is_guest_room:
             return
         try:
-            from ushareiplay.managers.seat_manager import SeatManager
-
-            await SeatManager.instance().check_seats_on_entry(username)
+            seat_service = getattr(self.controller, "seat_service", None) if self.controller else None
+            if seat_service is not None:
+                await seat_service.check_seats_on_entry(username)
         except Exception:
             self.logger.error(f"Error checking seats on {event_label}: {traceback.format_exc()}")
 
