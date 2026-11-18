@@ -34,14 +34,6 @@ class NotRoomAdmin(RoomAdminError):
         self.user = user
 
 
-class OperatorProtected(RoomAdminError):
-    """ADR-0008：受保护的人工操作者不能被更低层级解除。"""
-
-    def __init__(self, user: str):
-        super().__init__(user)
-        self.user = user
-
-
 class RoomAdmins:
     """当前房间管理员名单（UI 可见昵称）。
 

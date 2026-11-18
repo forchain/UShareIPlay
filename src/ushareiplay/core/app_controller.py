@@ -644,7 +644,6 @@ class AppController(Singleton):
             self.manage_admin = ManageAdmin(
                 drawer=self.online_drawer,
                 admins=self.room_admins,
-                policy=RolePolicy(self.config),
                 logger=self.logger,
             )
             # 送礼 / 私聊的资料页流程仍由 UserManager 编排（#552 迁移），抽屉用例注入。

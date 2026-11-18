@@ -15,7 +15,6 @@ import pytest
 
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer
-from ushareiplay.modules.shared.roles import RolePolicy
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -26,7 +25,6 @@ def _wire(*, members=("小明",), name_resolver=None, **driver_kwargs):
     manager = ManageAdmin(
         drawer=OnlineDrawer(drawer=driver, name_resolver=name_resolver),
         admins=admins,
-        policy=RolePolicy({}),
     )
     return manager, driver
 
@@ -228,8 +226,8 @@ class _RecordingAdminManager:
     def __init__(self):
         self.given = []
 
-    async def manage_admin(self, enable, target_nickname, *, caller=None):
-        self.given.append((enable, target_nickname, caller))
+    async def manage_admin(self, enable, target_nickname):
+        self.given.append((enable, target_nickname))
         return {"user": target_nickname, "action": "Invited" if enable else "Dismissed"}
 
 
@@ -270,7 +268,7 @@ async def test_admin_command_parses_the_target_and_delegates_verbatim(
         MessageInfo(content=content, nickname="群主"), parameters
     )
 
-    assert fake_manager.given == [(*expected, "群主")]
+    assert fake_manager.given == [expected]
     assert result == {"user": expected[1], "action": "Invited" if expected[0] else "Dismissed"}
 
 
@@ -317,5 +315,5 @@ async def test_admin_command_does_not_resolve_the_nickname_itself():
             MessageInfo(content=":admin 1 forchain", nickname="群主"), ["1", "forchain"]
         )
 
-    assert fake_manager.given == [(True, "forchain", "群主")], "canonical 名原样交给流程"
+    assert fake_manager.given == [(True, "forchain")], "canonical 名原样交给流程"
     assert result == {"user": "forchain", "action": "Invited"}

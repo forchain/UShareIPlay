@@ -1,28 +1,18 @@
 """Manage-admin 用例与房管领域规则的离线测试（#550）。
 
-被测的是「房管名单」与「授予/解除」的规则接缝：ADR-0008 的房主/管理员层级在这一层
-落成命名异常（`AlreadyRoomAdmin` / `NotRoomAdmin` / `OperatorProtected`），而不是
-聊天命令里的一句字符串。屏幕整块换成 `InMemoryOnlineDrawerDriver`，因此这里不碰
-任何 Appium 时序。
+被测的是「房管名单」与「授予/解除」的规则接缝：既有的幂等失败被建模成命名异常
+（`AlreadyRoomAdmin` / `NotRoomAdmin`），而不是聊天命令里的一句字符串。屏幕整块换成
+`InMemoryOnlineDrawerDriver`，因此这里不碰任何 Appium 时序。
 """
 
 from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.adapters.inbound.chat.admin import (
-    OPERATOR_PROTECTED_ERROR,
-    AdminCommand,
-)
+from ushareiplay.adapters.inbound.chat.admin import AdminCommand
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.modules.room.domain import (
-    AlreadyRoomAdmin,
-    NotRoomAdmin,
-    OperatorProtected,
-    RoomAdmins,
-)
+from ushareiplay.modules.room.domain import AlreadyRoomAdmin, NotRoomAdmin, RoomAdmins
 from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer
-from ushareiplay.modules.shared.roles import RolePolicy
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -32,14 +22,10 @@ def _drawer(driver, *, name_resolver=None):
     )
 
 
-def _wire(*, members=("Alice",), driver_kwargs=None, policy=None):
+def _wire(*, members=("Alice",), driver_kwargs=None):
     driver = InMemoryOnlineDrawerDriver(members=list(members), **(driver_kwargs or {}))
     admins = RoomAdmins()
-    manager = ManageAdmin(
-        drawer=_drawer(driver),
-        admins=admins,
-        policy=policy or RolePolicy({}),
-    )
+    manager = ManageAdmin(drawer=_drawer(driver), admins=admins)
     return manager, admins, driver
 
 
@@ -94,52 +80,9 @@ async def test_dismissing_a_non_admin_raises_the_named_domain_error():
     assert driver.drawer_open is False
 
 
-async def test_the_room_owner_cannot_be_dismissed_and_the_drawer_is_not_opened():
-    """ADR-0008 的 operator protection：房主是受保护的，失败在进 UI 之前。"""
-    manager, _admins, driver = _wire()
-    policy = RolePolicy({"soul": {"room_owner": "Owner"}})
-
-    manager = ManageAdmin(
-        drawer=_drawer(driver), admins=RoomAdmins(), policy=policy
-    )
-
-    with pytest.raises(OperatorProtected) as raised:
-        await manager.manage_admin(
-            enable=False, target_nickname="Owner", caller="SomeoneElse"
-        )
-
-    assert raised.value.user == "Owner"
-    assert driver.open_calls == 0
-
-
-async def test_only_the_owner_may_dismiss_a_configured_admin():
-    """Owner > Admin：管理员不能解除另一个管理员，房主可以。"""
-    policy = RolePolicy({"soul": {"room_owner": "Owner", "admin_users": ["Admin"]}})
-    manager, admins, _driver = _wire(
-        members=["Admin"],
-        driver_kwargs={"admin_invite_label": "解除管理"},
-        policy=policy,
-    )
-    admins.add("Admin")
-
-    with pytest.raises(OperatorProtected):
-        await manager.manage_admin(
-            enable=False, target_nickname="Admin", caller="AnotherAdmin"
-        )
-
-    result = await manager.manage_admin(
-        enable=False, target_nickname="Admin", caller="Owner"
-    )
-
-    assert result == {"user": "Admin", "action": "Dismissed"}
-    assert admins.is_admin("Admin") is False
-
-
-def _controller(driver, *, admins=None, policy=None):
+def _controller(driver, *, admins=None):
     drawer = _drawer(driver)
-    manager = ManageAdmin(
-        drawer=drawer, admins=admins or RoomAdmins(), policy=policy or RolePolicy({})
-    )
+    manager = ManageAdmin(drawer=drawer, admins=admins or RoomAdmins())
     return SimpleNamespace(
         soul_handler=SimpleNamespace(logger=None, log_error=lambda _m: None),
         music_handler=None,
@@ -160,8 +103,8 @@ async def test_admin_command_parses_and_delegates_verbatim(content, parameters, 
     seen = []
 
     class _Recording:
-        async def manage_admin(self, enable, target, caller=None):
-            seen.append((enable, target, caller))
+        async def manage_admin(self, enable, target):
+            seen.append((enable, target))
             return {"user": target, "action": "Invited"}
 
     controller = _controller(InMemoryOnlineDrawerDriver())
@@ -172,7 +115,7 @@ async def test_admin_command_parses_and_delegates_verbatim(content, parameters, 
         MessageInfo(content=content, nickname="群主"), parameters
     )
 
-    assert seen == [(*expected, "群主")]
+    assert seen == [expected]
     assert result == {"user": expected[1], "action": "Invited"}
 
 
@@ -191,18 +134,6 @@ async def test_admin_command_translates_the_domain_errors_to_the_legacy_replies(
         MessageInfo(content=":admin 0 Alice", nickname="群主"), ["0", "Alice"]
     )
     assert not_yet == {"error": "你还不是管理员", "user": "Alice"}
-
-    other_driver = InMemoryOnlineDrawerDriver(members=["Alice"])
-    other_controller = _controller(other_driver)
-    other_controller.manage_admin = ManageAdmin(
-        drawer=_drawer(other_driver),
-        admins=RoomAdmins(),
-        policy=RolePolicy({"soul": {"room_owner": "Alice"}}),
-    )
-    protected = await AdminCommand(other_controller).do_process(
-        MessageInfo(content=":admin 0 Alice", nickname="群主"), ["0", "Alice"]
-    )
-    assert protected == {"error": OPERATOR_PROTECTED_ERROR, "user": "Alice"}
 
 
 @pytest.mark.parametrize(

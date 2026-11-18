@@ -20,7 +20,6 @@ from ushareiplay.modules.room.domain import (
     AlreadyRoomAdmin,
     HookCommand,
     NotRoomAdmin,
-    OperatorProtected,
     RoomAdmins,
     RoomState,
 )
@@ -36,7 +35,6 @@ from ushareiplay.modules.room.ports import (
     RoomStateStore,
     UserEventHookRepository,
 )
-from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.modules.room.registry import COMMAND_PREFIXES, EXIT, spec_for
 from ushareiplay.modules.user.ports import UserRepository
 
@@ -762,8 +760,8 @@ class OnlineDrawer:
 class ManageAdmin:
     """房管授予与解除的用例：开抽屉 -> 找人 -> 资料卡 -> 开关 -> 确认 -> 记账。
 
-    ADR-0008 的层级规则在这里落成命名异常：已经是/还不是房管、以及受保护的人工
-    操作者（房主、配置管理员）不能被更低层级解除。聊天命令只负责把异常翻成原话。
+    既有的幂等失败（已经是/还不是房管）在这里落成命名异常；聊天命令只负责把异常
+    翻成原话。
     """
 
     def __init__(
@@ -771,12 +769,10 @@ class ManageAdmin:
         *,
         drawer: OnlineDrawer,
         admins: RoomAdmins,
-        policy: RolePolicy,
         logger: Optional[logging.Logger] = None,
     ):
         self._drawer = drawer
         self._admins = admins
-        self._policy = policy
         self._logger = logger
 
     @property
@@ -800,26 +796,16 @@ class ManageAdmin:
     def clear_room_admins(self) -> None:
         self._admins.clear()
 
-    async def manage_admin(
-        self,
-        enable: bool,
-        target_nickname: str,
-        *,
-        caller: Optional[str] = None,
-    ) -> dict:
+    async def manage_admin(self, enable: bool, target_nickname: str) -> dict:
         """在在线列表中打开目标用户资料页，再执行邀请/解除管理。
 
         Args:
             enable: True 邀请为管理员，False 解除管理员。
             target_nickname: canonical 名或 UI 可见昵称；解析在抽屉会话里完成。
-            caller: 发起命令的昵称。层级保护只看它判断「是不是更低层级」。
 
         Raises:
-            AlreadyRoomAdmin / NotRoomAdmin / OperatorProtected: 名单规则失败。
+            AlreadyRoomAdmin / NotRoomAdmin: 名单规则失败。
         """
-        if not enable:
-            self._guard_operator(caller, target_nickname)
-
         drawer = self._drawer
         driver = drawer.driver
         handover = Handover()
@@ -854,15 +840,6 @@ class ManageAdmin:
                 return await self._toggle_on_card(driver, enable, visible_name)
             finally:
                 await self._close_admin_overlays()
-
-    def _guard_operator(self, caller: Optional[str], target: str) -> None:
-        """ADR-0008：房主不可被解除；配置管理员只能由房主解除。"""
-        if self._policy.is_room_owner(target):
-            raise OperatorProtected(target)
-        if self._policy.is_admin(target) and not (
-            caller is not None and self._policy.is_room_owner(caller)
-        ):
-            raise OperatorProtected(target)
 
     async def _resolve_visible_name(self, drawer: OnlineDrawer, nickname: str) -> str:
         """把 canonical 名解析成房间里可见的分身名；解析不了就按原名找。"""

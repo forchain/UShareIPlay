@@ -34,7 +34,6 @@ def _wire(*, members=("Alice",), name_resolver=None, admin_invite_label="管理�
     manager = ManageAdmin(
         drawer=OnlineDrawer(drawer=driver, name_resolver=name_resolver),
         admins=admins,
-        policy=RolePolicy({}),
     )
     return manager, admins, driver
 
@@ -186,4 +185,4 @@ async def test_admin_command_delegation():
     res = await cmd.process(msg, ["1", "Bob"])
 
     assert res == {"user": "Bob", "action": "Invited"}
-    fake_manager.manage_admin.assert_awaited_once_with(True, "Bob", caller="Alice")
+    fake_manager.manage_admin.assert_awaited_once_with(True, "Bob")

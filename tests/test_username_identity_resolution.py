@@ -34,7 +34,6 @@ from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.registry import FOCUS
 from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer, PresenceTracker
-from ushareiplay.modules.shared.roles import RolePolicy
 from tests.room_support import configured_room_state, make_hooks, wire_room_state
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
@@ -346,7 +345,7 @@ async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_
         ui_session=None,
     )
     manager = ManageAdmin(
-        drawer=drawer, admins=RoomAdmins(), policy=RolePolicy({})
+        drawer=drawer, admins=RoomAdmins()
     )
     result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
 
