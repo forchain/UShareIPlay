@@ -26,7 +26,7 @@ import pytest
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
 

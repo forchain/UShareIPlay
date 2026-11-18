@@ -449,6 +449,10 @@ class FakeSeatObservation:
 
 
 def make_handler(elements=None, desks=None, popup_name=None, controller=None):
+    if controller is None:
+        from tests.legacy_state import RoomState
+
+        controller = SimpleNamespace(room_state=RoomState.instance())
     handler = MagicMock()
     handler.logger = MagicMock()
     # 生产上传给 handler 的就是 config.yaml 的 soul 段

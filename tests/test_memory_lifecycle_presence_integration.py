@@ -7,7 +7,6 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.user_event_hooks import UserEventHooks
 from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
@@ -65,9 +64,15 @@ async def test_command_manager_presence_schedules_memory_consolidation():
     try:
         memory = RecordingMemory()
 
+        from tests.legacy_state import PresenceTracker
+        from tests.room_support import make_hooks
+
         cm = CommandManager.instance() if CommandManager.is_initialized() else CommandManager.initialize()
         cm._logger = SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock())
         cm.user_memory = memory
+        cm.user_event_hooks = make_hooks(
+            presence=PresenceTracker.instance(), memory=memory
+        )
 
         # Test notify_user_enter
         await cm.notify_user_enter("alice")
@@ -81,24 +86,11 @@ async def test_command_manager_presence_schedules_memory_consolidation():
         main_user = await User.create(username="charlie_main", level=1)
         await User.create(username="charlie_alias", level=0, canonical_user=main_user)
 
-        # When alias leaves, UserDAO.resolve_canonical resolves to charlie_main
-        # Mock get_all_avatar_usernames to return empty online avatars so leave is not skipped
-        from ushareiplay.managers.info_manager import InfoManager
-        from ushareiplay.state.presence_tracker import PresenceTracker
-
-        if not PresenceTracker.is_initialized():
-            PresenceTracker.initialize()
+        # When alias leaves, the exit gate resolves to charlie_main.
         PresenceTracker.instance()._online_users = set()
 
-        if not InfoManager.is_initialized():
-            InfoManager.initialize()
-        InfoManager.instance()._presence_tracker._online_users = set()
-
-        UserEventHooks.instance().user_memory = memory
-
-        with patch.object(UserDAO, "get_all_avatar_usernames", return_value={"charlie_alias"}):
-            await cm.notify_user_leave("charlie_alias")
-            assert "charlie_main" in memory.users
+        await cm.notify_user_leave("charlie_alias")
+        assert "charlie_main" in memory.users
 
 
     finally:

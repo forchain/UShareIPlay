@@ -2,9 +2,6 @@ from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.managers.seat_manager import SeatManager
 
 
-from ushareiplay.state.room_state import RoomState
-
-
 class SeatCommand(BaseCommand):
     handler_attr = 'soul_handler'
     error_message = 'Failed to process seat command: {error}'
@@ -46,7 +43,8 @@ class SeatCommand(BaseCommand):
 
     async def do_process(self, message_info, parameters):
         """Process seat command"""
-        if RoomState.in_guest_room():
+        room_state = self.controller.room_state
+        if room_state is not None and room_state.is_guest_room:
             return {'error': '他人房间不支持座位功能'}
 
         if not parameters:

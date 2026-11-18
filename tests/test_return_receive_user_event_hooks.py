@@ -18,20 +18,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from ushareiplay.commands.receive import ReceiveCommand
+from ushareiplay.adapters.inbound.chat.receive import ReceiveCommand
 
 # `return` 是 Python 关键字，`from ushareiplay.commands.return import ...` 语法非法
 # （CommandManager 正是因为这个才用 `_find_command_class` 动态发现命令类）。
-ReturnCommand = importlib.import_module("ushareiplay.commands.return").ReturnCommand
+ReturnCommand = importlib.import_module("ushareiplay.adapters.inbound.chat.return").ReturnCommand
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+    TortoiseUserEventHookRepository,
+)
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.dal.receive_dao import ReceiveDao
-from ushareiplay.dal.return_dao import ReturnDao
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
+from ushareiplay.modules.room.registry import RECEIVE, RETURN
+from tests.room_support import make_hooks
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 
@@ -44,9 +46,21 @@ async def db_init():
     await manager.close()
 
 
+@pytest.fixture
+def hooks(db_init):
+    return make_hooks()
+
+
 def _logger_stub():
     return SimpleNamespace(
         info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock()
+    )
+
+
+def _controller(hooks):
+    handler = SimpleNamespace(logger=None, log_error=lambda *a, **k: None)
+    return SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
     )
 
 
@@ -61,8 +75,8 @@ async def _drain():
 
 
 @pytest.mark.asyncio
-async def test_return_command_crud_end_to_end(db_init):
-    cmd = ReturnCommand(MagicMock())
+async def test_return_command_crud_end_to_end(db_init, hooks):
+    cmd = ReturnCommand(_controller(hooks))
 
     added = await cmd.do_process(
         MessageInfo(content=':return add ":play 稻香"', nickname="Alice"), []
@@ -74,7 +88,7 @@ async def test_return_command_crud_end_to_end(db_init):
     )
 
     # 适配器写的就是旧表，legacy DAO 读得到（#436 才收掉旧 DAO）
-    stored = await ReturnDao.get_by_username("Alice")
+    stored = await TortoiseUserEventHookRepository().get_by_username(RETURN, "Alice")
     assert [row.command for row in stored] == [":play 稻香", ":say 我回来啦"]
 
     listed = await cmd.do_process(MessageInfo(content=":return list", nickname="Alice"), [])
@@ -88,12 +102,12 @@ async def test_return_command_crud_end_to_end(db_init):
 
     cleared = await cmd.do_process(MessageInfo(content=":return clear", nickname="Alice"), [])
     assert cleared == {"message": "已清除 1 个返回命令"}
-    assert await ReturnDao.get_by_username("Alice") == []
+    assert await TortoiseUserEventHookRepository().get_by_username(RETURN, "Alice") == []
 
 
 @pytest.mark.asyncio
-async def test_return_command_keeps_prefix_example_text(db_init):
-    cmd = ReturnCommand(MagicMock())
+async def test_return_command_keeps_prefix_example_text(db_init, hooks):
+    cmd = ReturnCommand(_controller(hooks))
 
     res = await cmd.do_process(MessageInfo(content=':return add "稻香"', nickname="Alice"), [])
     assert res == {"error": '命令必须以命令前缀(:/：或//／)开头，例如 ":play 歌曲名"'}
@@ -103,8 +117,8 @@ async def test_return_command_keeps_prefix_example_text(db_init):
 
 
 @pytest.mark.asyncio
-async def test_receive_command_crud_end_to_end(db_init):
-    cmd = ReceiveCommand(MagicMock())
+async def test_receive_command_crud_end_to_end(db_init, hooks):
+    cmd = ReceiveCommand(_controller(hooks))
 
     added = await cmd.do_process(
         MessageInfo(content=':receive add ":say 谢谢"', nickname="Alice"), []
@@ -115,7 +129,7 @@ async def test_receive_command_crud_end_to_end(db_init):
         MessageInfo(content=':receive add ":say 老板大气"', nickname="Alice"), []
     )
 
-    stored = await ReceiveDao.get_by_username("Alice")
+    stored = await TortoiseUserEventHookRepository().get_by_username(RECEIVE, "Alice")
     assert [row.command for row in stored] == [":say 谢谢", ":say 老板大气"]
 
     listed = await cmd.do_process(MessageInfo(content=":receive list", nickname="Alice"), [])
@@ -129,12 +143,12 @@ async def test_receive_command_crud_end_to_end(db_init):
 
     cleared = await cmd.do_process(MessageInfo(content=":receive clear", nickname="Alice"), [])
     assert cleared == {"message": "已清除 1 个收礼物命令"}
-    assert await ReceiveDao.get_by_username("Alice") == []
+    assert await TortoiseUserEventHookRepository().get_by_username(RECEIVE, "Alice") == []
 
 
 @pytest.mark.asyncio
-async def test_receive_command_keeps_prefix_example_text(db_init):
-    cmd = ReceiveCommand(MagicMock())
+async def test_receive_command_keeps_prefix_example_text(db_init, hooks):
+    cmd = ReceiveCommand(_controller(hooks))
 
     res = await cmd.do_process(MessageInfo(content=':receive add "谢谢"', nickname="Alice"), [])
     assert res == {"error": '命令必须以命令前缀(:/：或//／)开头，例如 ":say 谢谢"'}
@@ -149,11 +163,11 @@ async def test_receive_command_keeps_prefix_example_text(db_init):
 
 
 @pytest.mark.asyncio
-async def test_receive_command_alias_resolution_through_adapter(db_init):
+async def test_receive_command_alias_resolution_through_adapter(db_init, hooks):
     outlier = await UserDAO.get_or_create_raw("Outlier")
     await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
 
-    cmd = ReceiveCommand(MagicMock())
+    cmd = ReceiveCommand(_controller(hooks))
     await cmd.do_process(
         MessageInfo(content=':receive add ":say 谢谢"', nickname="Outlier"), []
     )
@@ -171,7 +185,7 @@ async def test_receive_command_alias_resolution_through_adapter(db_init):
 
 
 @pytest.mark.asyncio
-async def test_return_and_receive_keep_different_user_resolution(db_init):
+async def test_return_and_receive_keep_different_user_resolution(db_init, hooks):
     """收礼物按 alias-group、返回按 single-id，两者不统一 —— 别"顺手对齐"。
 
     差别只在**直接挂在分身 id 名下**的历史数据：alias-group 认，返回命令不认。
@@ -187,8 +201,8 @@ async def test_return_and_receive_keep_different_user_resolution(db_init):
     await ReceiveEvent.create(user=chainer, command=":say 分身专属")
     await ReturnEvent.create(user=chainer, command=":play 分身专属")
 
-    receive_cmd = ReceiveCommand(MagicMock())
-    return_cmd = ReturnCommand(MagicMock())
+    receive_cmd = ReceiveCommand(_controller(hooks))
+    return_cmd = ReturnCommand(_controller(hooks))
 
     receive_listed = await receive_cmd.do_process(
         MessageInfo(content=":receive list", nickname="Chainer"), []
@@ -207,8 +221,7 @@ async def test_return_and_receive_keep_different_user_resolution(db_init):
 
 
 @pytest.mark.asyncio
-async def test_fire_enqueues_message_info_for_return_and_receive(db_init):
-    hooks = UserEventHooks.instance()
+async def test_fire_enqueues_message_info_for_return_and_receive(db_init, hooks):
     await hooks.execute_crud(RETURN, "Bob", ':return add ":play 稻香"')
     await hooks.execute_crud(RECEIVE, "Bob", ':receive add ":say 谢谢"')
 
@@ -226,16 +239,16 @@ async def test_fire_enqueues_message_info_for_return_and_receive(db_init):
 
 
 @pytest.mark.asyncio
-async def test_fire_returns_zero_when_no_commands_configured(db_init):
-    assert await UserEventHooks.instance().fire(RETURN, "Nobody") == 0
-    assert await UserEventHooks.instance().fire(RECEIVE, "Nobody") == 0
+async def test_fire_returns_zero_when_no_commands_configured(db_init, hooks):
+    assert await hooks.fire(RETURN, "Nobody") == 0
+    assert await hooks.fire(RECEIVE, "Nobody") == 0
 
 
 @pytest.mark.asyncio
-async def test_hook_methods_enqueue_through_message_queue(db_init):
+async def test_hook_methods_enqueue_through_message_queue(db_init, hooks):
     """钩子方法必须经 MessageQueue 入队：drain 时才展开 `{user_name}` 宏。"""
-    return_cmd = ReturnCommand(MagicMock())
-    receive_cmd = ReceiveCommand(MagicMock())
+    return_cmd = ReturnCommand(_controller(hooks))
+    receive_cmd = ReceiveCommand(_controller(hooks))
     await return_cmd.do_process(
         MessageInfo(content=':return add ":say 回来啦 {user_name}"', nickname="Bob"), []
     )
@@ -262,13 +275,14 @@ async def test_hook_methods_enqueue_through_message_queue(db_init):
 
 
 @pytest.mark.asyncio
-async def test_notify_user_return_enqueues_once_and_checks_seats(db_init):
-    cmd = ReturnCommand(MagicMock())
+async def test_notify_user_return_enqueues_once_and_checks_seats(db_init, hooks):
+    cmd = ReturnCommand(_controller(hooks))
     await cmd.do_process(
         MessageInfo(content=':return add ":play 稻香"', nickname="Bob"), []
     )
 
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
 
     SeatManager.reset_instance()
@@ -290,13 +304,14 @@ async def test_notify_user_return_enqueues_once_and_checks_seats(db_init):
 
 
 @pytest.mark.asyncio
-async def test_notify_gift_receive_enqueues_receive_command(db_init):
-    cmd = ReceiveCommand(MagicMock())
+async def test_notify_gift_receive_enqueues_receive_command(db_init, hooks):
+    cmd = ReceiveCommand(_controller(hooks))
     await cmd.do_process(
         MessageInfo(content=':receive add ":say 谢谢"', nickname="Bob"), []
     )
 
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
 
     await MessageQueue.instance().clear_queue()
@@ -307,8 +322,9 @@ async def test_notify_gift_receive_enqueues_receive_command(db_init):
 
 
 @pytest.mark.asyncio
-async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_init):
+async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_init, hooks):
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
 
     await MessageQueue.instance().clear_queue()
@@ -323,10 +339,11 @@ async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_i
 
 
 @pytest.mark.asyncio
-async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init):
+async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init, hooks):
     scheduled = []
 
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
     cm.user_memory = SimpleNamespace(schedule_user=scheduled.append)
 

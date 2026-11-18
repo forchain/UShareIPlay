@@ -32,7 +32,7 @@ from ushareiplay.managers.room_profile.row_editor import (
     RowStep,
     WriteOutcome,
 )
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/managers/room_profile'
@@ -553,7 +553,8 @@ def test_the_physical_ritual_lives_only_in_the_row_editor():
 def test_the_guest_room_guard_for_drawer_edits_is_defined_in_exactly_one_place():
     """「什么算别人的房间」只有一个定义：改判定不会漏掉某一条路。"""
     editor_source = (PKG / 'row_editor.py').read_text(encoding='utf-8')
-    assert editor_source.count('RoomState.in_guest_room()') == 1
+    assert editor_source.count('def guest_room_blocks_edit(') == 1
+    assert editor_source.count('guest_room_blocks_edit(self._manager.room_state)') == 1
 
     tree = ast.parse(_manager_source())
     offenders = []

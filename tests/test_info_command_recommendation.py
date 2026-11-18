@@ -4,8 +4,8 @@ import pytest
 from ushareiplay.commands.info import InfoCommand
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver

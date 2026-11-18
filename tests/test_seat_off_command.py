@@ -22,6 +22,7 @@ class DummyController:
     def __init__(self):
         self.soul_handler = SimpleNamespace(log_error=lambda message: None)
         self.music_handler = None
+        self.room_state = None
 
 
 class DummyLogger:

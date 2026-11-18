@@ -32,8 +32,8 @@ class PartyNameViolationLaterEvent(BaseEvent):
                 self.logger.info("Skipped title reset: tvLater snapshot has no party-name violation evidence")
                 return True
 
-            from ushareiplay.state.room_state import RoomState
-            if RoomState.in_guest_room():
+            room_state = self.controller.room_state
+            if room_state is not None and room_state.is_guest_room:
                 return True
 
             from ushareiplay.managers.room_profile import RoomProfileManager

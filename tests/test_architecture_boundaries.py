@@ -105,6 +105,19 @@ def test_guarded_packages_do_not_import_technology_or_adapters_and_do_not_locate
     assert violations == {}
 
 
+def test_room_package_is_covered_by_the_guard():
+    """房间切片也必须被扫描：缺了这层断言，空的违反列表无法区分「干净」和「没扫」。"""
+    room_files = sorted((MODULES_ROOT / "room").rglob("*.py"))
+    assert room_files
+
+    violations = {
+        str(path): found
+        for path in room_files
+        if (found := find_violations(path.read_text(), path))
+    }
+    assert violations == {}
+
+
 def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
     persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
     assert persistence_files

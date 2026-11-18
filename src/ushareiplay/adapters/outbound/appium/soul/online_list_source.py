@@ -1,83 +1,68 @@
-"""在线名单抓取：全部在 `OnlineDrawerManager.drawer_session` 里进出抽屉（#432）。
+"""在线名单抓取（Soul 在线用户抽屉）。
 
-#428 把这份抽屉的物理生命周期收进了 `OnlineDrawerManager`。本模块随之把自己那份
-「开抽屉 -> 读行 -> 关抽屉」整个换成经由那个会话，于是元素 key、手势、落定时间都不再
-出现在这里。留在引擎这一侧的是**唯一一件事**：把列表一页一页读全，以及决定什么时候
-停。翻页判据是循环决策，适配器只负责把「此刻屏幕上有什么」如实读回来。
+全部物理动作都在 `OnlineDrawerManager.drawer_session` 里进出抽屉（#432）。本适配器
+只保留**唯一一件事**：把列表一页一页读全，以及决定什么时候停。翻页判据是循环
+决策，抽屉管理器只负责把「此刻屏幕上有什么」如实读回来。
 
 三条要守住的约定：
 
 1. **人数在打开之前读**：抽屉一旦盖上来，房间里「N 人在线」那个控件就被挡住了。
-2. **一次抓取一个会话**：旧实现每次抓取自己开关抽屉，因此人数对不上时的重试拿到的是
-   一张**从第一页开始**的列表。列表没法往回滚，这是重试唯一可能奏效的前提，所以重试
-   必须是新会话而不是复用。
+2. **一次抓取一个会话**：旧实现每次抓取自己开关抽屉，因此人数对不上时的重试拿到
+   的是一张**从第一页开始**的列表。列表没法往回滚，这是重试唯一可能奏效的前提。
 3. **UI 独占锁留在最外层**：`refresh_online_users` 持锁跨越两次抓取（含中间的 0.4s
-   间隔），`drawer_session` 在里面可重入地嵌套。锁一旦在两次抓取之间松开，兜底的
-   `press_back` 就有机会在这半秒里把抽屉当成未知页面关掉。
+   间隔），`drawer_session` 在里面可重入地嵌套。
 """
 
 import asyncio
 import logging
 import traceback
-from typing import Optional, Set, Tuple
+from typing import Callable, Optional, Set, Tuple
 
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.modules.room.ports import OnlineListSource, PresenceQuery
+from ushareiplay.modules.user.ports import UserRepository
 
-#: 最多翻多少页。上限存在的理由是「别把一次刷新变成无上限轮询」：在线人数超过这个量级
-#: 时宁可留给下一次人数变化再抓，也不在这一次里耗下去。
+#: 最多翻多少页。上限存在的理由是「别把一次刷新变成无上限轮询」。
 MAX_SWIPES = 50
 
 #: 连续多少轮没带来新面孔就认为翻不动了。这条是兜底：到底提示读不到时靠它收尾。
 MAX_NO_NEW_ROUNDS = 2
 
-#: 关注关系文案 -> 等级。顺序即优先级，与旧实现的三段 if/elif 逐字一致：
-#: 「密友」文案里同时带「我关注的」字样，先判密友才不会把人降级。
+#: 关注关系文案 -> 等级。顺序即优先级：「密友」文案里同时带「我关注的」字样，
+#: 先判密友才不会把人降级。
 FOLLOW_STATE_LEVELS = (("密友", 3), ("我关注的", 2), ("关注了我", 1))
 
 
-class OnlineListScraper(Singleton):
+class SoulOnlineListSource(OnlineListSource):
     """从 Soul App 在线用户抽屉抓取当前在线用户。"""
 
-    def __init__(self, handler=None):
-        self._handler = handler
-        self._logger = getattr(handler, "logger", None)
+    def __init__(
+        self,
+        *,
+        drawer,
+        users: UserRepository,
+        presence: PresenceQuery,
+        room_state,
+        ui_session: Callable[[str], object],
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._drawer = drawer
+        self._users = users
+        self._presence = presence
+        self._room_state = room_state
+        self._ui_session = ui_session
+        self._logger = logger
 
     @property
     def logger(self):
-        """获取 logger 实例"""
         if self._logger is None:
-            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("ushareiplay.state.online_list_scraper")
+            self._logger = logging.getLogger("ushareiplay.state.online_list_scraper")
         return self._logger
-
-    @property
-    def handler(self):
-        return self._handler
-
-    @property
-    def drawer(self):
-        """在线用户抽屉会话的唯一所有者。
-
-        单例只查不建（组合根装配的，见 ADR-0009）：这里拿到就去用，拿不到就说明
-        抽屉链路没接线，让刷新整体失败而不是悄悄退回裸 Appium 操作。
-
-        模块顶层 import（ADR-0009 §4）：`managers.online_drawer` 不反向依赖
-        `state`，这条链上不存在循环引用，因此不需要函数体内延迟导入。
-        """
-        return OnlineDrawerManager.instance()
 
     async def _scrape_online_user_names(
         self, target_count: Optional[int] = None
     ) -> Tuple[Optional[Set[str]], Optional[int]]:
-        """在一个抽屉会话里抓全在线用户，返回 (用户名集合, 探测到的人数)。
-
-        每次调用自带一个会话，打开、翻页、关闭都在里面收尾；会话打不开时返回
-        `(None, detected_count)`，由调用方决定放弃还是重试。
-        """
-        drawer = self.drawer
+        """在一个抽屉会话里抓全在线用户，返回 (用户名集合, 探测到的人数)。"""
+        drawer = self._drawer
         driver = drawer.driver
 
         # 人数必须在抽屉打开**之前**读：抽屉一盖就挡住这个控件了。
@@ -89,17 +74,7 @@ class OnlineListScraper(Singleton):
             return await self._collect_online_user_names(driver, target_count), detected_count
 
     async def _collect_online_user_names(self, driver, target_count: Optional[int]) -> Set[str]:
-        """把已经打开的抽屉一页一页读全，直到某个终止条件成立。
-
-        五个终止条件各管各的，判定顺序与旧实现一致（先到底提示、再人数达标、再没有
-        新人、最后滑够次数），因此同一条列表仍然在同一处停下：
-
-        - 到底提示显示了；
-        - 已抓人数达到 `target_count`（够数就收工，后面的人不去翻）；
-        - 连续若干轮没有新面孔（列表不再前进的兜底）；
-        - 已经滑满 `MAX_SWIPES` 页；
-        - 手势滑不动了。
-        """
+        """把已经打开的抽屉一页一页读全，直到某个终止条件成立。"""
         all_online_user_names = set()
         prev_size = 0
         no_new_rounds = 0
@@ -137,8 +112,6 @@ class OnlineListScraper(Singleton):
                 self.logger.info("Reached max_swipes, stop scrolling online users.")
                 break
 
-            # 滑完等列表停稳的静默在适配器里（见 POST_SCROLL_SETTLE_SECONDS）：
-            # 等 RecyclerView 的物理时序不该由引擎来记。
             if not await driver.scroll_container():
                 self.logger.warning("Swipe failed, stop scrolling online users.")
                 break
@@ -146,38 +119,28 @@ class OnlineListScraper(Singleton):
         return all_online_user_names
 
     async def _record_new_user(self, visible_name: str, follow_state: Optional[str]) -> None:
-        """按关注关系给新面孔定级；没有关注关系就先在 DB 里建档。
-
-        名字直接取抽屉上显示的文本，与旧实现一致：这里是既有行为，本 ticket 只把它
-        搬进抽屉会话，不顺手改语义（命名域解析是另外一件事）。
-        """
+        """按关注关系给新面孔定级；没有关注关系就先在 DB 里建档。"""
         if not follow_state:
-            await UserDAO.get_or_create(visible_name)
+            await self._users.get_or_create(visible_name)
             return
 
         for marker, level in FOLLOW_STATE_LEVELS:
             if marker in follow_state:
-                await UserDAO.update_level_if_lower(visible_name, level)
+                await self._users.update_level_if_lower(visible_name, level)
                 return
         # 关注关系文案三种都不匹配：不猜等级，也不建档（与旧实现同样处理）。
 
     async def refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         """人数变化时，从在线用户列表 UI 刷新在线用户集合，并更新用户等级。"""
-        controller = getattr(self.handler, "controller", None)
-        if controller and hasattr(controller, "ui_session"):
-            session = controller.ui_session("event:refresh_online_users")
-            if hasattr(session, "__aenter__"):
-                # 锁在**两次抓取之外**持有：人数对不上时的间隔期也不能放锁，
-                # 里面的 drawer_session 靠 controller 的可重入语义嵌套。
-                async with session:
-                    return await self._do_refresh_online_users(target_count)
-        return await self._do_refresh_online_users(target_count)
+        # 锁在**两次抓取之外**持有：人数对不上时的间隔期也不能放锁。
+        async with self._ui_session("event:refresh_online_users"):
+            return await self._do_refresh_online_users(target_count)
 
     async def _do_refresh_online_users(self, target_count: Optional[int] = None) -> bool:
         try:
             expected_count = target_count
             if expected_count is None:
-                expected_count = RoomState.instance().user_count
+                expected_count = self._room_state.user_count
 
             # 第 1 次抓取
             user_names, detected_count = await self._scrape_online_user_names(expected_count)
@@ -211,7 +174,7 @@ class OnlineListScraper(Singleton):
                         f"expected {expected_count}. Proceeding with best-effort list."
                     )
 
-            PresenceTracker.instance().update_online_users(list(user_names))
+            self._presence.update_online_users(list(user_names))
             return True
         except Exception:
             self.logger.error(f"Error refreshing online users: {traceback.format_exc()}")

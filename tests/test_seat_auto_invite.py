@@ -527,7 +527,7 @@ async def test_the_panel_is_collapsed_when_no_isolated_desk_is_found(monkeypatch
 async def test_a_guest_room_triggers_no_ui_action_at_all(monkeypatch):
     """他人房间：进房自动邀请整条链路都不许跑。"""
     from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     RoomState.reset_instance()
     room_state = RoomState.initialize()

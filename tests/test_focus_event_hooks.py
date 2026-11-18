@@ -20,14 +20,13 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.user_event_hooks import (
-    ENTER,
-    FOCUS,
-    UserEventHooks,
-    spec_for,
+from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+    TortoiseUserEventHookRepository,
 )
-from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
-from ushareiplay.managers.user_event_hooks.macros import (
+from ushareiplay.modules.room.registry import ENTER, FOCUS, spec_for
+from ushareiplay.modules.room.use_cases import UserEventHooks
+from tests.room_support import make_hooks
+from ushareiplay.modules.room.macros import (
     SEAT_INFO_CTX_KEY,
     expand_seat_macros,
 )
@@ -44,20 +43,20 @@ async def db_init():
 
 
 @pytest_asyncio.fixture
-async def hooks():
-    """The engine under test. `conftest.py` already resets singletons per test."""
-    UserEventHooks.reset_instance()
-    UserEventHooks.initialize(handler=None)
+async def hooks(db_init):
+    """The engine under test, wired like the composition root."""
     queue = MessageQueue.instance()
     await queue.clear_queue()
-    yield UserEventHooks.instance()
+    yield make_hooks()
     await queue.clear_queue()
 
 
-def make_controller():
+def make_controller(hooks):
     """A controller stub good enough for `BaseCommand.__init__`."""
     handler = SimpleNamespace(logger=None, log_error=lambda *a, **k: None)
-    return SimpleNamespace(soul_handler=handler, music_handler=handler)
+    return SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
+    )
 
 
 async def add_focus_hook(hooks, username, command):
@@ -286,7 +285,7 @@ async def test_fire_log_keeps_seat_observation_out(db_init, hooks, caplog):
 
 @pytest.mark.asyncio
 async def test_focus_command_is_a_thin_adapter(db_init, hooks):
-    command = FocusCommand(make_controller())
+    command = FocusCommand(make_controller(hooks))
 
     assert command.handler_attr == "soul_handler"
     assert command.error_message == "处理专注人数命令时出错"
@@ -299,7 +298,7 @@ async def test_focus_command_is_a_thin_adapter(db_init, hooks):
 
 @pytest.mark.asyncio
 async def test_focus_command_crud_subverbs(db_init, hooks):
-    command = FocusCommand(make_controller())
+    command = FocusCommand(make_controller(hooks))
 
     added = await command.do_process(
         MessageInfo(content=':focus add ":play 起风了"', nickname="Alice"), []
@@ -312,7 +311,7 @@ async def test_focus_command_crud_subverbs(db_init, hooks):
         "  [1] :play 起风了",
     ]
 
-    command_id = (await UserEventHookDAO.get_by_username(FOCUS, "Alice"))[0].id
+    command_id = (await TortoiseUserEventHookRepository().get_by_username(FOCUS, "Alice"))[0].id
     deleted = await command.do_process(
         MessageInfo(content=f":focus del {command_id}", nickname="Alice"), []
     )
@@ -324,7 +323,7 @@ async def test_focus_command_crud_subverbs(db_init, hooks):
 
 @pytest.mark.asyncio
 async def test_focus_command_changed_users_keeps_its_three_states(db_init, hooks):
-    command = FocusCommand(make_controller())
+    command = FocusCommand(make_controller(hooks))
     await add_focus_hook(hooks, "Alice", ":say {username} 到了 {seat} 号 ({action})")
     await add_focus_hook(hooks, "Bob", ":say Bob 到了")
     seat_info = {"Alice": {"seat_number": 4, "action": "sit_down"}}

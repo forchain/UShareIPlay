@@ -283,7 +283,7 @@ async def test_method_is_reachable_through_the_seat_manager_facade():
 @pytest.mark.asyncio
 async def test_the_facade_method_returns_nothing_in_a_guest_room():
     """他人房间：客房守卫短路，返回显式命名的空结果（None）。"""
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     subsystem, observation, seat_ui = _make_subsystem()
     manager = SeatManager.initialize(handler=subsystem.handler, seat_ui=seat_ui)

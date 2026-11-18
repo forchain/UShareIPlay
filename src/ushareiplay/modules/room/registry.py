@@ -1,13 +1,12 @@
 """用户事件钩子的事件类型注册表。
 
 这是 5 类事件（进入 / 离开 / 返回 / 收礼物 / 专注人数联动）**唯一**的参数化
-事实源：模型类、命令前缀、文案名词、报错文案、前缀示例、用户解析口径与入队前的
-宏展开策略都在这里。DAO 与引擎都不再自带分支，新增事件类型只需在
-`EVENT_HOOK_SPECS` 里加一条。
+事实源：命令前缀、文案名词、报错文案、前缀示例、用户解析口径与入队前的宏展开
+策略都在这里。新增事件类型只需在 `EVENT_HOOK_SPECS` 里加一条。
 
 刻意保留的一处非对称：**用户解析口径按事件类型逐条声明**，不是全局默认。收礼物
-命令（`receive`）历史上走 alias-group —— 主账号下发的命令，用任意分身名都要能查
-到；其余事件走 single-id，只认 canonical 主账号。二者混用会让 `clear` 误删别人
+命令（`receive`）历史上走 alias-group —— 主账号下发的命令，用任意分身名都要能
+查到；其余事件走 single-id，只认 canonical 主账号。二者混用会让 `clear` 误删别人
 的命令，所以这里是显式字段而不是「默认值 + 例外」。
 """
 
@@ -15,12 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable, Optional
 
-from ushareiplay.managers.user_event_hooks.macros import expand_seat_macros
-from ushareiplay.adapters.outbound.persistence.models.enter_event import EnterEvent
-from ushareiplay.adapters.outbound.persistence.models.exit_event import ExitEvent
-from ushareiplay.adapters.outbound.persistence.models.focus_event import FocusEvent
-from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
-from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
+from ushareiplay.modules.room.macros import expand_seat_macros
 
 #: 事件类型取值，同时也是各命令的前缀词根。
 ENTER = "enter"
@@ -46,8 +40,7 @@ ALIAS_GROUP = Resolution.ALIAS_GROUP
 COMMAND_PREFIXES = (":", "：", "/", "／")
 
 #: 入队前的宏展开策略：`(命令原文, 钩子归属人, 事件上下文) -> 替换后的命令原文`。
-#: 声明在注册表里而不是让引擎按 `event_type` 分支，新增宏族只改这一处。
-MacroExpander = Callable[[str, str, dict], Awaitable[str]]
+MacroExpander = Callable[..., Awaitable[str]]
 
 
 @dataclass(frozen=True)
@@ -55,7 +48,7 @@ class UserEventHookSpec:
     """一类事件钩子的全部可变参数。"""
 
     event_type: str
-    model: type
+    model_name: str
     prefix: str
     noun: str
     error_message: str
@@ -69,7 +62,7 @@ class UserEventHookSpec:
 EVENT_HOOK_SPECS = {
     ENTER: UserEventHookSpec(
         event_type=ENTER,
-        model=EnterEvent,
+        model_name="EnterEvent",
         prefix=":enter",
         noun="进入命令",
         error_message="处理进入命令时出错",
@@ -78,7 +71,7 @@ EVENT_HOOK_SPECS = {
     ),
     EXIT: UserEventHookSpec(
         event_type=EXIT,
-        model=ExitEvent,
+        model_name="ExitEvent",
         prefix=":exit",
         noun="离开命令",
         error_message="处理离开命令时出错",
@@ -87,7 +80,7 @@ EVENT_HOOK_SPECS = {
     ),
     RETURN: UserEventHookSpec(
         event_type=RETURN,
-        model=ReturnEvent,
+        model_name="ReturnEvent",
         prefix=":return",
         noun="返回命令",
         error_message="处理返回命令时出错",
@@ -96,7 +89,7 @@ EVENT_HOOK_SPECS = {
     ),
     RECEIVE: UserEventHookSpec(
         event_type=RECEIVE,
-        model=ReceiveEvent,
+        model_name="ReceiveEvent",
         prefix=":receive",
         noun="收礼物命令",
         error_message="处理收礼物命令时出错",
@@ -106,7 +99,7 @@ EVENT_HOOK_SPECS = {
     ),
     FOCUS: UserEventHookSpec(
         event_type=FOCUS,
-        model=FocusEvent,
+        model_name="FocusEvent",
         prefix=":focus",
         noun="专注人数联动命令",
         error_message="处理专注人数命令时出错",

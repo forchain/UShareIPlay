@@ -28,7 +28,9 @@ def reset_singletons():
 def make_controller():
     logger = MagicMock()
     soul_handler = SimpleNamespace(logger=logger, log_error=MagicMock())
-    return SimpleNamespace(soul_handler=soul_handler, music_handler=None, logger=logger)
+    return SimpleNamespace(
+        soul_handler=soul_handler, music_handler=None, logger=logger, room_state=None
+    )
 
 
 def make_command(resolved_name=None):

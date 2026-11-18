@@ -24,17 +24,9 @@ from ushareiplay.modules.command.domain import (
 )
 from ushareiplay.modules.command.use_cases import DispatchCommand
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.managers.user_event_hooks import (
-    ENTER,
-    EXIT,
-    FOCUS,
-    RECEIVE,
-    RETURN,
-    UserEventHooks,
-)
-from ushareiplay.managers.user_event_hooks.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.room.registry import ENTER, EXIT, FOCUS, RECEIVE, RETURN
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.room_state import RoomState
 
 
 class CommandManager(Singleton):
@@ -43,13 +35,15 @@ class CommandManager(Singleton):
     单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self, handler=None, sleep=None):
+    def __init__(self, handler=None, sleep=None, room_state=None, user_event_hooks=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
         self.user_memory = None
         self._sleep = sleep
+        self.room_state = room_state
+        self.user_event_hooks = user_event_hooks
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
         self.commands_path = DEFAULT_COMMANDS_PATH
@@ -272,7 +266,7 @@ class CommandManager(Singleton):
             clock=self._clock,
             silence=command_silence,
             sleep=self._sleep,
-            room=RoomState.instance() if RoomState.is_initialized() else None,
+            room=self.room_state,
             logger=self.logger,
         )
 
@@ -451,7 +445,7 @@ class CommandManager(Singleton):
         Args:
             username: Username of the user who left
         """
-        await UserEventHooks.instance().fire(EXIT, username)
+        await self.user_event_hooks.fire(EXIT, username)
 
     async def _check_seats_on_entry(self, username: str, event_label: str):
         """用户进入/返回派对时复核**座位**（#436 从 `:seat` 的反射钩子提上来）。
@@ -470,7 +464,7 @@ class CommandManager(Singleton):
         他人房间（`RoomState.in_guest_room()`）不碰座位；异常在这里就地吞掉并记日志 ——
         一个用户的座位复核失败不该带崩整条事件链。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return
         try:
             from ushareiplay.managers.seat_manager import SeatManager
@@ -495,7 +489,7 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
 
-        await UserEventHooks.instance().fire(ENTER, username)
+        await self.user_event_hooks.fire(ENTER, username)
         await self._check_seats_on_entry(username, "user_enter")
 
     async def notify_user_return(self, username: str):
@@ -514,7 +508,7 @@ class CommandManager(Singleton):
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 
-        await UserEventHooks.instance().fire(RETURN, username)
+        await self.user_event_hooks.fire(RETURN, username)
         await self._check_seats_on_entry(username, "user_return")
 
     async def notify_gift_receive(self, username: str):
@@ -527,7 +521,7 @@ class CommandManager(Singleton):
         Args:
             username: Username of the user who sent the gift
         """
-        await UserEventHooks.instance().fire(RECEIVE, username)
+        await self.user_event_hooks.fire(RECEIVE, username)
 
     async def notify_focus_count_change(
         self,
@@ -550,7 +544,7 @@ class CommandManager(Singleton):
             changed_users: Specific users whose seat/focus status changed, or None for all
             seat_info: Optional dictionary mapping username to seat details
         """
-        await UserEventHooks.instance().fire(
+        await self.user_event_hooks.fire(
             FOCUS,
             ctx={"before": before, "after": after, SEAT_INFO_CTX_KEY: seat_info or {}},
             usernames=changed_users,

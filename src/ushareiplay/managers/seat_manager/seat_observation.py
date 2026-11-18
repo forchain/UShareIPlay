@@ -64,8 +64,10 @@ class SeatObservationManager(Singleton):
         panel_reader: Optional[SeatPanelReader] = None,
         panel_driver: Optional[SeatPanelDriver] = None,
         lease=None,
+        room_state=None,
     ):
         self.handler = handler
+        self.room_state = room_state
         self._logger = None
         self._controller = None
         self._seat_ui = seat_ui
@@ -210,12 +212,8 @@ class SeatObservationManager(Singleton):
         """
         if focus_count is None:
             focus_count = self.ledger.gate_state.last_focus_count
-        if focus_count is None:
-            try:
-                from ushareiplay.state.room_state import RoomState
-                focus_count = RoomState.instance().focus_count
-            except Exception:
-                pass
+        if focus_count is None and self.room_state is not None:
+            focus_count = self.room_state.focus_count
         focus_str = str(focus_count) if focus_count is not None else "未知"
         changed_seats = changed_seats or set()
 
@@ -460,12 +458,8 @@ class SeatObservationManager(Singleton):
         同一个人占两座，专注 1 人对着两个人打架）。
         只认显式配置：别人的房间里「群主」徽章是那位群主，绝不能套自己配的房主。
         """
-        try:
-            from ushareiplay.state.room_state import RoomState
-            if RoomState.instance().is_guest_room:
-                return None
-        except Exception:
-            pass
+        if self.room_state is not None and self.room_state.is_guest_room:
+            return None
         try:
             from ushareiplay.modules.shared.roles import RolePolicy
             cfg = getattr(self.handler, "config", None)
@@ -821,11 +815,7 @@ class SeatObservationManager(Singleton):
             return current_focus_count
         if self.ledger.gate_state.last_focus_count is not None:
             return self.ledger.gate_state.last_focus_count
-        try:
-            from ushareiplay.state.room_state import RoomState
-            return RoomState.instance().focus_count
-        except Exception:
-            return None
+        return self.room_state.focus_count if self.room_state is not None else None
 
     async def on_focus_count(self, before: Optional[int], current_focus_count: int) -> bool:
         """专注人数发生变化时调用。与在座人数背离时打破被动规则，主动展开全量扫描。"""
@@ -1164,13 +1154,8 @@ class SeatObservationManager(Singleton):
         delta = self.ledger.mark_owner_seated(seat_number, owner_username)
 
         current = self.ledger.gate_state.last_focus_count
-        if current is None:
-            try:
-                from ushareiplay.state.room_state import RoomState
-                current = RoomState.instance().focus_count
-            except Exception as e:
-                self.logger.debug(f"RoomState focus_count unavailable, falling back to seated count: {e}")
-                current = None
+        if current is None and self.room_state is not None:
+            current = self.room_state.focus_count
 
         if current is not None:
             # 换座/原地重记的人头已经在专注人数里，只有真正新增一个在座者才 +1
@@ -1181,11 +1166,6 @@ class SeatObservationManager(Singleton):
         self.ledger.gate_state.last_focus_count = new_count
         self.ledger.gate_state.reconciled_focus_count = new_count
 
-        try:
-            from ushareiplay.state.room_state import RoomState
-            RoomState.instance().focus_count = new_count
-        except Exception as e:
-            # 对账闸门读的是 _reconciled_focus_count 与快照座位数，不读 RoomState，
-            # 所以这里写失败不会误触发重扫；但 RoomState 会停在旧值，必须留痕。
-            self.logger.warning(f"Failed to write RoomState.focus_count={new_count} after seating: {e}")
+        if self.room_state is not None:
+            self.room_state.focus_count = new_count
 

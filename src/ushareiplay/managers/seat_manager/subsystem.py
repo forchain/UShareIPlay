@@ -50,7 +50,6 @@ from ushareiplay.managers.seat_manager.guard import (
 from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatPanelDriver
 from ushareiplay.managers.seat_manager.seat_invite_driver import SeatInviteDriver
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-import ushareiplay.state.room_state as room_state
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 
 # 无 handler 时 logger 的回退目标（ADR-0009 第 3 条）。
@@ -145,8 +144,10 @@ class SeatSubsystem:
         invite_driver=None,
         panel_reader=None,
         lease=None,
+        room_state=None,
     ):
         self._handler = handler
+        self._room_state = room_state
         self._panel_reader = panel_reader
         self._panel_driver = panel_driver
         self._lease = lease
@@ -169,6 +170,10 @@ class SeatSubsystem:
     @property
     def handler(self):
         return self._handler
+
+    @property
+    def room_state(self):
+        return self._room_state
 
     @handler.setter
     def handler(self, value):
@@ -307,7 +312,7 @@ class SeatSubsystem:
 
         他人房间里与 `prepare_for_chat_scan` 同一条守卫：直接放行，不碰座位 UI。
         """
-        if room_state.RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             yield
             return
         async with self.panel_reader.session("chat_backfill"):

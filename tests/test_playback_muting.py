@@ -9,7 +9,7 @@ import pytest
 
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 class _Logger:
@@ -71,6 +71,7 @@ class _MicManager:
 def _make_coordinator(mic_state=True, config=None, ready=True):
     events = []
     coordinator = PlaybackMuting.__new__(PlaybackMuting)
+    coordinator.room_state = RoomState.instance()
     coordinator.soul_handler = _SoulHandler(events, config)
     coordinator.music_manager = _MusicManager(events, ready)
     coordinator.mic_manager = _MicManager(events, state=mic_state)

@@ -50,11 +50,12 @@ async def test_db_models_registered():
 async def test_focus_event_created_at_auto_set():
     """FocusEvent 创建时应自动写入 created_at（非 NULL）。"""
     from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-    from ushareiplay.dal.focus_event_dao import FocusEventDao
+    from ushareiplay.adapters.outbound.persistence.models import FocusEvent, User
 
     manager = DatabaseManager(db_url="sqlite://:memory:")
     await manager.init()
-    ev = await FocusEventDao.create("alice", ":play x")
+    user = await User.create(username="alice", level=0)
+    ev = await FocusEvent.create(user=user, command=":play x")
     await ev.refresh_from_db()
     assert ev.created_at is not None
     await manager.close()

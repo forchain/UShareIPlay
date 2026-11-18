@@ -10,8 +10,8 @@ from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)

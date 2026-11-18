@@ -26,7 +26,7 @@ from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
@@ -215,12 +215,13 @@ def test_dispatch_survives_an_uninitialized_playback_muting():
 
 def test_room_change_resets_dynamic_arming(room, initialized_test_singletons):
     """退房 / 切房 / 派对重启都走 RoomState.clear()，动态开启不得跨场次。"""
-    RoomState.initialize()
+    room_state = RoomState.initialize()
     r = room(enabled=False)
+    room_state.add_clear_listener(r.muting.reset)
     _dispatch(r, ["荒草 已上麦"])
     assert r.muting.dynamically_enabled is True
 
-    RoomState.instance().clear()
+    room_state.clear()
 
     assert r.muting.dynamically_enabled is False
     assert r.muting.should_engage() is False

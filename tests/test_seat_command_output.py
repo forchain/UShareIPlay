@@ -29,6 +29,7 @@ def make_dummy_controller():
         soul_handler=soul_handler,
         music_handler=None,
         logger=logger,
+        room_state=None,
     ), logger
 
 

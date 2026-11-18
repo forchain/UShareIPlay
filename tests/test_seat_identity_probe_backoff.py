@@ -15,6 +15,7 @@ _residual_seats 冷却只覆盖「已知是谁的残留渲染」，而「身份�
 """
 
 import time
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -25,7 +26,12 @@ from ushareiplay.managers.seat_manager.seat_ledger import SeatRescanCooldownPoli
 
 @pytest.fixture(autouse=True)
 def reset_observation():
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+
     SeatObservationManager.reset_instance()
+    CommandManager.instance().user_event_hooks = MagicMock(
+        fire=AsyncMock(return_value=0)
+    )
     yield
     SeatObservationManager.reset_instance()
 

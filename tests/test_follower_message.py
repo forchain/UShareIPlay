@@ -35,19 +35,20 @@ class TestFollowerMessageHandler:
         with (
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
             patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
-            patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
             patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
+            mock_presence = MagicMock()
+            mock_handler.controller.presence = mock_presence
             mock_get_chat_logger.return_value = MagicMock()
-            mock_presence.return_value.should_trigger_return.return_value = True
-            mock_presence.return_value.record_return = MagicMock()
+            mock_presence.should_trigger_return.return_value = True
+            mock_presence.record_return = MagicMock()
             mock_cmd.return_value.notify_user_return = AsyncMock()
 
             result = await event.handle("follower_message", element_wrapper)
 
             assert result is True
-            mock_presence.return_value.should_trigger_return.assert_called_once_with("Chainer")
-            mock_presence.return_value.record_return.assert_called_once_with("Chainer")
+            mock_presence.should_trigger_return.assert_called_once_with("Chainer")
+            mock_presence.record_return.assert_called_once_with("Chainer")
             mock_cmd.return_value.notify_user_return.assert_called_once_with("Chainer")
             mock_greet.click.assert_called_once()
             mock_send.click.assert_called_once()
@@ -74,20 +75,21 @@ class TestFollowerMessageHandler:
         with (
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
             patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
-            patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
             patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
+            mock_presence = MagicMock()
+            mock_handler.controller.presence = mock_presence
             mock_get_chat_logger.return_value = MagicMock()
             # Simulate: user is newly entering or was recently entered
-            mock_presence.return_value.should_trigger_return.return_value = False
-            mock_presence.return_value.record_return = MagicMock()
+            mock_presence.should_trigger_return.return_value = False
+            mock_presence.record_return = MagicMock()
             mock_cmd.return_value.notify_user_return = AsyncMock()
 
             result = await event.handle("follower_message", element_wrapper)
 
             assert result is True
-            mock_presence.return_value.should_trigger_return.assert_called_once_with("Outlier")
-            mock_presence.return_value.record_return.assert_not_called()
+            mock_presence.should_trigger_return.assert_called_once_with("Outlier")
+            mock_presence.record_return.assert_not_called()
             mock_cmd.return_value.notify_user_return.assert_not_called()
             # Greeting still happens
             mock_greet.click.assert_called_once()

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,7 +18,7 @@ class FakeLogger:
 class FakeHandler:
     def __init__(self):
         self.logger = FakeLogger()
-        self.controller = object()
+        self.controller = SimpleNamespace(room_state=None)
 
 
 class FakeRuntime:

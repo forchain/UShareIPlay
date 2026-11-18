@@ -6,8 +6,8 @@ from ushareiplay.commands.info import InfoCommand
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture

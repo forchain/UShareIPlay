@@ -138,12 +138,8 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.user_event_hooks import UserEventHooks
     from ushareiplay.managers.user_manager import UserManager
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.state.presence_tracker import PresenceTracker
-    from ushareiplay.state.room_state import RoomState
 
     all_protected_classes = [
         AppController,
@@ -155,11 +151,8 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         MusicManager,
         PlaybackMuting,
         CommandManager,
-        RoomState,
-        PresenceTracker,
         PlaylistSession,
         PlaybackBroadcaster,
-        OnlineListScraper,
         InfoManager,
         PartyManager,
         AdminManager,
@@ -167,7 +160,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         SeatManager,
         SeatObservationManager,
         OnlineDrawerManager,
-        UserEventHooks,
     ]
 
     for cls in all_protected_classes:

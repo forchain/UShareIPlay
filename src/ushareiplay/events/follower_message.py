@@ -69,11 +69,10 @@ class FollowerMessageEvent(BaseEvent):
 
             # 触发用户返回事件（若符合 return 条件）
             try:
-                from ushareiplay.state.presence_tracker import PresenceTracker
                 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
-                presence_tracker = PresenceTracker.instance()
-                if presence_tracker.should_trigger_return(nickname):
+                presence_tracker = self.controller.presence
+                if presence_tracker is not None and presence_tracker.should_trigger_return(nickname):
                     presence_tracker.record_return(nickname)
                     self.logger.critical(f"User returned: {nickname}")
                     await CommandManager.instance().notify_user_return(nickname)

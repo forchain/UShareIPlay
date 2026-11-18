@@ -13,11 +13,8 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.user_manager import UserManager
-from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
 
 
 @pytest.fixture(autouse=True)
@@ -36,11 +33,8 @@ def test_composition_root_services_receive_identical_injected_handler():
         MessageDispatch.initialize(fake_soul_handler),
         RoomProfileManager.initialize(fake_soul_handler, drawer_driver=None),
         CommandManager.initialize(fake_soul_handler),
-        RoomState.initialize(fake_soul_handler),
-        PresenceTracker.initialize(fake_soul_handler),
         PlaylistSession.initialize(fake_soul_handler),
         PlaybackBroadcaster.initialize(fake_soul_handler),
-        OnlineListScraper.initialize(fake_soul_handler),
         InfoManager.initialize(fake_soul_handler),
         PartyManager.initialize(fake_soul_handler),
         AdminManager.initialize(fake_soul_handler),
@@ -55,9 +49,3 @@ def test_composition_root_services_receive_identical_injected_handler():
             f"{service.__class__.__name__}.handler ({h}) is not "
             f"identically equal to injected fake_soul_handler ({fake_soul_handler})"
         )
-
-
-def test_services_fallback_to_lazy_handler_when_not_injected():
-    room_state = RoomState.initialize()
-    assert room_state._handler is None
-    assert room_state.handler is None
