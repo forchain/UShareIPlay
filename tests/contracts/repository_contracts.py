@@ -6,7 +6,9 @@ Tortoise/SQLite 实现上。测试文件负责构造实现，这里只负责共�
 
 from datetime import datetime
 
-from ushareiplay.modules.timer.domain import Timer
+import pytest
+
+from ushareiplay.modules.timer.domain import Timer, TimerKeyConflict
 
 
 def _timer(key: str, **overrides) -> Timer:
@@ -92,3 +94,22 @@ async def assert_count(repository):
     await repository.create(key="b", message="beta", target_time="09:30")
 
     assert await repository.count() == 2
+
+
+async def assert_create_rejects_duplicate_key(repository):
+    original = await repository.create(key="t1", message="hello", target_time="08:30")
+
+    with pytest.raises(TimerKeyConflict):
+        await repository.create(key="t1", message="other", target_time="09:30")
+
+    assert await repository.get_by_key("t1") == original
+    assert await repository.count() == 1
+
+
+async def assert_prepare_is_idempotent(repository):
+    await repository.create(key="t1", message="hello", target_time="08:30")
+
+    await repository.prepare()
+    await repository.prepare()
+
+    assert await repository.count() == 1

@@ -13,7 +13,11 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.adapters.inbound.runtime.timer_message_sink import QueueTimerMessageSink
+from ushareiplay.adapters.outbound.persistence.timer_repository import TortoiseTimerRepository
+from ushareiplay.adapters.outbound.system.clock import SystemClock
 from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
 from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
@@ -491,7 +495,6 @@ class AppController(Singleton):
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
-            from ushareiplay.managers.timer_manager import TimerManager
             from ushareiplay.managers.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
@@ -540,7 +543,12 @@ class AppController(Singleton):
             self.register_driver_subscriber(self.music_manager)
             self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
             self.recovery_manager = RecoveryManager.instance()
-            self.timer_manager = TimerManager.initialize(self.soul_handler)
+            self.timer_manager = TimerUseCases(
+                repository=TortoiseTimerRepository(),
+                clock=SystemClock(),
+                sink=QueueTimerMessageSink(MessageQueue.instance()),
+                logger=self.logger,
+            )
             self.command_manager = CommandManager.initialize(self.soul_handler)
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
@@ -605,6 +613,7 @@ class AppController(Singleton):
             # 这一个模块里，各命令文件只是薄适配器（#422）。
             self.user_event_hooks = UserEventHooks.initialize(self.soul_handler)
             self.user_event_hooks.user_memory = self.user_memory
+
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
             # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。

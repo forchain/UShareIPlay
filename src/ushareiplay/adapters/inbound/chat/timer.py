@@ -1,8 +1,7 @@
 import re
-import shlex
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.timer_manager import TimerManager
+from ushareiplay.modules.timer.domain import TimerError, is_time_token
 
 
 class TimerCommand(BaseCommand):
@@ -11,12 +10,12 @@ class TimerCommand(BaseCommand):
 
     def __init__(self, controller):
         super().__init__(controller)
-        self.timer_manager = TimerManager.instance()
+        self.timer_use_cases = controller.timer_manager
 
     async def do_process(self, message_info, parameters):
         """Process timer command"""
         if not parameters:
-            return {'timer': self.timer_manager.status_line()}
+            return {'timer': self.timer_use_cases.status_line()}
 
         command = parameters[0].lower()
 
@@ -61,7 +60,7 @@ class TimerCommand(BaseCommand):
         if len(parameters) < 2:
             return {'error': '参数不足。格式: timer add <ID?> <时间> <消息> [repeat]'}
 
-        if self.timer_manager.is_time_token(parameters[0]):
+        if is_time_token(parameters[0]):
             timer_id = None
             target_time = parameters[0]
             message_parts = parameters[1:]
@@ -82,31 +81,27 @@ class TimerCommand(BaseCommand):
             return {'error': '消息不能为空。格式: timer add <ID?> <时间> <消息> [repeat]'}
 
         try:
-            timer_data = await self.timer_manager.create_timer(
+            timer = await self.timer_use_cases.create_timer(
                 message=message,
                 target_time=target_time,
                 repeat=repeat,
                 key=timer_id,
             )
-        except ValueError as e:
+        except TimerError as e:
             return {'error': str(e)}
         except Exception as e:
             return {'error': f'添加失败: {str(e)}'}
 
         repeat_text = " (每日重复)" if repeat else ""
-        next_trigger_str = ''
-        next_trigger = timer_data.get('next_trigger')
-        if next_trigger:
-            try:
-                from datetime import datetime
-                next_trigger_dt = datetime.fromisoformat(next_trigger)
-                next_trigger_str = next_trigger_dt.strftime('%Y-%m-%d %H:%M:%S')
-            except Exception:
-                next_trigger_str = str(next_trigger)
+        next_trigger_str = (
+            timer.next_trigger.strftime('%Y-%m-%d %H:%M:%S')
+            if timer.next_trigger
+            else ''
+        )
 
         return {
             'timer': f'已添加{repeat_text}:\n'
-                    f'ID: {timer_data["key"]}\n'
+                    f'ID: {timer.key}\n'
                     f'时间: {target_time}\n'
                     f'下次触发: {next_trigger_str}\n'
                     f'消息: {message}'
@@ -123,7 +118,7 @@ class TimerCommand(BaseCommand):
             return {'error': '请指定要删除的ID'}
 
         timer_id = parameters[0]
-        result = await self.timer_manager.remove_timer(timer_id)
+        result = await self.timer_use_cases.remove_timer(timer_id)
         if not result:
             return {'error': f'删除失败: {timer_id} 不存在'}
         return {'timer': f' {timer_id} 已删除'}
@@ -133,32 +128,27 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: List of all timers
         """
-        timers = self.timer_manager.get_timers()
+        timers = self.timer_use_cases.get_timers()
 
         if not timers:
             return {'timer': '没有'}
 
         timer_list = []
-        for timer_id, timer_data in timers.items():
-            if not timer_data.get('enabled', True):
+        for timer_id, timer in timers.items():
+            if not timer.enabled:
                 continue
 
-            repeat_text = " (每日重复)" if timer_data.get('repeat', False) else ""
-            next_trigger = timer_data.get('next_trigger', '')
-            if next_trigger:
-                try:
-                    from datetime import datetime
-                    next_trigger_dt = datetime.fromisoformat(next_trigger)
-                    next_trigger_str = next_trigger_dt.strftime('%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    next_trigger_str = next_trigger
-            else:
-                next_trigger_str = '未设置'
+            repeat_text = " (每日重复)" if timer.repeat else ""
+            next_trigger_str = (
+                timer.next_trigger.strftime('%Y-%m-%d %H:%M:%S')
+                if timer.next_trigger
+                else '未设置'
+            )
 
             timer_list.append(
-                f"• {timer_id}: {timer_data.get('target_time', '')}{repeat_text}\n"
+                f"• {timer_id}: {timer.target_time}{repeat_text}\n"
                 f"  下次触发: {next_trigger_str}\n"
-                f"  消息: {timer_data.get('message', '')}"
+                f"  消息: {timer.message}"
             )
 
         return {
@@ -199,10 +189,10 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: Result with success or error
         """
-        timers = self.timer_manager.get_timers()
+        timers = self.timer_use_cases.get_timers()
         ok = True
         for timer_id in list(timers.keys()):
-            ok = ok and await self.timer_manager.remove_timer(timer_id)
+            ok = ok and await self.timer_use_cases.remove_timer(timer_id)
         return {'timer': '所有已重置' if ok else '部分重置失败'}
 
     async def _reload_timers(self):
@@ -210,7 +200,7 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: Result with count of loaded timers
         """
-        count = await self.timer_manager.reload()
+        count = await self.timer_use_cases.reload()
         return {'timer': f'已从数据库重新加载 {count} 个定时器'}
 
     async def _start_timer_manager(self):
@@ -218,10 +208,10 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: Result with success or error
         """
-        if self.timer_manager.is_running():
+        if self.timer_use_cases.is_running():
             return {'timer': '功能已经在运行中'}
 
-        await self.timer_manager.start()
+        await self.timer_use_cases.start()
         return {'timer': '功能已启动'}
 
     async def _stop_timer_manager(self):
@@ -229,17 +219,8 @@ class TimerCommand(BaseCommand):
         Returns:
             dict: Result with success or error
         """
-        if not self.timer_manager.is_running():
+        if not self.timer_use_cases.is_running():
             return {'timer': '功能已经停止'}
 
-        await self.timer_manager.stop()
+        await self.timer_use_cases.stop()
         return {'timer': '功能已停止'}
-
-    def update(self):
-        """Update method for background tasks"""
-        pass
-
-    async def stop(self):
-        """Stop timer manager when command is destroyed"""
-        if hasattr(self, 'timer_manager'):
-            await self.timer_manager.stop()

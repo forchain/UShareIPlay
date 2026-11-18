@@ -287,10 +287,6 @@ class RuntimeInputPipeline:
         期间控制台可能又翻转了一次，读实时值会把旧状态应用错。
         """
         timer_mgr = self.timer_manager
-        if timer_mgr is None:
-            from ushareiplay.managers.timer_manager import TimerManager
-            if getattr(TimerManager, "_instance", None):
-                timer_mgr = TimerManager.instance()
 
         if paused:
             if timer_mgr and hasattr(timer_mgr, "pause"):

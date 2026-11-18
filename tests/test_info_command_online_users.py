@@ -71,6 +71,7 @@ def make_dummy_controller():
         soul_handler=soul_handler,
         music_handler=None,
         logger=logger,
+        timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
     )
 
 
