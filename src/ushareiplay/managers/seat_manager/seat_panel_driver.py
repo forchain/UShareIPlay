@@ -35,7 +35,7 @@ EXPAND_LABEL = "展开"
 COLLAPSE_LABEL = "收起"
 
 # 座位头像弹窗开着的证据：弹窗自己渲染的昵称节点（两种名片各一套 id）。
-# 与 room_profile.driver.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
+# 与 modules.room.ports.DIALOG_KEYS 同一套判法：节点在 dump 里才说明弹窗开着。
 SEAT_CARD_EVIDENCE_KEYS = ("souler_name", "user_name")
 
 EXPAND_SEATS_KEY = "expand_seats"
