@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 
-from ushareiplay.core.chat_intake import normalize_command_text
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.adapters.inbound.runtime.chat_intake import normalize_command_text
+from ushareiplay.adapters.inbound.runtime.command_parser import CommandParser
 from ushareiplay.modules.shared.roles import min_command_level, resolve_command_level
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

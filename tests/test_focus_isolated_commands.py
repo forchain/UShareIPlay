@@ -9,7 +9,7 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.modules.room.registry import FOCUS
 from tests.room_support import make_hooks

@@ -24,7 +24,7 @@ import pytest
 import pytest_asyncio
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from tests.room_support import make_hooks
 

@@ -1,4 +1,4 @@
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.adapters.inbound.runtime.command_parser import CommandParser
 
 
 def test_command_parser_does_not_mutate_shared_config():

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
-from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
+from ushareiplay.adapters.inbound.ui_events.party_name_violation_later import PartyNameViolationLaterEvent
 
 
 class _Logger:

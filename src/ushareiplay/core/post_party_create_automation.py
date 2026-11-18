@@ -5,7 +5,7 @@ import logging
 from typing import List, Optional
 
 from ushareiplay.modules.shared.config import ConfigSectionView
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.models import MessageInfo
 
 

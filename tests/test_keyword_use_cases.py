@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
+from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, ChatIntakeResult
 from ushareiplay.modules.command.domain import (
     KEYWORD_MODE_RANDOM,
     ConfigKeywordImmutable,

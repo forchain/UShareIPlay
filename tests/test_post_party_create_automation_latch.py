@@ -7,7 +7,7 @@ def _run(coro):
 
 
 def test_post_party_create_latch_party_then_ready_fires_once():
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 
     class C:
@@ -44,7 +44,7 @@ def test_post_party_create_latch_party_then_ready_fires_once():
 
 
 def test_post_party_create_latch_ready_then_party_fires_once():
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
 
     class C:

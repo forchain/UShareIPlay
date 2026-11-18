@@ -5,7 +5,7 @@ from lxml import etree
 
 from tests.seat_fixtures import build_desk_wrapper, make_handler, soul_elements
 from ushareiplay.core.element_wrapper import ElementWrapper
-from ushareiplay.events.focus_count import FocusCountEvent, __elements__, __multiple__
+from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent, __elements__, __multiple__
 from tests.seat_support import build_seat_observation
 from tests.legacy_state import RoomState
 

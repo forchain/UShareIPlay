@@ -6,7 +6,7 @@ UI 动作：写聊天日志、建用户记录、触发 return、点打招呼并�
 """
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.core.chat_intake import ChatIntakeKind, classify_banner_line
+from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, classify_banner_line
 
 
 class FollowerMessageEvent(BaseEvent):
@@ -42,7 +42,7 @@ class FollowerMessageEvent(BaseEvent):
             self.last_follower_message = message_text
 
             # 记录到聊天日志
-            from ushareiplay.managers.message_manager import get_chat_logger
+            from ushareiplay.adapters.inbound.runtime.message_manager import get_chat_logger
             chat_logger = get_chat_logger(self.handler.config)
             chat_logger.critical(message_text)
 

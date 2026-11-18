@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ushareiplay.events.message_content import MessageContentEvent
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
 
 class _FakeWrapper:

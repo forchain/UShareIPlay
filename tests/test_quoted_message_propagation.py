@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.events.message_content import MessageContentEvent
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
 
 class _FakeWrapper:
@@ -163,8 +163,8 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
     from ushareiplay.adapters.outbound.persistence.user_repository import (
         TortoiseUserRepository,
     )
-    from ushareiplay.core.chat_intake import classify_chat_line
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.chat_intake import classify_chat_line
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.modules.command.use_cases import KeywordUseCases
     from ushareiplay.modules.user.domain import MemorySettings
     from ushareiplay.modules.user.use_cases import UserMemoryService

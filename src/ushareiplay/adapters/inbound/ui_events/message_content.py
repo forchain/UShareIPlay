@@ -52,7 +52,7 @@ class MessageContentEvent(BaseEvent):
 
             # 窗口状态与 diff 归 MessageManager：这里只提供本次屏幕上的行，
             # 拿回一个增量（哪些是新行、要不要补漏、补漏的锚点是谁）。
-            from ushareiplay.managers.message_manager import MessageManager
+            from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
             message_manager = MessageManager.instance()
             room_owner = await message_manager.resolve_room_owner()

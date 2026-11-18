@@ -158,7 +158,7 @@ def test_intake_normalization_handles_dollar_prefix():
     `normalize_command_text` is the trigger strip, because `config.yaml` stores
     prefixes without the trigger (`play`, not `:play`).
     """
-    from ushareiplay.core.chat_intake import normalize_command_text
+    from ushareiplay.adapters.inbound.runtime.chat_intake import normalize_command_text
 
     assert normalize_command_text("$play abc") == "play abc"
     assert normalize_command_text("＄info") == "info"

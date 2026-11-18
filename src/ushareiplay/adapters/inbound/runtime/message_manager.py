@@ -16,7 +16,7 @@ from collections import deque
 from dataclasses import dataclass
 import traceback
 
-from ushareiplay.core.chat_intake import (
+from ushareiplay.adapters.inbound.runtime.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
     ChatIntakeResult,
@@ -25,7 +25,7 @@ from ushareiplay.core.chat_intake import (
     classify_chat_line,
     strip_quoted_segment,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton

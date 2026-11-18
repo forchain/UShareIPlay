@@ -9,14 +9,13 @@ from pathlib import Path
 from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.outbound.system.clock import SystemClock
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
+from ushareiplay.adapters.inbound.runtime.chat_intake import MessageBatch, normalize_command_text
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.runtime_services import route_queue_text
+from ushareiplay.adapters.inbound.runtime.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.modules.command.domain import (
-    CHAT_COMMANDS_PATH,
-    DEFAULT_COMMANDS_PATH,
+    DEFAULT_COMMAND_ROOTS,
     CommandCatalogue,
     GuestRoomRestricted,
     InsufficientCommandLevel,
@@ -46,8 +45,7 @@ class CommandManager(Singleton):
         self.user_event_hooks = user_event_hooks
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
-        self.commands_path = DEFAULT_COMMANDS_PATH
-        self.command_roots = (CHAT_COMMANDS_PATH, self.commands_path)
+        self.command_roots = DEFAULT_COMMAND_ROOTS
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
         self._users = TortoiseUserRepository()
@@ -112,12 +110,12 @@ class CommandManager(Singleton):
 
     @staticmethod
     def _module_name(module_path: Path, command: str) -> str:
-        """按文件位置推导模块名；测试里的临时目录回退到旧命名。"""
-        src_root = Path(__file__).resolve().parents[2]
+        """按文件位置推导模块名；测试里的临时目录回退到聊天适配器命名。"""
+        src_root = Path(__file__).resolve().parents[4]
         try:
             relative = module_path.relative_to(src_root)
         except ValueError:
-            return f"ushareiplay.commands.{command}"
+            return f"ushareiplay.adapters.inbound.chat.{command}"
         return ".".join(relative.with_suffix("").parts)
 
     def load_command_module(self, command):

@@ -10,7 +10,7 @@ def _run(coro):
 
 @pytest.fixture(autouse=True)
 def _clear_message_queue():
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     queue = MessageQueue.instance()
     _run(queue.clear_queue())
@@ -22,7 +22,7 @@ def test_keyword_command_execution_does_not_sleep_exempt_by_default():
     from ushareiplay.adapters.inbound.runtime.keyword_command_sink import (
         QueueKeywordCommandSink,
     )
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.modules.command.use_cases import KeywordUseCases
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
     from tests.fakes.in_memory_user_repository import InMemoryUserRepository
@@ -60,8 +60,8 @@ def test_keyword_command_execution_does_not_sleep_exempt_by_default():
 
 @pytest.mark.asyncio
 async def test_at_keyword_message_executes_keyword_with_sleep_exemption(monkeypatch):
-    from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers import message_manager as message_manager_module
+    from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
+    from ushareiplay.adapters.inbound.runtime import message_manager as message_manager_module
 
     calls = []
 

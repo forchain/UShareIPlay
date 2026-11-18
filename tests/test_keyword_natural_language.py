@@ -11,8 +11,8 @@ from ushareiplay.adapters.inbound.runtime.keyword_command_sink import (
 from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
     NaturalLanguageFallbackAdapter,
 )
-from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, ChatIntakeResult
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.modules.command.domain import NaturalLanguageResult
 from ushareiplay.modules.command.use_cases import KeywordUseCases
 from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
@@ -60,7 +60,7 @@ def _use_cases(fallback):
 
 @pytest.fixture(autouse=True)
 def _clear_message_queue():
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     queue = MessageQueue.instance()
     _run(queue.clear_queue())
@@ -70,7 +70,7 @@ def _clear_message_queue():
 
 @pytest.mark.asyncio
 async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     mock_resolve = AsyncMock()
     fallback = SimpleNamespace(resolve=mock_resolve)
@@ -104,7 +104,7 @@ async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_command(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
@@ -131,7 +131,7 @@ async def test_unmatched_mention_resolves_to_command(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_reply(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="reply", content="你好呀！我是小助手~")
@@ -158,7 +158,7 @@ async def test_unmatched_mention_resolves_to_reply(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     # Mock resolver returning None (failure or timeout)
     mock_resolve = AsyncMock(return_value=None)
@@ -186,7 +186,7 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
 @pytest.mark.asyncio
 async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch):
     """Verify the keyword fallback reads root config (with llm and commands)."""
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     root_config = {
         "soul": {"room_owner": "Chainer"},
@@ -239,8 +239,8 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
-    from ushareiplay.core.chat_intake import classify_chat_line
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.chat_intake import classify_chat_line
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
@@ -315,7 +315,7 @@ def test_get_playback_info_tolerates_missing_playlist_context():
 
 @pytest.mark.asyncio
 async def test_mention_query_own_playlist_e2e(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.modules.playback.use_cases import PlaylistSession
 
@@ -419,7 +419,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mention_query_others_playlist_e2e(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.modules.playback.use_cases import PlaylistSession
 

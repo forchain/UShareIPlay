@@ -37,10 +37,10 @@ from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
 from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
-from ushareiplay.core.runtime_services import (
+from ushareiplay.adapters.inbound.runtime.runtime_services import (
     RuntimeInputPipeline,
     AgentCommandSpool,
     RuntimeQueueDrainer,
@@ -61,7 +61,7 @@ from ushareiplay.adapters.outbound.appium.qq_music import (
     QQMusicUIDriver,
 )
 from ushareiplay.handlers.soul_handler import SoulHandler
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.modules.playback import (
     AdjustVolume,
@@ -524,7 +524,7 @@ class AppController(Singleton):
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-            from ushareiplay.managers.message_manager import MessageManager
+            from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.modules.room import RoomProfileManager
             from ushareiplay.modules.room import (

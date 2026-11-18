@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-import ushareiplay.events as events_package
+import ushareiplay.adapters.inbound.ui_events as events_package
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.modules.shared.config import (
     REQUIRED_ELEMENTS,
@@ -24,10 +24,10 @@ from ushareiplay.modules.shared.config import (
     ConfigView,
 )
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.core.runtime_services import RuntimeInputPipeline
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 
 
 class _Logger:

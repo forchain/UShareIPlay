@@ -2,8 +2,8 @@ import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock, AsyncMock
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.events.message_content import MessageContentEvent
-from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
+from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, classify_chat_line
 
 @pytest_asyncio.fixture
 async def db_init():
@@ -21,7 +21,7 @@ class _Wrapper:
 
 @pytest.mark.asyncio
 async def test_message_content_event_gift_handling(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
         MessageQueue.initialize()
@@ -53,7 +53,7 @@ async def test_message_content_event_gift_handling(db_init, monkeypatch, chat_wi
 
 @pytest.mark.asyncio
 async def test_message_content_event_heat_contribution_handling(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
         MessageQueue.initialize()
@@ -86,7 +86,7 @@ async def test_message_content_event_heat_contribution_handling(db_init, monkeyp
 
 @pytest.mark.asyncio
 async def test_message_content_event_gift_higher_level_not_downgraded(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
         MessageQueue.initialize()
@@ -102,7 +102,7 @@ async def test_message_content_event_gift_higher_level_not_downgraded(db_init, m
     chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
     event_handler = MessageContentEvent(chat_window.handler)
 
-    monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
@@ -121,7 +121,7 @@ async def test_message_content_event_gift_higher_level_not_downgraded(db_init, m
 
 @pytest.mark.asyncio
 async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
     try:
         MessageQueue.initialize()
@@ -132,7 +132,7 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
     chat_window.handler.config = {"soul": {"room_owner": "Joyer"}}
     event_handler = MessageContentEvent(chat_window.handler)
 
-    monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
     monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
@@ -154,9 +154,9 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
 
 @pytest.mark.asyncio
 async def test_process_missed_messages_heat_contribution(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     try:
         MessageQueue.initialize()
@@ -205,9 +205,9 @@ async def test_process_missed_messages_heat_contribution(db_init, monkeypatch, c
 
 @pytest.mark.asyncio
 async def test_process_missed_messages_owner_gift(db_init, monkeypatch, chat_window):
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.dal.user_dao import UserDAO
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     try:
         MessageQueue.initialize()
@@ -263,7 +263,7 @@ async def test_process_missed_messages_does_not_re_dispatch_a_previous_screen_li
     已经派发过的行就不在去重集里了，回溯会把它们当成补漏行再派发一次 ——
     礼物会被重复道谢、热力值重复写库。
     """
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     try:
         MessageQueue.initialize()

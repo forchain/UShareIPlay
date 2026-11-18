@@ -27,7 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
+from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
@@ -263,7 +263,7 @@ def test_prefix_family_routing_survives_the_queue_drain(
     Screen commands are executed by `RuntimeQueueDrainer`, not by the scan site,
     so this pins the routing at the place it actually happens in production.
     """
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     dispatch = _RecordingDispatch()
     manager = _routing_manager(monkeypatch, dispatch)

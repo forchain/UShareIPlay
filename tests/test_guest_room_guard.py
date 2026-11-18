@@ -171,7 +171,7 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
         NaturalLanguageFallbackAdapter,
         RoomInfoProvider,
     )
-    from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
+    from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, ChatIntakeResult
     from ushareiplay.modules.command.domain import NaturalLanguageResult
     from ushareiplay.modules.command.use_cases import KeywordUseCases
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
@@ -415,8 +415,8 @@ async def test_guest_room_blocks_recommendation_sync():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_events_and_window_audit():
-    from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
-    from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
+    from ushareiplay.adapters.inbound.ui_events.chat_room_title import ChatRoomTitleEvent
+    from ushareiplay.adapters.inbound.ui_events.party_name_violation_later import PartyNameViolationLaterEvent
     from tests.room_profile_support import RoomProfileManager
 
     room_state = RoomState.instance()
@@ -461,7 +461,7 @@ def _party_manager_with_stub_handler(monkeypatch):
 @pytest.mark.asyncio
 async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
-    from ushareiplay.events.room_id import RoomIdEvent
+    from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
@@ -481,7 +481,7 @@ async def test_room_id_event_mismatch_triggers_leave_and_recreate(tmp_path, monk
 @pytest.mark.asyncio
 async def test_room_id_event_match_updates_state(monkeypatch):
     from unittest.mock import AsyncMock
-    from ushareiplay.events.room_id import RoomIdEvent
+    from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"
@@ -503,7 +503,7 @@ async def test_room_id_event_match_updates_state(monkeypatch):
 @pytest.mark.asyncio
 async def test_room_id_event_does_not_spam_info_logs_when_room_id_unchanged(monkeypatch):
     from unittest.mock import MagicMock
-    from ushareiplay.events.room_id import RoomIdEvent
+    from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
     room_state = RoomState.instance()
     room_state.expected_party_id = "FM18633292"

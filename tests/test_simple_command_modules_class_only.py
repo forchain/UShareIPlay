@@ -29,7 +29,6 @@ SIMPLE_COMMAND_MODULES = {
 def test_simple_command_modules_are_class_only():
     package_root = Path(__file__).resolve().parents[1] / "src" / "ushareiplay"
     commands_dirs = [
-        package_root / "commands",
         package_root / "adapters" / "inbound" / "chat",
     ]
 

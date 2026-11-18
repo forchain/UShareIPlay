@@ -8,7 +8,7 @@
 from typing import Optional, List
 from lxml import etree
 
-from ushareiplay.core.chat_intake import format_quoted_message
+from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 from ushareiplay.adapters.outbound.appium.locator import Locator
 
 # 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器

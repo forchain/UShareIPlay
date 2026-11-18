@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
+from ushareiplay.adapters.inbound.ui_events.chat_room_title import ChatRoomTitleEvent
 from tests.room_profile_support import RoomProfileManager
 
 

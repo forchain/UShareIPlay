@@ -112,7 +112,7 @@ def _party_manager_with_stub_handler(monkeypatch, handler=None):
 
 
 def _room_id_event(handler):
-    from ushareiplay.events.room_id import RoomIdEvent
+    from ushareiplay.adapters.inbound.ui_events.room_id import RoomIdEvent
 
     return RoomIdEvent(handler)
 

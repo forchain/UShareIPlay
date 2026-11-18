@@ -1,7 +1,7 @@
 import logging
 import time
 
-from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
 

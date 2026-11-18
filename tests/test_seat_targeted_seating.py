@@ -20,7 +20,7 @@ from tests.seat_fixtures import (
     FakeSeatUI,
     make_handler,
 )
-from ushareiplay.events.focus_count import FocusCountEvent
+from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 from tests.seat_support import build_seat_observation
 from tests.seat_support import build_seat_service
 from tests.legacy_state import RoomState

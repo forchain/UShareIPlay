@@ -9,7 +9,7 @@ from lxml import etree
 
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper, composed_message_text
-from ushareiplay.events.message_content import MessageContentEvent
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
 MESSAGE_CONTENT_SELECTOR_KEY = "message_content"
 

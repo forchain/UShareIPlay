@@ -4,8 +4,8 @@ import pytest
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
+from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from ushareiplay.managers.recovery_manager import RecoveryManager
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
