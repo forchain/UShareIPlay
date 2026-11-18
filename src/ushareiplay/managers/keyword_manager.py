@@ -30,6 +30,7 @@ class KeywordManager(Singleton):
         self._config = None
         self._default_keyword_command = None
         self._nl_resolver = None
+        self.user_memory = None
         self._mode_aliases = {
             'sequence': Keyword.MODE_SEQUENCE,
             'sequential': Keyword.MODE_SEQUENCE,
@@ -494,9 +495,8 @@ class KeywordManager(Singleton):
 
             memory_context = None
             try:
-                from ushareiplay.managers.memory_manager import MemoryManager
-                if MemoryManager.is_initialized():
-                    memory_context = await MemoryManager.instance().get_user_dialogue_context(
+                if self.user_memory is not None:
+                    memory_context = await self.user_memory.dialogue_context(
                         result.nickname,
                         user_level=user_level,
                     )
@@ -541,10 +541,9 @@ class KeywordManager(Singleton):
         """Handle a keyword-mention ChatIntakeResult by finding and executing the keyword."""
         # 记录用户 @群主 的发言至 UserChatLog 供记忆系统使用（含引用上下文）
         user_text = result.utterance
-        if result.nickname and user_text:
+        if result.nickname and user_text and self.user_memory is not None:
             try:
-                from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
-                await UserChatLogDAO.create(username=result.nickname, content=user_text)
+                await self.user_memory.record_chat(result.nickname, user_text)
             except Exception:
                 self.logger.error(f"Error logging user chat for {result.nickname}: {traceback.format_exc()}")
 

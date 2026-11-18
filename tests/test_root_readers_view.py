@@ -11,7 +11,7 @@ import pytest
 from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.managers.memory_manager import MemoryManager
+from ushareiplay.modules.user.domain import MemorySettings
 from ushareiplay.managers.sleep_manager import SleepManager
 
 
@@ -98,31 +98,26 @@ def test_sleep_manager_reads_the_blocked_commands_from_the_view(sleep_manager):
     assert manager.is_blocked_command("seat", dt.time(12, 0)) is False
 
 
-def test_memory_manager_reads_the_llm_memory_section_from_the_view():
-    MemoryManager.reset_instance()
-    manager = MemoryManager.initialize()
-    try:
-        manager.configure(
-            ConfigView(
-                {
-                    "llm": {
-                        "memory": {
-                            "enabled": False,
-                            "min_messages": 3,
-                            "min_level_for_long_term": 42,
-                            "timeout": 12.5,
-                        }
+def test_memory_settings_read_the_llm_memory_section_from_the_view():
+    settings = MemorySettings.from_config(
+        ConfigView(
+            {
+                "llm": {
+                    "memory": {
+                        "enabled": False,
+                        "min_messages": 3,
+                        "min_level_for_long_term": 42,
+                        "timeout": 12.5,
                     }
                 }
-            )
+            }
         )
+    )
 
-        assert manager.is_enabled is False
-        assert manager.min_messages == 3
-        assert manager.min_level_for_long_term == 42
-        assert manager.timeout == 12.5
-    finally:
-        MemoryManager.reset_instance()
+    assert settings.enabled is False
+    assert settings.min_messages == 3
+    assert settings.min_level_for_long_term == 42
+    assert settings.timeout == 12.5
 
 
 def test_role_policy_resolves_the_roles_from_the_view():

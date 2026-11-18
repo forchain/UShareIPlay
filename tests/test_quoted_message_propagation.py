@@ -161,8 +161,19 @@ async def db_init():
 async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init, monkeypatch):
     from ushareiplay.core.chat_intake import classify_chat_line
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
+    from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
+        TortoiseChatLogRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
+        TortoiseUserMemoryRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_repository import (
+        TortoiseUserRepository,
+    )
     from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.modules.user.domain import MemorySettings
+    from ushareiplay.modules.user.use_cases import UserMemoryService
+    from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
 
     try:
         MessageQueue.initialize()
@@ -177,6 +188,14 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
         warning=lambda *_args, **_kwargs: None,
     )
     keyword_manager._config = {"llm": {"enabled": True}}
+    chat_logs = TortoiseChatLogRepository()
+    keyword_manager.user_memory = UserMemoryService(
+        users=TortoiseUserRepository(),
+        memories=TortoiseUserMemoryRepository(),
+        chat_logs=chat_logs,
+        distiller=InMemoryMemoryDistiller(),
+        settings=MemorySettings(),
+    )
 
     async def _no_keyword(keyword, username):
         return None
@@ -190,10 +209,8 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
     )
     await keyword_manager.dispatch_mention(result, sleep_exempt=True)
 
-    from ushareiplay.dal.user_dao import UserDAO
-
-    user = await UserDAO.get_by_username("Bob")
-    logs = await UserChatLogDAO.get_unconsolidated_logs(user.id)
+    user = await TortoiseUserRepository().get_by_username("Bob")
+    logs = await chat_logs.unconsolidated_logs(user.id)
     assert [log.content for log in logs] == ["「Alice：哈哈」 点歌 晴天"]
 
     assert mock_resolve.await_args.kwargs["user_text"] == "「Alice：哈哈」 点歌 晴天"

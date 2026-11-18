@@ -19,7 +19,6 @@ from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.sleep_manager import SleepManager
 from ushareiplay.managers.user_event_hooks import (
     ENTER,
@@ -45,6 +44,7 @@ class CommandManager(Singleton):
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
+        self.user_memory = None
 
         # 命令相关属性
         self.commands_path = DEFAULT_COMMANDS_PATH
@@ -573,8 +573,8 @@ class CommandManager(Singleton):
             username: Username of the user who entered
         """
         try:
-            if MemoryManager.is_initialized():
-                MemoryManager.instance().schedule_consolidation_user(username)
+            if self.user_memory is not None:
+                self.user_memory.schedule_user(username)
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
 
@@ -592,8 +592,8 @@ class CommandManager(Singleton):
             username: Username of the user who returned
         """
         try:
-            if MemoryManager.is_initialized():
-                MemoryManager.instance().schedule_consolidation_user(username)
+            if self.user_memory is not None:
+                self.user_memory.schedule_user(username)
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 

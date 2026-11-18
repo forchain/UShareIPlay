@@ -14,7 +14,7 @@ last-synced: 2026-11-03
 `config["soul"]["elements"]` 或 `config.get("soul", {}).get("elements")` 这类形状试探 ——
 取的是根配置还是某个应用段，在调用点必须一眼可见。少数尚未迁完的历史调用点仍接受
 裸 `dict`（`roles._split_config`、`runtime_logging._logging_directory`、
-`command_catalogue.from_config`、`memory_manager.configure`、`sleep_manager`、
+`command_catalogue.from_config`、`sleep_manager`、
 `keyword_manager._as_root_view`，以及组合根 `AppController` 的一次性归一化）；
 它们只是兼容旧调用方，不是新代码的范例。
 
