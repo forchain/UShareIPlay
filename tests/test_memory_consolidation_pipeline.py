@@ -210,20 +210,18 @@ async def test_memory_manager_timeout_configuration_and_forwarding():
         assert mm.timeout == 45.0
 
         # 3. Verify _call_consolidation_llm passes timeout to resolver._call_api
-        from ushareiplay.managers.keyword_manager import KeywordManager
-        if not KeywordManager.is_initialized():
-            KeywordManager.initialize()
-        km = KeywordManager.instance()
-        km._config = {
-            "llm": {
-                "enabled": True,
-                "api_key": "test-key",
-                "model": "deepseek-chat",
-                "memory": {"enabled": True, "timeout": 45.0},
+        mm.configure(
+            {
+                "llm": {
+                    "enabled": True,
+                    "api_key": "test-key",
+                    "model": "deepseek-chat",
+                    "memory": {"enabled": True, "timeout": 45.0},
+                }
             }
-        }
+        )
         # Reset resolver to pick up new config
-        km._nl_resolver = None
+        mm._nl_resolver = None
 
 
         mock_llm_response = {
@@ -236,7 +234,7 @@ async def test_memory_manager_timeout_configuration_and_forwarding():
             ]
         }
 
-        with patch.object(km.nl_resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+        with patch.object(mm.nl_resolver, "_call_api", new_callable=AsyncMock) as mock_api:
             mock_api.return_value = json.dumps(mock_llm_response)
             success, directives, profile = await mm._call_consolidation_llm(
                 user_name="test_user",

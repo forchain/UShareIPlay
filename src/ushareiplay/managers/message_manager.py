@@ -31,7 +31,6 @@ from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.keyword_manager import KeywordManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.adapters.outbound.persistence.models import User
@@ -78,6 +77,7 @@ class MessageManager(Singleton):
         """Initialize MessageManager with handler, previous messages, recent messages"""
         self._handler = handler
         self._chat_logger = None
+        self._keyword_use_cases = None
 
         self.previous_messages = {}
         self._recent = deque(maxlen=self.RECENT_MAXLEN)
@@ -85,6 +85,10 @@ class MessageManager(Singleton):
         # 那些行已经派发过了，必须仍留在去重集里（旧实现用的是
         # `recent_chats ∪ latest_chats`，就是这个集合）。
         self._known: tuple[str, ...] = ()
+
+    def configure_keywords(self, keyword_use_cases) -> None:
+        """组合根注入关键字用例；未注入时 @ 群主链路不派发。"""
+        self._keyword_use_cases = keyword_use_cases
 
     @property
     def handler(self):
@@ -298,7 +302,8 @@ class MessageManager(Singleton):
                 continue
 
             if kind == ChatIntakeKind.KEYWORD_MENTION:
-                await KeywordManager.instance().dispatch_mention(result, sleep_exempt=True)
+                if self._keyword_use_cases is not None:
+                    await self._keyword_use_cases.dispatch_mention(result, sleep_exempt=True)
                 chat_logger.critical(content)
                 continue
 

@@ -46,7 +46,6 @@ MODULES = [
     # dal
     "ushareiplay.dal",
     "ushareiplay.dal.user_dao",
-    "ushareiplay.dal.keyword_dao",
     "ushareiplay.dal.seat_reservation_dao",
     "ushareiplay.dal.enter_dao",
     "ushareiplay.dal.exit_dao",

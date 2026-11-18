@@ -521,7 +521,7 @@ class KeywordUseCases:
     async def grant_keyword_access(
         self, username: str, keyword: str, target_usernames: str
     ) -> str:
-        kw = await self._private_owned(username, keyword, already_public=KeywordAlreadyPublic)
+        await self._private_owned(username, keyword, already_public=KeywordAlreadyPublic)
         raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
         if not raw_targets:
             raise MissingGrantees()
@@ -532,7 +532,7 @@ class KeywordUseCases:
     async def revoke_keyword_access(
         self, username: str, keyword: str, target_usernames: str
     ) -> str:
-        kw = await self._private_owned(username, keyword, already_public=KeywordNotPublic)
+        await self._private_owned(username, keyword, already_public=KeywordNotPublic)
         raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
         if not raw_targets:
             raise MissingGrantees()

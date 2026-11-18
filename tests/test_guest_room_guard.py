@@ -170,34 +170,14 @@ async def test_host_room_allows_all_commands():
 
 @pytest.mark.asyncio
 async def test_guest_room_filters_commands_for_natural_language_resolver(monkeypatch):
+    from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+        NaturalLanguageFallbackAdapter,
+    )
     from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
     from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    KeywordManager.reset_instance()
-    km = KeywordManager.initialize()
-    km._logger = SimpleNamespace(
-        info=lambda *_a, **_k: None,
-        error=lambda *_a, **_k: None,
-        warning=lambda *_a, **_k: None,
-    )
-    km._config = {
-        "llm": {"enabled": True, "api_key": "test"},
-        "commands": [
-            {"prefix": "play", "level": 1},
-            {"prefix": "theme", "level": 3},
-            {"prefix": "vol", "level": 1},
-            {"prefix": "seat", "level": 1},
-        ],
-    }
-
-    room_state = RoomState.instance()
-    room_state.is_guest_room = True
-
-    async def _mock_find_keyword(_kw, _user):
-        return None
-
-    monkeypatch.setattr(km, "find_keyword", _mock_find_keyword)
+    from ushareiplay.modules.command.use_cases import KeywordUseCases
+    from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+    from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
     passed_commands = []
 
@@ -206,7 +186,37 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
         passed_commands = kwargs.get("commands_config", [])
         return NaturalLanguageResult(type="reply", content="只支持点歌")
 
-    km._nl_resolver = SimpleNamespace(resolve=_mock_resolve)
+    fallback = NaturalLanguageFallbackAdapter(
+        {
+            "llm": {"enabled": True, "api_key": "test"},
+            "commands": [
+                {"prefix": "play", "level": 1},
+                {"prefix": "theme", "level": 3},
+                {"prefix": "vol", "level": 1},
+                {"prefix": "seat", "level": 1},
+            ],
+        }
+    )
+    fallback._nl_resolver = SimpleNamespace(resolve=_mock_resolve)
+
+    room_state = RoomState.instance()
+    room_state.is_guest_room = True
+
+    users = InMemoryUserRepository()
+    km = KeywordUseCases(
+        repository=InMemoryKeywordRepository(users),
+        users=users,
+        presence=SimpleNamespace(is_user_online=lambda _name: True),
+        queue=SimpleNamespace(enqueue=lambda *_a, **_k: None),
+        chat_logs=SimpleNamespace(record=lambda *_a, **_k: None),
+        config_source=SimpleNamespace(load=lambda: None),
+        fallback=fallback,
+        logger=SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+        ),
+    )
 
     result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,

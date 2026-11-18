@@ -32,6 +32,24 @@ class MemoryManager(Singleton):
         self._enabled: bool = True
         self._last_user_trigger_time: Dict[str, float] = {}  # username -> timestamp for debouncing
         self._debounce_interval: float = 60.0  # 1 minute debounce for presence triggers
+        self._nl_resolver = None
+
+    @property
+    def nl_resolver(self):
+        """从自身根配置惰性构造 LLM 解析器（记忆沉淀只借用它的 API 客户端）。"""
+        if self._nl_resolver is None:
+            from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
+
+            root = self._config if isinstance(self._config, ConfigView) else ConfigView(self._config or {})
+            llm_section = root.maybe_section("llm")
+            cfg = dict(llm_section.data) if llm_section else {}
+            if "system_users" not in cfg:
+                soul = root.maybe_section("soul")
+                sys_users = (soul.value("system_users") if soul else None) or root.value("system_users")
+                if sys_users:
+                    cfg["system_users"] = sys_users
+            self._nl_resolver = NaturalLanguageResolver(cfg)
+        return self._nl_resolver
 
     def configure(self, config: Optional[Dict[str, Any]] = None):
         """配置记忆管理器参数"""
@@ -268,10 +286,8 @@ class MemoryManager(Singleton):
     ) -> tuple[bool, List[str], str]:
         """调用 LLM 提炼长期记忆（更新铁律与画像）"""
         try:
-            from ushareiplay.managers.keyword_manager import KeywordManager
-            km = KeywordManager.instance() if KeywordManager.is_initialized() else None
-            resolver = getattr(km, "nl_resolver", None)
-            if not resolver or not resolver.enabled or not resolver.api_key:
+            resolver = self.nl_resolver
+            if not resolver.enabled or not resolver.api_key:
                 logger.debug("LLM not enabled/configured for memory consolidation")
                 return False, existing_directives, existing_profile
 

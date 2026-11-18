@@ -82,16 +82,10 @@ async def test_mention_inside_a_quote_is_not_dispatched(chat_window):
     event = _event(chat_window)
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
-    with (
-        patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
-    ):
-        mock_keyword.return_value.dispatch_mention = AsyncMock()
-        await event.handle(
-            "message_content",
-            [_FakeWrapper("souler[Bob]说：「Alice：@群主 点歌」 哈哈哈")],
-        )
-
-    mock_keyword.return_value.dispatch_mention.assert_not_called()
+    await event.handle(
+        "message_content",
+        [_FakeWrapper("souler[Bob]说：「Alice：@群主 点歌」 哈哈哈")],
+    )
     assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：@群主 点歌」 哈哈哈"
     ]
@@ -103,13 +97,11 @@ async def test_sender_mention_after_a_quote_is_dispatched_with_its_quote(chat_wi
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天"
-    with (
-        patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
-    ):
-        mock_keyword.return_value.dispatch_mention = AsyncMock()
-        await event.handle("message_content", [_FakeWrapper(composed)])
+    mock_keyword = SimpleNamespace(dispatch_mention=AsyncMock())
+    chat_window.manager.configure_keywords(mock_keyword)
+    await event.handle("message_content", [_FakeWrapper(composed)])
 
-    result = mock_keyword.return_value.dispatch_mention.await_args.args[0]
+    result = mock_keyword.dispatch_mention.await_args.args[0]
     assert result.text == "点歌"
     assert result.params == "晴天"
     assert result.quoted_text == "Alice：哈哈"
@@ -159,10 +151,15 @@ async def db_init():
 
 @pytest.mark.asyncio
 async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init, monkeypatch):
+    from ushareiplay.adapters.outbound.persistence.chat_log_recorder import (
+        TortoiseChatLogRecorder,
+    )
     from ushareiplay.core.chat_intake import classify_chat_line
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
-    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.modules.command.use_cases import KeywordUseCases
+    from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+    from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
     try:
         MessageQueue.initialize()
@@ -170,20 +167,22 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
         pass
     await MessageQueue.instance().clear_queue()
 
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = {"llm": {"enabled": True}}
-
-    async def _no_keyword(keyword, username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _no_keyword)
+    users = InMemoryUserRepository()
     mock_resolve = AsyncMock(return_value=None)
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    keyword_manager = KeywordUseCases(
+        repository=InMemoryKeywordRepository(users),
+        users=users,
+        presence=SimpleNamespace(is_user_online=lambda _name: True),
+        queue=SimpleNamespace(enqueue=AsyncMock()),
+        chat_logs=TortoiseChatLogRecorder(),
+        config_source=SimpleNamespace(load=lambda: None),
+        fallback=SimpleNamespace(resolve=mock_resolve),
+        logger=SimpleNamespace(
+            info=lambda *_args, **_kwargs: None,
+            error=lambda *_args, **_kwargs: None,
+            warning=lambda *_args, **_kwargs: None,
+        ),
+    )
 
     result = classify_chat_line(
         "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天", room_owner="群主"

@@ -8,7 +8,7 @@ commands, and plain chat lines, plus the queue grammar used by timer/runtime
 messages (`;` split, `{user_name}` expansion, silent/private prefix detection).
 
 All functions return frozen `ChatIntakeResult` objects. Callers are responsible
-for dispatching to KeywordManager, CommandManager, or the chat logger.
+for dispatching to the keyword use cases, CommandManager, or the chat logger.
 """
 
 from __future__ import annotations

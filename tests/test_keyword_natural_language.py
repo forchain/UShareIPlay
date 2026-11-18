@@ -1,16 +1,61 @@
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ushareiplay.adapters.inbound.runtime.keyword_command_sink import (
+    QueueKeywordCommandSink,
+)
+from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+    NaturalLanguageFallbackAdapter,
+)
 from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
+from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
-from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
+from ushareiplay.modules.command.use_cases import KeywordUseCases
+from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+from tests.fakes.in_memory_user_repository import InMemoryUserRepository
+
+_LOGGER = SimpleNamespace(
+    info=lambda *_args, **_kwargs: None,
+    error=lambda *_args, **_kwargs: None,
+    warning=lambda *_args, **_kwargs: None,
+)
+
+
+class _Presence:
+    def is_user_online(self, username):
+        return True
+
+
+class _ChatLogs:
+    async def record(self, username, content):
+        return None
+
+
+class _NoConfig:
+    def load(self):
+        return None
 
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _use_cases(fallback):
+    users = InMemoryUserRepository()
+    return KeywordUseCases(
+        repository=InMemoryKeywordRepository(users),
+        users=users,
+        presence=_Presence(),
+        queue=QueueKeywordCommandSink(MessageQueue.instance()),
+        chat_logs=_ChatLogs(),
+        config_source=_NoConfig(),
+        fallback=fallback,
+        logger=_LOGGER,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -26,30 +71,17 @@ def _clear_message_queue():
 @pytest.mark.asyncio
 async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
 
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = {
-        "llm": {"enabled": True, "api_key": "test"},
-        "commands": [{"prefix": "play", "level": 1}],
-    }
-
-    # Register an exact keyword
-    async def _mock_find_keyword(keyword, username):
-        if keyword == "520":
-            return SimpleNamespace(keyword="520", command=":play love song", mode="sequence")
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
-
-    # Mock resolver
     mock_resolve = AsyncMock()
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    fallback = SimpleNamespace(resolve=mock_resolve)
+    use_cases = _use_cases(fallback)
+    alice = await use_cases._users.get_or_create("Alice")
+    await use_cases._repository.create(
+        keyword="520",
+        command=":play love song",
+        creator_id=alice.id,
+        is_public=True,
+    )
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -58,7 +90,7 @@ async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     # Assert keyword was executed, resolver was NOT called
     mock_resolve.assert_not_called()
@@ -73,28 +105,11 @@ async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_command(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = {
-        "llm": {"enabled": True, "api_key": "test"},
-        "commands": [{"prefix": "play", "level": 1}],
-    }
-
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
     )
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -103,7 +118,7 @@ async def test_unmatched_mention_resolves_to_command(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
     messages = await MessageQueue.instance().get_all_messages()
@@ -117,27 +132,11 @@ async def test_unmatched_mention_resolves_to_command(monkeypatch):
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_reply(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = {
-        "llm": {"enabled": True, "api_key": "test"},
-    }
-
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="reply", content="你好呀！我是小助手~")
     )
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -146,7 +145,7 @@ async def test_unmatched_mention_resolves_to_reply(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
     messages = await MessageQueue.instance().get_all_messages()
@@ -160,27 +159,11 @@ async def test_unmatched_mention_resolves_to_reply(monkeypatch):
 @pytest.mark.asyncio
 async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = {
-        "llm": {"enabled": True, "api_key": "test"},
-    }
-    keyword_manager._default_keyword_command = ":help"
-
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
     # Mock resolver returning None (failure or timeout)
     mock_resolve = AsyncMock(return_value=None)
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
+    use_cases._default_keyword_command = ":help"
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -189,7 +172,7 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
     messages = await MessageQueue.instance().get_all_messages()
@@ -202,41 +185,24 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch):
-    """Verify KeywordManager reads root config (with llm and commands) instead of only soul config."""
+    """Verify the keyword fallback reads root config (with llm and commands)."""
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
-    )
-    keyword_manager._config = None
-    keyword_manager._nl_resolver = None
 
     root_config = {
         "soul": {"room_owner": "Chainer"},
         "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
         "llm": {"enabled": True, "api_key": "test-key"},
     }
+    fallback = NaturalLanguageFallbackAdapter(root_config)
+    use_cases = _use_cases(fallback)
 
-    # Simulate SoulHandler where handler.config is only root_config["soul"]
-    # and handler.controller.config is root_config
-    fake_controller = SimpleNamespace(config=ConfigView(root_config))
-    fake_handler = SimpleNamespace(
-        config=ConfigSectionView("soul", root_config["soul"]),
-        controller=fake_controller,
-    )
-    keyword_manager._handler = fake_handler
-
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
-
-    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
-        mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 胡彦斌 潇湘雨")
+    with patch(
+        "ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve",
+        new_callable=AsyncMock,
+    ) as mock_resolve:
+        mock_resolve.return_value = NaturalLanguageResult(
+            type="command", content=":play 胡彦斌 潇湘雨"
+        )
 
         intake_result = ChatIntakeResult(
             kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -245,9 +211,9 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
             params="",
         )
 
-        await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+        await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
-        assert keyword_manager.nl_resolver.enabled is True
+        assert fallback.nl_resolver.enabled is True
         mock_resolve.assert_awaited_once()
         messages = await MessageQueue.instance().get_all_messages()
         assert len(messages) == 1
@@ -259,48 +225,31 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
     from ushareiplay.core.chat_intake import classify_chat_line
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
 
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
+    mock_resolve = AsyncMock(
+        return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
     )
-    keyword_manager._config = {
-        "soul": {"room_owner": "Chainer"},
-        "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
-        "llm": {"enabled": True, "api_key": "test-key"},
-    }
+    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
-    async def _mock_find_keyword(_keyword, _username):
-        return None
+    raw_chat = "souler[Alice]说: @Chainer 帮我放一首周杰伦的晴天"
+    intake_result = classify_chat_line(raw_chat, room_owner="Chainer")
+    assert intake_result.kind == ChatIntakeKind.KEYWORD_MENTION
 
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
-    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
-        mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
-
-        raw_chat = "souler[Alice]说: @Chainer 帮我放一首周杰伦的晴天"
-        intake_result = classify_chat_line(raw_chat, room_owner="Chainer")
-        assert intake_result.kind == ChatIntakeKind.KEYWORD_MENTION
-
-        await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
-
-        mock_resolve.assert_awaited_once()
-        messages = await MessageQueue.instance().get_all_messages()
-        assert len(messages) == 1
-        msg = next(iter(messages.values()))
-        assert msg.content == ":play 周杰伦 晴天"
-        assert msg.nickname == "Alice"
+    mock_resolve.assert_awaited_once()
+    messages = await MessageQueue.instance().get_all_messages()
+    assert len(messages) == 1
+    msg = next(iter(messages.values()))
+    assert msg.content == ":play 周杰伦 晴天"
+    assert msg.nickname == "Alice"
 
 
 def test_get_playback_info_enrichment(monkeypatch):
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
-    keyword_manager = KeywordManager.initialize()
+    fallback = NaturalLanguageFallbackAdapter({})
     broadcaster = PlaybackBroadcaster.initialize()
     playlist_session = PlaylistSession.instance()
 
@@ -324,7 +273,7 @@ def test_get_playback_info_enrichment(monkeypatch):
         lambda: fake_music_handler,
     )
 
-    info = keyword_manager._get_playback_info()
+    info = fallback._get_playback_info()
     assert info is not None
     assert info["song"] == "Fictional (Stripped)"
     assert info["singer"] == "Khloe Rose"
@@ -337,10 +286,9 @@ def test_get_playback_info_enrichment(monkeypatch):
 
 
 def test_get_playback_info_handles_exceptions_gracefully(monkeypatch):
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
-    keyword_manager = KeywordManager.initialize()
+    fallback = NaturalLanguageFallbackAdapter({})
     broadcaster = PlaybackBroadcaster.initialize()
     broadcaster._playback_info_cache = {"song": "SongA", "singer": "SingerA"}
 
@@ -352,34 +300,28 @@ def test_get_playback_info_handles_exceptions_gracefully(monkeypatch):
         _raise,
     )
 
-    info = keyword_manager._get_playback_info()
+    info = fallback._get_playback_info()
     assert info is not None
     assert info["song"] == "SongA"
 
 
 @pytest.mark.asyncio
 async def test_mention_query_own_playlist_e2e(monkeypatch):
-    import json
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
+    fallback = NaturalLanguageFallbackAdapter(
+        {
+            "llm": {
+                "enabled": True,
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "commands": [{"prefix": "play", "level": 1}],
+        }
     )
-    keyword_manager._config = {
-        "llm": {
-            "enabled": True,
-            "api_key": "test-key",
-            "base_url": "https://api.openai.com/v1",
-        },
-        "commands": [{"prefix": "play", "level": 1}],
-    }
-    keyword_manager._nl_resolver = None
+    use_cases = _use_cases(fallback)
 
     broadcaster = PlaybackBroadcaster.initialize()
     broadcaster._playback_info_cache = {
@@ -402,11 +344,6 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
         lambda: fake_music_handler,
     )
-
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
     captured_payload = {}
 
@@ -430,7 +367,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        keyword_manager.nl_resolver,
+        fallback.nl_resolver,
         "_call_api",
         _fake_call_api,
     )
@@ -442,7 +379,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     # Verify system prompt contained complete context
     system_prompt = captured_payload["messages"][0]["content"]
@@ -461,27 +398,21 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mention_query_others_playlist_e2e(monkeypatch):
-    import json
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
+    fallback = NaturalLanguageFallbackAdapter(
+        {
+            "llm": {
+                "enabled": True,
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "commands": [{"prefix": "play", "level": 1}],
+        }
     )
-    keyword_manager._config = {
-        "llm": {
-            "enabled": True,
-            "api_key": "test-key",
-            "base_url": "https://api.openai.com/v1",
-        },
-        "commands": [{"prefix": "play", "level": 1}],
-    }
-    keyword_manager._nl_resolver = None
+    use_cases = _use_cases(fallback)
 
     broadcaster = PlaybackBroadcaster.initialize()
     broadcaster._playback_info_cache = {
@@ -503,11 +434,6 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         lambda: fake_music_handler,
     )
 
-    async def _mock_find_keyword(_keyword, _username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
-
     async def _fake_call_api(payload):
         mock_response = {
             "choices": [
@@ -526,7 +452,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        keyword_manager.nl_resolver,
+        fallback.nl_resolver,
         "_call_api",
         _fake_call_api,
     )
@@ -538,14 +464,10 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         params="",
     )
 
-    await keyword_manager.dispatch_mention(intake_result, sleep_exempt=True)
+    await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     messages = await MessageQueue.instance().get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == "[智能] 现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~"
     assert msg.nickname == "Alice"
-
-
-
-

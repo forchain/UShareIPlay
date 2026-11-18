@@ -13,9 +13,21 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.adapters.inbound.runtime.keyword_command_sink import QueueKeywordCommandSink
+from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+    NaturalLanguageFallbackAdapter,
+)
+from ushareiplay.adapters.inbound.runtime.keyword_presence import InfoManagerPresence
 from ushareiplay.adapters.inbound.runtime.timer_message_sink import QueueTimerMessageSink
+from ushareiplay.adapters.outbound.persistence.chat_log_recorder import TortoiseChatLogRecorder
+from ushareiplay.adapters.outbound.persistence.keyword_repository import (
+    TortoiseKeywordRepository,
+)
 from ushareiplay.adapters.outbound.persistence.timer_repository import TortoiseTimerRepository
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.outbound.system.clock import SystemClock
+from ushareiplay.adapters.outbound.system.keyword_config import YamlKeywordConfigSource
+from ushareiplay.modules.command.use_cases import KeywordUseCases
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
@@ -497,7 +509,6 @@ class AppController(Singleton):
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.admin_manager import AdminManager
-            from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
@@ -579,7 +590,19 @@ class AppController(Singleton):
                 name_resolver=self.info_manager.resolve_visible_username,
             )
             AdminManager.initialize(self.soul_handler)
-            KeywordManager.initialize(self.soul_handler)
+            # 关键字回复（#547）：仓储、队列出口、在线校验与自然语言兜底都从
+            # 组合根注入。自然语言解析器本身仍由 #548 迁移，这里只给接缝。
+            self.keyword_use_cases = KeywordUseCases(
+                repository=TortoiseKeywordRepository(),
+                users=TortoiseUserRepository(),
+                presence=InfoManagerPresence(self.info_manager),
+                queue=QueueKeywordCommandSink(MessageQueue.instance()),
+                chat_logs=TortoiseChatLogRecorder(),
+                config_source=YamlKeywordConfigSource(),
+                fallback=NaturalLanguageFallbackAdapter(self.config),
+                logger=self.logger,
+            )
+            MessageManager.instance().configure_keywords(self.keyword_use_cases)
             # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
             # 这一个模块里，各命令文件只是薄适配器（#422）。
             UserEventHooks.initialize(self.soul_handler)
@@ -694,9 +717,7 @@ class AppController(Singleton):
 
         # Initialize keyword system and load keywords from config
         self.logger.info("初始化关键字系统...")
-        from ushareiplay.managers.keyword_manager import KeywordManager
-        keyword_manager = KeywordManager.instance()
-        await keyword_manager.load_keywords_from_config()
+        await self.keyword_use_cases.load_keywords_from_config()
         self.logger.info("关键字系统初始化完成")
 
         # Start async timer manager (loads from DB, migrates from JSON if needed)

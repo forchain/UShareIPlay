@@ -8,7 +8,10 @@ from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.adapters.outbound.persistence.models.user_chat_log import UserChatLog
 from ushareiplay.adapters.outbound.persistence.models.user_memory import UserMemory
 from ushareiplay.core.chat_intake import ChatIntakeResult, ChatIntakeKind
-from ushareiplay.managers.keyword_manager import KeywordManager
+from ushareiplay.adapters.outbound.persistence.chat_log_recorder import TortoiseChatLogRecorder
+from ushareiplay.modules.command.use_cases import KeywordUseCases
+from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
 
 @pytest.mark.asyncio
@@ -119,14 +122,21 @@ async def test_keyword_manager_dispatch_mention_logs_chat(monkeypatch):
     db = DatabaseManager(db_url="sqlite://:memory:")
     await db.init()
     try:
-        if not KeywordManager.is_initialized():
-            KeywordManager.initialize()
-        km = KeywordManager.instance()
-        # Mock nl resolver and execute_keyword to avoid external calls
+        users = InMemoryUserRepository()
 
-        async def dummy_resolve(*args, **kwargs):
-            return True
-        monkeypatch.setattr(km, "_resolve_natural_language", dummy_resolve)
+        class _NoFallback:
+            async def resolve(self, **_kwargs):
+                return None
+
+        km = KeywordUseCases(
+            repository=InMemoryKeywordRepository(users),
+            users=users,
+            presence=type("P", (), {"is_user_online": lambda self, _u: True})(),
+            queue=type("Q", (), {"enqueue": lambda *a, **k: None})(),
+            chat_logs=TortoiseChatLogRecorder(),
+            config_source=type("C", (), {"load": lambda self: None})(),
+            fallback=_NoFallback(),
+        )
 
         result = ChatIntakeResult(
             kind=ChatIntakeKind.KEYWORD_MENTION,
