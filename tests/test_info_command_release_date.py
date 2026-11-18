@@ -54,6 +54,7 @@ async def test_info_command_returns_empty_release_date_when_cache_missing(monkey
             soul_handler=SimpleNamespace(),
             music_handler=SimpleNamespace(),
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+            room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
     )
 
@@ -76,6 +77,7 @@ async def test_info_command_preserves_cached_release_date(monkeypatch, info_mana
             soul_handler=SimpleNamespace(),
             music_handler=SimpleNamespace(),
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+            room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
     )
 

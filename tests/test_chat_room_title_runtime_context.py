@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 
 
 class FakeLogger:
@@ -16,9 +16,11 @@ class FakeLogger:
 
 
 class FakeHandler:
-    def __init__(self):
+    def __init__(self, room_profile_manager=None):
         self.logger = FakeLogger()
-        self.controller = SimpleNamespace(room_state=None)
+        self.controller = SimpleNamespace(
+            room_state=None, room_profile_manager=room_profile_manager
+        )
 
 
 class FakeRuntime:
@@ -67,7 +69,9 @@ def test_chat_room_title_busy_skip_does_not_consume_throttle(monkeypatch):
 
     monkeypatch.setattr(RoomProfileManager, "instance", room_profile_manager_instance)
 
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+    event = ChatRoomTitleEvent(
+        FakeHandler(FakeRoomProfileManager()), runtime=runtime
+    )
 
     first_handled = asyncio.run(event.handle("chat_room_title", None))
     runtime.busy = False
@@ -93,8 +97,8 @@ def test_chat_room_title_uses_event_snapshot_instead_of_live_lookup(monkeypatch)
             live_lookup_calls += 1
             return "wrong live value"
 
-    monkeypatch.setattr(RoomProfileManager, "instance", lambda: FakeRoomProfileManager())
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+    fake = FakeRoomProfileManager()
+    event = ChatRoomTitleEvent(FakeHandler(fake), runtime=runtime)
     wrapper = type("Wrapper", (), {"content": "享乐｜Radio"})()
 
     assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
@@ -111,8 +115,8 @@ def test_chat_room_title_prefers_visible_title_over_content_description(monkeypa
         def set_title(self, title):
             queued_titles.append(title)
 
-    monkeypatch.setattr(RoomProfileManager, "instance", lambda: FakeRoomProfileManager())
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=FakeRuntime(busy=False))
+    fake = FakeRoomProfileManager()
+    event = ChatRoomTitleEvent(FakeHandler(fake), runtime=FakeRuntime(busy=False))
     wrapper = type("Wrapper", (), {"text": "享乐｜即兴的华彩", "content": "房间名称：Joyer"})()
 
     assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
@@ -131,8 +135,8 @@ def test_chat_room_title_does_not_overwrite_pending_business_title(monkeypatch):
         def set_title(self, title):
             queued_titles.append(title)
 
-    monkeypatch.setattr(RoomProfileManager, "instance", lambda: FakeRoomProfileManager())
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+    fake = FakeRoomProfileManager()
+    event = ChatRoomTitleEvent(FakeHandler(fake), runtime=runtime)
     wrapper = type("Wrapper", (), {"content": "旧房名"})()
 
     assert asyncio.run(event.handle("chat_room_title", wrapper)) is False
@@ -154,8 +158,8 @@ def test_chat_room_title_queues_configured_default_title(monkeypatch):
         def set_title(self, title):
             queued_titles.append(title)
 
-    monkeypatch.setattr(RoomProfileManager, "instance", lambda: FakeRoomProfileManager())
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
+    fake = FakeRoomProfileManager()
+    event = ChatRoomTitleEvent(FakeHandler(fake), runtime=runtime)
     wrapper = type("Wrapper", (), {"content": "旧无分隔符房名"})()
 
     assert asyncio.run(event.handle("chat_room_title", wrapper)) is False

@@ -87,8 +87,7 @@ class BaseCommand(ABC):
     @property
     def room_profile_manager(self):
         if self._room_profile_manager is None:
-            from ushareiplay.managers.room_profile import RoomProfileManager
-            self._room_profile_manager = RoomProfileManager.instance()
+            self._room_profile_manager = self.controller.room_profile_manager
         return self._room_profile_manager
 
     @property

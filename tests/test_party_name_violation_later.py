@@ -5,7 +5,6 @@ from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
-from ushareiplay.managers.room_profile import RoomProfileManager
 
 
 class _Logger:
@@ -54,14 +53,14 @@ def test_element_wrapper_context_text_includes_dialog_siblings():
     assert "派对名称涉嫌违规" in wrapper.context_text()
 
 
-def test_non_violation_later_dialog_is_dismissed_without_resetting_title(monkeypatch):
+def test_non_violation_later_dialog_is_dismissed_without_resetting_title():
     element = _Element()
     queued_titles = []
-    monkeypatch.setattr(
-        RoomProfileManager, "instance",
-        lambda: type("RoomProfile", (), {"set_title": queued_titles.append})()
-    )
-    event = PartyNameViolationLaterEvent(_Handler(element))
+    handler = _Handler(element)
+    handler.controller.room_profile_manager = type(
+        "RoomProfile", (), {"set_title": queued_titles.append}
+    )()
+    event = PartyNameViolationLaterEvent(handler)
 
     handled = asyncio.run(event.handle("party_name_violation_later", _Snapshot("活动提醒\n稍后再说")))
 
@@ -70,14 +69,14 @@ def test_non_violation_later_dialog_is_dismissed_without_resetting_title(monkeyp
     assert queued_titles == []
 
 
-def test_confirmed_party_name_violation_queues_daily_title(monkeypatch):
+def test_confirmed_party_name_violation_queues_daily_title():
     element = _Element()
     queued_titles = []
-    monkeypatch.setattr(
-        RoomProfileManager, "instance",
-        lambda: type("RoomProfile", (), {"set_title": queued_titles.append})()
-    )
-    event = PartyNameViolationLaterEvent(_Handler(element))
+    handler = _Handler(element)
+    handler.controller.room_profile_manager = type(
+        "RoomProfile", (), {"set_title": queued_titles.append}
+    )()
+    event = PartyNameViolationLaterEvent(handler)
 
     handled = asyncio.run(event.handle("party_name_violation_later", _Snapshot("派对名称涉嫌违规，请修改后重试\n稍后再说")))
 
@@ -86,15 +85,16 @@ def test_confirmed_party_name_violation_queues_daily_title(monkeypatch):
     assert queued_titles == ["听歌"]
 
 
-def test_confirmed_party_name_violation_queues_configured_default_title(monkeypatch):
+def test_confirmed_party_name_violation_queues_configured_default_title():
     element = _Element()
     queued_titles = []
     fake_room_profile_mgr = type("RoomName", (), {
         "set_title": lambda self, title: queued_titles.append(title),
         "get_default_title": lambda self: "默认歌单"
     })()
-    monkeypatch.setattr(RoomProfileManager, "instance", lambda: fake_room_profile_mgr)
-    event = PartyNameViolationLaterEvent(_Handler(element))
+    handler = _Handler(element)
+    handler.controller.room_profile_manager = fake_room_profile_mgr
+    event = PartyNameViolationLaterEvent(handler)
 
     handled = asyncio.run(event.handle("party_name_violation_later", _Snapshot("派对名称涉嫌违规，请修改后重试\n稍后再说")))
 

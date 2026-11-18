@@ -16,7 +16,7 @@
 import pytest
 
 from ushareiplay.modules.room.domain import FIELDS, ProfileDraftStore
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 from tests.legacy_state import RoomState
 
 

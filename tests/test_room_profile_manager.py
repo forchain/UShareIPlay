@@ -12,11 +12,12 @@
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from ushareiplay.core.singleton import Singleton, SingletonError
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 from ushareiplay.modules.room.domain import ProfileDraftStore
 from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
@@ -57,7 +58,7 @@ def test_reinitializing_outside_the_composition_root_is_forbidden():
 
 
 def test_the_composition_root_registers_it_and_nothing_else_for_the_room_profile():
-    """组合根必须 `.initialize(...)` 一次，而不是在别处懒创建。"""
+    """组合根必须构造一次房间档案，而不是在别处懒创建。"""
     source = (
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "src"
@@ -66,9 +67,9 @@ def test_the_composition_root_registers_it_and_nothing_else_for_the_room_profile
         / "app_controller.py"
     ).read_text(encoding="utf-8")
 
-    assert "self.room_profile_manager = RoomProfileManager.initialize(" in source
-    # #394 之后房间档案只剩这一个单例：组合根里不再有任何遗留初始化。
-    assert source.count("RoomProfileManager.initialize(") == 1
+    assert "self.room_profile_manager = RoomProfileManager(" in source
+    # 组合根只构造一次；用例本身不再提供单例创建入口。
+    assert "RoomProfileManager.initialize(" not in source
     assert "RoomInfoWindow.initialize(" not in source
 
 
@@ -83,7 +84,8 @@ def test_reset_all_instances_also_resets_it():
 # --------------------------------------------------------------------------
 
 
-def _profile(driver=None, handler=object()):
+def _profile(driver=None, handler=None):
+    handler = handler or SimpleNamespace(logger=MagicMock())
     return RoomProfileManager.initialize(handler=handler, drawer_driver=driver)
 
 
@@ -268,7 +270,7 @@ def test_ensure_open_reports_the_missing_app_instead_of_touching_the_ui():
 
 
 def test_a_handler_without_a_configured_port_is_a_wiring_error_not_a_domain_failure():
-    profile = _profile(driver=None, handler=object())
+    profile = _profile(driver=None, handler=SimpleNamespace(logger=MagicMock()))
 
     with pytest.raises(RuntimeError, match="RoomProfileDrawerDriverPort"):
         profile.ensure_open()

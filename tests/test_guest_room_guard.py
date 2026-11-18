@@ -338,7 +338,7 @@ async def test_host_room_checks_seats_on_enter_and_return():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_room_name_and_title_updates():
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -376,7 +376,7 @@ async def test_guest_room_blocks_room_name_and_title_updates():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_notice_updates():
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -407,7 +407,7 @@ async def test_guest_room_blocks_notice_updates():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_recommendation_sync():
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
@@ -431,7 +431,7 @@ async def test_guest_room_blocks_recommendation_sync():
 async def test_guest_room_blocks_events_and_window_audit():
     from ushareiplay.events.chat_room_title import ChatRoomTitleEvent
     from ushareiplay.events.party_name_violation_later import PartyNameViolationLaterEvent
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True

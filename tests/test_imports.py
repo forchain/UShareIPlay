@@ -76,9 +76,8 @@ MODULES = [
     "ushareiplay.managers.playback.models",
     "ushareiplay.managers.playback.driver",
     "ushareiplay.managers.playback.qq_music_ui_driver",
-    # managers (房间档案深度模块，#388 新增子包)
-    "ushareiplay.managers.room_profile",
-    "ushareiplay.managers.room_profile.manager",
+    # 房间档案
+    "ushareiplay.modules.room.room_profile",
     "ushareiplay.modules.room.row_editor",
     "ushareiplay.adapters.outbound.appium.soul.room_profile",
 ]

@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 

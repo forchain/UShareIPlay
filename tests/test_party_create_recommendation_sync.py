@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from tests.legacy_state import RoomState
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 
 
 class _Logger:
@@ -106,7 +106,10 @@ def create_sync_setup(monkeypatch, tmp_path):
         key_actions=SimpleNamespace(press_back=lambda: None),
         config={},
         controller=SimpleNamespace(
-            room_profile_manager=SimpleNamespace(set_default_notice=set_default_notice),
+            room_profile_manager=SimpleNamespace(
+                ensure_synced_on_return=lambda: None,
+                set_default_notice=set_default_notice,
+            ),
             seat_manager=SimpleNamespace(find_owner_seat=find_owner_seat),
         ),
     )

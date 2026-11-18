@@ -1,15 +1,41 @@
-"""房间业务包：房间状态、在线集合与用户事件钩子引擎。"""
+"""房间业务包：房间状态、在线集合、用户事件钩子与房间档案。"""
 
-from ushareiplay.modules.room.domain import HookCommand, RoomError, RoomState
+from ushareiplay.modules.room.domain import (
+    FIELDS,
+    FULLWIDTH_SEPARATOR,
+    NOTICE_COOLDOWN_MINUTES,
+    PendingWrite,
+    ProfileCooldown,
+    ProfileDraftStore,
+    ProfileError,
+    RoomError,
+    RoomState,
+    TITLE_COOLDOWN_MINUTES,
+    TOPIC_COOLDOWN_MINUTES,
+    HookCommand,
+    InvalidRoomName,
+    clean_banner_text,
+    compose_room_name,
+    parse_room_title_text,
+    recommendation_status_from_text,
+    validate_theme,
+)
 from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY, expand_seat_macros, seat_info_for
 from ushareiplay.modules.room.ports import (
+    DEFAULT_ENTRY_KEYS,
+    DIALOG_KEYS,
+    DRAWER_KEY,
     HookCommandSink,
     MemoryConsolidationSink,
     OnlineListSource,
+    PartySettingsDriverPort,
     PresenceQuery,
+    RoomProfileDrawerDriverPort,
+    RoomProfileSurfacePort,
     RoomStateStore,
     UserEventHookRepository,
 )
+from ushareiplay.modules.room.room_profile import RoomProfileManager
 from ushareiplay.modules.room.registry import (
     ALIAS_GROUP,
     COMMAND_PREFIXES,
@@ -32,6 +58,28 @@ from ushareiplay.modules.room.use_cases import (
 
 __all__ = [
     "ALIAS_GROUP",
+    "DEFAULT_ENTRY_KEYS",
+    "DIALOG_KEYS",
+    "DRAWER_KEY",
+    "FIELDS",
+    "FULLWIDTH_SEPARATOR",
+    "NOTICE_COOLDOWN_MINUTES",
+    "PendingWrite",
+    "PartySettingsDriverPort",
+    "ProfileCooldown",
+    "ProfileDraftStore",
+    "ProfileError",
+    "RoomProfileDrawerDriverPort",
+    "RoomProfileManager",
+    "RoomProfileSurfacePort",
+    "TITLE_COOLDOWN_MINUTES",
+    "TOPIC_COOLDOWN_MINUTES",
+    "InvalidRoomName",
+    "clean_banner_text",
+    "compose_room_name",
+    "parse_room_title_text",
+    "recommendation_status_from_text",
+    "validate_theme",
     "COMMAND_PREFIXES",
     "ENTER",
     "EVENT_HOOK_SPECS",
