@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ushareiplay.core.network_bridge import (
+from ushareiplay.adapters.outbound.system.network_bridge import (
     is_macos_local_network_error,
     diagnose_connection_error,
     LocalNetworkBridge,
@@ -155,7 +155,7 @@ def test_local_network_bridge_loopback_forwarding():
 
 
 def test_ensure_appium_endpoint_when_direct_connection_succeeds():
-    with patch("ushareiplay.core.network_bridge.check_socket_connectivity", return_value=(True, None)):
+    with patch("ushareiplay.adapters.outbound.system.network_bridge.check_socket_connectivity", return_value=(True, None)):
         host, port, bridge = ensure_appium_endpoint("192.168.8.103", 4723)
         assert host == "192.168.8.103"
         assert port == 4723
@@ -166,14 +166,14 @@ def test_ensure_appium_endpoint_auto_bridge_on_errno_65():
     # 桥接只针对 macOS 本地网络隐私限制（Errno 65）自动拉起，Linux 上不会启动；
     # 因此钉住平台，让 Linux CI 上也能确定性地断言 macOS 行为。
     with patch("platform.system", return_value="Darwin"):
-        with patch("ushareiplay.core.network_bridge.check_socket_connectivity") as mock_conn:
+        with patch("ushareiplay.adapters.outbound.system.network_bridge.check_socket_connectivity") as mock_conn:
             mock_conn.side_effect = [
                 (False, OSError(65, "No route to host")),
                 (True, None),
             ]
             with patch.object(LocalNetworkBridge, "start", return_value=54321) as mock_start:
                 with patch(
-                    "ushareiplay.core.network_bridge.verify_bridge_endpoint",
+                    "ushareiplay.adapters.outbound.system.network_bridge.verify_bridge_endpoint",
                     return_value=(True, None),
                 ) as mock_verify:
                     host, port, bridge = ensure_appium_endpoint("192.168.8.103", 4723)
@@ -253,14 +253,14 @@ def test_ensure_appium_endpoint_stops_bridge_when_verification_fails():
     # 校验失败后关闭桥接同样只发生在 Darwin 分支上；钉住平台，
     # 让 Linux CI 上也能确定性地断言 macOS 行为。
     with patch("platform.system", return_value="Darwin"):
-        with patch("ushareiplay.core.network_bridge.check_socket_connectivity") as mock_conn:
+        with patch("ushareiplay.adapters.outbound.system.network_bridge.check_socket_connectivity") as mock_conn:
             mock_conn.side_effect = [
                 (False, OSError(65, "No route to host")),
                 (True, None),
             ]
             with patch.object(LocalNetworkBridge, "start", return_value=12345):
                 with patch.object(LocalNetworkBridge, "stop") as mock_stop:
-                    with patch("ushareiplay.core.network_bridge.verify_bridge_endpoint", return_value=(False, ConnectionError("Probe failed"))):
+                    with patch("ushareiplay.adapters.outbound.system.network_bridge.verify_bridge_endpoint", return_value=(False, ConnectionError("Probe failed"))):
                         with pytest.raises(ConnectionError) as exc_info:
                             ensure_appium_endpoint("192.168.8.103", 4723)
                         assert "无法连接到 Appium 服务器" in str(exc_info.value)
