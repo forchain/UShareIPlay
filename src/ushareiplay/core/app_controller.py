@@ -519,11 +519,12 @@ class AppController(Singleton):
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
-            from ushareiplay.managers.room_profile import RoomProfileManager
-            from ushareiplay.managers.room_profile.party_settings import (
+            from ushareiplay.modules.room import RoomProfileManager
+            from ushareiplay.adapters.outbound.appium.soul.room_profile import (
+                SoulDrawerDriver,
                 SoulPartySettingsDriver,
+                SoulRoomProfileSurface,
             )
-            from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.online_drawer import OnlineDrawerManager
             from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
@@ -613,16 +614,21 @@ class AppController(Singleton):
             self.party_manager = PartyManager.initialize(
                 self.soul_handler, room_state=self.room_state
             )
-            self.playlist_session = PlaylistSession.initialize(
-                self.soul_handler, online_users=self.presence.get_online_users
-            )
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
-            # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
-            self.room_profile_manager = RoomProfileManager.initialize(
-                self.soul_handler,
+            # 派对类型与推荐分发）全在它这里，由组合根构造一次并注入。
+            self.room_profile_manager = RoomProfileManager(
+                handler=self.soul_handler,
                 drawer_driver=SoulDrawerDriver(self.soul_handler),
                 settings_driver=SoulPartySettingsDriver(self.soul_handler),
                 room_state=self.room_state,
+                surface=SoulRoomProfileSurface(self.soul_handler),
+                config=self.config.soul,
+                messenger=self.message_dispatch.bind_handler(self.soul_handler),
+            )
+            self.playlist_session = PlaylistSession.initialize(
+                self.soul_handler,
+                room_profile=self.room_profile_manager,
+                online_users=self.presence.get_online_users,
             )
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
             # 那里（#428）。命名域解析器按 ADR-0009 从组合根注入，模块内不去

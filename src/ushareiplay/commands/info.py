@@ -77,19 +77,8 @@ class InfoCommand(BaseCommand):
         return result
 
     def _recommendation_enabled(self, info_manager):
-        """读推荐分发状态：优先问 `RoomProfileManager` 的模块出口。
-
-        房间档案未装配时（离线装配 / 测试替身）退回 `InfoManager` 的委托；
-        两者读的都是同一份 `RoomState` 事实，不存在第二个真相。
-        """
-        try:
-            from ushareiplay.managers.room_profile import RoomProfileManager
-
-            if RoomProfileManager.is_initialized():
-                return RoomProfileManager.instance().recommendation_enabled
-        except Exception:
-            pass
-        return info_manager.recommendation_enabled
+        """读推荐分发状态：问组合根注入的房间档案模块。"""
+        return self.room_profile_manager.recommendation_enabled
 
     def _format_online_users(self, online_users):
         """

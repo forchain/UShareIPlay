@@ -20,8 +20,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
@@ -422,7 +422,7 @@ def test_the_room_profile_manager_no_longer_defers_to_a_legacy_manager():
     """
     import inspect
 
-    from ushareiplay.managers.room_profile import manager as profile_manager
+    from ushareiplay.modules.room import room_profile as profile_manager
 
     body_imports = [
         line.strip()
@@ -438,7 +438,7 @@ def test_the_room_profile_manager_does_not_import_the_deleted_or_legacy_managers
     """源码级断言：模块里既不 import 也不提到 `RecommendationManager` / `PartyManager`。"""
     import inspect
 
-    from ushareiplay.managers.room_profile import manager as profile_manager
+    from ushareiplay.modules.room import room_profile as profile_manager
 
     source = inspect.getsource(profile_manager)
     for line in source.splitlines():

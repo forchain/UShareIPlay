@@ -16,8 +16,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.commands.recommend import RecommendCommand
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.party_settings import (
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.ports import (
     DEFAULT_MAX_SWIPES,
     PARTY_SETTING_BUTTON_KEY,
     PARTY_SETTING_CLOSE_KEY,
@@ -25,6 +25,8 @@ from ushareiplay.managers.room_profile.party_settings import (
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
+)
+from ushareiplay.adapters.outbound.appium.soul.room_profile import (
     SoulPartySettingsDriver,
 )
 from tests.legacy_state import RoomState
@@ -434,7 +436,9 @@ class _Runtime:
 def _command(driver):
     handler = _Handler(driver)
     _profile(driver, handler)
-    return RecommendCommand(_Runtime(handler))
+    runtime = _Runtime(handler)
+    runtime.room_profile_manager = RoomProfileManager.instance()
+    return RecommendCommand(runtime)
 
 
 @pytest.mark.asyncio

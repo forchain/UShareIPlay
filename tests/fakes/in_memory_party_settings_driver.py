@@ -15,7 +15,7 @@
 判定读走 handler 的 element_finder。
 """
 
-from ushareiplay.managers.room_profile.party_settings import (
+from ushareiplay.modules.room.ports import (
     PARTY_SETTING_BUTTON_KEY,
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,

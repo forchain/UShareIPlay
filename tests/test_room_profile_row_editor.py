@@ -26,8 +26,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.row_editor import (
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.row_editor import (
     RowSkin,
     RowStep,
     WriteOutcome,
@@ -35,7 +35,8 @@ from ushareiplay.managers.room_profile.row_editor import (
 from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
-PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/managers/room_profile'
+PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/modules/room'
+ROW_EDITOR_PATH = PKG / 'row_editor.py'
 
 FULLWIDTH_SEPARATOR = '｜'
 DEFAULT_THEME = '听歌'
@@ -499,7 +500,7 @@ def test_the_outcome_type_has_exactly_the_four_kinds():
 )
 def test_every_skin_declares_its_probe_keys_and_what_each_of_them_means(skin, probe_keys):
     """探测键集合与判定表都在皮肤里 —— 写错一个 key 在这里就能抓到。"""
-    from ushareiplay.managers.room_profile import manager as manager_module
+    from ushareiplay.modules.room import room_profile as manager_module
 
     row_skin = getattr(manager_module, skin)
 
@@ -532,7 +533,7 @@ _PHYSICAL_PRIMITIVES = {'replace_text', 'click_element', 'click_element_at', 'wa
 
 
 def _manager_source() -> str:
-    return (PKG / 'manager.py').read_text(encoding='utf-8')
+    return (PKG / 'room_profile.py').read_text(encoding='utf-8')
 
 
 def test_the_physical_ritual_lives_only_in_the_row_editor():
@@ -552,7 +553,7 @@ def test_the_physical_ritual_lives_only_in_the_row_editor():
 
 def test_the_guest_room_guard_for_drawer_edits_is_defined_in_exactly_one_place():
     """「什么算别人的房间」只有一个定义：改判定不会漏掉某一条路。"""
-    editor_source = (PKG / 'row_editor.py').read_text(encoding='utf-8')
+    editor_source = ROW_EDITOR_PATH.read_text(encoding='utf-8')
     assert editor_source.count('def guest_room_blocks_edit(') == 1
     assert editor_source.count('guest_room_blocks_edit(self._manager.room_state)') == 1
 

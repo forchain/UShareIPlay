@@ -10,7 +10,6 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.models import MessageInfo
 
 
@@ -51,8 +50,8 @@ class PartyManager(Singleton):
         `None` 表示组合根还没注册它（离线装配 / 接线漏了）。本模块不再直接查
         任何抽屉元素：推荐分发、派对类型、房名与公告的纠正都在那一次会话里。
         """
-        if self._room_profile_manager is None and RoomProfileManager.is_initialized():
-            self._room_profile_manager = RoomProfileManager.instance()
+        if self._room_profile_manager is None and self.handler is not None:
+            self._room_profile_manager = self.handler.controller.room_profile_manager
         return self._room_profile_manager
 
     def _sync_room_profile_from_ui(self):

@@ -36,9 +36,7 @@ class PartyNameViolationLaterEvent(BaseEvent):
             if room_state is not None and room_state.is_guest_room:
                 return True
 
-            from ushareiplay.managers.room_profile import RoomProfileManager
-
-            profile = RoomProfileManager.instance()
+            profile = self.controller.room_profile_manager
             default_title = getattr(profile, "get_default_title", lambda: "听歌")()
             profile.set_title(default_title)
             return True

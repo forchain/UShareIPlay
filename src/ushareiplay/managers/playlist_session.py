@@ -60,7 +60,7 @@ class PlaylistSession(Singleton):
 
     Args:
         handler: SoulHandler，提供 logger 与角色策略配置。
-        room_profile: 房名/话题写入端；缺省取 `RoomProfileManager.instance()`。
+        room_profile: 房名/话题写入端；缺省取组合根注入的 `controller.room_profile_manager`。
         online_users: 在线用户查询；缺省取 `PresenceTracker`。
         avatar_usernames: 分身名查询；缺省取 `UserDAO.get_all_avatar_usernames`。
     """
@@ -263,10 +263,8 @@ class PlaylistSession(Singleton):
     # ------------------------------------------------------------------
     @property
     def room_profile(self):
-        if self._room_profile is None:
-            from ushareiplay.managers.room_profile import RoomProfileManager
-
-            self._room_profile = RoomProfileManager.instance()
+        if self._room_profile is None and self.handler is not None:
+            self._room_profile = self.handler.controller.room_profile_manager
         return self._room_profile
 
     def adopt(

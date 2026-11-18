@@ -7,8 +7,8 @@ from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 
 
 class MockElementFinder:
@@ -85,6 +85,7 @@ def info_cmd_setup():
         soul_handler=soul_handler,
         music_handler=music_handler,
         timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        room_profile_manager=profile,
     )
     cmd = InfoCommand(controller)
     return cmd, room_state, info_manager

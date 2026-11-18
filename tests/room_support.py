@@ -24,7 +24,7 @@ def wire_room_state(room_state: RoomStateService) -> None:
     from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 
