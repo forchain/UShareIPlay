@@ -268,7 +268,7 @@ async def test_next_command_does_not_record_when_the_handler_play_next_raises(
     于是 NextCommand 把一次失败的入队当成成功记了一笔。
     """
     from ushareiplay.adapters.inbound.chat.next import NextCommand
-    from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
     from ushareiplay.modules.playback.use_cases import PlayNext
     from ushareiplay.models.message_info import MessageInfo
 

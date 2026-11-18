@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 from lxml import etree
 
-from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOM_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "qqmusic_dom"

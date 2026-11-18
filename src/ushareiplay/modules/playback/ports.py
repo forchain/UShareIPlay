@@ -62,6 +62,22 @@ class NextTrackPort(ABC):
         """把歌曲追加到「下一首播放」。"""
 
 
+class PlaybackControlPort(ABC):
+    """系统级播放控制端口（暂停/恢复与媒体音量）。"""
+
+    @abstractmethod
+    def pause_resume(self, should_pause: bool) -> dict:
+        """暂停或恢复播放。"""
+
+    @abstractmethod
+    def get_volume_level(self) -> Optional[int]:
+        """读取当前媒体音量（0~15）；读取失败返回 None。"""
+
+    @abstractmethod
+    def step_volume(self, delta: int) -> None:
+        """按步长增减媒体音量（正数调大，负数调小）。"""
+
+
 class RoomProfileWriter(ABC):
     """歌单采纳后同步房间标题与话题的出站端口。"""
 
@@ -79,5 +95,6 @@ __all__ = [
     "MicControl",
     "MusicUIDriverPort",
     "NextTrackPort",
+    "PlaybackControlPort",
     "RoomProfileWriter",
 ]

@@ -362,7 +362,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
     )
     monkeypatch.setattr(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
         lambda: fake_music_handler,
     )
 
@@ -464,7 +464,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
     )
     monkeypatch.setattr(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
         lambda: fake_music_handler,
     )
 

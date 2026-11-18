@@ -160,7 +160,7 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
     `PlayCommand.play_song` —— 那条路现在是 `MusicManager.play()` 的引擎流水线。
     """
     from ushareiplay.modules.playback.domain import PlaybackRequest
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()
     quality_checked = []
@@ -170,12 +170,10 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
             quality_checked.append(song_info)
             return True
 
-    monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.MusicManager.instance",
-        staticmethod(lambda: _FakeMusicManager()),
-    )
-
-    outcome = QQMusicUIDriver(music_handler).start_playback(
+    outcome = QQMusicUIDriver(
+        music_handler,
+        quality_checker=_FakeMusicManager(),
+    ).start_playback(
         PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
     )
 
@@ -186,7 +184,7 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
 
 def test_play_driver_returns_error_when_first_song_not_found(monkeypatch):
     from ushareiplay.modules.playback.domain import PlaybackRequest
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()
     music_handler.wait_for_element_clickable = lambda key: None

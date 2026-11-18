@@ -223,15 +223,24 @@ def batch_seam(clean_info_manager, monkeypatch):
     manager.get_command("title")._room_profile_manager = room
     manager.get_command("topic")._room_profile_manager = room
     pause_mic = _Mic()
-    manager.get_command("pause")._mic_manager = pause_mic
 
     MusicManager.reset_instance()
-    music = MusicManager.initialize(ui_driver=driver)
+    music = MusicManager.initialize()
     appium = _AppiumStub()
     music.music_handler = music_handler
     music.driver = appium
+    music_handler.driver = appium
 
-    from ushareiplay.modules.playback.use_cases import PlayNext, PlaySong, SkipSong
+    from ushareiplay.adapters.outbound.appium.qq_music.media_session import (
+        QQMusicMediaSession,
+    )
+    from ushareiplay.modules.playback.use_cases import (
+        AdjustVolume,
+        PauseResume,
+        PlayNext,
+        PlaySong,
+        SkipSong,
+    )
 
     session = clean_info_manager._playlist
     session._room_profile = room
@@ -259,6 +268,18 @@ def batch_seam(clean_info_manager, monkeypatch):
     controller.play_next = PlayNext(
         next_driver=music_handler,
         playlist_session=session,
+    )
+    media_session_adapter = QQMusicMediaSession(music_handler)
+    controller.pause_resume = PauseResume(
+        media_session=music,
+        playback_control=media_session_adapter,
+        playlist_session=session,
+        mic=pause_mic,
+        logger=LOGGER,
+    )
+    controller.adjust_volume = AdjustVolume(
+        playback_control=media_session_adapter,
+        logger=LOGGER,
     )
 
     return _Seam(manager, driver, room, appium, pause_mic, clean_info_manager)

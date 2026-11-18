@@ -21,7 +21,7 @@ from ushareiplay.modules.playback.domain import (
     PlaybackRequest,
     PlaybackVariant,
 )
-from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
 QUEUE_TEXT = "喜帖街 - 谢安琪\n富士山下 - 陈奕迅"
 

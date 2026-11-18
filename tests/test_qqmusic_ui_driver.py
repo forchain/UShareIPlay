@@ -24,7 +24,7 @@ from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
 )
-from ushareiplay.managers.playback.player_page import (
+from ushareiplay.adapters.outbound.appium.qq_music.player_page import (
     ACCOMPANIMENT_MENU_CONTAINER_KEY,
     ACCOMPANIMENT_MENU_KEY,
     ACCOMPANIMENT_MORE_ENTRY_KEY,
@@ -33,7 +33,7 @@ from ushareiplay.managers.playback.player_page import (
     ACCOMPANIMENT_SWITCH_KEY,
     PLAY_MODE_ELEMENT_KEYS,
 )
-from ushareiplay.managers.playback.qq_music_ui_driver import (
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import (
     PLAY_ALL_KEYS,
     PLAYLIST_RESULT_KEYS,
     QQMusicUIDriver,
@@ -205,7 +205,10 @@ def test_driver_hands_the_parsed_track_to_the_quality_filter(
         playing_info={"song": "如风", "singer": "王菲", "album": "十万个为什么"}
     )
 
-    QQMusicUIDriver(handler).start_playback(
+    QQMusicUIDriver(
+        handler,
+        quality_checker=SimpleNamespace(handle_song_quality_check=quality_checked.append),
+    ).start_playback(
         PlaybackRequest.song("如风 王菲", requester="小明")
     )
 
@@ -267,17 +270,17 @@ def test_driver_carries_the_release_date_the_quality_check_annotated(
     迁移前命令返回的就是被就地改写过的那个 dict，所以回复里一直带着日期 ——
     只回 `PlaybackTrack` 三件套是一次真实的行为回退。
     """
-    from ushareiplay.managers.music_manager import MusicManager
-
     def _annotate(song_info):
         song_info["release_date"] = "1993-09-07"
 
-    MusicManager.initialize().handle_song_quality_check = _annotate
     handler = _QQMusicHandlerFake(
         playing_info={"song": "如风", "singer": "王菲", "album": "十万个为什么"}
     )
 
-    outcome = QQMusicUIDriver(handler).start_playback(
+    outcome = QQMusicUIDriver(
+        handler,
+        quality_checker=SimpleNamespace(handle_song_quality_check=_annotate),
+    ).start_playback(
         PlaybackRequest.song("如风 王菲", requester="小明")
     )
 
@@ -343,7 +346,6 @@ def test_composition_root_injects_the_production_driver(initialized_test_singlet
     """
     from ushareiplay.core.app_controller import AppController
     from ushareiplay.core.singleton import Singleton
-    from ushareiplay.managers.music_manager import MusicManager
 
     Singleton.reset_all_instances()
     AppController._ui_session_lease = None
@@ -353,9 +355,13 @@ def test_composition_root_injects_the_production_driver(initialized_test_singlet
     controller.driver = SimpleNamespace()  # 构造函数只碰 driver 表面属性，不做设备 I/O
     controller._init_handlers()
 
-    ui_driver = MusicManager.instance().ui_driver
+    ui_driver = controller.ui_driver
     assert isinstance(ui_driver, QQMusicUIDriver)
     assert ui_driver._handler is controller.music_handler
+    assert controller.play_song._ui_driver is ui_driver
+    assert controller.set_play_mode._ui_driver is ui_driver
+    assert controller.set_accompaniment._ui_driver is ui_driver
+    assert controller.query_lyrics._ui_driver is ui_driver
 
 
 # ---------------------------------------------------------------------------
@@ -729,8 +735,13 @@ class _LyricsHandler:
         self.text = text
         self.switched_to_app = False
         self.queries = []
+        self.tab_calls = []
         self.key_actions = SimpleNamespace(switch_to_app=self._switch)
         self._element_finder = SimpleNamespace(wait_for_any_element=self._wait_any)
+
+    def select_tab(self, name, **kwargs):
+        self.tab_calls.append(name)
+        return True
 
     def _switch(self):
         self.switched_to_app = True
@@ -782,7 +793,7 @@ def test_driver_brings_the_app_forward_before_searching(initialized_test_singlet
 
     assert handler.switched_to_app is True
     assert handler.queries == ["青花瓷"]
-    assert lyrics_tab == ["lyrics"]
+    assert handler.tab_calls == ["lyrics"]
 
 
 def test_driver_reports_no_lyrics_as_a_clean_failure(initialized_test_singletons, lyrics_tab):
@@ -933,11 +944,16 @@ class _PlaylistHandler:
         self.home_visits += 1
         return True
 
+    def select_tab(self, name, **kwargs):
+        if not hasattr(self, "tab_calls"):
+            self.tab_calls = []
+        self.tab_calls.append(name)
+        return getattr(self, "tab_available", True)
+
 
 @pytest.fixture
 def playlist_tab(initialized_test_singletons):
     """脚本化的分类 tab 选择：驱动只看到 True/False，这里负责记录与注入。"""
-    from ushareiplay.managers.music_manager import MusicManager
 
     class _TabSelection:
         def __init__(self):
@@ -948,9 +964,7 @@ def playlist_tab(initialized_test_singletons):
             self.calls.append(name)
             return self.available
 
-    tabs = _TabSelection()
-    MusicManager.initialize().select_tab = tabs
-    return tabs
+    return _TabSelection()
 
 
 def test_driver_walks_the_whole_playlist_flow_and_reports_what_it_saw(
@@ -958,6 +972,7 @@ def test_driver_walks_the_whole_playlist_flow_and_reports_what_it_saw(
 ):
     """查歌 → 切歌单分类 → 点卡片 → 点播放全部 → 读队列，一步都不能少。"""
     handler = _PlaylistHandler()
+    handler.select_tab = playlist_tab
 
     outcome = QQMusicUIDriver(handler).start_playback(
         _playlist_request("学习", requester="小明")
@@ -1118,6 +1133,7 @@ def test_driver_reports_the_missing_playlist_tab(initialized_test_singletons, pl
     """切不到歌单分类是用户能据以行动的失败：回「找不到歌单分类」，而不是静默继续。"""
     playlist_tab.available = False
     handler = _PlaylistHandler()
+    handler.select_tab = playlist_tab
 
     outcome = QQMusicUIDriver(handler).start_playback(
         _playlist_request("学习", requester="小明")

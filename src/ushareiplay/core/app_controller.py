@@ -55,16 +55,24 @@ from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.observability import Observability, new_run_id
-from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+from ushareiplay.adapters.outbound.appium.qq_music import (
+    QQMusicHandler,
+    QQMusicMediaSession,
+    QQMusicUIDriver,
+)
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
-from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.modules.playback import (
+    AdjustVolume,
+    PauseResume,
     PlayNext,
     PlaySong,
     PlaybackMuting,
     PlaylistSession,
+    QueryLyrics,
+    SetAccompaniment,
+    SetPlayMode,
     SkipSong,
 )
 
@@ -593,11 +601,16 @@ class AppController(Singleton):
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_control = SoulMicControl(self.soul_handler)
             self.toggle_mic = ToggleMic(self.mic_control)
-            self.ui_driver = QQMusicUIDriver(self.music_handler)
-            self.music_manager = MusicManager.initialize(
-                ui_driver=self.ui_driver
-            )
+            self.music_manager = MusicManager.initialize()
             self.register_driver_subscriber(self.music_manager)
+            self.music_handler._on_demand_marker = self.music_manager.mark_on_demand
+            self.music_media_session = QQMusicMediaSession(self.music_handler)
+            self.ui_driver = QQMusicUIDriver(
+                self.music_handler,
+                media_session=self.music_manager,
+                quality_checker=self.music_manager,
+                config=self.config,
+            )
             self.playback_muting = PlaybackMuting(
                 mic=self.mic_control,
                 media_session=self.music_manager,
@@ -655,6 +668,32 @@ class AppController(Singleton):
             self.play_next = PlayNext(
                 next_driver=self.music_handler,
                 playlist_session=self.playlist_session,
+            )
+            self.set_play_mode = SetPlayMode(
+                ui_driver=self.ui_driver,
+                get_play_mode_key=lambda: self.music_handler.play_mode_key,
+                note_play_mode=self.music_handler.note_play_mode,
+                logger=self.logger,
+            )
+            self.set_accompaniment = SetAccompaniment(
+                ui_driver=self.ui_driver,
+                logger=self.logger,
+            )
+            self.query_lyrics = QueryLyrics(
+                ui_driver=self.ui_driver,
+                media_session=self.music_manager,
+                logger=self.logger,
+            )
+            self.pause_resume = PauseResume(
+                media_session=self.music_manager,
+                playback_control=self.music_media_session,
+                playlist_session=self.playlist_session,
+                mic=self.mic_control,
+                logger=self.logger,
+            )
+            self.adjust_volume = AdjustVolume(
+                playback_control=self.music_media_session,
+                logger=self.logger,
             )
             self.info_manager = InfoManager(
                 room_state=self.room_state,

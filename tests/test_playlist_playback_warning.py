@@ -13,7 +13,7 @@
 from types import SimpleNamespace
 
 from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackRequest
-from ushareiplay.managers.playback.qq_music_ui_driver import (
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import (
     PLAY_ALL_KEYS,
     PLAYLIST_RESULT_KEYS,
     QQMusicUIDriver,
@@ -60,6 +60,7 @@ class _QueueUnreadableHandler:
         self.play_button = _Element("play")
         self.result_card = _Element(playlist_name)
         self.queue_reads = 0
+        self.select_tab = lambda name, **kwargs: True
         self._element_finder = SimpleNamespace(
             wait_for_any_element=self._wait_any,
             try_find_element=lambda key: None,
@@ -91,9 +92,6 @@ def _playlist_request(query):
 
 def _play(handler):
     """驱动跑一次歌单编排；分类 tab 用替身顶掉，避免真的去切 UI。"""
-    from ushareiplay.managers.music_manager import MusicManager
-
-    MusicManager.initialize().select_tab = lambda name, **kwargs: True
     return QQMusicUIDriver(handler).start_playback(_playlist_request("study"))
 
 

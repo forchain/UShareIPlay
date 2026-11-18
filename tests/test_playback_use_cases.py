@@ -7,6 +7,9 @@ import pytest
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.modules.mic.ports import MicControl
 from ushareiplay.modules.playback.domain import (
+    ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
+    NO_PLAYING_MUSIC_ERROR,
+    PLAY_MODE_INVALID_PARAMETER_ERROR,
     PlaybackMode,
     PlaybackOutcome,
     PlaybackRequest,
@@ -20,10 +23,15 @@ from ushareiplay.modules.playback.ports import (
     RoomProfileWriter,
 )
 from ushareiplay.modules.playback.use_cases import (
+    AdjustVolume,
+    PauseResume,
     PlayNext,
     PlaySong,
     PlaybackMuting,
     PlaylistSession,
+    QueryLyrics,
+    SetAccompaniment,
+    SetPlayMode,
     SkipSong,
 )
 from ushareiplay.modules.shared.config import ConfigView
@@ -242,3 +250,136 @@ async def test_play_next_records_next_queue_only_on_success():
     assert err_result == {"error": "未找到"}
     assert playlist.pending_next_count == 1
     assert playlist.next_queue_contributors == {"Alice"}
+
+
+@pytest.mark.asyncio
+async def test_set_play_mode_use_case_validates_caches_and_switches():
+    driver = InMemoryMusicUIDriver(play_mode="list")
+    cache = {"key": "list"}
+    notes = []
+    use_case = SetPlayMode(
+        ui_driver=driver,
+        get_play_mode_key=lambda: cache["key"],
+        note_play_mode=lambda key, reason: (cache.__setitem__("key", key), notes.append((key, reason))),
+    )
+
+    # Invalid parameter
+    assert await use_case.execute("bogus") == {"error": PLAY_MODE_INVALID_PARAMETER_ERROR}
+    assert await use_case.execute(True) == {"error": PLAY_MODE_INVALID_PARAMETER_ERROR}
+
+    # Already target in cache -> no UI call
+    assert await use_case.execute(0) == {
+        "success": True,
+        "mode": "顺序播放",
+        "message": "已经是顺序播放模式",
+    }
+    assert driver.play_mode_requests == []
+
+    # Switch to random (-1)
+    assert await use_case.execute(-1) == {
+        "success": True,
+        "mode": "随机播放",
+        "message": "成功切换到随机播放模式",
+    }
+    assert driver.play_mode_requests == ["random"]
+    assert cache["key"] == "random"
+    assert notes == [("random", "mode_ui_detect")]
+
+    # No music playing
+    driver_no_music = InMemoryMusicUIDriver(no_music=True)
+    uc_no_music = SetPlayMode(ui_driver=driver_no_music)
+    assert await uc_no_music.execute(1) == {"error": NO_PLAYING_MUSIC_ERROR}
+
+
+@pytest.mark.asyncio
+async def test_set_accompaniment_use_case_validates_and_toggles():
+    driver = InMemoryMusicUIDriver(accompaniment=False)
+    use_case = SetAccompaniment(ui_driver=driver)
+
+    assert await use_case.execute("invalid") == {"error": ACCOMPANIMENT_INVALID_PARAMETER_ERROR}
+    assert await use_case.execute(1) == {"enabled": "on"}
+    assert driver.accompaniment is True
+    assert driver.accompaniment_clicks == 1
+    assert await use_case.execute("0") == {"enabled": "off"}
+    assert driver.accompaniment is False
+    assert driver.accompaniment_clicks == 2
+
+
+def test_query_lyrics_use_case_explicit_and_current_song_fallback():
+    driver = InMemoryMusicUIDriver(
+        lyrics={
+            "夜曲 周杰伦": "一群嗜血的蚂蚁",
+            "晴天 周杰伦 叶惠美": "故事的小黄花",
+        },
+        playback_info={"song": "晴天", "singer": "周杰伦", "album": "叶惠美", "state": "Playing"},
+    )
+    use_case = QueryLyrics(ui_driver=driver, media_session=driver)
+
+    assert use_case.execute("夜曲 周杰伦") == {"lyrics": "一群嗜血的蚂蚁"}
+    assert use_case.execute("") == {"lyrics": "故事的小黄花"}
+    assert driver.lyrics_requests == ["夜曲 周杰伦", "晴天 周杰伦 叶惠美"]
+
+    driver_no_music = InMemoryMusicUIDriver(no_music=True)
+    uc_no_music = QueryLyrics(ui_driver=driver_no_music, media_session=driver_no_music)
+    assert uc_no_music.execute("") == {"error": "Failed to get playback info"}
+
+
+@pytest.mark.asyncio
+async def test_pause_resume_use_case_respects_guard_and_toggles_mic():
+    _, _, playlist, _, mic, _, _, _ = _build_stack(online_users={"Alice"}, mic_active=True)
+    driver = InMemoryMusicUIDriver(
+        playback_info={"song": "晴天", "singer": "周杰伦", "album": "叶惠美", "state": "Playing"}
+    )
+    use_case = PauseResume(
+        media_session=driver,
+        playback_control=driver,
+        playlist_session=playlist,
+        mic=mic,
+    )
+
+    # Guard rejects Bob when Alice is playing a playlist
+    playlist.player_name = "Alice"
+    assert await use_case.execute("Bob", 1) == {"error": "Alice 正在播放歌单，请等待"}
+    assert driver.pause_calls == []
+    assert mic.calls == []
+
+    # Invalid parameter
+    assert await use_case.execute("Alice", 2) == {"error": "Invalid parameter, must be 0 or 1"}
+
+    # Pause (1) while Playing -> turns off mic then pauses
+    res_pause = await use_case.execute("Alice", 1)
+    assert res_pause == {"song": "晴天", "singer": "周杰伦", "action": "Paused"}
+    assert driver.pause_calls == [True]
+    assert mic.calls == [("set_active", False)]
+
+    # Pause (1) while already Paused -> no-op
+    res_already = await use_case.execute("Alice", 1)
+    assert res_already == {"song": "晴天", "singer": "周杰伦", "action": "Paused"}
+    assert driver.pause_calls == [True]
+
+    # Toggle (None) while Paused -> resumes then turns on mic
+    res_resume = await use_case.execute("Alice", None)
+    assert res_resume == {"song": "晴天", "singer": "周杰伦", "action": "Resumed"}
+    assert driver.pause_calls == [True, False]
+    assert mic.calls == [("set_active", False), ("set_active", True)]
+
+
+def test_adjust_volume_use_case_reads_validates_and_steps():
+    driver = InMemoryMusicUIDriver(volume=5)
+    use_case = AdjustVolume(playback_control=driver)
+
+    assert use_case.execute(None) == {"volume": 5, "current": True}
+    assert use_case.execute(-1) == {"error": "Invalid target volume: -1. Must be integer between 0-15"}
+    assert use_case.execute(16) == {"error": "Invalid target volume: 16. Must be integer between 0-15"}
+    assert use_case.execute(True) == {"error": "Invalid target volume: True. Must be integer between 0-15"}
+
+    assert use_case.execute(5) == {"volume": 5}
+    assert driver.volume_steps == []
+
+    assert use_case.execute(8) == {"volume": 8, "delta": 3}
+    assert driver.volume_steps == [3]
+
+    driver_unavailable = InMemoryMusicUIDriver(volume_unavailable=True)
+    uc_unavail = AdjustVolume(playback_control=driver_unavailable)
+    assert uc_unavail.execute(None) == {"error": "Failed to get current volume level"}
+    assert uc_unavail.execute(8) == {"error": "Failed to get current volume level"}

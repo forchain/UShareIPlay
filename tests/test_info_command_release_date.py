@@ -40,7 +40,7 @@ class _MusicHandler:
 
 def _patch_common_info_dependencies(monkeypatch, info_manager):
     monkeypatch.setattr(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
+        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
         lambda: _MusicHandler(),
     )
     # 直接注入目标状态模块（见 ADR-0004）
