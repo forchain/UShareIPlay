@@ -23,7 +23,7 @@ import pytest
 from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
@@ -199,7 +199,7 @@ def batch_seam(clean_info_manager, monkeypatch):
 
     dispatch = _RecordingDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
         lambda: dispatch,
     )
 

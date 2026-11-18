@@ -19,7 +19,7 @@ from ushareiplay.adapters.outbound.system.clock import SystemClock
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -495,13 +495,13 @@ class AppController(Singleton):
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
-            from ushareiplay.managers.command_manager import CommandManager
+            from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
-            from ushareiplay.managers.sleep_manager import SleepManager
+            from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
             from ushareiplay.managers.room_profile.party_settings import (
                 SoulPartySettingsDriver,
@@ -531,7 +531,9 @@ class AppController(Singleton):
             self.command_catalogue = CommandCatalogue.from_config(self.config)
             self.command_catalogue.validate()
             UserManager.initialize(self.soul_handler)
-            SleepManager.initialize(self.config, catalogue=self.command_catalogue)
+            self.sleep_manager = SleepManager(
+                self.config, catalogue=self.command_catalogue
+            )
             MessageQueue.initialize()
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
@@ -549,7 +551,9 @@ class AppController(Singleton):
                 sink=QueueTimerMessageSink(MessageQueue.instance()),
                 logger=self.logger,
             )
-            self.command_manager = CommandManager.initialize(self.soul_handler)
+            self.command_manager = CommandManager.initialize(
+                self.soul_handler, self.sleep_manager
+            )
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
             RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
@@ -703,6 +707,7 @@ class AppController(Singleton):
             config=self.config,
             event_manager=self.event_manager,
             command_manager=self.command_manager,
+            sleep_manager=self.sleep_manager,
         )
 
     async def start_monitoring(self):

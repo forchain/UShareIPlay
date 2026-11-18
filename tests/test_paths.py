@@ -9,7 +9,7 @@ import pytest
 
 def test_command_manager_command_roots_exist():
     """CommandManager.command_roots 先指向入站适配器，再回退旧 commands 目录。"""
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     roots = manager.command_roots
@@ -23,7 +23,7 @@ def test_command_manager_command_roots_exist():
 
 def test_command_manager_command_roots_have_py_files():
     """两个命令根目录都应包含 .py 命令文件"""
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     for path in manager.command_roots:

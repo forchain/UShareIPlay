@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ushareiplay.core.command_catalogue import (
+from ushareiplay.modules.command.domain import (
     CommandCatalogue,
     CommandCatalogueError,
 )

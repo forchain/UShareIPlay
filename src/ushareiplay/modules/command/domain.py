@@ -1,4 +1,4 @@
-"""命令目录：从配置编译一次，供解析、权限、帮助与提示词统一查询。
+"""命令领域：目录声明、睡眠窗口与命令规则异常。
 
 `config.yaml` 的 `commands:` 是唯一事实源。目录把每条命令的前缀、模块、
 等级、子命令、客房权限、睡眠拦截与帮助文案编译成不可变定义，启动时
@@ -8,19 +8,21 @@
 from __future__ import annotations
 
 import ast
+import datetime as dt
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
 from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.shared.errors import DomainError
 from ushareiplay.modules.shared.roles import (
     DEFAULT_COMMAND_LEVEL,
     min_command_level,
     resolve_command_level,
 )
 
-DEFAULT_COMMANDS_PATH = Path(__file__).resolve().parent.parent / "commands"
-CHAT_COMMANDS_PATH = Path(__file__).resolve().parent.parent / "adapters" / "inbound" / "chat"
+DEFAULT_COMMANDS_PATH = Path(__file__).resolve().parents[2] / "commands"
+CHAT_COMMANDS_PATH = Path(__file__).resolve().parents[2] / "adapters" / "inbound" / "chat"
 # 迁移期命令按序查找：新的聊天适配器优先，旧 commands 包随后（#559 删除后者）。
 DEFAULT_COMMAND_ROOTS = (CHAT_COMMANDS_PATH, DEFAULT_COMMANDS_PATH)
 
@@ -32,11 +34,102 @@ DEFAULT_SLEEP_BLOCKED = frozenset(
 # `:help` 末尾「更多」一行展示的命令，按顺序出现。
 MORE_COMMAND_PREFIXES = ("playlist", "album", "radio", "timer", "admin")
 
+DEFAULT_SLEEP_ENABLED = True
+DEFAULT_SLEEP_WINDOW_START = dt.time(23, 0)
+DEFAULT_SLEEP_WINDOW_END = dt.time(6, 0)
+
 _TRIGGER_CHARS = ":：/／$＄"
 
 
-class CommandCatalogueError(RuntimeError):
+class CommandCatalogueError(DomainError):
     """命令目录配置不自洽（缺模块、重复前缀）时抛出，启动即失败。"""
+
+
+class InsufficientCommandLevel(DomainError):
+    """调用者等级低于该命令（或该子命令形态）要求的门槛。"""
+
+    def __init__(self, required_level: int, user_level: int):
+        super().__init__(required_level, user_level)
+        self.required_level = required_level
+        self.user_level = user_level
+
+
+class SleepBlocked(DomainError):
+    """睡眠时段内触发了被拦截的命令。"""
+
+
+class GuestRoomRestricted(DomainError):
+    """他人房间（客房模式）下触发了仅限本房的管理命令。"""
+
+
+class UnknownCommand(DomainError):
+    """解析到的前缀没有可执行的命令对象。"""
+
+    def __init__(self, prefix: str):
+        super().__init__(prefix)
+        self.prefix = prefix
+
+
+@dataclass(frozen=True)
+class SleepWindow:
+    """睡眠时段：起止时间，跨午夜时分为两段。"""
+
+    start: dt.time
+    end: dt.time
+
+    def contains(self, now: dt.time) -> bool:
+        # start == end means "all day"
+        if self.start == self.end:
+            return True
+        # Non-cross-midnight window: start <= t < end
+        if self.start < self.end:
+            return self.start <= now < self.end
+        # Cross-midnight window: [start, 24:00) U [00:00, end)
+        return now >= self.start or now < self.end
+
+
+def parse_hhmm(value: object) -> Optional[dt.time]:
+    if not isinstance(value, str):
+        return None
+    try:
+        parts = value.strip().split(":")
+        if len(parts) != 2:
+            return None
+        hour = int(parts[0])
+        minute = int(parts[1])
+        return dt.time(hour=hour, minute=minute)
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_enabled(value: object, default: bool) -> bool:
+    """
+    Parse a config value into a boolean without Python's `bool(x)` pitfalls.
+
+    Supported:
+    - bool: returned as-is
+    - int: 0 -> False, non-zero -> True
+    - str: common true/false spellings (case-insensitive, surrounding whitespace ignored)
+    """
+    if value is None:
+        return default
+
+    # bool is a subclass of int; check it first.
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, int):
+        return value != 0
+
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in {"true", "1", "yes", "y", "on"}:
+            return True
+        if s in {"false", "0", "no", "n", "off"}:
+            return False
+        return default
+
+    return default
 
 
 def _normalize_prefix(value: object) -> str:

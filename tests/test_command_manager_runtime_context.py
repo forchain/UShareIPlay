@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -196,7 +196,7 @@ def test_execute_command_messages_trusts_the_metadata_intake_attached(monkeypatc
     monkeypatch.setattr(manager, "process_command", _fake_process)
     dispatch = FakeMessageDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
     )
 
     processed = asyncio.run(
@@ -232,7 +232,7 @@ def test_private_reply_keeps_confirmation_public(monkeypatch):
 
     dispatch = FakeMessageDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
     )
 
     processed = asyncio.run(
@@ -270,7 +270,7 @@ def test_private_reply_error_routes_private(monkeypatch):
 
     dispatch = FakeMessageDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
     )
 
     processed = asyncio.run(

@@ -125,7 +125,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.core.message_dispatch import MessageDispatch
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.admin_manager import AdminManager
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.event_manager import EventManager
     from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.keyword_manager import KeywordManager
@@ -140,7 +140,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.sleep_manager import SleepManager
     from ushareiplay.managers.user_event_hooks import UserEventHooks
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -153,7 +152,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         MessageDispatch,
         MessageQueue,
         UserManager,
-        SleepManager,
         RecoveryManager,
         MessageManager,
         MicManager,

@@ -124,7 +124,7 @@ class TestRescanReconcilesAgainstLiveCount:
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
         manager.ledger.gate_state.last_focus_count = None
 
-        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             with patch.object(
                 manager, "_scan_all_rows_expanded", new=AsyncMock(return_value=_full_scan())
@@ -147,7 +147,7 @@ class TestRescanReconcilesAgainstLiveCount:
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
         manager.ledger.gate_state.last_focus_count = None
 
-        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             with patch.object(
                 manager, "_scan_all_rows_expanded", new=AsyncMock(return_value=_full_scan())
@@ -166,7 +166,7 @@ class TestRescanReconcilesAgainstLiveCount:
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
         manager.ledger.gate_state.last_focus_count = None
 
-        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             with patch.object(
                 manager, "_scan_all_rows_expanded", new=AsyncMock(return_value=_full_scan())
@@ -193,7 +193,7 @@ class TestRescanReconcilesAgainstLiveCount:
 
         manager.read_focus_count_from_ui = _tracked
 
-        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             with patch.object(
                 manager, "_scan_all_rows_expanded", new=AsyncMock(return_value=_full_scan())
@@ -211,7 +211,7 @@ class TestRescanReconcilesAgainstLiveCount:
         manager = SeatObservationManager.initialize(handler)
         manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
 
-        with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+        with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             with patch.object(
                 manager, "_scan_all_rows_expanded", new=AsyncMock(return_value=_full_scan())

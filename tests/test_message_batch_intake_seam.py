@@ -18,7 +18,7 @@ from ushareiplay.core.chat_intake import (
     classify_chat_line,
     expand_queue_text,
 )
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -256,7 +256,7 @@ def test_intake_seam_routes_a_silent_and_a_private_command(monkeypatch):
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
     )
 
     batch = build_message_batch(
@@ -293,7 +293,7 @@ def test_intake_seam_routes_every_prefix_family_as_the_legacy_scan_did(monkeypat
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
         lambda: dispatch,
     )
 
@@ -329,7 +329,7 @@ def test_scanned_chat_flows_to_execution_in_a_single_classification_pass(
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
         lambda: dispatch,
     )
 

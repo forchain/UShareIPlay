@@ -11,7 +11,7 @@ import traceback
 
 from ushareiplay.core.base_event import BaseEvent
 from ushareiplay.core.element_wrapper import composed_message_text
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
 

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 def _intake_message(content: str, nickname: str = "Console"):

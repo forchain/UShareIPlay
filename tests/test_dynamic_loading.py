@@ -16,7 +16,7 @@ def test_commands_discovery_finds_expected_files():
     commands_path = _get_ushareiplay_root() / "commands"
     found = {f.stem for f in commands_path.glob("*.py") if not f.stem.startswith("__")}
 
-    expected = {"play", "skip", "next", "pause", "vol", "mic", "seat", "help"}
+    expected = {"play", "skip", "next", "pause", "vol", "mic", "seat"}
     missing = expected - found
     assert not missing, f"以下命令文件缺失: {missing}"
 
@@ -54,7 +54,7 @@ def test_event_module_names_use_ushareiplay_prefix():
 
 def test_no_src_prefix_in_module_paths():
     """确认没有使用旧的 src.xxx 模块路径格式（重构前的遗留）"""
-    import ushareiplay.managers.command_manager as cm_mod
+    import ushareiplay.adapters.inbound.runtime.command_manager as cm_mod
     import inspect
     source = inspect.getsource(cm_mod)
     assert "src.commands" not in source, "command_manager 仍有旧的 src.commands 引用"

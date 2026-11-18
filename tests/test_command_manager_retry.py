@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
 

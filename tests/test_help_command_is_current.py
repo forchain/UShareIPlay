@@ -1,6 +1,6 @@
 import re
 
-from ushareiplay.commands.help import HelpCommand
+from ushareiplay.adapters.inbound.chat.help import HelpCommand
 from ushareiplay.core.config_loader import ConfigLoader
 
 
