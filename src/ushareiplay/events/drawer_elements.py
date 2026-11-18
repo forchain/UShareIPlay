@@ -13,8 +13,8 @@ __event__ = "DrawerElementsEvent"
 __elements__ = [
     "input_drawer",
     # 其他抽屉式弹窗元素按需加入。注意：在线用户抽屉（'online_drawer'）**不要**加
-    # 回来 —— 它的生命周期归 OnlineDrawerManager 管，事件层去「顺手关掉」它会和会话
-    # 的归属规则打架（会话正在用它开着的抽屉读名单，见 online_drawer/manager.py）。
+    # 回来 —— 它的生命周期归 OnlineDrawer 管，事件层去「顺手关掉」它会和会话
+    # 的归属规则打架（会话正在用它开着的抽屉读名单，见 modules/room/use_cases.py）。
     # 其他 key 原来就注释在下面，需要时照旧打开。
 ]
 

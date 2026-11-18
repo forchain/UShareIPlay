@@ -2182,14 +2182,13 @@ async def test_seat_identity_collision_in_snapshot_resolves_to_winner_and_clears
 
 def test_format_3row_layout_with_room_admins():
     from ushareiplay.core.log_formatter import strip_ansi
-    from ushareiplay.managers.admin_manager import AdminManager
+    from ushareiplay.modules.room.domain import RoomAdmins
 
-    AdminManager.reset_instance()
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminAlice")
-    admin_mgr.add_room_admin("OwnerUser")  # Owner is also in room admins
+    admins = RoomAdmins()
+    admins.add("AdminAlice")
+    admins.add("OwnerUser")  # Owner is also in room admins
 
-    manager = SeatObservationManager.initialize(None)
+    manager = SeatObservationManager.initialize(None, room_admins=admins)
     # Seat 1: Owner with username
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="OwnerUser", is_owner=True)
     # Seat 2: Owner without distinct username
@@ -2616,13 +2615,12 @@ async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_
 async def test_admin_label_not_dropped_when_observation_has_empty_label():
     """管理占座的麦位在后续视口读数无 label（如折叠视口中下排截断）时，不得将管理标签推平为普通用户。"""
     from tests.seat_fixtures import make_handler
-    from ushareiplay.managers.admin_manager import AdminManager
+    from ushareiplay.modules.room.domain import RoomAdmins
 
-    AdminManager.reset_instance()
-    AdminManager.initialize()
+    admins = RoomAdmins()
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, room_admins=admins)
 
     # 初始快照：7 号位为管理(Chainer)
     manager.ledger.slots[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
@@ -2639,9 +2637,9 @@ async def test_admin_label_not_dropped_when_observation_has_empty_label():
     to_apply = {num: item for num, item in observed.items() if num in writable}
     manager.ledger._apply_snapshot(to_apply, clearable=clearable)
 
-    # 验证：7 号位管理标签必须保留，且 AdminManager 记录 Chainer 为房管
+    # 验证：7 号位管理标签必须保留，且房管名单记录 Chainer 为房管
     assert manager.ledger.slots[7].label == "管理"
-    assert AdminManager.instance().is_room_admin("Chainer") is True
+    assert admins.is_admin("Chainer") is True
 
     # 比对不得产生虚假变更（防止无行为触发的刷屏）
     has_changes, changed_users, _ = manager.ledger._compute_diff(old_slots, manager.ledger.slots, {7})
@@ -2656,17 +2654,16 @@ async def test_admin_label_not_dropped_when_observation_has_empty_label():
 async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadable_label():
     """管理员从旧座换到新座后，即使新座在折叠视口中 label 读不到，也必须继承/识别出管理身份。"""
     from tests.seat_fixtures import build_desk_wrapper, make_handler
-    from ushareiplay.managers.admin_manager import AdminManager
+    from ushareiplay.modules.room.domain import RoomAdmins
 
-    AdminManager.reset_instance()
-    AdminManager.initialize()
+    admins = RoomAdmins()
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = SeatObservationManager.initialize(handler, room_admins=admins)
 
     # 初始快照：7 号位为管理(Chainer)
     manager.ledger.slots[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
-    AdminManager.instance().add_room_admin("Chainer")
+    admins.add("Chainer")
 
     # 视口内换座：7 号位空闲，6 号位占座；但 6 号位在折叠第二排，label 读不到（为空）
     # 桌位必须是真的替身（带 bounds）：读不出尺寸的桌位判为不可交互，

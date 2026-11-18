@@ -15,10 +15,10 @@
 
 import pytest
 
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.managers.user_manager import UserManager
+from ushareiplay.modules.room.use_cases import OnlineDrawer
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -26,11 +26,9 @@ from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDrive
 def reset_singletons():
     SeatObservationManager.reset_instance()
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
     yield
     SeatObservationManager.reset_instance()
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
 
 
 class _Handler:
@@ -53,9 +51,10 @@ def _wire(driver=None, *, name_resolver=None, members=(), **driver_kwargs):
         members=members, **driver_kwargs
     )
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(handler=_Handler(), driver=driver, name_resolver=name_resolver)
-    manager = UserManager.initialize(_Handler())
+    drawer = OnlineDrawer(
+        drawer=driver, name_resolver=name_resolver, ui_session=None
+    )
+    manager = UserManager.initialize(_Handler(), drawer=drawer)
     return manager, driver
 
 

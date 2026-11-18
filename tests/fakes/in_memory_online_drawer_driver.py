@@ -50,7 +50,7 @@
 
 from typing import Optional
 
-from ushareiplay.managers.online_drawer.driver import (
+from ushareiplay.modules.room.ports import (
     ADMIN_ACTION_INVITE,
     ADMIN_LABEL_DISMISS,
     ADMIN_LABEL_INVITE,

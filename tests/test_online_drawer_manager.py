@@ -17,12 +17,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.online_drawer import (
-    Handover,
-    OnlineDrawerDriverPort,
-    OnlineDrawerManager,
+from ushareiplay.adapters.outbound.appium.soul.online_drawer_driver import (
     SoulOnlineDrawerDriver,
 )
+from ushareiplay.modules.room.ports import OnlineDrawerDriverPort
+from ushareiplay.modules.room.use_cases import Handover, OnlineDrawer
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -44,18 +43,12 @@ class _FakeController:
             yield
 
 
-def _make_manager(driver=None, *, controller=None, name_resolver=None, handler=None):
-    """装配一个受保护单例实例（ADR-0009：只能经 initialize 创建）。"""
-    fake_handler = handler
-    if fake_handler is None:
-        fake_handler = SimpleNamespace(
-            logger=None,
-            controller=controller if controller is not None else _FakeController(),
-        )
-    return OnlineDrawerManager.initialize(
-        handler=fake_handler,
-        driver=driver,
+def _make_manager(driver=None, *, controller=None, name_resolver=None):
+    """装配抽屉用例：端口、命名域解析器与 UI 锁都显式注入。"""
+    return OnlineDrawer(
+        drawer=driver,
         name_resolver=name_resolver,
+        ui_session=controller.ui_session if controller is not None else None,
     )
 
 
@@ -289,9 +282,7 @@ async def test_ui_lock_is_released_even_when_the_body_raises():
 async def test_session_still_works_when_no_controller_is_wired():
     """controller 缺席（离线装配）时退化为不加锁，而不是抛错。"""
     driver = InMemoryOnlineDrawerDriver(members=["小明"])
-    manager = OnlineDrawerManager.initialize(
-        handler=SimpleNamespace(logger=None, controller=None), driver=driver
-    )
+    manager = OnlineDrawer(drawer=driver)
 
     async with manager.drawer_session(reason="test:no-controller") as open_error:
         assert open_error is None
@@ -440,13 +431,11 @@ def test_the_legacy_managers_no_longer_carry_their_own_copy_of_the_search_loop()
     两份逐字相同的实现意味着改翻页上限要改三处、漏一处就在真机上翻到天荒地老。
     这里锁的是「只有唯一所有者才有这段循环」这条归属，而不是某个私有方法的名字。
     """
-    from ushareiplay.managers.admin_manager import AdminManager
     from ushareiplay.managers.user_manager import UserManager
 
-    for legacy_manager in (UserManager, AdminManager):
-        assert not hasattr(legacy_manager, "_find_member_in_drawer"), legacy_manager.__name__
-        # 上限常量同样只在抽屉会话这一侧定义。
-        assert not hasattr(legacy_manager, "MAX_SEARCH_SWIPES"), legacy_manager.__name__
+    assert not hasattr(UserManager, "_find_member_in_drawer")
+    # 上限常量同样只在抽屉会话这一侧定义。
+    assert not hasattr(UserManager, "MAX_SEARCH_SWIPES")
 
 
 def test_recovery_manager_no_longer_owns_any_online_drawer_closing_machinery():
@@ -651,7 +640,8 @@ def _no_settle_sleep(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "ushareiplay.managers.online_drawer.soul_driver.asyncio.sleep", _instant
+        "ushareiplay.adapters.outbound.appium.soul.online_drawer_driver.asyncio.sleep",
+        _instant,
     )
 
 

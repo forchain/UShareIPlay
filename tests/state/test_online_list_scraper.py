@@ -25,8 +25,7 @@ from ushareiplay.adapters.outbound.appium.soul.online_list_source import SoulOnl
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.modules.room.use_cases import PresenceTracker
+from ushareiplay.modules.room.use_cases import OnlineDrawer, PresenceTracker
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 from tests.room_support import configured_room_state
 
@@ -106,10 +105,7 @@ def _wire(driver, *, controller=None, room_count=None):
     """按组合根的方式接线：抽屉管理器、房间状态、在线集合与 UI 会话都显式注入。"""
     logger = _RecordingLogger()
     controller = controller if controller is not None else _ReentrantController()
-    handler = SimpleNamespace(logger=logger, controller=controller)
-
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(handler, driver=driver)
+    drawer = OnlineDrawer(drawer=driver, ui_session=controller.ui_session)
 
     room = configured_room_state(logger=logger)
     if room_count is not None:
@@ -117,7 +113,7 @@ def _wire(driver, *, controller=None, room_count=None):
 
     presence = PresenceTracker(logger=logger)
     scraper = SoulOnlineListSource(
-        drawer=OnlineDrawerManager.instance(),
+        drawer=drawer,
         users=TortoiseUserRepository(),
         presence=presence,
         room_state=room,
