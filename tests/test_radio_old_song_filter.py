@@ -159,7 +159,7 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
     断言仍落在「质量过滤发生在播放刚起来的同一时刻」这个行为上，只是不再经由
     `PlayCommand.play_song` —— 那条路现在是 `MusicManager.play()` 的引擎流水线。
     """
-    from ushareiplay.managers.playback.models import PlaybackRequest
+    from ushareiplay.modules.playback.domain import PlaybackRequest
     from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()
@@ -185,7 +185,7 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
 
 
 def test_play_driver_returns_error_when_first_song_not_found(monkeypatch):
-    from ushareiplay.managers.playback.models import PlaybackRequest
+    from ushareiplay.modules.playback.domain import PlaybackRequest
     from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()

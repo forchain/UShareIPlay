@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     PlaybackMode,

@@ -17,7 +17,7 @@ import pytest
 from ushareiplay.commands.lyrics import LyricsCommand
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
 

@@ -5,16 +5,16 @@ from typing import Optional
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playlist_session import PlaylistSession
 
 
 class PlaybackBroadcaster(Singleton):
     """播放信息缓存、质量检查与广播发送。"""
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, playlist_session=None):
         self._soul_handler = handler
         self._logger = getattr(handler, "logger", None)
         self._music_manager = None
+        self._playlist_session = playlist_session
         self._playback_info_cache: Optional[dict] = None  # 播放信息缓存
         self._last_playback_info = None  # 上次的播放信息，用于检测变化
         self._message_dispatch = None
@@ -171,8 +171,8 @@ class PlaybackBroadcaster(Singleton):
                 if not is_first_init:
                     # 非首次的曲目切换消费一次 Next Queue 待播计数；读取失败不是
                     # 曲目切换，不能侵蚀计数。
-                    if 'error' not in info:
-                        PlaylistSession.instance().consume_track()
+                    if 'error' not in info and self._playlist_session is not None:
+                        self._playlist_session.consume_track()
                     self.send_playing_message()
 
         except Exception:

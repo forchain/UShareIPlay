@@ -128,8 +128,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.event_manager import EventManager
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.playlist_session import PlaylistSession
     from ushareiplay.managers.recovery_manager import RecoveryManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
@@ -142,9 +140,7 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         RecoveryManager,
         MessageManager,
         MusicManager,
-        PlaybackMuting,
         CommandManager,
-        PlaylistSession,
         PlaybackBroadcaster,
         EventManager,
         SeatManager,

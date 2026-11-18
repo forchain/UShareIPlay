@@ -24,7 +24,7 @@ import pytest
 
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.message_manager import MessageManager
-from ushareiplay.managers.playback_muting import PlaybackMuting
+from ushareiplay.modules.playback.use_cases import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
 from tests.legacy_state import RoomState
 from ushareiplay.modules.shared.config import ConfigSectionView
@@ -78,12 +78,16 @@ def room(initialized_test_singletons):
             ),
             controller=None,
         )
-        muting = PlaybackMuting.initialize(
-            handler, _StubMusicManager(events), _StubMicManager(events)
+        muting = PlaybackMuting(
+            mic=_StubMicManager(events),
+            media_session=_StubMusicManager(events),
+            config=handler.config,
+            logger=handler.logger,
         )
         manager = MessageManager.instance()
         manager._handler = handler
         manager._chat_logger = MagicMock()
+        manager.configure_playback_muting(muting)
         return SimpleNamespace(events=events, handler=handler, muting=muting, manager=manager)
 
     return _build
@@ -274,26 +278,29 @@ class _PlaybackCommand:
     def __init__(self, events):
         self.events = events
 
-    async def process(self, message_info, parameters):
-        from ushareiplay.managers.music_manager import MusicManager
+    def __init__(self, skip_use_case):
+        self._skip_use_case = skip_use_case
 
-        return await MusicManager.instance().skip(message_info.nickname)
+    async def process(self, message_info, parameters):
+        return await self._skip_use_case.execute(message_info.nickname)
 
 
 def _run_play_command(monkeypatch, r) -> None:
     """让真实 CommandManager 跑一条 `:play`，事件记进 r.events。"""
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.modules.playback.use_cases import SkipSong
 
-    MusicManager.reset_instance()
-    music = MusicManager.initialize(
+    media = SimpleNamespace(
+        skip_song=lambda: r.events.append("playback") or {
+            "song": "稻香",
+            "singer": "周杰伦",
+            "album": "叶惠美",
+        }
+    )
+    skip_use_case = SkipSong(
+        media_session=media,
         playlist_session=SimpleNamespace(guard_switch=AsyncMock(return_value=None)),
         playback_muting=r.muting,
     )
-    music.skip_song = lambda: r.events.append("playback") or {
-        "song": "稻香",
-        "singer": "周杰伦",
-        "album": "叶惠美",
-    }
 
     monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch", _DispatchStub)
     _DispatchStub.recorder = _Recorder(r.events)
@@ -315,7 +322,7 @@ def _run_play_command(monkeypatch, r) -> None:
             "error_template": "Failed to play music, because {error}",
         },
     )
-    monkeypatch.setattr(manager, "get_command", lambda _prefix: _PlaybackCommand(r.events))
+    monkeypatch.setattr(manager, "get_command", lambda _prefix: _PlaybackCommand(skip_use_case))
 
     asyncio.run(
         manager.execute_command_messages(

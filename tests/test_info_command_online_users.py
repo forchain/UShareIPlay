@@ -8,7 +8,7 @@ from ushareiplay.managers.seat_manager.seat_observation import SeatObservationMa
 from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 
@@ -19,15 +19,14 @@ def setup_info_env():
     _room_admins = RoomAdmins()
     for cls in (
         PlaybackBroadcaster,
-        PlaylistSession,
         PresenceTracker,
         RoomState,
         SeatObservationManager,
     ):
         cls.reset_instance()
 
-    broadcaster = PlaybackBroadcaster.initialize()
-    playlist = PlaylistSession.initialize()
+    playlist = PlaylistSession()
+    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
     presence = PresenceTracker.initialize()
     presence._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, critical=lambda _msg: None)
     presence._online_users = set()
@@ -55,7 +54,6 @@ def setup_info_env():
 
     for cls in (
         PlaybackBroadcaster,
-        PlaylistSession,
         PresenceTracker,
         RoomState,
         SeatObservationManager,

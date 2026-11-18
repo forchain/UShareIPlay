@@ -31,7 +31,6 @@ from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
@@ -78,6 +77,7 @@ class MessageManager(Singleton):
         self._presence = presence
         self._chat_logger = None
         self._keyword_use_cases = None
+        self._playback_muting = None
 
         self.previous_messages = {}
         self._recent = deque(maxlen=self.RECENT_MAXLEN)
@@ -330,14 +330,13 @@ class MessageManager(Singleton):
 
         return batch
 
-    def _handle_user_on_mic(self, result) -> None:
-        """有人上麦：即时开启播放静音保护（切歌底噪会盖住麦上的人）。
+    def configure_playback_muting(self, playback_muting) -> None:
+        self._playback_muting = playback_muting
 
-        判定（`auto_enable_on_mic` 总开关、自身账号、`ignore_users`）归
-        PlaybackMuting —— 那一节配置由它读，判定与日志也都在那里。
-        """
-        if PlaybackMuting.is_initialized():
-            PlaybackMuting.instance().arm_on_mic(result.nickname)
+    def _handle_user_on_mic(self, result) -> None:
+        """有人上麦：即时开启播放静音保护（切歌底噪会盖住麦上的人）。"""
+        if self._playback_muting is not None:
+            self._playback_muting.arm_on_mic(result.nickname)
 
     async def _handle_user_return(self, result, content: str) -> None:
         """入场通知：由在线集合判定是否算作「用户返回」。"""

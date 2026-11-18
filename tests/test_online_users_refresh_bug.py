@@ -13,20 +13,17 @@ from tests.legacy_state import RoomState
 @pytest.fixture(autouse=True)
 def reset_singletons():
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    from ushareiplay.modules.playback.use_cases import PlaylistSession
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
     PlaybackBroadcaster.reset_instance()
-    PlaylistSession.reset_instance()
     PlaybackBroadcaster.initialize()
-    PlaylistSession.initialize()
     yield
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
     PlaybackBroadcaster.reset_instance()
-    PlaylistSession.reset_instance()
 
 
 @pytest.mark.asyncio
@@ -76,11 +73,11 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
     assert "Bob" in online_users
 
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    from ushareiplay.modules.playback.use_cases import PlaylistSession
     info_manager = InfoManager(
         room_state=room_state,
         presence=presence_tracker,
-        playlist=PlaylistSession.instance(),
+        playlist=PlaylistSession(),
         playback_cache=PlaybackBroadcaster.instance(),
         logger=logger,
     )

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 from selenium.common.exceptions import NoSuchElementException
 
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
     PlaybackVariant,

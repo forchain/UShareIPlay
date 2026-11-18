@@ -23,8 +23,8 @@ from selenium.common.exceptions import NoSuchElementException, StaleElementRefer
 
 from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
 from ushareiplay.helpers.playlist_parser import PlaylistParser
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     PLAY_MODE_NAMES,

@@ -3,15 +3,14 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.modules.room import InfoManager, PresenceTracker
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from tests.room_support import configured_room_state
 
 
 @pytest.fixture
 def info_manager():
-    for cls in (PlaylistSession, PlaybackBroadcaster):
-        cls.reset_instance()
+    PlaybackBroadcaster.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
@@ -19,8 +18,8 @@ def info_manager():
     )
     room_state = configured_room_state(logger=fake_logger)
     presence = PresenceTracker(logger=fake_logger)
-    playlist = PlaylistSession.initialize()
-    broadcaster = PlaybackBroadcaster.initialize()
+    playlist = PlaylistSession(logger=fake_logger)
+    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
     broadcaster._logger = fake_logger
     return InfoManager(
         room_state=room_state,

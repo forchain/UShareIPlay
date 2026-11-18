@@ -2,15 +2,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 
 
 @pytest.fixture
 def playlist_session():
-    PlaylistSession.reset_instance()
-    state = PlaylistSession.initialize()
-    state._logger = SimpleNamespace(info=lambda _msg: None)
-    return state
+    return PlaylistSession(logger=SimpleNamespace(info=lambda _msg: None))
 
 
 def test_default_player_name(playlist_session):

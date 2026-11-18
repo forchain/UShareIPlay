@@ -9,8 +9,7 @@ from selenium.common import StaleElementReferenceException
 
 from ushareiplay.core.app_handler import AppHandler
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.playback.models import PLAY_MODE_NAMES
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.domain import PLAY_MODE_NAMES
 from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 
 
@@ -19,11 +18,14 @@ langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
 
 
 class QQMusicHandler(AppHandler, Singleton):
+    _playlist_session = None
+
     def __init__(self, driver, config, controller):
         super().__init__(driver, config, controller)
 
         self.no_skip = 0
         self.play_mode_key = 'unknown'
+        self._playlist_session = None
 
     @staticmethod
     def play_mode_key_to_name(key: str) -> str:
@@ -363,7 +365,7 @@ class QQMusicHandler(AppHandler, Singleton):
             }
             return playing_info
 
-        if PlaylistSession.instance().list_mode == 'singer':
+        if self._playlist_session is not None and self._playlist_session.list_mode == 'singer':
             singer_text = (playing_info.get('singer') or "").strip()
             artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
             if (

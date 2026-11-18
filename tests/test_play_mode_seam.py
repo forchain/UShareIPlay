@@ -17,8 +17,8 @@ import pytest
 
 from ushareiplay.commands.mode import ModeCommand
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import NO_PLAYING_MUSIC_ERROR
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.domain import NO_PLAYING_MUSIC_ERROR
 from ushareiplay.managers.playback.player_page import (
     PLAYER_PAGE_PROBE_KEYS,
     ensure_player_page,

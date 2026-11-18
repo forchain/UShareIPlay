@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 from ushareiplay.modules.room import InfoManager
@@ -11,13 +11,11 @@ from ushareiplay.modules.room import InfoManager
 def init_singletons():
     for cls in (
         PlaybackBroadcaster,
-        PlaylistSession,
         PresenceTracker,
         RoomState,
     ):
         cls.reset_instance()
     PlaybackBroadcaster.initialize()
-    PlaylistSession.initialize()
     presence = PresenceTracker.initialize()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _message: None)

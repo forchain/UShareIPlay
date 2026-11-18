@@ -17,8 +17,8 @@ import pytest
 
 from ushareiplay.commands.acc import AccompanimentCommand
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,

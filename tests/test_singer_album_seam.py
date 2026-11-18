@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
 )

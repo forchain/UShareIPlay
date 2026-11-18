@@ -9,9 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import ushareiplay.commands.pause as pause_module
-import ushareiplay.commands.skip as skip_module
 from ushareiplay.commands.pause import PauseCommand
-from ushareiplay.commands.skip import SkipCommand
+from ushareiplay.adapters.inbound.chat.skip import SkipCommand
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -55,18 +54,18 @@ def pause_command():
 
 
 @pytest.mark.asyncio
-async def test_skip_command_delegates_guard_and_mute_to_the_engine(skip_command, monkeypatch):
-    """SkipCommand 不再自己守护/闭麦：整条流水线归 `MusicManager.skip()`。"""
-    music = MagicMock()
-    music.skip = AsyncMock(return_value={"song": "晴天", "singer": "周杰伦"})
-    monkeypatch.setattr(skip_module.MusicManager, "instance", lambda: music)
+async def test_skip_command_delegates_guard_and_mute_to_the_engine(skip_command):
+    """SkipCommand 不再自己守护/闭麦：整条流水线归 `SkipSong` 用例。"""
+    skip_command.controller.skip_song.execute = AsyncMock(
+        return_value={"song": "晴天", "singer": "周杰伦"}
+    )
 
     result = await skip_command.do_process(
         MessageInfo(content="/skip", nickname="房客"), []
     )
 
     assert result == {"song": "晴天", "singer": "周杰伦"}
-    music.skip.assert_awaited_once_with("房客")
+    skip_command.controller.skip_song.execute.assert_awaited_once_with("房客")
 
 
 @pytest.mark.asyncio

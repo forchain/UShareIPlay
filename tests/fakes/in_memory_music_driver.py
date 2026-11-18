@@ -12,8 +12,8 @@
 考的是引擎自己做的决策，而不是任何 UI 时序。
 """
 
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     NO_PLAYING_MUSIC_ERROR,

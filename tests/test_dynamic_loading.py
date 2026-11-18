@@ -12,9 +12,16 @@ def _get_ushareiplay_root() -> Path:
 
 
 def test_commands_discovery_finds_expected_files():
-    """commands 目录下应存在已知的命令文件"""
-    commands_path = _get_ushareiplay_root() / "commands"
-    found = {f.stem for f in commands_path.glob("*.py") if not f.stem.startswith("__")}
+    """commands 与 adapters/inbound/chat 目录下应存在已知的命令文件"""
+    root = _get_ushareiplay_root()
+    commands_path = root / "commands"
+    chat_path = root / "adapters" / "inbound" / "chat"
+    found = {
+        f.stem
+        for d in (commands_path, chat_path)
+        for f in d.glob("*.py")
+        if not f.stem.startswith("__")
+    }
 
     expected = {"play", "skip", "next", "pause", "vol", "seat"}
     missing = expected - found
