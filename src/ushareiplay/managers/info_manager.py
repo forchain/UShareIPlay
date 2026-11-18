@@ -142,8 +142,10 @@ class InfoManager(Singleton):
         if self.is_user_online(username):
             return True
         try:
-            from ushareiplay.dal.user_dao import UserDAO
-            all_avatars = await UserDAO.get_all_avatar_usernames(username)
+            from ushareiplay.adapters.outbound.persistence.user_repository import (
+                TortoiseUserRepository,
+            )
+            all_avatars = await TortoiseUserRepository().get_all_avatar_usernames(username)
             online_users = self.get_online_users()
             return bool(all_avatars & online_users)
         except Exception:
@@ -153,7 +155,7 @@ class InfoManager(Singleton):
         """把任意命名域的名字解析成 Soul UI 当前可见的名字（分身名）。
 
         房间里只有 UI 名字是可用坐标：在线列表、资料页、麦位弹窗都按 UI 上显示的
-        文本找人。调用方手里的名字却经常是 DB 的 canonical 名（`UserDAO` 会把别名
+        文本找人。调用方手里的名字却经常是 DB 的 canonical 名（仓储会把别名
         透明解析成主账号），直接拿去比对 UI 文本永远不相等。
 
         Args:
@@ -162,25 +164,18 @@ class InfoManager(Singleton):
             同一身份中当前在房间里的名字；调用方名字本身就在线时原样返回；
             该身份没有任何分身在线时同样原样返回（交给下游按身份匹配兜底）。
         """
-        if not username:
-            return username
-        if self.is_user_online(username):
-            return username
-        try:
-            from ushareiplay.dal.user_dao import UserDAO
-            identity = await UserDAO.get_identity_usernames(username)
-        except Exception:
-            return username
-        visible = sorted(self.get_online_users() & identity)
-        if not visible:
-            return username
-        if len(visible) > 1:
-            # 同一身份的多个分身同时在房间里：按稳定顺序取第一个，
-            # 保证同一输入每次解析到同一个人（而不是随 set 顺序漂移）。
-            self.logger.info(
-                f"多个分身同时在线 {visible}，按稳定顺序使用 {visible[0]} 作为可见昵称"
-            )
-        return visible[0]
+        from ushareiplay.adapters.outbound.persistence.user_repository import (
+            TortoiseUserRepository,
+        )
+        from ushareiplay.modules.user.use_cases import ResolveVisibleUsername
+
+        use_case = ResolveVisibleUsername(
+            users=TortoiseUserRepository(),
+            is_online=self.is_user_online,
+            online_users=self.get_online_users,
+            logger=self.logger,
+        )
+        return str(await use_case.execute(username))
 
     # ------------------------------------------------------------------
     # 房间状态（委托给 RoomState）
