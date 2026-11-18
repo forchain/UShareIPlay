@@ -26,6 +26,28 @@ class InvalidLevelError(UserError):
     """等级超出 0-9。"""
 
 
+class MissingCallerError(UserError):
+    """非特权调用者连身份都无法验证。"""
+
+
+class TargetNotBelowCallerError(UserError):
+    """普通用户只能修改等级严格低于自己的目标。"""
+
+    def __init__(self, target_level: int, caller_level: int):
+        super().__init__(target_level, caller_level)
+        self.target_level = target_level
+        self.caller_level = caller_level
+
+
+class NewLevelNotBelowCallerError(UserError):
+    """普通用户设置的新等级必须严格低于自己。"""
+
+    def __init__(self, new_level: int, caller_level: int):
+        super().__init__(new_level, caller_level)
+        self.new_level = new_level
+        self.caller_level = caller_level
+
+
 @dataclass(frozen=True)
 class User:
     id: int
