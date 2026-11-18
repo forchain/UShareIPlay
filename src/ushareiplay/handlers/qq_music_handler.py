@@ -508,12 +508,16 @@ class QQMusicHandler(AppHandler, Singleton):
             self.logger.error("Cannot switch to QQ music")
             return {'error': 'Failed to switch to QQ Music app'}
 
-        playlist_entry = self.element_finder.wait_for_element_clickable('playlist_entry')
-        if not playlist_entry:
+        # 队列面板可能已经弹着（上一条指令读完没关）：入口按钮此时不在元素树里，
+        # 也不能再点 —— 点了会把面板收起来。先认状态再分支。
+        state_key, state_element = self.element_finder.wait_for_any_element(
+            ['playlist_item_container', 'playlist_entry']
+        )
+        if not state_key:
             return {'error': 'Failed to find play list entry'}
-        playlist_entry.click()
-
-        self.element_finder.wait_for_element('playlist_item_container')
+        if state_key == 'playlist_entry':
+            state_element.click()
+            self.element_finder.wait_for_element('playlist_item_container')
 
         detected = None
         detected_key, _ = self.element_finder.try_find_any_element(
