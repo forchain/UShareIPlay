@@ -59,3 +59,8 @@ async def test_alias_group_covers_rows_bound_to_an_alias_id(repository_and_users
 async def test_single_id_resolution_stays_on_the_canonical_id(repository_and_users):
     repository, users = repository_and_users
     await contracts.assert_single_id_resolution_stays_on_the_canonical_id(repository, users)
+
+
+async def test_focus_canonical_resolution_for_bound_alias(repository_and_users):
+    repository, users = repository_and_users
+    await contracts.assert_focus_canonical_resolution_for_bound_alias(repository, users)

@@ -4,7 +4,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from ushareiplay.commands.focus import FocusCommand
+from ushareiplay.adapters.inbound.chat.focus import FocusCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,

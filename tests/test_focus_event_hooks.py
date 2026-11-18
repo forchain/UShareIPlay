@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-from ushareiplay.commands.focus import FocusCommand
+from ushareiplay.adapters.inbound.chat.focus import FocusCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import route_queue_text
@@ -26,7 +26,7 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 from ushareiplay.modules.room.registry import ENTER, FOCUS, spec_for
 from ushareiplay.modules.room.use_cases import UserEventHooks
 from tests.room_support import make_hooks
-from ushareiplay.modules.room.macros import (
+from ushareiplay.modules.seat.macros import (
     SEAT_INFO_CTX_KEY,
     expand_seat_macros,
 )

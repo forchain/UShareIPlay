@@ -120,3 +120,24 @@ async def assert_single_id_resolution_stays_on_the_canonical_id(repository, user
         assert await repository.delete_all_by_username(event_type, alias_name) == 0
 
         assert len(await repository.get_all_ordered(event_type)) == 1
+
+
+async def assert_focus_canonical_resolution_for_bound_alias(repository, users):
+    """已绑定主账号的分身，读写 FOCUS 钩子都归属并命中主账号。"""
+    assert spec_for(FOCUS).resolution is SINGLE_ID
+
+    canonical = await users.get_or_create_raw("Outlier")
+    alias = await users.get_or_create_raw("Chainer")
+    await users.set_canonical(alias.id, canonical.id)
+
+    created = await repository.create(FOCUS, "Chainer", ":say {username}@{seat}")
+    assert created.owner == "Outlier"
+
+    by_canonical = await repository.get_by_username(FOCUS, "Outlier")
+    by_alias = await repository.get_by_username(FOCUS, "Chainer")
+    assert [row.command for row in by_canonical] == [":say {username}@{seat}"]
+    assert [row.command for row in by_alias] == [":say {username}@{seat}"]
+    assert await repository.get_by_username(ENTER, "Outlier") == []
+
+    assert await repository.delete_all_by_username(FOCUS, "Chainer") == 1
+    assert await repository.get_by_username(FOCUS, "Outlier") == []
