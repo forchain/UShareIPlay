@@ -1,6 +1,6 @@
 import pytest
 import pytest_asyncio
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.receive_dao import ReceiveDao
 
 
@@ -46,7 +46,7 @@ async def test_receive_dao_delete_all(db_init):
 @pytest.mark.asyncio
 async def test_receive_dao_alias_resolution(db_init):
     from ushareiplay.dal.user_dao import UserDAO
-    from ushareiplay.models import User
+    from ushareiplay.adapters.outbound.persistence.models import User
 
     outlier = await UserDAO.get_or_create_raw("Outlier")
     chainer = await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)

@@ -34,7 +34,7 @@ from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.keyword_manager import KeywordManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.presence_tracker import PresenceTracker
 

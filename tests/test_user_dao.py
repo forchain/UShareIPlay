@@ -1,7 +1,7 @@
 import pytest
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 
 
 @pytest.mark.asyncio

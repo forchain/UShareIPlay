@@ -7,14 +7,14 @@ import pytest_asyncio
 from tortoise import Tortoise
 
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
 @pytest_asyncio.fixture
 async def user_db():
     await Tortoise.init(
         db_url="sqlite://:memory:",
-        modules={"models": ["ushareiplay.models.user"]},
+        modules={"models": ["ushareiplay.adapters.outbound.persistence.models.user"]},
     )
     await Tortoise.generate_schemas()
     try:

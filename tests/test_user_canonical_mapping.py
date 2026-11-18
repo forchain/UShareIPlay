@@ -1,6 +1,6 @@
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 
 

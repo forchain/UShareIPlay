@@ -36,7 +36,7 @@ from ushareiplay.commands.receive import ReceiveCommand
 # `return` 是 Python 关键字，只能动态 import
 ReturnCommand = importlib.import_module("ushareiplay.commands.return").ReturnCommand
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.enter_dao import EnterDao
 from ushareiplay.dal.exit_dao import ExitDao
 from ushareiplay.dal.focus_event_dao import FocusEventDao
@@ -50,13 +50,13 @@ from ushareiplay.managers.user_event_hooks import (
     RETURN,
     spec_for,
 )
-from ushareiplay.models import User
-from ushareiplay.models.enter_event import EnterEvent
-from ushareiplay.models.exit_event import ExitEvent
-from ushareiplay.models.focus_event import FocusEvent
+from ushareiplay.adapters.outbound.persistence.models import User
+from ushareiplay.adapters.outbound.persistence.models.enter_event import EnterEvent
+from ushareiplay.adapters.outbound.persistence.models.exit_event import ExitEvent
+from ushareiplay.adapters.outbound.persistence.models.focus_event import FocusEvent
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.models.receive_event import ReceiveEvent
-from ushareiplay.models.return_event import ReturnEvent
+from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
+from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
 
 
 @pytest_asyncio.fixture

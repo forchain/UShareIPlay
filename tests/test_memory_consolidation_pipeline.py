@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.dal.user_memory_dao import UserMemoryDAO

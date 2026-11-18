@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 
 from ushareiplay.commands.receive import ReceiveCommand
 from ushareiplay.models.message_info import MessageInfo

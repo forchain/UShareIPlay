@@ -1,7 +1,7 @@
 from typing import Optional, List
 import json
-from ushareiplay.models.keyword import Keyword
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.keyword import Keyword
+from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 
 

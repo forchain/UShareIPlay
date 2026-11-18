@@ -1,7 +1,7 @@
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.natural_language_resolver import (
     NaturalLanguageResolver,
     NaturalLanguageResult,

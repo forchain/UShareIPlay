@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Tuple
-from ushareiplay.models.user_memory import UserMemory
+from ushareiplay.adapters.outbound.persistence.models.user_memory import UserMemory
 from ushareiplay.dal.user_dao import UserDAO
 
 

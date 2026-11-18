@@ -12,7 +12,7 @@ from tortoise import Tortoise
 
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 
@@ -29,7 +29,7 @@ CONFIG = ConfigView({
 async def user_db():
     await Tortoise.init(
         db_url="sqlite://:memory:",
-        modules={"models": ["ushareiplay.models.user"]},
+        modules={"models": ["ushareiplay.adapters.outbound.persistence.models.user"]},
     )
     await Tortoise.generate_schemas()
     try:

@@ -1,5 +1,5 @@
 """
-验证 DatabaseManager 使用新的 ushareiplay.models 注册路径能正确初始化。
+验证 DatabaseManager 使用新的持久化适配器注册路径能正确初始化。
 使用内存 SQLite，不依赖 Appium 或设备。
 """
 import pytest
@@ -10,7 +10,7 @@ from tortoise import Tortoise
 @pytest.mark.asyncio
 async def test_db_manager_init_with_memory_db():
     """DatabaseManager 应能用内存 DB 完成初始化和 schema 生成"""
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 
     manager = DatabaseManager(db_url="sqlite://:memory:")
     await manager.init()
@@ -23,8 +23,8 @@ async def test_db_manager_init_with_memory_db():
 
 @pytest.mark.asyncio
 async def test_db_models_registered():
-    """ushareiplay.models 中的所有模型应能被 Tortoise 识别"""
-    from ushareiplay.core.db_manager import DatabaseManager
+    """持久化适配器中的所有 Tortoise 模型应能被 Tortoise 识别"""
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 
     manager = DatabaseManager(db_url="sqlite://:memory:")
     await manager.init()
@@ -49,7 +49,7 @@ async def test_db_models_registered():
 @pytest.mark.asyncio
 async def test_focus_event_created_at_auto_set():
     """FocusEvent 创建时应自动写入 created_at（非 NULL）。"""
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.dal.focus_event_dao import FocusEventDao
 
     manager = DatabaseManager(db_url="sqlite://:memory:")

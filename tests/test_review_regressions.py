@@ -231,7 +231,7 @@ def test_console_input_stops_on_eof(monkeypatch):
 
 
 def test_database_manager_uses_repo_root_data_dir(tmp_path, monkeypatch):
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.core.paths import repo_root
 
     elsewhere = tmp_path / "not-the-repo"

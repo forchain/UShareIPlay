@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ushareiplay.commands.focus import FocusCommand
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.focus_event_dao import FocusEventDao
 from ushareiplay.models.message_info import MessageInfo

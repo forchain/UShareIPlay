@@ -1,6 +1,6 @@
 from tortoise import fields, models
 from tortoise.models import Model
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 
 class SeatReservation(Model):
     id = fields.IntField(primary_key=True)

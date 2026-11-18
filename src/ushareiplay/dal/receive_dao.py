@@ -23,7 +23,7 @@ from typing import List, Optional
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
 from ushareiplay.managers.user_event_hooks.registry import RECEIVE
-from ushareiplay.models.receive_event import ReceiveEvent
+from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
 
 
 class ReceiveDao:

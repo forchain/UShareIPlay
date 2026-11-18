@@ -3,12 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
 @pytest.mark.asyncio

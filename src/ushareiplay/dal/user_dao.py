@@ -1,6 +1,6 @@
 import logging
 from typing import Optional
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 
 logger = logging.getLogger("UserDAO")
 

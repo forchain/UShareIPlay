@@ -50,7 +50,7 @@ class _DummyController:
 @pytest.mark.asyncio
 async def test_timer_fired_message_is_sleep_exempt():
     """定时器触发的消息必须带 sleep_exempt，睡眠保护才不会拦下它。"""
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.timer_manager import TimerManager
 
@@ -112,7 +112,7 @@ async def test_keyword_run_forwards_sleep_exemption():
 async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypatch):
     """整条链：定时器 → 关键字 → 内层播放命令，豁免标记必须一路传下去。"""
     from ushareiplay.commands.keyword import KeywordCommand
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.managers.timer_manager import TimerManager

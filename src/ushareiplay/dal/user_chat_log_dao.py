@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from ushareiplay.models.user_chat_log import UserChatLog
+from ushareiplay.adapters.outbound.persistence.models.user_chat_log import UserChatLog
 from ushareiplay.dal.user_dao import UserDAO
 
 

@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.seat_manager import SeatManager

@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
 from ushareiplay.managers.user_event_hooks.registry import EXIT
-from ushareiplay.models.exit_event import ExitEvent
+from ushareiplay.adapters.outbound.persistence.models.exit_event import ExitEvent
 
 
 class ExitDao:

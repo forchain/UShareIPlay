@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.state import online_list_scraper as scraper_module
 from ushareiplay.state.online_list_scraper import OnlineListScraper
 from ushareiplay.state.presence_tracker import PresenceTracker

@@ -22,7 +22,7 @@ class DatabaseManager:
         """Initialize database connection and generate schemas"""
         await Tortoise.init(
             db_url=self.db_url,
-            modules={'models': ['ushareiplay.models']},
+            modules={'models': ['ushareiplay.adapters.outbound.persistence.models']},
             use_tz=False,
         )
         await Tortoise.generate_schemas()

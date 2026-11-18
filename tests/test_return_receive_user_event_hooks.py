@@ -24,7 +24,7 @@ from ushareiplay.commands.receive import ReceiveCommand
 # （CommandManager 正是因为这个才用 `_find_command_class` 动态发现命令类）。
 ReturnCommand = importlib.import_module("ushareiplay.commands.return").ReturnCommand
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.receive_dao import ReceiveDao
 from ushareiplay.dal.return_dao import ReturnDao
@@ -33,7 +33,7 @@ from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -178,8 +178,8 @@ async def test_return_and_receive_keep_different_user_resolution(db_init):
     差别只在**直接挂在分身 id 名下**的历史数据：alias-group 认，返回命令不认。
     主账号挂的数据两边都能查到，因为 `UserDAO.get_or_create` 本就解析 canonical。
     """
-    from ushareiplay.models.receive_event import ReceiveEvent
-    from ushareiplay.models.return_event import ReturnEvent
+    from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
+    from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
 
     outlier = await UserDAO.get_or_create_raw("Outlier")
     chainer = await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)

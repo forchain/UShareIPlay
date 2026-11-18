@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
 from ushareiplay.managers.user_event_hooks.registry import RETURN
-from ushareiplay.models.return_event import ReturnEvent
+from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
 
 
 class ReturnDao:
