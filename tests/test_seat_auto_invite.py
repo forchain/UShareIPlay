@@ -209,7 +209,7 @@ def _build(
 
     monkeypatch.setattr(seat_subsystem_module, "SeatReservationDAO", reservations)
     monkeypatch.setattr(seat_subsystem_module, "UserDAO", identities)
-    monkeypatch.setattr(seat_subsystem_module, "InfoManager", info)
+    subsystem.info_manager = info
 
     messages = []
     subsystem._message_dispatch = SimpleNamespace(send_screen_message=messages.append)
@@ -472,7 +472,7 @@ async def test_the_whole_auto_invite_flow_runs_under_one_ui_session(monkeypatch)
         lease=controller.ui_session_lease,
     )
 
-    monkeypatch.setattr(seat_subsystem_module, "InfoManager", FakeInfoManager({CANONICAL: VISIBLE}))
+    subsystem.info_manager = FakeInfoManager({CANONICAL: VISIBLE})
     monkeypatch.setattr(
         seat_subsystem_module, "UserDAO", FakeIdentityDAO([(CANONICAL, VISIBLE)])
     )

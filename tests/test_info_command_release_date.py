@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.commands.info import InfoCommand
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.adapters.inbound.chat.info import InfoCommand
+from ushareiplay.modules.room import InfoManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.legacy_state import PresenceTracker
@@ -13,20 +13,23 @@ from tests.legacy_state import RoomState
 @pytest.fixture
 def info_manager():
     for cls in (
-        InfoManager,
         PlaybackBroadcaster,
         PlaylistSession,
         PresenceTracker,
         RoomState,
     ):
         cls.reset_instance()
-    PlaybackBroadcaster.initialize()
-    PlaylistSession.initialize()
-    PresenceTracker.initialize()
-    RoomState.initialize()
-    manager = InfoManager.initialize()
-    manager._logger = SimpleNamespace(info=lambda _message: None)
-    return manager
+    broadcaster = PlaybackBroadcaster.initialize()
+    playlist = PlaylistSession.initialize()
+    presence = PresenceTracker.initialize()
+    room_state = RoomState.initialize()
+    return InfoManager(
+        room_state=room_state,
+        presence=presence,
+        playlist=playlist,
+        playback_cache=broadcaster,
+        logger=SimpleNamespace(info=lambda _message: None),
+    )
 
 
 class _MusicHandler:
@@ -53,6 +56,7 @@ async def test_info_command_returns_empty_release_date_when_cache_missing(monkey
         SimpleNamespace(
             soul_handler=SimpleNamespace(),
             music_handler=SimpleNamespace(),
+            info_manager=info_manager,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
@@ -76,6 +80,7 @@ async def test_info_command_preserves_cached_release_date(monkeypatch, info_mana
         SimpleNamespace(
             soul_handler=SimpleNamespace(),
             music_handler=SimpleNamespace(),
+            info_manager=info_manager,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )

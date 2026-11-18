@@ -1,5 +1,26 @@
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+from ushareiplay.modules.room import party_create_mode
 from ushareiplay.modules.shared.config import ConfigSectionView
+
+
+class _PartyHarness:
+    def __init__(self):
+        self._handler = None
+        self._logger = None
+
+    def _create_party_flow(self):
+        from tests.legacy_state import RoomState
+        driver = SoulPartyDriver(self._handler)
+        cfg = self._handler.config
+        created, actual_rec = driver.create_party_flow(
+            mode=party_create_mode(cfg.value('party_create_mode', 'new_party_entry')),
+            recommendation_enabled=bool(cfg.value('create_party_recommendation', True)),
+            change_party_type=bool(cfg.value('change_party_type', False)),
+            target_party_type_element=cfg.value('target_party_type_element', 'party_type_singing'),
+        )
+        if created and actual_rec is not None:
+            RoomState.instance().recommendation_enabled = actual_rec
+        return created
 
 
 class _Logger:
@@ -58,7 +79,7 @@ class _Handler:
 
 
 def test_party_create_mode_restore_clicks_restore_only():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     restore_entry = _Element()
     handler = _Handler(
@@ -79,7 +100,7 @@ def test_party_create_mode_restore_clicks_restore_only():
 
 
 def test_party_create_mode_default_keeps_new_flow():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     handler = _Handler(
@@ -100,7 +121,7 @@ def test_party_create_mode_default_keeps_new_flow():
 
 
 def test_restore_mode_with_confirm_party_keeps_legacy_flow():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     confirm_entry = _Element()
     handler = _Handler(
@@ -121,7 +142,7 @@ def test_restore_mode_with_confirm_party_keeps_legacy_flow():
 
 
 def test_party_create_flow_switches_room_type_to_singing():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     chat_type_entry = _Element()
@@ -154,7 +175,7 @@ def test_party_create_flow_switches_room_type_to_singing():
 
 
 def test_party_create_flow_fails_when_party_type_chat_not_found():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
 
@@ -181,7 +202,7 @@ def test_party_create_flow_fails_when_party_type_chat_not_found():
 
 
 def test_party_create_flow_fails_when_party_type_singing_not_found():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     chat_type_entry = _Element()
@@ -210,7 +231,7 @@ def test_party_create_flow_fails_when_party_type_singing_not_found():
 
 
 def test_party_create_flow_skips_room_type_change_when_disabled():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     chat_type_entry = _Element()
@@ -245,7 +266,7 @@ def test_party_create_flow_skips_room_type_change_when_disabled():
 def test_party_create_flow_disables_recommendation_and_waits_disappear():
     from tests.legacy_state import RoomState
     RoomState.initialize()
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     party_state_entry = _Element()
@@ -290,7 +311,7 @@ def test_party_create_flow_disables_recommendation_and_waits_disappear():
 
 
 def test_party_create_flow_retries_and_succeeds_when_first_type_click_misses():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     chat_type_entry = _Element()
@@ -337,7 +358,7 @@ def test_party_create_flow_retries_and_succeeds_when_first_type_click_misses():
 
 def test_party_create_flow_default_skips_chat_type_and_clicks_create_party():
     """新版 Soul UI 无需选择聊天类型，即使不存在 party_type_chat 也能直接点击创建房间"""
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     create_party_btn = _Element()
@@ -368,7 +389,7 @@ def test_party_create_flow_disables_recommendation_and_directly_creates_party():
     """关闭推荐分发后直接点击创建房间，不依赖聊天类型按钮"""
     from tests.legacy_state import RoomState
     RoomState.initialize()
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
     create_entry = _Element()
     new_entry = _Element()
     party_state_entry = _Element()

@@ -431,11 +431,11 @@ def test_the_legacy_managers_no_longer_carry_their_own_copy_of_the_search_loop()
     两份逐字相同的实现意味着改翻页上限要改三处、漏一处就在真机上翻到天荒地老。
     这里锁的是「只有唯一所有者才有这段循环」这条归属，而不是某个私有方法的名字。
     """
-    from ushareiplay.managers.user_manager import UserManager
+    from ushareiplay.modules.room import UserProfileActions
 
-    assert not hasattr(UserManager, "_find_member_in_drawer")
+    assert not hasattr(UserProfileActions, "_find_member_in_drawer")
     # 上限常量同样只在抽屉会话这一侧定义。
-    assert not hasattr(UserManager, "MAX_SEARCH_SWIPES")
+    assert not hasattr(UserProfileActions, "MAX_SEARCH_SWIPES")
 
 
 def test_recovery_manager_no_longer_owns_any_online_drawer_closing_machinery():

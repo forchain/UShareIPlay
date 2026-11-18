@@ -458,13 +458,17 @@ async def test_guest_room_blocks_events_and_window_audit():
 
 
 def _party_manager_with_stub_handler(monkeypatch):
-    """真实的 PartyManager + stub handler：房间核对判定现在归它所有。"""
-    from ushareiplay.managers.party_manager import PartyManager
+    """真实的 PartyService + stub handler：房间核对判定现在归它所有。"""
+    from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+    from ushareiplay.modules.room import PartyService
 
     handler = HandlerStub(config={})
-    manager = PartyManager.instance()
-    manager._handler = handler
-    manager._logger = handler.logger
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomState.instance(),
+        logger=handler.logger,
+    )
+    handler.controller = SimpleNamespace(party_service=manager)
     return manager, handler
 
 
@@ -566,6 +570,7 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
 
     controller = SimpleNamespace(
         soul_handler=soul_handler,
+        party_service=party_manager,
         logger=type('_L', (), {'warning': lambda *a: None, 'info': lambda *a: None, 'debug': lambda *a: None})(),
     )
 

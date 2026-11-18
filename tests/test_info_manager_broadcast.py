@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room import InfoManager
 from tests.legacy_state import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
@@ -16,7 +16,6 @@ def info_manager():
     MessageDispatch.reset_instance()
     MessageDispatch.initialize()
     for cls in (
-        InfoManager,
         RoomState,
         PresenceTracker,
         PlaylistSession,
@@ -24,12 +23,17 @@ def info_manager():
         OnlineListScraper,
     ):
         cls.reset_instance()
-    RoomState.initialize()
-    PresenceTracker.initialize()
-    PlaylistSession.initialize()
-    PlaybackBroadcaster.initialize()
+    room_state = RoomState.initialize()
+    presence = PresenceTracker.initialize()
+    playlist = PlaylistSession.initialize()
+    broadcaster = PlaybackBroadcaster.initialize()
     OnlineListScraper.initialize()
-    return InfoManager.initialize()
+    return InfoManager(
+        room_state=room_state,
+        presence=presence,
+        playlist=playlist,
+        playback_cache=broadcaster,
+    )
 
 
 def _music_manager_mock():
@@ -60,7 +64,7 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
         # Case 1: Broadcast enabled (True) - should send message
         mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': True})
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_called_once_with("SongA - SingerA • AlbumA 2020-01-02")
         mock_handler.send_message.reset_mock()
         mock_music_manager.handle_song_quality_check.assert_called_once_with(info)
@@ -68,7 +72,7 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
 
         # Case 2: Broadcast disabled (False) - should NOT send message
         mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_not_called()
         mock_music_manager.handle_song_quality_check.assert_called_once_with(info)
         mock_music_manager.handle_song_quality_check.reset_mock()
@@ -78,14 +82,14 @@ def test_send_playing_message_respects_broadcast_toggle(info_manager):
         # Case 3: Broadcast enabled but song skipped (quality check) - should NOT send message
         mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': True})
         skip_result["value"] = True
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_not_called()
 
         # Case 4: Broadcast disabled (False) and song skipped (quality check)
         mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
         skip_result["value"] = True
         mock_music_manager.handle_song_quality_check.reset_mock()
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_not_called()
         mock_music_manager.handle_song_quality_check.assert_called_once_with(info)
         mock_logger.info.assert_not_called()
@@ -104,7 +108,7 @@ def test_send_playing_message_default_behavior(info_manager):
 
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
         mock_handler.config = ConfigSectionView('soul', {})
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_called_once_with("SongA - SingerA • AlbumA 2020-01-02")
 
 
@@ -120,7 +124,7 @@ def test_send_playing_message_reads_the_switch_from_the_soul_section(info_manage
 
     with patch('ushareiplay.managers.music_manager.MusicManager.instance', return_value=mock_music_manager):
         mock_handler.config = ConfigSectionView('soul', {'broadcast_playing_info': False})
-        info_manager.send_playing_message()
+        PlaybackBroadcaster.instance().send_playing_message()
         mock_handler.send_message.assert_not_called()
 
 

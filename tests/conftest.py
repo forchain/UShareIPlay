@@ -9,7 +9,6 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.message_manager import MessageManager
-from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.room_profile_support import RoomProfileManager
 from tests import legacy_state
@@ -57,9 +56,7 @@ def _install_room_profile_listener(cls):
 
 def _install_state_defaults():
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.message_manager import MessageManager
-    from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
     from tests.room_profile_support import RoomProfileManager
@@ -68,20 +65,14 @@ def _install_state_defaults():
 
     for cls in (
         SeatSubsystem,
-        PartyManager,
         RoomProfileManager,
         SeatObservationManager,
         PlaybackMuting,
         CommandManager,
     ):
         _install_injected_default(cls, "room_state", legacy_state.room_state)
-    for cls in (InfoManager, MessageManager):
-        _install_injected_default(cls, "presence", legacy_state.presence)
-    _install_injected_default(InfoManager, "room_state", legacy_state.room_state)
+    _install_injected_default(MessageManager, "presence", legacy_state.presence)
     _install_room_profile_listener(RoomProfileManager)
-    _install_injected_default(
-        InfoManager, "online_list_source", legacy_state.online_list_source
-    )
     _install_injected_default(
         PlaylistSession,
         "online_users",
@@ -100,7 +91,6 @@ def initialized_test_singletons():
         CommandManager,
         EventManager,
         MessageManager,
-        PartyManager,
         PlaylistSession,
         RoomProfileManager,
     ):
@@ -110,7 +100,6 @@ def initialized_test_singletons():
     room_state = legacy_state.room_state()
     presence = legacy_state.presence()
     CommandManager.instance().room_state = room_state
-    PartyManager.instance()._room_state = room_state
     RoomProfileManager.instance()._room_state = room_state
     MessageManager.instance()._presence = presence
     PlaylistSession.instance()._online_users = presence.get_online_users

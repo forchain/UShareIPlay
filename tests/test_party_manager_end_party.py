@@ -1,5 +1,6 @@
 import pytest
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+from ushareiplay.modules.room import PartyService, RoomStateService
 
 
 class _Logger:
@@ -63,18 +64,18 @@ class _MockHandler:
 
 
 def test_end_party_direct_success():
-    manager = PartyManager.instance()
-    
     exit_btn = _Element("exit_room_btn")
     confirm_btn = _Element("confirm_end")
-    
+
     handler = _MockHandler(elements={
         "exit_room_btn": exit_btn,
         "confirm_end": confirm_btn
     })
-    
-    manager._handler = handler
-    manager._logger = handler.logger
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomStateService(),
+        logger=handler.logger,
+    )
 
     res = manager.end_party()
 
@@ -85,19 +86,20 @@ def test_end_party_direct_success():
 
 
 def test_end_party_fallback_success():
-    manager = PartyManager.instance()
-    
     more_menu_btn = _Element("more_menu")
     end_party_btn = _Element("end_party")
     confirm_btn = _Element("confirm_end")
-    
+
     handler = _MockHandler(elements={
         "more_menu": more_menu_btn,
         "end_party": end_party_btn,
         "confirm_end": confirm_btn
     })
-    
-    manager._handler = handler
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomStateService(),
+        logger=handler.logger,
+    )
     manager._logger = handler.logger
 
     res = manager.end_party()
@@ -108,8 +110,6 @@ def test_end_party_fallback_success():
 
 
 def test_exit_guest_party_with_confirm_end():
-    manager = PartyManager.instance()
-
     more_menu_btn = _Element("more_menu")
     end_party_btn = _Element("end_party")
     confirm_end_btn = _Element("confirm_end")
@@ -119,9 +119,11 @@ def test_exit_guest_party_with_confirm_end():
         "end_party": end_party_btn,
         "confirm_end": confirm_end_btn,
     })
-
-    manager._handler = handler
-    manager._logger = handler.logger
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomStateService(),
+        logger=handler.logger,
+    )
 
     res = manager.end_party()
 
@@ -133,8 +135,6 @@ def test_exit_guest_party_with_confirm_end():
 
 
 def test_exit_guest_party_without_confirm_dialog():
-    manager = PartyManager.instance()
-
     more_menu_btn = _Element("more_menu")
     end_party_btn = _Element("end_party")
 
@@ -142,9 +142,11 @@ def test_exit_guest_party_without_confirm_dialog():
         "more_menu": more_menu_btn,
         "end_party": end_party_btn,
     })
-
-    manager._handler = handler
-    manager._logger = handler.logger
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomStateService(),
+        logger=handler.logger,
+    )
 
     res = manager.end_party()
 

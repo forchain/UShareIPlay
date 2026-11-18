@@ -126,23 +126,19 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.event_manager import EventManager
-    from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
     from ushareiplay.managers.recovery_manager import RecoveryManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
     all_protected_classes = [
         AppController,
         MessageDispatch,
         MessageQueue,
-        UserManager,
         RecoveryManager,
         MessageManager,
         MusicManager,
@@ -150,8 +146,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         CommandManager,
         PlaylistSession,
         PlaybackBroadcaster,
-        InfoManager,
-        PartyManager,
         EventManager,
         SeatManager,
         SeatObservationManager,

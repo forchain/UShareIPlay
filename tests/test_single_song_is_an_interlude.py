@@ -22,7 +22,7 @@ import pytest
 
 from ushareiplay.commands.play import PlayCommand
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomState
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
@@ -68,13 +68,16 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
     monkeypatch, initialized_test_singletons
 ):
     """电台在放时点一首歌：`/info` 的歌单行仍是电台与它的播放者。"""
-    info = InfoManager.initialize(
-        SimpleNamespace(config=ConfigSectionView("soul", {}), logger=MagicMock())
-    )
-
     adoption = PlaylistSession.instance()
     adoption.current_playlist_name = RADIO_NAME
     adoption._room_profile = _RoomProfile()
+
+    info = InfoManager(
+        room_state=RoomState(),
+        presence=PresenceTracker(),
+        playlist=adoption,
+        logger=MagicMock(),
+    )
 
     MusicManager.initialize(ui_driver=InMemoryMusicUIDriver())
     PlaybackMuting.initialize(

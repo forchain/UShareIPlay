@@ -6,7 +6,8 @@ import pytest
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+from ushareiplay.modules.room import PartyService, RoomStateService
 from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
@@ -25,8 +26,6 @@ class RecordingMemory:
 @pytest.mark.asyncio
 async def test_party_manager_lifecycle_schedules_memory_consolidation():
     memory = RecordingMemory()
-    pm = PartyManager.instance() if PartyManager.is_initialized() else PartyManager.initialize()
-    pm.user_memory = memory
 
     # Mock handler and sub-managers
     mock_handler = SimpleNamespace(
@@ -37,16 +36,15 @@ async def test_party_manager_lifecycle_schedules_memory_consolidation():
             wait_for_element_clickable=lambda key, timeout=3: MagicMock(click=MagicMock()),
         ),
         key_actions=SimpleNamespace(switch_to_app=lambda: True),
-        controller=SimpleNamespace(
-            room_profile_manager=SimpleNamespace(
-                ensure_synced_on_return=lambda: None,
-                set_default_notice=AsyncMock(return_value={"success": True}),
-            ),
-            seat_manager=SimpleNamespace(find_owner_seat=AsyncMock(return_value={"success": True})),
-            post_party_create_automation=None,
-        )
     )
-    pm._handler = mock_handler
+    pm = PartyService(
+        driver=SoulPartyDriver(mock_handler),
+        room_state=RoomStateService(),
+        on_after_create_notice=AsyncMock(return_value={"success": True}),
+        on_after_create_seat=AsyncMock(return_value={"success": True}),
+        on_memory_consolidate=memory.schedule_all,
+        logger=mock_handler.logger,
+    )
 
     # 1. Test _after_party_created
     await pm._after_party_created()

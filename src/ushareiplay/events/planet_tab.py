@@ -25,8 +25,8 @@ class PlanetTabEvent(BaseEvent):
             bool: 如果成功处理返回 True，否则 False
         """
         try:
-            party_manager = self.controller.party_manager
-            result = await party_manager.join_party()
+            party_service = self.controller.party_service
+            result = await party_service.join_party()
 
             if result:
                 self.logger.info("Successfully handled planet_tab event via handle_join_party")

@@ -4,14 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ushareiplay.commands import pack as pack_module
-from ushareiplay.commands.pack import (
+from ushareiplay.adapters.inbound.chat.pack import PackCommand
+from ushareiplay.adapters.outbound.appium.soul import luck_pack_driver as pack_module
+from ushareiplay.adapters.outbound.appium.soul.luck_pack_driver import SoulLuckPackDriver
+from ushareiplay.modules.room import (
     OPEN_USAGE,
     PACK_USAGE,
-    PackCommand,
-    _parse_countdown,
-    _parse_heat,
-    _parse_pack_level,
+    LuckPackService,
+    parse_countdown as _parse_countdown,
+    parse_heat as _parse_heat,
+    parse_pack_level as _parse_pack_level,
 )
 from ushareiplay.models.message_info import MessageInfo
 
@@ -82,6 +84,10 @@ def mock_controller():
     )
     controller.soul_handler = soul_handler
     controller.music_handler = SimpleNamespace()
+    controller.luck_pack = LuckPackService(
+        driver=SoulLuckPackDriver(soul_handler),
+        logger=soul_handler.logger,
+    )
     return controller
 
 
@@ -157,7 +163,7 @@ async def test_open_luck_pack_opens_backpack_pack_for_auto_mode(mock_controller)
     )
 
     cmd = PackCommand(mock_controller)
-    result = cmd.open_luck_pack(user_count=6)
+    result = cmd.luck_pack.open_luck_pack(user_count=6)
 
     assert result == {
         "item": "高级福袋",
@@ -174,7 +180,7 @@ async def test_open_luck_pack_reports_no_pack_available(mock_controller):
     finder.try_find_element.return_value = None
 
     cmd = PackCommand(mock_controller)
-    result = cmd.open_luck_pack()
+    result = cmd.luck_pack.open_luck_pack()
 
     assert result == {"error": "No luck pack available"}
 
@@ -385,7 +391,8 @@ async def test_pack_redeem_stops_when_no_affordable_tier(mock_controller):
 
 @pytest.mark.asyncio
 async def test_pack_redeem_stops_at_max_redemptions(mock_controller, monkeypatch):
-    monkeypatch.setattr(pack_module, "MAX_REDEMPTIONS", 3)
+    from ushareiplay.modules.room import use_cases as room_use_cases
+    monkeypatch.setattr(room_use_cases, "MAX_REDEMPTIONS", 3)
 
     finder = mock_controller.soul_handler.element_finder
     state = {"heat": 1800}
@@ -464,7 +471,7 @@ async def test_pack_redeem_exception_handling_safely_exits(mock_controller):
     assert result == {"error": "Failed to redeem heat"}
     # Even after error, exchange window is exited
     assert back_btn.clicks == 1
-    mock_controller.soul_handler.log_error.assert_called_once()
+    mock_controller.soul_handler.logger.error.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1286,7 +1293,7 @@ async def test_close_pack_drawer_falls_back_to_back(mock_controller):
 
     cmd = PackCommand(mock_controller)
 
-    assert cmd._close_pack_drawer() is True
+    assert cmd.luck_pack._driver.close_pack_drawer() is True
     mock_controller.soul_handler.key_actions.press_back.assert_called_once()
 
 
@@ -1298,7 +1305,7 @@ async def test_close_pack_drawer_reports_failure_when_still_visible(mock_control
 
     cmd = PackCommand(mock_controller)
 
-    assert cmd._close_pack_drawer() is False
+    assert cmd.luck_pack._driver.close_pack_drawer() is False
     mock_controller.soul_handler.key_actions.press_back.assert_called_once()
 
 

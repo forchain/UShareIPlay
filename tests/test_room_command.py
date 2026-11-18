@@ -8,6 +8,7 @@ class _MockController:
     def __init__(self):
         self.soul_handler = MagicMock()
         self.music_handler = MagicMock()
+        self.party_service = MagicMock()
 
 
 @pytest.mark.asyncio
@@ -25,13 +26,13 @@ async def test_room_command_missing_party_id():
 @pytest.mark.asyncio
 async def test_room_command_target_room_not_open():
     controller = _MockController()
-    command = RoomCommand(controller)
     mock_pm = MagicMock()
     mock_pm.invite_user = AsyncMock(return_value={
         'error': 'Party 123456 not found or not open',
         'party_id': '123456'
     })
-    command._party_manager = mock_pm
+    controller.party_service = mock_pm
+    command = RoomCommand(controller)
 
     msg = MessageInfo(nickname="Bob", content=":room 123456")
     result = await command.process(msg, ["123456"])
@@ -43,13 +44,13 @@ async def test_room_command_target_room_not_open():
 @pytest.mark.asyncio
 async def test_room_command_target_room_success():
     controller = _MockController()
-    command = RoomCommand(controller)
     mock_pm = MagicMock()
     mock_pm.invite_user = AsyncMock(return_value={
         'party_id': '654321',
         'user': 'Charlie'
     })
-    command._party_manager = mock_pm
+    controller.party_service = mock_pm
+    command = RoomCommand(controller)
 
     msg = MessageInfo(nickname="Charlie", content=":room 654321")
     result = await command.process(msg, ["654321"])
@@ -62,10 +63,10 @@ async def test_room_command_target_room_success():
 @pytest.mark.asyncio
 async def test_room_command_exception_handled():
     controller = _MockController()
-    command = RoomCommand(controller)
     mock_pm = MagicMock()
     mock_pm.invite_user = AsyncMock(side_effect=RuntimeError("UI Timeout"))
-    command._party_manager = mock_pm
+    controller.party_service = mock_pm
+    command = RoomCommand(controller)
 
     msg = MessageInfo(nickname="David", content=":room 777777")
     result = await command.process(msg, ["777777"])

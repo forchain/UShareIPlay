@@ -1422,6 +1422,9 @@ class UserProfileActions:
         return self._drawer
 
     async def open_user_profile(self, nickname: str) -> dict:
+        return await self.open_user_profile_from_online_list(nickname)
+
+    async def open_user_profile_from_online_list(self, nickname: str) -> dict:
         drawer = self._drawer
         driver = drawer.driver
         handover = Handover()

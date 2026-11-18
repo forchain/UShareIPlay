@@ -41,15 +41,19 @@ class _Logger:
 
 @pytest.fixture
 def party_manager(monkeypatch):
-    from ushareiplay.managers.party_manager import PartyManager
-    from tests.legacy_state import RoomState
+    from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+    from ushareiplay.modules.room import PartyLifecycleState, PartyService, RoomStateService
 
-    manager = PartyManager.instance()
-    manager._handler = SimpleNamespace(config={}, logger=_Logger())
-    manager._logger = _Logger()
-    manager.init_time = datetime.now() - timedelta(minutes=800)
-    manager.trigger_minutes = 720
-    monkeypatch.setattr(RoomState, "in_guest_room", classmethod(lambda cls: False))
+    room_state = RoomStateService()
+    lifecycle = PartyLifecycleState(trigger_minutes=720)
+    lifecycle.initialize(now=datetime.now() - timedelta(minutes=800), trigger_minutes=720)
+    handler = SimpleNamespace(config={}, logger=_Logger())
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=room_state,
+        lifecycle=lifecycle,
+        logger=_Logger(),
+    )
     monkeypatch.setattr(manager, "get_party_user_count", lambda: 1)
     return manager
 
@@ -70,9 +74,9 @@ def test_auto_end_error_dict_keeps_timers(monkeypatch, party_manager):
     assert resets == []
     # ... and the attempt still counts for the once-a-day guard, so the next
     # chat batch does not hammer the end-party UI again.
-    assert party_manager.last_auto_end_date == date.today()
+    assert party_manager.lifecycle.last_auto_end_date == date.today()
 
-    party_manager.init_time = datetime.now() - timedelta(minutes=800)
+    party_manager.lifecycle.init_time = datetime.now() - timedelta(minutes=800)
     party_manager.update()
     assert len(calls) == 1
 
@@ -85,10 +89,10 @@ def test_auto_end_success_marks_date_and_blocks_second_run(monkeypatch, party_ma
 
     party_manager.update()
     assert resets == [1]
-    assert party_manager.last_auto_end_date == date.today()
+    assert party_manager.lifecycle.last_auto_end_date == date.today()
 
     # Same day, timer already due again: the once-a-day guard must stop it.
-    party_manager.init_time = datetime.now() - timedelta(minutes=800)
+    party_manager.lifecycle.init_time = datetime.now() - timedelta(minutes=800)
     party_manager.update()
     assert len(calls) == 1
     assert resets == [1]
