@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 class DummyController:

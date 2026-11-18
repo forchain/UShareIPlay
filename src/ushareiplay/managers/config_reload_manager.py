@@ -206,7 +206,7 @@ class ConfigReloadManager:
         catalogue = self.command_manager.catalogue
 
         # 睡眠拦截与客房权限各自持有一份目录引用；不换的话热重载只刷新了解析器。
-        from ushareiplay.managers.sleep_manager import SleepManager
+        from ushareiplay.modules.command.use_cases import SleepManager
         from ushareiplay.state.room_state import RoomState
 
         if SleepManager.is_initialized():

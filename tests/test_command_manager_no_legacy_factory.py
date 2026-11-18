@@ -6,7 +6,9 @@ def test_command_manager_no_longer_contains_legacy_factory_branch():
         Path(__file__).resolve().parents[1]
         / "src"
         / "ushareiplay"
-        / "managers"
+        / "adapters"
+        / "inbound"
+        / "runtime"
         / "command_manager.py"
     ).read_text(encoding="utf-8")
 

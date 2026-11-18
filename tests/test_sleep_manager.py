@@ -2,7 +2,7 @@ import datetime as dt
 
 
 def _fresh_manager(config: dict):
-    from ushareiplay.managers.sleep_manager import SleepManager
+    from ushareiplay.modules.command.use_cases import SleepManager
 
     # Singleton test isolation (official hook)
     SleepManager.reset_instance()

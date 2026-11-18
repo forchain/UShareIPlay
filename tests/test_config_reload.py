@@ -25,7 +25,7 @@ from ushareiplay.modules.shared.config import (
 )
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.event_manager import EventManager
 

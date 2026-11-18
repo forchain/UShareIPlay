@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager

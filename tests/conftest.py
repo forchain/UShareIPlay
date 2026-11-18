@@ -4,7 +4,7 @@ from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.mic_manager import MicManager
@@ -13,12 +13,15 @@ from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.timer_manager import TimerManager
 from ushareiplay.managers.user_event_hooks import UserEventHooks
+from ushareiplay.modules.command.use_cases import SleepManager
 
 
 @pytest.fixture(autouse=True)
 def initialized_test_singletons():
     """Provide dependency-free singleton services and isolate every test."""
     Singleton.reset_all_instances()
+    # 睡眠保护默认关闭，避免用例结果依赖本机当前时间；睡眠用例自行重配。
+    SleepManager.initialize({"sleep": {"enabled": False}})
     for singleton_class in (
         MessageQueue,
         MessageDispatch,

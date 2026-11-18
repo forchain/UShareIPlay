@@ -750,7 +750,7 @@ class SeatObservationManager(Singleton):
             )
 
             if diff.changed_users:
-                from ushareiplay.managers.command_manager import CommandManager
+                from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
                 if notify_after is None:
                     # 被动观测没有新的人数，用最新在座数作为 after
                     notify_after = self.ledger.total_seated()
@@ -1064,7 +1064,7 @@ class SeatObservationManager(Singleton):
                 )
 
                 if diff.changed_users:
-                    from ushareiplay.managers.command_manager import CommandManager
+                    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
                     await CommandManager.instance().notify_focus_count_change(
                         self.ledger.gate_state.last_focus_count,
                         target_focus_count,

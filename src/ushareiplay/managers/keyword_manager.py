@@ -466,7 +466,7 @@ class KeywordManager(Singleton):
             commands_config = self.config.command_entries
             catalogue = None
             try:
-                from ushareiplay.managers.command_manager import CommandManager
+                from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
                 if CommandManager.is_initialized():
                     catalogue = CommandManager.instance().catalogue
             except Exception:

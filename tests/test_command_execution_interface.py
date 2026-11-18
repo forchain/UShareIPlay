@@ -3,7 +3,7 @@ import logging
 from collections import deque
 from types import SimpleNamespace
 
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -151,7 +151,7 @@ def test_focus_app_for_queued_commands_does_not_execute_scanned_rows_inline():
     rather than quietly recording a call.
     """
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
     fake_command_manager = object()

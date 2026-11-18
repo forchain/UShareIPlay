@@ -58,7 +58,7 @@ async def test_same_round_visible_sitdown_does_not_trigger_expansion():
     desk = build_desk_wrapper(handler, left="张三", right="2", left_occupied=True, y=100)
     focus_wrapper = _focus_count_wrapper("1人专注中")
 
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+    with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         notify = AsyncMock()
         cmd_mgr.return_value.notify_focus_count_change = notify
         for key in __elements__:

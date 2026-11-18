@@ -8,11 +8,11 @@ import datetime as dt
 
 import pytest
 
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.modules.command.use_cases import SleepManager
 
 
 @pytest.fixture

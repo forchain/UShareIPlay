@@ -8,7 +8,7 @@ from ushareiplay.state.room_state import RoomState
 
 @pytest.fixture
 def room_state():
-    from ushareiplay.core.command_catalogue import CommandCatalogue
+    from ushareiplay.modules.command.domain import CommandCatalogue
     from ushareiplay.core.config_loader import ConfigLoader
 
     RoomState.reset_instance()

@@ -4,7 +4,7 @@ import pytest
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.admin_manager import AdminManager
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.keyword_manager import KeywordManager

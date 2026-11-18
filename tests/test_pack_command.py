@@ -641,7 +641,7 @@ async def test_pack_redeem_error_renders_without_generic_prefix():
 
     import yaml
 
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     class RuntimeStub:
         def emit(self, *args, **kwargs):
@@ -679,7 +679,7 @@ async def test_pack_redeem_error_renders_without_generic_prefix():
     manager._handler = HandlerStub()
     msg = MessageInfo(content=":pack redeem", nickname="Alice")
 
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=3)
         response = await manager.process_command(FakePackCommand(), msg, command_info)
 
@@ -1377,7 +1377,7 @@ async def test_pack_requires_level_three_for_normal_users():
 
     import yaml
 
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     class RuntimeStub:
         def emit(self, *args, **kwargs):
@@ -1417,7 +1417,7 @@ async def test_pack_requires_level_three_for_normal_users():
     manager._handler = HandlerStub()
     msg = MessageInfo(content=":pack", nickname="Alice")
 
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=2)
         response = await manager.process_command(FakePackCommand(), msg, command_info)
 

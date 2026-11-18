@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.modules.command.use_cases import SleepManager
 
 
 class SleepCommand(BaseCommand):

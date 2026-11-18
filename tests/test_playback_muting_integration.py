@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.modules.shared.config import ConfigSectionView
@@ -115,7 +115,7 @@ def _make_manager(monkeypatch, command, coordinator):
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     _DispatchStub.recorder = _Recorder(coordinator.soul_handler.events)
-    monkeypatch.setattr("ushareiplay.managers.command_manager.MessageDispatch", _DispatchStub)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch", _DispatchStub)
     manager.configure_runtime(_Runtime())
     manager._logger = _Logger()
     manager._handler = SimpleNamespace(

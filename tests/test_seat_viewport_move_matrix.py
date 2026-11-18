@@ -128,7 +128,7 @@ def _settle(manager, occupants, phase, focus_count):
 
 
 async def asyncio_round(manager, desks, focus_count):
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
+    with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
         return await manager.observe_visible_desks(desks, current_focus_count=focus_count)
 
@@ -190,7 +190,7 @@ async def test_in_viewport_move_is_never_swallowed_any_phase(phase, src, dst, re
     with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as scan:
         scan.return_value = True
         with patch(
-            "ushareiplay.managers.command_manager.CommandManager.instance"
+            "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
         ) as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             await manager.observe_visible_desks(desks, current_focus_count=1)
@@ -228,7 +228,7 @@ async def test_full_rescan_converges_an_in_viewport_move(phase, src, dst):
     )
 
     with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
     ) as cmd_mgr:
         notify = AsyncMock()
         cmd_mgr.return_value.notify_focus_count_change = notify
@@ -348,7 +348,7 @@ async def test_seat_command_then_other_users_in_viewport_move_is_detected():
     with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as scan:
         scan.return_value = True
         with patch(
-            "ushareiplay.managers.command_manager.CommandManager.instance"
+            "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
         ) as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
             await manager.observe_visible_desks(desks, current_focus_count=2)
@@ -390,7 +390,7 @@ async def test_persistent_residual_render_does_not_flip_the_ledger_back():
     handler.element_finder.find_elements = MagicMock(return_value=raw)
     manager._seat_ui = FakeSeatUI(desks=raw)
     with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
     ) as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
         await manager.expand_rescan_and_collapse(1)
@@ -432,7 +432,7 @@ async def test_new_occupant_sitting_on_a_known_residual_seat_is_not_lost():
 
     desks = build_live_desk_wrappers_for(handler, {11: True, 12: True}, "bottom")
     with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
     ) as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
         await manager.observe_visible_desks(desks, current_focus_count=2)
@@ -461,7 +461,7 @@ async def test_person_moving_back_onto_a_recorded_residual_seat_is_not_erased():
     # 11 号已重绘成空座，人坐回了 12 号
     desks = build_live_desk_wrappers_for(handler, {12: True}, "bottom")
     with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
     ) as cmd_mgr:
         notify = AsyncMock()
         cmd_mgr.return_value.notify_focus_count_change = notify

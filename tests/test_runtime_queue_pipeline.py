@@ -46,7 +46,7 @@ class _FakeCommandManager:
         return len(messages)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
-        from ushareiplay.managers.command_manager import CommandManager
+        from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
         manager = CommandManager.__new__(CommandManager)
         manager.__init__()
@@ -274,7 +274,7 @@ def test_screen_scan_queues_ascii_colon_in_chat_prefix():
 def test_focus_app_for_queued_commands_switches_to_app_without_executing_commands():
     """The scan still brings Soul forward; execution belongs to the drainer (#398)."""
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.message_manager import MessageManager
 
     switches = []
@@ -448,7 +448,7 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
     unsynchronised; this pins that a queued screen command is guarded exactly
     like a backfilled one. Playback muting no longer wraps this path (#535).
     """
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     entered = []
 
@@ -476,7 +476,7 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
         return dispatch
 
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
         _inert_dispatch,
     )
 
@@ -661,7 +661,7 @@ def _screen_chat_window(chat_window, monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.core.runtime_services import RuntimeQueueDrainer
     from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     handler = chat_window.handler
     handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
@@ -779,7 +779,7 @@ def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_
     """The event hands the command to the runtime queue instead of executing it (#398)."""
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     fake_command_manager = _FakeCommandManager()
     monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager))

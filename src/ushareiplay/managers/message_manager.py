@@ -30,7 +30,7 @@ from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.keyword_manager import KeywordManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager

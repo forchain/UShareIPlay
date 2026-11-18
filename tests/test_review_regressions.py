@@ -133,9 +133,9 @@ class _DummyCommand:
 @pytest.fixture
 def command_manager(monkeypatch):
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.dal import user_dao as user_dao_module
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.sleep_manager import SleepManager
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+    from ushareiplay.modules.command.use_cases import SleepManager
 
     config = {
         "room_owner": "Joyer",
@@ -152,8 +152,11 @@ def command_manager(monkeypatch):
     async def _get_or_create(_nickname):
         return _User()
 
-    monkeypatch.setattr(user_dao_module.UserDAO, "get_or_create", staticmethod(_get_or_create))
+    monkeypatch.setattr(
+        TortoiseUserRepository, "get_or_create", staticmethod(_get_or_create)
+    )
 
+    SleepManager.reset_instance()
     SleepManager.initialize(config)
     manager = CommandManager.instance()
     manager._handler = _Handler(config)

@@ -15,7 +15,7 @@ from selenium.common import WebDriverException, StaleElementReferenceException
 
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.message_dispatch import MessageDispatch
@@ -490,13 +490,13 @@ class AppController(Singleton):
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.managers.timer_manager import TimerManager
-            from ushareiplay.managers.command_manager import CommandManager
+            from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
-            from ushareiplay.managers.sleep_manager import SleepManager
+            from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
             from ushareiplay.managers.room_profile.party_settings import (
                 SoulPartySettingsDriver,

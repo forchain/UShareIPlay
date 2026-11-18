@@ -276,7 +276,7 @@ async def test_message_content_event_logs_the_composed_quoted_message(chat_windo
     event = MessageContentEvent(chat_window.handler)
 
     wrappers = _content_wrappers(_MIXED_ROWS_XML)
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance"):
+    with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"):
         await event.handle("message_content", wrappers)
 
     expected = [

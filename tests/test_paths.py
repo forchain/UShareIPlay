@@ -9,7 +9,7 @@ import pytest
 
 def test_command_manager_commands_path_exists():
     """CommandManager.commands_path 应指向 src/ushareiplay/commands/"""
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     path = manager.commands_path
@@ -20,7 +20,7 @@ def test_command_manager_commands_path_exists():
 
 def test_command_manager_commands_path_has_py_files():
     """commands 目录应包含 .py 命令文件"""
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     py_files = list(manager.commands_path.glob("*.py"))
