@@ -1,11 +1,11 @@
 ---
-covers: [UserManager, AdminManager, MessageManager, KeywordManager, MemoryManager, RolePolicy, UserDAO, EnterDao, ExitDao, ReturnDao, ReceiveDao, FocusEventDao, AdminCommand, AliasCommand, SayCommand, KeywordCommand, EnterCommand, ExitCommand, ReturnCommand, ReceiveCommand, FocusCommand, GiftCommand, LevelCommand]
+covers: [UserManager, AdminManager, MessageManager, KeywordManager, UserMemoryService, RolePolicy, UserDAO, EnterDao, ExitDao, ReturnDao, ReceiveDao, FocusEventDao, AdminCommand, AliasCommand, SayCommand, KeywordCommand, EnterCommand, ExitCommand, ReturnCommand, ReceiveCommand, FocusCommand, GiftCommand, LevelCommand]
 last-synced: 2026-09-23
 ---
 
 ## Overview
 
-User management handles identity, role hierarchy, permission levels, automated greetings, keyword-triggered responses, event-driven command hooks (enter, exit, return, receive, focus), and dual-layer user memory. `UserManager` and `UserDAO` manage user levels and aliases, `RolePolicy` enforces operator and permission tiers, while `MemoryManager` persists conversational preferences.
+User management handles identity, role hierarchy, permission levels, automated greetings, keyword-triggered responses, event-driven command hooks (enter, exit, return, receive, focus), and dual-layer user memory. `UserManager` and `UserDAO` manage user levels and aliases, `RolePolicy` enforces operator and permission tiers, while `UserMemoryService` persists conversational preferences through the user memory and chat log repositories.
 
 ## Canonical Identity (Username Aliases)
 
@@ -44,7 +44,7 @@ To keep ID-bound behavior stable across renames, the DB maps an alias user to a 
 |---|---|
 | `UserManager` | User lookup, level assignment, gift dispatch, persistence via `UserDAO` |
 | `RolePolicy` | Evaluates caller tiers: Human Operators, System Users, Privileged Users, Normal Users |
-| `MemoryManager` | Dual-layer user memory: short-term interaction window + long-term profile / immutable directives |
+| `UserMemoryService` | Dual-layer user memory: short-term interaction window + long-term profile / immutable directives |
 | `AdminManager` | Toggles in-app admin role for users in Soul App party room UI |
 | `MessageManager` | Outbound message queue dispatch; parses entry notifications and triggers automated actions |
 | `KeywordManager` | Maps trigger keywords → response messages (public or private scope, stored in DB) |
@@ -115,4 +115,4 @@ Users can register automated commands (`:enter`, `:exit`, `:return`, `:receive`,
 
 - **Role Policy additions**: Extend `RolePolicy` in `src/ushareiplay/core/roles.py` to support new operator sources or custom permission checks.
 - **New event hook**: Create model + DAO under `src/ushareiplay/models/` and `src/ushareiplay/dal/`, add command in `src/ushareiplay/commands/`, register in `DatabaseManager`.
-- **Memory schema changes**: Update `MemoryManager` structured schema validation and prompt builder.
+- **Memory schema changes**: Update `UserMemoryService` and `adapters/outbound/llm/memory_distiller.py` prompt/schema handling.

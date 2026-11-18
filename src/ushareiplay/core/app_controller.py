@@ -52,6 +52,8 @@ class AppController(Singleton):
     # UI 独占会话租赁。类属性兜底，让绕过 __init__ 直接构造的测试替身也能安全走
     # ui_session（首次访问时按需创建）。
     _ui_session_lease: Optional[UISessionLease] = None
+    # 类属性兜底：绕过 __init__ 的测试替身也能安全读写记忆服务。
+    user_memory = None
 
     def __init__(self, config):
         # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
@@ -101,7 +103,7 @@ class AppController(Singleton):
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
-        self.memory_manager = None
+        self.user_memory = None
         self.post_party_create_automation = None
 
 
@@ -579,14 +581,44 @@ class AppController(Singleton):
                 name_resolver=self.info_manager.resolve_visible_username,
             )
             AdminManager.initialize(self.soul_handler)
-            KeywordManager.initialize(self.soul_handler)
+            self.keyword_manager = KeywordManager.initialize(self.soul_handler)
+            # 双层用户记忆：领域用例由组合根装配，LLM 客户端在此注入，
+            # 内存/聊天日志仓储背后是 Tortoise 适配器（ADR-0006）。
+            from ushareiplay.adapters.outbound.llm.memory_distiller import (
+                LLMMemoryDistiller,
+            )
+            from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
+                TortoiseChatLogRepository,
+            )
+            from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
+                TortoiseUserMemoryRepository,
+            )
+            from ushareiplay.adapters.outbound.persistence.user_repository import (
+                TortoiseUserRepository,
+            )
+            from ushareiplay.modules.user.domain import MemorySettings
+            from ushareiplay.modules.user.use_cases import UserMemoryService
+
+            memory_settings = MemorySettings.from_config(self.config)
+            self.user_memory = UserMemoryService(
+                users=TortoiseUserRepository(),
+                memories=TortoiseUserMemoryRepository(),
+                chat_logs=TortoiseChatLogRepository(),
+                distiller=LLMMemoryDistiller(
+                    self.keyword_manager.llm_client,
+                    timeout=memory_settings.timeout,
+                ),
+                settings=memory_settings,
+            )
+            self.command_manager.user_memory = self.user_memory
+            self.party_manager.user_memory = self.user_memory
+            self.keyword_manager.user_memory = self.user_memory
             # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
             # 这一个模块里，各命令文件只是薄适配器（#422）。
-            UserEventHooks.initialize(self.soul_handler)
-            from ushareiplay.managers.memory_manager import MemoryManager
+            self.user_event_hooks = UserEventHooks.initialize(self.soul_handler)
+            self.user_event_hooks.user_memory = self.user_memory
+
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-            self.memory_manager = MemoryManager.initialize()
-            self.memory_manager.configure(self.config)
             # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
             # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
             # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
@@ -705,9 +737,9 @@ class AppController(Singleton):
         self.logger.info("定时器管理器初始化完成")
 
         # Start async memory manager worker
-        if getattr(self, "memory_manager", None):
+        if self.user_memory:
             self.logger.info("初始化记忆管理器...")
-            await self.memory_manager.start()
+            await self.user_memory.start()
             self.logger.info("记忆管理器初始化完成")
 
 
@@ -825,8 +857,8 @@ class AppController(Singleton):
 
         # Stop async timer manager
         await self.timer_manager.stop()
-        if hasattr(self, 'memory_manager') and self.memory_manager:
-            await self.memory_manager.stop()
+        if self.user_memory:
+            await self.user_memory.stop()
         self.logger.info("Application stopped")
 
     async def shutdown(self):
@@ -843,8 +875,8 @@ class AppController(Singleton):
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
 
-        if hasattr(self, 'memory_manager') and self.memory_manager:
-            await self.memory_manager.stop()
+        if self.user_memory:
+            await self.user_memory.stop()
 
         self.driver_lifecycle.shutdown()
 

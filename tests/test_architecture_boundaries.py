@@ -14,7 +14,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 MODULES_ROOT = SRC_ROOT / "ushareiplay" / "modules"
 PERSISTENCE_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "persistence"
 SYSTEM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "system"
-LLM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "llm"
+LLM_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "llm"
 GUARDED_ROOTS = (MODULES_ROOT, SYSTEM_ADAPTERS_ROOT)
 
 FORBIDDEN_MODULES = ("appium", "selenium", "tortoise", "openai", "ushareiplay.adapters")
@@ -28,7 +28,7 @@ FORBIDDEN_IN_PERSISTENCE = (
     "ushareiplay.adapters.outbound.llm",
     "ushareiplay.adapters.outbound.system",
 )
-# LLM 适配器是 OpenAI 兼容 HTTP 的家，但不得卷入 UI/持久化/其他适配器或服务定位。
+# LLM 适配器是 OpenAI/HTTP 的家，但不得卷入 UI、数据库或服务定位。
 FORBIDDEN_IN_LLM = (
     "appium",
     "selenium",
@@ -105,19 +105,6 @@ def test_guarded_packages_do_not_import_technology_or_adapters_and_do_not_locate
     assert violations == {}
 
 
-def test_llm_adapter_does_not_import_ui_persistence_or_locate_services():
-    llm_files = sorted(LLM_ADAPTERS_ROOT.rglob("*.py"))
-    assert llm_files
-
-    violations = {
-        str(path): found
-        for path in llm_files
-        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_LLM))
-    }
-
-    assert violations == {}
-
-
 def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
     persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
     assert persistence_files
@@ -126,6 +113,19 @@ def test_persistence_adapter_does_not_import_other_technologies_or_locate_servic
         str(path): found
         for path in persistence_files
         if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_PERSISTENCE))
+    }
+
+    assert violations == {}
+
+
+def test_llm_adapter_stays_out_of_ui_persistence_and_service_location():
+    llm_files = sorted(LLM_ROOT.rglob("*.py"))
+    assert (LLM_ROOT / "memory_distiller.py").exists()
+
+    violations = {
+        str(path): found
+        for path in llm_files
+        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_LLM))
     }
 
     assert violations == {}

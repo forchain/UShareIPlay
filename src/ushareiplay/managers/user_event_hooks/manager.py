@@ -32,6 +32,7 @@ class UserEventHooks(Singleton):
     def __init__(self, handler=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
+        self.user_memory = None
 
     @property
     def handler(self):
@@ -165,7 +166,12 @@ class UserEventHooks(Singleton):
             trigger = username
             if gate is not None and username is not None:
                 trigger = await gate(
-                    username, log_info=self._log_info, log_warning=self._log_warning
+                    username,
+                    log_info=self._log_info,
+                    log_warning=self._log_warning,
+                    schedule_consolidation=(
+                        self.user_memory.schedule_user if self.user_memory else None
+                    ),
                 )
                 if trigger is None:
                     return 0
