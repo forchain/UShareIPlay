@@ -41,6 +41,7 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     manager.commands_path = Path(tmp_path)
+    manager.command_roots = (Path(tmp_path),)
     manager.controller = DummyController()
     manager._logger = FakeLogger()
     manager._handler = SimpleNamespace(config={"system_users": []})
