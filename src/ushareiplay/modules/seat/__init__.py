@@ -32,6 +32,16 @@ from ushareiplay.modules.seat.ledger import (
     evidence_weight,
 )
 
+from ushareiplay.modules.seat.ports import (
+    SeatInvitePort,
+    SeatPanelPort,
+    SeatReservationRepository,
+)
+from ushareiplay.modules.seat.use_cases import (
+    SeatObservationService,
+    SeatService,
+)
+
 __all__ = [
     "AvatarTapPolicy",
     "ChangeSet",
@@ -47,11 +57,16 @@ __all__ = [
     "SeatClickPlan",
     "SeatDiff",
     "SeatError",
+    "SeatInvitePort",
     "SeatInviteRow",
     "SeatLedger",
     "SeatObservationGateState",
+    "SeatObservationService",
+    "SeatPanelPort",
     "SeatRescanCooldownPolicy",
     "SeatReservation",
+    "SeatReservationRepository",
+    "SeatService",
     "SeatSlot",
     "SeatSnapshot",
     "claimed_usernames",
