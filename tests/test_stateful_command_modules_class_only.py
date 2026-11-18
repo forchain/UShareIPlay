@@ -1,4 +1,4 @@
-from ushareiplay.core.command_catalogue import COMMAND_ROOTS
+from ushareiplay.core.command_catalogue import DEFAULT_COMMAND_ROOTS
 
 STATEFUL_COMMAND_MODULES = [
     "album.py",
@@ -21,7 +21,7 @@ STATEFUL_COMMAND_MODULES = [
 def test_stateful_command_modules_are_class_only():
     for filename in STATEFUL_COMMAND_MODULES:
         path = next(
-            (root / filename for root in COMMAND_ROOTS if (root / filename).is_file()),
+            (root / filename for root in DEFAULT_COMMAND_ROOTS if (root / filename).is_file()),
             None,
         )
         assert path is not None, f"{filename} 在任何命令根目录中都不存在"

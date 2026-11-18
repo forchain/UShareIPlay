@@ -75,6 +75,7 @@ def make_manager(tmp_path):
     manager.configure_runtime(runtime)
     manager._logger = FakeLogger()
     manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
+    manager.commands_path = tmp_path
     manager.command_roots = (tmp_path,)
     return manager, runtime, controller
 

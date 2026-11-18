@@ -19,13 +19,10 @@ from ushareiplay.modules.shared.roles import (
     resolve_command_level,
 )
 
-SRC_ROOT = Path(__file__).resolve().parent.parent
-# 命令模块迁移期：先查已迁入的入站适配器，再回退旧目录。启动校验与动态
-# 加载共用这份有序根列表，后续切片搬文件时不再改加载器。
-COMMAND_ROOTS = (
-    SRC_ROOT / "adapters" / "inbound" / "chat",
-    SRC_ROOT / "commands",
-)
+DEFAULT_COMMANDS_PATH = Path(__file__).resolve().parent.parent / "commands"
+CHAT_COMMANDS_PATH = Path(__file__).resolve().parent.parent / "adapters" / "inbound" / "chat"
+# 迁移期命令按序查找：新的聊天适配器优先，旧 commands 包随后（#559 删除后者）。
+DEFAULT_COMMAND_ROOTS = (CHAT_COMMANDS_PATH, DEFAULT_COMMANDS_PATH)
 
 # 睡眠时段默认拦截的播放类命令。config.yaml 的 sleep.blocked_commands 可覆盖。
 DEFAULT_SLEEP_BLOCKED = frozenset(
@@ -108,19 +105,23 @@ class CommandCatalogue:
         *,
         sleep_blocked: Iterable[str] = (),
         duplicate_prefixes: Iterable[str] = (),
-        commands_paths: Iterable[Path] = COMMAND_ROOTS,
+        command_roots: Iterable[Path] = DEFAULT_COMMAND_ROOTS,
     ):
         self._definitions = dict(definitions)
         self._sleep_blocked = frozenset(sleep_blocked)
         self._duplicate_prefixes = tuple(duplicate_prefixes)
-        self._commands_paths = tuple(Path(path) for path in commands_paths)
+        self._command_roots = tuple(Path(root) for root in command_roots)
+
+    @property
+    def command_roots(self) -> tuple[Path, ...]:
+        return self._command_roots
 
     @classmethod
     def from_config(
         cls,
         config: object,
         *,
-        commands_paths: Optional[Iterable[Path]] = None,
+        commands_path: Optional[Path] = None,
     ) -> "CommandCatalogue":
         """从根配置（或裸命令列表）编译目录。"""
         if isinstance(config, ConfigView):
@@ -183,27 +184,29 @@ class CommandCatalogue:
                 raw=command,
             )
 
+        roots = (
+            (Path(commands_path),) if commands_path is not None else DEFAULT_COMMAND_ROOTS
+        )
         return cls(
             definitions,
             sleep_blocked=configured_blocked,
             duplicate_prefixes=duplicates,
-            commands_paths=commands_paths or COMMAND_ROOTS,
+            command_roots=roots,
         )
 
-    def validate(self, commands_paths: Optional[Iterable[Path]] = None) -> None:
+    def validate(self, commands_path: Optional[Path] = None) -> None:
         """校验目录自洽；不通过则抛 CommandCatalogueError。"""
-        roots = (
-            tuple(Path(path) for path in commands_paths)
-            if commands_paths is not None
-            else self._commands_paths
-        )
+        roots = (Path(commands_path),) if commands_path is not None else self._command_roots
         problems = [
             f"重复的命令前缀: {prefix}" for prefix in self._duplicate_prefixes
         ]
         for definition in self._definitions.values():
             module_path = next(
-                (root / f"{definition.module}.py" for root in roots
-                 if (root / f"{definition.module}.py").is_file()),
+                (
+                    root / f"{definition.module}.py"
+                    for root in roots
+                    if (root / f"{definition.module}.py").is_file()
+                ),
                 None,
             )
             if module_path is None:

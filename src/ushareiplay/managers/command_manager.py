@@ -9,7 +9,11 @@ from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_catalogue import COMMAND_ROOTS, CommandCatalogue
+from ushareiplay.core.command_catalogue import (
+    CHAT_COMMANDS_PATH,
+    DEFAULT_COMMANDS_PATH,
+    CommandCatalogue,
+)
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
@@ -44,7 +48,8 @@ class CommandManager(Singleton):
         self.controller = None
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
-        self.command_roots = COMMAND_ROOTS
+        self.commands_path = DEFAULT_COMMANDS_PATH
+        self.command_roots = (CHAT_COMMANDS_PATH, self.commands_path)
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
 

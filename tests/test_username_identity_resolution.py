@@ -385,7 +385,7 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_level_writes_through_the_alias_to_canonical(alias_pair):
-    from ushareiplay.commands.level import LevelCommand
+    from ushareiplay.adapters.inbound.chat.level import LevelCommand
 
     controller = DummyController()
     command = LevelCommand(controller)
