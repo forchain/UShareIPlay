@@ -70,7 +70,7 @@ class FollowerMessageEvent(BaseEvent):
             # 触发用户返回事件（若符合 return 条件）
             try:
                 from ushareiplay.state.presence_tracker import PresenceTracker
-                from ushareiplay.managers.command_manager import CommandManager
+                from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
                 presence_tracker = PresenceTracker.instance()
                 if presence_tracker.should_trigger_return(nickname):

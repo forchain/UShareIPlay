@@ -56,7 +56,7 @@ class DummyCommand:
 @pytest.fixture(autouse=True)
 def _reset_singletons():
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.seat_manager import SeatManager
 
     CommandManager.reset_instance()
@@ -64,7 +64,7 @@ def _reset_singletons():
     MessageDispatch.initialize()
     RoomState.reset_instance()
     SeatManager.reset_instance()
-    from ushareiplay.core.command_catalogue import CommandCatalogue
+    from ushareiplay.modules.command.domain import CommandCatalogue
     from ushareiplay.core.config_loader import ConfigLoader
 
     room_state = RoomState.initialize(
@@ -80,7 +80,7 @@ def _reset_singletons():
 
 @pytest.mark.asyncio
 async def test_guest_room_allows_music_commands():
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     cm = CommandManager.initialize()
     cm.configure_runtime(RuntimeStub())
@@ -99,7 +99,7 @@ async def test_guest_room_allows_music_commands():
         "response_template": "{message}",
     }
 
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=1)
         res = await cm.process_command(dummy_cmd, msg, cmd_info)
 
@@ -109,7 +109,7 @@ async def test_guest_room_allows_music_commands():
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_room_management_commands():
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     cm = CommandManager.initialize()
     cm.configure_runtime(RuntimeStub())
@@ -131,7 +131,7 @@ async def test_guest_room_blocks_room_management_commands():
             "response_template": "{message}",
         }
 
-        with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+        with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
             mock_user.return_value = SimpleNamespace(level=9)
             res = await cm.process_command(dummy_cmd, msg, cmd_info)
 
@@ -141,7 +141,7 @@ async def test_guest_room_blocks_room_management_commands():
 
 @pytest.mark.asyncio
 async def test_host_room_allows_all_commands():
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     cm = CommandManager.initialize()
     cm.configure_runtime(RuntimeStub())
@@ -160,7 +160,7 @@ async def test_host_room_allows_all_commands():
         "response_template": "{message}",
     }
 
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=3)
         res = await cm.process_command(dummy_cmd, msg, cmd_info)
 
@@ -275,7 +275,7 @@ async def test_guest_room_blocks_seat_check_on_enter_and_return():
     `CommandManager` 按属性名反射分发。反射分发收掉后座位复核改由 `notify_*` 显式
     调用，守卫也跟着搬过来 —— 这里钉的是新缝上的同一件事。
     """
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.seat_manager import SeatManager
 
     RoomState.instance().is_guest_room = True
@@ -305,7 +305,7 @@ async def test_host_room_checks_seats_on_enter_and_return():
     反射分发连到事件上。反射删掉而显式调用忘了补，进入/返回时的座位自动认领会
     静默失效 —— 不报错，只是座位再也不动了。
     """
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.seat_manager import SeatManager
 
     RoomState.instance().is_guest_room = False

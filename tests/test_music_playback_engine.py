@@ -672,7 +672,7 @@ async def test_play_command_lets_the_engine_own_the_mic_lifecycle(initialized_te
 async def test_command_manager_owns_no_playback_muting_hooks(initialized_test_singletons):
     """命令层不再声明静音钩子：麦克风生命周期完全归 `MusicManager`（ADR-0007）。"""
     from ushareiplay.core.base_command import BaseCommand
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     manager = CommandManager.instance()
     assert not hasattr(manager, "playback_muting_guard")

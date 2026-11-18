@@ -26,7 +26,7 @@ import logging
 from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.models.message_info import MessageInfo
 

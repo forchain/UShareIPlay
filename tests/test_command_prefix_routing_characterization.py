@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 def _run(coro):
@@ -80,7 +80,7 @@ def _routing_manager(monkeypatch, dispatch):
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
+        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
     )
     manager.configure_runtime(_FakeRuntime())
     manager._logger = logging.getLogger("test_prefix_routing")
@@ -302,7 +302,7 @@ def test_command_path_no_longer_re_evaluates_prefixes(monkeypatch):
     consumes an already-classified batch. The chat-intake symbols that carried
     the prefix *semantics* are no longer imported here at all.
     """
-    from ushareiplay.managers import command_manager as command_manager_module
+    from ushareiplay.adapters.inbound.runtime import command_manager as command_manager_module
 
     for removed in (
         "execute_chat_scan",

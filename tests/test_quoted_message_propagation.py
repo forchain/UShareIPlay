@@ -31,7 +31,7 @@ async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
     second = "souler[Bob]说：「Dave：晚安」 哈哈"
 
     with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance"),
+        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"),
     ):
         await event.handle("message_content", [_FakeWrapper(first)])
         await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
@@ -48,7 +48,7 @@ async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_w
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
     with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
+        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
     ):
         await event.handle(
             "message_content",
@@ -69,7 +69,7 @@ async def test_sender_command_after_a_quote_reaches_command_processing(chat_wind
     chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 :play 晴天"
     with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance"),
+        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"),
     ):
         await event.handle("message_content", [_FakeWrapper(composed)])
 

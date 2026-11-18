@@ -20,7 +20,7 @@ async def test_message_content_event_triggers_return_when_should_trigger(chat_wi
 
     with (
         patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
-        patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
+        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
     ):
         mock_presence.return_value.should_trigger_return.return_value = True
         mock_presence.return_value.record_return = MagicMock()
@@ -41,7 +41,7 @@ async def test_message_content_event_skips_return_when_not_eligible(chat_window)
 
     with (
         patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
-        patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
+        patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
     ):
         # User not online or recently entered -> should_trigger_return is False
         mock_presence.return_value.should_trigger_return.return_value = False

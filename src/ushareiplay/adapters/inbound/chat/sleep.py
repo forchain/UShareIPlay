@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.sleep_manager import SleepManager
 
 
 class SleepCommand(BaseCommand):
     async def do_process(self, message_info, parameters):
         keyword = (parameters[0].strip().lower() if parameters else "status")
 
-        manager = SleepManager.instance()
+        manager = self.controller.sleep_manager
 
         if keyword == "on":
             manager.set_override(True)

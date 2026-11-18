@@ -36,7 +36,7 @@ class TestFollowerMessageHandler:
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
             patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
             patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
-            patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
+            patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
             mock_get_chat_logger.return_value = MagicMock()
             mock_presence.return_value.should_trigger_return.return_value = True
@@ -75,7 +75,7 @@ class TestFollowerMessageHandler:
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
             patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
             patch("ushareiplay.state.presence_tracker.PresenceTracker.instance") as mock_presence,
-            patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
+            patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
             mock_get_chat_logger.return_value = MagicMock()
             # Simulate: user is newly entering or was recently entered

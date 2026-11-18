@@ -1,4 +1,3 @@
-import asyncio
 import importlib
 import importlib.util
 import logging
@@ -7,21 +6,25 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+from ushareiplay.adapters.outbound.system.clock import SystemClock
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_catalogue import (
+from ushareiplay.core.command_silence import command_silence
+from ushareiplay.core.message_dispatch import MessageDispatch
+from ushareiplay.core.runtime_services import route_queue_text
+from ushareiplay.core.singleton import Singleton
+from ushareiplay.managers.memory_manager import MemoryManager
+from ushareiplay.modules.command.domain import (
     CHAT_COMMANDS_PATH,
     DEFAULT_COMMANDS_PATH,
     CommandCatalogue,
+    GuestRoomRestricted,
+    InsufficientCommandLevel,
+    SleepBlocked,
 )
-from ushareiplay.core.command_silence import command_silence
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
-from ushareiplay.core.runtime_services import route_queue_text
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.modules.command.use_cases import DispatchCommand
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.managers.user_event_hooks import (
     ENTER,
     EXIT,
@@ -41,17 +44,20 @@ class CommandManager(Singleton):
     单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, sleep=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
+        self._sleep = sleep
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
         self.commands_path = DEFAULT_COMMANDS_PATH
         self.command_roots = (CHAT_COMMANDS_PATH, self.commands_path)
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
+        self._users = TortoiseUserRepository()
+        self._clock = SystemClock()
 
     def configure_runtime(self, runtime):
         self._runtime = runtime
@@ -232,151 +238,53 @@ class CommandManager(Singleton):
             str: Response message
         """
         try:
-            parameters = command_info['parameters']
-            silent = bool(command_info.get("silent")) or bool(
-                getattr(message_info, "silent", False)
+            return await self._dispatch_command().execute(
+                command, message_info, command_info
             )
-
-            try:
-                self.runtime.emit(
-                    "command.received",
-                    ctx={
-                        "prefix": command_info.get("prefix"),
-                        "raw": message_info.content,
-                        "nickname": message_info.nickname,
-                    },
-                )
-            except Exception:
-                pass
-            
-            # 角色与权限策略检查
-            cfg = getattr(self.handler, "config", None)
-            role_policy = RolePolicy(cfg)
-
-            is_human_op = role_policy.is_human_operator(message_info.nickname)
-
-            # 1. 检查用户等级：人工操作者（房主、Console、管理员）与系统自动化角色不受等级限制
-            if not role_policy.is_privileged(message_info.nickname):
-                prefix = command_info.get("prefix") or ""
-                required_level = (
-                    self.catalogue.required_level(prefix, parameters)
-                    if self.catalogue is not None and self.catalogue.get(prefix)
-                    else resolve_command_level(command_info, parameters)
-                )
-                user = await UserDAO.get_or_create(message_info.nickname)
-                
-                if user.level < required_level:
-                    result = {
-                        'error': f'需要等级 {required_level} 才能使用此命令，您当前等级为 {user.level}'
-                    }
-                    format_kwargs = {'user': message_info.nickname, **result}
-                    format_kwargs['party_id'] = parameters[0] if parameters else 'unknown'
-                    res = command_info.get('error_template', '{error}').format(**format_kwargs)
-                    return res
-
-            # 2. 睡眠模式检查 (Sleep mode)：
-            # - 人工操作者（房主、Console、管理员）具备人工判断能力，可突破睡眠保护。
-            # - 明确标记 sleep_exempt 的指令（手动 @我 意图识别、定时器排程）可突破睡眠保护。
-            # - 其余系统自动化角色（Agent 等）与普通用户不得打断睡眠保护。
-            if not is_human_op:
-                try:
-                    prefix = command_info.get("prefix") or ""
-                    sleep_exempt = bool(getattr(message_info, "sleep_exempt", False))
-                    sg = SleepManager.instance()
-                    if not sleep_exempt and sg.is_blocked_command(prefix):
-                        result = {
-                            "error": (
-                                "休息中（11pm-6am）"
-                            )
-                        }
-                        format_kwargs = {"user": message_info.nickname, **result}
-                        format_kwargs["party_id"] = parameters[0] if parameters else "unknown"
-                        return command_info.get("error_template", "{error}").format(**format_kwargs)
-                except Exception:
-                    # Guard should never break command execution.
-                    pass
-
-            # 他人房间（客房模式）限制：仅支持点歌功能，所有群管理和配置命令全部禁用
-            try:
-                room_state = RoomState.instance()
-                prefix = command_info.get("prefix") or ""
-                if room_state.is_guest_room and not room_state.is_command_allowed_in_guest_room(prefix):
-                    result = {
-                        'error': '当前处于他人房间，仅支持点歌功能，群管理功能已禁用'
-                    }
-                    format_kwargs = {'user': message_info.nickname, **result}
-                    if parameters:
-                        format_kwargs['party_id'] = parameters[0]
-                    return command_info.get('error_template', '{error}').format(**format_kwargs)
-            except Exception:
-                pass
-
-            # UI 互斥：命令执行期间禁止 EventManager 的"未知页面自动 back"打断弹窗/子页面流程
-            result = {'error': 'unknown'}
-            retry_enabled = bool(command_info.get("retry"))
-            with command_silence(silent):
-                async with self.runtime.ui_session(f"command:{command_info.get('prefix', 'unknown')}"):
-                    try:
-                        self.runtime.emit(
-                            "command.dispatch",
-                            ctx={
-                                "prefix": command_info.get("prefix"),
-                                "parameters": parameters,
-                                "nickname": message_info.nickname,
-                                "silent": silent,
-                            },
-                        )
-                    except Exception:
-                        pass
-                    result = await command.process(message_info, parameters)
-                    if 'error' in result and retry_enabled:
-                        cmd_prefix = command_info.get('prefix', 'unknown')
-                        self.logger.warning(
-                            f"Command '{cmd_prefix}' failed on first attempt ({result.get('error')}), retrying (1/1)..."
-                        )
-                        try:
-                            self.runtime.emit(
-                                "command.retry",
-                                ctx={
-                                    "prefix": cmd_prefix,
-                                    "first_error": result.get("error"),
-                                    "nickname": message_info.nickname,
-                                },
-                            )
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.5)
-                        result = await command.process(message_info, parameters)
-
-            if 'error' in result:
-                # 合并 result 中的字段（如 party_id），以便各命令的 error_template 能正确渲染
-                format_kwargs = {'error': result['error'], 'user': message_info.nickname, **result}
-                res = command_info['error_template'].format(**format_kwargs)
-            elif 'message' in result:
-                # keyword 命令返回的是 message 字段
-                res = f'{result["message"]} @{message_info.nickname}'
-            else:
-                result.setdefault("release_date", "")
-                res = f'{command_info["response_template"].format(**result)} @{message_info.nickname}'
-
-            try:
-                self.runtime.emit(
-                    "command.result",
-                    ctx={
-                        "prefix": command_info.get("prefix"),
-                        "success": "error" not in result,
-                        "error": result.get("error") if isinstance(result, dict) else None,
-                        "response": res,
-                        "response_len": len(res or ""),
-                        "silent": silent,
-                    },
-                )
-            except Exception:
-                pass
-            return res
+        except InsufficientCommandLevel as error:
+            text = (
+                f"需要等级 {error.required_level} 才能使用此命令，"
+                f"您当前等级为 {error.user_level}"
+            )
+            return self._gate_error(text, message_info, command_info, unknown_party_id=True)
+        except SleepBlocked:
+            return self._gate_error(
+                "休息中（11pm-6am）", message_info, command_info, unknown_party_id=True
+            )
+        except GuestRoomRestricted:
+            return self._gate_error(
+                "当前处于他人房间，仅支持点歌功能，群管理功能已禁用",
+                message_info,
+                command_info,
+                unknown_party_id=False,
+            )
         except Exception:
             self.logger.error(f"Error processing command {command_info}: {traceback.format_exc()}")
             return f"Error processing command {command_info}"
+
+    def _dispatch_command(self) -> DispatchCommand:
+        config = self.handler.config if self.handler is not None else None
+        return DispatchCommand(
+            policy=RolePolicy(config),
+            catalogue=self.catalogue,
+            users=self._users,
+            runtime=self.runtime,
+            clock=self._clock,
+            silence=command_silence,
+            sleep=self._sleep,
+            room=RoomState.instance() if RoomState.is_initialized() else None,
+            logger=self.logger,
+        )
+
+    def _gate_error(self, text, message_info, command_info, *, unknown_party_id: bool):
+        parameters = command_info["parameters"]
+        result = {"error": text}
+        format_kwargs = {"user": message_info.nickname, **result}
+        if unknown_party_id:
+            format_kwargs["party_id"] = parameters[0] if parameters else "unknown"
+        elif parameters:
+            format_kwargs["party_id"] = parameters[0]
+        return command_info.get("error_template", "{error}").format(**format_kwargs)
 
     def is_valid_command(self, content):
         """Check if content is a valid command"""

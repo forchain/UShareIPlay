@@ -25,7 +25,7 @@ from ushareiplay.modules.shared.config import (
 )
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.event_manager import EventManager
 
@@ -213,6 +213,7 @@ def _make_controller_with_live_sections():
     controller.music_handler = SimpleNamespace(config=controller.config.music)
     controller.event_manager = SimpleNamespace(element_to_event={})
     controller.command_manager = SimpleNamespace()
+    controller.sleep_manager = SimpleNamespace(configure_catalogue=lambda _c: None)
     return controller
 
 

@@ -29,7 +29,7 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.receive_dao import ReceiveDao
 from ushareiplay.dal.return_dao import ReturnDao
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks

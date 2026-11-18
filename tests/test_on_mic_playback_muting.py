@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
@@ -294,7 +294,7 @@ def _run_play_command(monkeypatch, r) -> None:
         "album": "叶惠美",
     }
 
-    monkeypatch.setattr("ushareiplay.managers.command_manager.MessageDispatch", _DispatchStub)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch", _DispatchStub)
     _DispatchStub.recorder = _Recorder(r.events)
     manager = CommandManager.instance()
     manager.configure_runtime(_Runtime())

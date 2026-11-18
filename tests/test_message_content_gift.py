@@ -33,7 +33,7 @@ async def test_message_content_event_gift_handling(db_init, monkeypatch, chat_wi
     event_handler = MessageContentEvent(chat_window.handler)
 
     notify_mock = AsyncMock()
-    monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
     wrapper = _Wrapper("souler[🍻🥂🥃🍸🍷🍺]送给Joyer")
 
@@ -65,7 +65,7 @@ async def test_message_content_event_heat_contribution_handling(db_init, monkeyp
     event_handler = MessageContentEvent(chat_window.handler)
 
     notify_mock = AsyncMock()
-    monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
     wrapper = _Wrapper("恭喜Alice在此房间贡献出3120热力值")
 
@@ -105,7 +105,7 @@ async def test_message_content_event_gift_higher_level_not_downgraded(db_init, m
     monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
-    monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
     wrapper = _Wrapper("souler[HighLevelUser]送给Joyer 【爱心】")
 
@@ -135,7 +135,7 @@ async def test_message_content_event_gift_to_non_owner_ignored(db_init, monkeypa
     monkeypatch.setattr("ushareiplay.managers.message_manager.get_chat_logger", lambda cfg: MagicMock())
 
     notify_mock = AsyncMock()
-    monkeypatch.setattr("ushareiplay.managers.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive", notify_mock, raising=False)
 
     wrapper = _Wrapper("souler[Sender]送给OtherUser")
 
@@ -183,7 +183,7 @@ async def test_process_missed_messages_heat_contribution(db_init, monkeypatch, c
 
     notify_mock = AsyncMock()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.CommandManager.notify_gift_receive",
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive",
         notify_mock,
         raising=False,
     )
@@ -233,7 +233,7 @@ async def test_process_missed_messages_owner_gift(db_init, monkeypatch, chat_win
 
     notify_mock = AsyncMock()
     monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.CommandManager.notify_gift_receive",
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.notify_gift_receive",
         notify_mock,
         raising=False,
     )

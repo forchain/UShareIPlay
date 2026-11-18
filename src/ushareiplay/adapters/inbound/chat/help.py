@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 
 
 class HelpCommand(BaseCommand):

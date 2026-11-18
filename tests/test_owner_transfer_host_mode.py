@@ -70,7 +70,7 @@ class _DummyCommand:
 @pytest.fixture(autouse=True)
 def _isolate_singletons():
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
@@ -195,7 +195,7 @@ async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
 @pytest.mark.asyncio
 async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     """Acceptance: host privileges (seat/theme/notice/...) come back with the room."""
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     state = _guest_room_state(monkeypatch)
     command_manager = CommandManager.initialize()
@@ -212,7 +212,7 @@ async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     }
     message = _MessageInfoStub(content=":theme 听歌")
 
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as dao:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as dao:
         dao.return_value = SimpleNamespace(level=3)
         blocked = await command_manager.process_command(dummy_command, message, command_info)
 
@@ -224,7 +224,7 @@ async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     await event.handle("room_id", _wrapper(HOST_ROOM_ID))
 
     dummy_command = _DummyCommand()
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as dao:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as dao:
         dao.return_value = SimpleNamespace(level=3)
         allowed = await command_manager.process_command(dummy_command, message, command_info)
 

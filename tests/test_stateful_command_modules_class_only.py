@@ -1,4 +1,4 @@
-from ushareiplay.core.command_catalogue import DEFAULT_COMMAND_ROOTS
+from ushareiplay.modules.command.domain import DEFAULT_COMMAND_ROOTS
 
 STATEFUL_COMMAND_MODULES = [
     "album.py",

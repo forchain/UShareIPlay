@@ -4,7 +4,7 @@ from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.mic_manager import MicManager

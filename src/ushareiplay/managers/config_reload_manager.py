@@ -116,11 +116,13 @@ class ConfigReloadManager:
         event_manager,
         command_manager,
         config_path: str = "config.yaml",
+        sleep_manager=None,
     ):
         self.config = config
         self.event_manager = event_manager
         self.command_manager = command_manager
         self.config_path = config_path
+        self.sleep_manager = sleep_manager
 
     def reload(self) -> ReloadReport:
         """重新读取配置并热更新各组件；失败时活配置一字不改。"""
@@ -206,10 +208,9 @@ class ConfigReloadManager:
         catalogue = self.command_manager.catalogue
 
         # 睡眠拦截与客房权限各自持有一份目录引用；不换的话热重载只刷新了解析器。
-        from ushareiplay.managers.sleep_manager import SleepManager
         from ushareiplay.state.room_state import RoomState
 
-        if SleepManager.is_initialized():
-            SleepManager.instance().configure_catalogue(catalogue)
+        if self.sleep_manager is not None:
+            self.sleep_manager.configure_catalogue(catalogue)
         if RoomState.is_initialized():
             RoomState.instance().configure_catalogue(catalogue)

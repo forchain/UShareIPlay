@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.commands.playlist import PlaylistCommand
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.models import PlaybackMode, PlaybackTrack
 from ushareiplay.managers.playback_muting import PlaybackMuting

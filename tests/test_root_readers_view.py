@@ -8,23 +8,21 @@ import datetime as dt
 
 import pytest
 
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.sleep_manager import SleepManager
+from ushareiplay.modules.command.use_cases import SleepManager
 
 
 @pytest.fixture
 def sleep_manager():
-    """真的 SleepManager 单例：构造完就复位，别把实例留给别的用例。"""
+    """真的 SleepManager：每个用例现造，不共享状态。"""
 
     def build(config):
-        SleepManager.reset_instance()
-        return SleepManager.initialize(ConfigView(config))
+        return SleepManager(ConfigView(config))
 
-    yield build
-    SleepManager.reset_instance()
+    return build
 
 
 def test_command_catalogue_from_the_view_matches_the_plain_dict_catalogue():

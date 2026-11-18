@@ -44,23 +44,20 @@ class DummyCommand:
 
 
 @pytest.fixture(autouse=True)
-def _reset_sleep_singleton():
+def _reset_command_manager():
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.sleep_manager import SleepManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
-    SleepManager.reset_instance()
     yield
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
-    SleepManager.reset_instance()
 
 
 @pytest.fixture
 def _patch_user_dao(monkeypatch):
-    from ushareiplay.dal import user_dao as user_dao_module
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
     class _User:
         level = 1
@@ -68,17 +65,18 @@ def _patch_user_dao(monkeypatch):
     async def _get_or_create(_nickname: str):
         return _User()
 
-    monkeypatch.setattr(user_dao_module.UserDAO, "get_or_create", staticmethod(_get_or_create))
+    monkeypatch.setattr(
+        TortoiseUserRepository, "get_or_create", staticmethod(_get_or_create)
+    )
 
 
 def _make_command_manager(config: dict):
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.sleep_manager import SleepManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+    from ushareiplay.modules.command.use_cases import SleepManager
 
-    SleepManager.initialize(config)
     MessageDispatch.initialize()
-    cm = CommandManager.initialize()
+    cm = CommandManager.initialize(sleep=SleepManager(config))
     cm._handler = HandlerStub(config)
     cm.configure_runtime(RuntimeStub())
     return cm
@@ -264,7 +262,7 @@ async def test_enabled_false_does_not_intercept(_patch_user_dao):
 @pytest.mark.asyncio
 async def test_outside_window_does_not_intercept(_patch_user_dao, monkeypatch):
     # Window 23:00-06:00; freeze "now" at 12:00 so it is outside window.
-    from ushareiplay.managers import sleep_manager as sg_module
+    from ushareiplay.modules.command import use_cases as sg_module
 
     class _FixedDatetime(dt.datetime):
         @classmethod

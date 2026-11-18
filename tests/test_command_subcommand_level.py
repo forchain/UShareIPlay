@@ -234,7 +234,7 @@ def _playlist_command_info():
 
 
 async def _run(command_info, nickname, level, content=None):
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     cm = CommandManager.instance()
     cm.configure_runtime(RuntimeStub())
@@ -245,7 +245,7 @@ async def _run(command_info, nickname, level, content=None):
         nickname=nickname,
         content=content if content is not None else f":{command_info['prefix']}",
     )
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=level)
         res = await cm.process_command(dummy_cmd, msg, command_info)
     return dummy_cmd, res

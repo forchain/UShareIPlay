@@ -40,7 +40,7 @@ def test_is_user_online(presence_tracker):
 @pytest.mark.asyncio
 async def test_update_online_users_notifies_enter_and_leave(presence_tracker):
     with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
+        "ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance"
     ) as mock_cmd_instance:
         mock_cmd = MagicMock()
         mock_cmd_instance.return_value = mock_cmd
@@ -80,7 +80,7 @@ def test_should_trigger_return_false_when_user_not_in_online_list(presence_track
 
 @pytest.mark.asyncio
 async def test_should_trigger_return_false_when_user_recently_entered(presence_tracker):
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd:
+    with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd:
         mock_cmd.return_value.notify_user_enter = MagicMock()
         mock_cmd.return_value.notify_user_leave = MagicMock()
 

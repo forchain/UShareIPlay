@@ -76,7 +76,7 @@ class PresenceTracker(Singleton):
         """
         try:
             # 环的另一端：CommandManager -> RoomState -> state.__init__ -> PresenceTracker (上层依赖下层)
-            from ushareiplay.managers.command_manager import CommandManager
+            from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             if CommandManager.is_initialized():
                 command_manager = CommandManager.instance()
                 asyncio.create_task(command_manager.notify_user_leave(username))
@@ -93,7 +93,7 @@ class PresenceTracker(Singleton):
         try:
             self._recent_enters[username] = time.time()
             # 环的另一端：CommandManager -> RoomState -> state.__init__ -> PresenceTracker (上层依赖下层)
-            from ushareiplay.managers.command_manager import CommandManager
+            from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             if CommandManager.is_initialized():
                 command_manager = CommandManager.instance()
                 asyncio.create_task(command_manager.notify_user_enter(username))

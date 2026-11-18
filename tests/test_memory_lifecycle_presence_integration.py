@@ -5,7 +5,7 @@ import pytest
 
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.adapters.outbound.persistence.models.user import User

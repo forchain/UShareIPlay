@@ -15,7 +15,7 @@ from ushareiplay.commands.exit import ExitCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.user_event_hooks import ENTER, EXIT, UserEventHooks, spec_for
