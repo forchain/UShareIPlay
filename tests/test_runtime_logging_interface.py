@@ -11,7 +11,7 @@ def test_attach_app_logger_archives_existing_active_file(tmp_path: Path, monkeyp
     from ushareiplay.core.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
@@ -42,7 +42,7 @@ def test_attach_app_logger_shares_handler_across_calls(tmp_path: Path, monkeypat
     from ushareiplay.core.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
@@ -76,7 +76,7 @@ def test_attach_chat_logger_archives_existing_active_file(tmp_path: Path, monkey
     from ushareiplay.core.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 

@@ -66,7 +66,7 @@ def test_init_driver_reuses_bridge_when_target_matches(monkeypatch):
     controller._network_bridge = bridge
     captured = _patch_driver_remote(monkeypatch)
 
-    with patch("ushareiplay.core.network_bridge.ensure_appium_endpoint") as mock_ensure:
+    with patch("ushareiplay.adapters.outbound.system.network_bridge.ensure_appium_endpoint") as mock_ensure:
         controller._init_driver()
 
     mock_ensure.assert_not_called()
@@ -82,7 +82,7 @@ def test_init_driver_discards_bridge_pointing_at_another_host(monkeypatch):
 
     fresh = FakeBridge("192.168.8.108", 4723, bridge_port=43999)
     with patch(
-        "ushareiplay.core.network_bridge.ensure_appium_endpoint",
+        "ushareiplay.adapters.outbound.system.network_bridge.ensure_appium_endpoint",
         return_value=("127.0.0.1", 43999, fresh),
     ) as mock_ensure:
         controller._init_driver()
@@ -101,7 +101,7 @@ def test_init_driver_discards_bridge_pointing_at_another_port(monkeypatch):
 
     fresh = FakeBridge("192.168.8.103", 4724, bridge_port=43999)
     with patch(
-        "ushareiplay.core.network_bridge.ensure_appium_endpoint",
+        "ushareiplay.adapters.outbound.system.network_bridge.ensure_appium_endpoint",
         return_value=("127.0.0.1", 43999, fresh),
     ):
         controller._init_driver()

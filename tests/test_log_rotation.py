@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 
 def test_archive_active_log_missing_file_does_not_create_archive(tmp_path: Path) -> None:
-    from ushareiplay.core.log_rotation import archive_active_log_on_startup
+    from ushareiplay.adapters.outbound.system.log_rotation import archive_active_log_on_startup
 
     active = archive_active_log_on_startup(tmp_path, "UShareIPlay.log")
 
@@ -19,7 +19,7 @@ def test_archive_active_log_empty_file_still_archives(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "UShareIPlay.log"
     active_file.touch()
@@ -40,7 +40,7 @@ def test_archive_active_log_uses_created_time_in_archive_name(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "UShareIPlay.log"
     active_file.write_text("old\n", encoding="utf-8")
@@ -63,7 +63,7 @@ def test_archive_active_log_preserves_active_inode(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "chat.log"
     active_file.write_text("old\n", encoding="utf-8")
@@ -84,7 +84,8 @@ def test_app_handler_loggers_share_fixed_active_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import app_handler, log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
+    from ushareiplay.core import app_handler
     from ushareiplay.core.app_handler import AppHandler
 
     old_log = tmp_path / "UShareIPlay.log"
@@ -149,7 +150,7 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
     from ushareiplay.managers import message_manager
 
     old_log = tmp_path / "chat.log"

@@ -262,7 +262,7 @@ class AppController(Singleton):
         appium_host = os.getenv("APPIUM_HOST") or appium.require("host")
         appium_port = os.getenv("APPIUM_PORT") or str(appium.require("port"))
 
-        from ushareiplay.core.network_bridge import ensure_appium_endpoint, diagnose_connection_error
+        from ushareiplay.adapters.outbound.system.network_bridge import ensure_appium_endpoint, diagnose_connection_error
         try:
             target_port = int(appium_port)
             bridge = getattr(self, "_network_bridge", None)
