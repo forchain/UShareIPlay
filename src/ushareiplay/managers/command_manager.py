@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ushareiplay.core.base_command import BaseCommand
 from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
-from ushareiplay.core.command_catalogue import CommandCatalogue
+from ushareiplay.core.command_catalogue import COMMAND_ROOTS, CommandCatalogue
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
@@ -43,8 +43,8 @@ class CommandManager(Singleton):
         self._runtime = None
         self.controller = None
 
-        # 命令相关属性
-        self.commands_path = Path(__file__).parent.parent / 'commands'
+        # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
+        self.command_roots = COMMAND_ROOTS
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
 
@@ -105,18 +105,35 @@ class CommandManager(Singleton):
         )
         self.logger.info("Command parser initialized")
 
+    @staticmethod
+    def _module_name(module_path: Path, command: str) -> str:
+        """按文件位置推导模块名；测试里的临时目录回退到旧命名。"""
+        src_root = Path(__file__).resolve().parents[2]
+        try:
+            relative = module_path.relative_to(src_root)
+        except ValueError:
+            return f"ushareiplay.commands.{command}"
+        return ".".join(relative.with_suffix("").parts)
+
     def load_command_module(self, command):
         """Load command module dynamically"""
         try:
             if command in self.command_modules:
                 return self.command_modules[command]
 
-            module_path = (self.commands_path / f"{command}.py").resolve()
-            if not module_path.exists():
-                self.logger.error(f'module path not exists, {module_path}')
+            module_path = next(
+                (
+                    path
+                    for root in self.command_roots
+                    if (path := (root / f"{command}.py").resolve()).exists()
+                ),
+                None,
+            )
+            if module_path is None:
+                self.logger.error(f'module path not exists, {command}.py')
                 return None
 
-            package_name = f"ushareiplay.commands.{command}"
+            package_name = self._module_name(module_path, command)
             spec = importlib.util.spec_from_file_location(package_name, module_path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[package_name] = module
@@ -158,8 +175,14 @@ class CommandManager(Singleton):
             if self.catalogue is not None:
                 command_files = list(self.catalogue.modules())
             else:
-                command_files = [f.stem for f in self.commands_path.glob('*.py')
-                                 if f.is_file() and not f.stem.startswith('__')]
+                command_files = []
+                seen = set()
+                for root in self.command_roots:
+                    for path in sorted(root.glob('*.py')):
+                        if path.stem.startswith('__') or path.stem in seen:
+                            continue
+                        seen.add(path.stem)
+                        command_files.append(path.stem)
 
             self.logger.info(f"Found command files: {command_files}")
 

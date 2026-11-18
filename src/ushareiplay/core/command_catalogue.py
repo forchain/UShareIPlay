@@ -19,7 +19,13 @@ from ushareiplay.modules.shared.roles import (
     resolve_command_level,
 )
 
-DEFAULT_COMMANDS_PATH = Path(__file__).resolve().parent.parent / "commands"
+SRC_ROOT = Path(__file__).resolve().parent.parent
+# 命令模块迁移期：先查已迁入的入站适配器，再回退旧目录。启动校验与动态
+# 加载共用这份有序根列表，后续切片搬文件时不再改加载器。
+COMMAND_ROOTS = (
+    SRC_ROOT / "adapters" / "inbound" / "chat",
+    SRC_ROOT / "commands",
+)
 
 # 睡眠时段默认拦截的播放类命令。config.yaml 的 sleep.blocked_commands 可覆盖。
 DEFAULT_SLEEP_BLOCKED = frozenset(
@@ -102,19 +108,19 @@ class CommandCatalogue:
         *,
         sleep_blocked: Iterable[str] = (),
         duplicate_prefixes: Iterable[str] = (),
-        commands_path: Path = DEFAULT_COMMANDS_PATH,
+        commands_paths: Iterable[Path] = COMMAND_ROOTS,
     ):
         self._definitions = dict(definitions)
         self._sleep_blocked = frozenset(sleep_blocked)
         self._duplicate_prefixes = tuple(duplicate_prefixes)
-        self._commands_path = Path(commands_path)
+        self._commands_paths = tuple(Path(path) for path in commands_paths)
 
     @classmethod
     def from_config(
         cls,
         config: object,
         *,
-        commands_path: Optional[Path] = None,
+        commands_paths: Optional[Iterable[Path]] = None,
     ) -> "CommandCatalogue":
         """从根配置（或裸命令列表）编译目录。"""
         if isinstance(config, ConfigView):
@@ -181,18 +187,26 @@ class CommandCatalogue:
             definitions,
             sleep_blocked=configured_blocked,
             duplicate_prefixes=duplicates,
-            commands_path=commands_path or DEFAULT_COMMANDS_PATH,
+            commands_paths=commands_paths or COMMAND_ROOTS,
         )
 
-    def validate(self, commands_path: Optional[Path] = None) -> None:
+    def validate(self, commands_paths: Optional[Iterable[Path]] = None) -> None:
         """校验目录自洽；不通过则抛 CommandCatalogueError。"""
-        base = Path(commands_path) if commands_path is not None else self._commands_path
+        roots = (
+            tuple(Path(path) for path in commands_paths)
+            if commands_paths is not None
+            else self._commands_paths
+        )
         problems = [
             f"重复的命令前缀: {prefix}" for prefix in self._duplicate_prefixes
         ]
         for definition in self._definitions.values():
-            module_path = base / f"{definition.module}.py"
-            if not module_path.is_file():
+            module_path = next(
+                (root / f"{definition.module}.py" for root in roots
+                 if (root / f"{definition.module}.py").is_file()),
+                None,
+            )
+            if module_path is None:
                 problems.append(
                     f"命令 '{definition.prefix}' 声明的模块 {definition.module}.py 不存在"
                 )

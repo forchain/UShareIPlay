@@ -26,7 +26,7 @@ def _write_command_module(directory: Path, name: str, *, base: str = "BaseComman
 
 def _catalogue(tmp_path: Path, commands, **root):
     return CommandCatalogue.from_config(
-        {"commands": commands, **root}, commands_path=tmp_path
+        {"commands": commands, **root}, commands_paths=(tmp_path,)
     )
 
 
@@ -70,6 +70,20 @@ def test_validate_fails_when_module_has_no_base_command(tmp_path):
 def test_validate_accepts_backed_modules(tmp_path):
     _write_command_module(tmp_path, "demo")
     catalogue = _catalogue(tmp_path, [{"prefix": "demo", "level": 1}])
+
+    catalogue.validate()
+
+
+def test_validate_searches_the_ordered_command_roots(tmp_path):
+    inbound = tmp_path / "inbound"
+    legacy = tmp_path / "legacy"
+    inbound.mkdir()
+    legacy.mkdir()
+    _write_command_module(legacy, "demo")
+    catalogue = CommandCatalogue.from_config(
+        {"commands": [{"prefix": "demo", "level": 1}]},
+        commands_paths=(inbound, legacy),
+    )
 
     catalogue.validate()
 

@@ -2,13 +2,16 @@
 
 from datetime import datetime
 
-from ushareiplay.modules.timer.domain import Timer
+from ushareiplay.modules.timer.domain import Timer, TimerKeyConflict
 from ushareiplay.modules.timer.ports import TimerRepository
 
 
 class InMemoryTimerRepository(TimerRepository):
     def __init__(self):
         self._timers: dict[str, Timer] = {}
+
+    async def prepare(self) -> None:
+        return None
 
     async def create(
         self,
@@ -19,6 +22,8 @@ class InMemoryTimerRepository(TimerRepository):
         enabled: bool = True,
         next_trigger: datetime | None = None,
     ) -> Timer:
+        if key in self._timers:
+            raise TimerKeyConflict(key)
         timer = Timer(
             key=key,
             message=message,
