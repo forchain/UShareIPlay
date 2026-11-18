@@ -35,7 +35,6 @@ from dataclasses import dataclass, field as dc_field
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ushareiplay.state.room_state import RoomState
 
 
 class WriteOutcome(Enum):
@@ -201,14 +200,14 @@ class RowSkin:
     clear_draft_on_success: bool = True
 
 
-def guest_room_blocks_edit() -> bool:
+def guest_room_blocks_edit(room_state) -> bool:
     """别人房间里不许改抽屉里的字段 —— 抽屉编辑**唯一**的守卫。
 
     「什么算别人的房间」只有这一个定义：将来要改判定，只改这一处，不会再有
     第二个字段忘了跟。守护的是「一次点击都不许发生」—— 别人房间里我们没有
     资格改任何一行。
     """
-    return RoomState.in_guest_room()
+    return room_state is not None and room_state.is_guest_room
 
 
 class RowEditor:
@@ -234,7 +233,7 @@ class RowEditor:
         Returns:
             该跳过时返回 `SKIPPED` 的结果，可以写时返回 None。
         """
-        if not guest_room_blocks_edit():
+        if not guest_room_blocks_edit(self._manager.room_state):
             return None
         if log_message:
             self._manager.logger.info(log_message)

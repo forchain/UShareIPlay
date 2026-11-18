@@ -52,6 +52,8 @@ class AppController(Singleton):
     # UI 独占会话租赁。类属性兜底，让绕过 __init__ 直接构造的测试替身也能安全走
     # ui_session（首次访问时按需创建）。
     _ui_session_lease: Optional[UISessionLease] = None
+    # 类属性兜底：绕过 __init__ 的测试替身也能安全读取房间状态。
+    room_state = None
 
     def __init__(self, config):
         # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
@@ -508,40 +510,69 @@ class AppController(Singleton):
             from ushareiplay.managers.online_drawer import OnlineDrawerManager
             from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
-            from ushareiplay.managers.user_event_hooks import UserEventHooks
-            from ushareiplay.state.online_list_scraper import OnlineListScraper
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-            from ushareiplay.state.presence_tracker import PresenceTracker
-            from ushareiplay.state.room_state import RoomState
+            from ushareiplay.adapters.inbound.runtime.hook_command_sink import QueueHookCommandSink
+            from ushareiplay.adapters.outbound.appium.soul.online_list_source import SoulOnlineListSource
+            from ushareiplay.adapters.outbound.persistence.room_state_store import JsonRoomStateStore
+            from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+                TortoiseUserEventHookRepository,
+            )
+            from ushareiplay.adapters.outbound.persistence.user_repository import (
+                TortoiseUserRepository,
+            )
+            from ushareiplay.modules.room.use_cases import (
+                PresenceTracker,
+                RoomStateService,
+                UserEventHooks,
+            )
 
             # Initialize managers after handlers are ready
             self.logger.info("创建 manager 实例...")
-            # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
-            # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
-            self.seat_manager = SeatManager.initialize(
-                self.soul_handler, lease=self.ui_session_lease
-            )
-
             # Creation is deliberately centralized here. Every other module uses
             # .instance() as a lookup-only API.
             # 命令目录只编译/校验一次：前缀缺模块或前缀重复必须启动即失败，
             # 而不是等用户在公屏敲下命令才暴露。
             self.command_catalogue = CommandCatalogue.from_config(self.config)
             self.command_catalogue.validate()
+
+            # 房间状态与在线集合：组合根各构造一次，注入所有需要它们的组件。
+            self.room_state = RoomStateService(
+                default_party_id=self.config.soul.value("default_party_id"),
+                current_party_id=lambda: self.soul_handler.party_id,
+                catalogue=self.command_catalogue,
+                store=JsonRoomStateStore(),
+                logger=self.logger,
+            )
+            self.presence = PresenceTracker(
+                logger=self.logger,
+                on_user_enter=lambda name: self.command_manager.notify_user_enter(name),
+                on_user_leave=lambda name: self.command_manager.notify_user_leave(name),
+            )
+
+            # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
+            # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
+            self.seat_manager = SeatManager.initialize(
+                self.soul_handler,
+                lease=self.ui_session_lease,
+                room_state=self.room_state,
+            )
+
             UserManager.initialize(self.soul_handler)
             self.sleep_manager = SleepManager(
                 self.config, catalogue=self.command_catalogue
             )
             MessageQueue.initialize()
             RecoveryManager.initialize(self.soul_handler)
-            MessageManager.initialize(self.soul_handler)
+            MessageManager.initialize(self.soul_handler, presence=self.presence)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_manager = MicManager.initialize(self.soul_handler)
             self.music_manager = MusicManager.initialize(
                 ui_driver=QQMusicUIDriver(self.music_handler)
             )
             self.register_driver_subscriber(self.music_manager)
-            self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
+            self.playback_muting = PlaybackMuting.initialize(
+                self.soul_handler, self.music_manager, self.mic_manager, room_state=self.room_state
+            )
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerUseCases(
                 repository=TortoiseTimerRepository(),
@@ -550,23 +581,27 @@ class AppController(Singleton):
                 logger=self.logger,
             )
             self.command_manager = CommandManager.initialize(
-                self.soul_handler, self.sleep_manager
+                self.soul_handler, self.sleep_manager, room_state=self.room_state
             )
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
-            PresenceTracker.initialize(self.soul_handler)
             PlaybackBroadcaster.initialize(self.soul_handler)
-            OnlineListScraper.initialize(self.soul_handler)
-            self.info_manager = InfoManager.initialize(self.soul_handler)
-            self.party_manager = PartyManager.initialize(self.soul_handler)
-            PlaylistSession.initialize(self.soul_handler)
+            self.info_manager = InfoManager.initialize(
+                self.soul_handler, room_state=self.room_state, presence=self.presence
+            )
+            self.party_manager = PartyManager.initialize(
+                self.soul_handler, room_state=self.room_state
+            )
+            PlaylistSession.initialize(
+                self.soul_handler, online_users=self.presence.get_online_users
+            )
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，组合根只注册这一个单例。
             self.room_profile_manager = RoomProfileManager.initialize(
                 self.soul_handler,
                 drawer_driver=SoulDrawerDriver(self.soul_handler),
                 settings_driver=SoulPartySettingsDriver(self.soul_handler),
+                room_state=self.room_state,
             )
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
             # 那里（#428）。命名域解析器按 ADR-0009 从组合根注入，模块内不去
@@ -579,14 +614,34 @@ class AppController(Singleton):
                 name_resolver=self.info_manager.resolve_visible_username,
             )
             AdminManager.initialize(self.soul_handler)
-            KeywordManager.initialize(self.soul_handler)
-            # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
-            # 这一个模块里，各命令文件只是薄适配器（#422）。
-            UserEventHooks.initialize(self.soul_handler)
+            self.keyword_manager = KeywordManager.initialize(
+                self.soul_handler, room_state=self.room_state
+            )
+            # 在线名单抓取：抽屉会话、用户仓储、在线集合与房间人数都由这里注入。
+            self.online_list_source = SoulOnlineListSource(
+                drawer=self.online_drawer_manager,
+                users=TortoiseUserRepository(),
+                presence=self.presence,
+                room_state=self.room_state,
+                ui_session=self.ui_session,
+                logger=self.logger,
+            )
+            self.info_manager._online_list_scraper = self.online_list_source
             from ushareiplay.managers.memory_manager import MemoryManager
             from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             self.memory_manager = MemoryManager.initialize()
             self.memory_manager.configure(self.config)
+            # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
+            # 这一个模块里，各命令文件只是薄适配器（#422）。
+            self.user_event_hooks = UserEventHooks(
+                repository=TortoiseUserEventHookRepository(),
+                users=TortoiseUserRepository(),
+                sink=QueueHookCommandSink(MessageQueue.instance()),
+                presence=self.presence,
+                memory=self.memory_manager,
+                logger=self.logger,
+            )
+            self.command_manager.user_event_hooks = self.user_event_hooks
             # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
             # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
             # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
@@ -596,7 +651,11 @@ class AppController(Singleton):
                 seat_ui=self.seat_manager.panel,
                 panel_reader=self.seat_manager.panel_reader,
                 panel_driver=self.seat_manager.panel_driver,
+                room_state=self.room_state,
             )
+            self.room_state.add_clear_listener(self.seat_observation_manager.clear)
+            self.room_state.add_clear_listener(self.playback_muting.reset)
+            self.room_state.add_room_change_listener(self.room_profile_manager.invalidate_ui_state)
             self.post_party_create_automation = PostPartyCreateAutomation(self)
 
             self._status_reporter.soul_handler = self.soul_handler
@@ -676,6 +735,7 @@ class AppController(Singleton):
             event_manager=self.event_manager,
             command_manager=self.command_manager,
             sleep_manager=self.sleep_manager,
+            room_state=self.room_state,
         )
 
     async def start_monitoring(self):

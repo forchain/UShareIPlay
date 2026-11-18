@@ -17,7 +17,7 @@ import pytest
 
 from ushareiplay.managers.room_profile.drafts import FIELDS, ProfileDraftStore
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)

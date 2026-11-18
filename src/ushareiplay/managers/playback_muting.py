@@ -4,7 +4,6 @@ from typing import Iterator, Optional
 
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.state.room_state import RoomState
 
 
 class PlaybackMuting(Singleton):
@@ -33,10 +32,11 @@ class PlaybackMuting(Singleton):
     #: 运行时开启状态的兜底默认值；`__init__` 会在实例上落一份。
     _dynamic_enabled = False
 
-    def __init__(self, handler=None, music_manager=None, mic_manager=None):
+    def __init__(self, handler=None, music_manager=None, mic_manager=None, room_state=None):
         from ushareiplay.managers.mic_manager import MicManager
         from ushareiplay.managers.music_manager import MusicManager
         self.soul_handler = handler
+        self.room_state = room_state
         self.music_manager = music_manager or (MusicManager.instance() if MusicManager.is_initialized() else None)
         self.mic_manager = mic_manager or (MicManager.instance() if MicManager.is_initialized() else None)
         self.logger = getattr(handler, "logger", None) or logging.getLogger("PlaybackMuting")
@@ -77,7 +77,7 @@ class PlaybackMuting(Singleton):
             return False
         if not settings["guest_room_only"]:
             return True
-        return RoomState.in_guest_room()
+        return bool(self.room_state is not None and self.room_state.is_guest_room)
 
     # ------------------------------------------------------------------
     # 运行时开启：有人上麦时救场

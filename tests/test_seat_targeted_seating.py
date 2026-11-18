@@ -24,7 +24,7 @@ from ushareiplay.events.focus_count import FocusCountEvent
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)

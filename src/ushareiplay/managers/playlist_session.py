@@ -180,11 +180,7 @@ class PlaylistSession(Singleton):
         return self.handler.config if self.handler is not None else None
 
     def _online(self) -> set:
-        if self._online_users is not None:
-            return self._online_users()
-        from ushareiplay.state.presence_tracker import PresenceTracker
-
-        return PresenceTracker.instance().get_online_users()
+        return self._online_users() if self._online_users is not None else set()
 
     async def _avatars(self, username: str) -> set:
         if self._avatar_usernames is not None:

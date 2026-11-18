@@ -24,8 +24,9 @@ class KeywordManager(Singleton):
     单例模式，提供统一的关键字管理服务
     """
     
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, room_state=None):
         self._handler = handler
+        self.room_state = room_state
         self._logger = getattr(handler, "logger", None)
         self._config = None
         self._default_keyword_command = None
@@ -472,9 +473,8 @@ class KeywordManager(Singleton):
             except Exception:
                 pass
             room_info = None
-            try:
-                from ushareiplay.state.room_state import RoomState
-                room_state = RoomState.instance()
+            room_state = self.room_state
+            if room_state is not None:
                 room_info = {
                     "is_guest_room": room_state.is_guest_room,
                     "room_id": room_state.room_id,
@@ -487,8 +487,6 @@ class KeywordManager(Singleton):
                         cmd for cmd in commands_config
                         if room_state.is_command_allowed_in_guest_room(cmd.get("prefix", ""))
                     ]
-            except Exception:
-                pass
 
             playback_info = self._get_playback_info()
 

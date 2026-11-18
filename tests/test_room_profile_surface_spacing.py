@@ -33,7 +33,7 @@ from ushareiplay.managers.room_profile.drafts import (
 )
 from unittest.mock import MagicMock
 
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 # 抽屉里同时摆着房名那一行与公告那一行：表面节奏闸与「当场补公告」都要能被考到。

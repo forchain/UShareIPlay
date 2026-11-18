@@ -27,7 +27,7 @@ import pytest
 
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 # 回房时屏幕上真实存在的东西：派对类型那一行（抽屉里）+ 主界面的房名那一行。

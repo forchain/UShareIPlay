@@ -243,7 +243,7 @@ def test_party_create_flow_skips_room_type_change_when_disabled():
 
 
 def test_party_create_flow_disables_recommendation_and_waits_disappear():
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.initialize()
     manager = PartyManager.instance()
     create_entry = _Element()
@@ -366,7 +366,7 @@ def test_party_create_flow_default_skips_chat_type_and_clicks_create_party():
 
 def test_party_create_flow_disables_recommendation_and_directly_creates_party():
     """关闭推荐分发后直接点击创建房间，不依赖聊天类型按钮"""
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.initialize()
     manager = PartyManager.instance()
     create_entry = _Element()

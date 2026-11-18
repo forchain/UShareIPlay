@@ -11,17 +11,16 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-from ushareiplay.commands.exit import ExitCommand
+from ushareiplay.adapters.inbound.chat.exit import ExitCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.managers.user_event_hooks import ENTER, EXIT, UserEventHooks, spec_for
+from ushareiplay.modules.room.registry import ENTER, EXIT, spec_for
+from ushareiplay.modules.room.use_cases import PresenceTracker
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.presence_tracker import PresenceTracker
+from tests.room_support import make_hooks
 
 
 @pytest_asyncio.fixture
@@ -32,12 +31,30 @@ async def db_init():
     await manager.close()
 
 
+class _MemorySink:
+    """记忆沉淀出口的替身：记录被调度的用户名。"""
+
+    def __init__(self):
+        self.scheduled = []
+
+    def schedule_consolidation_user(self, username):
+        self.scheduled.append(username)
+
+
+@pytest.fixture
+def presence():
+    return PresenceTracker()
+
+
+@pytest.fixture
+def memory_sink():
+    return _MemorySink()
+
+
 @pytest_asyncio.fixture
-async def hooks():
-    """The engine under test. `conftest.py` already resets singletons per test."""
-    UserEventHooks.reset_instance()
-    UserEventHooks.initialize(handler=None)
-    return UserEventHooks.instance()
+async def hooks(db_init, presence, memory_sink):
+    """The engine under test, wired like the composition root."""
+    return make_hooks(presence=presence, memory=memory_sink)
 
 
 @pytest_asyncio.fixture
@@ -50,34 +67,28 @@ async def avatar_family(db_init):
 
 
 @pytest.fixture
-def online_users():
+def online_users(presence):
     """Drive the online-user list the gate reads. Returns a setter."""
-    PresenceTracker.initialize()
-    InfoManager.initialize()
 
     def _set(names):
-        tracker = InfoManager.instance()._presence_tracker
-        tracker._online_users = set(names)
-        return tracker
+        presence._online_users = set(names)
+        return presence
 
     return _set
 
 
 @pytest.fixture
-def scheduled_consolidations(monkeypatch):
-    """MemoryManager 的沉淀调度打桩，返回记录到的用户名列表。"""
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
-    mm = MemoryManager.instance()
-    scheduled = []
-    monkeypatch.setattr(mm, "schedule_consolidation_user", scheduled.append)
-    return scheduled
+def scheduled_consolidations(memory_sink):
+    """记忆沉淀调度记录。"""
+    return memory_sink.scheduled
 
 
-def make_controller():
+def make_controller(hooks):
     """A controller stub good enough for `BaseCommand.__init__`."""
     handler = SimpleNamespace(logger=None, log_error=lambda *a, **k: None)
-    return SimpleNamespace(soul_handler=handler, music_handler=handler)
+    return SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
+    )
 
 
 async def drain_messages():
@@ -169,13 +180,11 @@ async def test_exit_consolidation_guard_survives_a_failing_memory_manager(
 ):
     """沉淀调度抛异常不得连带丢掉退出命令（与迁移前的内层 try/except 一致）。"""
     online_users({"张三"})
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
 
     def boom(_username):
         raise RuntimeError("consolidation backend down")
 
-    monkeypatch.setattr(MemoryManager.instance(), "schedule_consolidation_user", boom)
+    monkeypatch.setattr(hooks._memory, "schedule_consolidation_user", boom)
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
 
     assert await hooks.fire(EXIT, "明明") == 1
@@ -234,6 +243,7 @@ async def test_notify_user_leave_delegates_to_fire(
     online_users({"张三"})
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
 
     await cm.notify_user_leave("明明")
 
@@ -249,6 +259,7 @@ async def test_notify_user_leave_skips_when_an_alias_is_still_online(
     online_users({"小明"})
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
     cm = CommandManager.instance()
+    cm.user_event_hooks = hooks
 
     await cm.notify_user_leave("明明")
 
@@ -263,7 +274,7 @@ async def test_notify_user_leave_skips_when_an_alias_is_still_online(
 
 @pytest.mark.asyncio
 async def test_exit_command_is_a_thin_adapter(db_init, hooks):
-    command = ExitCommand(make_controller())
+    command = ExitCommand(make_controller(hooks))
 
     assert command.handler_attr == "soul_handler"
     assert command.error_message == spec_for(EXIT).error_message == "处理离开命令时出错"
@@ -280,7 +291,7 @@ async def test_exit_command_is_a_thin_adapter(db_init, hooks):
 @pytest.mark.asyncio
 async def test_exit_command_crud_sub_verbs(db_init, hooks):
     """四个子动作都走引擎，文案与 `:exit` 自己的名词一致。"""
-    command = ExitCommand(make_controller())
+    command = ExitCommand(make_controller(hooks))
 
     def run(content, nickname="Alice"):
         return command.do_process(MessageInfo(content=content, nickname=nickname), [])
@@ -315,7 +326,7 @@ async def test_exit_command_user_leave_delegates_to_fire(db_init, hooks, online_
     online_users({"Bob"})
     await hooks.execute_crud(EXIT, "Alice", ':exit add ":play 起风了"')
 
-    command = ExitCommand(make_controller())
+    command = ExitCommand(make_controller(hooks))
     await command.user_leave("Alice")
 
     queued = await drain_messages()
@@ -330,7 +341,7 @@ async def test_exit_command_still_goes_through_the_message_queue(
     online_users({"Bob"})
     await hooks.execute_crud(EXIT, "Alice", ':exit add ":say 下线了 {user_name}"')
 
-    command = ExitCommand(make_controller())
+    command = ExitCommand(make_controller(hooks))
     await command.user_leave("Alice")
 
     queued = await drain_messages()

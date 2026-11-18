@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 # 编辑层打开时抽屉里有的东西（`config.yaml` 的 elements key）。

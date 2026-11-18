@@ -1,7 +1,7 @@
 import pytest
 from types import SimpleNamespace
 
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 

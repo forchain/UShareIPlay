@@ -1,13 +1,30 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
+
 from ushareiplay.events.user_count import UserCountEvent
+from tests import legacy_state
+from tests.legacy_state import OnlineListScraper, PresenceTracker, RoomState
+
+
+def _event(scraper=None, runtime=None):
+    handler = MagicMock()
+    handler.logger = MagicMock()
+    handler.controller = SimpleNamespace(
+        room_state=RoomState.instance(),
+        presence=PresenceTracker.instance(),
+        online_list_source=scraper or legacy_state.online_list_source(),
+    )
+    return UserCountEvent(handler=handler, runtime=runtime)
 
 
 @pytest.mark.asyncio
 async def test_user_count_parsing_formats():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
+    room_state = RoomState.initialize()
+    room_state.user_count = 0
+    scraper = MagicMock()
+    scraper.refresh_online_users = AsyncMock()
+    event = _event(scraper)
     mock_wrapper = MagicMock()
 
     test_cases = [
@@ -17,68 +34,33 @@ async def test_user_count_parsing_formats():
         ("在线 10 人", 10),
     ]
 
-    with (
-        patch("ushareiplay.state.room_state.RoomState.instance") as mock_room_state_instance,
-        patch("ushareiplay.state.online_list_scraper.OnlineListScraper.instance") as mock_scraper_instance,
-    ):
-        mock_room_state = MagicMock()
-        mock_room_state.user_count = 0
-        mock_room_state_instance.return_value = mock_room_state
-
-        mock_scraper = MagicMock()
-        mock_scraper.refresh_online_users = AsyncMock()
-        mock_scraper_instance.return_value = mock_scraper
-
-        for input_text, expected_count in test_cases:
-            mock_wrapper.text = input_text
-            mock_room_state.user_count = -1  # Reset to ensure update
-            await event.handle("user_count", mock_wrapper)
-            assert mock_room_state.user_count == expected_count, f"Failed to parse '{input_text}'"
+    for input_text, expected_count in test_cases:
+        mock_wrapper.text = input_text
+        room_state.user_count = -1  # Reset to ensure update
+        await event.handle("user_count", mock_wrapper)
+        assert room_state.user_count == expected_count, f"Failed to parse '{input_text}'"
 
 
 @pytest.mark.asyncio
 async def test_user_count_parsing_failure():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
+    room_state = RoomState.initialize()
+    room_state.user_count = 0
+    scraper = MagicMock()
+    event = _event(scraper)
     mock_wrapper = MagicMock()
 
     failure_cases = ["", "无数据", "unknown"]
 
-    with (
-        patch("ushareiplay.state.room_state.RoomState.instance") as mock_room_state_instance,
-        patch("ushareiplay.state.online_list_scraper.OnlineListScraper.instance") as mock_scraper_instance,
-    ):
-        mock_room_state = MagicMock()
-        mock_room_state.user_count = 0
-        mock_room_state_instance.return_value = mock_room_state
-
-        mock_scraper = MagicMock()
-        mock_scraper_instance.return_value = mock_scraper
-
-        for input_text in failure_cases:
-            mock_wrapper.text = input_text
-            result = await event.handle("user_count", mock_wrapper)
-            assert result is False
-            assert mock_room_state.user_count == 0  # Should not change
+    for input_text in failure_cases:
+        mock_wrapper.text = input_text
+        result = await event.handle("user_count", mock_wrapper)
+        assert result is False
+        assert room_state.user_count == 0  # Should not change
 
 
 @pytest.mark.asyncio
 async def test_user_count_retries_when_refresh_fails():
-    """
-    当首次刷新在线列表失败（例如界面正在处理弹窗/命令导致未找到元素）时，
-    后续帧检测到人数仍不一致时应继续重试刷新，而不是因为提前更新了 room_state.user_count
-    而永远放弃重试，导致在线人数列表卡死直至下一个不同人数出现（跳变）。
-    """
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
-    mock_wrapper = MagicMock()
-    mock_wrapper.text = "5人"
-
-    from ushareiplay.state.room_state import RoomState
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
-
+    """刷新失败时不得提前写 room_state，否则同样的「5人」再也不会触发重试。"""
     RoomState.reset_instance()
     OnlineListScraper.reset_instance()
 
@@ -88,38 +70,25 @@ async def test_user_count_retries_when_refresh_fails():
 
     scraper = OnlineListScraper.initialize()
     scraper._logger = MagicMock()
+    event = _event(legacy_state.online_list_source())
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
 
-    # Frame 1: 刷新失败（例如 try_find_element 返回 None，或返回 False）
+    # Frame 1: 刷新失败
     with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=False)) as mock_refresh:
         await event.handle("user_count", mock_wrapper)
         assert mock_refresh.call_count == 1
-        # 如果刷新失败，room_state.user_count 不应该认为已经成功同步为 5
-        # 否则 Frame 2 将永远无法触发刷新
         assert room_state.user_count != 5, "room_state.user_count was prematurely updated on failure"
 
     # Frame 2: UI 空闲，再次收到相同的 "5人"
     with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh_2:
         await event.handle("user_count", mock_wrapper)
-        # 应该重试刷新
         assert mock_refresh_2.call_count == 1, "refresh_online_users was not retried after previous failure"
-        # 成功后才同步为 5
         assert room_state.user_count == 5
 
 
 @pytest.mark.asyncio
 async def test_user_count_deferred_when_ui_busy():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    mock_runtime = MagicMock()
-    mock_runtime.is_ui_busy.return_value = True
-
-    event = UserCountEvent(handler=mock_handler, runtime=mock_runtime)
-    mock_wrapper = MagicMock()
-    mock_wrapper.text = "5人"
-
-    from ushareiplay.state.room_state import RoomState
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
-
     RoomState.reset_instance()
     OnlineListScraper.reset_instance()
 
@@ -129,6 +98,11 @@ async def test_user_count_deferred_when_ui_busy():
 
     scraper = OnlineListScraper.initialize()
     scraper._logger = MagicMock()
+    mock_runtime = MagicMock()
+    mock_runtime.is_ui_busy.return_value = True
+    event = _event(legacy_state.online_list_source(), runtime=mock_runtime)
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
 
     with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh:
         result = await event.handle("user_count", mock_wrapper)
@@ -146,15 +120,6 @@ async def test_user_count_deferred_when_ui_busy():
 
 @pytest.mark.asyncio
 async def test_user_count_fallback_after_consecutive_failures():
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
-    mock_wrapper = MagicMock()
-    mock_wrapper.text = "5人"
-
-    from ushareiplay.state.room_state import RoomState
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
-
     RoomState.reset_instance()
     OnlineListScraper.reset_instance()
 
@@ -164,8 +129,11 @@ async def test_user_count_fallback_after_consecutive_failures():
 
     scraper = OnlineListScraper.initialize()
     scraper._logger = MagicMock()
+    event = _event(legacy_state.online_list_source())
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
 
-    with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=False)) as mock_refresh:
+    with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=False)):
         for _ in range(9):
             await event.handle("user_count", mock_wrapper)
             assert room_state.user_count == 4
@@ -177,17 +145,7 @@ async def test_user_count_fallback_after_consecutive_failures():
 
 @pytest.mark.asyncio
 async def test_user_count_refreshes_when_presence_is_empty_even_if_count_matches():
-    """即使 room_state.user_count 与当前人数一致，如果在线列表 PresenceTracker 为空，仍应触发抓取刷新。"""
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
-    mock_wrapper = MagicMock()
-    mock_wrapper.text = "5人"
-
-    from ushareiplay.state.room_state import RoomState
-    from ushareiplay.state.presence_tracker import PresenceTracker
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
-
+    """人数一致但在线列表为空（初次启动 / 刷新一直失败）时仍要抓取。"""
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
@@ -198,10 +156,12 @@ async def test_user_count_refreshes_when_presence_is_empty_even_if_count_matches
 
     presence_tracker = PresenceTracker.initialize()
     presence_tracker._logger = MagicMock()
-    # presence_tracker._online_users 为空
 
     scraper = OnlineListScraper.initialize()
     scraper._logger = MagicMock()
+    event = _event(legacy_state.online_list_source())
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
 
     with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh:
         result = await event.handle("user_count", mock_wrapper)
@@ -210,17 +170,7 @@ async def test_user_count_refreshes_when_presence_is_empty_even_if_count_matches
 
 @pytest.mark.asyncio
 async def test_user_count_skips_when_presence_exists_and_count_matches():
-    """当人数未变化且 PresenceTracker 已有数据时，跳过刷新。"""
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    event = UserCountEvent(handler=mock_handler)
-    mock_wrapper = MagicMock()
-    mock_wrapper.text = "5人"
-
-    from ushareiplay.state.room_state import RoomState
-    from ushareiplay.state.presence_tracker import PresenceTracker
-    from ushareiplay.state.online_list_scraper import OnlineListScraper
-
+    """人数未变化且在线列表已有数据时跳过刷新。"""
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
@@ -235,10 +185,10 @@ async def test_user_count_skips_when_presence_exists_and_count_matches():
 
     scraper = OnlineListScraper.initialize()
     scraper._logger = MagicMock()
+    event = _event(legacy_state.online_list_source())
+    mock_wrapper = MagicMock()
+    mock_wrapper.text = "5人"
 
     with patch.object(scraper, "refresh_online_users", new=AsyncMock(return_value=True)) as mock_refresh:
         result = await event.handle("user_count", mock_wrapper)
         assert mock_refresh.call_count == 0, "Should skip refresh when presence exists and count matches"
-
-
-

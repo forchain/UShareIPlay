@@ -29,11 +29,11 @@ from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.online_list_scraper import OnlineListScraper
+from tests.legacy_state import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

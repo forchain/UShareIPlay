@@ -15,24 +15,26 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-from ushareiplay.commands.enter import EnterCommand
+from ushareiplay.adapters.inbound.chat.enter import EnterCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+    TortoiseUserEventHookRepository,
+)
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.user_event_hooks import (
+from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.room.registry import (
+    ALIAS_GROUP,
     ENTER,
     EXIT,
     FOCUS,
     RECEIVE,
     RETURN,
-    ALIAS_GROUP,
     SINGLE_ID,
-    UserEventHookDAO,
-    UserEventHooks,
     spec_for,
 )
+from tests.room_support import make_hooks
 from ushareiplay.adapters.outbound.persistence.models import User
-from ushareiplay.models.message_info import MessageInfo
 
 
 ALL_EVENT_TYPES = [ENTER, EXIT, RETURN, RECEIVE, FOCUS]
@@ -47,17 +49,17 @@ async def db_init():
 
 
 @pytest_asyncio.fixture
-async def hooks():
-    """The engine under test. `conftest.py` already resets singletons per test."""
-    UserEventHooks.reset_instance()
-    UserEventHooks.initialize(handler=None)
-    return UserEventHooks.instance()
+async def hooks(db_init):
+    """The engine under test, wired like the composition root."""
+    return make_hooks()
 
 
-def make_controller():
+def make_controller(hooks):
     """A controller stub good enough for `BaseCommand.__init__`."""
     handler = SimpleNamespace(logger=None, log_error=lambda *a, **k: None)
-    return SimpleNamespace(soul_handler=handler, music_handler=handler)
+    return SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
+    )
 
 
 async def drain_messages():
@@ -92,7 +94,7 @@ def test_registry_is_complete_for_every_event_type(
     event_type, model_name, prefix, noun, error_message, example
 ):
     spec = spec_for(event_type)
-    assert spec.model.__name__ == model_name
+    assert spec.model_name == model_name
     assert spec.prefix == prefix
     assert spec.noun == noun
     assert spec.error_message == error_message
@@ -112,41 +114,44 @@ def test_registry_rejects_unknown_event_type():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("event_type", ALL_EVENT_TYPES)
 async def test_dao_crud_across_event_types(db_init, event_type):
-    event = await UserEventHookDAO.create(event_type, "Alice", ":play song")
+    repository = TortoiseUserEventHookRepository()
+    event = await repository.create(event_type, "Alice", ":play song")
     assert event.id is not None
     assert event.command == ":play song"
 
-    items = await UserEventHookDAO.get_by_username(event_type, "Alice")
+    items = await repository.get_by_username(event_type, "Alice")
     assert [item.command for item in items] == [":play song"]
 
-    fetched = await UserEventHookDAO.get_by_id(event_type, event.id)
+    fetched = await repository.get_by_id(event_type, event.id)
     assert fetched is not None and fetched.id == event.id
 
-    assert await UserEventHookDAO.delete_by_id(event_type, event.id) is True
-    assert await UserEventHookDAO.delete_by_id(event_type, event.id) is False
-    assert len(await UserEventHookDAO.get_by_username(event_type, "Alice")) == 0
+    assert await repository.delete_by_id(event_type, event.id) is True
+    assert await repository.delete_by_id(event_type, event.id) is False
+    assert len(await repository.get_by_username(event_type, "Alice")) == 0
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("event_type", ALL_EVENT_TYPES)
 async def test_dao_delete_all_by_username(db_init, event_type):
-    await UserEventHookDAO.create(event_type, "Bob", ":say one")
-    await UserEventHookDAO.create(event_type, "Bob", ":say two")
-    await UserEventHookDAO.create(event_type, "Carol", ":say other")
+    repository = TortoiseUserEventHookRepository()
+    await repository.create(event_type, "Bob", ":say one")
+    await repository.create(event_type, "Bob", ":say two")
+    await repository.create(event_type, "Carol", ":say other")
 
-    assert await UserEventHookDAO.delete_all_by_username(event_type, "Bob") == 2
-    remaining = await UserEventHookDAO.get_by_username(event_type, "Bob")
+    assert await repository.delete_all_by_username(event_type, "Bob") == 2
+    remaining = await repository.get_by_username(event_type, "Bob")
     assert len(remaining) == 0
-    assert len(await UserEventHookDAO.get_by_username(event_type, "Carol")) == 1
+    assert len(await repository.get_by_username(event_type, "Carol")) == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("event_type", ALL_EVENT_TYPES)
 async def test_dao_get_all_ordered_returns_every_row(db_init, event_type):
-    await UserEventHookDAO.create(event_type, "Alice", ":say one")
-    await UserEventHookDAO.create(event_type, "Bob", ":say two")
+    repository = TortoiseUserEventHookRepository()
+    await repository.create(event_type, "Alice", ":say one")
+    await repository.create(event_type, "Bob", ":say two")
 
-    every = await UserEventHookDAO.get_all_ordered(event_type)
+    every = await repository.get_all_ordered(event_type)
     assert [row.command for row in every] == [":say one", ":say two"]
 
 
@@ -158,14 +163,15 @@ async def test_dao_receive_resolves_alias_group(db_init):
     outlier = await UserDAO.get_or_create_raw("Outlier")
     await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
 
-    await UserEventHookDAO.create(RECEIVE, "Outlier", ":say Thanks from Outlier")
+    repository = TortoiseUserEventHookRepository()
+    await repository.create(RECEIVE, "Outlier", ":say Thanks from Outlier")
 
-    items = await UserEventHookDAO.get_by_username(RECEIVE, "Chainer")
+    items = await repository.get_by_username(RECEIVE, "Chainer")
     assert [item.command for item in items] == [":say Thanks from Outlier"]
 
     # alias-group 的 clear 同样要覆盖主账号下发的命令
-    assert await UserEventHookDAO.delete_all_by_username(RECEIVE, "Chainer") == 1
-    assert len(await UserEventHookDAO.get_by_username(RECEIVE, "Outlier")) == 0
+    assert await repository.delete_all_by_username(RECEIVE, "Chainer") == 1
+    assert len(await repository.get_by_username(RECEIVE, "Outlier")) == 0
 
 
 @pytest.mark.asyncio
@@ -177,17 +183,18 @@ async def test_dao_alias_group_also_covers_rows_bound_to_an_alias_id(db_init):
     """
     assert spec_for(RECEIVE).resolution is ALIAS_GROUP
 
+    repository = TortoiseUserEventHookRepository()
     chainer = await UserDAO.get_or_create_raw("Chainer")
-    await UserEventHookDAO.create(RECEIVE, "Chainer", ":say 下发于分身名下")
+    await repository.create(RECEIVE, "Chainer", ":say 下发于分身名下")
 
     outlier = await UserDAO.get_or_create_raw("Outlier")
     await User.filter(id=chainer.id).update(canonical_user_id=outlier.id)
 
-    rows = await UserEventHookDAO.get_by_username(RECEIVE, "Outlier")
+    rows = await repository.get_by_username(RECEIVE, "Outlier")
     assert [row.command for row in rows] == [":say 下发于分身名下"]
 
-    assert await UserEventHookDAO.delete_all_by_username(RECEIVE, "Outlier") == 1
-    assert len(await UserEventHookDAO.get_by_username(RECEIVE, "Outlier")) == 0
+    assert await repository.delete_all_by_username(RECEIVE, "Outlier") == 1
+    assert len(await repository.get_by_username(RECEIVE, "Outlier")) == 0
 
 
 @pytest.mark.asyncio
@@ -203,32 +210,34 @@ async def test_dao_single_id_resolution_stays_on_the_canonical_id(db_init, event
     """
     assert spec_for(event_type).resolution is SINGLE_ID
 
+    repository = TortoiseUserEventHookRepository()
     chainer = await UserDAO.get_or_create_raw("Chainer")
-    await UserEventHookDAO.create(event_type, "Chainer", ":play 下发于分身名下")
+    await repository.create(event_type, "Chainer", ":play 下发于分身名下")
 
     outlier = await UserDAO.get_or_create_raw("Outlier")
     await User.filter(id=chainer.id).update(canonical_user_id=outlier.id)
 
     # single-id：无论按主账号还是按分身查，都只看 canonical 那一个 id
-    assert len(await UserEventHookDAO.get_by_username(event_type, "Outlier")) == 0
-    assert len(await UserEventHookDAO.get_by_username(event_type, "Chainer")) == 0
+    assert len(await repository.get_by_username(event_type, "Outlier")) == 0
+    assert len(await repository.get_by_username(event_type, "Chainer")) == 0
 
     # clear 同样只覆盖 canonical 口径
-    assert await UserEventHookDAO.delete_all_by_username(event_type, "Outlier") == 0
-    assert await UserEventHookDAO.delete_all_by_username(event_type, "Chainer") == 0
+    assert await repository.delete_all_by_username(event_type, "Outlier") == 0
+    assert await repository.delete_all_by_username(event_type, "Chainer") == 0
 
     # 而同一行数据在 alias-group 的收礼物命令下始终可达（见上一个测试）
-    assert len(await UserEventHookDAO.get_all_ordered(event_type)) == 1
+    assert len(await repository.get_all_ordered(event_type)) == 1
 
 
 @pytest.mark.asyncio
 async def test_dao_event_types_do_not_share_rows(db_init):
     """同一用户名在不同事件类型下各自独立，不串表。"""
-    await UserEventHookDAO.create(ENTER, "Alice", ":play enter")
-    await UserEventHookDAO.create(RECEIVE, "Alice", ":say receive")
+    repository = TortoiseUserEventHookRepository()
+    await repository.create(ENTER, "Alice", ":play enter")
+    await repository.create(RECEIVE, "Alice", ":say receive")
 
-    enter_rows = await UserEventHookDAO.get_by_username(ENTER, "Alice")
-    receive_rows = await UserEventHookDAO.get_by_username(RECEIVE, "Alice")
+    enter_rows = await repository.get_by_username(ENTER, "Alice")
+    receive_rows = await repository.get_by_username(RECEIVE, "Alice")
     assert [row.command for row in enter_rows] == [":play enter"]
     assert [row.command for row in receive_rows] == [":say receive"]
 
@@ -321,7 +330,7 @@ async def test_execute_crud_rejects_missing_prefix(db_init, hooks, event_type):
 async def test_execute_crud_keeps_quoted_commands_with_spaces(db_init, hooks):
     """`fire` 之外的解析细节：命令原文按 shlex 取第二段，带空格的命令要完整。"""
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play 周杰伦 - 稻香"')
-    rows = await UserEventHookDAO.get_by_username(ENTER, "Alice")
+    rows = await TortoiseUserEventHookRepository().get_by_username(ENTER, "Alice")
     assert [row.command for row in rows] == [":play 周杰伦 - 稻香"]
 
 
@@ -394,7 +403,7 @@ async def test_fire_with_none_username_uses_all_configured_users(db_init, hooks)
 
 @pytest.mark.asyncio
 async def test_enter_command_is_a_thin_adapter(db_init, hooks):
-    controller = make_controller()
+    controller = make_controller(hooks)
     command = EnterCommand(controller)
 
     assert command.handler_attr == "soul_handler"
@@ -413,7 +422,7 @@ async def test_enter_command_user_enter_delegates_to_fire(db_init, hooks):
     """`user_enter` 仍是命令上的可调用钩子（事件接缝，测试直接调用它）。"""
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play 起风了"')
 
-    command = EnterCommand(make_controller())
+    command = EnterCommand(make_controller(hooks))
     await command.user_enter("Alice")
 
     queued = await drain_messages()

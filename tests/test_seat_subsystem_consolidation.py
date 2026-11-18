@@ -89,7 +89,7 @@ def _reset_seat_singletons():
 @pytest.fixture
 def _guest_room():
     """他人房间开关（客房守卫的判据），用完复原。"""
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     RoomState.reset_instance()
     room_state = RoomState.initialize()

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 HOST_ROOM_ID = "FM15321640"   # soul.default_party_id in config.yaml
 GUEST_ROOM_ID = "FM18633292"  # someone else's room we were invited into
@@ -87,7 +87,7 @@ def _isolate_singletons():
 def _guest_room_state(monkeypatch, explicit_guest_flag=True):
     """Room state as it looks while the bot is a guest in another room."""
     state = RoomState.instance()
-    monkeypatch.setattr(state, "_get_default_party_id", lambda: HOST_ROOM_ID)
+    monkeypatch.setattr(state, "default_party_id", HOST_ROOM_ID)
     state.expected_party_id = GUEST_ROOM_ID
     state.room_id = GUEST_ROOM_ID
     if explicit_guest_flag:

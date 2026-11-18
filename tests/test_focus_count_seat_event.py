@@ -7,7 +7,7 @@ from tests.seat_fixtures import build_desk_wrapper, make_handler, soul_elements
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.events.focus_count import FocusCountEvent, __elements__, __multiple__
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +75,8 @@ async def test_same_round_visible_sitdown_does_not_trigger_expansion():
 async def test_focus_count_event_handles_focus_count():
     handler = MagicMock()
     handler.logger = MagicMock()
+    from types import SimpleNamespace
+    handler.controller = SimpleNamespace(room_state=RoomState.instance())
     observation = SeatObservationManager.initialize(handler)
     observation.on_focus_count = AsyncMock()
 
@@ -107,6 +109,8 @@ async def test_focus_count_event_handles_focus_count():
 async def test_focus_count_event_handles_seat_desk():
     handler = MagicMock()
     handler.logger = MagicMock()
+    from types import SimpleNamespace
+    handler.controller = SimpleNamespace(room_state=RoomState.instance())
     observation = SeatObservationManager.initialize(handler)
     observation.observe_visible_desks = AsyncMock()
 

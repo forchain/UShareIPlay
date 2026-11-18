@@ -100,7 +100,7 @@ class _Handler:
 
 def _stub_sync_partners(monkeypatch, journal):
     """把审计里的四个字段换成会记账的替身，好断言批处理顺序。"""
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     def _record(key, result):
         journal.append(f"sync:{key}")
@@ -693,7 +693,7 @@ def test_the_requester_is_optional_so_every_existing_caller_still_works(name, ar
     """纯增量：既有调用点一个都不改，也必须继续跑得通。"""
     profile = RoomProfileManager.initialize()
     profile.adopt_handler(_Handler())
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     RoomState.reset_instance()
     RoomState.initialize()
@@ -705,7 +705,7 @@ def test_the_requester_is_optional_so_every_existing_caller_still_works(name, ar
 
 def test_the_requester_shows_up_in_the_change_triggered_log_of_each_setter():
     """字段真的变了 = 触发了行为，因此这条 INFO 日志合规，requester 也在其中。"""
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     handler = _Handler()
     profile = RoomProfileManager.initialize()

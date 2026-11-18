@@ -13,7 +13,6 @@ from ushareiplay.managers.seat_manager.seat_observation import (
     SeatObservationManager,
     parse_focus_count_text,
 )
-from ushareiplay.state.room_state import RoomState
 
 # 顺序即 EventManager 的同轮分发顺序（见 _process_events_once）：必须先被动观测
 # 本页可见麦位，再判人数背离。反过来的话每一次可视上座都会拿旧快照去比，被误判
@@ -55,7 +54,8 @@ class FocusCountEvent(BaseEvent):
                 # 之后 previous 仍是有值的旧数字，于是每次都早退、缓存永远是空的，
                 # 日志就一直打「专注人数: 未知」（真机 10-10 01:49:30~01:50:32：
                 # 连扫 4~5 遍、零次座位更新，每行都写着未知）。
-                RoomState.instance().focus_count = current_focus_count
+                if self.controller.room_state is not None:
+                    self.controller.room_state.focus_count = current_focus_count
 
                 if before == current_focus_count:
                     return False
@@ -79,7 +79,8 @@ class FocusCountEvent(BaseEvent):
                     current_focus_count = self.observation.read_focus_count_from_ui()
                     if current_focus_count is not None:
                         self.previous_focus_count = current_focus_count
-                        RoomState.instance().focus_count = current_focus_count
+                        if self.controller.room_state is not None:
+                            self.controller.room_state.focus_count = current_focus_count
 
                 await self.observation.observe_visible_desks(
                     desks, current_focus_count=current_focus_count

@@ -42,7 +42,7 @@ class _Logger:
 @pytest.fixture
 def party_manager(monkeypatch):
     from ushareiplay.managers.party_manager import PartyManager
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
 
     manager = PartyManager.instance()
     manager._handler = SimpleNamespace(config={}, logger=_Logger())

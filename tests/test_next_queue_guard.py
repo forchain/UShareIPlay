@@ -14,7 +14,7 @@ from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
+from tests.legacy_state import PresenceTracker
 
 CONFIG = ConfigView({
     "soul": {

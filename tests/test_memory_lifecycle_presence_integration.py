@@ -79,9 +79,12 @@ async def test_command_manager_presence_schedules_memory_consolidation(monkeypat
 
         monkeypatch.setattr(mm, "schedule_consolidation_user", mock_schedule_user)
 
+        from tests.legacy_state import PresenceTracker
+        from tests.room_support import make_hooks
+
         cm = CommandManager.instance() if CommandManager.is_initialized() else CommandManager.initialize()
         cm._logger = SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock())
-
+        cm.user_event_hooks = make_hooks(presence=PresenceTracker.instance(), memory=mm)
 
         # Test notify_user_enter
         await cm.notify_user_enter("alice")
@@ -98,7 +101,6 @@ async def test_command_manager_presence_schedules_memory_consolidation(monkeypat
         # When alias leaves, UserDAO.resolve_canonical resolves to charlie_main
         # Mock get_all_avatar_usernames to return empty online avatars so leave is not skipped
         from ushareiplay.managers.info_manager import InfoManager
-        from ushareiplay.state.presence_tracker import PresenceTracker
 
         if not PresenceTracker.is_initialized():
             PresenceTracker.initialize()

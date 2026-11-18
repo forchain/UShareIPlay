@@ -562,7 +562,7 @@ async def test_join_party_recreates_room_after_guest_room_closed():
     2. 进入派对大厅并搜索 default_party_id
     3. 若 default_party_id 不在线，则自动创建新房间
     """
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.reset_instance()
     room_state = RoomState.initialize()
     room_state._logger = type('_L', (), {'info': lambda s, *a: None})()
@@ -632,7 +632,7 @@ async def test_join_party_prioritizes_party_back_when_dialog_appears():
     点击进入派对大厅后，如果直接弹出返回房间的窗口 (party_back / cn.soulapp.android:id/tv_look)，
     应当优先点击返回房间，恢复房间状态。
     """
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.reset_instance()
     room_state = RoomState.initialize()
     room_state._logger = type('_L', (), {'info': lambda s, *a: None})()
@@ -673,7 +673,7 @@ async def test_join_party_when_party_back_already_visible():
     """
     如果进入 join_party 时屏幕上已经有返回房间弹窗，应当直接优先点击返回。
     """
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.reset_instance()
     RoomState.initialize()
 
@@ -699,7 +699,7 @@ async def test_join_party_recovers_from_stale_element_on_party_back():
     应当通过 wait_for_element_clickable 重新定位并完成点击，而不是报错中断。
     """
     from selenium.common.exceptions import StaleElementReferenceException
-    from ushareiplay.state.room_state import RoomState
+    from tests.legacy_state import RoomState
     RoomState.reset_instance()
     RoomState.initialize()
 

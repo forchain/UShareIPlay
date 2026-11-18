@@ -41,8 +41,8 @@ class ChatRoomTitleEvent(BaseEvent):
             if not room_title_text:
                 return False
 
-            from ushareiplay.state.room_state import RoomState
-            if RoomState.in_guest_room():
+            room_state = self.controller.room_state
+            if room_state is not None and room_state.is_guest_room:
                 return False
 
             if "｜" in room_title_text:

@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 class RuntimeStub:
@@ -284,13 +284,12 @@ async def test_guest_room_blocks_seat_check_on_enter_and_return():
     SeatManager.initialize()
     cm = CommandManager.initialize()
 
+    cm.user_event_hooks = MagicMock()
+    cm.user_event_hooks.fire = AsyncMock(return_value=0)
     with patch(
-        "ushareiplay.managers.user_event_hooks.UserEventHooks.instance"
-    ) as hooks, patch(
         "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
         new_callable=AsyncMock,
     ) as mock_check:
-        hooks.return_value.fire = AsyncMock(return_value=0)
         await cm.notify_user_enter("Alice")
         await cm.notify_user_return("Alice")
 
@@ -314,13 +313,12 @@ async def test_host_room_checks_seats_on_enter_and_return():
     SeatManager.initialize()
     cm = CommandManager.initialize()
 
+    cm.user_event_hooks = MagicMock()
+    cm.user_event_hooks.fire = AsyncMock(return_value=0)
     with patch(
-        "ushareiplay.managers.user_event_hooks.UserEventHooks.instance"
-    ) as hooks, patch(
         "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
         new_callable=AsyncMock,
     ) as mock_check:
-        hooks.return_value.fire = AsyncMock(return_value=0)
         await cm.notify_user_enter("Alice")
         await cm.notify_user_return("Bob")
 
@@ -594,6 +592,7 @@ async def test_new_seat_entry_inherits_guest_room_guard():
 
     mgr = DummySeatManager()
     room_state = RoomState.instance()
+    mgr.room_state = room_state
 
     # 1. 客房状态：无需复制任何客房检测样板，直接短路返回对应显式命名的返回形状
     room_state.is_guest_room = True

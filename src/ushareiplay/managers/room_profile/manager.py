@@ -52,7 +52,6 @@ from ushareiplay.managers.room_profile.row_editor import (
     WriteOutcome,
     WriteResult,
 )
-from ushareiplay.state.room_state import RoomState
 
 #: 没读到真实房名时，下一次尝试接地的间隔（秒）。接地挂在心跳上、每拍都走，
 #: 而那次判定读最坏要等 `room_name_in_dialog` 两秒 —— 读不到就得退避，否则每拍
@@ -387,9 +386,11 @@ class RoomProfileManager(Singleton):
         handler=None,
         drawer_driver: Optional[RoomProfileDrawerDriverPort] = None,
         settings_driver: Optional[PartySettingsDriverPort] = None,
+        room_state=None,
     ):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
+        self._room_state = room_state
         self._drawer_driver = drawer_driver
         self._settings_driver = settings_driver
         self._drafts = ProfileDraftStore()
@@ -669,7 +670,7 @@ class RoomProfileManager(Singleton):
         模块内部的记账通道。**外部调用方请用 `recommendation_enabled` 那个直接
         答案** —— `RoomState` 留在本模块背后，命令层不该伸手进去摸。
         """
-        return RoomState.instance()
+        return self._room_state
 
     @property
     def recommendation_enabled(self) -> Optional[bool]:
@@ -683,7 +684,7 @@ class RoomProfileManager(Singleton):
         没有记录可问，「还没从 UI 读到过」正是这个意思。与本模块
         `ensure_synced_on_return` 里的同一处判断同源。
         """
-        if not RoomState.is_initialized():
+        if self.room_state is None:
             return None
         return self.room_state.recommendation_enabled
 
@@ -836,7 +837,7 @@ class RoomProfileManager(Singleton):
                 `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
                 记进「公告确实排进队列了」这条行为日志。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             self.logger.info("Skipping notice update in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -1094,7 +1095,7 @@ class RoomProfileManager(Singleton):
                 `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
                 记进「房名确实排进队列了」这条行为日志。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             self.logger.info("Skipping set_title in guest room")
             return {'skipped': True, 'reason': 'guest_room'}
 
@@ -1132,7 +1133,7 @@ class RoomProfileManager(Singleton):
                 `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
                 记进「主题确实变了」这条行为日志。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {'error': '他人房间模式下不可修改房间主题'}
 
         if len(theme) > 2:
@@ -1471,7 +1472,7 @@ class RoomProfileManager(Singleton):
         判定只发生在「刚要改房名」这一刻 —— 这件事只有房名流程知道。恢复的那一写
         归同一模块的 `restore_notice`：抽屉是本流程开的，能写就当场写。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {'skipped': 'guest_room'}
 
         try:
@@ -1570,7 +1571,7 @@ class RoomProfileManager(Singleton):
         返回面与旧实现一致：成功 `{'success': True, 'recommendation_enabled': bool}`，
         失败 `{'error': ...}`（字符串会经 config 的 `:recommend` 模板回给用户）。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {'error': '他人房间模式下不可修改推荐状态'}
 
         driver = self.settings_driver
@@ -1614,7 +1615,8 @@ class RoomProfileManager(Singleton):
                 return {'error': '无法读取推荐状态'}
 
             if current_status == enabled:
-                self.room_state.recommendation_enabled = enabled
+                if self.room_state is not None:
+                    self.room_state.recommendation_enabled = enabled
                 return {'success': True, 'recommendation_enabled': enabled}
 
             if not driver.click_recommendation_status():
@@ -1628,7 +1630,8 @@ class RoomProfileManager(Singleton):
                 )
                 return {'error': '未找到推荐选项'}
 
-            self.room_state.recommendation_enabled = enabled
+            if self.room_state is not None:
+                self.room_state.recommendation_enabled = enabled
             self.logger.info(
                 f"Party recommendation set to {'开放' if enabled else '关闭'}"
             )
@@ -1654,7 +1657,7 @@ class RoomProfileManager(Singleton):
         这里是**只读探测**：不改 UI、不写草稿，只在读到可识别文案时把事实同步到
         `RoomState.recommendation_enabled`。按日志铁律，探测本身只留 DEBUG。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return None
 
         driver = self.settings_driver
@@ -1732,7 +1735,7 @@ class RoomProfileManager(Singleton):
 
         读不到（房名那一行还没渲染出来）不算接地：保持未初始化，下一次回房再读。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {"skipped": True, "reason": "guest_room"}
 
         # 推荐分发的真实状态在设置面板里（#456）：只在还没读到过时问一次 UI。
@@ -1741,8 +1744,8 @@ class RoomProfileManager(Singleton):
         # 也就不要为了推荐去碰设置面板。
         if (
             self.settings_driver is not None
-            and RoomState.is_initialized()
-            and RoomState.instance().recommendation_enabled is None
+            and self.room_state is not None
+            and self.room_state.recommendation_enabled is None
         ):
             self.inspect_current_ui_status()
 
@@ -1883,7 +1886,7 @@ class RoomProfileManager(Singleton):
         return {
             'skipped': True,
             'reason': 'ui_moved',
-            'status': self.room_state.recommendation_enabled,
+            'status': self.recommendation_enabled,
         }
 
     def _sync_room_type(self) -> Dict:
@@ -1921,7 +1924,7 @@ class RoomProfileManager(Singleton):
         `pending_audit_retry`，**由 `process_pending_retry()` 补救** —— 那是这条
         标记唯一的读者；本方法自己不重试。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {'skipped': True, 'reason': 'guest_room'}
 
         results: Dict = {}
@@ -1976,7 +1979,7 @@ class RoomProfileManager(Singleton):
         —— 删掉会让 `pending_audit_retry` 变成一个只写不读的状态位，审计失败之后
         无人补救，而从返回值上完全看不出来。
         """
-        if RoomState.in_guest_room():
+        if self.room_state is not None and self.room_state.is_guest_room:
             return {'skipped': 'guest_room'}
 
         if not self.pending_audit_retry:

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 from lxml import etree
 
@@ -32,7 +33,7 @@ class _Element:
 class _Handler:
     def __init__(self, element):
         self.logger = _Logger()
-        self.controller = object()
+        self.controller = SimpleNamespace(room_state=None)
         self.element_finder = type("Finder", (), {"wait_for_element_clickable": lambda _self, _key: element})()
 
 

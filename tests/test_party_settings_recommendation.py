@@ -27,7 +27,7 @@ from ushareiplay.managers.room_profile.party_settings import (
     PartySettingsDriverPort,
     SoulPartySettingsDriver,
 )
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 from tests.fakes.in_memory_party_settings_driver import (
     CLOSED_TEXT,
     OPEN_TEXT,

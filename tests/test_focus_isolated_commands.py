@@ -2,11 +2,30 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
+from types import SimpleNamespace
+
 from ushareiplay.commands.focus import FocusCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+    TortoiseUserEventHookRepository,
+)
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.dal.focus_event_dao import FocusEventDao
 from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.room.registry import FOCUS
+from tests.room_support import make_hooks
+
+
+def _command(hooks):
+    handler = MagicMock()
+    handler.logger = MagicMock()
+    controller = SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
+    )
+    return FocusCommand(controller)
+
+
+def _repository():
+    return TortoiseUserEventHookRepository()
 
 
 @pytest.fixture(autouse=True)
@@ -28,13 +47,10 @@ async def clear_queue():
 @pytest.mark.asyncio
 async def test_focus_count_change_user_isolation():
     # Setup Alice and Bob with distinct focus commands
-    await FocusEventDao.create("Alice", ":say Alice changed seat")
-    await FocusEventDao.create("Bob", ":say Bob changed seat")
+    await _repository().create(FOCUS, "Alice", ":say Alice changed seat")
+    await _repository().create(FOCUS, "Bob", ":say Bob changed seat")
 
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    command = FocusCommand(mock_handler)
-    command.handler = mock_handler
+    command = _command(make_hooks())
 
     # When only Alice changed seats
     await command.focus_count_change(
@@ -54,12 +70,9 @@ async def test_focus_count_change_user_isolation():
 
 @pytest.mark.asyncio
 async def test_focus_count_change_macro_substitution():
-    await FocusEventDao.create("Charlie", ":say {username} 坐到了 {seat} 号座位 ({action})")
+    await _repository().create(FOCUS, "Charlie", ":say {username} 坐到了 {seat} 号座位 ({action})")
 
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    command = FocusCommand(mock_handler)
-    command.handler = mock_handler
+    command = _command(make_hooks())
 
     await command.focus_count_change(
         before=0,
@@ -78,13 +91,10 @@ async def test_focus_count_change_macro_substitution():
 
 @pytest.mark.asyncio
 async def test_focus_count_change_fallback_when_changed_users_none():
-    await FocusEventDao.create("UserA", ":say A")
-    await FocusEventDao.create("UserB", ":say B")
+    await _repository().create(FOCUS, "UserA", ":say A")
+    await _repository().create(FOCUS, "UserB", ":say B")
 
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    command = FocusCommand(mock_handler)
-    command.handler = mock_handler
+    command = _command(make_hooks())
 
     # Fallback mode (changed_users is None)
     await command.focus_count_change(before=1, after=2, changed_users=None)
@@ -109,12 +119,9 @@ async def test_focus_count_change_deduplicates_same_canonical_user_aliases():
     avatar2.canonical_user_id = canonical.id
     await avatar2.save(update_fields=["canonical_user_id"])
 
-    await FocusEventDao.create("David", ":say David changed seat")
+    await _repository().create(FOCUS, "David", ":say David changed seat")
 
-    mock_handler = MagicMock()
-    mock_handler.logger = MagicMock()
-    command = FocusCommand(mock_handler)
-    command.handler = mock_handler
+    command = _command(make_hooks())
 
     await command.focus_count_change(
         before=0,

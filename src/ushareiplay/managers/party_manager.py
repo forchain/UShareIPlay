@@ -13,15 +13,15 @@ from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.models import MessageInfo
-from ushareiplay.state.room_state import RoomState
 
 
 class PartyManager(Singleton):
     """派对管理器，负责派对的创建、重启、监控和状态管理"""
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, room_state=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
+        self._room_state = room_state
         self._message_dispatch = None
         self._room_profile_manager = None
 
@@ -33,6 +33,10 @@ class PartyManager(Singleton):
     @property
     def handler(self):
         return self._handler
+
+    @property
+    def room_state(self):
+        return self._room_state
 
     @property
     def logger(self):
@@ -94,7 +98,7 @@ class PartyManager(Singleton):
     def update(self):
         """检查并自动管理派对"""
         try:
-            if RoomState.in_guest_room():
+            if self.room_state is not None and self.room_state.is_guest_room:
                 return
 
             # 确保已初始化
@@ -192,9 +196,9 @@ class PartyManager(Singleton):
                 self.logger.info("No confirm button found, proceeding directly")
 
             # Reset state after ending/exiting party
-            if RoomState.is_initialized():
-                RoomState.instance().expected_party_id = None
-                RoomState.instance().clear()
+            if self.room_state is not None:
+                self.room_state.expected_party_id = None
+                self.room_state.clear()
             self.handler.party_id = None
 
             # Trigger background memory consolidation sweep on party end
@@ -224,10 +228,10 @@ class PartyManager(Singleton):
         Returns:
             True 表示已经退房并重建（调用方应中断当前这轮屏幕处理）
         """
-        if not room_id or not RoomState.is_initialized():
+        room_state = self.room_state
+        if not room_id or room_state is None:
             return False
 
-        room_state = RoomState.instance()
         expected_id = room_state.get_expected_party_id()
 
         if expected_id and room_id != expected_id:
@@ -490,9 +494,9 @@ class PartyManager(Singleton):
             # 8. 进入后自动抢麦并更新 party_id 与 RoomState (含预期目标ID)
             self.handler.grab_mic_and_confirm()
             self.handler.party_id = party_id
-            if RoomState.is_initialized():
-                RoomState.instance().expected_party_id = party_id
-                RoomState.instance().room_id = party_id
+            if self.room_state is not None:
+                self.room_state.expected_party_id = party_id
+                self.room_state.room_id = party_id
             return {'party_id': party_id, 'user': message_info.nickname}
 
         except Exception as e:
@@ -516,9 +520,9 @@ class PartyManager(Singleton):
         except Exception as e:
             self.logger.warning(f"Error while leaving unexpected room: {e}")
 
-        if RoomState.is_initialized():
-            RoomState.instance().expected_party_id = None
-            RoomState.instance().clear()
+        if self.room_state is not None:
+            self.room_state.expected_party_id = None
+            self.room_state.clear()
         self.handler.party_id = None
 
         return await self.join_party()
@@ -565,8 +569,8 @@ class PartyManager(Singleton):
                 return False
 
             # 发现首页并进入大厅，说明已离开前一个房间（无论原为主房还是客房），清空旧房间状态
-            if RoomState.is_initialized():
-                RoomState.instance().clear()
+            if self.room_state is not None:
+                self.room_state.clear()
             self.handler.party_id = None
 
             if self._search_and_try_enter_existing_party():
@@ -721,12 +725,12 @@ class PartyManager(Singleton):
             self.logger.info("Clicked close party notification")
             if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
                 self.handler.element_finder.wait_for_element_disappear('close_party_notification', timeout=2.0)
-            if RoomState.is_initialized():
-                RoomState.instance().recommendation_enabled = False
+            if self.room_state is not None:
+                self.room_state.recommendation_enabled = False
         else:
             self.logger.info("Keep party recommendation enabled as configured (default '所有人')")
-            if RoomState.is_initialized():
-                RoomState.instance().recommendation_enabled = True
+            if self.room_state is not None:
+                self.room_state.recommendation_enabled = True
 
         change_party_type = bool(self.handler.config.value('change_party_type', False))
         if change_party_type:
@@ -788,17 +792,17 @@ class PartyManager(Singleton):
 
     async def _after_party_created(self) -> None:
         self.reset_party_time()
-        if RoomState.is_initialized():
+        if self.room_state is not None:
             # 新房间归机器人所有：与群主转让共用同一套宿主模式恢复逻辑
-            RoomState.instance().promote_to_host_room(self.handler.party_id)
+            self.room_state.promote_to_host_room(self.handler.party_id)
 
         # 新房间的房名/主题在 UI 上只有一份，建房后必须把它读回来一次。
         # 推荐状态已不在面板展示、不再刷新，但那不再是「不接地」的理由。
         self._sync_room_profile_from_ui()
 
-        if RoomState.is_initialized():
+        if self.room_state is not None:
             self.logger.info(
-                f"Party recommendation configured during creation: {RoomState.instance().recommendation_enabled}"
+                f"Party recommendation configured during creation: {self.room_state.recommendation_enabled}"
             )
 
         self.logger.info("派对创建成功，准备设置默认notice")

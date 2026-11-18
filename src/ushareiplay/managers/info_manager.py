@@ -16,25 +16,14 @@ class InfoManager(Singleton):
     测试需要注入 handler/logger 时，请直接注入目标状态模块。
     """
 
-    def __init__(self, handler=None):
-        """初始化信息管理器，创建/获取子模块单例"""
+    def __init__(self, handler=None, room_state=None, presence=None, online_list_source=None):
+        """初始化信息管理器；房间状态与在线集合由组合根注入。"""
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._party_manager = None
-
-    @property
-    def _room_state(self):
-        if not hasattr(self, '__room_state'):
-            from ushareiplay.state.room_state import RoomState
-            self.__room_state = RoomState.instance()
-        return self.__room_state
-
-    @property
-    def _presence_tracker(self):
-        if not hasattr(self, '__presence_tracker'):
-            from ushareiplay.state.presence_tracker import PresenceTracker
-            self.__presence_tracker = PresenceTracker.instance()
-        return self.__presence_tracker
+        self._room_state = room_state
+        self._presence_tracker = presence
+        self._online_list_scraper = online_list_source
 
     @property
     def _playlist_session(self):
@@ -49,13 +38,6 @@ class InfoManager(Singleton):
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             self.__playback_broadcaster = PlaybackBroadcaster.instance()
         return self.__playback_broadcaster
-
-    @property
-    def _online_list_scraper(self):
-        if not hasattr(self, '__online_list_scraper'):
-            from ushareiplay.state.online_list_scraper import OnlineListScraper
-            self.__online_list_scraper = OnlineListScraper.instance()
-        return self.__online_list_scraper
 
     @property
     def handler(self):

@@ -9,11 +9,11 @@ from ushareiplay.commands.play import PlayCommand
 from ushareiplay.managers.playback.models import PlaybackMode
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.state.online_list_scraper import OnlineListScraper
+from tests.legacy_state import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 from tortoise import Tortoise

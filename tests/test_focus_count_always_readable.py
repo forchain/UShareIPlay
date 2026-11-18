@@ -17,7 +17,7 @@ import pytest
 from tests.seat_fixtures import FakeSeatUI, make_handler
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)
@@ -318,7 +318,7 @@ class TestFocusCountEventSeedsCache:
     async def test_first_focus_count_event_seeds_cache_even_without_change(self):
         """人数与 RoomState 都空时，首次事件也必须把值写进去。"""
         from ushareiplay.events.focus_count import FocusCountEvent
-        from ushareiplay.state.room_state import RoomState
+        from tests.legacy_state import RoomState
 
         handler = make_handler()
         observation = SeatObservationManager.initialize(handler)
@@ -340,7 +340,7 @@ class TestFocusCountEventSeedsCache:
     async def test_unchanged_count_still_seeds_a_cleared_room_state(self):
         """人数没变但 RoomState 被 clear() 过 → 仍然要补写，否则「未知」复发。"""
         from ushareiplay.events.focus_count import FocusCountEvent
-        from ushareiplay.state.room_state import RoomState
+        from tests.legacy_state import RoomState
 
         handler = make_handler()
         observation = SeatObservationManager.initialize(handler)

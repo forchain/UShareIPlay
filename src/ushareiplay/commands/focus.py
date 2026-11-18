@@ -4,17 +4,21 @@
 """
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.user_event_hooks import FOCUS, UserEventHooks
-from ushareiplay.managers.user_event_hooks.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.room.registry import FOCUS
 
 
 class FocusCommand(BaseCommand):
     handler_attr = 'soul_handler'
     error_message = '处理专注人数命令时出错'
 
+    def __init__(self, controller):
+        super().__init__(controller)
+        self.user_event_hooks = controller.user_event_hooks
+
     async def do_process(self, message_info, parameters):
         """配置专注人数 / 座位联动时要执行的命令。解析与渲染都在 UserEventHooks 内部。"""
-        return await UserEventHooks.instance().execute_crud(
+        return await self.user_event_hooks.execute_crud(
             FOCUS, message_info.nickname, message_info.content
         )
 
@@ -42,7 +46,7 @@ class FocusCommand(BaseCommand):
             seat_info: 本次座位观测，键是 Soul UI 上可见的分身名，值含 `seat_number`
                 与 `action`，即 `{seat}` / `{action}` 宏的数据源。
         """
-        await UserEventHooks.instance().fire(
+        await self.user_event_hooks.fire(
             FOCUS,
             usernames=changed_users,
             ctx={"before": before, "after": after, SEAT_INFO_CTX_KEY: seat_info or {}},

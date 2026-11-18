@@ -3,39 +3,35 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.state.online_list_scraper import OnlineListScraper
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.modules.room.use_cases import PresenceTracker
+from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from tests.room_support import configured_room_state
+
+
+class _ScraperStub:
+    async def refresh_online_users(self):
+        return True
 
 
 @pytest.fixture
 def info_manager():
-    for cls in (
-        InfoManager,
-        RoomState,
-        PresenceTracker,
-        PlaylistSession,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
+    for cls in (InfoManager, PlaylistSession, PlaybackBroadcaster):
         cls.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    # 状态模块各自持有 logger；测试直接注入目标模块（见 ADR-0004）
-    for cls in (
-        RoomState,
-        PresenceTracker,
-        PlaylistSession,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.initialize()._logger = fake_logger
-    manager = InfoManager.initialize()
+    room_state = configured_room_state(logger=fake_logger)
+    presence = PresenceTracker(logger=fake_logger)
+    PlaylistSession.initialize()
+    PlaybackBroadcaster.initialize()._logger = fake_logger
+    manager = InfoManager.initialize(
+        room_state=room_state,
+        presence=presence,
+        online_list_source=_ScraperStub(),
+    )
     manager._logger = fake_logger
     return manager
 

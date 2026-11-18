@@ -8,9 +8,6 @@ import re
 import time
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.state.room_state import RoomState
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.online_list_scraper import OnlineListScraper
 
 
 class UserCountEvent(BaseEvent):
@@ -53,14 +50,10 @@ class UserCountEvent(BaseEvent):
                 self.logger.warning(f"无法将提取的文本转换为整数: {match.group(1)}")
                 return False
 
-            # 更新 RoomState 中的在线人数
-            room_state = RoomState.instance()
-            has_presence = False
-            try:
-                if PresenceTracker.is_initialized():
-                    has_presence = bool(PresenceTracker.instance().get_online_users())
-            except Exception:
-                pass
+            # 更新房间状态中的在线人数
+            room_state = self.controller.room_state
+            presence = self.controller.presence
+            has_presence = bool(presence.get_online_users()) if presence is not None else False
             now = time.time()
 
             # 人数未变且已有在线列表，无需重复刷新
@@ -80,7 +73,7 @@ class UserCountEvent(BaseEvent):
 
             self._last_refresh_attempt = now
 
-            success = await OnlineListScraper.instance().refresh_online_users(target_count=user_count)
+            success = await self.controller.online_list_source.refresh_online_users(target_count=user_count)
             if success:
                 self._consecutive_refresh_failures = 0
                 room_state.user_count = user_count

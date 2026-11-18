@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 from ushareiplay.commands.info import InfoCommand
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.online_list_scraper import OnlineListScraper
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from tests.legacy_state import OnlineListScraper
+from tests.legacy_state import PresenceTracker
+from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)

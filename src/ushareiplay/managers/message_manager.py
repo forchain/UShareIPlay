@@ -36,7 +36,6 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.presence_tracker import PresenceTracker
 
 
 # Global chat logger - will be initialized when needed
@@ -74,9 +73,10 @@ class MessageManager(Singleton):
     #: 上一次观察保留多少行用于去重（比屏幕可见行数窄，因此存在 missed 兜底）
     RECENT_MAXLEN = 3
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, presence=None):
         """Initialize MessageManager with handler, previous messages, recent messages"""
         self._handler = handler
+        self._presence = presence
         self._chat_logger = None
 
         self.previous_messages = {}
@@ -335,9 +335,9 @@ class MessageManager(Singleton):
             PlaybackMuting.instance().arm_on_mic(result.nickname)
 
     async def _handle_user_return(self, result, content: str) -> None:
-        """入场通知：由 PresenceTracker 判定是否算作「用户返回」。"""
-        presence_tracker = PresenceTracker.instance()
-        if presence_tracker.should_trigger_return(result.nickname):
+        """入场通知：由在线集合判定是否算作「用户返回」。"""
+        presence_tracker = self._presence
+        if presence_tracker is not None and presence_tracker.should_trigger_return(result.nickname):
             presence_tracker.record_return(result.nickname)
             self.handler.logger.critical(f"User returned: {result.nickname}")
             self.chat_logger.critical(content)
