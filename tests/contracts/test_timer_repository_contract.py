@@ -42,3 +42,11 @@ async def test_delete(timer_repository):
 
 async def test_count(timer_repository):
     await contracts.assert_count(timer_repository)
+
+
+async def test_create_rejects_duplicate_key(timer_repository):
+    await contracts.assert_create_rejects_duplicate_key(timer_repository)
+
+
+async def test_prepare_is_idempotent(timer_repository):
+    await contracts.assert_prepare_is_idempotent(timer_repository)

@@ -1,4 +1,4 @@
-"""定时器持久化端口；语义与既有 TimerDAO 对齐。"""
+"""定时器出站端口：持久化仓储与到点消息出口。"""
 
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -6,7 +6,21 @@ from datetime import datetime
 from ushareiplay.modules.timer.domain import Timer
 
 
+class TimerMessageSink(ABC):
+    """到点定时器消息的出站出口：交给队列，由运行时按普通消息执行。"""
+
+    @abstractmethod
+    async def enqueue(
+        self, content: str, *, nickname: str = "Timer", sleep_exempt: bool = True
+    ) -> None:
+        """投递一条定时器消息。"""
+
+
 class TimerRepository(ABC):
+    @abstractmethod
+    async def prepare(self) -> None:
+        """启动前的一次性持久化准备（清洗历史数据、迁移遗留文件）；须可重复调用。"""
+
     @abstractmethod
     async def create(
         self,

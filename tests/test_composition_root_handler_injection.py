@@ -13,7 +13,6 @@ from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recovery_manager import RecoveryManager
-from ushareiplay.managers.timer_manager import TimerManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -38,7 +37,6 @@ def test_composition_root_services_receive_identical_injected_handler():
         MessageManager.initialize(fake_soul_handler),
         MessageDispatch.initialize(fake_soul_handler),
         RoomProfileManager.initialize(fake_soul_handler, drawer_driver=None),
-        TimerManager.initialize(fake_soul_handler),
         CommandManager.initialize(fake_soul_handler),
         RoomState.initialize(fake_soul_handler),
         PresenceTracker.initialize(fake_soul_handler),

@@ -81,7 +81,11 @@ def info_cmd_setup():
     profile.adopt_handler(soul_handler, SoulDrawerDriver(soul_handler))
 
     music_handler = SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知")
-    controller = SimpleNamespace(soul_handler=soul_handler, music_handler=music_handler)
+    controller = SimpleNamespace(
+        soul_handler=soul_handler,
+        music_handler=music_handler,
+        timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+    )
     cmd = InfoCommand(controller)
     return cmd, room_state, info_manager
 
