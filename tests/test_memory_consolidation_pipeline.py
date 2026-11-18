@@ -236,7 +236,7 @@ async def test_memory_manager_timeout_configuration_and_forwarding():
             ]
         }
 
-        with patch.object(km.nl_resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+        with patch.object(km.llm_client, "_call_api", new_callable=AsyncMock) as mock_api:
             mock_api.return_value = json.dumps(mock_llm_response)
             success, directives, profile = await mm._call_consolidation_llm(
                 user_name="test_user",

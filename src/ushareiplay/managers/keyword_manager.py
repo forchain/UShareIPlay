@@ -30,6 +30,7 @@ class KeywordManager(Singleton):
         self._config = None
         self._default_keyword_command = None
         self._nl_resolver = None
+        self._llm_client = None
         self._mode_aliases = {
             'sequence': Keyword.MODE_SEQUENCE,
             'sequential': Keyword.MODE_SEQUENCE,
@@ -383,9 +384,12 @@ class KeywordManager(Singleton):
 
     @property
     def nl_resolver(self):
-        """延迟获取 NaturalLanguageResolver 实例"""
+        """延迟获取自然语言解析用例（提示词在模块内构建，HTTP 在 LLM 适配器）。"""
         if self._nl_resolver is None:
-            from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
+            from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+                OpenAICompatibleNaturalLanguageResolver,
+            )
+            from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
 
             root_cfg = self.config
             llm_section = root_cfg.maybe_section("llm")
@@ -395,8 +399,15 @@ class KeywordManager(Singleton):
                 sys_users = (soul.value("system_users") if soul else None) or root_cfg.value("system_users")
                 if sys_users:
                     cfg["system_users"] = sys_users
-            self._nl_resolver = NaturalLanguageResolver(cfg)
+            self._llm_client = OpenAICompatibleNaturalLanguageResolver(cfg)
+            self._nl_resolver = ResolveNaturalLanguage(self._llm_client, cfg)
         return self._nl_resolver
+
+    @property
+    def llm_client(self):
+        """LLM 传输客户端：记忆沉淀等直接调用方复用同一适配器。"""
+        self.nl_resolver
+        return self._llm_client
 
     def _get_playback_info(self) -> Optional[dict]:
         """获取当前活跃的播放与歌单信息缓存"""

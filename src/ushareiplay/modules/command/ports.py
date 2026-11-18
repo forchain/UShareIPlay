@@ -5,7 +5,12 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
+
+from ushareiplay.modules.command.domain import (
+    NaturalLanguageContext,
+    NaturalLanguageResult,
+)
 
 
 class CommandRuntime(ABC):
@@ -39,3 +44,16 @@ class GuestRoomPolicy(ABC):
     @abstractmethod
     def is_command_allowed_in_guest_room(self, prefix: str) -> bool:
         """该前缀是否在客房白名单内。"""
+
+
+class NaturalLanguageResolver(ABC):
+    """自然语言解析出站端口：把文本与用例构建好的提示交给 LLM。
+
+    实现负责传输与响应校验，返回 `NaturalLanguageResult`；不可用/无法解析时返回 None。
+    """
+
+    @abstractmethod
+    async def resolve(
+        self, text: str, context: NaturalLanguageContext
+    ) -> Optional[NaturalLanguageResult]:
+        """解析一条自然语言文本。"""

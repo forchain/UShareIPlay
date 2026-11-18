@@ -1,19 +1,24 @@
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.core.natural_language_resolver import (
-    NaturalLanguageResolver,
-    NaturalLanguageResult,
+from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+    OpenAICompatibleNaturalLanguageResolver,
 )
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.modules.command.domain import NaturalLanguageResult
+from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
 from ushareiplay.dal.user_memory_dao import UserMemoryDAO
 
 
+def _use_case(config):
+    return ResolveNaturalLanguage(OpenAICompatibleNaturalLanguageResolver(config), config)
+
+
 def test_resolver_prompt_injection_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -45,7 +50,7 @@ def test_resolver_prompt_injection_with_memory_context():
 
 
 def test_resolver_prompt_without_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -102,7 +107,7 @@ async def test_memory_manager_get_user_dialogue_context():
 
 @pytest.mark.asyncio
 async def test_resolver_resolve_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -128,7 +133,7 @@ async def test_resolver_resolve_with_memory_context():
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="你好呀",

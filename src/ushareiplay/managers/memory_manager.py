@@ -270,7 +270,7 @@ class MemoryManager(Singleton):
         try:
             from ushareiplay.managers.keyword_manager import KeywordManager
             km = KeywordManager.instance() if KeywordManager.is_initialized() else None
-            resolver = getattr(km, "nl_resolver", None)
+            resolver = km.llm_client if km else None
             if not resolver or not resolver.enabled or not resolver.api_key:
                 logger.debug("LLM not enabled/configured for memory consolidation")
                 return False, existing_directives, existing_profile

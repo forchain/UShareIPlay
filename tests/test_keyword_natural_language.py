@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
-from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
+from ushareiplay.modules.command.domain import NaturalLanguageResult
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
@@ -235,7 +235,7 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 
     monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
-    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
+    with patch("ushareiplay.modules.command.use_cases.ResolveNaturalLanguage.resolve", new_callable=AsyncMock) as mock_resolve:
         mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 胡彦斌 潇湘雨")
 
         intake_result = ChatIntakeResult(
@@ -278,7 +278,7 @@ async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
 
     monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
-    with patch("ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve", new_callable=AsyncMock) as mock_resolve:
+    with patch("ushareiplay.modules.command.use_cases.ResolveNaturalLanguage.resolve", new_callable=AsyncMock) as mock_resolve:
         mock_resolve.return_value = NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
 
         raw_chat = "souler[Alice]说: @Chainer 帮我放一首周杰伦的晴天"
@@ -410,7 +410,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 
     captured_payload = {}
 
-    async def _fake_call_api(payload):
+    async def _fake_call_api(payload, timeout=None):
         nonlocal captured_payload
         captured_payload = payload
         mock_response = {
@@ -430,7 +430,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        keyword_manager.nl_resolver,
+        keyword_manager.llm_client,
         "_call_api",
         _fake_call_api,
     )
@@ -508,7 +508,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
 
     monkeypatch.setattr(keyword_manager, "find_keyword", _mock_find_keyword)
 
-    async def _fake_call_api(payload):
+    async def _fake_call_api(payload, timeout=None):
         mock_response = {
             "choices": [
                 {
@@ -526,7 +526,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        keyword_manager.nl_resolver,
+        keyword_manager.llm_client,
         "_call_api",
         _fake_call_api,
     )
