@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 from ushareiplay.core.runtime_context import EventRuntimeContext
 from ushareiplay.core.ui_session_lease import UISessionLease
-from ushareiplay.events.risk_elements import RiskElementsEvent
+from ushareiplay.adapters.inbound.ui_events.risk_elements import RiskElementsEvent
 
 
 class _RecordingNode:

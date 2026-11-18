@@ -4,11 +4,11 @@ import pytest
 
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
+from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from tests.room_profile_support import RoomProfileManager
 from tests import legacy_state
 
@@ -55,7 +55,7 @@ def _install_room_profile_listener(cls):
 
 def _install_state_defaults():
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
     from tests.room_profile_support import RoomProfileManager
 
     for cls in (

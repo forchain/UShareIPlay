@@ -17,8 +17,8 @@ import pytest_asyncio
 
 from ushareiplay.adapters.inbound.chat.focus import FocusCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.runtime_services import route_queue_text
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.runtime_services import route_queue_text
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,

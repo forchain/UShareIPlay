@@ -4,12 +4,12 @@ import queue
 import pytest
 from unittest.mock import MagicMock
 
-from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
 from ushareiplay.core.runtime_context import EventRuntimeContext
 from ushareiplay.core.ui_session_lease import UISessionLease
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.core.ui.element_finder import ElementFinder
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -274,7 +274,7 @@ def test_agent_command_spool_dispatches_meta_stop_immediately(tmp_path):
     这样在无交互终端运行（E2E、systemd 等）且 QQ Music 同步操作阻塞事件循环时，
     后台通道注入的 !stop 也能立即生效，而不必留在队列里等到操作结束。
     """
-    from ushareiplay.core.runtime_services import AgentCommandSpool
+    from ushareiplay.adapters.inbound.runtime.runtime_services import AgentCommandSpool
 
     input_q = queue.Queue()
     dispatched = []

@@ -27,7 +27,7 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 from ushareiplay.adapters.outbound.persistence.user_repository import (
     TortoiseUserRepository,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.adapters.outbound.persistence.models.user import User

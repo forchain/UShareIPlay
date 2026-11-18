@@ -12,7 +12,7 @@ from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
 from ushareiplay.adapters.outbound.persistence.user_repository import (
     TortoiseUserRepository,
 )
-from ushareiplay.core.chat_intake import ChatIntakeResult, ChatIntakeKind
+from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeResult, ChatIntakeKind
 from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
 from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
 

@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.commands.recommend import RecommendCommand
+from ushareiplay.adapters.inbound.chat.recommend import RecommendCommand
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.modules.room.ports import (
     DEFAULT_MAX_SWIPES,

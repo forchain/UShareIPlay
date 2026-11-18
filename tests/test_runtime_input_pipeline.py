@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.runtime_services import RuntimeInputPipeline, route_queue_text
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, route_queue_text
 
 
 class _Logger:

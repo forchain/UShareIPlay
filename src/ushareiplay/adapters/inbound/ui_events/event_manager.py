@@ -37,7 +37,7 @@ class EventManager(Singleton):
         self._config = None
 
         # 事件相关属性
-        self.events_path = Path(__file__).parent.parent / 'events'
+        self.events_path = Path(__file__).parent
         self.event_modules: Dict[str, object] = {}  # 缓存已加载的事件模块
         self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
         self._initialized = False
@@ -160,7 +160,7 @@ class EventManager(Singleton):
                 self.logger.error(f'Event module path not exists: {module_path}')
                 return None
 
-            package_name = f"ushareiplay.events.{module_name}"
+            package_name = f"ushareiplay.adapters.inbound.ui_events.{module_name}"
             spec = importlib.util.spec_from_file_location(package_name, module_path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[package_name] = module

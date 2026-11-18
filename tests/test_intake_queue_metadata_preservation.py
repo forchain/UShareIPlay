@@ -23,11 +23,11 @@ green suite.
 import asyncio
 import logging
 
-from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from ushareiplay.models.message_info import MessageInfo
 
 
@@ -171,7 +171,7 @@ def test_intake_messages_are_never_classified_a_second_time(monkeypatch):
     #399's "zero secondary classification" on the live path instead of on a
     test-only entry point.
     """
-    from ushareiplay.core import runtime_services
+    from ushareiplay.adapters.inbound.runtime import runtime_services
 
     calls = []
     real_expand = runtime_services.expand_queue_text

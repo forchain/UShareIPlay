@@ -22,10 +22,8 @@ from ushareiplay.modules.shared.roles import (
     resolve_command_level,
 )
 
-DEFAULT_COMMANDS_PATH = Path(__file__).resolve().parents[2] / "commands"
 CHAT_COMMANDS_PATH = Path(__file__).resolve().parents[2] / "adapters" / "inbound" / "chat"
-# 迁移期命令按序查找：新的聊天适配器优先，旧 commands 包随后（#559 删除后者）。
-DEFAULT_COMMAND_ROOTS = (CHAT_COMMANDS_PATH, DEFAULT_COMMANDS_PATH)
+DEFAULT_COMMAND_ROOTS = (CHAT_COMMANDS_PATH,)
 
 # 睡眠时段默认拦截的播放类命令。config.yaml 的 sleep.blocked_commands 可覆盖。
 DEFAULT_SLEEP_BLOCKED = frozenset(

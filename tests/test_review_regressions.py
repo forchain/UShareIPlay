@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.adapters.inbound.runtime.command_parser import CommandParser
 from ushareiplay.core.observability import Observability
 from ushareiplay.modules.shared.roles import RolePolicy, _normalize_set
 

@@ -2,7 +2,6 @@
 
 from ushareiplay.modules.command.domain import (
     CHAT_COMMANDS_PATH,
-    DEFAULT_COMMANDS_PATH,
     DEFAULT_COMMAND_ROOTS,
     DEFAULT_SLEEP_BLOCKED,
     MORE_COMMAND_PREFIXES,
@@ -41,7 +40,6 @@ __all__ = [
     "CommandInvocation",
     "CommandRuntime",
     "DEFAULT_COMMAND_ROOTS",
-    "DEFAULT_COMMANDS_PATH",
     "DEFAULT_SLEEP_BLOCKED",
     "DispatchCommand",
     "GuestRoomPolicy",

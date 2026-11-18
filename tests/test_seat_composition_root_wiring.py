@@ -16,7 +16,7 @@ import yaml
 
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import SeatPanelDriver
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.modules.seat.use_cases import SeatObservationService, SeatService

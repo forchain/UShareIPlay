@@ -14,11 +14,11 @@ import re
 import urllib.request
 from typing import Any, Optional
 
-from ushareiplay.core.chat_intake import format_ai_message
 from ushareiplay.modules.command.domain import (
     NaturalLanguageContext,
     NaturalLanguageResult,
 )
+from ushareiplay.modules.shared.message_tags import format_ai_message
 from ushareiplay.modules.command.ports import NaturalLanguageResolver
 
 logger = logging.getLogger(__name__)

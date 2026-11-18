@@ -101,10 +101,10 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     """验证系统中所有受保护单例服务均拒绝直接构造，必须经由 initialize() 创建。"""
     from ushareiplay.core.app_controller import AppController
     from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.event_manager import EventManager
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.recovery_manager import RecoveryManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster

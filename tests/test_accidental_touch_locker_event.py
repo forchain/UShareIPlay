@@ -1,7 +1,7 @@
 import pytest
 
-from ushareiplay.events import accidental_touch_locker
-from ushareiplay.events.accidental_touch_locker import AccidentalTouchLockerEvent
+from ushareiplay.adapters.inbound.ui_events import accidental_touch_locker
+from ushareiplay.adapters.inbound.ui_events.accidental_touch_locker import AccidentalTouchLockerEvent
 
 
 class FakeLogger:

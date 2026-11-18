@@ -5,7 +5,7 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 
 from ushareiplay.adapters.inbound.chat.receive import ReceiveCommand
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from tests.room_support import make_hooks
 
 

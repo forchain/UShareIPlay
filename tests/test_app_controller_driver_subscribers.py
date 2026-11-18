@@ -198,7 +198,7 @@ def test_reinitialize_driver_notifies_registered_subscribers(monkeypatch):
 
 def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
     from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.models.message_info import MessageInfo
 
     controller = controller_without_init()

@@ -88,7 +88,7 @@ def test_explicit_empty_admin_and_system_users():
 
 def test_agent_command_spool_attributes_to_room_owner(tmp_path):
     import queue
-    from ushareiplay.core.runtime_services import AgentCommandSpool
+    from ushareiplay.adapters.inbound.runtime.runtime_services import AgentCommandSpool
 
     input_q = queue.Queue()
     command_dir = tmp_path / "commands"

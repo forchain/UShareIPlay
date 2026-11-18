@@ -8,9 +8,9 @@ import queue
 
 import pytest
 
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.core.runtime_services import RuntimeInputPipeline
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline
 
 
 class _Logger:

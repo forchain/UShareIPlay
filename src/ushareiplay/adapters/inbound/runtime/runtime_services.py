@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 import threading
-from ushareiplay.core.chat_intake import (
+from ushareiplay.adapters.inbound.runtime.chat_intake import (
     ChatIntakeKind,
     command_message,
     expand_queue_text,
     format_manual_message,
     is_manual_operator,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.models.message_info import MessageInfo
 
 

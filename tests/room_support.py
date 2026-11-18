@@ -1,7 +1,7 @@
 """房间切片测试台：按组合根的方式构造并接线房间状态、在线集合与钩子引擎。"""
 
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.modules.command.domain import CommandCatalogue
 from ushareiplay.modules.room.use_cases import (
     PresenceTracker,

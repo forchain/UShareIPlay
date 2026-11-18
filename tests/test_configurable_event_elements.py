@@ -14,11 +14,11 @@ from types import SimpleNamespace
 import yaml
 
 from ushareiplay.modules.shared.config import ConfigSectionView
-from ushareiplay.events import drawer_elements as drawer_elements_module
-from ushareiplay.events import risk_elements as risk_elements_module
-from ushareiplay.events.drawer_elements import DrawerElementsEvent
-from ushareiplay.events.risk_elements import RiskElementsEvent
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.adapters.inbound.ui_events import drawer_elements as drawer_elements_module
+from ushareiplay.adapters.inbound.ui_events import risk_elements as risk_elements_module
+from ushareiplay.adapters.inbound.ui_events.drawer_elements import DrawerElementsEvent
+from ushareiplay.adapters.inbound.ui_events.risk_elements import RiskElementsEvent
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

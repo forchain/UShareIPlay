@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from ushareiplay.core.chat_intake import (
+from ushareiplay.adapters.inbound.runtime.chat_intake import (
     ChatIntakeKind,
     MessageBatch,
     build_message_batch,
@@ -333,7 +333,7 @@ def test_scanned_chat_flows_to_execution_in_a_single_classification_pass(
         lambda: dispatch,
     )
 
-    from ushareiplay.managers import message_manager as message_manager_module
+    from ushareiplay.adapters.inbound.runtime import message_manager as message_manager_module
 
     calls = []
     real_classify = message_manager_module.classify_chat_line

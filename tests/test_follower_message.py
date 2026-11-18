@@ -6,7 +6,7 @@ FollowerMessageEvent 事件处理测试
 """
 
 import pytest
-from ushareiplay.events.follower_message import FollowerMessageEvent
+from ushareiplay.adapters.inbound.ui_events.follower_message import FollowerMessageEvent
 
 
 class TestFollowerMessageHandler:
@@ -34,7 +34,7 @@ class TestFollowerMessageHandler:
 
         with (
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
-            patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
+            patch("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger") as mock_get_chat_logger,
             patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
             mock_presence = MagicMock()
@@ -74,7 +74,7 @@ class TestFollowerMessageHandler:
 
         with (
             patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new=AsyncMock()),
-            patch("ushareiplay.managers.message_manager.get_chat_logger") as mock_get_chat_logger,
+            patch("ushareiplay.adapters.inbound.runtime.message_manager.get_chat_logger") as mock_get_chat_logger,
             patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as mock_cmd,
         ):
             mock_presence = MagicMock()

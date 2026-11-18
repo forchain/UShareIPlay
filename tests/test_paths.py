@@ -8,21 +8,20 @@ import pytest
 
 
 def test_command_manager_command_roots_exist():
-    """CommandManager.command_roots 先指向入站适配器，再回退旧 commands 目录。"""
+    """CommandManager.command_roots 只指向入站聊天适配器目录。"""
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     roots = manager.command_roots
-    assert len(roots) == 2
+    assert len(roots) == 1
     assert roots[0].name == "chat" and roots[0].parent.name == "inbound"
-    assert roots[1].name == "commands"
     for path in roots:
         assert path.exists(), f"命令根目录不存在: {path}"
         assert path.is_dir()
 
 
 def test_command_manager_command_roots_have_py_files():
-    """两个命令根目录都应包含 .py 命令文件"""
+    """命令根目录应包含 .py 命令文件"""
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
@@ -32,19 +31,19 @@ def test_command_manager_command_roots_have_py_files():
 
 
 def test_event_manager_events_path_exists():
-    """EventManager.events_path 应指向 src/ushareiplay/events/"""
-    from ushareiplay.managers.event_manager import EventManager
+    """EventManager.events_path 应指向 src/ushareiplay/adapters/inbound/ui_events/"""
+    from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
     manager = EventManager.__new__(EventManager)
     manager.__init__()
     path = manager.events_path
     assert path.exists(), f"events 目录不存在: {path}"
     assert path.is_dir()
-    assert path.name == "events"
+    assert path.name == "ui_events"
 
 
 def test_event_manager_events_path_has_py_files():
-    """events 目录应包含 .py 事件文件"""
-    from ushareiplay.managers.event_manager import EventManager
+    """ui_events 目录应包含 .py 事件文件"""
+    from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
     manager = EventManager.__new__(EventManager)
     manager.__init__()
     py_files = list(manager.events_path.glob("*.py"))

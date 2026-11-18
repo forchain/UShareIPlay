@@ -64,8 +64,8 @@ class _FakeWrapper:
 
 
 def test_runtime_queue_drainer_routes_commands_and_plain_messages():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -90,8 +90,8 @@ def test_runtime_queue_drainer_routes_commands_and_plain_messages():
 
 
 def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_messages():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -118,8 +118,8 @@ def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_m
 
 
 def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -149,8 +149,8 @@ def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
 
 
 def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -173,8 +173,8 @@ def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
 
 
 def test_runtime_queue_drainer_routes_dollar_parts_as_private_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -197,8 +197,8 @@ def test_runtime_queue_drainer_routes_dollar_parts_as_private_commands():
 
 
 def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     queue = MessageQueue.instance()
@@ -221,8 +221,8 @@ def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands
 
 def _queue_after_scan(*lines):
     """Run lines through the real scan site and return what it queued."""
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
@@ -273,9 +273,9 @@ def test_screen_scan_queues_ascii_colon_in_chat_prefix():
 
 def test_focus_app_for_queued_commands_switches_to_app_without_executing_commands():
     """The scan still brings Soul forward; execution belongs to the drainer (#398)."""
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     switches = []
 
@@ -319,7 +319,7 @@ def test_queued_screen_command_inherits_ambient_command_silence(chat_window, mon
     it is pinned here deliberately rather than left to be discovered in a live room.
     """
     from ushareiplay.core.command_silence import command_silence
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     event, _command_manager, _drainer = _screen_chat_window(chat_window, monkeypatch)
     queue = MessageQueue.instance()
@@ -352,8 +352,8 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
     from types import SimpleNamespace
 
     from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
     from tests.test_app_controller_driver_subscribers import (
         FakeLogger,
@@ -500,8 +500,8 @@ async def _noop(*_args, **_kwargs):
 
 
 def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
@@ -540,7 +540,7 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
 
 
 def test_process_missed_messages_sends_empty_message_after_finding_anchor():
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     scroll_calls = []
 
@@ -578,7 +578,7 @@ def test_missed_detection_fallback_prevents_false_missed():
 
     这条用例原先把生产算法抄了一份来验证；现在走 observe() 的接口。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     manager = MessageManager.instance()
     # 窗口只保留 3 行，屏幕上有 5 行
@@ -594,7 +594,7 @@ def test_missed_detection_fallback_prevents_false_missed():
 
 def test_observe_reports_missed_when_the_anchor_scrolled_away():
     """锚点确实不在屏幕上时才是真的漏了。"""
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     manager = MessageManager.instance()
     manager.observe(["msg_A", "msg_B", "msg_C"])
@@ -606,7 +606,7 @@ def test_observe_reports_missed_when_the_anchor_scrolled_away():
 
 
 def test_observe_returns_only_the_lines_after_the_anchor():
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     manager = MessageManager.instance()
     manager.observe(["msg_A", "msg_B", "msg_C"])
@@ -624,7 +624,7 @@ def test_a_static_screen_is_never_reported_as_new_again():
     下一次观察看不到锚点，整屏会被当成新增重新派发 —— 礼物重复道谢、热力值
     重复写库、命令重复执行。旧的 diff 算法 append 的是整屏，窗口跨静屏保留。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     manager = MessageManager.instance()
     screen = ["souler[A]说: 你好", "souler[A]送给Joyer", "souler[B]说: :play 稻香"]
@@ -638,7 +638,7 @@ def test_a_static_screen_is_never_reported_as_new_again():
 
 def test_an_unreadable_screen_does_not_forget_the_window():
     """屏幕上什么都读不到（元素缺失/界面切换）时，窗口不能被清空。"""
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     manager = MessageManager.instance()
     manager.observe(["msg_A", "msg_B", "msg_C"])
@@ -655,9 +655,9 @@ def _screen_chat_window(chat_window, monkeypatch):
     chat logger) and points the event at a `_FakeCommandManager` recording what
     execution actually received. Returns `(event, command_manager, drainer)`.
     """
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.events.message_content import MessageContentEvent
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     handler = chat_window.handler
@@ -688,7 +688,7 @@ def test_screen_chat_command_is_queued_and_not_executed_inline(chat_window, monk
     Before #398 the scan called `execute_chat_scan` and executed immediately, so
     screen commands never crossed `MessageQueue` at all.
     """
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     event, command_manager, _drainer = _screen_chat_window(chat_window, monkeypatch)
 
@@ -753,7 +753,7 @@ def test_message_content_event_feeds_the_runtime_queue_and_leaves_execution_to_t
     and leaves execution to `RuntimeQueueDrainer`. Work already in the queue when
     the screen is scanned is still carried over untouched, not consumed here.
     """
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
     from ushareiplay.models.message_info import MessageInfo
 
     event, command_manager, drainer = _screen_chat_window(chat_window, monkeypatch)
@@ -774,8 +774,8 @@ def test_message_content_event_feeds_the_runtime_queue_and_leaves_execution_to_t
 
 def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_window, monkeypatch):
     """The event hands the command to the runtime queue instead of executing it (#398)."""
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.events.message_content import MessageContentEvent
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     fake_command_manager = _FakeCommandManager()
@@ -798,8 +798,8 @@ def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_
 @pytest.mark.asyncio
 async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     msg_queue = MessageQueue.instance()
@@ -879,8 +879,8 @@ async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue()
 async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     import queue
     from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
     from ushareiplay.modules.playback.use_cases import PlaybackMuting
     from ushareiplay.models.message_info import MessageInfo
 
@@ -979,8 +979,8 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
 @pytest.mark.asyncio
 async def test_external_cancellation_propagates_and_cancels_active_command():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     msg_queue = MessageQueue.instance()
@@ -1038,8 +1038,8 @@ async def test_external_cancellation_propagates_and_cancels_active_command():
 @pytest.mark.asyncio
 async def test_watcher_consumes_only_stop_and_start_during_command():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
     from ushareiplay.models.message_info import MessageInfo
 
     msg_queue = MessageQueue.instance()

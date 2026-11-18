@@ -9,7 +9,7 @@ from ushareiplay.adapters.inbound.runtime.timer_message_sink import (
     QueueTimerMessageSink,
 )
 from ushareiplay.adapters.outbound.system.clock import SystemClock
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 
 NOW = datetime(2026, 1, 1, 12, 0, 0)

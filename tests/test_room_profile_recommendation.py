@@ -495,7 +495,9 @@ def test_the_recommend_command_is_no_longer_temporarily_disabled():
         pathlib.Path(__file__).resolve().parents[1]
         / "src"
         / "ushareiplay"
-        / "commands"
+        / "adapters"
+        / "inbound"
+        / "chat"
         / "recommend.py"
     ).read_text(encoding="utf-8")
 
@@ -504,7 +506,7 @@ def test_the_recommend_command_is_no_longer_temporarily_disabled():
 
 
 def test_the_recommend_command_parses_both_state_aliases():
-    from ushareiplay.commands.recommend import RecommendCommand
+    from ushareiplay.adapters.inbound.chat.recommend import RecommendCommand
 
     cmd = RecommendCommand.__new__(RecommendCommand)
     for alias in ("on", "open", "开启", "开放", "所有人", "1"):
@@ -695,7 +697,9 @@ def test_the_recommend_command_reads_the_state_through_the_module():
         pathlib.Path(__file__).resolve().parents[1]
         / "src"
         / "ushareiplay"
-        / "commands"
+        / "adapters"
+        / "inbound"
+        / "chat"
         / "recommend.py"
     ).read_text(encoding="utf-8")
 

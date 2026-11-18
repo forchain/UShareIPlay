@@ -2,7 +2,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from ushareiplay.events.user_count import UserCountEvent
+from ushareiplay.adapters.inbound.ui_events.user_count import UserCountEvent
 from tests import legacy_state
 from tests.legacy_state import OnlineListScraper, PresenceTracker, RoomState
 

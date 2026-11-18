@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.message_manager import MessageManager
+from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 from ushareiplay.modules.playback.use_cases import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
 from tests.legacy_state import RoomState

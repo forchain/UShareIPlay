@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from selenium.common.exceptions import WebDriverException
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 

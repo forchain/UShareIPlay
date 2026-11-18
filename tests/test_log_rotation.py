@@ -151,7 +151,7 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
     monkeypatch,
 ) -> None:
     from ushareiplay.adapters.outbound.system import log_rotation
-    from ushareiplay.managers import message_manager
+    from ushareiplay.adapters.inbound.runtime import message_manager
 
     old_log = tmp_path / "chat.log"
     old_log.write_text("old chat\n", encoding="utf-8")

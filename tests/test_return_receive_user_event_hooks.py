@@ -20,7 +20,7 @@ import pytest_asyncio
 
 from ushareiplay.adapters.inbound.chat.receive import ReceiveCommand
 
-# `return` 是 Python 关键字，`from ushareiplay.commands.return import ...` 语法非法
+# `return` 是 Python 关键字，`from ushareiplay.adapters.inbound.chat.return import ...` 语法非法
 # （CommandManager 正是因为这个才用 `_find_command_class` 动态发现命令类）。
 ReturnCommand = importlib.import_module("ushareiplay.adapters.inbound.chat.return").ReturnCommand
 
@@ -28,7 +28,7 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.modules.room.registry import RECEIVE, RETURN

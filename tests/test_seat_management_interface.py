@@ -61,7 +61,7 @@ async def test_message_manager_backfills_inside_the_seat_chat_scan_session(monke
     收起面板与滚动聊天历史是同一段屏幕动作：会话外收起会被持锁流程随后的
     展开顶掉，会话里才能保证「扫描期间面板是收起的」。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     calls = []
 

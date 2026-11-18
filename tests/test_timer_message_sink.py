@@ -5,7 +5,7 @@ import pytest
 from ushareiplay.adapters.inbound.runtime.timer_message_sink import (
     QueueTimerMessageSink,
 )
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
 
 @pytest.mark.asyncio

@@ -223,7 +223,7 @@ class TestFocusCountEventSeedsCache:
     @pytest.mark.asyncio
     async def test_seat_desk_path_receives_live_count_when_cache_is_empty(self):
         """冷启动首轮：缓存空，但界面可读 → 座位观测拿到真实人数，不是 None。"""
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
         observation = build_seat_observation(handler); handler.controller.seat_observation = observation
@@ -240,7 +240,7 @@ class TestFocusCountEventSeedsCache:
     @pytest.mark.asyncio
     async def test_seat_desk_path_does_not_read_ui_when_cache_is_warm(self):
         """缓存已有值时不额外读界面（避免每轮轮询都打 driver）。"""
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
         observation = build_seat_observation(handler); handler.controller.seat_observation = observation
@@ -265,7 +265,7 @@ class TestFocusCountEventSeedsCache:
 
         AGENTS.md 日志铁律：无行为触发的监控轮询不得反复产生 UI 动作。
         """
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
         observation = build_seat_observation(handler); handler.controller.seat_observation = observation
@@ -292,7 +292,7 @@ class TestFocusCountEventSeedsCache:
         这里允许继续尝试（元素可能只是这一帧没渲染出来），但必须每次都是
         try_find_element 返回 None 的降级，不抛错、不写脏值。
         """
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 
         handler = make_handler()
         handler.element_finder.try_find_element = lambda key, **kwargs: None
@@ -310,7 +310,7 @@ class TestFocusCountEventSeedsCache:
     @pytest.mark.asyncio
     async def test_first_focus_count_event_seeds_cache_even_without_change(self):
         """人数与 RoomState 都空时，首次事件也必须把值写进去。"""
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
         from tests.legacy_state import RoomState
 
         handler = make_handler()
@@ -332,7 +332,7 @@ class TestFocusCountEventSeedsCache:
     @pytest.mark.asyncio
     async def test_unchanged_count_still_seeds_a_cleared_room_state(self):
         """人数没变但 RoomState 被 clear() 过 → 仍然要补写，否则「未知」复发。"""
-        from ushareiplay.events.focus_count import FocusCountEvent
+        from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
         from tests.legacy_state import RoomState
 
         handler = make_handler()

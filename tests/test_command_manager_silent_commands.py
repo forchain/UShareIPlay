@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
+from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
@@ -69,7 +69,7 @@ class _DirectSendCommand:
 
 class _QueueingCommand:
     async def process(self, message_info, parameters):
-        from ushareiplay.core.message_queue import MessageQueue
+        from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
         from ushareiplay.models.message_info import MessageInfo
 
         await MessageQueue.instance().put_message(
@@ -175,8 +175,8 @@ def test_silent_lifecycle_does_not_change_low_level_handler_primitive():
 
 
 def test_silent_lifecycle_marks_queued_keyword_commands_silent(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
 
     queue = MessageQueue.instance()
     asyncio.run(queue.clear_queue())
