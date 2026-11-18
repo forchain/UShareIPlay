@@ -30,7 +30,6 @@ from ushareiplay.dal.receive_dao import ReceiveDao
 from ushareiplay.dal.return_dao import ReturnDao
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.user_event_hooks import RECEIVE, RETURN, UserEventHooks
 from ushareiplay.adapters.outbound.persistence.models import User
@@ -324,19 +323,12 @@ async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_i
 
 
 @pytest.mark.asyncio
-async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init, monkeypatch):
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
-    mm = MemoryManager.instance()
-    mm.configure({"llm": {"memory": {"enabled": True}}})
-
+async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init):
     scheduled = []
-    monkeypatch.setattr(
-        mm, "schedule_consolidation_user", lambda username: scheduled.append(username)
-    )
 
     cm = CommandManager.instance()
     cm._logger = _logger_stub()
+    cm.user_memory = SimpleNamespace(schedule_user=scheduled.append)
 
     await cm.notify_user_return("bob")
     assert scheduled == ["bob"]

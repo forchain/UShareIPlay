@@ -39,3 +39,18 @@ Implement a **Dual-Layer User Memory System** managed by `MemoryManager`:
 - Fast response times for interactive commands while retaining deep conversational context.
 - Zero risk of chat blocking from background memory summarization.
 - Stable user rules via immutable directive preservation across restarts.
+
+## 修订记录（Amendments）
+
+### 2026-11-18 —— 实现位置按 ADR-0013 迁移
+
+spec #539 的切片 #545 保留本 ADR 的全部语义（双层记忆、`min_messages` /
+`min_level_for_long_term` 阈值、游标只在提炼成功时推进、全局扫描、沉淀超时与
+worker 节拍、强制沉淀调度），只调整实现位置：
+
+- 用例：`src/ushareiplay/modules/user/use_cases.py::UserMemoryService`；
+- 仓储端口与领域模型：`src/ushareiplay/modules/user/{ports,domain}.py`；
+- Tortoise 适配器：`src/ushareiplay/adapters/outbound/persistence/{user_memory_repository,chat_log_repository}.py`；
+- LLM 提炼适配器：`src/ushareiplay/adapters/outbound/llm/memory_distiller.py`，LLM 客户端由组合根注入。
+
+`MemoryManager`、`UserMemoryDAO`、`UserChatLogDAO` 已删除，无兼容层。
