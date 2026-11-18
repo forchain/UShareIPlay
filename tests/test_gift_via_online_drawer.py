@@ -12,8 +12,8 @@
 
 import pytest
 
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.managers.user_manager import UserManager
+from ushareiplay.modules.room.use_cases import OnlineDrawer
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -52,24 +52,23 @@ class _RecordingController:
 @pytest.fixture(autouse=True)
 def reset_singletons():
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
     yield
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
 
 
 def _wire(*, members=("小明",), name_resolver=None, handler=None, **driver_kwargs):
-    """装好抽屉会话与 `UserManager`，把屏幕交给内存替身。"""
-    # 单例只允许 initialize 一次（ADR-0009）：同一个测试里重装之前必须先 reset。
+    """装好抽屉用例与 `UserManager`，把屏幕交给内存替身。"""
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
     if handler is None:
         handler = _Handler()
     driver = InMemoryOnlineDrawerDriver(members=list(members), **driver_kwargs)
-    OnlineDrawerManager.initialize(
-        handler=handler, driver=driver, name_resolver=name_resolver
+    controller = getattr(handler, "controller", None)
+    drawer = OnlineDrawer(
+        drawer=driver,
+        name_resolver=name_resolver,
+        ui_session=controller.ui_session if controller is not None else None,
     )
-    manager = UserManager.initialize(handler)
+    manager = UserManager.initialize(handler, drawer=drawer)
     return manager, driver
 
 

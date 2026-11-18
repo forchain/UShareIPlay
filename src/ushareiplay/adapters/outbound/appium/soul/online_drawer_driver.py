@@ -29,7 +29,7 @@ import asyncio
 import re
 from typing import Optional
 
-from ushareiplay.managers.online_drawer.driver import (
+from ushareiplay.modules.room.ports import (
     ADMIN_CONFIRM_CLOSE_KEYS,
     ADMIN_CONFIRM_KEYS,
     ADMIN_CONTROL_TIMEOUT,
@@ -666,7 +666,7 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
     async def read_admin_invite_label(self) -> Optional[str]:
         """读房管开关的文案；按钮没渲染出来返回 None。
 
-        等待沿用旧 `AdminManager` 的那一次 `wait_for_element_clickable('manager_invite')`：
+        等待沿用旧 `AdminManager`（已迁入 `ManageAdmin`）的那一次 `wait_for_element_clickable('manager_invite')`：
         读不到正是「没有这枚按钮」那条失败路径，等一下是值得的。
         """
         finder = self._finder()

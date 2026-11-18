@@ -516,7 +516,6 @@ class AppController(Singleton):
             from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
-            from ushareiplay.managers.admin_manager import AdminManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
@@ -524,11 +523,12 @@ class AppController(Singleton):
                 SoulPartySettingsDriver,
             )
             from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
-            from ushareiplay.managers.online_drawer import OnlineDrawerManager
-            from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
             from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             from ushareiplay.adapters.inbound.runtime.hook_command_sink import QueueHookCommandSink
+            from ushareiplay.adapters.outbound.appium.soul.online_drawer_driver import (
+                SoulOnlineDrawerDriver,
+            )
             from ushareiplay.adapters.outbound.appium.soul.online_list_source import SoulOnlineListSource
             from ushareiplay.adapters.outbound.persistence.room_state_store import JsonRoomStateStore
             from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
@@ -537,7 +537,10 @@ class AppController(Singleton):
             from ushareiplay.adapters.outbound.persistence.user_repository import (
                 TortoiseUserRepository,
             )
+            from ushareiplay.modules.room.domain import RoomAdmins
             from ushareiplay.modules.room.use_cases import (
+                ManageAdmin,
+                OnlineDrawer,
                 PresenceTracker,
                 RoomStateService,
                 UserEventHooks,
@@ -560,6 +563,8 @@ class AppController(Singleton):
                 store=JsonRoomStateStore(),
                 logger=self.logger,
             )
+            # 房管名单由房间用例、座位观测与 `:info` 共用同一份事实。
+            self.room_admins = RoomAdmins()
             self.presence = PresenceTracker(
                 logger=self.logger,
                 on_user_enter=lambda name: self.command_manager.notify_user_enter(name),
@@ -574,7 +579,6 @@ class AppController(Singleton):
                 room_state=self.room_state,
             )
 
-            UserManager.initialize(self.soul_handler)
             self.sleep_manager = SleepManager(
                 self.config, catalogue=self.command_catalogue
             )
@@ -608,7 +612,10 @@ class AppController(Singleton):
             self.command_manager.configure_runtime(self.command_runtime_context)
             self.playback_broadcaster = PlaybackBroadcaster.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(
-                self.soul_handler, room_state=self.room_state, presence=self.presence
+                self.soul_handler,
+                room_state=self.room_state,
+                presence=self.presence,
+                room_admins=self.room_admins,
             )
             self.party_manager = PartyManager.initialize(
                 self.soul_handler, room_state=self.room_state
@@ -625,19 +632,26 @@ class AppController(Singleton):
                 room_state=self.room_state,
             )
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
-            # 那里（#428）。命名域解析器按 ADR-0009 从组合根注入，模块内不去
-            # import InfoManager —— DB 的 canonical 名与 Soul UI 上的可见昵称是两个
-            # 域，拿 canonical 名去 UI 里找人永远不相等（#426 问题陈述 #2）。
-            # 必须排在 InfoManager 之后：name_resolver 取的是上面那个实例的方法。
-            self.online_drawer_manager = OnlineDrawerManager.initialize(
-                self.soul_handler,
-                driver=SoulOnlineDrawerDriver(self.soul_handler),
+            # 那里（#428）。端口、命名域解析器与 UI 独占会话都从组合根注入 ——
+            # DB 的 canonical 名与 Soul UI 上的可见昵称是两个域，拿 canonical 名去
+            # UI 里找人永远不相等（#426 问题陈述 #2）。
+            self.online_drawer = OnlineDrawer(
+                drawer=SoulOnlineDrawerDriver(self.soul_handler),
                 name_resolver=self.info_manager.resolve_visible_username,
+                ui_session=self.ui_session,
+                logger=self.logger,
             )
-            AdminManager.initialize(self.soul_handler)
+            self.manage_admin = ManageAdmin(
+                drawer=self.online_drawer,
+                admins=self.room_admins,
+                policy=RolePolicy(self.config),
+                logger=self.logger,
+            )
+            # 送礼 / 私聊的资料页流程仍由 UserManager 编排（#552 迁移），抽屉用例注入。
+            UserManager.initialize(self.soul_handler, drawer=self.online_drawer)
             # 在线名单抓取：抽屉会话、用户仓储、在线集合与房间人数都由这里注入。
             self.online_list_source = SoulOnlineListSource(
-                drawer=self.online_drawer_manager,
+                drawer=self.online_drawer,
                 users=TortoiseUserRepository(),
                 presence=self.presence,
                 room_state=self.room_state,
@@ -736,6 +750,7 @@ class AppController(Singleton):
                 panel_reader=self.seat_manager.panel_reader,
                 panel_driver=self.seat_manager.panel_driver,
                 room_state=self.room_state,
+                room_admins=self.room_admins,
             )
             self.room_state.add_clear_listener(self.seat_observation_manager.clear)
             self.room_state.add_clear_listener(self.playback_muting.reset)

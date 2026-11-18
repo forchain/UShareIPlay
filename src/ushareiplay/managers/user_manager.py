@@ -1,8 +1,8 @@
 import logging
 
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.online_drawer import Handover, OnlineDrawerManager
-from ushareiplay.managers.online_drawer.driver import GIFT_ACTION_USE
+from ushareiplay.modules.room.use_cases import Handover, OnlineDrawer
+from ushareiplay.modules.room.ports import GIFT_ACTION_USE
 
 YELLOW_DUCK_NAME = "小黄鸭"  # 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送
 
@@ -17,13 +17,14 @@ FIND_DRAWER_ERROR = 'Failed to find online users container'
 class UserManager(Singleton):
     """在在线用户列表中查找指定用户并打开其资料页
 
-    #435 起全部经由 `OnlineDrawerManager` 的抽屉会话进出抽屉：抽屉的开关、落定、翻页
+    #435 起全部经由 `OnlineDrawer` 的抽屉会话进出抽屉：抽屉的开关、落定、翻页
     与关闭手势都在端口后面的适配器里，这里只剩「找谁」「找到之后做什么」这些判断。
     """
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, drawer=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
+        self._drawer = drawer
 
     @property
     def handler(self):
@@ -36,13 +37,14 @@ class UserManager(Singleton):
         return self._logger
 
     @property
-    def drawer(self):
-        """在线用户抽屉会话的唯一所有者。
-
-        单例只查不建（ADR-0009，组合根装配）：拿不到就让整条定位链路显式失败，
-        而不是悄悄退回裸 Appium 操作 —— 那正是 #428 之前的状态。
-        """
-        return OnlineDrawerManager.instance()
+    def drawer(self) -> OnlineDrawer:
+        """在线用户抽屉用例，由组合根注入（#550）。"""
+        if self._drawer is None:
+            raise RuntimeError(
+                "UserManager drawer actions require the online drawer use case; "
+                "wire it at the composition root."
+            )
+        return self._drawer
 
     async def open_user_profile(self, nickname: str):
         """打开目标用户的资料页（统一从在线用户列表查找）。

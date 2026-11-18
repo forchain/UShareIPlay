@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 import pytest
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.info_manager import InfoManager
@@ -37,7 +36,6 @@ def test_composition_root_services_receive_identical_injected_handler():
         PlaybackBroadcaster.initialize(fake_soul_handler),
         InfoManager.initialize(fake_soul_handler),
         PartyManager.initialize(fake_soul_handler),
-        AdminManager.initialize(fake_soul_handler),
         EventManager.initialize(fake_soul_handler),
         RecoveryManager.initialize(fake_soul_handler),
         PlaybackMuting.initialize(fake_soul_handler),

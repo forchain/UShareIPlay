@@ -985,7 +985,7 @@ class SeatLedger:
         return False
 
     def record_room_admin(self, username: Optional[str]) -> None:
-        """记录用户为房间管理员（由观测器同步至 AdminManager）。"""
+        """记录用户为房间管理员（由观测器同步至房管名单）。"""
         if not username or username == "管理":
             return
         self.record_room_admin_hook(username)

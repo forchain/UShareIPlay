@@ -16,7 +16,7 @@ class RecoveryManager(Singleton):
 
         这里只剩这一条手势了。原先前面还有一层「先找抽屉自带的关闭按钮」，而那张
         表里唯一的一行是 `online_drawer` —— 在线用户抽屉的会话生命周期已由 #426 的
-        `OnlineDrawerManager` 接管（见 online_drawer/driver.py 的 CLOSE_KEYS），
+        `OnlineDrawer` 接管（见 modules/room/ports.py 的 CLOSE_KEYS），
         这条入口也已停用，于是整层机制连同那张表一起删掉（#440）。
 
         仍然保留，是因为遮罩式抽屉（`input_drawer` 等）走的就是这条路径：

@@ -32,18 +32,29 @@ async def _noop_session(_reason: str):
 
 
 class _DrawerProxy:
-    """延迟解析 `OnlineDrawerManager`：多数抓取测试把 `_scrape...` 打桩了，不碰抽屉。"""
+    """延迟装配抽屉用例：多数抓取测试把 `_scrape...` 打桩了，不碰抽屉。"""
+
+    def __init__(self):
+        self._drawer = None
+
+    def _use_case(self):
+        if self._drawer is None:
+            from tests.fakes.in_memory_online_drawer_driver import (
+                InMemoryOnlineDrawerDriver,
+            )
+            from ushareiplay.modules.room.use_cases import OnlineDrawer
+
+            self._drawer = OnlineDrawer(
+                drawer=InMemoryOnlineDrawerDriver(), ui_session=_noop_session
+            )
+        return self._drawer
 
     @property
     def driver(self):
-        from ushareiplay.managers.online_drawer import OnlineDrawerManager
-
-        return OnlineDrawerManager.instance().driver
+        return self._use_case().driver
 
     def drawer_session(self, reason):
-        from ushareiplay.managers.online_drawer import OnlineDrawerManager
-
-        return OnlineDrawerManager.instance().drawer_session(reason)
+        return self._use_case().drawer_session(reason)
 
 
 class _ScraperProxy(OnlineListSource):

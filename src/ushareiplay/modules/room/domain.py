@@ -14,6 +14,61 @@ class RoomError(DomainError):
     """房间规则失败。"""
 
 
+class RoomAdminError(RoomError):
+    """房管名单规则失败。"""
+
+
+class AlreadyRoomAdmin(RoomAdminError):
+    """屏幕显示目标已经是房管，邀请是多余动作。"""
+
+    def __init__(self, user: str):
+        super().__init__(user)
+        self.user = user
+
+
+class NotRoomAdmin(RoomAdminError):
+    """屏幕显示目标还不是房管，解除是多余动作。"""
+
+    def __init__(self, user: str):
+        super().__init__(user)
+        self.user = user
+
+
+class OperatorProtected(RoomAdminError):
+    """ADR-0008：受保护的人工操作者不能被更低层级解除。"""
+
+    def __init__(self, user: str):
+        super().__init__(user)
+        self.user = user
+
+
+class RoomAdmins:
+    """当前房间管理员名单（UI 可见昵称）。
+
+    屏幕才是真相：这份集合是资料卡开关的抄写，供麦位观测与 `:info` 标注管理身份。
+    只存可见昵称 —— 与 `_room_admin` 比对的下游（麦位、在线列表）拿到的都是 UI 名字。
+    """
+
+    def __init__(self):
+        self._admins: set[str] = set()
+
+    def add(self, username: str) -> None:
+        if username:
+            self._admins.add(username)
+
+    def remove(self, username: str) -> None:
+        self._admins.discard(username)
+
+    def clear(self) -> None:
+        self._admins.clear()
+
+    def is_admin(self, username: str) -> bool:
+        return bool(username) and username in self._admins
+
+    def all(self) -> set[str]:
+        return set(self._admins)
+
+
 @dataclass(frozen=True)
 class HookCommand:
     """一条用户事件钩子命令（持久化行在领域侧的投影）。"""

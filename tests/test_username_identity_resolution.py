@@ -25,16 +25,16 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 )
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.adapters.outbound.persistence.models.user import User
+from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.registry import FOCUS
-from ushareiplay.modules.room.use_cases import PresenceTracker
+from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer, PresenceTracker
+from ushareiplay.modules.shared.roles import RolePolicy
 from tests.room_support import configured_room_state, make_hooks, wire_room_state
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
@@ -68,8 +68,7 @@ _presence = None
 def presence_env():
     """在线集合由 Soul UI 读回，因此里面只有分身名。"""
     global _presence
-    for cls in (InfoManager, AdminManager):
-        cls.reset_instance()
+    InfoManager.reset_instance()
     presence = PresenceTracker()
     presence._logger = SimpleNamespace(
         info=lambda _m: None, warning=lambda _m: None, error=lambda _m: None, critical=lambda _m: None
@@ -81,8 +80,7 @@ def presence_env():
     _presence = presence
     yield presence
     _presence = None
-    for cls in (InfoManager, AdminManager):
-        cls.reset_instance()
+    InfoManager.reset_instance()
 
 
 # ---------------------------------------------------------------------------
@@ -342,17 +340,15 @@ async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_
 
     journal = []
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], journal=journal)
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(
-        handler=SimpleNamespace(logger=None, controller=None),
-        driver=driver,
+    drawer = OnlineDrawer(
+        drawer=driver,
         name_resolver=InfoManager.instance().resolve_visible_username,
+        ui_session=None,
     )
-    manager = AdminManager.initialize(SimpleNamespace(logger=None))
-    try:
-        result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
-    finally:
-        OnlineDrawerManager.reset_instance()
+    manager = ManageAdmin(
+        drawer=drawer, admins=RoomAdmins(), policy=RolePolicy({})
+    )
+    result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
 
     assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
     assert result == {"user": AVATAR, "action": "Invited"}
@@ -375,13 +371,12 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
     journal = []
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], gift_name="小黄鸭x1", journal=journal)
     UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(
-        handler=SimpleNamespace(logger=None, controller=None),
-        driver=driver,
+    drawer = OnlineDrawer(
+        drawer=driver,
         name_resolver=InfoManager.instance().resolve_visible_username,
+        ui_session=None,
     )
-    UserManager.initialize(SimpleNamespace(logger=None))
+    UserManager.initialize(SimpleNamespace(logger=None), drawer=drawer)
 
     controller = DummyController()
     command = GiftCommand(controller)
@@ -391,7 +386,6 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
         )
     finally:
         UserManager.reset_instance()
-        OnlineDrawerManager.reset_instance()
 
     assert result == {"success": "小黄鸭 送你啦"}
     assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"

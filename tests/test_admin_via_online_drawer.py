@@ -13,38 +13,21 @@ Appium 时序无关。
 
 import pytest
 
-from ushareiplay.managers.admin_manager import AdminManager
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
+from ushareiplay.modules.room.domain import RoomAdmins
+from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer
+from ushareiplay.modules.shared.roles import RolePolicy
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
-class _Handler:
-    """最小 handler：抽屉会话只用到 logger，controller 缺席即不加 UI 锁。"""
-
-    def __init__(self):
-        self.logger = None
-        self.controller = None
-
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    AdminManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    yield
-    AdminManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-
-
 def _wire(*, members=("小明",), name_resolver=None, **driver_kwargs):
-    """装好抽屉会话与 `AdminManager`，把屏幕交给内存替身。"""
-    # 单例只允许 initialize 一次（ADR-0009）：同一个测试里重装之前必须先 reset。
-    AdminManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
+    """装好抽屉用例与 manage-admin，把屏幕交给内存替身。"""
     driver = InMemoryOnlineDrawerDriver(members=list(members), **driver_kwargs)
-    OnlineDrawerManager.initialize(
-        handler=_Handler(), driver=driver, name_resolver=name_resolver
+    admins = RoomAdmins()
+    manager = ManageAdmin(
+        drawer=OnlineDrawer(drawer=driver, name_resolver=name_resolver),
+        admins=admins,
+        policy=RolePolicy({}),
     )
-    manager = AdminManager.initialize(_Handler())
     return manager, driver
 
 
@@ -174,7 +157,13 @@ async def test_no_admin_path_ever_emits_a_back_press():
         members = kwargs.pop("members", ["小明"])
         manager, driver = _wire(members=members, journal=journal, **kwargs)
 
-        await manager.manage_admin(enable=True, target_nickname="小明")
+        from ushareiplay.modules.room.domain import RoomAdminError
+
+        try:
+            await manager.manage_admin(enable=True, target_nickname="小明")
+        except RoomAdminError:
+            # 名单规则失败是命名异常；这条断言只关心屏幕上有没有出现盲按返回。
+            pass
 
         assert not any("back" in event for event in journal), (index, journal)
 
@@ -239,9 +228,23 @@ class _RecordingAdminManager:
     def __init__(self):
         self.given = []
 
-    async def manage_admin(self, enable, target_nickname):
-        self.given.append((enable, target_nickname))
+    async def manage_admin(self, enable, target_nickname, *, caller=None):
+        self.given.append((enable, target_nickname, caller))
         return {"user": target_nickname, "action": "Invited" if enable else "Dismissed"}
+
+
+def _command_with(manager):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from ushareiplay.adapters.inbound.chat.admin import AdminCommand
+
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=MagicMock(),
+        manage_admin=manager,
+    )
+    return AdminCommand(controller)
 
 
 @pytest.mark.parametrize(
@@ -258,24 +261,16 @@ async def test_admin_command_parses_the_target_and_delegates_verbatim(
     content, parameters, expected
 ):
     """参数解析不变，且命令层把拿到的名字**原样**交下去。"""
-    from types import SimpleNamespace
-    from unittest.mock import MagicMock, patch
-
-    from ushareiplay.commands.admin import AdminCommand
     from ushareiplay.models.message_info import MessageInfo
 
     fake_manager = _RecordingAdminManager()
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock())
-    command = AdminCommand(controller)
+    command = _command_with(fake_manager)
 
-    with patch(
-        "ushareiplay.commands.admin.AdminManager.instance", return_value=fake_manager
-    ):
-        result = await command.do_process(
-            MessageInfo(content=content, nickname="群主"), parameters
-        )
+    result = await command.do_process(
+        MessageInfo(content=content, nickname="群主"), parameters
+    )
 
-    assert fake_manager.given == [expected]
+    assert fake_manager.given == [(*expected, "群主")]
     assert result == {"user": expected[1], "action": "Invited" if expected[0] else "Dismissed"}
 
 
@@ -290,18 +285,10 @@ async def test_admin_command_parses_the_target_and_delegates_verbatim(
 async def test_admin_command_parameter_errors_keep_their_legacy_wording(
     content, parameters, message
 ):
-    """三条参数报错逐字保留：它们直接进聊天气泡，迁移不是重写。
-
-    这三条都在进流程之前返回，因此不需要装任何单例 —— 命令层不再在构造期查单例。
-    """
-    from types import SimpleNamespace
-    from unittest.mock import MagicMock
-
-    from ushareiplay.commands.admin import AdminCommand
+    """三条参数报错逐字保留：它们直接进聊天气泡，迁移不是重写。"""
     from ushareiplay.models.message_info import MessageInfo
 
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock())
-    command = AdminCommand(controller)
+    command = _command_with(_RecordingAdminManager())
 
     result = await command.do_process(MessageInfo(content=content, nickname="群主"), parameters)
 
@@ -314,19 +301,14 @@ async def test_admin_command_does_not_resolve_the_nickname_itself():
     解析只在抽屉会话里发生一次；命令层若再解析，canonical 名会在命令层就被翻成分身名，
     而下游按 canonical 名查库的那些路径就会失配。
     """
-    from types import SimpleNamespace
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
-    from ushareiplay.commands.admin import AdminCommand
     from ushareiplay.models.message_info import MessageInfo
 
     fake_manager = _RecordingAdminManager()
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock())
-    command = AdminCommand(controller)
+    command = _command_with(fake_manager)
 
-    with patch(
-        "ushareiplay.commands.admin.AdminManager.instance", return_value=fake_manager
-    ), patch.object(
+    with patch.object(
         type(command),
         "info_manager",
         new=property(lambda _self: (_ for _ in ()).throw(AssertionError("命令层不该解析昵称"))),
@@ -335,5 +317,5 @@ async def test_admin_command_does_not_resolve_the_nickname_itself():
             MessageInfo(content=":admin 1 forchain", nickname="群主"), ["1", "forchain"]
         )
 
-    assert fake_manager.given == [(True, "forchain")], "canonical 名原样交给流程"
+    assert fake_manager.given == [(True, "forchain", "群主")], "canonical 名原样交给流程"
     assert result == {"user": "forchain", "action": "Invited"}

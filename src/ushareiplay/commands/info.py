@@ -100,13 +100,7 @@ class InfoCommand(BaseCommand):
           - 既是管理又在麦：昵称(管理, N号)
           - 既非管理又不在麦：昵称
         """
-        room_admins = set()
-        try:
-            from ushareiplay.managers.admin_manager import AdminManager
-            if AdminManager.is_initialized():
-                room_admins = AdminManager.instance().get_room_admins()
-        except Exception:
-            pass
+        room_admins = self.info_manager.get_room_admins()
 
         seated_users = {}
         try:

@@ -65,9 +65,11 @@ class SeatObservationManager(Singleton):
         panel_driver: Optional[SeatPanelDriver] = None,
         lease=None,
         room_state=None,
+        room_admins=None,
     ):
         self.handler = handler
         self.room_state = room_state
+        self.room_admins = room_admins
         self._logger = None
         self._controller = None
         self._seat_ui = seat_ui
@@ -104,20 +106,12 @@ class SeatObservationManager(Singleton):
         return self
 
     def _admin_manager_has(self, username: str) -> bool:
-        """外部管理员登记（AdminManager）查询；账本自己的麦位证据由账本判。"""
-        try:
-            from ushareiplay.managers.admin_manager import AdminManager
-            return AdminManager.is_initialized() and AdminManager.instance().is_room_admin(username)
-        except Exception:
-            return False
+        """外部房管登记查询；账本自己的麦位证据由账本判。"""
+        return self.room_admins.is_admin(username) if self.room_admins is not None else False
 
     def _admin_manager_add(self, username: str) -> None:
-        try:
-            from ushareiplay.managers.admin_manager import AdminManager
-            if AdminManager.is_initialized():
-                AdminManager.instance().add_room_admin(username)
-        except Exception:
-            pass
+        if self.room_admins is not None:
+            self.room_admins.add(username)
 
     @property
     def panel_reader(self) -> SeatPanelReader:
@@ -217,13 +211,7 @@ class SeatObservationManager(Singleton):
         focus_str = str(focus_count) if focus_count is not None else "未知"
         changed_seats = changed_seats or set()
 
-        room_admins = set()
-        try:
-            from ushareiplay.managers.admin_manager import AdminManager
-            if AdminManager.is_initialized():
-                room_admins = AdminManager.instance().get_room_admins()
-        except Exception:
-            pass
+        room_admins = self.room_admins.all() if self.room_admins is not None else set()
 
         def format_seat(num: int) -> str:
             slot = self.ledger.slots.get(num)

@@ -16,14 +16,15 @@ class InfoManager(Singleton):
     测试需要注入 handler/logger 时，请直接注入目标状态模块。
     """
 
-    def __init__(self, handler=None, room_state=None, presence=None, online_list_source=None):
-        """初始化信息管理器；房间状态与在线集合由组合根注入。"""
+    def __init__(self, handler=None, room_state=None, presence=None, online_list_source=None, room_admins=None):
+        """初始化信息管理器；房间状态、在线集合与房管名单由组合根注入。"""
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._party_manager = None
         self._room_state = room_state
         self._presence_tracker = presence
         self._online_list_scraper = online_list_source
+        self._room_admins = room_admins
 
     @property
     def _playlist_session(self):
@@ -114,6 +115,10 @@ class InfoManager(Singleton):
             Set[str]: 在线用户集合
         """
         return self._presence_tracker.get_online_users()
+
+    def get_room_admins(self) -> Set[str]:
+        """当前房间管理员（UI 可见昵称）集合副本；未装配时为空。"""
+        return self._room_admins.all() if self._room_admins is not None else set()
 
     async def is_user_or_avatar_online(self, username: str) -> bool:
         """

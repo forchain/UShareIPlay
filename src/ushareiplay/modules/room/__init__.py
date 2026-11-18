@@ -1,10 +1,21 @@
 """房间业务包：房间状态、在线集合与用户事件钩子引擎。"""
 
-from ushareiplay.modules.room.domain import HookCommand, RoomError, RoomState
+from ushareiplay.modules.room.domain import (
+    AlreadyRoomAdmin,
+    HookCommand,
+    NotRoomAdmin,
+    OperatorProtected,
+    RoomAdminError,
+    RoomAdmins,
+    RoomError,
+    RoomState,
+)
 from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY, expand_seat_macros, seat_info_for
 from ushareiplay.modules.room.ports import (
     HookCommandSink,
+    MemberRow,
     MemoryConsolidationSink,
+    OnlineDrawerDriverPort,
     OnlineListSource,
     PresenceQuery,
     RoomStateStore,
@@ -25,6 +36,9 @@ from ushareiplay.modules.room.registry import (
     spec_for,
 )
 from ushareiplay.modules.room.use_cases import (
+    Handover,
+    ManageAdmin,
+    OnlineDrawer,
     PresenceTracker,
     RoomStateService,
     UserEventHooks,
@@ -32,20 +46,30 @@ from ushareiplay.modules.room.use_cases import (
 
 __all__ = [
     "ALIAS_GROUP",
+    "AlreadyRoomAdmin",
     "COMMAND_PREFIXES",
     "ENTER",
     "EVENT_HOOK_SPECS",
     "EXIT",
     "FOCUS",
+    "Handover",
     "HookCommand",
     "HookCommandSink",
+    "ManageAdmin",
+    "MemberRow",
     "MemoryConsolidationSink",
+    "NotRoomAdmin",
+    "OnlineDrawer",
+    "OnlineDrawerDriverPort",
     "OnlineListSource",
+    "OperatorProtected",
     "PresenceQuery",
     "PresenceTracker",
     "RECEIVE",
     "RETURN",
     "Resolution",
+    "RoomAdminError",
+    "RoomAdmins",
     "RoomError",
     "RoomState",
     "RoomStateService",

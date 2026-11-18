@@ -124,13 +124,11 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.core.app_controller import AppController
     from ushareiplay.core.message_dispatch import MessageDispatch
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.admin_manager import AdminManager
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.event_manager import EventManager
     from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.online_drawer import OnlineDrawerManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
@@ -155,11 +153,9 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         PlaybackBroadcaster,
         InfoManager,
         PartyManager,
-        AdminManager,
         EventManager,
         SeatManager,
         SeatObservationManager,
-        OnlineDrawerManager,
     ]
 
     for cls in all_protected_classes:

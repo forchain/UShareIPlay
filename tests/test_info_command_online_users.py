@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ushareiplay.commands.info import InfoCommand
-from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
@@ -16,13 +16,14 @@ from tests.legacy_state import RoomState
 
 @pytest.fixture(autouse=True)
 def setup_info_env():
+    global _room_admins
+    _room_admins = RoomAdmins()
     for cls in (
         InfoManager,
         PlaybackBroadcaster,
         PlaylistSession,
         PresenceTracker,
         RoomState,
-        AdminManager,
         SeatObservationManager,
     ):
         cls.reset_instance()
@@ -34,7 +35,7 @@ def setup_info_env():
     presence._online_users = set()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager = InfoManager.initialize()
+    info_manager = InfoManager.initialize(room_admins=_room_admins)
     info_manager._logger = SimpleNamespace(info=lambda _msg: None)
     info_manager._party_manager = SimpleNamespace(init_time=None)
 
@@ -55,7 +56,6 @@ def setup_info_env():
         PlaylistSession,
         PresenceTracker,
         RoomState,
-        AdminManager,
         SeatObservationManager,
     ):
         cls.reset_instance()
@@ -99,8 +99,7 @@ async def test_info_online_users_plain_users():
 @pytest.mark.asyncio
 async def test_info_online_users_admin_only():
     PresenceTracker.instance().update_online_users(["AdminUser", "NormalUser"])
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminUser")
+    _room_admins.add("AdminUser")
 
     controller = make_dummy_controller()
     cmd = InfoCommand(controller)
@@ -127,8 +126,7 @@ async def test_info_online_users_seat_only():
 @pytest.mark.asyncio
 async def test_info_online_users_admin_and_seat():
     PresenceTracker.instance().update_online_users(["AdminOnSeat"])
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminOnSeat")
+    _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
@@ -146,9 +144,8 @@ async def test_info_online_users_all_combinations():
     users = ["AdminOffSeat", "AdminOnSeat", "NormalOffSeat", "NormalOnSeat"]
     PresenceTracker.instance().update_online_users(users)
 
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminOffSeat")
-    admin_mgr.add_room_admin("AdminOnSeat")
+    _room_admins.add("AdminOffSeat")
+    _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
     obs = SeatObservationManager.initialize(controller.soul_handler)
@@ -180,8 +177,8 @@ async def test_info_includes_timer_status():
 @pytest.mark.asyncio
 async def test_info_online_users_without_optional_managers_initialized():
     PresenceTracker.instance().update_online_users(["Alice", "Bob"])
-    # AdminManager and SeatObservationManager are NOT initialized
-    assert not AdminManager.is_initialized()
+    # 没有房管名单，也没有座位观测
+    assert _room_admins.all() == set()
     assert not SeatObservationManager.is_initialized()
 
     controller = make_dummy_controller()

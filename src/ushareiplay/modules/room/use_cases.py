@@ -13,16 +13,30 @@ import logging
 import shlex
 import time
 import traceback
+from contextlib import asynccontextmanager
 from typing import Callable, Iterable, List, Optional, Set
 
-from ushareiplay.modules.room.domain import HookCommand, RoomState
+from ushareiplay.modules.room.domain import (
+    AlreadyRoomAdmin,
+    HookCommand,
+    NotRoomAdmin,
+    OperatorProtected,
+    RoomAdmins,
+    RoomState,
+)
 from ushareiplay.modules.room.ports import (
+    ADMIN_ACTION_DISMISS,
+    ADMIN_ACTION_INVITE,
+    ADMIN_LABEL_DISMISS,
+    ADMIN_LABEL_INVITE,
     HookCommandSink,
     MemoryConsolidationSink,
+    OnlineDrawerDriverPort,
     PresenceQuery,
     RoomStateStore,
     UserEventHookRepository,
 )
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.modules.room.registry import COMMAND_PREFIXES, EXIT, spec_for
 from ushareiplay.modules.user.ports import UserRepository
 
@@ -497,3 +511,408 @@ class UserEventHooks:
                     seen_cmd_ids.add(cmd.id)
                     commands.append(cmd)
         return commands
+
+
+# ---------------------------------------------------------------------------
+# 在线用户抽屉（#550 自 managers/online_drawer/manager.py 迁入）
+# ---------------------------------------------------------------------------
+
+#: 打不开抽屉时的默认报错文案。调用方可以传 `error_message` 换成自己面向用户的
+#: 文本，以免统一入口后改变聊天气泡里的报错。
+DEFAULT_OPEN_ERROR = 'Failed to open online users drawer'
+
+#: 抽屉开了但没落定时的默认报错文案。与「打不开」分开表述：前者抽屉多半还开着，
+#: 调用方重试有意义；后者连容器都没出现，重试之前应该先确认自己还在房间里。
+DEFAULT_SETTLE_ERROR = 'Online users drawer did not settle'
+
+#: 最多翻多少页去找一个人。上限与在线名单抓取同源：别把一次定位变成无上限轮询；
+#: 翻满仍找不到就如实回报「未找到」，要不要再来一次由调用方决定。
+MAX_SEARCH_SWIPES = 50
+
+#: 两条成功路径的 `action` 文案，会原样进聊天气泡，迁移不是重写。
+ACTION_INVITE = 'Invited'
+ACTION_DISMISS = 'Dismissed'
+
+
+class Handover:
+    """一次抽屉会话里的**交接**信号。
+
+    会话打开的抽屉默认在退出时收掉。但资料页流程的成功产物恰恰是抽屉之上的那层
+    资料卡 —— 卡片与抽屉共用同一个 `ivClose`，此时收尾等于把刚交出去的东西拆掉。
+    正文调用 `release()` 把抽屉连同资料卡一起交给调用方，收尾责任随之转移。
+
+    刻意做成一个显式对象，而不是一个布尔开关：开关只能整段会话生效，于是「没找到人
+    就中途 return」这类**失败**路径也会被跳过收尾，把抽屉悬在屏幕上。
+    """
+
+    def __init__(self):
+        self._released = False
+
+    def release(self) -> None:
+        """声明「抽屉与资料卡归调用方了」，本会话不再收尾。"""
+        self._released = True
+
+    @property
+    def released(self) -> bool:
+        return self._released
+
+
+class OnlineDrawer:
+    """在线用户抽屉会话的唯一所有者：需要时打开、保证收尾、只关自己开的那次。
+
+    端口、命名域解析器与 UI 独占会话全部由构造方注入；模块内不查找任何单例。
+
+    Args:
+        drawer: 抽屉 UI 端口适配器。
+        name_resolver: async 命名域解析器，签名 `(str) -> str`。`None` 表示离线装配，
+            此时按恒等处理。
+        ui_session: 可选，`(reason) -> async context manager` 的 UI 独占锁入口。
+            `None` 表示离线装配，退化为不加锁。
+        logger: 可选 logger。
+    """
+
+    def __init__(
+        self,
+        *,
+        drawer: OnlineDrawerDriverPort,
+        name_resolver: Optional[Callable] = None,
+        ui_session: Optional[Callable] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._driver = drawer
+        self._name_resolver = name_resolver
+        self._ui_session_factory = ui_session
+        self._logger = logger
+
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = logging.getLogger("ushareiplay.modules.room.use_cases")
+        return self._logger
+
+    @property
+    def driver(self) -> OnlineDrawerDriverPort:
+        """抽屉 UI 端口。"""
+        return self._driver
+
+    @asynccontextmanager
+    async def drawer_session(
+        self,
+        reason: str = "",
+        *,
+        error_message: Optional[str] = None,
+        settle_error_message: Optional[str] = None,
+        handover: Optional[Handover] = None,
+    ):
+        """抽屉开着的异步上下文：需要时才打开，且只关掉自己打开的那一次。
+
+        Yields:
+            error dict（抽屉不可用）或 None（会话已就绪）。
+        """
+        async with self._ui_session(reason):
+            driver = self._require_driver()
+
+            if await driver.is_open():
+                # 抽屉不是本会话打开的：不夺取归属，退出后保持原状。
+                yield None
+                return
+
+            open_error = error_message or DEFAULT_OPEN_ERROR
+            result = await driver.open(error_message=open_error)
+            if isinstance(result, dict) and 'error' in result:
+                self.logger.warning(f"[online_drawer] {reason or 'session'} 打不开在线用户抽屉")
+                yield {'error': open_error}
+                return
+
+            self.logger.info(f"[online_drawer] {reason or 'session'} 已打开在线用户抽屉")
+            if not await driver.wait_for_settle():
+                # 抽屉是本会话打开的，必须收尾 —— 否则它会悬在屏幕上等着被下一次
+                # 盲按返回误退出房间。
+                self.logger.warning(
+                    f"[online_drawer] {reason or 'session'} 抽屉打开后未能落定，收尾关闭"
+                )
+                await self._ensure_closed()
+                yield {'error': settle_error_message or error_message or DEFAULT_SETTLE_ERROR}
+                return
+
+            try:
+                yield None
+            except BaseException:
+                # 抛异常一律收尾：交接只发生在正文的成功路径上。
+                await self._ensure_closed()
+                raise
+            if handover is None or not handover.released:
+                await self._ensure_closed()
+
+    async def close_profile_card(self) -> None:
+        """把资料卡连同抽屉收回房间；收不掉只记警告并保持原状，绝不盲按返回。"""
+        try:
+            async with self._ui_session("online_drawer:close_profile_card"):
+                driver = self._require_driver()
+                if not await driver.dismiss_profile_card():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过 ivClose 收起资料卡，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 资料卡已收起")
+        except Exception as e:
+            # 收尾失败不能让调用方的正常结果变成异常。
+            self.logger.warning(f"[online_drawer] 收起资料卡时出错: {e}")
+
+    async def dismiss_gift_popup(self) -> None:
+        """把还盖在资料卡上的送礼弹窗收掉；收不掉只记警告并保持原状。"""
+        try:
+            async with self._ui_session("online_drawer:dismiss_gift_popup"):
+                driver = self._require_driver()
+                if not await driver.dismiss_gift_popup():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过页内关闭键收起送礼弹窗，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 送礼弹窗已收起")
+        except Exception as e:
+            self.logger.warning(f"[online_drawer] 收送礼弹窗时出错: {e}")
+
+    async def dismiss_admin_confirm(self) -> None:
+        """把盖在资料卡上的房管确认框收掉；收不掉只记警告并保持原状。"""
+        try:
+            async with self._ui_session("online_drawer:dismiss_admin_confirm"):
+                driver = self._require_driver()
+                if not await driver.dismiss_admin_confirm():
+                    self.logger.warning(
+                        "[online_drawer] 未能通过页内关闭键收起房管确认框，保持原状等待下一轮恢复"
+                    )
+                    return
+                self.logger.info("[online_drawer] 房管确认框已收起")
+        except Exception as e:
+            self.logger.warning(f"[online_drawer] 收房管确认框时出错: {e}")
+
+    @asynccontextmanager
+    async def _ui_session(self, reason: str):
+        """持有 UI 独占锁；没有注入时退化为不加锁（离线装配）。"""
+        if self._ui_session_factory is None:
+            yield
+            return
+        async with self._ui_session_factory(reason or "online_drawer"):
+            yield
+
+    async def _ensure_closed(self) -> None:
+        """收尾：只走 `ivClose`，点不到就记警告并保持原状。"""
+        try:
+            driver = self._require_driver()
+            if not await driver.is_open():
+                return
+            if await driver.close():
+                self.logger.info("[online_drawer] 在线用户抽屉已关闭")
+                return
+            self.logger.warning(
+                "[online_drawer] 未能通过 ivClose 关闭在线用户抽屉，保持原状等待下一轮恢复"
+            )
+        except Exception as e:
+            # 抽屉还开着是「难看」，抛出去是「任务失败」，后者更糟。
+            self.logger.warning(f"[online_drawer] 关闭在线用户抽屉时出错: {e}")
+
+    @asynccontextmanager
+    async def card_session(self, reason: str):
+        """交接之后、收尾之前的「卡片独占」，把住 UI 锁。"""
+        async with self._ui_session(reason):
+            yield
+
+    async def find_member_in_drawer(self, visible_name: str) -> bool:
+        """在抽屉里一页一页找某个 UI 可见昵称。
+
+        翻到哪一页、翻够几页、什么时候如实回报「未找到」都是**会话的决策**，端口只
+        负责如实回答「此刻屏幕上有哪些行」。
+        """
+        driver = self._require_driver()
+        for _ in range(MAX_SEARCH_SWIPES + 1):
+            if await driver.find_member_row(visible_name) is not None:
+                return True
+
+            if await driver.is_at_end():
+                self.logger.info("Detected no_more_data, stop searching online users.")
+                return False
+
+            if not await driver.scroll_container():
+                self.logger.warning("Swipe failed, stop searching online users.")
+                return False
+
+        self.logger.warning(f"Reached max_swipes, stop searching for {visible_name}.")
+        return False
+
+    async def resolve_visible_username(self, username: str) -> str:
+        """把任意命名域的名字解析成 Soul UI 上可见的昵称（分身名）。
+
+        **没有注入解析器时（离线装配、单元测试）原样返回**。
+        """
+        if self._name_resolver is None:
+            return username
+        return await self._name_resolver(username)
+
+    def _require_driver(self) -> OnlineDrawerDriverPort:
+        if self._driver is None:
+            # 组合根漏了接线：显式失败，而不是悄悄退回裸 Appium 操作。
+            raise RuntimeError(
+                "OnlineDrawer drawer actions require an OnlineDrawerDriverPort adapter; "
+                "wire it at the composition root."
+            )
+        return self._driver
+
+
+class ManageAdmin:
+    """房管授予与解除的用例：开抽屉 -> 找人 -> 资料卡 -> 开关 -> 确认 -> 记账。
+
+    ADR-0008 的层级规则在这里落成命名异常：已经是/还不是房管、以及受保护的人工
+    操作者（房主、配置管理员）不能被更低层级解除。聊天命令只负责把异常翻成原话。
+    """
+
+    def __init__(
+        self,
+        *,
+        drawer: OnlineDrawer,
+        admins: RoomAdmins,
+        policy: RolePolicy,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._drawer = drawer
+        self._admins = admins
+        self._policy = policy
+        self._logger = logger
+
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = logging.getLogger("ushareiplay.modules.room.use_cases")
+        return self._logger
+
+    def is_room_admin(self, username: str) -> bool:
+        return self._admins.is_admin(username)
+
+    def get_room_admins(self) -> set[str]:
+        return self._admins.all()
+
+    def add_room_admin(self, username: str) -> None:
+        self._admins.add(username)
+
+    def remove_room_admin(self, username: str) -> None:
+        self._admins.remove(username)
+
+    def clear_room_admins(self) -> None:
+        self._admins.clear()
+
+    async def manage_admin(
+        self,
+        enable: bool,
+        target_nickname: str,
+        *,
+        caller: Optional[str] = None,
+    ) -> dict:
+        """在在线列表中打开目标用户资料页，再执行邀请/解除管理。
+
+        Args:
+            enable: True 邀请为管理员，False 解除管理员。
+            target_nickname: canonical 名或 UI 可见昵称；解析在抽屉会话里完成。
+            caller: 发起命令的昵称。层级保护只看它判断「是不是更低层级」。
+
+        Raises:
+            AlreadyRoomAdmin / NotRoomAdmin / OperatorProtected: 名单规则失败。
+        """
+        if not enable:
+            self._guard_operator(caller, target_nickname)
+
+        drawer = self._drawer
+        driver = drawer.driver
+        handover = Handover()
+
+        async with drawer.drawer_session(
+            reason=f"admin:{target_nickname}",
+            error_message='Failed to open online users list',
+            settle_error_message='Failed to find online users container',
+            handover=handover,
+        ) as open_error:
+            if open_error:
+                return {'error': open_error['error'], 'user': target_nickname}
+
+            # 先解析命名域再进 UI 搜索：抽屉里只有可见昵称能定位到人。
+            visible_name = await self._resolve_visible_name(drawer, target_nickname)
+
+            if not await drawer.find_member_in_drawer(visible_name):
+                self.logger.warning(f"未找到用户 {visible_name}")
+                return {
+                    'error': 'User not found in online users list',
+                    'user': visible_name,
+                }
+
+            if not await driver.open_member_profile(visible_name):
+                self.logger.error(f"Failed to click user element: {visible_name}")
+                return {'error': 'Failed to click user element', 'user': visible_name}
+
+            self.logger.info(f"Clicked user element for {visible_name}")
+            # 卡片已经交到自己手里：接下来每一条路径都要自己收。
+            handover.release()
+            try:
+                return await self._toggle_on_card(driver, enable, visible_name)
+            finally:
+                await self._close_admin_overlays()
+
+    def _guard_operator(self, caller: Optional[str], target: str) -> None:
+        """ADR-0008：房主不可被解除；配置管理员只能由房主解除。"""
+        if self._policy.is_room_owner(target):
+            raise OperatorProtected(target)
+        if self._policy.is_admin(target) and not (
+            caller is not None and self._policy.is_room_owner(caller)
+        ):
+            raise OperatorProtected(target)
+
+    async def _resolve_visible_name(self, drawer: OnlineDrawer, nickname: str) -> str:
+        """把 canonical 名解析成房间里可见的分身名；解析不了就按原名找。"""
+        try:
+            return await drawer.resolve_visible_username(nickname)
+        except Exception:
+            # 解析器是别处的单例，让它的一次抖动把整条房管流程变成硬失败并不划算。
+            return nickname
+
+    async def _toggle_on_card(self, driver, enable: bool, target_nickname: str) -> dict:
+        """已经在资料卡上：读开关文案 -> 判幂等 -> 点开关 -> 点确认。"""
+        label = await driver.read_admin_invite_label()
+        if label is None:
+            return {'error': 'Failed to find manager invite button', 'user': target_nickname}
+
+        if enable:
+            if label == ADMIN_LABEL_DISMISS:
+                # 屏幕说是房管：先把抄写修正，再如实回报「已经」。
+                self._admins.add(target_nickname)
+                raise AlreadyRoomAdmin(target_nickname)
+            action = ACTION_INVITE
+            driver_action = ADMIN_ACTION_INVITE
+        else:
+            if label == ADMIN_LABEL_INVITE:
+                self._admins.remove(target_nickname)
+                raise NotRoomAdmin(target_nickname)
+            action = ACTION_DISMISS
+            driver_action = ADMIN_ACTION_DISMISS
+
+        # 点开关失败只记警告不改道：真正的判据是下一步确认框有没有出来。
+        if not await driver.click_admin_invite():
+            self.logger.warning("点击管理邀请按钮失败")
+        self.logger.info("Clicked manager invite button")
+
+        if not await driver.confirm_admin_action(driver_action):
+            self.logger.error(
+                f"Failed to find {action} confirmation button for {target_nickname}"
+            )
+            return {'error': f'Failed to find {action} confirmation button', 'user': target_nickname}
+
+        self.logger.info(f"Clicked {action} confirmation button")
+
+        if enable:
+            self._admins.add(target_nickname)
+        else:
+            self._admins.remove(target_nickname)
+
+        return {'user': target_nickname, 'action': action}
+
+    async def _close_admin_overlays(self) -> None:
+        """按相反顺序分层收：先收确认框，再收资料卡连同抽屉。"""
+        await self._drawer.dismiss_admin_confirm()
+        await self._drawer.close_profile_card()
