@@ -17,7 +17,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from lxml import etree
 
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView, Locator
+from ushareiplay.adapters.outbound.appium.locator import Locator
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.element_wrapper import ElementWrapper
@@ -349,8 +350,10 @@ class EventManager(Singleton):
 
         anchors = []
         for key in ("message_content", "input_box_entry", "input_box"):
-            locator = self.config.maybe_element(key)
-            if locator is not None and self._selector_present(root, page_source, locator):
+            value = self.config.maybe_element(key)
+            if value is not None and self._selector_present(
+                root, page_source, Locator.from_value(value)
+            ):
                 anchors.append(key)
         screen["anchors"] = anchors
 
@@ -376,9 +379,10 @@ class EventManager(Singleton):
         Returns:
             找到的 lxml Element，未找到返回 None
         """
-        locator = self.config.maybe_element(element_key)
-        if locator is None:
+        value = self.config.maybe_element(element_key)
+        if value is None:
             return None
+        locator = Locator.from_value(value)
 
         try:
             results = root.xpath(locator.absolute_xpath)

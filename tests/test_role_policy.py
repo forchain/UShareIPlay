@@ -1,5 +1,5 @@
 import pytest
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 
 
 def test_default_roles_when_empty_config():

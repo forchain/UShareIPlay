@@ -28,7 +28,7 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 # 全角竖线 U+FF5C —— ADR-0001 的分隔符，写入与拆分两侧都必须是它。
 FULLWIDTH_SEPARATOR = "｜"

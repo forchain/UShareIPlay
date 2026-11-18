@@ -4,7 +4,7 @@ import datetime as dt
 from dataclasses import dataclass
 
 from ushareiplay.core.command_catalogue import CommandCatalogue
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.singleton import Singleton
 
 

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 @pytest.fixture

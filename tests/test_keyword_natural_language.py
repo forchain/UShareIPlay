@@ -6,7 +6,7 @@ import pytest
 
 from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
 from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
 def _run(coro):

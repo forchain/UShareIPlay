@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from ushareiplay.core.config_view import Locator
+from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
 

@@ -467,7 +467,7 @@ class SeatObservationManager(Singleton):
         except Exception:
             pass
         try:
-            from ushareiplay.core.roles import RolePolicy
+            from ushareiplay.modules.shared.roles import RolePolicy
             cfg = getattr(self.handler, "config", None)
             if cfg is None:
                 return None

@@ -8,7 +8,7 @@ from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 @pytest.fixture

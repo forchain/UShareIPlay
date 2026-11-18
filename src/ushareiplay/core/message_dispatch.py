@@ -3,9 +3,10 @@ import traceback
 from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.user_manager import UserManager
+from ushareiplay.modules.shared.ports import RoomMessenger
 
 
-class MessageDispatch(Singleton):
+class MessageDispatch(RoomMessenger, Singleton):
     """Route outbound chat messages through one observable application seam."""
 
     def __init__(self, handler=None, user_manager=None):

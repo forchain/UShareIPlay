@@ -5,7 +5,7 @@ import pytest
 from selenium.common.exceptions import InvalidElementStateException
 
 from ushareiplay.core.ui.gesture_handler import GestureHandler
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _Owner:

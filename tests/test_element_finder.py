@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.ui.element_finder import ElementFinder
 
 

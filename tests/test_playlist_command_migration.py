@@ -25,7 +25,7 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.models.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 QUEUE_TEXT = "似是故人来 - 梅艳芳\n如风 - 王菲"
 

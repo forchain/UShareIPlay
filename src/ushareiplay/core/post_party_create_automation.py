@@ -4,7 +4,7 @@ import traceback
 import logging
 from typing import List, Optional
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.models import MessageInfo
 
@@ -110,7 +110,7 @@ class PostPartyCreateAutomation:
             self._log_info(
                 f"[post_party_create] firing ({trigger}), commands={len(cmds)}, wait_for_ready={self._wait_for_ready()}"
             )
-            from ushareiplay.core.roles import RolePolicy
+            from ushareiplay.modules.shared.roles import RolePolicy
             owner = RolePolicy(getattr(self.controller, "config", None)).room_owner
             queue = MessageQueue.instance()
             for cmd in cmds:

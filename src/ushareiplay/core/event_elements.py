@@ -11,7 +11,7 @@
 from typing import TYPE_CHECKING, Iterable, List, Optional
 
 if TYPE_CHECKING:
-    from ushareiplay.core.config_view import ConfigSectionView
+    from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 def resolve_event_elements(

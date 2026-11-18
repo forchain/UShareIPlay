@@ -7,7 +7,7 @@ microphone restore — plus the guest-room bypass policy.
 
 import pytest
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.state.room_state import RoomState
 

@@ -8,7 +8,7 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from ushareiplay.core.config_view import Locator
+from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
 
@@ -297,10 +297,10 @@ class ElementFinder:
         XPath 与 resource-id 的判定、Appium 定位元组都只在 `Locator` 里实现，
         这里不再复述前缀规则（ADR-0012）。
         """
-        locator = self.config.maybe_element(element_key)
-        if locator is None:
+        value = self.config.maybe_element(element_key)
+        if value is None:
             raise ValueError(f"Element key '{element_key}' not found in config")
-        return locator
+        return Locator.from_value(value)
 
     @with_driver_recovery(op="read")
     def find_elements(self, element_key: str) -> list:
@@ -375,10 +375,10 @@ class ElementFinder:
 
         locators = []
         for key in element_keys:
-            locator = self.config.maybe_element(key)
-            if locator is None:
+            value = self.config.maybe_element(key)
+            if value is None:
                 continue
-            locators.append((key, locator.appium))
+            locators.append((key, Locator.from_value(value).appium))
 
         if not locators:
             self.logger.warning("wait_for_any_element: 没有有效的元素key")

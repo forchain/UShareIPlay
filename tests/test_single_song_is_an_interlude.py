@@ -28,7 +28,7 @@ from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 RADIO_NAME = "猜你喜欢-沉浸刷歌"
 

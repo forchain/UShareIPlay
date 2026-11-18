@@ -26,7 +26,7 @@ from ushareiplay.core.chat_intake import (
     strip_quoted_segment,
 )
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_logging import get_runtime_logging
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO

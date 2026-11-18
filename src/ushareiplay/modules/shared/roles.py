@@ -9,6 +9,8 @@
 
 from typing import Any, Iterable, Optional, Set
 
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
+
 
 DEFAULT_ROOM_OWNER = "Joyer"
 DEFAULT_ADMIN_USERS = frozenset({"Outlier", "Chainer"})
@@ -138,8 +140,6 @@ def _split_config(config: Any) -> tuple[dict, dict]:
     - `ConfigSectionView` —— 应用段视图；
     - 原始字典 —— 旧调用方仍然传的裸 dict。
     """
-    from ushareiplay.core.config_view import ConfigSectionView, ConfigView
-
     if isinstance(config, ConfigView):
         soul = config.maybe_section("soul")
         return (dict(soul.data) if soul else {}), dict(config.data)

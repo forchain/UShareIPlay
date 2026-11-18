@@ -8,7 +8,7 @@ class LevelCommand(BaseCommand):
     error_message = '处理等级命令失败: {error}'
 
     def _get_role_policy(self):
-        from ushareiplay.core.roles import RolePolicy
+        from ushareiplay.modules.shared.roles import RolePolicy
         cfg = None
         controller = getattr(self, 'controller', None)
         if controller is not None and getattr(controller, 'config', None) is not None:

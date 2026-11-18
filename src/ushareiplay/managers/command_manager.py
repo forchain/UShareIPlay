@@ -12,7 +12,7 @@ from ushareiplay.core.chat_intake import MessageBatch, normalize_command_text
 from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.roles import RolePolicy, resolve_command_level
+from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.dal.user_dao import UserDAO

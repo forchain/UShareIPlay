@@ -5,7 +5,7 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import StatusReporter
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
 class FakeObserver:

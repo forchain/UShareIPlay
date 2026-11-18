@@ -7,10 +7,10 @@
 
 import pytest
 
-from ushareiplay.core.config_view import (
+from ushareiplay.adapters.outbound.appium.locator import Locator
+from ushareiplay.modules.shared.config import (
     ConfigSectionView,
     ConfigView,
-    Locator,
     MissingConfigKey,
     MissingElementKey,
 )
@@ -91,17 +91,16 @@ def test_soul_section_parameters_are_read_through_the_view():
 
 
 def test_soul_elements_are_read_through_the_element_accessors():
-    """选择器只从 .element() / .maybe_element() 出来，且是 Locator。"""
+    """选择器只从 .element() / .maybe_element() 出来，字符串由 Locator 解释。"""
     soul = _soul_section()
 
     content = soul.element("message_content")
-    assert isinstance(content, Locator)
-    assert content.kind == "xpath"
+    assert Locator.from_value(content).kind == "xpath"
 
     send_button = soul.element("button_send")
-    assert isinstance(send_button, Locator)
-    assert send_button.kind == "id"
-    assert send_button.value == "cn.soulapp.android:id/btnSend"
+    locator = Locator.from_value(send_button)
+    assert locator.kind == "id"
+    assert locator.value == "cn.soulapp.android:id/btnSend"
 
 
 def test_soul_element_missing_key_raises_missing_element_key():

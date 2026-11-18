@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.commands.lyrics import LyricsCommand
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback.driver import MusicUIDriverPort
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver

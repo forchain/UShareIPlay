@@ -9,8 +9,8 @@ import datetime as dt
 import pytest
 
 from ushareiplay.core.command_catalogue import CommandCatalogue
-from ushareiplay.core.config_view import ConfigView
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.sleep_manager import SleepManager
 

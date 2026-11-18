@@ -2,7 +2,7 @@ import logging
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.state.room_state import RoomState
 

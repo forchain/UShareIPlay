@@ -590,7 +590,7 @@ def test_pack_config_declarations():
     """Verify that config.yaml declares pack subcommands, elements, and templates."""
     from pathlib import Path
     import yaml
-    from ushareiplay.core.roles import resolve_command_level
+    from ushareiplay.modules.shared.roles import resolve_command_level
 
     repo_root = Path(__file__).resolve().parents[1]
     with open(repo_root / "config.yaml", encoding="utf-8") as f:

@@ -4,7 +4,7 @@ import traceback
 import yaml
 from pathlib import Path
 from typing import Optional
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.dal import KeywordDAO, UserDAO

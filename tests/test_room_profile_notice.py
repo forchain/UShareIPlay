@@ -28,7 +28,7 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 # 公告编辑层打开时抽屉里有的东西（`config.yaml` 的 elements key）。
 NOTICE_EDIT_LAYER = (

@@ -18,7 +18,7 @@ from ushareiplay.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 from tortoise import Tortoise
 import pytest_asyncio
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
 @pytest_asyncio.fixture

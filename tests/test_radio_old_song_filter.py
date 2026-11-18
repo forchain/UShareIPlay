@@ -7,7 +7,7 @@
 """
 
 from types import SimpleNamespace
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 
 
 class _Logger:

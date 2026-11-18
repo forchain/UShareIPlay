@@ -14,11 +14,11 @@ import xml.etree.ElementTree as ET
 import pytest
 from appium.webdriver.common.appiumby import AppiumBy
 
-from ushareiplay.core.config_view import (
+from ushareiplay.adapters.outbound.appium.locator import Locator
+from ushareiplay.modules.shared.config import (
     ConfigError,
     ConfigSectionView,
     ConfigView,
-    Locator,
     MissingConfigKey,
     MissingConfigSection,
     MissingElementKey,
@@ -243,17 +243,16 @@ def test_matches_xpath_selector_rejects_a_node_it_does_not_select():
 # ---------------------------------------------------------------------------
 
 
-def test_section_element_returns_a_locator_for_a_known_key():
+def test_section_element_returns_the_selector_string_for_a_known_key():
     section = ConfigSectionView(
         "soul",
         {"elements": {"message_content": "//android.widget.TextView[@text='hi']"}},
     )
 
-    locator = section.element("message_content")
+    value = section.element("message_content")
 
-    assert isinstance(locator, Locator)
-    assert locator.kind == "xpath"
-    assert locator.value == "//android.widget.TextView[@text='hi']"
+    assert value == "//android.widget.TextView[@text='hi']"
+    assert Locator.from_value(value).kind == "xpath"
 
 
 def test_section_element_raises_with_the_section_and_the_key():

@@ -9,7 +9,7 @@ from typing import Optional, List
 from lxml import etree
 
 from ushareiplay.core.chat_intake import format_quoted_message
-from ushareiplay.core.config_view import Locator
+from ushareiplay.adapters.outbound.appium.locator import Locator
 
 # 从正文向上探测引用视图的最大层数；引用视图与正文同属一条消息的行容器
 MAX_REPLY_ANCESTOR_LEVELS = 4
@@ -220,7 +220,8 @@ class ElementWrapper:
         config = getattr(self._handler, "config", None)
         if config is None:
             return None
-        return config.maybe_element(config_key)
+        value = config.maybe_element(config_key)
+        return Locator.from_value(value) if value is not None else None
 
     def quoted_message(self) -> Optional[str]:
         """Return the Quoted Message this element replies to, or None.

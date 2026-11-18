@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import yaml
 from lxml import etree
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader

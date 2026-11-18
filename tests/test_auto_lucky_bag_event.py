@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 import pytest
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.events.lucky_bag_entry import LuckyBagEntryEvent
 from ushareiplay.managers.event_manager import EventManager
 
