@@ -780,7 +780,7 @@ async def test_set_default_notice_without_configuration_reports_it():
 
 
 def _command_with_profile(profile):
-    from ushareiplay.commands.notice import NoticeCommand
+    from ushareiplay.adapters.inbound.chat.notice import NoticeCommand
 
     handler = _Handler()
     controller = SimpleNamespace(soul_handler=handler, music_handler=None)
@@ -790,7 +790,7 @@ def _command_with_profile(profile):
 
 
 def test_the_notice_command_keeps_the_reply_templates_it_always_had():
-    from ushareiplay.commands.notice import NoticeCommand
+    from ushareiplay.adapters.inbound.chat.notice import NoticeCommand
 
     assert NoticeCommand.handler_attr == "soul_handler"
     assert NoticeCommand.error_message == "Failed to process notice command: {error}"
@@ -862,7 +862,7 @@ async def test_the_notice_command_tick_delegates_to_the_room_profile_manager():
 
 async def test_the_notice_command_never_reaches_for_the_legacy_notice_manager():
     """`:notice` 的每一次调用都必须落在房间档案这一个模块上。"""
-    import ushareiplay.commands.notice as notice_module
+    import ushareiplay.adapters.inbound.chat.notice as notice_module
 
     source = open(notice_module.__file__, encoding="utf-8").read()
 

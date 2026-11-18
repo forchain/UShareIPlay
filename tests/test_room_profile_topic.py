@@ -449,7 +449,7 @@ def test_the_status_reports_the_queued_topic_and_the_minutes_left():
 
 
 def _command_with_profile(profile):
-    from ushareiplay.commands.topic import TopicCommand
+    from ushareiplay.adapters.inbound.chat.topic import TopicCommand
 
     handler = _Handler()
     controller = SimpleNamespace(soul_handler=handler, music_handler=None)
@@ -459,7 +459,7 @@ def _command_with_profile(profile):
 
 
 def test_the_topic_command_keeps_the_reply_templates_it_always_had():
-    from ushareiplay.commands.topic import TopicCommand
+    from ushareiplay.adapters.inbound.chat.topic import TopicCommand
 
     assert TopicCommand.handler_attr == "soul_handler"
     assert TopicCommand.error_message == "Failed to process topic command"
@@ -511,7 +511,7 @@ async def test_the_topic_command_tick_delegates_to_the_room_profile_manager():
 
 async def test_the_topic_command_never_reaches_for_the_legacy_topic_manager():
     """`:topic` 的每一次调用都必须落在房间档案这一个模块上。"""
-    import ushareiplay.commands.topic as topic_module
+    import ushareiplay.adapters.inbound.chat.topic as topic_module
 
     source = open(topic_module.__file__, encoding="utf-8").read()
 

@@ -228,7 +228,7 @@ def test_a_room_name_that_cannot_be_read_leaves_the_profile_ungrounded():
 
 
 def _title_command(profile):
-    from ushareiplay.commands.title import TitleCommand
+    from ushareiplay.adapters.inbound.chat.title import TitleCommand
 
     handler = _handler(_Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN}))
     command = TitleCommand(SimpleNamespace(soul_handler=handler, music_handler=None))

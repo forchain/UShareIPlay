@@ -613,8 +613,8 @@ def test_a_broken_notice_restore_does_not_undo_the_room_name_write():
 
 
 def _command_with_profile(profile):
-    from ushareiplay.commands.theme import ThemeCommand
-    from ushareiplay.commands.title import TitleCommand
+    from ushareiplay.adapters.inbound.chat.theme import ThemeCommand
+    from ushareiplay.adapters.inbound.chat.title import TitleCommand
 
     handler = _Handler()
     controller = SimpleNamespace(soul_handler=handler, music_handler=None)
@@ -627,8 +627,8 @@ def _command_with_profile(profile):
 
 def test_the_title_and_theme_commands_keep_the_handler_attr_and_error_text_they_always_had():
     """config.yaml 的 `{title}` / `{theme}` 模板靠这些类属性与返回 dict 的键对上。"""
-    from ushareiplay.commands.theme import ThemeCommand
-    from ushareiplay.commands.title import TitleCommand
+    from ushareiplay.adapters.inbound.chat.theme import ThemeCommand
+    from ushareiplay.adapters.inbound.chat.title import TitleCommand
 
     assert TitleCommand.handler_attr == "soul_handler"
     assert TitleCommand.error_message == "Failed to process title command: {error}"
@@ -718,8 +718,8 @@ def test_the_title_and_theme_commands_never_reach_for_the_legacy_room_name_manag
     """:title / :theme 的每一次调用都必须落在房间档案这一个模块上。"""
     import pathlib
 
-    import ushareiplay.commands.theme as theme_module
-    import ushareiplay.commands.title as title_module
+    import ushareiplay.adapters.inbound.chat.theme as theme_module
+    import ushareiplay.adapters.inbound.chat.title as title_module
 
     for module in (title_module, theme_module):
         source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
