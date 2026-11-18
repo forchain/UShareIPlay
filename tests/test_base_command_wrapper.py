@@ -18,7 +18,7 @@ class _SoulHandler:
         self.mic_restores = 0
 
     def ensure_active(self):
-        # 命令壳子不得自行碰麦克风：该动作归 PlaybackMuting + MicManager
+        # 命令壳子不得自行碰麦克风：该动作归 PlaybackMuting + MicControl
         self.mic_restores += 1
 
     def log_error(self, message):

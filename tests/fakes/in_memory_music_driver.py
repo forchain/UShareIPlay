@@ -6,7 +6,7 @@
 |---|---|
 | Appium UI（查歌、切 tab、点播放全部、切换播放模式、读歌词） | `InMemoryMusicUIDriver`，按模式/查询词返回脚本化结果 |
 | MediaSession 就绪（`dumpsys media_session`） | 测试模块内的 `_ReadinessProbe`，无需睡眠即可判定就绪 |
-| 麦克风 UI（`MicManager`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
+| 麦克风 UI（`MicControl`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
 
 因此「守护拒绝时一个 UI 动作都不该发生」「切歌前必先闭麦」这类断言，
 考的是引擎自己做的决策，而不是任何 UI 时序。

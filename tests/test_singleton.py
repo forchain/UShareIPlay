@@ -129,7 +129,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.event_manager import EventManager
     from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.managers.message_manager import MessageManager
-    from ushareiplay.managers.mic_manager import MicManager
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.online_drawer import OnlineDrawerManager
     from ushareiplay.managers.party_manager import PartyManager
@@ -153,7 +152,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         UserManager,
         RecoveryManager,
         MessageManager,
-        MicManager,
         MusicManager,
         PlaybackMuting,
         CommandManager,

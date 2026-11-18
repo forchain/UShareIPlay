@@ -8,7 +8,6 @@ from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.message_manager import MessageManager
-from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recovery_manager import RecoveryManager
@@ -47,7 +46,6 @@ def test_composition_root_services_receive_identical_injected_handler():
         AdminManager.initialize(fake_soul_handler),
         EventManager.initialize(fake_soul_handler),
         RecoveryManager.initialize(fake_soul_handler),
-        MicManager.initialize(fake_soul_handler),
         PlaybackMuting.initialize(fake_soul_handler),
     ]
 

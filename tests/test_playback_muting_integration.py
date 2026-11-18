@@ -174,7 +174,7 @@ def test_skip_command_delegates_guard_and_mute_to_the_engine():
 
 def test_playback_commands_leave_mic_activation_to_the_coordinator():
     """Mic work declared inline in a playback command re-opens the mic mid-playback,
-    undoing the guard mute — the microphone belongs to PlaybackMuting + MicManager."""
+    undoing the guard mute — the microphone belongs to PlaybackMuting + MicControl."""
     for module_name, _class_name in PLAYBACK_COMMANDS:
         module_path = (
             Path(__file__).resolve().parents[1]
