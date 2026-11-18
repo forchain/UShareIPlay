@@ -42,7 +42,8 @@ def test_every_retired_manager_module_is_gone():
     assert not (PKG / "managers" / "room_info_window.py").exists()
     for module in RETIRED_MODULES:
         assert not (PKG / "managers" / f"{module}.py").exists()
-    assert not (PKG / "managers" / "room_profile").exists()
+    # 只看源码文件：本地 worktree 里旧的 __pycache__ 可能还留着，它不代表模块仍在。
+    assert not list((PKG / "managers" / "room_profile").glob("*.py"))
 
 
 def test_no_source_module_mentions_the_retired_shim():
