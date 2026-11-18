@@ -31,7 +31,6 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.modules.room.registry import RECEIVE, RETURN
 from tests.room_support import make_hooks
@@ -340,20 +339,13 @@ async def test_notify_gift_receive_with_nothing_configured_enqueues_nothing(db_i
 
 
 @pytest.mark.asyncio
-async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init, hooks, monkeypatch):
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
-    mm = MemoryManager.instance()
-    mm.configure({"llm": {"memory": {"enabled": True}}})
-
+async def test_return_schedules_memory_consolidation_but_gift_does_not(db_init, hooks):
     scheduled = []
-    monkeypatch.setattr(
-        mm, "schedule_consolidation_user", lambda username: scheduled.append(username)
-    )
 
     cm = CommandManager.instance()
     cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
+    cm.user_memory = SimpleNamespace(schedule_user=scheduled.append)
 
     await cm.notify_user_return("bob")
     assert scheduled == ["bob"]

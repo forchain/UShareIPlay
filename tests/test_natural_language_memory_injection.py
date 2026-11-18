@@ -1,19 +1,26 @@
 import pytest
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
-from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.core.natural_language_resolver import (
-    NaturalLanguageResolver,
-    NaturalLanguageResult,
+from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+    OpenAICompatibleNaturalLanguageResolver,
 )
-from ushareiplay.managers.memory_manager import MemoryManager
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
-from ushareiplay.dal.user_memory_dao import UserMemoryDAO
+from ushareiplay.modules.command.domain import NaturalLanguageResult
+from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+from ushareiplay.modules.user.domain import MemorySettings
+from ushareiplay.modules.user.use_cases import UserMemoryService
+from tests.fakes.in_memory_chat_log_repository import InMemoryChatLogRepository
+from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
+from tests.fakes.in_memory_user_memory_repository import InMemoryUserMemoryRepository
+from tests.fakes.in_memory_user_repository import InMemoryUserRepository
+
+
+def _use_case(config):
+    return ResolveNaturalLanguage(OpenAICompatibleNaturalLanguageResolver(config), config)
 
 
 def test_resolver_prompt_injection_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -45,7 +52,7 @@ def test_resolver_prompt_injection_with_memory_context():
 
 
 def test_resolver_prompt_without_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -65,44 +72,44 @@ def test_resolver_prompt_without_memory_context():
 
 
 @pytest.mark.asyncio
-async def test_memory_manager_get_user_dialogue_context():
-    db = DatabaseManager(db_url="sqlite://:memory:")
-    await db.init()
-    try:
-        if not MemoryManager.is_initialized():
-            MemoryManager.initialize()
-        mm = MemoryManager.instance()
-        mm.configure({"llm": {"memory": {"enabled": True}}})
+async def test_dialogue_context_is_assembled_from_repositories():
+    users = InMemoryUserRepository()
+    memories = InMemoryUserMemoryRepository()
+    chat_logs = InMemoryChatLogRepository(memories)
+    service = UserMemoryService(
+        users=users,
+        memories=memories,
+        chat_logs=chat_logs,
+        distiller=InMemoryMemoryDistiller(),
+        settings=MemorySettings(),
+    )
 
-        # User has no history initially
-        ctx_empty = await mm.get_user_dialogue_context("david")
-        assert ctx_empty["directives"] == []
-        assert ctx_empty["profile"] == ""
-        assert ctx_empty["short_term_chats"] == []
+    # User has no history initially
+    ctx_empty = await service.dialogue_context("david")
+    assert ctx_empty["directives"] == []
+    assert ctx_empty["profile"] == ""
+    assert ctx_empty["short_term_chats"] == []
 
-        # Create user memory and logs
-        user = await UserDAO.get_or_create("david")
-        await UserMemoryDAO.update_memory(
-            user_id=user.id,
-            directives=["称谓: 大卫哥"],
-            profile_summary="喜欢电子乐",
-        )
-        await UserChatLogDAO.create("david", "放首电音")
-        await UserChatLogDAO.create("david", "音量调大点")
+    # Create user memory and logs
+    user = await users.get_or_create("david")
+    await memories.update(
+        user.id,
+        directives=["称谓: 大卫哥"],
+        profile="喜欢电子乐",
+        consolidated_at=datetime(2025, 1, 1),
+    )
+    await chat_logs.create(user.id, "放首电音")
+    await chat_logs.create(user.id, "音量调大点")
 
-        ctx_filled = await mm.get_user_dialogue_context("david", user_level=20)
-        assert ctx_filled["directives"] == ["称谓: 大卫哥"]
-        assert ctx_filled["profile"] == "喜欢电子乐"
-        assert ctx_filled["short_term_chats"] == ["放首电音", "音量调大点"]
-
-
-    finally:
-        await db.close()
+    ctx_filled = await service.dialogue_context("david", user_level=20)
+    assert ctx_filled["directives"] == ["称谓: 大卫哥"]
+    assert ctx_filled["profile"] == "喜欢电子乐"
+    assert ctx_filled["short_term_chats"] == ["放首电音", "音量调大点"]
 
 
 @pytest.mark.asyncio
 async def test_resolver_resolve_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -128,7 +135,7 @@ async def test_resolver_resolve_with_memory_context():
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="你好呀",

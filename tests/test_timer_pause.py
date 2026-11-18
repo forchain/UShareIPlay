@@ -188,10 +188,7 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
     )
     monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
     monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_async_noop),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_async_noop)
 
     processed_screens = []
 

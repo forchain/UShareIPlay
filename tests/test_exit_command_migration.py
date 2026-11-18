@@ -37,7 +37,7 @@ class _MemorySink:
     def __init__(self):
         self.scheduled = []
 
-    def schedule_consolidation_user(self, username):
+    def schedule_user(self, username):
         self.scheduled.append(username)
 
 
@@ -184,7 +184,7 @@ async def test_exit_consolidation_guard_survives_a_failing_memory_manager(
     def boom(_username):
         raise RuntimeError("consolidation backend down")
 
-    monkeypatch.setattr(hooks._memory, "schedule_consolidation_user", boom)
+    monkeypatch.setattr(hooks._memory, "schedule_user", boom)
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
 
     assert await hooks.fire(EXIT, "明明") == 1

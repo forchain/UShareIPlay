@@ -12,8 +12,8 @@ class PlaybackMuting(Singleton):
 
     生命周期：配置判定 -> 若开麦则先闭麦 -> 执行播放动作与公屏消息
     -> 等待底层播放就绪 -> 无条件恢复开麦（异常与超时同样兜底）。
-    就绪检测由 MusicManager 提供，麦克风状态与恢复由 MicManager 提供
-    （见 ADR-0007：接缝是 MicManager.state()/set_active()/ensure_active()）。
+    就绪检测由 MusicManager 提供，麦克风状态与恢复由注入的 MicControl 提供
+    （见 ADR-0007：接缝是 MicControl.state()/set_active()/ensure_active()）。
 
     是否生效由两层决定：配置（`enabled` / `guest_room_only`）是常态策略，
     `arm_on_mic()` 是有人上麦时的运行时救场 —— 麦上有人时切歌底噪会盖住他，
@@ -33,12 +33,11 @@ class PlaybackMuting(Singleton):
     _dynamic_enabled = False
 
     def __init__(self, handler=None, music_manager=None, mic_manager=None, room_state=None):
-        from ushareiplay.managers.mic_manager import MicManager
         from ushareiplay.managers.music_manager import MusicManager
         self.soul_handler = handler
         self.room_state = room_state
         self.music_manager = music_manager or (MusicManager.instance() if MusicManager.is_initialized() else None)
-        self.mic_manager = mic_manager or (MicManager.instance() if MicManager.is_initialized() else None)
+        self.mic_manager = mic_manager
         self.logger = getattr(handler, "logger", None) or logging.getLogger("PlaybackMuting")
         self._dynamic_enabled = False
 

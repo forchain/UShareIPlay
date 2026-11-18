@@ -6,113 +6,91 @@ import pytest
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.adapters.outbound.persistence.models.user import User
 
 
+class RecordingMemory:
+    def __init__(self):
+        self.sweeps = 0
+        self.users = []
+
+    def schedule_all(self):
+        self.sweeps += 1
+
+    def schedule_user(self, username):
+        self.users.append(username)
+
+
 @pytest.mark.asyncio
-async def test_party_manager_lifecycle_schedules_memory_consolidation(monkeypatch):
-    db = DatabaseManager(db_url="sqlite://:memory:")
-    await db.init()
-    try:
-        if not MemoryManager.is_initialized():
-            MemoryManager.initialize()
-        mm = MemoryManager.instance()
-        mm.configure({"llm": {"memory": {"enabled": True}}})
+async def test_party_manager_lifecycle_schedules_memory_consolidation():
+    memory = RecordingMemory()
+    pm = PartyManager.instance() if PartyManager.is_initialized() else PartyManager.initialize()
+    pm.user_memory = memory
 
-        schedule_all_calls = []
-
-        def mock_schedule_all():
-            schedule_all_calls.append(True)
-
-        monkeypatch.setattr(mm, "schedule_consolidation_all", mock_schedule_all)
-
-        pm = PartyManager.instance() if PartyManager.is_initialized() else PartyManager.initialize()
-
-        # Mock handler and sub-managers
-        mock_handler = SimpleNamespace(
-            logger=SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock()),
-            party_id="test_party_123",
-            element_finder=SimpleNamespace(
-                try_find_element=lambda key, log=True: MagicMock(click=MagicMock()) if key == "exit_room_btn" else None,
-                wait_for_element_clickable=lambda key, timeout=3: MagicMock(click=MagicMock()),
+    # Mock handler and sub-managers
+    mock_handler = SimpleNamespace(
+        logger=SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock()),
+        party_id="test_party_123",
+        element_finder=SimpleNamespace(
+            try_find_element=lambda key, log=True: MagicMock(click=MagicMock()) if key == "exit_room_btn" else None,
+            wait_for_element_clickable=lambda key, timeout=3: MagicMock(click=MagicMock()),
+        ),
+        key_actions=SimpleNamespace(switch_to_app=lambda: True),
+        controller=SimpleNamespace(
+            room_profile_manager=SimpleNamespace(
+                set_default_notice=AsyncMock(return_value={"success": True})
             ),
-            key_actions=SimpleNamespace(switch_to_app=lambda: True),
-            controller=SimpleNamespace(
-                room_profile_manager=SimpleNamespace(
-                    set_default_notice=AsyncMock(return_value={"success": True})
-                ),
-                seat_manager=SimpleNamespace(find_owner_seat=AsyncMock(return_value={"success": True})),
-                post_party_create_automation=None,
-            )
+            seat_manager=SimpleNamespace(find_owner_seat=AsyncMock(return_value={"success": True})),
+            post_party_create_automation=None,
         )
-        pm._handler = mock_handler
+    )
+    pm._handler = mock_handler
 
-        # 1. Test _after_party_created
-        await pm._after_party_created()
-        assert len(schedule_all_calls) == 1
+    # 1. Test _after_party_created
+    await pm._after_party_created()
+    assert memory.sweeps == 1
 
-        # 2. Test end_party
-        res = pm.end_party()
-        assert "success" in res
-        assert len(schedule_all_calls) == 2
-
-    finally:
-        await db.close()
+    # 2. Test end_party
+    res = pm.end_party()
+    assert "success" in res
+    assert memory.sweeps == 2
 
 
 @pytest.mark.asyncio
-async def test_command_manager_presence_schedules_memory_consolidation(monkeypatch):
+async def test_command_manager_presence_schedules_memory_consolidation():
     db = DatabaseManager(db_url="sqlite://:memory:")
     await db.init()
     try:
-        if not MemoryManager.is_initialized():
-            MemoryManager.initialize()
-        mm = MemoryManager.instance()
-        mm.configure({"llm": {"memory": {"enabled": True}}})
-
-        scheduled_users = []
-
-        def mock_schedule_user(username):
-            scheduled_users.append(username)
-
-        monkeypatch.setattr(mm, "schedule_consolidation_user", mock_schedule_user)
+        memory = RecordingMemory()
 
         from tests.legacy_state import PresenceTracker
         from tests.room_support import make_hooks
 
         cm = CommandManager.instance() if CommandManager.is_initialized() else CommandManager.initialize()
         cm._logger = SimpleNamespace(info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock())
-        cm.user_event_hooks = make_hooks(presence=PresenceTracker.instance(), memory=mm)
+        cm.user_memory = memory
+        cm.user_event_hooks = make_hooks(
+            presence=PresenceTracker.instance(), memory=memory
+        )
 
         # Test notify_user_enter
         await cm.notify_user_enter("alice")
-        assert "alice" in scheduled_users
+        assert "alice" in memory.users
 
         # Test notify_user_return
         await cm.notify_user_return("bob")
-        assert "bob" in scheduled_users
+        assert "bob" in memory.users
 
         # Test notify_user_leave with canonical resolution
         main_user = await User.create(username="charlie_main", level=1)
         await User.create(username="charlie_alias", level=0, canonical_user=main_user)
 
-        # When alias leaves, UserDAO.resolve_canonical resolves to charlie_main
-        # Mock get_all_avatar_usernames to return empty online avatars so leave is not skipped
-        from ushareiplay.managers.info_manager import InfoManager
-
-        if not PresenceTracker.is_initialized():
-            PresenceTracker.initialize()
+        # When alias leaves, the exit gate resolves to charlie_main.
         PresenceTracker.instance()._online_users = set()
 
-        if not InfoManager.is_initialized():
-            InfoManager.initialize()
-        InfoManager.instance()._presence_tracker._online_users = set()
-
-        with patch.object(UserDAO, "get_all_avatar_usernames", return_value={"charlie_alias"}):
-            await cm.notify_user_leave("charlie_alias")
-            assert "charlie_main" in scheduled_users
+        await cm.notify_user_leave("charlie_alias")
+        assert "charlie_main" in memory.users
 
 
     finally:

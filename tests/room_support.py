@@ -22,7 +22,6 @@ def wire_room_state(room_state: RoomStateService) -> None:
     """把同一份房间状态塞进已经构造好的旧单例（组合根在启动时做的事）。"""
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.info_manager import InfoManager
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.room_profile import RoomProfileManager
@@ -33,7 +32,6 @@ def wire_room_state(room_state: RoomStateService) -> None:
         (CommandManager, "room_state"),
         (PartyManager, "_room_state"),
         (RoomProfileManager, "_room_state"),
-        (KeywordManager, "room_state"),
         (InfoManager, "_room_state"),
         (PlaybackMuting, "room_state"),
         (SeatManager, "_room_state"),

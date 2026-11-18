@@ -28,5 +28,5 @@ class UIActions:
 
         return {"success": True}
 
-    # 麦克风开关不在这里：MicManager 拥有 content-desc 状态读取与麦位前置检查，
-    # 盲点击的 ui_actions.toggle_mic 已删除（见 managers/mic_manager.py）。
+    # 麦克风开关不在这里：SoulMicControl 拥有 content-desc 状态读取与麦位前置检查，
+    # 盲点击的 ui_actions.toggle_mic 已删除（见 adapters/outbound/appium/soul/mic_control.py）。

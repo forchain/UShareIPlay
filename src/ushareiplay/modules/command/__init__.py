@@ -12,6 +12,9 @@ from ushareiplay.modules.command.domain import (
     CommandInvocation,
     GuestRoomRestricted,
     InsufficientCommandLevel,
+    Keyword,
+    NaturalLanguageContext,
+    NaturalLanguageResult,
     SleepBlocked,
     SleepWindow,
     UnknownCommand,
@@ -19,9 +22,16 @@ from ushareiplay.modules.command.domain import (
 from ushareiplay.modules.command.ports import (
     CommandRuntime,
     GuestRoomPolicy,
+    NaturalLanguageFallback,
+    NaturalLanguageResolver,
     SleepPolicy,
 )
-from ushareiplay.modules.command.use_cases import DispatchCommand, SleepManager
+from ushareiplay.modules.command.use_cases import (
+    DispatchCommand,
+    KeywordUseCases,
+    ResolveNaturalLanguage,
+    SleepManager,
+)
 
 __all__ = [
     "CHAT_COMMANDS_PATH",
@@ -37,7 +47,14 @@ __all__ = [
     "GuestRoomPolicy",
     "GuestRoomRestricted",
     "InsufficientCommandLevel",
+    "Keyword",
+    "KeywordUseCases",
     "MORE_COMMAND_PREFIXES",
+    "NaturalLanguageContext",
+    "NaturalLanguageFallback",
+    "NaturalLanguageResolver",
+    "NaturalLanguageResult",
+    "ResolveNaturalLanguage",
     "SleepBlocked",
     "SleepManager",
     "SleepPolicy",

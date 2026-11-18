@@ -460,7 +460,7 @@ class UserEventHooks:
 
         try:
             if self._memory is not None:
-                self._memory.schedule_consolidation_user(canonical_username)
+                self._memory.schedule_user(canonical_username)
         except Exception:
             self._log_warning(
                 f"Failed to schedule memory consolidation for user_leave "

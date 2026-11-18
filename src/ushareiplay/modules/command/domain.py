@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import datetime as dt
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
@@ -68,6 +69,28 @@ class UnknownCommand(DomainError):
     def __init__(self, prefix: str):
         super().__init__(prefix)
         self.prefix = prefix
+
+
+@dataclass(frozen=True)
+class NaturalLanguageResult:
+    """自然语言解析结果（ADR-0003）。
+
+    Fields:
+        type: 'command' or 'reply'
+        content: Translated command string (e.g. ':play 周杰伦 晴天') or chat reply text
+    """
+
+    type: str
+    content: str
+
+
+@dataclass(frozen=True)
+class NaturalLanguageContext:
+    """用例构建好的提示上下文，交给解析端口发往 LLM。"""
+
+    system_prompt: str
+    model: str
+    timeout: float
 
 
 @dataclass(frozen=True)
@@ -385,3 +408,110 @@ class CommandCatalogue:
         if isinstance(command, Mapping):
             return _normalize_prefix(command.get("prefix"))
         return _normalize_prefix(command)
+
+
+# ---------------------------------------------------------------------------
+# Keyword replies（#547）：关键字值对象、模式规则与 ACL 判定。
+# ---------------------------------------------------------------------------
+
+KEYWORD_MODE_SEQUENCE = "sequence"
+KEYWORD_MODE_RANDOM = "random"
+
+_KEYWORD_MODE_ALIASES = {
+    "sequence": KEYWORD_MODE_SEQUENCE,
+    "sequential": KEYWORD_MODE_SEQUENCE,
+    "ordered": KEYWORD_MODE_SEQUENCE,
+    "random": KEYWORD_MODE_RANDOM,
+}
+
+
+class KeywordError(DomainError):
+    """关键字规则失败。"""
+
+
+class KeywordNotFound(KeywordError):
+    def __init__(self, keyword: str):
+        super().__init__(keyword)
+        self.keyword = keyword
+
+
+class ConfigKeywordImmutable(KeywordError):
+    """配置关键字（creator_id is None）不允许修改/删除/授权。"""
+
+
+class NotKeywordOwner(KeywordError):
+    """只有创建者本人能修改/删除/授权私有关键字。"""
+
+
+class KeywordAlreadyPublic(KeywordError):
+    """公开关键字不需要授权。"""
+
+
+class KeywordNotPublic(KeywordError):
+    """非公开关键字才有授权名单。"""
+
+
+class MissingGrantees(KeywordError):
+    """授权/取消授权缺少目标用户。"""
+
+
+class KeywordEmpty(KeywordError):
+    """关键字文本为空。"""
+
+
+class NoKeywordsAdded(KeywordError):
+    """没有关键字被添加（全部被拒绝）。"""
+
+
+class UserNotOnline(KeywordError):
+    """只有在线用户才能添加关键字。"""
+
+
+def normalize_keyword_mode(mode: Optional[str]) -> str:
+    """把配置/命令里的模式别名归一成 sequence / random。"""
+    raw = (mode or KEYWORD_MODE_SEQUENCE).strip().lower()
+    return _KEYWORD_MODE_ALIASES.get(raw, KEYWORD_MODE_SEQUENCE)
+
+
+def pick_keyword_command(command_text: str, mode: Optional[str], chooser=random.choice) -> str:
+    """按模式选出要执行的命令文本；random 从 `;` 分隔的候选里随机取一条。"""
+    if normalize_keyword_mode(mode) != KEYWORD_MODE_RANDOM:
+        return command_text
+
+    candidates = [part.strip() for part in command_text.split(';') if part.strip()]
+    if not candidates:
+        return command_text
+    return chooser(candidates)
+
+
+def render_keyword_command(command_text: str, username: str, params: str = "") -> str:
+    """替换关键字命令里的 `{user_name}` 与 `{params}` 占位符。"""
+    return command_text.replace('{user_name}', username).replace('{params}', params or "")
+
+
+@dataclass(frozen=True)
+class Keyword:
+    """一条关键字：配置关键字 creator_id 为 None，用户关键字记录创建者与白名单。"""
+
+    keyword: str
+    command: str
+    mode: str = KEYWORD_MODE_SEQUENCE
+    creator_id: Optional[int] = None
+    creator_username: Optional[str] = None
+    creator_level: int = 0
+    is_public: bool = True
+    allowed_user_ids: tuple[int, ...] = ()
+
+    @property
+    def is_config(self) -> bool:
+        return self.creator_id is None
+
+    def allows(self, user_id: Optional[int]) -> bool:
+        """能否执行：公开、创建者本人，或显式授权名单。"""
+        if self.is_public:
+            return True
+        if user_id is None:
+            return False
+        if self.creator_id is not None and self.creator_id == user_id:
+            return True
+        return user_id in self.allowed_user_ids

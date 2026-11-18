@@ -65,6 +65,7 @@ class _DummyController:
     def __init__(self):
         self.soul_handler = _DummySoulHandler()
         self.music_handler = object()
+        self.keyword_use_cases = None
 
 
 @pytest.mark.asyncio
@@ -90,10 +91,8 @@ async def test_timer_fired_message_is_sleep_exempt():
 @pytest.mark.asyncio
 async def test_keyword_run_forwards_sleep_exemption():
     """`:keyword run` 必须把入站消息的 sleep_exempt 转发给关键字执行。"""
-    from ushareiplay.commands.keyword import KeywordCommand
-    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.adapters.inbound.chat.keyword import KeywordCommand
 
-    KeywordManager.initialize()
     recorded = {}
 
     class _FakeKeywordManager:
@@ -105,7 +104,7 @@ async def test_keyword_run_forwards_sleep_exemption():
             recorded["sleep_exempt"] = sleep_exempt
 
     cmd = KeywordCommand(_DummyController())
-    cmd.keyword_manager = _FakeKeywordManager()
+    cmd.keyword_use_cases = _FakeKeywordManager()
 
     result = await cmd.do_process(
         SimpleNamespace(content=":keyword run 助眠", nickname="Timer", sleep_exempt=True),
@@ -120,8 +119,13 @@ async def test_keyword_run_forwards_sleep_exemption():
 @pytest.mark.asyncio
 async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypatch):
     """整条链：定时器 → 关键字 → 内层播放命令，豁免标记必须一路传下去。"""
-    from ushareiplay.commands.keyword import KeywordCommand
-    from ushareiplay.managers.keyword_manager import KeywordManager
+    from ushareiplay.adapters.inbound.chat.keyword import KeywordCommand
+    from ushareiplay.adapters.inbound.runtime.keyword_command_sink import (
+        QueueKeywordCommandSink,
+    )
+    from ushareiplay.modules.command.use_cases import KeywordUseCases
+    from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+    from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
     use_cases = _timer_use_cases()
     await use_cases.create_timer(
@@ -134,16 +138,25 @@ async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypat
 
     timer_message = next(iter((await MessageQueue.instance().get_all_messages()).values()))
 
-    km = KeywordManager.initialize()
-    km._logger = _DummyLogger()
-
-    async def _fake_find_keyword(keyword, username):
-        return SimpleNamespace(keyword=keyword, command=":playlist 助眠", mode="sequence")
-
-    monkeypatch.setattr(km, "find_keyword", _fake_find_keyword)
+    users = InMemoryUserRepository()
+    repository = InMemoryKeywordRepository(users)
+    timer_user = await users.get_or_create("Timer")
+    await repository.create(
+        keyword="助眠", command=":playlist 助眠", creator_id=timer_user.id, is_public=True
+    )
+    km = KeywordUseCases(
+        repository=repository,
+        users=users,
+        presence=SimpleNamespace(is_user_online=lambda _name: True),
+        queue=QueueKeywordCommandSink(MessageQueue.instance()),
+        chat_logs=SimpleNamespace(record=lambda *_a, **_k: None),
+        config_source=SimpleNamespace(load=lambda: None),
+        fallback=SimpleNamespace(resolve=lambda **_kwargs: None),
+        logger=_DummyLogger(),
+    )
 
     cmd = KeywordCommand(_DummyController())
-    cmd.keyword_manager = km
+    cmd.keyword_use_cases = km
 
     await cmd.do_process(timer_message, ["run", "助眠"])
 

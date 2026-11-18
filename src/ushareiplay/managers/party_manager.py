@@ -10,7 +10,6 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.models import MessageInfo
 
@@ -24,6 +23,7 @@ class PartyManager(Singleton):
         self._room_state = room_state
         self._message_dispatch = None
         self._room_profile_manager = None
+        self.user_memory = None
 
         # 派对重启相关状态
         self.init_time = None  # 初始化时间
@@ -203,8 +203,8 @@ class PartyManager(Singleton):
 
             # Trigger background memory consolidation sweep on party end
             try:
-                if MemoryManager.is_initialized():
-                    MemoryManager.instance().schedule_consolidation_all()
+                if self.user_memory is not None:
+                    self.user_memory.schedule_all()
             except Exception:
                 self.logger.warning("Failed to schedule memory consolidation on end_party")
 
@@ -830,7 +830,7 @@ class PartyManager(Singleton):
 
         # Trigger background memory consolidation sweep on party create/restart
         try:
-            if MemoryManager.is_initialized():
-                MemoryManager.instance().schedule_consolidation_all()
+            if self.user_memory is not None:
+                self.user_memory.schedule_all()
         except Exception:
             self.logger.warning("Failed to schedule memory consolidation on _after_party_created")

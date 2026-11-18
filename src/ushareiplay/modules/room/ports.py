@@ -65,7 +65,7 @@ class MemoryConsolidationSink(ABC):
     """用户离开时的记忆沉淀调度。"""
 
     @abstractmethod
-    def schedule_consolidation_user(self, username: str) -> None:
+    def schedule_user(self, username: str) -> None:
         """为某个用户安排一次记忆沉淀。"""
 
 

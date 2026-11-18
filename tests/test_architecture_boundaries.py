@@ -14,6 +14,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 MODULES_ROOT = SRC_ROOT / "ushareiplay" / "modules"
 PERSISTENCE_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "persistence"
 SYSTEM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "system"
+LLM_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "llm"
 GUARDED_ROOTS = (MODULES_ROOT, SYSTEM_ADAPTERS_ROOT)
 
 FORBIDDEN_MODULES = ("appium", "selenium", "tortoise", "openai", "ushareiplay.adapters")
@@ -25,6 +26,16 @@ FORBIDDEN_IN_PERSISTENCE = (
     "ushareiplay.adapters.inbound",
     "ushareiplay.adapters.outbound.appium",
     "ushareiplay.adapters.outbound.llm",
+    "ushareiplay.adapters.outbound.system",
+)
+# LLM 适配器是 OpenAI/HTTP 的家，但不得卷入 UI、数据库或服务定位。
+FORBIDDEN_IN_LLM = (
+    "appium",
+    "selenium",
+    "tortoise",
+    "ushareiplay.adapters.inbound",
+    "ushareiplay.adapters.outbound.appium",
+    "ushareiplay.adapters.outbound.persistence",
     "ushareiplay.adapters.outbound.system",
 )
 
@@ -115,6 +126,19 @@ def test_persistence_adapter_does_not_import_other_technologies_or_locate_servic
         str(path): found
         for path in persistence_files
         if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_PERSISTENCE))
+    }
+
+    assert violations == {}
+
+
+def test_llm_adapter_stays_out_of_ui_persistence_and_service_location():
+    llm_files = sorted(LLM_ROOT.rglob("*.py"))
+    assert (LLM_ROOT / "memory_distiller.py").exists()
+
+    violations = {
+        str(path): found
+        for path in llm_files
+        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_LLM))
     }
 
     assert violations == {}

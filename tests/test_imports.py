@@ -47,6 +47,11 @@ MODULES = [
     "ushareiplay.adapters.inbound.chat.receive",
     "ushareiplay.modules.timer.ports",
     "ushareiplay.modules.timer.use_cases",
+    "ushareiplay.modules.mic.domain",
+    "ushareiplay.modules.mic.ports",
+    "ushareiplay.modules.mic.use_cases",
+    "ushareiplay.adapters.outbound.appium.soul.mic_control",
+    "ushareiplay.adapters.inbound.chat.mic",
     "ushareiplay.adapters.outbound.persistence.timer_repository",
     "ushareiplay.adapters.inbound.runtime.timer_message_sink",
     "ushareiplay.adapters.inbound.chat.timer",
@@ -59,10 +64,10 @@ MODULES = [
     # dal
     "ushareiplay.dal",
     "ushareiplay.dal.user_dao",
-    "ushareiplay.dal.keyword_dao",
     "ushareiplay.dal.seat_reservation_dao",
-    "ushareiplay.dal.user_chat_log_dao",
-    "ushareiplay.dal.user_memory_dao",
+    "ushareiplay.adapters.outbound.llm.memory_distiller",
+    "ushareiplay.adapters.outbound.persistence.chat_log_repository",
+    "ushareiplay.adapters.outbound.persistence.user_memory_repository",
     # helpers
 
     "ushareiplay.helpers.playlist_parser",

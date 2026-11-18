@@ -13,9 +13,25 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.adapters.inbound.runtime.keyword_command_sink import QueueKeywordCommandSink
+from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+    NaturalLanguageFallbackAdapter,
+    PlaybackInfoProvider,
+    RoomInfoProvider,
+)
+from ushareiplay.adapters.inbound.runtime.keyword_presence import InfoManagerPresence
+from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
+    UserMemoryChatLogRecorder,
+)
 from ushareiplay.adapters.inbound.runtime.timer_message_sink import QueueTimerMessageSink
+from ushareiplay.adapters.outbound.persistence.keyword_repository import (
+    TortoiseKeywordRepository,
+)
 from ushareiplay.adapters.outbound.persistence.timer_repository import TortoiseTimerRepository
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.outbound.system.clock import SystemClock
+from ushareiplay.adapters.outbound.system.keyword_config import YamlKeywordConfigSource
+from ushareiplay.modules.command.use_cases import KeywordUseCases
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
@@ -52,8 +68,9 @@ class AppController(Singleton):
     # UI 独占会话租赁。类属性兜底，让绕过 __init__ 直接构造的测试替身也能安全走
     # ui_session（首次访问时按需创建）。
     _ui_session_lease: Optional[UISessionLease] = None
-    # 类属性兜底：绕过 __init__ 的测试替身也能安全读取房间状态。
+    # 类属性兜底：绕过 __init__ 的测试替身也能安全读写房间状态与记忆服务。
     room_state = None
+    user_memory = None
 
     def __init__(self, config):
         # 组合根是配置视图的唯一所有者：根配置与各应用段的读取都从这里
@@ -103,7 +120,7 @@ class AppController(Singleton):
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
-        self.memory_manager = None
+        self.user_memory = None
         self.post_party_create_automation = None
 
 
@@ -491,7 +508,8 @@ class AppController(Singleton):
             self.logger = self.soul_handler.logger
 
             # Initialize managers using singleton pattern (no parameters needed)
-            from ushareiplay.managers.mic_manager import MicManager
+            from ushareiplay.adapters.outbound.appium.soul.mic_control import SoulMicControl
+            from ushareiplay.modules.mic.use_cases import ToggleMic
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
@@ -499,7 +517,6 @@ class AppController(Singleton):
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.admin_manager import AdminManager
-            from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
@@ -565,13 +582,17 @@ class AppController(Singleton):
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler, presence=self.presence)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
-            self.mic_manager = MicManager.initialize(self.soul_handler)
+            self.mic_control = SoulMicControl(self.soul_handler)
+            self.toggle_mic = ToggleMic(self.mic_control)
             self.music_manager = MusicManager.initialize(
                 ui_driver=QQMusicUIDriver(self.music_handler)
             )
             self.register_driver_subscriber(self.music_manager)
             self.playback_muting = PlaybackMuting.initialize(
-                self.soul_handler, self.music_manager, self.mic_manager, room_state=self.room_state
+                self.soul_handler,
+                self.music_manager,
+                self.mic_control,
+                room_state=self.room_state,
             )
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerUseCases(
@@ -585,14 +606,14 @@ class AppController(Singleton):
             )
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
-            PlaybackBroadcaster.initialize(self.soul_handler)
+            self.playback_broadcaster = PlaybackBroadcaster.initialize(self.soul_handler)
             self.info_manager = InfoManager.initialize(
                 self.soul_handler, room_state=self.room_state, presence=self.presence
             )
             self.party_manager = PartyManager.initialize(
                 self.soul_handler, room_state=self.room_state
             )
-            PlaylistSession.initialize(
+            self.playlist_session = PlaylistSession.initialize(
                 self.soul_handler, online_users=self.presence.get_online_users
             )
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
@@ -614,9 +635,6 @@ class AppController(Singleton):
                 name_resolver=self.info_manager.resolve_visible_username,
             )
             AdminManager.initialize(self.soul_handler)
-            self.keyword_manager = KeywordManager.initialize(
-                self.soul_handler, room_state=self.room_state
-            )
             # 在线名单抓取：抽屉会话、用户仓储、在线集合与房间人数都由这里注入。
             self.online_list_source = SoulOnlineListSource(
                 drawer=self.online_drawer_manager,
@@ -627,10 +645,74 @@ class AppController(Singleton):
                 logger=self.logger,
             )
             self.info_manager._online_list_scraper = self.online_list_source
-            from ushareiplay.managers.memory_manager import MemoryManager
-            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-            self.memory_manager = MemoryManager.initialize()
-            self.memory_manager.configure(self.config)
+
+            # 双层用户记忆：领域用例由组合根装配，LLM 客户端在此注入，
+            # 内存/聊天日志仓储背后是 Tortoise 适配器（ADR-0006）。
+            from ushareiplay.adapters.outbound.llm.memory_distiller import (
+                LLMMemoryDistiller,
+            )
+            from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+                OpenAICompatibleNaturalLanguageResolver,
+            )
+            from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
+                TortoiseChatLogRepository,
+            )
+            from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
+                TortoiseUserMemoryRepository,
+            )
+            from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+            from ushareiplay.modules.user.domain import MemorySettings
+            from ushareiplay.modules.user.use_cases import UserMemoryService
+
+            llm_section = self.config.maybe_section("llm")
+            llm_cfg = dict(llm_section.data) if llm_section else {}
+            if "system_users" not in llm_cfg:
+                soul_section = self.config.maybe_section("soul")
+                sys_users = (
+                    soul_section.value("system_users") if soul_section else None
+                ) or self.config.value("system_users")
+                if sys_users:
+                    llm_cfg["system_users"] = sys_users
+            llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
+
+            memory_settings = MemorySettings.from_config(self.config)
+            self.user_memory = UserMemoryService(
+                users=TortoiseUserRepository(),
+                memories=TortoiseUserMemoryRepository(),
+                chat_logs=TortoiseChatLogRepository(),
+                distiller=LLMMemoryDistiller(
+                    llm_client,
+                    timeout=memory_settings.timeout,
+                ),
+                settings=memory_settings,
+            )
+            self.command_manager.user_memory = self.user_memory
+            self.party_manager.user_memory = self.user_memory
+
+            # 关键字回复（#547）：仓储、队列出口、在线校验与自然语言兜底都从
+            # 组合根注入；自然语言解析走 #548 的 LLM 端口。
+            self.keyword_use_cases = KeywordUseCases(
+                repository=TortoiseKeywordRepository(),
+                users=TortoiseUserRepository(),
+                presence=InfoManagerPresence(self.info_manager),
+                queue=QueueKeywordCommandSink(MessageQueue.instance()),
+                chat_logs=UserMemoryChatLogRecorder(self.user_memory),
+                config_source=YamlKeywordConfigSource(),
+                fallback=NaturalLanguageFallbackAdapter(
+                    commands_config=lambda: self.config.command_entries,
+                    catalogue=lambda: self.command_manager.catalogue,
+                    room_info=RoomInfoProvider(self.room_state),
+                    playback_info=PlaybackInfoProvider(
+                        self.playback_broadcaster,
+                        self.playlist_session,
+                        self.music_handler,
+                    ),
+                    resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
+                    memory=self.user_memory,
+                ),
+                logger=self.logger,
+            )
+            MessageManager.instance().configure_keywords(self.keyword_use_cases)
             # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
             # 这一个模块里，各命令文件只是薄适配器（#422）。
             self.user_event_hooks = UserEventHooks(
@@ -638,10 +720,12 @@ class AppController(Singleton):
                 users=TortoiseUserRepository(),
                 sink=QueueHookCommandSink(MessageQueue.instance()),
                 presence=self.presence,
-                memory=self.memory_manager,
+                memory=self.user_memory,
                 logger=self.logger,
             )
             self.command_manager.user_event_hooks = self.user_event_hooks
+
+            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
             # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
             # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
             # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
@@ -754,9 +838,7 @@ class AppController(Singleton):
 
         # Initialize keyword system and load keywords from config
         self.logger.info("初始化关键字系统...")
-        from ushareiplay.managers.keyword_manager import KeywordManager
-        keyword_manager = KeywordManager.instance()
-        await keyword_manager.load_keywords_from_config()
+        await self.keyword_use_cases.load_keywords_from_config()
         self.logger.info("关键字系统初始化完成")
 
         # Start async timer manager (loads from DB, migrates from JSON if needed)
@@ -765,9 +847,9 @@ class AppController(Singleton):
         self.logger.info("定时器管理器初始化完成")
 
         # Start async memory manager worker
-        if getattr(self, "memory_manager", None):
+        if self.user_memory:
             self.logger.info("初始化记忆管理器...")
-            await self.memory_manager.start()
+            await self.user_memory.start()
             self.logger.info("记忆管理器初始化完成")
 
 
@@ -885,8 +967,8 @@ class AppController(Singleton):
 
         # Stop async timer manager
         await self.timer_manager.stop()
-        if hasattr(self, 'memory_manager') and self.memory_manager:
-            await self.memory_manager.stop()
+        if self.user_memory:
+            await self.user_memory.stop()
         self.logger.info("Application stopped")
 
     async def shutdown(self):
@@ -903,8 +985,8 @@ class AppController(Singleton):
         if self.timer_manager and self.timer_manager.is_running():
             await self.timer_manager.stop()
 
-        if hasattr(self, 'memory_manager') and self.memory_manager:
-            await self.memory_manager.stop()
+        if self.user_memory:
+            await self.user_memory.stop()
 
         self.driver_lifecycle.shutdown()
 
