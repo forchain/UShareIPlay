@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable, Optional
 
-from ushareiplay.modules.room.macros import expand_seat_macros
+from ushareiplay.modules.seat.macros import expand_seat_macros
 
 #: 事件类型取值，同时也是各命令的前缀词根。
 ENTER = "enter"

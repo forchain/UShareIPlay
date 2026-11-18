@@ -24,7 +24,7 @@ from ushareiplay.modules.command.domain import (
 )
 from ushareiplay.modules.command.use_cases import DispatchCommand
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.seat.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.modules.room.registry import ENTER, EXIT, FOCUS, RECEIVE, RETURN
 from ushareiplay.models.message_info import MessageInfo
 

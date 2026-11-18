@@ -4,7 +4,7 @@
 """
 
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY
+from ushareiplay.modules.seat.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.modules.room.registry import FOCUS
 
 
