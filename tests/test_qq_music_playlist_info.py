@@ -55,7 +55,10 @@ def test_get_current_playing_treats_missing_playback_nodes_as_optional():
     assert handler.logger.errors == []
 
 
-def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, marker_exists=True):
+def _make_handler(
+    monkeypatch, visible_items, current_song, updated_items=None,
+    marker_exists=True, queue_open=False,
+):
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _Logger()
     handler.play_mode_key = "unknown"
@@ -74,6 +77,10 @@ def _make_handler(monkeypatch, visible_items, current_song, updated_items=None, 
     handler.key_actions.press_back = lambda: None
     monkeypatch.setattr(handler, "get_current_playing", lambda: {"song": current_song})
     handler.element_finder.wait_for_element_clickable = lambda key: handler.playlist_entry
+    handler.element_finder.wait_for_any_element = lambda keys: (
+        ("playlist_item_container", _Element("container")) if queue_open
+        else ("playlist_entry", handler.playlist_entry)
+    )
     handler.element_finder.try_find_any_element = lambda keys: (None, None)
 
     def wait_for_element(key, timeout=10):
@@ -196,6 +203,24 @@ def test_get_playlist_info_waits_for_playlist_item_container(monkeypatch):
     handler.get_playlist_info()
 
     assert ("playlist_item_container", 10) in handler.element_finder.wait_for_element_calls
+
+
+def test_get_playlist_info_reads_queue_that_is_already_open(monkeypatch):
+    """队列面板已经弹出时不能再去找/点入口 —— 入口不在，而且点它会把面板收起来。"""
+    handler = _make_handler(
+        monkeypatch,
+        visible_items=[_playlist_item("第一首", " - 歌手A")],
+        current_song="第一首",
+        queue_open=True,
+    )
+    handler.element_finder.wait_for_element_clickable = lambda key: (_ for _ in ()).throw(
+        AssertionError(f"already open: should not wait for {key}")
+    )
+
+    result = handler.get_playlist_info()
+
+    assert result == {"playlist": "第一首 - 歌手A"}
+    assert handler.playlist_entry.clicks == 0
 
 
 def test_query_music_waits_for_search_entry_with_20s_timeout():
