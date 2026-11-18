@@ -2,10 +2,11 @@ import pytest
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
-from ushareiplay.core.natural_language_resolver import (
-    NaturalLanguageResolver,
-    NaturalLanguageResult,
+from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+    OpenAICompatibleNaturalLanguageResolver,
 )
+from ushareiplay.modules.command.domain import NaturalLanguageResult
+from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
 from ushareiplay.modules.user.domain import MemorySettings
 from ushareiplay.modules.user.use_cases import UserMemoryService
 from tests.fakes.in_memory_chat_log_repository import InMemoryChatLogRepository
@@ -14,8 +15,12 @@ from tests.fakes.in_memory_user_memory_repository import InMemoryUserMemoryRepos
 from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
 
+def _use_case(config):
+    return ResolveNaturalLanguage(OpenAICompatibleNaturalLanguageResolver(config), config)
+
+
 def test_resolver_prompt_injection_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -47,7 +52,7 @@ def test_resolver_prompt_injection_with_memory_context():
 
 
 def test_resolver_prompt_without_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -104,7 +109,7 @@ async def test_dialogue_context_is_assembled_from_repositories():
 
 @pytest.mark.asyncio
 async def test_resolver_resolve_with_memory_context():
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -130,7 +135,7 @@ async def test_resolver_resolve_with_memory_context():
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="你好呀",

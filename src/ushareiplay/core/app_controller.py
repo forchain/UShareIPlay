@@ -605,7 +605,7 @@ class AppController(Singleton):
                 memories=TortoiseUserMemoryRepository(),
                 chat_logs=TortoiseChatLogRepository(),
                 distiller=LLMMemoryDistiller(
-                    self.keyword_manager.nl_resolver,
+                    self.keyword_manager.llm_client,
                     timeout=memory_settings.timeout,
                 ),
                 settings=memory_settings,

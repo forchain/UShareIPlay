@@ -71,6 +71,28 @@ class UnknownCommand(DomainError):
 
 
 @dataclass(frozen=True)
+class NaturalLanguageResult:
+    """自然语言解析结果（ADR-0003）。
+
+    Fields:
+        type: 'command' or 'reply'
+        content: Translated command string (e.g. ':play 周杰伦 晴天') or chat reply text
+    """
+
+    type: str
+    content: str
+
+
+@dataclass(frozen=True)
+class NaturalLanguageContext:
+    """用例构建好的提示上下文，交给解析端口发往 LLM。"""
+
+    system_prompt: str
+    model: str
+    timeout: float
+
+
+@dataclass(frozen=True)
 class SleepWindow:
     """睡眠时段：起止时间，跨午夜时分为两段。"""
 

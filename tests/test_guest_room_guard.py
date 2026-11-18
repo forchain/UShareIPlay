@@ -171,7 +171,7 @@ async def test_host_room_allows_all_commands():
 @pytest.mark.asyncio
 async def test_guest_room_filters_commands_for_natural_language_resolver(monkeypatch):
     from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
-    from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
+    from ushareiplay.modules.command.domain import NaturalLanguageResult
     from ushareiplay.managers.keyword_manager import KeywordManager
 
     KeywordManager.reset_instance()

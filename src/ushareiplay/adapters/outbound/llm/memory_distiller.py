@@ -1,7 +1,7 @@
 """`MemoryDistiller` 的 LLM 适配器：把既有 OpenAI 兼容 HTTP 客户端包成记忆提炼。
 
-客户端由组合根注入（当前是 `NaturalLanguageResolver`，ADR-0006 的提示词与解析
-规则原样保留）。
+客户端由组合根注入（当前是 `OpenAICompatibleNaturalLanguageResolver` 传输适配器，
+ADR-0006 的提示词与解析规则原样保留）。
 """
 
 import json
