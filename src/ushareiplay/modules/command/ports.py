@@ -5,7 +5,13 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
+
+from ushareiplay.modules.command.domain import (
+    KEYWORD_MODE_SEQUENCE,
+    Keyword,
+    ResolvedMention,
+)
 
 
 class CommandRuntime(ABC):
@@ -39,3 +45,106 @@ class GuestRoomPolicy(ABC):
     @abstractmethod
     def is_command_allowed_in_guest_room(self, prefix: str) -> bool:
         """该前缀是否在客房白名单内。"""
+
+
+class KeywordRepository(ABC):
+    """关键字持久化端口；签名与既有 `KeywordDAO` 对齐，只进出领域对象。"""
+
+    @abstractmethod
+    async def create(
+        self,
+        keyword: str,
+        command: str,
+        creator_id: Optional[int] = None,
+        is_public: bool = True,
+        mode: str = KEYWORD_MODE_SEQUENCE,
+    ) -> Keyword:
+        """创建一条关键字；`creator_id=None` 表示配置关键字。"""
+
+    @abstractmethod
+    async def get_by_keyword(self, keyword: str) -> Optional[Keyword]:
+        """按关键字文本查询（含创建者信息）。"""
+
+    @abstractmethod
+    async def get_by_keyword_and_username(
+        self, keyword: str, username: str
+    ) -> Optional[Keyword]:
+        """按关键字文本与创建者昵称查询。"""
+
+    @abstractmethod
+    async def find_accessible_keyword(
+        self, keyword: str, username: str
+    ) -> Optional[Keyword]:
+        """查找该用户可执行的关键字（公开 / 创建者 / 白名单）。"""
+
+    @abstractmethod
+    async def grant_users(self, keyword: str, user_ids: list[int]) -> Optional[Keyword]:
+        """把 canonical 用户 ID 加入白名单。"""
+
+    @abstractmethod
+    async def revoke_users(self, keyword: str, user_ids: list[int]) -> Optional[Keyword]:
+        """把 canonical 用户 ID 移出白名单。"""
+
+    @abstractmethod
+    async def delete_by_keyword(self, keyword: str) -> bool:
+        """按关键字文本删除；不存在返回 False。"""
+
+    @abstractmethod
+    async def delete_config_keywords(self) -> int:
+        """删除全部配置关键字，返回删除条数。"""
+
+    @abstractmethod
+    async def update_publicity(self, keyword: str, is_public: bool) -> Optional[Keyword]:
+        """更新关键字公开性；不存在返回 None。"""
+
+    @abstractmethod
+    async def list_by_creator(self, username: str) -> list[Keyword]:
+        """列出某用户创建的关键字。"""
+
+    @abstractmethod
+    async def list_all(self) -> list[Keyword]:
+        """列出全部关键字。"""
+
+
+class KeywordCommandQueue(ABC):
+    """关键字执行出口：把命令文本交回运行时消息队列。"""
+
+    @abstractmethod
+    async def enqueue(
+        self, content: str, *, nickname: str, sleep_exempt: bool
+    ) -> None:
+        """投递一条待执行命令。"""
+
+
+class KeywordConfigSource(ABC):
+    """关键字预设文件（`config/keywords.yaml`）的读取口。"""
+
+    @abstractmethod
+    def load(self) -> Optional[Mapping[str, Any]]:
+        """返回解析后的配置；文件不存在返回 None。"""
+
+
+class UserPresence(ABC):
+    """添加关键字前的在线校验。"""
+
+    @abstractmethod
+    def is_user_online(self, username: str) -> bool:
+        """该昵称当前是否在线。"""
+
+
+class ChatLogRecorder(ABC):
+    """把 @ 群主的发言记入用户聊天日志，供记忆系统使用。"""
+
+    @abstractmethod
+    async def record(self, username: str, content: str) -> None:
+        """记录一条用户发言。"""
+
+
+class NaturalLanguageFallback(ABC):
+    """未命中关键字时的自然语言兜底（#548 的解析器接缝）。"""
+
+    @abstractmethod
+    async def resolve(
+        self, *, user_text: str, user_name: str, user_level: int
+    ) -> Optional[ResolvedMention]:
+        """把一句话解析成命令/回复；解析失败返回 None。"""

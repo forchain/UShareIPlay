@@ -8,20 +8,36 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import random
+import traceback
 from typing import Callable, ContextManager, Optional
 
 from ushareiplay.modules.command.domain import (
     DEFAULT_SLEEP_ENABLED,
     DEFAULT_SLEEP_WINDOW_END,
     DEFAULT_SLEEP_WINDOW_START,
+    KEYWORD_MODE_RANDOM,
     CommandCatalogue,
+    ConfigKeywordImmutable,
     GuestRoomRestricted,
     InsufficientCommandLevel,
+    Keyword,
+    KeywordAlreadyPublic,
+    KeywordEmpty,
+    KeywordNotPublic,
+    KeywordNotFound,
+    MissingGrantees,
+    NoKeywordsAdded,
+    NotKeywordOwner,
     SleepBlocked,
     SleepWindow,
     UnknownCommand,
+    UserNotOnline,
+    normalize_keyword_mode,
     parse_enabled,
     parse_hhmm,
+    pick_keyword_command,
+    render_keyword_command,
 )
 from ushareiplay.modules.command.ports import (
     CommandRuntime,
@@ -322,3 +338,318 @@ class DispatchCommand:
             self._runtime.emit(event, ctx=ctx)
         except Exception:
             pass
+
+
+class KeywordUseCases:
+    """关键字增删改查、ACL 与执行；依赖全部从构造函数注入（#547）。
+
+    自然语言解析不在本包内实现：未命中关键字时交给 `NaturalLanguageFallback`
+    端口，组合根按 #548 的进度负责接线。
+    """
+
+    def __init__(
+        self,
+        *,
+        repository,
+        users,
+        presence,
+        queue,
+        chat_logs,
+        config_source,
+        fallback,
+        logger: Optional[logging.Logger] = None,
+        command_chooser=random.choice,
+    ):
+        self._repository = repository
+        self._users = users
+        self._presence = presence
+        self._queue = queue
+        self._chat_logs = chat_logs
+        self._config_source = config_source
+        self._fallback = fallback
+        self._logger = logger or logging.getLogger("KeywordManager")
+        self._chooser = command_chooser
+        self._default_keyword_command: Optional[str] = None
+
+    async def load_keywords_from_config(self) -> None:
+        """重建配置关键字：先删 `creator_id is None`，再从预设文件导入。"""
+        try:
+            deleted_count = await self._repository.delete_config_keywords()
+            self._logger.info(f"Cleared {deleted_count} config keywords")
+
+            keywords_config = self._config_source.load()
+            if keywords_config is None:
+                self._logger.warning("Keywords config file not found")
+                return
+
+            if 'default_keyword' in keywords_config:
+                self._default_keyword_command = keywords_config['default_keyword'].get(
+                    'command', ':help'
+                )
+                self._logger.info(
+                    f"Loaded default keyword command: {self._default_keyword_command}"
+                )
+
+            if 'keywords' not in keywords_config:
+                self._logger.info("No keywords configured")
+                return
+
+            loaded_count = 0
+            for kw_config in keywords_config['keywords']:
+                keyword_text = kw_config.get('keyword', '')
+                command = kw_config.get('command', '')
+                is_public = kw_config.get('is_public', True)
+                mode = normalize_keyword_mode(kw_config.get('mode'))
+
+                if not keyword_text or not command:
+                    continue
+
+                for kw in (k.strip() for k in keyword_text.split('|')):
+                    if not kw:
+                        continue
+                    await self._repository.create(
+                        keyword=kw,
+                        command=command,
+                        creator_id=None,
+                        is_public=is_public,
+                        mode=mode,
+                    )
+                    loaded_count += 1
+
+            self._logger.info(f"Loaded {loaded_count} keywords from config")
+            self._logger.info(f"关键字系统初始化完成：加载了 {loaded_count} 个关键字")
+        except Exception:
+            self._logger.error(
+                f"Error loading keywords from config: {traceback.format_exc()}"
+            )
+
+    async def find_keyword(self, keyword: str, username: str) -> Optional[Keyword]:
+        """查找该用户可执行的关键字；查询失败按无权限处理。"""
+        try:
+            return await self._repository.find_accessible_keyword(keyword, username)
+        except Exception:
+            self._logger.error(f"Error finding keyword: {traceback.format_exc()}")
+            return None
+
+    async def add_keyword(
+        self,
+        username: str,
+        keywords: str,
+        command: str,
+        is_public: bool,
+        mode: Optional[str] = None,
+    ) -> str:
+        """添加（或按等级覆盖）关键字，返回与旧实现一致的结果文案。"""
+        if not self._presence.is_user_online(username):
+            raise UserNotOnline()
+
+        user = await self._users.get_or_create(username)
+        keyword_list = [k.strip() for k in keywords.split('|') if k.strip()]
+        if not keyword_list:
+            raise KeywordEmpty()
+        normalized_mode = normalize_keyword_mode(mode)
+
+        added_keywords = []
+        overwritten_keywords = []
+        failed_keywords = []
+
+        for kw in keyword_list:
+            existing = await self._repository.get_by_keyword(kw)
+            if existing is not None:
+                if existing.is_config:
+                    failed_keywords.append(f"{kw}(配置关键字不可覆盖)")
+                    continue
+                if existing.creator_level > user.level:
+                    failed_keywords.append(
+                        f"{kw}(已被更高等级用户 {existing.creator_username} 创建)"
+                    )
+                    continue
+                await self._repository.delete_by_keyword(kw)
+                overwritten_keywords.append(kw)
+
+            await self._repository.create(
+                keyword=kw,
+                command=command,
+                creator_id=user.id,
+                is_public=is_public,
+                mode=normalized_mode,
+            )
+            added_keywords.append(kw)
+
+        messages = []
+        if added_keywords:
+            visibility = "公开" if is_public else "私有"
+            mode_text = "随机模式" if normalized_mode == KEYWORD_MODE_RANDOM else "顺序模式"
+            messages.append(
+                f"成功添加{visibility}关键字({mode_text}): {', '.join(added_keywords)}"
+            )
+        if overwritten_keywords:
+            messages.append(f"覆盖了关键字: {', '.join(overwritten_keywords)}")
+        if failed_keywords:
+            messages.append(f"添加失败: {', '.join(failed_keywords)}")
+
+        if not messages:
+            raise NoKeywordsAdded()
+        return '\n'.join(messages)
+
+    async def update_keyword_publicity(
+        self, username: str, keyword: str, is_public: Optional[bool]
+    ) -> str:
+        kw = await self._require_owned(username, keyword)
+        new_is_public = not kw.is_public if is_public is None else is_public
+        await self._repository.update_publicity(keyword, new_is_public)
+        status = "公开" if new_is_public else "私有"
+        return f'关键字 "{keyword}" 已设置为{status}'
+
+    async def delete_keyword(self, username: str, keyword: str) -> str:
+        await self._require_owned(username, keyword)
+        await self._repository.delete_by_keyword(keyword)
+        return f'成功删除关键字 "{keyword}"'
+
+    async def _require_owned(self, username: str, keyword: str) -> Keyword:
+        """取关键字并校验创建者身份；配置关键字与越权都由领域异常表达。"""
+        kw = await self._repository.get_by_keyword(keyword)
+        if kw is None:
+            raise KeywordNotFound(keyword)
+        if kw.is_config:
+            raise ConfigKeywordImmutable()
+        user = await self._users.get_or_create(username)
+        if kw.creator_id != user.id:
+            raise NotKeywordOwner()
+        return kw
+
+    async def grant_keyword_access(
+        self, username: str, keyword: str, target_usernames: str
+    ) -> str:
+        kw = await self._private_owned(username, keyword, already_public=KeywordAlreadyPublic)
+        raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
+        if not raw_targets:
+            raise MissingGrantees()
+        target_ids = [(await self._users.get_or_create(t)).id for t in raw_targets]
+        await self._repository.grant_users(keyword, target_ids)
+        return f'已授权关键字 "{keyword}" 给: {", ".join(raw_targets)}'
+
+    async def revoke_keyword_access(
+        self, username: str, keyword: str, target_usernames: str
+    ) -> str:
+        kw = await self._private_owned(username, keyword, already_public=KeywordNotPublic)
+        raw_targets = [t.strip() for t in (target_usernames or "").split("|") if t.strip()]
+        if not raw_targets:
+            raise MissingGrantees()
+        target_ids = [(await self._users.get_or_create(t)).id for t in raw_targets]
+        await self._repository.revoke_users(keyword, target_ids)
+        return f'已取消授权关键字 "{keyword}" 对: {", ".join(raw_targets)}'
+
+    async def _private_owned(self, username: str, keyword: str, *, already_public):
+        kw = await self._repository.get_by_keyword(keyword)
+        if kw is None:
+            raise KeywordNotFound(keyword)
+        if kw.is_config:
+            raise ConfigKeywordImmutable()
+        if kw.is_public:
+            raise already_public()
+        user = await self._users.get_or_create(username)
+        if kw.creator_id != user.id:
+            raise NotKeywordOwner()
+        return kw
+
+    async def execute_keyword(
+        self,
+        keyword_record: Keyword,
+        username: str,
+        params: str = "",
+        sleep_exempt: bool = False,
+    ) -> None:
+        """按模式选命令、替换占位符后投递到运行时队列。"""
+        try:
+            selected = pick_keyword_command(
+                keyword_record.command, keyword_record.mode, chooser=self._chooser
+            )
+            command = render_keyword_command(selected, username, params)
+            await self._queue.enqueue(
+                command, nickname=username, sleep_exempt=sleep_exempt
+            )
+            self._logger.info(f"Keyword '{keyword_record.keyword}' executed by {username}")
+        except Exception:
+            self._logger.error(f"Error executing keyword: {traceback.format_exc()}")
+
+    async def execute_default_keyword(
+        self, username: str, params: str = "", sleep_exempt: bool = False
+    ) -> None:
+        try:
+            if not self._default_keyword_command:
+                self._logger.warning("No default keyword command configured")
+                return
+            command = render_keyword_command(
+                self._default_keyword_command, username, params
+            )
+            await self._queue.enqueue(
+                command, nickname=username, sleep_exempt=sleep_exempt
+            )
+            self._logger.info(f"Default keyword executed by {username}")
+        except Exception:
+            self._logger.error(f"Error executing default keyword: {traceback.format_exc()}")
+
+    async def dispatch_mention(self, result, sleep_exempt: bool = True) -> None:
+        """@ 群主链路：关键字 → 自然语言兜底 → 默认关键字。"""
+        user_text = result.utterance
+        if result.nickname and user_text:
+            try:
+                await self._chat_logs.record(result.nickname, user_text)
+            except Exception:
+                self._logger.error(
+                    f"Error logging user chat for {result.nickname}: {traceback.format_exc()}"
+                )
+
+        keyword_record = await self.find_keyword(result.text, result.nickname)
+        if keyword_record is not None:
+            await self.execute_keyword(
+                keyword_record,
+                result.nickname,
+                params=result.params,
+                sleep_exempt=sleep_exempt,
+            )
+            return
+
+        if await self._resolve_natural_language(result, sleep_exempt=sleep_exempt):
+            return
+
+        await self.execute_default_keyword(
+            result.nickname, params=result.params, sleep_exempt=sleep_exempt
+        )
+
+    async def _resolve_natural_language(self, result, sleep_exempt: bool = True) -> bool:
+        try:
+            user_text = result.utterance
+            if not user_text:
+                return False
+
+            user_level = 0
+            try:
+                user_level = (await self._users.get_or_create(result.nickname)).level
+            except Exception:
+                pass
+
+            resolved = await self._fallback.resolve(
+                user_text=user_text,
+                user_name=result.nickname,
+                user_level=user_level,
+            )
+            if not resolved or not resolved.content:
+                return False
+
+            await self._queue.enqueue(
+                resolved.content,
+                nickname=result.nickname,
+                sleep_exempt=sleep_exempt,
+            )
+            self._logger.info(
+                f"Natural language resolution ({resolved.type}) executed "
+                f"for {result.nickname}: {resolved.content}"
+            )
+            return True
+        except Exception:
+            self._logger.error(
+                f"Error during natural language resolution: {traceback.format_exc()}"
+            )
+            return False
