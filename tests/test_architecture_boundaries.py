@@ -1,4 +1,4 @@
-"""架构护栏：`modules/` 不得依赖任何具体技术或适配器，也不得做服务定位。
+"""架构护栏：`modules/` 与系统出站适配器不得依赖具体技术或上层适配器，也不得做服务定位。
 
 AST 扫描而不是文本 grep：注释与字符串里出现 "appium" 不算违规。护栏本身用
 合成源码验证 —— 每加一条非法 import 或 `.instance()` 调用都必须被抓住。
@@ -12,6 +12,8 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 MODULES_ROOT = SRC_ROOT / "ushareiplay" / "modules"
+SYSTEM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "system"
+GUARDED_ROOTS = (MODULES_ROOT, SYSTEM_ADAPTERS_ROOT)
 
 FORBIDDEN_MODULES = ("appium", "selenium", "tortoise", "openai", "ushareiplay.adapters")
 
@@ -65,13 +67,15 @@ def find_violations(source: str, path: Path) -> list[str]:
     return violations
 
 
-def test_modules_do_not_import_technology_or_adapters_and_do_not_locate_services():
-    module_files = sorted(MODULES_ROOT.rglob("*.py"))
-    assert module_files
+def test_guarded_packages_do_not_import_technology_or_adapters_and_do_not_locate_services():
+    guarded_files = sorted(path for root in GUARDED_ROOTS for path in root.rglob("*.py"))
+    assert guarded_files
+    assert (SYSTEM_ADAPTERS_ROOT / "network_bridge.py").exists()
+    assert (SYSTEM_ADAPTERS_ROOT / "log_rotation.py").exists()
 
     violations = {
         str(path): found
-        for path in module_files
+        for path in guarded_files
         if (found := find_violations(path.read_text(), path))
     }
 

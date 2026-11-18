@@ -178,7 +178,7 @@ except Exception:
     local py_status=0
     uv run python -c "
 import sys
-from ushareiplay.core.network_bridge import check_socket_connectivity, is_macos_local_network_error
+from ushareiplay.adapters.outbound.system.network_bridge import check_socket_connectivity, is_macos_local_network_error
 ok, err = check_socket_connectivity('${appium_host}', int('${appium_port}'), timeout=2.0)
 if not ok:
     if is_macos_local_network_error(err):

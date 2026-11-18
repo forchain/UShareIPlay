@@ -67,7 +67,7 @@ class RuntimeLogging:
 
     def archive(self, log_dir: Path, active_name: str) -> Path:
         """Archive the active log file (inode-safe) and return the active path."""
-        from ushareiplay.core.log_rotation import archive_active_log_on_startup
+        from ushareiplay.adapters.outbound.system.log_rotation import archive_active_log_on_startup
 
         return archive_active_log_on_startup(log_dir, active_name)
 
