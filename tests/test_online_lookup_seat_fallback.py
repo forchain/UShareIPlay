@@ -15,22 +15,15 @@
 
 import pytest
 
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.managers.user_manager import UserManager
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
+from ushareiplay.modules.room.use_cases import OnlineDrawer, UserProfileActions
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    SeatObservationManager.reset_instance()
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
     yield
-    SeatObservationManager.reset_instance()
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
 
 
 class _Handler:
@@ -52,10 +45,10 @@ def _wire(driver=None, *, name_resolver=None, members=(), **driver_kwargs):
     driver = driver if driver is not None else InMemoryOnlineDrawerDriver(
         members=members, **driver_kwargs
     )
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(handler=_Handler(), driver=driver, name_resolver=name_resolver)
-    manager = UserManager.initialize(_Handler())
+    drawer = OnlineDrawer(
+        drawer=driver, name_resolver=name_resolver, ui_session=None
+    )
+    manager = UserProfileActions(drawer=drawer)
     return manager, driver
 
 
@@ -65,7 +58,7 @@ def _seat_user(nickname, seat_number=10):
     这条登记是**故意不起作用**的：`UserManager` 从来不读座位观测。它守的是「不要因为
     人在座位上就绕过在线列表」——座位上不见得有所有人，且缓存有滞后。
     """
-    obs = SeatObservationManager.initialize(_Handler())
+    obs = build_seat_observation(_Handler())
     obs.ledger.slots[seat_number] = SeatSlot(
         seat_number=seat_number, occupied=True, username=nickname, label="管理"
     )

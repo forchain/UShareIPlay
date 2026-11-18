@@ -7,9 +7,10 @@ import pytest
 import yaml
 from lxml import etree
 
-from ushareiplay.core.config_view import ConfigSectionView
-from ushareiplay.core.element_wrapper import ElementWrapper, composed_message_text
-from ushareiplay.events.message_content import MessageContentEvent
+from ushareiplay.modules.shared.config import ConfigSectionView
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
+from ushareiplay.adapters.inbound.ui_events.message_content import composed_message_text
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
 MESSAGE_CONTENT_SELECTOR_KEY = "message_content"
 
@@ -276,8 +277,7 @@ async def test_message_content_event_logs_the_composed_quoted_message(chat_windo
     event = MessageContentEvent(chat_window.handler)
 
     wrappers = _content_wrappers(_MIXED_ROWS_XML)
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance"):
-        await event.handle("message_content", wrappers)
+    await event.handle("message_content", wrappers)
 
     expected = [
         "souler[Bob]说：「Alice：今天天气不错」 哈哈",

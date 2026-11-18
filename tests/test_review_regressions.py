@@ -15,9 +15,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.command_parser import CommandParser
+from ushareiplay.adapters.inbound.runtime.command_parser import CommandParser
 from ushareiplay.core.observability import Observability
-from ushareiplay.core.roles import RolePolicy, _normalize_set
+from ushareiplay.modules.shared.roles import RolePolicy, _normalize_set
 
 
 class _Logger:
@@ -41,15 +41,19 @@ class _Logger:
 
 @pytest.fixture
 def party_manager(monkeypatch):
-    from ushareiplay.managers.party_manager import PartyManager
-    from ushareiplay.state.room_state import RoomState
+    from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+    from ushareiplay.modules.room import PartyLifecycleState, PartyService, RoomStateService
 
-    manager = PartyManager.instance()
-    manager._handler = SimpleNamespace(config={}, logger=_Logger())
-    manager._logger = _Logger()
-    manager.init_time = datetime.now() - timedelta(minutes=800)
-    manager.trigger_minutes = 720
-    monkeypatch.setattr(RoomState, "in_guest_room", classmethod(lambda cls: False))
+    room_state = RoomStateService()
+    lifecycle = PartyLifecycleState(trigger_minutes=720)
+    lifecycle.initialize(now=datetime.now() - timedelta(minutes=800), trigger_minutes=720)
+    handler = SimpleNamespace(config={}, logger=_Logger())
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=room_state,
+        lifecycle=lifecycle,
+        logger=_Logger(),
+    )
     monkeypatch.setattr(manager, "get_party_user_count", lambda: 1)
     return manager
 
@@ -70,9 +74,9 @@ def test_auto_end_error_dict_keeps_timers(monkeypatch, party_manager):
     assert resets == []
     # ... and the attempt still counts for the once-a-day guard, so the next
     # chat batch does not hammer the end-party UI again.
-    assert party_manager.last_auto_end_date == date.today()
+    assert party_manager.lifecycle.last_auto_end_date == date.today()
 
-    party_manager.init_time = datetime.now() - timedelta(minutes=800)
+    party_manager.lifecycle.init_time = datetime.now() - timedelta(minutes=800)
     party_manager.update()
     assert len(calls) == 1
 
@@ -85,10 +89,10 @@ def test_auto_end_success_marks_date_and_blocks_second_run(monkeypatch, party_ma
 
     party_manager.update()
     assert resets == [1]
-    assert party_manager.last_auto_end_date == date.today()
+    assert party_manager.lifecycle.last_auto_end_date == date.today()
 
     # Same day, timer already due again: the once-a-day guard must stop it.
-    party_manager.init_time = datetime.now() - timedelta(minutes=800)
+    party_manager.lifecycle.init_time = datetime.now() - timedelta(minutes=800)
     party_manager.update()
     assert len(calls) == 1
     assert resets == [1]
@@ -132,10 +136,10 @@ class _DummyCommand:
 
 @pytest.fixture
 def command_manager(monkeypatch):
-    from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.dal import user_dao as user_dao_module
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.sleep_manager import SleepManager
+    from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+    from ushareiplay.modules.command.use_cases import SleepManager
 
     config = {
         "room_owner": "Joyer",
@@ -152,10 +156,11 @@ def command_manager(monkeypatch):
     async def _get_or_create(_nickname):
         return _User()
 
-    monkeypatch.setattr(user_dao_module.UserDAO, "get_or_create", staticmethod(_get_or_create))
+    monkeypatch.setattr(
+        TortoiseUserRepository, "get_or_create", staticmethod(_get_or_create)
+    )
 
-    SleepManager.initialize(config)
-    manager = CommandManager.instance()
+    manager = CommandManager(sleep=SleepManager(config), users=TortoiseUserRepository())
     manager._handler = _Handler(config)
     manager.configure_runtime(_Runtime())
     return manager
@@ -203,9 +208,11 @@ async def test_sleep_rejection_without_error_template_still_blocks(command_manag
 
 
 def test_console_input_stops_on_eof(monkeypatch):
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
+    controller.runtime_input = None
+    controller.loop = None
     controller.is_running = True
     controller.in_console_mode = False
     controller.input_queue = queue.Queue()
@@ -231,7 +238,7 @@ def test_console_input_stops_on_eof(monkeypatch):
 
 
 def test_database_manager_uses_repo_root_data_dir(tmp_path, monkeypatch):
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.core.paths import repo_root
 
     elsewhere = tmp_path / "not-the-repo"
@@ -283,37 +290,32 @@ def test_write_status_replaces_atomically(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_repeat_timer_advances_past_missed_days(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.timer_manager import TimerManager
-    from ushareiplay.dal.timer_dao import TimerDAO
+async def test_repeat_timer_advances_past_missed_days():
+    from tests.fakes.fake_clock import FakeClock
+    from tests.fakes.in_memory_timer_repository import InMemoryTimerRepository
+    from tests.fakes.recording_timer_message_sink import RecordingTimerMessageSink
+    from ushareiplay.modules.timer.use_cases import TimerUseCases
 
-    manager = TimerManager.instance()
-    manager._logger = _Logger()
-    manager._paused = False
-
-    async def _put_message(_message_info):
-        return True
-
-    monkeypatch.setattr(MessageQueue.instance(), "put_message", _put_message)
-
-    scheduled = {}
-
-    async def _update_next_trigger(key, next_trigger):
-        scheduled[key] = next_trigger
-        return True
-
-    monkeypatch.setattr(TimerDAO, "update_next_trigger", staticmethod(_update_next_trigger))
-
-    stale = datetime.now() - timedelta(days=3)
-    await manager._trigger_timer(
-        "daily",
-        {"message": "daily hello", "repeat": True, "next_trigger": stale.isoformat()},
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    clock = FakeClock(now)
+    repository = InMemoryTimerRepository()
+    manager = TimerUseCases(
+        repository=repository,
+        clock=clock,
+        sink=RecordingTimerMessageSink(),
+        logger=_Logger(),
     )
+    timer = await manager.create_timer(
+        key="daily", message="daily hello", target_time="19:00", repeat=True
+    )
+    scheduled_before = timer.next_trigger
+    clock.advance(4 * 24 * 3600)
 
-    assert "daily" in scheduled
-    assert scheduled["daily"] > datetime.now()
-    assert scheduled["daily"] - stale >= timedelta(days=3)
+    await manager.fire_timer("daily")
+
+    scheduled = (await repository.get_by_key("daily")).next_trigger
+    assert scheduled > clock.now()
+    assert scheduled - scheduled_before >= timedelta(days=4)
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +351,7 @@ class _DumpsysDriver:
 
 
 def test_song_title_with_comma_keeps_album_field():
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 
     manager = MusicManager.__new__(MusicManager)
     manager.logger = _Logger()

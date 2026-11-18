@@ -1,0 +1,47 @@
+"""房间切片测试台：按组合根的方式构造并接线房间状态、在线集合与钩子引擎。"""
+
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
+from ushareiplay.modules.command.domain import CommandCatalogue
+from ushareiplay.modules.room.use_cases import (
+    PresenceTracker,
+    RoomStateService,
+    UserEventHooks,
+)
+
+
+def configured_room_state(**kwargs) -> RoomStateService:
+    """带真实命令目录的房间状态。"""
+    if kwargs.get("catalogue") is None:
+        kwargs["catalogue"] = CommandCatalogue.from_config(ConfigLoader.load_config())
+    kwargs.setdefault("logger", None)
+    return RoomStateService(**kwargs)
+
+
+def make_hooks(
+    *,
+    users=None,
+    presence=None,
+    memory=None,
+    logger=None,
+    repository=None,
+    message_queue=None,
+) -> UserEventHooks:
+    """按组合根的方式构造钩子引擎（Tortoise 仓储 + 队列出口）。"""
+    from ushareiplay.adapters.inbound.runtime.hook_command_sink import QueueHookCommandSink
+    from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+        TortoiseUserEventHookRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_repository import (
+        TortoiseUserRepository,
+    )
+
+    users = users or TortoiseUserRepository()
+    return UserEventHooks(
+        repository=repository or TortoiseUserEventHookRepository(users=users),
+        users=users,
+        sink=QueueHookCommandSink(message_queue or MessageQueue()),
+        presence=presence or PresenceTracker(),
+        memory=memory,
+        logger=logger,
+    )

@@ -15,18 +15,8 @@
 
 import pytest
 
-from ushareiplay.managers.room_profile.drafts import FIELDS, ProfileDraftStore
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
-
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-    yield
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
+from ushareiplay.modules.room.domain import FIELDS, ProfileDraftStore
+from tests.room_profile_support import RoomProfileManager
 
 
 # --------------------------------------------------------------------------
@@ -50,7 +40,7 @@ def test_the_draft_store_does_not_duplicate_the_room_title_composer():
 
 
 def test_the_room_title_is_composed_by_the_manager_which_never_writes_none():
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager()
     profile.drafts.set_pending("title", "晚安")
 
     composed = profile.compose_room_title()

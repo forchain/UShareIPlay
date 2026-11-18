@@ -7,9 +7,11 @@ microphone restore — plus the guest-room bypass policy.
 
 import pytest
 
-from ushareiplay.core.config_view import ConfigSectionView
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.modules.shared.config import ConfigSectionView
+from ushareiplay.modules.playback.use_cases import PlaybackMuting
+from ushareiplay.modules.room import RoomStateService
+
+_ROOM_STATE = RoomStateService()
 
 
 class _Logger:
@@ -50,7 +52,7 @@ class _MusicManager:
 
 
 class _MicManager:
-    """MicManager 的替身：状态读取不算动作，因此不记录事件。"""
+    """MicControl 的替身：状态读取不算动作，因此不记录事件。"""
 
     def __init__(self, events, state=True):
         self.events = events
@@ -70,17 +72,20 @@ class _MicManager:
 
 def _make_coordinator(mic_state=True, config=None, ready=True):
     events = []
-    coordinator = PlaybackMuting.__new__(PlaybackMuting)
-    coordinator.soul_handler = _SoulHandler(events, config)
-    coordinator.music_manager = _MusicManager(events, ready)
-    coordinator.mic_manager = _MicManager(events, state=mic_state)
-    coordinator.logger = coordinator.soul_handler.logger
+    soul_handler = _SoulHandler(events, config)
+    music_manager = _MusicManager(events, ready)
+    coordinator = PlaybackMuting(
+        mic=_MicManager(events, state=mic_state),
+        media_session=music_manager,
+        config=soul_handler.config,
+        is_guest_room=lambda: _ROOM_STATE.is_guest_room,
+        logger=soul_handler.logger,
+    )
     return coordinator, events
 
 
 def _set_guest_room(is_guest: bool):
-    RoomState.reset_instance()
-    RoomState.initialize().is_guest_room = is_guest
+    _ROOM_STATE.is_guest_room = is_guest
 
 
 # --------------------------------------------------------------------------
@@ -95,7 +100,7 @@ def test_guard_mutes_then_waits_for_readiness_then_restores_mic():
 
     assert muted is True
     assert events == ["mute:False", "playback", "wait:海阔天空", "restore"]
-    assert coordinator.music_manager.readiness_calls == [("海阔天空", 5.0, 0.3)]
+    assert coordinator._media_session.readiness_calls == [("海阔天空", 5.0, 0.3)]
 
 
 def test_guard_skips_mute_click_when_mic_is_already_off():
@@ -131,7 +136,7 @@ def test_guard_bypasses_muting_in_host_room_when_guest_room_only():
 
     assert muted is False
     assert events == ["playback"]
-    assert coordinator.music_manager.readiness_calls == []
+    assert coordinator._media_session.readiness_calls == []
 
 
 def test_guard_engages_in_guest_room_when_guest_room_only():
@@ -154,7 +159,7 @@ def test_guard_bypasses_everything_when_disabled():
 
     assert muted is False
     assert events == ["playback"]
-    assert coordinator.music_manager.readiness_calls == []
+    assert coordinator._media_session.readiness_calls == []
 
 
 # --------------------------------------------------------------------------
@@ -170,7 +175,7 @@ def test_guard_restores_mic_and_skips_readiness_when_playback_raises():
             raise RuntimeError("play failed")
 
     assert events == ["mute:False", "playback", "restore"]
-    assert coordinator.music_manager.readiness_calls == []
+    assert coordinator._media_session.readiness_calls == []
 
 
 def test_guard_skips_readiness_wait_when_playback_reports_failure():
@@ -182,7 +187,7 @@ def test_guard_skips_readiness_wait_when_playback_reports_failure():
         coordinator.report_failure()
 
     assert events == ["mute:False", "playback", "restore"]
-    assert coordinator.music_manager.readiness_calls == []
+    assert coordinator._media_session.readiness_calls == []
 
 
 def test_guard_restores_mic_when_readiness_times_out():
@@ -192,7 +197,7 @@ def test_guard_restores_mic_when_readiness_times_out():
         events.append("playback")
 
     assert events == ["mute:False", "playback", "wait:海阔天空", "restore"]
-    assert coordinator.logger.warnings
+    assert coordinator._logger.warnings
 
 
 # --------------------------------------------------------------------------
@@ -200,16 +205,18 @@ def test_guard_restores_mic_when_readiness_times_out():
 # --------------------------------------------------------------------------
 
 def test_settings_fall_back_to_documented_defaults():
+    from ushareiplay.modules.playback.domain import PlaybackMutingSettings
+
     coordinator, _events = _make_coordinator(config={})
 
-    assert coordinator.settings == {
-        "enabled": True,
-        "guest_room_only": False,
-        "auto_enable_on_mic": True,
-        "ignore_users": (),
-        "timeout": 5.0,
-        "settling_delay": 0.3,
-    }
+    assert coordinator.settings == PlaybackMutingSettings(
+        enabled=True,
+        guest_room_only=False,
+        auto_enable_on_mic=True,
+        ignore_users=(),
+        timeout=5.0,
+        settling_delay=0.3,
+    )
 
 
 def test_settings_are_read_from_the_soul_section_like_the_shipped_config():
@@ -218,8 +225,8 @@ def test_settings_are_read_from_the_soul_section_like_the_shipped_config():
         config={"playback_mute": {"enabled": False, "ignore_users": ["Timer"]}}
     )
 
-    assert coordinator.settings["enabled"] is False
-    assert coordinator.settings["ignore_users"] == ["Timer"]
+    assert coordinator.settings.enabled is False
+    assert coordinator.settings.ignore_users == ("Timer",)
 
 
 def test_settings_pass_configured_timeout_and_settling_delay_to_readiness_wait():
@@ -230,24 +237,19 @@ def test_settings_pass_configured_timeout_and_settling_delay_to_readiness_wait()
     with coordinator.guard(expected_song="海阔天空"):
         events.append("playback")
 
-    assert coordinator.music_manager.readiness_calls == [("海阔天空", 8.0, 0.5)]
+    assert coordinator._media_session.readiness_calls == [("海阔天空", 8.0, 0.5)]
 
 
 def test_settings_ignore_unknown_keys():
+    from ushareiplay.modules.playback.domain import PlaybackMutingSettings
+
     coordinator, _events = _make_coordinator(config={"playback_mute": {"unknown": 1}})
 
-    assert coordinator.settings == {
-        "enabled": True,
-        "guest_room_only": False,
-        "auto_enable_on_mic": True,
-        "ignore_users": (),
-        "timeout": 5.0,
-        "settling_delay": 0.3,
-    }
+    assert coordinator.settings == PlaybackMutingSettings()
 
 
 def test_shipped_config_declares_playback_mute_defaults():
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 
     config = ConfigLoader.load_config()
 

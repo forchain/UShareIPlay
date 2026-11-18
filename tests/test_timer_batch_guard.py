@@ -20,20 +20,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import ConfigSectionView
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.command_manager import CommandManager
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.online_list_scraper import OnlineListScraper
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
+from ushareiplay.modules.shared.config import ConfigSectionView
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+from ushareiplay.modules.room import InfoManager
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+from ushareiplay.modules.playback.use_cases import PlaybackMuting, PlaylistSession
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.room.use_cases import PresenceTracker, RoomStateService
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -42,31 +37,31 @@ LOGGER = logging.getLogger("test_timer_batch_guard")
 
 @pytest.fixture
 def clean_info_manager():
-    for cls in (
-        InfoManager,
-        RoomState,
-        PresenceTracker,
-        PlaylistSession,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.reset_instance()
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    for cls in (
-        RoomState,
-        PresenceTracker,
-        PlaylistSession,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.initialize()._logger = fake_logger
-    manager = InfoManager.initialize()
-    manager._logger = fake_logger
-    return manager
+    room_state = RoomStateService()
+    room_state._logger = fake_logger
+    presence = PresenceTracker()
+    presence._logger = fake_logger
+    playlist = PlaylistSession(
+        online_users=presence.get_online_users,
+        avatar_usernames=TortoiseUserRepository().get_all_avatar_usernames,
+        logger=fake_logger,
+    )
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist)
+    broadcaster._logger = fake_logger
+    return InfoManager(
+        room_state=room_state,
+        presence=presence,
+        playlist=playlist,
+        playback_cache=broadcaster,
+        logger=fake_logger,
+    )
 
 
 class _RecordingDispatch:
@@ -176,8 +171,6 @@ def batch_seam(clean_info_manager, monkeypatch):
     async def _avatars(username):
         return {username}
 
-    monkeypatch.setattr(UserDAO, "get_all_avatar_usernames", _avatars)
-
     music_handler = SimpleNamespace(
         logger=LOGGER,
         play_next=lambda query: {
@@ -197,14 +190,10 @@ def batch_seam(clean_info_manager, monkeypatch):
         obs=SimpleNamespace(emit=lambda *args, **kwargs: None),
     )
 
-    dispatch = _RecordingDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
-        lambda: dispatch,
-    )
+    from ushareiplay.adapters.outbound.system.clock import SystemClock
 
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
+    dispatch = _RecordingDispatch()
+    manager = CommandManager(message_dispatch=dispatch, clock=SystemClock())
     manager.configure_runtime(_Runtime(controller))
     manager._logger = LOGGER
     manager._handler = SimpleNamespace(config=config, logger=LOGGER)
@@ -215,31 +204,74 @@ def batch_seam(clean_info_manager, monkeypatch):
     manager.get_command("title")._room_profile_manager = room
     manager.get_command("topic")._room_profile_manager = room
     pause_mic = _Mic()
-    manager.get_command("pause")._mic_manager = pause_mic
 
-    MusicManager.reset_instance()
-    music = MusicManager.initialize(ui_driver=driver)
+    music = MusicManager(
+        music_handler=music_handler,
+        playlist_session=clean_info_manager._playlist,
+        config=config,
+    )
     appium = _AppiumStub()
-    music.music_handler = music_handler
     music.driver = appium
+    music_handler.driver = appium
 
-    PlaybackMuting.reset_instance()
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=LOGGER, config=ConfigSectionView("soul", {})),
-        SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
-        SimpleNamespace(state=lambda: False, set_active=lambda *_a: {}, ensure_active=lambda: {}),
+    from ushareiplay.adapters.outbound.appium.qq_music.media_session import (
+        QQMusicMediaSession,
+    )
+    from ushareiplay.modules.playback.use_cases import (
+        AdjustVolume,
+        PauseResume,
+        PlayNext,
+        PlaySong,
+        SkipSong,
     )
 
-    session = PlaylistSession.instance()
+    session = clean_info_manager._playlist
     session._room_profile = room
+    session._config = config
+    session._avatar_usernames = _avatars
+
+    muting = PlaybackMuting(
+        mic=SimpleNamespace(state=lambda: False, set_active=lambda *_a: {}, ensure_active=lambda: {}),
+        media_session=SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
+        config=ConfigSectionView("soul", {}),
+        logger=LOGGER,
+    )
+    controller.playlist_session = session
+    controller.play_song = PlaySong(
+        ui_driver=driver,
+        playlist_session=session,
+        playback_muting=muting,
+        logger=LOGGER,
+    )
+    controller.skip_song = SkipSong(
+        media_session=music,
+        playlist_session=session,
+        playback_muting=muting,
+    )
+    controller.play_next = PlayNext(
+        next_driver=music_handler,
+        playlist_session=session,
+    )
+    media_session_adapter = QQMusicMediaSession(music_handler)
+    controller.pause_resume = PauseResume(
+        media_session=music,
+        playback_control=media_session_adapter,
+        playlist_session=session,
+        mic=pause_mic,
+        logger=LOGGER,
+    )
+    controller.adjust_volume = AdjustVolume(
+        playback_control=media_session_adapter,
+        logger=LOGGER,
+    )
 
     return _Seam(manager, driver, room, appium, pause_mic, clean_info_manager)
 
 
 def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
     """Playlist Context owner online: say/title/topic/vol run, radio never does."""
-    PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    batch_seam.info._playlist.player_name = "Alice"
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(
         ":say 晚安;:title 晚安;:topic 晚安;:vol 5;:radio sleep"
@@ -256,8 +288,8 @@ def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
 
 def test_guarded_batch_still_records_next_but_blocks_radio(batch_seam):
     """A guest's pending Next Queue guards the timer; its `:next` still records."""
-    PlaylistSession.instance().record_next("Alice")
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    batch_seam.info._playlist.record_next("Alice")
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":say 晚安;:next 晴天;:radio sleep")
 
@@ -288,8 +320,8 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 
     `:playlist <query>` is a continuous-queue switch and is guarded like radio.
     """
-    PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    batch_seam.info._playlist.player_name = "Alice"
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":play 晴天;:playlist 晚安歌单")
 
@@ -300,8 +332,8 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 
 def test_guarded_batch_blocks_skip_and_pause_without_touching_playback(batch_seam):
     """Skip/pause in a guarded batch never reach the player or the microphone."""
-    PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    batch_seam.info._playlist.player_name = "Alice"
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":skip;:pause")
 

@@ -1,7 +1,7 @@
 import re
 
-from ushareiplay.commands.help import HelpCommand
-from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.adapters.inbound.chat.help import HelpCommand
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 
 
 class DummyController:

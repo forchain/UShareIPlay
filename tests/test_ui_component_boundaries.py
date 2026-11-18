@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from ushareiplay.core.ui.gesture_handler import GestureHandler
-from ushareiplay.core.ui.navigation import Navigator
+from ushareiplay.adapters.outbound.appium.ui.gesture_handler import GestureHandler
+from ushareiplay.adapters.outbound.appium.ui.navigation import Navigator
 
 
 def test_navigator_uses_explicit_ui_components_after_delegate_removal():

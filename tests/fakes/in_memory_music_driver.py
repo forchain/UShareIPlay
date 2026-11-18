@@ -6,14 +6,20 @@
 |---|---|
 | Appium UI（查歌、切 tab、点播放全部、切换播放模式、读歌词） | `InMemoryMusicUIDriver`，按模式/查询词返回脚本化结果 |
 | MediaSession 就绪（`dumpsys media_session`） | 测试模块内的 `_ReadinessProbe`，无需睡眠即可判定就绪 |
-| 麦克风 UI（`MicManager`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
+| 麦克风 UI（`MicControl`） | 测试模块内的 `_RecordingMicManager`，记录真实发生的开闭麦动作 |
 
 因此「守护拒绝时一个 UI 动作都不该发生」「切歌前必先闭麦」这类断言，
 考的是引擎自己做的决策，而不是任何 UI 时序。
 """
 
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import (
+from typing import Optional
+
+from ushareiplay.modules.playback.ports import (
+    MediaSessionPort,
+    MusicUIDriverPort,
+    PlaybackControlPort,
+)
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
     NO_PLAYING_MUSIC_ERROR,
@@ -27,7 +33,7 @@ from ushareiplay.managers.playback.models import (
 )
 
 
-class InMemoryMusicUIDriver(MusicUIDriverPort):
+class InMemoryMusicUIDriver(MusicUIDriverPort, PlaybackControlPort, MediaSessionPort):
     """按模式返回脚本化结果的 UI 端口替身。
 
     Args:
@@ -87,6 +93,10 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         lyrics=None,
         lyrics_failures=None,
         not_found_lyrics=False,
+        playback_info=None,
+        volume=5,
+        volume_unavailable=False,
+        pause_error=None,
     ):
         self.tracks = dict(tracks or {})
         self.failures = dict(failures or {})
@@ -116,6 +126,18 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
         self.lyrics_failures = dict(lyrics_failures or {})
         self.not_found_lyrics = not_found_lyrics
         self.lyrics_requests = []
+
+        self.playback_info = (
+            dict(playback_info)
+            if playback_info is not None
+            else {"song": "晴天", "singer": "周杰伦", "album": "叶惠美", "state": "Playing"}
+        )
+        self.volume = volume
+        self.volume_unavailable = volume_unavailable
+        self.pause_error = pause_error
+        self.pause_calls = []
+        self.volume_steps = []
+        self.skip_calls = 0
 
     def start_playback(self, request: PlaybackRequest) -> PlaybackOutcome:
         self.requests.append(request)
@@ -218,6 +240,44 @@ class InMemoryMusicUIDriver(MusicUIDriverPort):
 
         self.accompaniment = enable
         return AccompanimentOutcome.switched(self.accompaniment)
+
+    def get_playback_info(self) -> dict:
+        if self.no_music:
+            return {"error": "Failed to get playback information"}
+        return dict(self.playback_info)
+
+    def wait_for_playback_ready(
+        self,
+        expected_song: Optional[str] = None,
+        timeout: float = 5.0,
+        settling_delay: float = 0.3,
+    ) -> bool:
+        return True
+
+    def skip_song(self) -> dict:
+        self.skip_calls += 1
+        return {
+            "song": self.playback_info.get("song", "Unknown"),
+            "singer": self.playback_info.get("singer", "Unknown"),
+        }
+
+    def pause_resume(self, should_pause: bool) -> dict:
+        self.pause_calls.append(should_pause)
+        if self.journal is not None:
+            self.journal.append(f"pause:{'on' if should_pause else 'off'}")
+        if self.pause_error:
+            return {"error": self.pause_error}
+        self.playback_info["state"] = "Paused" if should_pause else "Playing"
+        return {"action": "暂停" if should_pause else "恢复"}
+
+    def get_volume_level(self) -> Optional[int]:
+        if self.volume_unavailable:
+            return None
+        return self.volume
+
+    def step_volume(self, delta: int) -> None:
+        self.volume_steps.append(delta)
+        self.volume = max(0, min(15, self.volume + delta))
 
     @staticmethod
     def _synthesized_track(request: PlaybackRequest) -> PlaybackTrack:

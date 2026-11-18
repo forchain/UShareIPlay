@@ -38,9 +38,8 @@ from tests.test_seat_panel_delegation import (
     RecordingNode,
     make_popup_handler,
 )
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatCardView
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from ushareiplay.modules.seat.domain import AvatarTapPolicy, SeatCardView
+from tests.seat_support import _SeatPanelWithCustomUI, build_seat_service
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +52,8 @@ def same_identity(monkeypatch):
     async def _is_same_identity(left, right):
         return IDENTITY.get(left, left) == IDENTITY.get(right, right)
 
-    monkeypatch.setattr(UserDAO, "is_same_identity", _is_same_identity)
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+    monkeypatch.setattr(TortoiseUserRepository, "is_same_identity", lambda _self, l, r: _is_same_identity(l, r))
 
 
 def _desk(events, left_occupied, right_occupied, right_label="2"):
@@ -75,15 +75,11 @@ def _desk(events, left_occupied, right_occupied, right_label="2"):
     return RawSeatDesk(children, location={"x": 40, "y": 600})
 
 
-class ScriptedDriver:
-    """按 (桌位序号, 侧) 返回对应人名的点名替身。
+class ScriptedDriver(_SeatPanelWithCustomUI):
+    """按 (桌位序号, 侧) 返回对应人名的点名替身。"""
 
-    真实链路读的是该侧那张名片上的昵称，所以每侧必须给各自的答案；
-    固定返回同一个人会让「跳过整张桌位」这类 bug 测不出来。
-    """
-
-    def __init__(self, script):
-        # script: {(desk_index, side): name or None}
+    def __init__(self, script, handler=None, seat_ui=None):
+        super().__init__(handler, seat_ui)
         self.script = script
         self.calls = []
         self._desk_index = 0
@@ -109,9 +105,9 @@ async def test_target_sitting_beside_another_is_not_reported_as_missing(same_ide
     events = []
     desk = _desk(events, left_occupied=True, right_occupied=True)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
-    driver = ScriptedDriver({(0, "left"): "群主", (0, "right"): AVATAR})
+    driver = ScriptedDriver({(0, "left"): "群主", (0, "right"): AVATAR}, handler=handler, seat_ui=FakeSeatUI([desk]))
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver)
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver)
 
     result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -125,9 +121,9 @@ async def test_neighbour_is_identified_before_reporting_no_adjacent_seat(same_id
     events = []
     desk = _desk(events, left_occupied=True, right_occupied=True)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
-    driver = ScriptedDriver({(0, "left"): "群主", (0, "right"): AVATAR})
+    driver = ScriptedDriver({(0, "left"): "群主", (0, "right"): AVATAR}, handler=handler, seat_ui=FakeSeatUI([desk]))
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver)
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver)
 
     await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -144,24 +140,24 @@ async def test_fully_occupied_desk_without_the_target_keeps_scanning(same_identi
     target_desk = _desk(events, left_occupied=False, right_occupied=True)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
 
-    driver = ScriptedDriver({(0, "left"): "路人甲", (0, "right"): "路人乙"})
+    driver = ScriptedDriver({(0, "left"): "路人甲", (0, "right"): "路人乙"}, handler=handler, seat_ui=FakeSeatUI([neighbour_desk, target_desk]))
 
     class _AdvancingDriver(ScriptedDriver):
         """座位子系统按顺序遍历桌位，替身跟着同样的游标走。"""
 
-        def __init__(self, script):
-            super().__init__(script)
+        def __init__(self, script, handler=None, seat_ui=None):
+            super().__init__(script, handler=handler, seat_ui=seat_ui)
             self.seen_desks = 0
 
         @asynccontextmanager
         async def avatar_card(self, desk, side, seat_number, *, tap_target=AvatarTapPolicy.STATE_THEN_SEAT):
-            idx = 0 if desk is neighbour_desk else 1
+            idx = 0 if str(id(neighbour_desk)) == str(desk) else 1
             self.calls.append((idx, side, seat_number, tap_target))
             name = self.script.get((idx, side))
             yield SeatCardView(opened=True, name=name)
 
-    scripted = _AdvancingDriver({(0, "left"): "路人甲", (0, "right"): "路人乙"})
-    subsystem = SeatSubsystem(
+    scripted = _AdvancingDriver({(0, "left"): "路人甲", (0, "right"): "路人乙"}, handler=handler, seat_ui=FakeSeatUI([neighbour_desk, target_desk]))
+    subsystem = build_seat_service(
         handler, seat_ui=FakeSeatUI([neighbour_desk, target_desk]), panel_driver=scripted
     )
 
@@ -184,13 +180,13 @@ async def test_target_on_a_later_desk_is_still_found_after_a_full_desk(same_iden
     class _ByIdentityDriver(ScriptedDriver):
         @asynccontextmanager
         async def avatar_card(self, desk, side, seat_number, *, tap_target=AvatarTapPolicy.STATE_THEN_SEAT):
-            idx = 0 if desk is full_desk else 1
+            idx = 0 if str(id(full_desk)) == str(desk) else 1
             self.calls.append((idx, side, seat_number, tap_target))
             name = "路人" if idx == 0 else AVATAR
             yield SeatCardView(opened=True, name=name)
 
-    driver = _ByIdentityDriver({})
-    subsystem = SeatSubsystem(
+    driver = _ByIdentityDriver({}, handler=handler, seat_ui=FakeSeatUI([full_desk, target_desk]))
+    subsystem = build_seat_service(
         handler, seat_ui=FakeSeatUI([full_desk, target_desk]), panel_driver=driver
     )
 

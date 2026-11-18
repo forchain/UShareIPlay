@@ -1,0 +1,575 @@
+import re
+import time
+import traceback
+from typing import Optional
+
+import langdetect
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common import StaleElementReferenceException
+
+from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
+from ushareiplay.modules.playback.domain import PLAY_MODE_NAMES
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
+
+
+# 在导入后设置种子
+langdetect.DetectorFactory.seed = 0  # 使用赋值而不是调用
+
+
+class QQMusicHandler(AppHandler):
+    _playlist_session = None
+    _on_demand_marker = None
+
+    def __init__(self, driver, config, controller, *, logger=None):
+        super().__init__(driver, config, controller, logger=logger)
+
+        self.no_skip = 0
+        self.play_mode_key = 'unknown'
+        self._playlist_session = None
+        self._on_demand_marker = None
+
+    @staticmethod
+    def play_mode_key_to_name(key: str) -> str:
+        return PLAY_MODE_NAMES.get(key, PLAY_MODE_NAMES['unknown'])
+
+    def note_play_mode(self, new_key: str, reason: str):
+        """记录当前播放模式 —— 驱动与 MusicManager 更新缓存的公开入口。
+
+        Appium 细节止步于端口之后，但「房间现在显示的是哪个模式」是共享状态：
+        `/info`、关键词广播、歌单自愈都读它，所以写入走这里而不是各写各的。
+        """
+        if not new_key:
+            return
+        if new_key not in ('unknown', 'list', 'single', 'random'):
+            self.logger.warning(f"Invalid play_mode_key={new_key}, ignored (reason={reason})")
+            return
+        if self.play_mode_key != new_key:
+            self.logger.info(
+                f"play_mode_key updated: {self.play_mode_key} -> {new_key} (reason={reason})"
+            )
+        self.play_mode_key = new_key
+
+    def _update_play_mode_key(self, new_key: str, reason: str):
+        """模块内部自愈路径保留的私有别名（见歌单读取），外部一律调 `note_play_mode`。"""
+        self.note_play_mode(new_key, reason)
+
+    @staticmethod
+    def _normalize_song_title(title: str) -> str:
+        return re.sub(r"\s*-\s*$", "", (title or "").strip())
+
+    def _read_playlist_items(self, items):
+        playlist_info = []
+        song_titles = []
+        for item in items:
+            try:
+                elements = item.find_elements(AppiumBy.CLASS_NAME, 'android.widget.TextView')
+                if not elements:
+                    continue
+
+                song = elements[0]
+                if not song:
+                    self.logger.info("Failed to find song in playlist")
+                    continue
+                if len(elements) < 2:
+                    self.logger.info("Failed to find singer in playlist")
+                    continue
+                singer = elements[1]
+                song_title = self._normalize_song_title(song.text)
+                song_titles.append(song_title)
+                if singer and singer.text:
+                    # 首行可能自带末尾「 - 」；第二行常为「 - 歌手」，去重后再拼成「歌名 - 歌手」
+                    singer_clean = re.sub(r"^\s*-\s*", "", (singer.text or "").strip())
+                    info = f"{song_title} - {singer_clean}" if singer_clean else song_title
+                else:
+                    info = song.text
+                playlist_info.append(info)
+            except StaleElementReferenceException:
+                self.logger.warning(f"Error getting song/singer text, {len(items)} ")
+                continue
+        return playlist_info, song_titles
+
+    def open_favorites_entry(self, timeout: int = 10):
+        """
+        进入“我的 -> 收藏”页。
+
+        已知问题：在“我的”页可能因滚动导致“收藏”入口不在可视区域；
+        经验兜底：再次点击一次底部“我的”Tab可触发页面回到默认/顶部，再重试查找。
+
+        Returns:
+            None: 成功进入收藏页
+            dict: 失败时返回 {'error': str}
+        """
+        try:
+            ok = self.navigate_to_home()
+            if not ok:
+                return {'error': 'Cannot navigate to QQ Music home page'}
+
+            my_nav = self.element_finder.wait_for_element_clickable('my_nav', timeout=timeout)
+            if not my_nav:
+                return {'error': 'Cannot find my_nav'}
+
+            my_nav.click()
+            self.logger.info("open_favorites_entry: Clicked my_nav")
+
+            fav_entry = self.element_finder.wait_for_element_clickable('fav_entry', timeout=timeout)
+            if fav_entry:
+                fav_entry.click()
+                self.logger.info("open_favorites_entry: Clicked fav_entry")
+                return None
+
+            # 兜底：再次点击“我的”复位页面后重试
+            self.logger.warning(
+                "open_favorites_entry: fav_entry not found, retrying by clicking my_nav again to reset page"
+            )
+            my_nav_retry = self.element_finder.wait_for_element_clickable('my_nav', timeout=timeout)
+            if my_nav_retry:
+                my_nav_retry.click()
+                time.sleep(0.3)
+
+            fav_entry = self.element_finder.wait_for_element_clickable('fav_entry', timeout=timeout)
+            if fav_entry:
+                fav_entry.click()
+                self.logger.info("open_favorites_entry: Clicked fav_entry after my_nav reset")
+                return None
+
+            # 第二层兜底：回到首页再进“我的”
+            self.logger.warning(
+                "open_favorites_entry: fav_entry still not found, retrying with home->my_nav reset"
+            )
+            ok = self.navigate_to_home()
+            if not ok:
+                return {'error': 'Cannot navigate to QQ Music home page (retry)'}
+
+            my_nav = self.element_finder.wait_for_element_clickable('my_nav', timeout=timeout)
+            if not my_nav:
+                return {'error': 'Cannot find my_nav (retry)'}
+            my_nav.click()
+            time.sleep(0.2)
+
+            fav_entry = self.element_finder.wait_for_element_clickable('fav_entry', timeout=timeout)
+            if not fav_entry:
+                return {'error': 'Cannot find fav_entry after my_nav reset'}
+            fav_entry.click()
+            self.logger.info("open_favorites_entry: Clicked fav_entry after home->my_nav reset")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"open_favorites_entry error: {traceback.format_exc()}")
+            return {'error': f'open_favorites_entry exception: {str(e)}'}
+
+    def ensure_favorited_in_playing_page(self, timeout: int = 10) -> bool:
+        """
+        在播放页自动弹出后，若当前未收藏则执行收藏。
+
+        Returns:
+            bool: True 表示已收藏或收藏成功；False 表示未能确认/未能完成收藏（不应阻断主流程）
+        """
+        try:
+            btn = self.element_finder.wait_for_element('playing_favourite', timeout=timeout)
+            if not btn:
+                self.logger.warning(
+                    f"ensure_favorited_in_playing_page: 收藏按钮未出现(>{timeout}s)"
+                )
+                return False
+
+            desc = self.element_finder.try_get_attribute(btn, 'content-desc') or ''
+            if '取消收藏' in desc:
+                self.logger.info("ensure_favorited_in_playing_page: 已收藏，跳过")
+                return True
+
+            clickable = self.element_finder.wait_for_element_clickable(
+                'playing_favourite', timeout=timeout
+            )
+            if clickable:
+                clickable.click()
+            else:
+                btn.click()
+            self.logger.info(
+                f"ensure_favorited_in_playing_page: 已执行收藏(当前desc={desc})"
+            )
+            return True
+        except Exception:
+            self.logger.warning(
+                f"ensure_favorited_in_playing_page: 执行异常: {traceback.format_exc()}"
+            )
+            return False
+
+    def hide_player(self):
+        self.key_actions.press_back()
+        self.logger.info("Hide player panel")
+        time.sleep(1)
+
+    def navigate_to_home(self):
+        """Navigate back to home page"""
+        # Keep clicking back until no more back buttons found
+        n = 0
+        self.key_actions.press_back()
+        back_keys = ['go_back', 'minimize_screen']
+        while n < 9:
+            key, element = self.element_finder.wait_for_any_element(back_keys + ['home_nav'])
+            if key in back_keys:
+                element.click()
+            elif key == 'home_nav':
+                # 二次确认：命中 home_nav 后，先无等待检查是否仍有可点击返回键
+                back_key, back_element = self.element_finder.try_find_any_element(back_keys)
+                if back_element:
+                    self.logger.info(
+                        f"命中 home_nav 后仍检测到返回键 {back_key}，先点击返回再确认首页"
+                    )
+                    back_element.click()
+                    n += 1
+                    continue
+                self.logger.info("Back to home page")
+                return True
+            else:
+                self.key_actions.press_back()
+                self.logger.warning("Unknown page")
+                return False
+            n += 1
+        return False
+
+    def get_playing_info(self):
+        """Get current playing song and singer info"""
+        song_element = None
+        singer_element = None
+        elements = self.element_finder.find_elements('first_song')
+        if elements:
+            song_element = elements[0]
+            if len(elements) > 1:
+                singer_element = elements[1]
+        if not song_element:
+            return {
+                "song": "Unknown",
+                "singer": "Unknown",
+                "album": "Unknown",
+            }
+        song = song_element.text
+        if not singer_element:
+            return {
+                "song": song,
+                "singer": "Unknown",
+                "album": "Unknown",
+            }
+        singer_album = singer_element.text.split('·')
+        singer = singer_album[0]
+        album = singer_album[1] if len(singer_album) > 1 else "Unknown"
+
+        return {
+            'song': song,
+            'singer': singer,
+            'album': album
+        }
+
+    def get_current_playing(self):
+        """Get current playing song and singer info"""
+        song_element = self.element_finder.try_find_element('current_song')
+        singer_element = self.element_finder.try_find_element('current_singer')
+        if not song_element or not singer_element:
+            return None
+        return {
+            'song': song_element.text,
+            'singer': singer_element.text
+        }
+
+    def query_music(self, music_query: str):
+        """Common logic for preparing music playback"""
+        if not self.key_actions.switch_to_app():
+            self.logger.info(f"Failed to switched to QQ Music app")
+            return None
+        self.logger.info(f"Switched to QQ Music app")
+
+        key, element = self.navigator.navigate_to_element(
+            'search_box',
+            # 带着「播放全部」的详情页（歌单/专辑/收藏）都得先退出去才能搜歌；
+            # 认按钮的 key 集合与驱动共用一份，免得两边各记一套又各漏一个形态。
+            [*PLAY_ALL_KEYS, 'fav_entry'],
+        )
+        if key == 'home_nav':
+            search_entry = self.element_finder.wait_for_element('search_entry', timeout=20)
+            if not search_entry:
+                self.logger.info(f"Search entry not found")
+                return None
+            search_entry.click()
+        elif key == 'search_box':
+            clear_search = self.element_finder.try_find_element('clear_search')
+            if clear_search:
+                clear_search.click()
+                self.logger.info(f"Clear search")
+
+        search_box = self.element_finder.wait_for_element_clickable('search_box')
+        if search_box:
+            search_box.click()
+            self.logger.info(f"Clicked search box")
+        else:
+            self.logger.error(f"failed to find search box")
+            return None
+
+        # Use clipboard operations from parent class
+        self.key_actions.set_clipboard_text(music_query)
+        self.key_actions.paste_text()
+        return key
+
+    def _prepare_music_playback(self, music_query):
+        from_key = self.query_music(music_query)
+        if not from_key:
+            self.logger.error(f"Failed to query music query: {music_query}")
+            playing_info = {
+                'error': f"Failed to query music: {music_query}"
+            }
+            return playing_info
+
+        need_select_tab = True
+        if from_key == 'home_nav':
+            if list_title := self.element_finder.wait_for_element('list_title'):
+                if list_title.text == '单曲':
+                    need_select_tab = False
+
+        if need_select_tab:
+            # 搜索页可能停在别的分类上；单曲 tab 靠前，向回滚（direction="right"）才能落到它
+            self.select_tab("song", direction="right")
+
+        key, element = self.element_finder.wait_for_any_element(['first_song', 'not_found'])
+        if not key or key == 'not_found':
+            self.logger.error(f"Failed to find music query: {music_query}")
+            return {
+                'error': f"not found with query {music_query}"
+            }
+
+        first_song = element
+        if not first_song:
+            self.logger.error(f"Failed to find first song")
+            return None
+
+        studio_version = self.element_finder.try_find_element('studio_version')
+        if not studio_version:
+            song_version = self.element_finder.try_find_element('song_version')
+            if song_version:
+                song_version.click()
+                self.logger.info(f"Clicked song version")
+
+                studio_version = self.element_finder.wait_for_element_clickable('studio_version')
+
+        if studio_version:
+            studio_version.click()
+            self.logger.info("Alter to studio version")
+
+            first_song = self.element_finder.wait_for_element('first_song')
+            if not first_song:
+                self.logger.error(f"Failed to find first song")
+                return None
+
+        playing_info = self.get_playing_info()
+        if not playing_info:
+            self.logger.warning(f"No playing info found for query: {music_query}")
+            playing_info = {
+                'error': f"No playing info found for query: {music_query}"
+            }
+            return playing_info
+
+        if self._playlist_session is not None and self._playlist_session.list_mode == 'singer':
+            singer_text = (playing_info.get('singer') or "").strip()
+            artist_count = len([x.strip() for x in singer_text.split('/') if x.strip()]) if singer_text else 0
+            if (
+                    playing_info.get('song', '').endswith('(Live)')
+                    or (singer_text and singer_text == (playing_info.get('album') or '').strip())
+                    or artist_count >= 4
+            ):
+                # One-time allowlist for singer-mode low-quality filters (Live / suspicious / multi-artist).
+                # This preserves "play" as a temporary override without changing list_mode.
+                self.no_skip += 1
+        # 本方法只由显式点歌（:play / :next）调用：登记单点意图，使其不被老歌过滤跳过
+        self._record_on_demand_request(playing_info)
+        self.logger.info(f"Found playing info: {playing_info}")
+        return playing_info
+
+    def _record_on_demand_request(self, playing_info) -> None:
+        """登记单点意图；登记失败不应影响播放本身。"""
+        marker = getattr(self, "_on_demand_marker", None)
+        if marker is None:
+            return
+        try:
+            marker(playing_info)
+        except Exception as e:
+            self.logger.warning(f"Failed to record on-demand request: {e}")
+
+    TAB_ALIASES = {
+        "singer": "singer_tab",
+        "album": "album_tab",
+        "playlist": "playlist_tab",
+        "song": "song_tab",
+        "songs": "song_tab",
+        "lyrics": "lyrics_tab",
+        "radio": "radio_tab",
+        "歌手": "singer_tab",
+        "专辑": "album_tab",
+        "歌单": "playlist_tab",
+        "歌曲": "song_tab",
+        "单曲": "song_tab",
+        "歌词": "lyrics_tab",
+        "电台": "radio_tab",
+    }
+
+    def select_tab(
+        self,
+        tab_name: str,
+        container_key: str = "music_tabs",
+        direction: str = "left",
+        max_swipes: Optional[int] = None,
+    ) -> bool:
+        """
+        Select a category tab in QQ Music search interface.
+
+        Finds, scrolls (if needed), and clicks the requested category tab
+        (such as singer, album, playlist, song, radio, lyrics).
+
+        Args:
+            tab_name: Name of the tab (e.g., 'singer', 'album', 'playlist', 'song', 'radio',
+                      or element key like 'singer_tab').
+            container_key: Configuration element key of the scrollable container (default: 'music_tabs').
+            direction: Swipe direction if scrolling is needed (default: 'left').
+            max_swipes: Maximum number of swipe attempts. If None, reads from config or defaults to 10.
+
+        Returns:
+            bool: True if the tab was found and clicked successfully, False otherwise.
+        """
+        try:
+            if self.config.maybe_element(tab_name) is not None:
+                element_key = tab_name
+            elif tab_name in self.TAB_ALIASES:
+                element_key = self.TAB_ALIASES[tab_name]
+            elif tab_name.endswith("_tab"):
+                element_key = tab_name
+            else:
+                element_key = f"{tab_name}_tab"
+
+            if max_swipes is None:
+                max_swipes = self.config.value("tab_max_swipes") or 10
+
+            # Fast path: tab already visible on screen
+            tab_element = self.element_finder.try_find_element(element_key)
+            if not tab_element:
+                self.logger.info(
+                    f"Tab '{tab_name}' ({element_key}) not visible, scrolling container '{container_key}' ({direction})"
+                )
+                _, scrolled_element, _ = self.gesture_handler.scroll_container_until_element(
+                    element_key,
+                    container_key,
+                    direction,
+                    max_swipes=max_swipes,
+                )
+                # 滚动助手用绝对 XPath 在容器内查找，可能把容器本身当作目标返回
+                # （历史注释见 lyrics）。因此以滚动后重新定位到的真实 tab 为准，
+                # 助手返回值只在重新定位失败时兜底 —— 从不让容器顶替 tab。
+                relocated = self.element_finder.try_find_element(element_key)
+                tab_element = relocated or scrolled_element
+
+            if not tab_element:
+                self.logger.error(
+                    f"Failed to find tab '{tab_name}' ({element_key}) after scrolling up to {max_swipes} times"
+                )
+                return False
+
+            try:
+                tab_element.click()
+            except StaleElementReferenceException:
+                refreshed = self.element_finder.try_find_element(element_key)
+                if refreshed:
+                    refreshed.click()
+                else:
+                    raise
+
+            self.logger.info(f"Selected {tab_name} tab ({element_key})")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error selecting {tab_name} tab: {traceback.format_exc()}")
+            return False
+
+    def play_next(self, music_query):
+        """Search and play next music"""
+        try:
+            playing_info = self._prepare_music_playback(music_query)
+            if 'error' in playing_info:
+                self.logger.error(f'Failed to add music {music_query} to playlist')
+                return playing_info
+
+            # Click next button
+            next_button = self.element_finder.wait_for_element_clickable('next_button')
+            next_button.click()
+            self.logger.info(f"Clicked next button")
+
+            return playing_info
+
+        except Exception as e:
+            self.logger.error(f"Error playing next music: {str(e)}")
+            return {'error': f'Error playing next music: {e}'}
+
+    def get_playlist_info(self):
+        """Get current playlist information
+        Returns:
+            str: Formatted playlist info or error dict
+        """
+        if not self.key_actions.switch_to_app():
+            self.logger.error("Cannot switch to QQ music")
+            return {'error': 'Failed to switch to QQ Music app'}
+
+        # 队列面板可能已经弹着（上一条指令读完没关）：入口按钮此时不在元素树里，
+        # 也不能再点 —— 点了会把面板收起来。先认状态再分支。
+        state_key, state_element = self.element_finder.wait_for_any_element(
+            ['playlist_item_container', 'playlist_entry']
+        )
+        if not state_key:
+            return {'error': 'Failed to find play list entry'}
+        if state_key == 'playlist_entry':
+            state_element.click()
+            self.element_finder.wait_for_element('playlist_item_container')
+
+        detected = None
+        detected_key, _ = self.element_finder.try_find_any_element(
+            [
+                'play_mode_list_in_playlist',
+                'play_mode_single_in_playlist',
+                'play_mode_random_in_playlist',
+            ]
+        )
+        if detected_key == 'play_mode_list_in_playlist':
+            detected = 'list'
+        elif detected_key == 'play_mode_single_in_playlist':
+            detected = 'single'
+        elif detected_key == 'play_mode_random_in_playlist':
+            detected = 'random'
+
+        if detected:
+            if self.play_mode_key != detected:
+                self.logger.warning(
+                    f"play_mode_key drift detected in playlist UI: "
+                    f"recorded={self.play_mode_key}, detected={detected}"
+                )
+            self._update_play_mode_key(detected, reason='playlist_ui_self_heal')
+
+        items = self.element_finder.find_elements('playlist_item_container')
+        playlist_info, song_titles = self._read_playlist_items(items)
+
+        playlist_current = self.element_finder.try_find_element('playlist_current')
+        if playlist_current:
+            try:
+                playing_loc = playlist_current.location
+                playing_size = playlist_current.size
+                if len(items) > 0:
+                    playlist_first = items[0]
+                    start_x = playing_loc['x'] + playing_size['width'] // 2
+                    start_y = playing_loc['y'] + playing_size['height'] // 2
+                    end_y = playlist_first.location['y']
+                    if start_y - end_y > playlist_first.size['height']:
+                        self.gesture_handler.swipe(start_x, start_y, start_x, end_y, 1000)
+                        items = self.element_finder.find_elements('playlist_item_container')
+                        playlist_info, _ = self._read_playlist_items(items)
+                        self.logger.info(f"Scrolled playlist from y={start_y} to y={end_y}")
+
+            except StaleElementReferenceException:
+                self.logger.warning("Playing indicator invisible in playlist playing")
+
+        if not playlist_info:
+            self.logger.warning("No songs found in playlist")
+
+        self.logger.info(f"Found {len(playlist_info)} songs in playlist")
+        return {'playlist': '\n'.join(playlist_info)}

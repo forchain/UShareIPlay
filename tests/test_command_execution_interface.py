@@ -3,8 +3,8 @@ import logging
 from collections import deque
 from types import SimpleNamespace
 
-from ushareiplay.managers.command_manager import CommandManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 def _run(coro):
@@ -109,7 +109,7 @@ def test_intake_seam_parses_scanned_rows_and_delegates(monkeypatch):
     `MessageInfo` that dropped `silent` / `private_reply` / `quoted_text`. The
     intake seam is now the only way in, and it hands over every attribute.
     """
-    from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
+    from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
 
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
@@ -150,20 +150,16 @@ def test_focus_app_for_queued_commands_does_not_execute_scanned_rows_inline():
     point at all: any attempt to execute inline would raise `AttributeError`
     rather than quietly recording a call.
     """
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     fake_command_manager = object()
-    original_cmd_instance = CommandManager.instance
-    try:
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = MessageManager.instance()
-        manager._handler = _FakeHandler()
-        manager._chat_logger = logging.getLogger("test_chat_logger_scan")
-        MessageQueue.instance()
-        manager.observe(["souler[Alice]说：$play 123"])
+    manager = MessageManager(
+        handler=_FakeHandler(),
+        message_queue=MessageQueue(),
+        command_manager=fake_command_manager,
+    )
+    manager._chat_logger = logging.getLogger("test_chat_logger_scan")
+    manager.observe(["souler[Alice]说：$play 123"])
 
-        assert _run(manager.focus_app_for_queued_commands()) is True
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert _run(manager.focus_app_for_queued_commands()) is True

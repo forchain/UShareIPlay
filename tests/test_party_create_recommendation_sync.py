@@ -1,9 +1,9 @@
 import pytest
 from types import SimpleNamespace
 
-from ushareiplay.state.room_state import RoomState
-from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.room_profile import RoomProfileManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+from ushareiplay.modules.room import PartyService, RoomStateService
+from tests.room_profile_support import RoomProfileManager
 
 
 class _Logger:
@@ -73,13 +73,10 @@ def create_sync_setup(monkeypatch, tmp_path):
     的场景 —— 抽屉开不起来，刷新必须退回「直接读一次 UI」那条兜底路径。
     """
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RoomProfileManager, PartyManager):
-        cls.reset_instance()
-
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state._logger = _Logger()
 
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager(room_state=room_state)
     profile._handler = SimpleNamespace(
         logger=_Logger(),
         element_finder=_RecFinder(),  # no dialog marker is ever visible
@@ -105,14 +102,14 @@ def create_sync_setup(monkeypatch, tmp_path):
         element_finder=_PartyFinder(),
         key_actions=SimpleNamespace(press_back=lambda: None),
         config={},
-        controller=SimpleNamespace(
-            room_profile_manager=SimpleNamespace(set_default_notice=set_default_notice),
-            seat_manager=SimpleNamespace(find_owner_seat=find_owner_seat),
-        ),
     )
-    party_manager = PartyManager.initialize()
-    party_manager._handler = party_handler
-    party_manager._logger = _Logger()
+    party_manager = PartyService(
+        driver=SoulPartyDriver(party_handler),
+        room_state=room_state,
+        on_after_create_notice=set_default_notice,
+        on_after_create_seat=find_owner_seat,
+        logger=_Logger(),
+    )
 
     return party_manager, room_state, profile, calls
 

@@ -1,0 +1,86 @@
+"""座位业务包：座位领域模型、账本、观测与预约/入座/邀请用例。"""
+
+from ushareiplay.modules.seat.domain import (
+    GUEST_ROOM_CHAT_SCAN_RESULT,
+    GUEST_ROOM_EMPTY_DESK_RESULT,
+    GUEST_ROOM_ENTRY_CHECK_RESULT,
+    GUEST_ROOM_ERROR_RESULT,
+    MIN_INTERACTABLE_DESK_HEIGHT,
+    AvatarTapPolicy,
+    DeskSnapshot,
+    Reading,
+    SeatCardView,
+    SeatClickPlan,
+    SeatError,
+    SeatInviteRow,
+    SeatReservation,
+    guest_room_guard,
+    is_bounds_interactable,
+    is_seat_number_label,
+    parse_focus_count_text,
+)
+from ushareiplay.modules.seat.ledger import (
+    ChangeSet,
+    IdentityResolutionPlan,
+    SeatDiff,
+    SeatLedger,
+    SeatObservationGateState,
+    SeatRescanCooldownPolicy,
+    SeatSlot,
+    SeatSnapshot,
+    claimed_usernames,
+    evidence_weight,
+)
+from ushareiplay.modules.seat.macros import (
+    SEAT_INFO_CTX_KEY,
+    expand_seat_macros,
+    seat_info_for,
+)
+
+from ushareiplay.modules.seat.ports import (
+    SeatInvitePort,
+    SeatPanelPort,
+    SeatReservationRepository,
+)
+from ushareiplay.modules.seat.use_cases import (
+    SeatObservationService,
+    SeatService,
+)
+
+__all__ = [
+    "AvatarTapPolicy",
+    "ChangeSet",
+    "DeskSnapshot",
+    "GUEST_ROOM_CHAT_SCAN_RESULT",
+    "GUEST_ROOM_EMPTY_DESK_RESULT",
+    "GUEST_ROOM_ENTRY_CHECK_RESULT",
+    "GUEST_ROOM_ERROR_RESULT",
+    "IdentityResolutionPlan",
+    "MIN_INTERACTABLE_DESK_HEIGHT",
+    "Reading",
+    "SEAT_INFO_CTX_KEY",
+    "SeatCardView",
+    "SeatClickPlan",
+    "SeatDiff",
+    "SeatError",
+    "SeatInvitePort",
+    "SeatInviteRow",
+    "SeatLedger",
+    "SeatObservationGateState",
+    "SeatObservationService",
+    "SeatPanelPort",
+    "SeatRescanCooldownPolicy",
+    "SeatReservation",
+    "SeatReservationRepository",
+    "SeatService",
+    "SeatSlot",
+    "SeatSnapshot",
+    "claimed_usernames",
+    "evidence_weight",
+    "expand_seat_macros",
+    "guest_room_guard",
+    "is_bounds_interactable",
+    "is_seat_number_label",
+    "parse_focus_count_text",
+    "seat_info_for",
+]

@@ -15,15 +15,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ushareiplay.commands.acc import AccompanimentCommand
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import (
+from ushareiplay.adapters.inbound.chat.acc import AccompanimentCommand
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.use_cases import SetAccompaniment
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
     NO_PLAYING_MUSIC_ACCOMPANIMENT_ERROR,
 )
-from ushareiplay.managers.playback.player_page import (
+from ushareiplay.adapters.outbound.appium.qq_music.player_page import (
     ACCOMPANIMENT_ON_PAGE_KEYS,
     PLAYER_PAGE_PROBE_KEYS,
     ensure_player_page,
@@ -34,10 +34,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _build_manager(*, driver=None):
-    """真实 MusicManager + 内存驱动替身。伴奏状态没有房间缓存，全在替身上。"""
+    """真实 SetAccompaniment 用例 + 内存驱动替身。伴奏状态没有房间缓存，全在替身上。"""
     driver = driver or InMemoryMusicUIDriver()
-    manager = MusicManager.initialize(ui_driver=driver)
-    return SimpleNamespace(manager=manager, driver=driver)
+    use_case = SetAccompaniment(ui_driver=driver)
+    manager = SimpleNamespace(set_accompaniment=use_case.execute, _use_case=use_case)
+    return SimpleNamespace(manager=manager, driver=driver, use_case=use_case)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +187,6 @@ async def test_set_accompaniment_accepts_both_index_and_bool_forms(
 ):
     """1/0 与 True/False 是同一件事的两种写法，端口只收归一后的布尔。"""
     for value, expected in ((1, True), ("1", True), (True, True), (0, False), ("0", False)):
-        MusicManager.reset_instance()
         engine = _build_manager()
 
         result = await engine.manager.set_accompaniment(value)
@@ -200,7 +200,6 @@ async def test_set_accompaniment_rejects_unknown_targets_without_touching_the_ui
 ):
     """非法目标当场被拒：不进播放页，也不点任何东西。"""
     for value in ("2", "on", None, 2, -1):
-        MusicManager.reset_instance()
         engine = _build_manager()
 
         result = await engine.manager.set_accompaniment(value)
@@ -219,10 +218,10 @@ async def test_set_accompaniment_without_a_driver_raises_an_assembly_error(
 
     #421 把生产适配器接到组合根之后，这条路径才第一次被真正走到。
     """
-    manager = MusicManager.initialize()
+    use_case = SetAccompaniment(ui_driver=None)
 
     with pytest.raises(RuntimeError, match="MusicUIDriverPort"):
-        await manager.set_accompaniment(True)
+        await use_case.execute(True)
 
 
 async def test_set_accompaniment_only_logs_when_a_switch_actually_happened(
@@ -232,15 +231,14 @@ async def test_set_accompaniment_only_logs_when_a_switch_actually_happened(
     logs = []
 
     already_on = _build_manager(driver=InMemoryMusicUIDriver(accompaniment=True))
-    already_on.manager.logger = SimpleNamespace(
+    already_on.use_case._logger = SimpleNamespace(
         info=logs.append, warning=logs.append, error=logs.append
     )
     await already_on.manager.set_accompaniment(True)
     assert logs == []
 
-    MusicManager.reset_instance()
     toggled = _build_manager(driver=InMemoryMusicUIDriver(accompaniment=False))
-    toggled.manager.logger = SimpleNamespace(
+    toggled.use_case._logger = SimpleNamespace(
         info=logs.append, warning=logs.append, error=logs.append
     )
     await toggled.manager.set_accompaniment(True)
@@ -255,10 +253,13 @@ async def test_set_accompaniment_only_logs_when_a_switch_actually_happened(
 
 def _make_command(manager_result=None):
     command = AccompanimentCommand.__new__(AccompanimentCommand)
-    command._music_manager = MagicMock()
-    command._music_manager.set_accompaniment = AsyncMock(
+    set_accompaniment = AsyncMock(
         return_value=manager_result or {"enabled": "on"}
     )
+    command.controller = SimpleNamespace(
+        set_accompaniment=SimpleNamespace(execute=set_accompaniment)
+    )
+    command._music_manager = SimpleNamespace(set_accompaniment=set_accompaniment)
     return command
 
 
@@ -303,9 +304,9 @@ async def test_accompaniment_command_returns_the_no_music_error_from_music_manag
 
 def test_accompaniment_command_module_contains_no_ui_automation():
     """命令模块里不该再出现任何 UI 编排的痕迹（#427 的验收条件之一）。"""
-    source = (REPO_ROOT / "src" / "ushareiplay" / "commands" / "acc.py").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        REPO_ROOT / "src" / "ushareiplay" / "adapters" / "inbound" / "chat" / "acc.py"
+    ).read_text(encoding="utf-8")
     for symbol in (
         "element_finder",
         "gesture_handler",

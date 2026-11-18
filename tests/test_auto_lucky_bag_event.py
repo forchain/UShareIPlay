@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 import pytest
-from ushareiplay.core.config_view import ConfigSectionView
-from ushareiplay.events.lucky_bag_entry import LuckyBagEntryEvent
-from ushareiplay.managers.event_manager import EventManager
+from ushareiplay.modules.shared.config import ConfigSectionView
+from ushareiplay.adapters.inbound.ui_events.lucky_bag_entry import LuckyBagEntryEvent
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 
 
 class FakeClock:

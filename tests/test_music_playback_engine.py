@@ -13,20 +13,26 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.models import (
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
     PlaybackResult,
     PlaybackStatus,
     PlaybackTrack,
 )
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
-from ushareiplay.managers.playback.models import PlaybackOutcome
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.domain import PlaybackOutcome
+from ushareiplay.modules.playback.use_cases import (
+    PlaySong,
+    PlaybackMuting,
+    PlaylistSession,
+    SkipSong,
+)
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
+
+_CURRENT_PLAY_SONG = None
 
 
 class _InfoManager:
@@ -108,10 +114,9 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
     info = _InfoManager(protection_error=protection_error)
     room_profile = _RoomProfileManager()
 
-    session = PlaylistSession.instance()
+    session = PlaylistSession(room_profile=room_profile)
     session.player_name = info.player_name
     session.current_playlist_name = info.current_playlist_name
-    session._room_profile = room_profile
 
     async def _check_protection(requester, config=None):
         info.guard_calls.append(requester)
@@ -119,21 +124,30 @@ def _build_engine(*, protection_error=None, driver=None, ready=True, mic_state=T
 
     session.check_playlist_protection = _check_protection
 
-    manager = MusicManager.initialize(ui_driver=driver)
     probe = _ReadinessProbe(ready=ready)
     mic = _RecordingMicManager(journal, mic_state=mic_state)
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
-        probe,
-        mic,
+    muting = PlaybackMuting(
+        mic=mic,
+        media_session=probe,
+        config=ConfigSectionView("soul", {}),
+        logger=MagicMock(),
     )
+    manager = PlaySong(
+        ui_driver=driver,
+        playlist_session=session,
+        playback_muting=muting,
+        logger=MagicMock(),
+    )
+    global _CURRENT_PLAY_SONG
+    _CURRENT_PLAY_SONG = manager
 
     return SimpleNamespace(
         manager=manager,
+        session=session,
+        muting=muting,
         driver=driver,
         info=info,
         room_profile=room_profile,
-        session=session,
         probe=probe,
         mic=mic,
         journal=journal,
@@ -149,7 +163,7 @@ async def test_play_starts_the_requested_mode_and_reports_the_track(initialized_
     engine = _build_engine()
     request = PlaybackRequest.song("青花瓷 周杰伦", requester="小明")
 
-    result = await engine.manager.play(request)
+    result = await engine.manager.execute(request)
 
     assert result.status is PlaybackStatus.STARTED
     assert result.track.song == "青花瓷 周杰伦"
@@ -169,7 +183,7 @@ async def test_play_carries_query_channel_and_requester_to_the_driver(initialize
         mode=PlaybackMode.RADIO, channel="sleep", requester="小红", room_title="O Sleep"
     )
 
-    result = await engine.manager.play(request)
+    result = await engine.manager.execute(request)
 
     assert result.started
     driven = engine.driver.requests[0]
@@ -187,7 +201,7 @@ async def test_play_returns_failed_when_the_driver_reports_a_ui_problem(initiali
         )
     )
 
-    result = await engine.manager.play(
+    result = await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.ALBUM, query="五月天", requester="小明")
     )
 
@@ -199,11 +213,11 @@ async def test_play_returns_failed_when_the_driver_reports_a_ui_problem(initiali
 async def test_play_refuses_to_run_without_a_configured_driver(initialized_test_singletons):
     """未装配 UI 驱动时必须响亮失败，而不是静默「播放成功」。"""
     engine = _build_engine()
-    manager = MusicManager.instance()
+    manager = engine.manager
     manager._ui_driver = None
 
     with pytest.raises(RuntimeError, match="ui_driver"):
-        await manager.play(PlaybackRequest.song("任意歌曲", requester="小明"))
+        await manager.execute(PlaybackRequest.song("任意歌曲", requester="小明"))
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +232,7 @@ async def test_play_rejects_an_authorized_switch_violation_with_the_guard_messag
         protection_error={"error": "小红 正在播放歌单，请等待"},
     )
 
-    result = await engine.manager.play(
+    result = await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明")
     )
 
@@ -231,7 +245,7 @@ async def test_play_never_touches_the_music_ui_when_the_guard_rejects(initialize
     """被守护拒绝时不该有任何 UI 动作：这是拒绝存在的意义。"""
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.PLAYLIST, query="流行歌单", requester="小明")
     )
 
@@ -242,7 +256,7 @@ async def test_play_never_touches_the_music_ui_when_the_guard_rejects(initialize
 async def test_play_checks_the_guard_with_the_requester_identity(initialized_test_singletons):
     engine = _build_engine()
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.RADIO, channel="daily", requester="小明")
     )
 
@@ -255,7 +269,7 @@ async def test_play_enforces_the_guard_for_every_queue_mode(initialized_test_sin
 
     queue_modes = [mode for mode in PlaybackMode if mode is not PlaybackMode.SONG]
     for mode in queue_modes:
-        result = await engine.manager.play(
+        result = await engine.manager.execute(
             PlaybackRequest(mode=mode, query="任意", requester="小明")
         )
         assert result.rejected, f"{mode} 未受歌曲守护约束"
@@ -271,7 +285,7 @@ async def test_play_releases_a_single_song_request_past_the_guard(initialized_te
     """
     engine = _build_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    result = await engine.manager.play(PlaybackRequest.song("稻香", requester="小明"))
+    result = await engine.manager.execute(PlaybackRequest.song("稻香", requester="小明"))
 
     assert result.status is PlaybackStatus.STARTED
     assert engine.driver.requests == [
@@ -290,7 +304,7 @@ async def test_play_mutes_before_ui_work_and_restores_after_playback_is_ready(
 ):
     engine = _build_engine()
 
-    await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+    await engine.manager.execute(PlaybackRequest.song("青花瓷", requester="小明"))
 
     assert engine.journal == ["mute", "ui:song", "restore"]
 
@@ -300,7 +314,7 @@ async def test_play_waits_for_the_requested_track_before_restoring_the_microphon
 ):
     engine = _build_engine()
 
-    await engine.manager.play(PlaybackRequest.song("青花瓷 周杰伦", requester="小明"))
+    await engine.manager.execute(PlaybackRequest.song("青花瓷 周杰伦", requester="小明"))
 
     assert engine.probe.waits == ["青花瓷 周杰伦"]
 
@@ -309,7 +323,7 @@ async def test_play_does_not_verify_track_metadata_for_non_song_modes(initialize
     """歌单/电台的队列内容调用方无从预知，拿查询词比对必然超时。"""
     engine = _build_engine()
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.PLAYLIST, query="轻音乐", requester="小明")
     )
 
@@ -326,7 +340,7 @@ async def test_play_restores_the_microphone_immediately_when_the_ui_fails(
         driver=InMemoryMusicUIDriver(failures={PlaybackMode.SONG: "未找到相关歌曲"}),
     )
 
-    await engine.manager.play(PlaybackRequest.song("不存在的歌", requester="小明"))
+    await engine.manager.execute(PlaybackRequest.song("不存在的歌", requester="小明"))
 
     assert engine.probe.waits == []
     assert journal == ["mute", "ui:song", "restore"]
@@ -338,7 +352,7 @@ async def test_play_restores_the_microphone_when_playback_never_becomes_ready(
     """就绪超时必须仍然开麦，否则房间会在机器人这里彻底没声。"""
     engine = _build_engine(ready=False)
 
-    await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+    await engine.manager.execute(PlaybackRequest.song("青花瓷", requester="小明"))
 
     assert engine.probe.waits == ["青花瓷"]
     assert engine.journal == ["mute", "ui:song", "restore"]
@@ -363,7 +377,7 @@ async def test_play_restores_the_microphone_when_the_ui_work_raises(initialized_
     engine = _build_engine(driver=_ExplodingDriver())
 
     with pytest.raises(RuntimeError, match="UI connection severed"):
-        await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+        await engine.manager.execute(PlaybackRequest.song("青花瓷", requester="小明"))
 
     assert engine.journal == ["mute", "restore"]
 
@@ -380,7 +394,7 @@ async def test_play_adopts_the_room_topic_after_playback_is_confirmed(initialize
         )
     )
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明", room_title="O Station")
     )
 
@@ -391,7 +405,7 @@ async def test_play_song_never_adopts_room_topic(initialized_test_singletons):
     """单曲点播 (:play <song>) 只放单曲，不得更改房间话题。"""
     engine = _build_engine()
 
-    await engine.manager.play(PlaybackRequest.song("青花瓷", requester="小明"))
+    await engine.manager.execute(PlaybackRequest.song("青花瓷", requester="小明"))
 
     assert engine.room_profile.topics == []
 
@@ -407,7 +421,7 @@ async def test_play_prefers_the_topic_observed_in_the_ui_over_the_derived_one(
         )
     )
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.ALBUM, query="五月天", requester="小明")
     )
 
@@ -424,7 +438,7 @@ async def test_play_records_player_playlist_and_title_after_playback_is_confirme
         )
     )
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(
             mode=PlaybackMode.PLAYLIST,
             query="轻音乐",
@@ -443,7 +457,7 @@ async def test_play_does_not_adopt_room_context_when_the_ui_fails(initialized_te
         driver=InMemoryMusicUIDriver(failures={PlaybackMode.ALBUM: "未找到相关专辑"})
     )
 
-    await engine.manager.play(
+    await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.ALBUM, query="五月天", requester="小明")
     )
 
@@ -467,7 +481,7 @@ async def test_play_reports_a_started_song_when_only_the_room_sync_fails(
 
     engine.room_profile.set_topic = _boom
 
-    result = await engine.manager.play(
+    result = await engine.manager.execute(
         PlaybackRequest(mode=PlaybackMode.FAVORITES, requester="小明", room_title="O Station")
     )
 
@@ -564,7 +578,7 @@ async def test_play_forwards_the_response_metadata_observed_in_the_ui(
         extra={"release_date": "1993-09-07"},
     )
 
-    result = await engine.manager.play(PlaybackRequest.song("如风 王菲", requester="小明"))
+    result = await engine.manager.execute(PlaybackRequest.song("如风 王菲", requester="小明"))
 
     assert result.as_response() == {
         "song": "如风",
@@ -598,10 +612,14 @@ def _make_play_command():
     handler 只在收藏/电台分支被用到（#425 之前），因此这里给一个空壳即可 ——
     单曲分支的断言不该被 handler 的 UI 替身污染。
     """
-    from ushareiplay.commands.play import PlayCommand
+    from ushareiplay.adapters.inbound.chat.play import PlayCommand
 
     handler = SimpleNamespace(logger=MagicMock())
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=handler)
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=handler,
+        play_song=_CURRENT_PLAY_SONG,
+    )
     return PlayCommand(controller)
 
 
@@ -671,10 +689,10 @@ async def test_play_command_lets_the_engine_own_the_mic_lifecycle(initialized_te
 
 async def test_command_manager_owns_no_playback_muting_hooks(initialized_test_singletons):
     """命令层不再声明静音钩子：麦克风生命周期完全归 `MusicManager`（ADR-0007）。"""
-    from ushareiplay.core.base_command import BaseCommand
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
-    manager = CommandManager.instance()
+    manager = CommandManager()
     assert not hasattr(manager, "playback_muting_guard")
     assert not hasattr(manager, "_playback_muting")
     assert not hasattr(BaseCommand, "playback_muting")
@@ -685,23 +703,28 @@ async def test_command_manager_owns_no_playback_muting_hooks(initialized_test_si
 async def test_skip_guards_before_muting(initialized_test_singletons):
     """`:skip` 先过守护再闭麦：被拒绝时一次麦克风动作都没有。"""
     engine = _build_engine(protection_error={"error": "正在播放歌单，请等待"})
-    engine.manager.skip_song = MagicMock(return_value={"song": "晴天"})
+    media = SimpleNamespace(skip_song=MagicMock(return_value={"song": "晴天"}))
+    skip_uc = SkipSong(media_session=media, playlist_session=engine.session, playback_muting=engine.muting)
 
-    result = await engine.manager.skip("小明")
+    result = await skip_uc.execute("小明")
 
     assert result == {"error": "正在播放歌单，请等待"}
     assert engine.journal == []
-    engine.manager.skip_song.assert_not_called()
+    media.skip_song.assert_not_called()
 
 
 async def test_skip_mutes_only_after_the_guard_passes(initialized_test_singletons):
     """守护放行后闭麦、切歌、等就绪、开麦；顺序与 `play()` 一致。"""
     engine = _build_engine()
-    engine.manager.skip_song = MagicMock(
-        side_effect=lambda: engine.journal.append("ui:skip") or {"song": "晴天"}
+    media = SimpleNamespace(
+        skip_song=MagicMock(
+            side_effect=lambda: engine.journal.append("ui:skip") or {"song": "晴天"}
+        ),
+        wait_for_playback_ready=engine.probe.wait_for_playback_ready,
     )
+    skip_uc = SkipSong(media_session=media, playlist_session=engine.session, playback_muting=engine.muting)
 
-    result = await engine.manager.skip("小明")
+    result = await skip_uc.execute("小明")
 
     assert result == {"song": "晴天"}
     assert engine.journal == ["mute", "ui:skip", "restore"]

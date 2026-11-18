@@ -14,7 +14,7 @@ import pytest
 
 from tests.seat_fixtures import ClickableNode, FakeElementFinder, soul_elements
 
-from ushareiplay.managers.seat_manager.seat_invite_driver import (
+from ushareiplay.adapters.outbound.appium.soul.seat_invite_driver import (
     SeatInviteDriver,
     SeatInviteRow,
 )

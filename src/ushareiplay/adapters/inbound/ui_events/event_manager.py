@@ -1,0 +1,724 @@
+"""
+事件管理器 - 基于 page_source 的事件触发系统
+
+通过一次性获取页面源码并解析，替代多次元素查询，解决性能瓶颈问题。
+采用基于文件的事件注册机制，与现有命令系统保持一致的架构风格。
+"""
+
+import importlib
+import importlib.util
+import logging
+import re
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
+
+from lxml import etree
+
+from ushareiplay.adapters.outbound.appium.locator import Locator
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
+import asyncio
+
+_NON_EVENT_MODULES = frozenset({"event_manager", "base_event", "event_elements"})
+
+
+class EventManager:
+    """
+    事件管理器 - 管理所有事件相关的逻辑
+    """
+
+    def __init__(self, handler=None):
+        self._handler = handler
+        self._logger = getattr(handler, "logger", None)
+        self._config = None
+
+        # 事件相关属性
+        self.events_path = Path(__file__).parent
+        self.event_modules: Dict[str, object] = {}  # 缓存已加载的事件模块
+        self.element_to_event: Dict[str, str] = {}  # 元素 key -> 事件模块名映射
+        self._initialized = False
+        self._consecutive_unknown_pages = 0
+        # 上一轮 press_back 是否把 Soul 送回了后台；用于区分「back 对页面无效」与「主动切走 App」
+        self._back_sent_to_background = False
+        self._runtime = None
+
+    DEFAULT_UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD: int = 10
+
+    # 在 _process_events_once 中优先匹配（先于兜底 press_back 相关逻辑）
+    _PRIORITY_EVENT_KEYS: Tuple[str, ...] = (
+        "accidental_touch_locker",
+        "party_name_violation_later",
+        # 发帖退出底部菜单与 left_top_close 同时存在时须先点「不保存」，否则会反复点关闭
+        "post_draft_dont_save",
+    )
+
+    @property
+    def handler(self):
+        return self._handler
+
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = getattr(self._handler, "logger", None) or logging.getLogger("EventManager")
+        return self._logger
+
+    @property
+    def config(self):
+        """Soul 应用段的配置视图。"""
+        if self._config is None:
+            config = getattr(self._handler, "config", None)
+            self._config = config if config is not None else ConfigSectionView("soul", {})
+        return self._config
+
+    @property
+    def driver_recovery_context(self):
+        return getattr(self.handler, "driver_recovery_context", None)
+
+    def configure_runtime(self, runtime):
+        self._runtime = runtime
+
+    @property
+    def runtime(self):
+        if self._runtime is None:
+            raise RuntimeError("EventManager runtime has not been configured")
+        return self._runtime
+
+    def initialize_events(self):
+        """初始化事件管理器，加载所有事件模块"""
+        if self._initialized:
+            return
+
+        self.load_all_events()
+        self._initialized = True
+
+    def _parse_module_name(self, module_name: str) -> List[str]:
+        """
+        解析模块名获取关联的元素 key 列表
+        
+        文件名规则：逗号分隔多个元素 key
+        例如：close_button,confirm.py -> ['close_button', 'confirm']
+        
+        Args:
+            module_name: 模块名（不含 .py 后缀）
+            
+        Returns:
+            元素 key 列表
+        """
+        return [key.strip() for key in module_name.split(',') if key.strip()]
+
+    def _get_event_class_name(self, module_name: str, module=None) -> str:
+        """
+        获取事件类名
+        
+        规则：
+        1. 如果模块有 __event__ 属性，使用该值
+        2. 否则取第一个元素 key，转换为 PascalCase + Event
+        
+        Args:
+            module_name: 模块名
+            module: 已加载的模块（可选）
+            
+        Returns:
+            事件类名
+        """
+        # 检查模块是否有 __event__ 属性
+        if module and hasattr(module, '__event__'):
+            return module.__event__
+
+        # 取第一个 key
+        keys = self._parse_module_name(module_name)
+        if not keys:
+            return None
+
+        first_key = keys[0]
+        # 转换为 PascalCase + Event
+        # 例如：message_list -> MessageListEvent
+        parts = first_key.split('_')
+        class_name = ''.join(part.capitalize() for part in parts) + 'Event'
+        return class_name
+
+    def load_event_module(self, module_name: str):
+        """
+        动态加载事件模块
+        
+        Args:
+            module_name: 模块名（不含 .py 后缀）
+            
+        Returns:
+            加载的模块，失败返回 None
+        """
+        try:
+            if module_name in self.event_modules:
+                return self.event_modules[module_name]
+
+            module_path = (self.events_path / f"{module_name}.py").resolve()
+            if not module_path.exists():
+                self.logger.error(f'Event module path not exists: {module_path}')
+                return None
+
+            package_name = f"ushareiplay.adapters.inbound.ui_events.{module_name}"
+            spec = importlib.util.spec_from_file_location(package_name, module_path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[package_name] = module
+            spec.loader.exec_module(module)
+
+            if not module:
+                self.logger.error(f'Event module {module_name} failed to load')
+                return None
+
+            # 获取事件类名
+            class_name = self._get_event_class_name(module_name, module)
+            if not class_name:
+                self.logger.error(f'Cannot determine event class name for {module_name}')
+                return None
+
+            # 检查事件类是否存在
+            if not hasattr(module, class_name):
+                self.logger.error(f'Event class {class_name} not found in {module_name}')
+                return None
+
+            # 创建事件实例
+            event_class = getattr(module, class_name)
+            event = event_class(self.handler, runtime=self.runtime)
+            # 事件实例持有的默认列表 = 模块的权威默认列表（模块 __elements__，
+            # 没有就按文件名派生）。生效列表只有事件实例一处实现。
+            event.default_elements = self._default_element_keys(module_name, module)
+            module.event = event
+
+            # 缓存模块
+            self.event_modules[module_name] = module
+
+            # 建立元素 key 到模块的映射（列表问事件实例要，两处口径不会漂移）
+            for key in event.elements:
+                self.element_to_event[key] = module_name
+
+            return module
+
+        except Exception:
+            self.logger.error(f"Error loading event module {module_name}: {traceback.format_exc()}")
+            return None
+
+    def _default_element_keys(self, module_name: str, module) -> List[str]:
+        """事件模块的默认元素列表：优先 __elements__，没有则按文件名派生。"""
+        if hasattr(module, '__elements__') and isinstance(module.__elements__, list):
+            return list(module.__elements__)
+        return self._parse_module_name(module_name)
+
+    def rebind_elements(self) -> Dict[str, str]:
+        """按当前配置重建「元素 key → 事件模块」映射，并返回新映射。
+
+        热重载用：配置改了以后无需重启应用，事件监控列表立刻跟着变。
+
+        边界：只重建**已经加载**的事件模块的绑定。磁盘上新加的事件模块文件
+        不会被发现 —— 那属于代码发布（要重新执行模块文件），不是配置变更，
+        运行期不做（#469 的范围之外）。
+        """
+        mapping: Dict[str, str] = {}
+        for module_name, module in self.event_modules.items():
+            for key in module.event.elements:
+                mapping[key] = module_name
+
+        self.element_to_event.clear()
+        self.element_to_event.update(mapping)
+        return dict(mapping)
+
+    def load_all_events(self):
+        """加载 events 目录下的所有事件模块"""
+        try:
+            # 确保 events 目录存在
+            if not self.events_path.exists():
+                self.logger.warning(f"Events directory not found: {self.events_path}")
+                return
+
+            # 获取所有 .py 文件（排除管理器与基类模块）
+            event_files = [
+                f.stem
+                for f in self.events_path.glob('*.py')
+                if f.is_file() and not f.stem.startswith('__') and f.stem not in _NON_EVENT_MODULES
+            ]
+
+            # 加载每个事件模块
+            for module_name in event_files:
+                try:
+                    module = self.load_event_module(module_name)
+                    if not module:
+                        self.logger.error(f"Failed to load event module: {module_name}")
+                except Exception:
+                    self.logger.error(f"Error loading event {module_name}: {traceback.format_exc()}")
+
+        except Exception:
+            self.logger.error(f"Error loading events: {traceback.format_exc()}")
+
+    def _soul_package_name(self) -> str:
+        return (self.config.value("package_name") or "").strip() or "cn.soulapp.android"
+
+    def _root_config(self) -> ConfigView:
+        """根配置视图（QQ 音乐段的包名从这里取）。"""
+        controller = getattr(self.handler, "controller", None)
+        root_config = getattr(controller, "config", None)
+        if isinstance(root_config, ConfigView):
+            return root_config
+        return ConfigView({})
+
+    def _qq_music_package_name(self) -> str:
+        music = self._root_config().maybe_section("qq_music")
+        return (music.value("package_name") if music else None) or "com.tencent.qqmusic"
+
+    def _launcher_packages(self) -> List[str]:
+        defaults = [
+            "com.sec.android.app.launcher",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+        ]
+        extra = self.config.value("launcher_packages") or []
+        if not isinstance(extra, list):
+            return defaults
+        merged: List[str] = []
+        seen = set()
+        for p in extra + defaults:
+            if not p or p in seen:
+                continue
+            seen.add(p)
+            merged.append(p)
+        return merged
+
+    def _packages_from_parsed_root(self, root: etree._Element) -> Set[str]:
+        return {el.get("package") for el in root.iter() if el.get("package")}
+
+    def _packages_from_page_source(self, page_source: str) -> Optional[Set[str]]:
+        try:
+            root = etree.fromstring(page_source.encode("utf-8"))
+        except etree.XMLSyntaxError:
+            return None
+        return self._packages_from_parsed_root(root)
+
+    def _is_soul_foreground(self, page_source: str) -> bool:
+        if not page_source:
+            return False
+        pkgs = self._packages_from_page_source(page_source)
+        if pkgs is None:
+            return False
+        if not pkgs:
+            return True
+        soul_pkg = self._soul_package_name()
+        launchers = set(self._launcher_packages())
+        return (soul_pkg in pkgs) and not bool(pkgs & launchers)
+
+    def _selector_present(self, root: etree._Element, page_source: str, locator: Locator) -> bool:
+        selector = locator.value
+        if not selector:
+            return False
+        if selector in page_source:
+            return True
+        if locator.kind == "xpath":
+            try:
+                return bool(root.xpath(selector))
+            except Exception:
+                match = re.search(r'@resource-id\s*=\s*"([^"]+)"', selector)
+                if match and match.group(1):
+                    return match.group(1) in page_source
+            return False
+        return bool(root.xpath(locator.absolute_xpath))
+
+    def describe_screen(self, page_source: str) -> dict:
+        screen = {
+            "foreground_app": "Unknown",
+            "soul_ui_state": "Unknown",
+            "qqmusic_ui_state": "Unknown",
+            "anchors": [],
+        }
+        if not page_source:
+            return screen
+
+        try:
+            root = etree.fromstring(page_source.encode("utf-8"))
+        except etree.XMLSyntaxError:
+            return screen
+
+        packages = self._packages_from_parsed_root(root)
+        soul_pkg = self._soul_package_name()
+        qq_pkg = self._qq_music_package_name()
+        launchers = set(self._launcher_packages())
+
+        if soul_pkg in packages:
+            screen["foreground_app"] = "Soul"
+        elif qq_pkg in packages:
+            screen["foreground_app"] = "QQMusic"
+        elif packages & launchers:
+            screen["foreground_app"] = "Launcher"
+
+        anchors = []
+        for key in ("message_content", "input_box_entry", "input_box"):
+            value = self.config.maybe_element(key)
+            if value is not None and self._selector_present(
+                root, page_source, Locator.from_value(value)
+            ):
+                anchors.append(key)
+        screen["anchors"] = anchors
+
+        if screen["foreground_app"] == "Soul":
+            screen["soul_ui_state"] = "InChatReady" if "message_content" in anchors else "InUnknownPage"
+
+        return screen
+
+    def _find_element_in_page_source(self, root: etree._Element, element_key: str, module=None) -> Optional[
+        etree._Element]:
+        """
+        在 page_source 中查找元素
+        
+        支持 ID 和 XPath 两种方式：
+        - ID 方式：查找 resource-id 属性匹配的元素
+        - XPath 方式：直接执行 XPath 表达式
+        
+        Args:
+            root: page_source 的根元素
+            element_key: 配置中的元素 key
+            module: 事件模块（可选），用于检查 __multiple__ 属性
+            
+        Returns:
+            找到的 lxml Element，未找到返回 None
+        """
+        value = self.config.maybe_element(element_key)
+        if value is None:
+            return None
+        locator = Locator.from_value(value)
+
+        try:
+            results = root.xpath(locator.absolute_xpath)
+
+            # 检查模块是否有 __multiple__ 属性
+            if module and hasattr(module, '__multiple__') and module.__multiple__:
+                # 返回所有匹配的元素（作为列表的第一个元素，实际是列表）
+                return results if results else None
+            else:
+                # 返回第一个元素（默认行为）
+                return results[0] if results else None
+        except Exception as e:
+            self.logger.debug(f"Error finding element {element_key}: {str(e)}")
+            return None
+
+    def _maybe_force_close(self, recovery: dict) -> None:
+        """连续未知页面达到阈值后强制关闭 Soul；关闭前复检 UI 占用，避免杀到执行中的命令。"""
+        raw_threshold = self.config.value(
+            "unknown_page_force_close_threshold",
+            self.DEFAULT_UNKNOWN_PAGE_FORCE_CLOSE_THRESHOLD,
+        )
+        try:
+            threshold = max(1, int(raw_threshold))
+        except (TypeError, ValueError):
+            self.logger.warning(
+                f"配置 soul.unknown_page_force_close_threshold={raw_threshold!r} 无效，跳过强制关闭兜底"
+            )
+            return
+
+        if self._consecutive_unknown_pages < threshold:
+            return
+        if self.runtime.is_ui_busy():
+            recovery["suppressed"] = "ui_busy"
+            return
+        if hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+            recovery["suppressed"] = "paused"
+            return
+
+        self.logger.warning(
+            f"连续 {self._consecutive_unknown_pages} 次返回失败，强制关闭 Soul 应用以恢复"
+        )
+        try:
+            closed = self.handler.key_actions.close_app() is True
+        except Exception as e:
+            self.logger.warning(f"强制关闭 Soul 失败: {str(e)}")
+            return
+        recovery["force_closed"] = closed
+        if not closed:
+            self.logger.warning("强制关闭 Soul 未确认成功（close_app 返回空）")
+            return
+        self._consecutive_unknown_pages = 0
+        self._back_sent_to_background = False
+
+    async def react_to_page(self, page_source: str) -> dict:
+        """
+        处理事件：解析 page_source，检测元素并触发对应事件
+        
+        Args:
+            page_source: 页面源码 XML 字符串
+            
+        Returns:
+            事件触发数量和未知页面恢复结果
+        """
+        if not self._initialized:
+            self.initialize_events()
+
+        if not page_source:
+            return {
+                "triggered_count": 0,
+                "recovery": {
+                    "attempted": False,
+                    "suppressed": "no_page_source",
+                    "pressed_back": False,
+                    "ready_rechecked": False,
+                    "force_closed": False,
+                },
+            }
+
+        is_soul_initial = self._is_soul_foreground(page_source)
+        # 上一轮自己按的 back 若把 Soul 送回了后台，说明 back 对该页面无效，必须计入失败次数；
+        # 只有「没有待确认的 back」时，初始不在 Soul 才视为用户/命令主动切走，可清零计数。
+        back_bounced = not is_soul_initial and self._back_sent_to_background
+        if is_soul_initial:
+            self._back_sent_to_background = False
+        elif not back_bounced:
+            self._consecutive_unknown_pages = 0
+
+        triggered_count = 0
+        recovery = {
+            "attempted": False,
+            "suppressed": None,
+            "pressed_back": False,
+            "ready_rechecked": False,
+            "force_closed": False,
+        }
+
+        try:
+            triggered_count = await self._process_events_once(page_source)
+
+        except etree.XMLSyntaxError as e:
+            self.logger.error(f"Failed to parse page_source: {str(e)}")
+        except Exception:
+            self.logger.error(f"Error in process_events: {traceback.format_exc()}")
+
+        # 只要本轮触发了事件，就认为不在“连续未知页面”状态
+        if triggered_count > 0:
+            self._consecutive_unknown_pages = 0
+            self._back_sent_to_background = False
+
+        # 如果没有事件处理，说明进入了未知页面，默认按 press_back 尝试退出
+        if triggered_count == 0:
+            if self.runtime and hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+                recovery["suppressed"] = "paused"
+                return {
+                    "triggered_count": 0,
+                    "recovery": recovery,
+                }
+            try:
+                # 当 UI 正在被命令/后台任务占用时，禁止自动 back（否则会把命令弹窗当未知页面关掉）
+                if self.runtime.is_ui_busy():
+                    recovery["suppressed"] = "ui_busy"
+                    self.logger.debug(
+                        "No events triggered, but UI is busy (ui_lock locked). Skip auto press_back.")
+                else:
+                    recovery["attempted"] = True
+                    self.handler.key_actions.switch_to_app()
+                    ready_source = await self._wait_page_source_ready_async(max_wait_s=2.5, interval_s=0.2)
+                    if not ready_source:
+                        recovery["suppressed"] = "page_source_not_ready"
+                        # 切回瞬间 page_source 往往为空/是桌面，不应当按 back 误退出 App。
+                        self.logger.debug(
+                            "PageSource not ready after switch_to_app; skip auto press_back this round.")
+                    else:
+                        recovery["ready_rechecked"] = True
+                        second_triggered = await self._process_events_once(ready_source)
+                        if second_triggered > 0:
+                            triggered_count = second_triggered
+                            self._consecutive_unknown_pages = 0
+                            self._back_sent_to_background = False
+                        elif back_bounced:
+                            # 上一轮自己按的 back 把 Soul 送回了桌面：同样的「切换到桌面 -> 切回」
+                            # 循环若不升级，兜底永远不可达。
+                            recovery["suppressed"] = "back_bounced_to_non_soul"
+                            self.logger.debug(
+                                "Previous back sent Soul to background; count as unknown-page failure."
+                            )
+                            self._consecutive_unknown_pages += 1
+                            self._back_sent_to_background = False
+                            self._maybe_force_close(recovery)
+                        elif not is_soul_initial:
+                            # 初始不是 Soul（例如从桌面切回），界面可能仍在初始化加载中，
+                            # 严禁按返回键，否则会导致“返回桌面 -> 切回 -> 返回桌面”的死循环。
+                            recovery["suppressed"] = "switched_from_non_soul"
+                            self.logger.debug(
+                                "Page was not Soul initially; switched to Soul, skip press_back this round."
+                            )
+                        else:
+                            self.handler.key_actions.press_back()
+                            recovery["pressed_back"] = True
+                            self.logger.warning("No events triggered, pressed back to exit unknown page")
+                            self._consecutive_unknown_pages += 1
+                            self._back_sent_to_background = True
+                            self._maybe_force_close(recovery)
+
+            except Exception as e:
+                self.logger.warning(f"Unknown page recovery failed: {str(e)}")
+
+        return {
+            "triggered_count": triggered_count,
+            "recovery": recovery,
+        }
+
+    async def process_current_screen(self) -> dict:
+        page_source = self.get_page_source()
+        if not page_source:
+            await asyncio.sleep(0.2)
+            page_source = self.get_page_source()
+
+        if not page_source:
+            return {
+                "page_source": None,
+                "screen": self.describe_screen(""),
+                "triggered_count": 0,
+                "recovery": {
+                    "attempted": False,
+                    "suppressed": "no_page_source",
+                    "pressed_back": False,
+                    "ready_rechecked": False,
+                    "force_closed": False,
+                },
+            }
+
+        screen = self.describe_screen(page_source)
+        reaction = await self.react_to_page(page_source)
+        return {
+            "page_source": page_source,
+            "screen": screen,
+            "triggered_count": reaction["triggered_count"],
+            "recovery": reaction["recovery"],
+        }
+
+    async def process_events(self, page_source: str) -> int:
+        return (await self.react_to_page(page_source))["triggered_count"]
+
+    async def _process_events_once(self, page_source: str) -> int:
+        if not page_source:
+            return 0
+
+        triggered_count = 0
+        root = etree.fromstring(page_source.encode("utf-8"))
+
+        keys_ordered: List[str] = []
+        for k in self._PRIORITY_EVENT_KEYS:
+            if k in self.element_to_event:
+                keys_ordered.append(k)
+        for k in self.element_to_event.keys():
+            if k not in keys_ordered:
+                keys_ordered.append(k)
+
+        for element_key in keys_ordered:
+            if self.runtime and hasattr(self.runtime, "is_paused") and self.runtime.is_paused():
+                self.logger.info("Stopping event processing: runtime is paused by !stop")
+                break
+            module_name = self.element_to_event[element_key]
+            try:
+                module = self.event_modules.get(module_name)
+                xml_element = self._find_element_in_page_source(root, element_key, module)
+
+                if xml_element is None:
+                    if module and hasattr(module, "event") and hasattr(module.event, "on_element_absent"):
+                        await module.event.on_element_absent(element_key)
+                    continue
+
+                if module and hasattr(module, "event"):
+                    if isinstance(xml_element, list):
+                        wrapper_list = [ElementWrapper(elem, self.handler, element_key) for elem in xml_element]
+                        result = await module.event.handle(element_key, wrapper_list)
+                        triggered_count += 1
+                        if result is True:
+                            self.logger.debug(
+                                f"Event {element_key} returned True, stopping event processing"
+                            )
+                            break
+                    else:
+                        wrapper = ElementWrapper(xml_element, self.handler, element_key)
+                        result = await module.event.handle(element_key, wrapper)
+                        triggered_count += 1
+                        if result is True:
+                            self.logger.debug(
+                                f"Event {element_key} returned True, stopping event processing"
+                            )
+                            break
+            except Exception as e:
+                self.logger.error(f"Error processing event for {element_key}: {str(e)}")
+
+        return triggered_count
+
+    async def _wait_page_source_ready_async(self, max_wait_s: float = 2.5, interval_s: float = 0.2) -> Optional[str]:
+        """
+        等待 page_source 可解析且 hierarchy 中已出现 Soul 包名（不依赖底部导航等锚点）。
+        若当前为桌面或其它应用，会间歇调用 switch_to_app 直至超时。
+        """
+        deadline = time.time() + max_wait_s
+        last_error = None
+        soul_pkg = self._soul_package_name()
+
+        while time.time() < deadline:
+            try:
+                src = self.handler.driver.page_source
+                if not src:
+                    self.handler.key_actions.switch_to_app()
+                    await asyncio.sleep(interval_s)
+                    continue
+
+                pkgs = self._packages_from_page_source(src)
+                if pkgs is None:
+                    last_error = "XMLSyntaxError"
+                    await asyncio.sleep(interval_s)
+                    continue
+
+                if soul_pkg in pkgs:
+                    return src
+
+                launchers = set(self._launcher_packages())
+                if pkgs & launchers:
+                    self.logger.debug(
+                        "PageSource foreground is not Soul (launcher detected); switching to Soul app"
+                    )
+                self.handler.key_actions.switch_to_app()
+                await asyncio.sleep(interval_s)
+            except etree.XMLSyntaxError as e:
+                last_error = e
+                await asyncio.sleep(interval_s)
+            except Exception as e:
+                last_error = e
+                await asyncio.sleep(interval_s)
+
+        if last_error:
+            self.logger.debug(f"PageSource ready wait timeout, last_error={last_error}")
+        return None
+
+    @with_driver_recovery
+    def get_page_source(self) -> Optional[str]:
+        """
+        获取当前页面的 page_source
+
+        Returns:
+            页面源码 XML 字符串，失败返回 None
+        """
+        return self.handler.driver.page_source
+
+    def get_event(self, element_key: str):
+        """
+        根据元素 key 获取对应的事件实例
+
+        Args:
+            element_key: 元素 key
+
+        Returns:
+            事件实例或 None
+        """
+        module_name = self.element_to_event.get(element_key)
+        if module_name:
+            module = self.event_modules.get(module_name)
+            if module and hasattr(module, 'event'):
+                return module.event
+        return None
+
+    def get_registered_elements(self) -> List[str]:
+        """
+        获取所有已注册的元素 key 列表
+
+        Returns:
+            元素 key 列表
+        """
+        return list(self.element_to_event.keys())

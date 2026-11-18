@@ -17,22 +17,32 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.commands.gift import GiftCommand
-from ushareiplay.commands.seat import SeatCommand
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.dal.focus_event_dao import FocusEventDao
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.admin_manager import AdminManager
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.managers.user_manager import UserManager
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.models.user import User
-from ushareiplay.state.presence_tracker import PresenceTracker
+from ushareiplay.adapters.inbound.chat.gift import GiftCommand
+from tests.seat_support import build_seat_service
+from ushareiplay.adapters.inbound.chat.seat import SeatCommand
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
+    TortoiseUserEventHookRepository,
+)
+from ushareiplay.adapters.outbound.persistence.user_repository import (
+    TortoiseUserRepository,
+)
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.adapters.outbound.persistence.models.user import User
+from ushareiplay.modules.room.domain import RoomAdmins
+from ushareiplay.modules.room.registry import FOCUS
+from ushareiplay.modules.room.use_cases import (
+    InfoManager,
+    ManageAdmin,
+    OnlineDrawer,
+    PresenceTracker,
+    UserProfileActions,
+)
+from tests.room_support import configured_room_state, make_hooks
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
+
+UserDAO = TortoiseUserRepository()
 
 CANONICAL = "不约儿童~𝓨o🐏🐏"  # 主账号：DB 里 canonical 记录的 username
 AVATAR = "不约儿童🐏🐏"  # 分身：Soul UI / 麦位上真正显示的名字
@@ -52,25 +62,34 @@ async def alias_pair(db):
     """建立 分身 → 主账号 的映射，等价于运行过 `:alias "<分身>" "<主账号>"`。"""
     canonical = await UserDAO.get_or_create_raw(CANONICAL)
     avatar = await UserDAO.get_or_create_raw(AVATAR)
-    avatar.canonical_user_id = canonical.id
-    await avatar.save(update_fields=["canonical_user_id"])
+    await UserDAO.set_canonical(avatar.id, canonical.id)
     return SimpleNamespace(canonical=canonical, avatar=avatar)
+
+
+_presence = None
+_info_manager = None
 
 
 @pytest.fixture(autouse=True)
 def presence_env():
     """在线集合由 Soul UI 读回，因此里面只有分身名。"""
-    for cls in (PresenceTracker, InfoManager, AdminManager):
-        cls.reset_instance()
-    presence = PresenceTracker.initialize()
+    global _presence, _info_manager
+    presence = PresenceTracker()
     presence._logger = SimpleNamespace(
         info=lambda _m: None, warning=lambda _m: None, error=lambda _m: None, critical=lambda _m: None
     )
-    info_manager = InfoManager.initialize()
-    info_manager._logger = SimpleNamespace(info=lambda _m: None)
+    room_state = configured_room_state()
+    info_manager = InfoManager(
+        presence=presence,
+        room_state=room_state,
+        users=TortoiseUserRepository(),
+        logger=SimpleNamespace(info=lambda _m: None),
+    )
+    _presence = presence
+    _info_manager = info_manager
     yield presence
-    for cls in (PresenceTracker, InfoManager, AdminManager):
-        cls.reset_instance()
+    _presence = None
+    _info_manager = None
 
 
 # ---------------------------------------------------------------------------
@@ -184,11 +203,14 @@ class DummyController:
         self.soul_handler = handler or SimpleNamespace(logger=DummyLogger(), config={})
         self.music_handler = None
         self.config = {}
+        self.room_state = configured_room_state()
+        self.info_manager = _info_manager
+        self.user_repository = UserDAO
 
 
 def _seating_manager(desks, popup_name):
     handler = DummySeatHandler(desks, popup_name)
-    manager = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    manager = build_seat_service(handler, seat_ui=DummySeatUI(handler))
     return handler, manager
 
 
@@ -244,8 +266,8 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
     """`:seat 3` 不接参数时，交给座位层的靶子必须是麦位上可见的分身名。"""
     desks = [_desk(right_label=AVATAR, right_occupied=True)]
     handler = DummySeatHandler(desks, popup_name=AVATAR)
-    seating = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
-    presence_env = PresenceTracker.instance()
+    seating = build_seat_service(handler, seat_ui=DummySeatUI(handler))
+    presence_env = _presence
     presence_env._online_users = {AVATAR}
 
     accompanying = {}
@@ -254,10 +276,9 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
         accompanying["target"] = target_username
         return await seating.accompany_user(target_username, sender_username=sender_username)
 
-    SeatManager.reset_instance()
-    seat_manager = SeatManager.initialize()
-    seat_manager.accompany_user = spy
-    command = SeatCommand(DummyController(handler))
+    controller = DummyController(handler)
+    controller.seat_service = SimpleNamespace(accompany_user=spy)
+    command = SeatCommand(controller)
     result = await command.do_process(
         MessageInfo(content=":seat 3", nickname=CANONICAL), ["3"]
     )
@@ -271,14 +292,20 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair):
-    await FocusEventDao.create(AVATAR, ":say {username} 坐到了 {seat} 号 ({action})")
-    queue = MessageQueue.instance()
+    await TortoiseUserEventHookRepository().create(FOCUS, AVATAR, ":say {username} 坐到了 {seat} 号 ({action})")
+    queue = MessageQueue()
     await queue.clear_queue()
 
-    from ushareiplay.commands.focus import FocusCommand
+    from ushareiplay.adapters.inbound.chat.focus import FocusCommand
 
     handler = SimpleNamespace(logger=DummyLogger())
-    command = FocusCommand(SimpleNamespace(soul_handler=handler, music_handler=None))
+    command = FocusCommand(
+        SimpleNamespace(
+            soul_handler=handler,
+            music_handler=None,
+            user_event_hooks=make_hooks(message_queue=queue),
+        )
+    )
     command.handler = handler
 
     await command.focus_count_change(
@@ -300,13 +327,13 @@ async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_resolve_visible_username_returns_the_name_soul_shows(alias_pair):
-    PresenceTracker.instance()._online_users = {AVATAR, STRANGER}
-    info_manager = InfoManager.instance()
+    _presence._online_users = {AVATAR, STRANGER}
+    info_manager = _info_manager
 
     assert await info_manager.resolve_visible_username(CANONICAL) == AVATAR
     assert await info_manager.resolve_visible_username(AVATAR) == AVATAR
 
-    PresenceTracker.instance()._online_users = {STRANGER}
+    _presence._online_users = {STRANGER}
     assert await info_manager.resolve_visible_username(CANONICAL) == CANONICAL
 
 
@@ -319,21 +346,19 @@ async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_
     解析一次。因此这里驱动真实的房管流程：在线名单里只有分身名，canonical 名在抽屉里
     是找不到人的 —— 解析错一次这条断言就会失败。
     """
-    PresenceTracker.instance()._online_users = {AVATAR}
+    _presence._online_users = {AVATAR}
 
     journal = []
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], journal=journal)
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(
-        handler=SimpleNamespace(logger=None, controller=None),
-        driver=driver,
-        name_resolver=InfoManager.instance().resolve_visible_username,
+    drawer = OnlineDrawer(
+        drawer=driver,
+        name_resolver=_info_manager.resolve_visible_username,
+        ui_session=None,
     )
-    manager = AdminManager.initialize(SimpleNamespace(logger=None))
-    try:
-        result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
-    finally:
-        OnlineDrawerManager.reset_instance()
+    manager = ManageAdmin(
+        drawer=drawer, admins=RoomAdmins()
+    )
+    result = await manager.manage_admin(enable=True, target_nickname=CANONICAL)
 
     assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
     assert result == {"user": AVATAR, "action": "Invited"}
@@ -351,28 +376,21 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
     真实的送礼流程：在线名单里只有分身名，canonical 名在抽屉里是找不到人的 —— 解析错一次
     这条断言就会失败。
     """
-    PresenceTracker.instance()._online_users = {AVATAR}
+    _presence._online_users = {AVATAR}
 
     journal = []
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], gift_name="小黄鸭x1", journal=journal)
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(
-        handler=SimpleNamespace(logger=None, controller=None),
-        driver=driver,
-        name_resolver=InfoManager.instance().resolve_visible_username,
+    drawer = OnlineDrawer(
+        drawer=driver,
+        name_resolver=_info_manager.resolve_visible_username,
+        ui_session=None,
     )
-    UserManager.initialize(SimpleNamespace(logger=None))
-
     controller = DummyController()
+    controller.user_profile_actions = UserProfileActions(drawer=drawer)
     command = GiftCommand(controller)
-    try:
-        result = await command.do_process(
-            MessageInfo(content=f":gift {CANONICAL}", nickname="群主"), [CANONICAL]
-        )
-    finally:
-        UserManager.reset_instance()
-        OnlineDrawerManager.reset_instance()
+    result = await command.do_process(
+        MessageInfo(content=f":gift {CANONICAL}", nickname="群主"), [CANONICAL]
+    )
 
     assert result == {"success": "小黄鸭 送你啦"}
     assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"
@@ -385,7 +403,7 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_level_writes_through_the_alias_to_canonical(alias_pair):
-    from ushareiplay.commands.level import LevelCommand
+    from ushareiplay.adapters.inbound.chat.level import LevelCommand
 
     controller = DummyController()
     command = LevelCommand(controller)
@@ -419,7 +437,7 @@ async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(a
         async def collapse_seats(self):
             collapsed.append(True)
 
-    manager = SeatSubsystem(handler, seat_ui=MockUI(handler))
+    manager = build_seat_service(handler, seat_ui=MockUI(handler))
 
     result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
     assert "error" in result

@@ -14,14 +14,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.commands.singer import SingerCommand
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.models import PlaybackMode, PlaybackTrack
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.inbound.chat.singer import SingerCommand
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackTrack
+from ushareiplay.modules.playback.use_cases import PlaySong, PlaybackMuting, PlaylistSession
+
+_CURRENT_PLAY_SONG = None
+from ushareiplay.modules.shared.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 QUEUE_TEXT = "简单爱 - 周杰伦\n爱在西元前 - 周杰伦"
 
@@ -82,17 +83,23 @@ def _build_engine(*, protection_error=None, driver=None, journal=None):
     room_profile.set_title = room_profile.titles.append
     room_profile.set_topic = room_profile.topics.append
 
-    session = PlaylistSession.instance()
-    session._room_profile = room_profile
+    session = PlaylistSession(room_profile=room_profile)
     session.player_name = info.player_name
     session.current_playlist_name = info.current_playlist_name
     session.check_playlist_protection = info.check_playlist_protection
 
-    MusicManager.initialize(ui_driver=driver)
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
-        _ReadinessProbe(),
-        _RecordingMicManager(journal),
+    muting = PlaybackMuting(
+        mic=_RecordingMicManager(journal),
+        media_session=_ReadinessProbe(),
+        config=ConfigSectionView("soul", {}),
+        logger=MagicMock(),
+    )
+    global _CURRENT_PLAY_SONG
+    _CURRENT_PLAY_SONG = PlaySong(
+        ui_driver=driver,
+        playlist_session=session,
+        playback_muting=muting,
+        logger=MagicMock(),
     )
 
     return SimpleNamespace(
@@ -111,6 +118,7 @@ def _command():
             soul_handler=SimpleNamespace(logger=MagicMock()),
             music_handler=MagicMock(),
             config={},
+            play_song=_CURRENT_PLAY_SONG,
         )
     )
 

@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 
-from ushareiplay.core.chat_intake import normalize_command_text
-from ushareiplay.core.command_parser import CommandParser
-from ushareiplay.core.roles import min_command_level, resolve_command_level
+from ushareiplay.adapters.inbound.runtime.chat_intake import normalize_command_text
+from ushareiplay.adapters.inbound.runtime.command_parser import CommandParser
+from ushareiplay.modules.shared.roles import min_command_level, resolve_command_level
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -234,9 +234,10 @@ def _playlist_command_info():
 
 
 async def _run(command_info, nickname, level, content=None):
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
-    cm = CommandManager.instance()
+    cm = CommandManager(users=TortoiseUserRepository())
     cm.configure_runtime(RuntimeStub())
     cm._handler = HandlerStub(config={"system_users": ["Timer"]})
 
@@ -245,7 +246,7 @@ async def _run(command_info, nickname, level, content=None):
         nickname=nickname,
         content=content if content is not None else f":{command_info['prefix']}",
     )
-    with patch("ushareiplay.dal.user_dao.UserDAO.get_or_create", new_callable=AsyncMock) as mock_user:
+    with patch("ushareiplay.adapters.outbound.persistence.user_repository.TortoiseUserRepository.get_or_create", new_callable=AsyncMock) as mock_user:
         mock_user.return_value = SimpleNamespace(level=level)
         res = await cm.process_command(dummy_cmd, msg, command_info)
     return dummy_cmd, res

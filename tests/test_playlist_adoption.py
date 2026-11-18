@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ushareiplay.core.config_view import ConfigView
-from ushareiplay.managers.playlist_session import PlaylistSession, primary_topic
+from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.playback.domain import primary_topic
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 
 
 class _RoomProfile:
@@ -33,8 +34,7 @@ class _RoomProfile:
 @pytest.fixture
 def adoption():
     """把房名/话题写入端替换为替身；歌单上下文与 Next Queue 由会话自己持有。"""
-    module = PlaylistSession.instance()
-    module._room_profile = _RoomProfile()
+    module = PlaylistSession(room_profile=_RoomProfile())
     module.player_name = None
     module.current_playlist_name = None
     module.list_mode = "unknown"
@@ -244,7 +244,7 @@ async def test_guard_switch_reads_system_roles_from_the_live_config(adoption):
     而不是借「单曲」豁免逃过去。
     """
     live_config = ConfigView({"soul": {"system_users": ["NightShift"]}})
-    adoption.handler = SimpleNamespace(config=live_config)
+    adoption._config = live_config
     adoption.check_playlist_protection = AsyncMock(return_value={"error": "被守护"})
 
     result = await adoption.guard_switch("NightShift", incoming_mode="song")

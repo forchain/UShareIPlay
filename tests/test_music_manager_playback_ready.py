@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 
 
 class _Logger:
@@ -70,9 +70,9 @@ def _make_manager(outputs, monkeypatch):
 
     clock = _FakeClock()
     monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.time.monotonic", clock.monotonic
+        "ushareiplay.adapters.outbound.appium.qq_music.music_manager.time.monotonic", clock.monotonic
     )
-    monkeypatch.setattr("ushareiplay.managers.music_manager.time.sleep", clock.sleep)
+    monkeypatch.setattr("ushareiplay.adapters.outbound.appium.qq_music.music_manager.time.sleep", clock.sleep)
     return manager, clock
 
 

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 
 def test_archive_active_log_missing_file_does_not_create_archive(tmp_path: Path) -> None:
-    from ushareiplay.core.log_rotation import archive_active_log_on_startup
+    from ushareiplay.adapters.outbound.system.log_rotation import archive_active_log_on_startup
 
     active = archive_active_log_on_startup(tmp_path, "UShareIPlay.log")
 
@@ -19,7 +19,7 @@ def test_archive_active_log_empty_file_still_archives(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "UShareIPlay.log"
     active_file.touch()
@@ -40,7 +40,7 @@ def test_archive_active_log_uses_created_time_in_archive_name(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "UShareIPlay.log"
     active_file.write_text("old\n", encoding="utf-8")
@@ -63,7 +63,7 @@ def test_archive_active_log_preserves_active_inode(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
+    from ushareiplay.adapters.outbound.system import log_rotation
 
     active_file = tmp_path / "chat.log"
     active_file.write_text("old\n", encoding="utf-8")
@@ -84,8 +84,10 @@ def test_app_handler_loggers_share_fixed_active_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import app_handler, log_rotation
-    from ushareiplay.core.app_handler import AppHandler
+    from ushareiplay.adapters.outbound.system import log_rotation
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
+    from ushareiplay.adapters.outbound.appium import app_handler
+    from ushareiplay.adapters.outbound.appium.app_handler import AppHandler
 
     old_log = tmp_path / "UShareIPlay.log"
     old_log.write_text("old handler log\n", encoding="utf-8")
@@ -107,7 +109,7 @@ def test_app_handler_loggers_share_fixed_active_file(
         pass
 
     config = {"logging": {"directory": str(tmp_path)}}
-    controller = SimpleNamespace(config=config)
+    controller = SimpleNamespace(config=config, runtime_logging=get_runtime_logging())
 
     try:
         soul = SoulHandler.__new__(SoulHandler)
@@ -149,8 +151,9 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    from ushareiplay.core import log_rotation
-    from ushareiplay.managers import message_manager
+    from ushareiplay.adapters.outbound.system import log_rotation
+    from ushareiplay.adapters.outbound.system.runtime_logging import get_runtime_logging
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     old_log = tmp_path / "chat.log"
     old_log.write_text("old chat\n", encoding="utf-8")
@@ -160,13 +163,13 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
-    if message_manager.chat_logger is not None:
-        for handler in message_manager.chat_logger.handlers:
-            handler.close()
-        message_manager.chat_logger.handlers.clear()
-    message_manager.chat_logger = None
-
-    logger = message_manager.get_chat_logger({"logging": {"directory": str(tmp_path)}})
+    runtime_logging = get_runtime_logging()
+    runtime_logging.reset()
+    manager = MessageManager(
+        handler=SimpleNamespace(config={"logging": {"directory": str(tmp_path)}}),
+        chat_logger_factory=runtime_logging.attach_chat_logger,
+    )
+    logger = manager.chat_logger
     try:
         logger.info("new chat")
         for handler in logger.handlers:
@@ -180,4 +183,4 @@ def test_chat_logger_archives_old_active_file_and_writes_new_chat(
         for handler in logger.handlers:
             handler.close()
         logger.handlers.clear()
-        message_manager.chat_logger = None
+        runtime_logging.reset()

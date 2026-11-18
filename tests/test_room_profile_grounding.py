@@ -25,9 +25,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.modules.room import PartyService
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.use_cases import RoomStateService
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 # 回房时屏幕上真实存在的东西：派对类型那一行（抽屉里）+ 主界面的房名那一行。
@@ -96,13 +96,8 @@ def _driver():
 
 
 @pytest.fixture(autouse=True)
-def _reset_singletons(monkeypatch, tmp_path):
+def _isolate_persistence(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RoomProfileManager, PartyManager):
-        cls.reset_instance()
-    yield
-    for cls in (RoomState, RoomProfileManager, PartyManager):
-        cls.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -116,11 +111,13 @@ def test_entering_the_room_grounds_the_real_room_name_even_when_the_recommendati
     #413 之后推荐那一行根本不在抽屉里了：`recommendation_enabled` 恒为 True/False，
     拿它当「档案已知」的守卫，等于把全量审计永久短路，`current_title` 就停在 None。
     """
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
     screen = _Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN})
     driver = _driver()
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=driver)
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=driver, room_state=room_state
+    )
 
     profile.ensure_synced_on_return()
 
@@ -136,10 +133,12 @@ def test_entering_the_room_grounds_the_real_room_name_even_when_the_recommendati
 
 def test_the_audit_is_skipped_once_the_profile_already_knows_the_room_name():
     """反过来钉住：真的读过了就不为「发现读过了」再开一次抽屉（日志铁律）。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     screen = _Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN})
     driver = _driver()
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=driver)
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=driver, room_state=room_state
+    )
 
     assert profile.ensure_synced_on_return().get("initialized") is True
 
@@ -151,10 +150,12 @@ def test_the_audit_is_skipped_once_the_profile_already_knows_the_room_name():
 
 def test_a_title_that_failed_to_write_still_leaves_the_current_title_grounded():
     """用户日志里的原始场景：写房名被 Soul 拒绝后，`/theme` 不得报「未设置」。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
     screen = _Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN})
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
 
     profile.ensure_synced_on_return()  # 回房接地
 
@@ -173,10 +174,12 @@ def test_a_title_that_failed_to_write_still_leaves_the_current_title_grounded():
 
 def test_changing_room_invalidates_the_room_facts_read_from_the_ui():
     """房间标识一变，上一间房的房名/主题就不能再被当成「当前值」。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.room_id = "FM15321640"
     screen = _Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN})
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
     profile.ensure_synced_on_return()
     assert profile.get_current_title() == "Lofi Girl"
 
@@ -200,20 +203,25 @@ def test_party_manager_routes_the_return_and_create_paths_through_the_module():
     """
     import inspect
 
-    from ushareiplay.managers import party_manager as pm
+    from ushareiplay.bootstrap.container import AppContainer
 
-    source = inspect.getsource(pm)
-    assert "ensure_synced_on_return()" in source, (
-        "PartyManager 必须把房间档案的 UI 接地点回来 —— "
-        "它是 audit_and_repair/initialize_from_ui 唯一的生产触发点"
+    controller_source = inspect.getsource(AppContainer.wire_services)
+    service_source = inspect.getsource(PartyService)
+    assert "ensure_synced_on_return" in controller_source, (
+        "组合根必须把房间档案的 ensure_synced_on_return 注入 PartyService"
+    )
+    assert "_sync_profile_from_ui()" in service_source, (
+        "PartyService 必须把房间档案的 UI 接地点回来"
     )
 
 
 def test_a_room_name_that_cannot_be_read_leaves_the_profile_ungrounded():
     """主界面那一行读不到就不许声称接地：下一次回房必须再读一次。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     screen = _Screen(DRAWER_SCREEN, {})  # 没有 chat_room_title，也没有抽屉里的房名
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
 
     result = profile.ensure_synced_on_return()
 
@@ -228,7 +236,7 @@ def test_a_room_name_that_cannot_be_read_leaves_the_profile_ungrounded():
 
 
 def _title_command(profile):
-    from ushareiplay.commands.title import TitleCommand
+    from ushareiplay.adapters.inbound.chat.title import TitleCommand
 
     handler = _handler(_Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN}))
     command = TitleCommand(SimpleNamespace(soul_handler=handler, music_handler=None))
@@ -242,9 +250,11 @@ def test_the_heartbeat_grounds_the_profile_the_entry_path_missed():
 
     只读、有守卫、接地之后一个 UI 调用都不发生 —— 所以挂在心跳上是安全的。
     """
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     screen = _Screen(MAIN_SCREEN, {"chat_room_title": ROOM_NAME_ON_MAIN_SCREEN})
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
     assert profile.get_current_title() is None
 
     _title_command(profile).update()
@@ -259,9 +269,11 @@ def test_the_heartbeat_grounds_the_profile_the_entry_path_missed():
 
 def test_a_failed_grounding_backs_off_instead_of_reading_the_ui_every_tick():
     """读不到真实房名时退避，而不是每拍都吃一次 2 秒的元素等待。"""
-    RoomState.initialize()
+    room_state = RoomStateService()
     screen = _Screen(DRAWER_SCREEN, {})  # 房名那一行还没渲染出来
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
 
     _title_command(profile).update()
     assert profile.is_initialized is False
@@ -274,9 +286,11 @@ def test_a_failed_grounding_backs_off_instead_of_reading_the_ui_every_tick():
 
 def test_changing_room_clears_the_grounding_backoff():
     """换房 = 重新欠一次接地：退避计时器不得把新房间也一起挡住。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     screen = _Screen(DRAWER_SCREEN, {})
-    profile = RoomProfileManager.initialize(handler=_handler(screen), drawer_driver=_driver())
+    profile = RoomProfileManager(
+        handler=_handler(screen), drawer_driver=_driver(), room_state=room_state
+    )
 
     _title_command(profile).update()
     reads_after_first_attempt = len(screen.reads)

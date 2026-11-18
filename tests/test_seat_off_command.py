@@ -4,24 +4,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ushareiplay.commands import seat as seat_command_module
-from ushareiplay.commands.seat import SeatCommand
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.models.message_info import MessageInfo
-
-
-@pytest.fixture(autouse=True)
-def _cleanup_seat_manager():
-    SeatManager.reset_instance()
-    yield
-    SeatManager.reset_instance()
+from tests.seat_support import build_seat_service
+from ushareiplay.adapters.inbound.chat.seat import SeatCommand
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class DummyController:
-    def __init__(self):
+    def __init__(self, seat_service=None):
         self.soul_handler = SimpleNamespace(log_error=lambda message: None)
         self.music_handler = None
+        self.room_state = None
+        self.seat_service = seat_service
+        self.seat_observation = None
 
 
 class DummyLogger:
@@ -112,10 +106,9 @@ def _desk(left_label="", left_occupied=False, right_label="", right_occupied=Fal
 
 
 def test_seat_1_delegates_reservation_to_seat_management():
-    manager = SeatManager.initialize()
-    manager.reserve_seat = AsyncMock(return_value={"success": "Seat 5 reserved"})
+    manager = SimpleNamespace(reserve_seat=AsyncMock(return_value={"success": "Seat 5 reserved"}))
 
-    command = SeatCommand(DummyController())
+    command = SeatCommand(DummyController(manager))
     message = MessageInfo(content=":seat 1 5", nickname="Alice")
 
     result = asyncio.run(command.process(message, ["1", "5"]))
@@ -125,10 +118,9 @@ def test_seat_1_delegates_reservation_to_seat_management():
 
 
 def test_seat_2_delegates_specific_seat_to_seat_management():
-    manager = SeatManager.initialize()
-    manager.take_seat = AsyncMock(return_value={"success": "Took seat 5"})
+    manager = SimpleNamespace(take_seat=AsyncMock(return_value={"success": "Took seat 5"}))
 
-    command = SeatCommand(DummyController())
+    command = SeatCommand(DummyController(manager))
     message = MessageInfo(content=":seat 2 5", nickname="Alice")
 
     result = asyncio.run(command.process(message, ["2", "5"]))
@@ -138,10 +130,11 @@ def test_seat_2_delegates_specific_seat_to_seat_management():
 
 
 def test_seat_4_without_parameter_dispatches_owner_seat_off():
-    manager = SeatManager.initialize()
-    manager.remove_seat_occupant = AsyncMock(return_value={"success": "Owner removed from seat"})
+    manager = SimpleNamespace(
+        remove_seat_occupant=AsyncMock(return_value={"success": "Owner removed from seat"})
+    )
 
-    command = SeatCommand(DummyController())
+    command = SeatCommand(DummyController(manager))
     message = MessageInfo(content=":seat 4", nickname="Alice")
 
     result = asyncio.run(command.process(message, ["4"]))
@@ -151,10 +144,11 @@ def test_seat_4_without_parameter_dispatches_owner_seat_off():
 
 
 def test_seat_4_with_parameter_dispatches_specific_seat_off():
-    manager = SeatManager.initialize()
-    manager.remove_seat_occupant = AsyncMock(return_value={"success": "Seat 5 removed"})
+    manager = SimpleNamespace(
+        remove_seat_occupant=AsyncMock(return_value={"success": "Seat 5 removed"})
+    )
 
-    command = SeatCommand(DummyController())
+    command = SeatCommand(DummyController(manager))
     message = MessageInfo(content=":seat 4 5", nickname="Alice")
 
     result = asyncio.run(command.process(message, ["4", "5"]))
@@ -164,10 +158,9 @@ def test_seat_4_with_parameter_dispatches_specific_seat_off():
 
 
 def test_seat_4_with_invalid_seat_number_returns_error():
-    manager = SeatManager.initialize()
-    manager.remove_seat_occupant = AsyncMock()
+    manager = SimpleNamespace(remove_seat_occupant=AsyncMock())
 
-    command = SeatCommand(DummyController())
+    command = SeatCommand(DummyController(manager))
     message = MessageInfo(content=":seat 4 13", nickname="Alice")
 
     result = asyncio.run(command.process(message, ["4", "13"]))
@@ -179,7 +172,7 @@ def test_seat_4_with_invalid_seat_number_returns_error():
 def test_seat_off_owner_clicks_owner_seat_and_seat_off_button():
     desks = [_desk(left_label="群主", left_occupied=True)]
     handler = DummyHandler(desks, popup_name="群主")
-    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    subsystem = build_seat_service(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(subsystem.seat_off_owner())
 
@@ -194,7 +187,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
         _desk(left_label="C", left_occupied=True),
     ]
     handler = DummyHandler(desks, popup_name="C")
-    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    subsystem = build_seat_service(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(subsystem.seat_off_specific_seat(3))
 
@@ -205,7 +198,7 @@ def test_seat_off_specific_seat_clicks_target_seat_and_seat_off_button():
 
 def test_seat_off_owner_returns_error_when_owner_not_found():
     handler = DummyHandler([_desk(left_label="Alice", left_occupied=True)])
-    subsystem = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    subsystem = build_seat_service(handler, seat_ui=DummySeatUI(handler))
 
     result = asyncio.run(subsystem.seat_off_owner())
 

@@ -36,9 +36,9 @@ from tests.seat_fixtures import (
     make_handler,
     DESK_RESOURCE_ID,
 )
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
+from tests.seat_support import build_seat_service
 
 MOVER = "Outlier"
 
@@ -55,9 +55,7 @@ PHASE_SEATS = {
 
 @pytest.fixture(autouse=True)
 def reset_observation():
-    SeatObservationManager.reset_instance()
     yield
-    SeatObservationManager.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -73,9 +71,9 @@ def test_generated_empty_seat_matches_real_dump_reads_as_empty_not_occupied():
     "占座读不出身份"这条真机主路径）。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     real_desks = [node for node in load_real_desk_nodes("expanded_top_with_anchor.xml")]
-    from ushareiplay.core.element_wrapper import ElementWrapper
+    from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 
     # 真机：1 号位群主占座（ClState + 身份文字 + 勋章 + 时长），2 号位空座
     real_left = ElementWrapper(real_desks[0], handler, "seat_desk")
@@ -95,7 +93,7 @@ def test_generated_empty_seat_matches_real_dump_reads_as_empty_not_occupied():
 def test_generated_normal_occupant_has_no_nickname_in_dom():
     """真机普通用户占座：ClState + **麦位编号** label，昵称读不出来。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_live_desk_wrappers_for(handler, {11: True}, "bottom")[-1]
 
     info = manager._extract_seat_info(desk, "left", 11)
@@ -108,7 +106,7 @@ def test_generated_normal_occupant_has_no_nickname_in_dom():
 def test_collapsed_top_phase_has_no_seat_number_anchor():
     """折叠顶视口读不出任何座位号：这就是"只能靠内容指纹兜底"的那个相位。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desks = build_live_desk_wrappers_for(handler, {1: "群主"}, "collapsed_top")
 
     assert manager._read_visible_seats(desks) == {}
@@ -121,22 +119,21 @@ def test_collapsed_top_phase_has_no_seat_number_anchor():
 
 def _settle(manager, occupants, phase, focus_count):
     """先按"换座前"的那一屏跑一轮，把快照与麦位带基线都落到起点。"""
-    desks = build_live_desk_wrappers_for(manager.handler, occupants, phase)
+    desks = build_live_desk_wrappers_for(manager._panel.handler, occupants, phase)
     with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as scan:
         scan.return_value = True
         return asyncio_round(manager, desks, focus_count)
 
 
 async def asyncio_round(manager, desks, focus_count):
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
-        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+    with patch.object(manager, "_on_focus_change", AsyncMock()):
         return await manager.observe_visible_desks(desks, current_focus_count=focus_count)
 
 
 def _manager_with_snapshot(occupants, names):
     """按 occupants 建快照：普通用户占座的昵称只有弹窗给得出，测试直接写进账面。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     for seat, occupant in occupants.items():
         username = names.get(seat)
         manager.ledger.slots[seat] = SeatSlot(
@@ -186,13 +183,10 @@ async def test_in_viewport_move_is_never_swallowed_any_phase(phase, src, dst, re
         side_effect=lambda desk, side, seat_number: MOVER if seat_number == dst else None
     )
 
-    desks = build_live_desk_wrappers_for(manager.handler, after, phase)
+    desks = build_live_desk_wrappers_for(manager._panel.handler, after, phase)
     with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as scan:
         scan.return_value = True
-        with patch(
-            "ushareiplay.managers.command_manager.CommandManager.instance"
-        ) as cmd_mgr:
-            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        with patch.object(manager, "_on_focus_change", AsyncMock()):
             await manager.observe_visible_desks(desks, current_focus_count=1)
 
     applied = manager.ledger.slots[dst].occupied and manager.ledger.slots[dst].username == MOVER
@@ -220,18 +214,15 @@ async def test_full_rescan_converges_an_in_viewport_move(phase, src, dst):
 
     # 旧位子还渲染成占座（残留渲染），新位子是真实落座处
     desks = build_live_raw_desks_for({dst: True, src: True}, "full")
-    handler = manager.handler
+    handler = manager._panel.handler
     handler.element_finder.find_elements = MagicMock(return_value=desks)
     manager._seat_ui = FakeSeatUI(desks=desks)
     manager.inspect_occupant = AsyncMock(
         side_effect=lambda desk, side, seat_number: MOVER if seat_number == dst else None
     )
 
-    with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
-    ) as cmd_mgr:
-        notify = AsyncMock()
-        cmd_mgr.return_value.notify_focus_count_change = notify
+    notify = AsyncMock()
+    with patch.object(manager, "_on_focus_change", notify):
         changed = await manager.expand_rescan_and_collapse(1)
 
     assert manager.ledger.gate_state.last_rescan_ok is True
@@ -256,7 +247,7 @@ async def test_anchor_losing_move_is_still_detected_in_an_unreadable_phase():
     """
     handler = make_handler()
     handler.config.data["room_owner"] = "Joyer"  # 「群主」身份文字要归一成房主昵称本人
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[1] = SeatSlot(1, occupied=True, username="Joyer", label="群主", is_owner=True)
     manager.ledger.slots[2] = SeatSlot(seat_number=2, occupied=True, username=MOVER, label="2")
     manager.ledger.gate_state.last_focus_count = 2
@@ -297,11 +288,11 @@ async def test_take_seat_command_clicks_the_requested_seat_in_every_phase(seat_n
     # 目标位子在屏上但是空的，房主原本坐在另一个位子上
     handler.driver.page_source = build_live_page_source({home: "群主"}, phase)
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     observation.ledger.gate_state.last_focus_count = 1
     observation.ledger.slots[home] = SeatSlot(home, occupied=True, username="Joyer", label="群主", is_owner=True)
     seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=seat_ui, observation=observation)
     handler.element_finder.wait_for_element_clickable = MagicMock(
         side_effect=lambda key, **kwargs: MagicMock() if key == "confirm_seat" else None
     )
@@ -325,7 +316,7 @@ async def test_seat_command_then_other_users_in_viewport_move_is_detected():
     视口同步会把快照改写成自己那份读数，不能把随后那次变更的判定资格一起改掉。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[1] = SeatSlot(1, occupied=True, username="Joyer", label="群主", is_owner=True)
     manager.ledger.slots[2] = SeatSlot(2, occupied=True, username=MOVER, label="2")
     manager.ledger.gate_state.last_focus_count = 2
@@ -343,14 +334,11 @@ async def test_seat_command_then_other_users_in_viewport_move_is_detected():
         side_effect=lambda desk, side, seat_number: MOVER if seat_number == 4 else None
     )
     desks = build_live_desk_wrappers_for(
-        manager.handler, {3: "群主", 2: True, 4: True}, "top"
+        manager._panel.handler, {3: "群主", 2: True, 4: True}, "top"
     )
     with patch.object(manager, "_request_full_scan", new_callable=AsyncMock) as scan:
         scan.return_value = True
-        with patch(
-            "ushareiplay.managers.command_manager.CommandManager.instance"
-        ) as cmd_mgr:
-            cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+        with patch.object(manager, "_on_focus_change", AsyncMock()):
             await manager.observe_visible_desks(desks, current_focus_count=2)
 
     detected = manager.ledger.slots[4].username == MOVER or scan.await_count >= 1
@@ -388,11 +376,9 @@ async def test_persistent_residual_render_does_not_flip_the_ledger_back():
     assert scan.await_count == 1
     raw = build_live_raw_desks_for({11: True, 12: True}, "full")
     handler.element_finder.find_elements = MagicMock(return_value=raw)
-    manager._seat_ui = FakeSeatUI(desks=raw)
-    with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
-    ) as cmd_mgr:
-        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+    from tests.seat_support import _SeatPanelWithCustomUI
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=raw), panel_reader=manager._panel.panel_reader)
+    with patch.object(manager, "_on_focus_change", AsyncMock()):
         await manager.expand_rescan_and_collapse(1)
     assert manager.ledger.slots[11].username == MOVER
     assert manager.ledger.slots[12].occupied is False
@@ -431,10 +417,7 @@ async def test_new_occupant_sitting_on_a_known_residual_seat_is_not_lost():
     )
 
     desks = build_live_desk_wrappers_for(handler, {11: True, 12: True}, "bottom")
-    with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
-    ) as cmd_mgr:
-        cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
+    with patch.object(manager, "_on_focus_change", AsyncMock()):
         await manager.observe_visible_desks(desks, current_focus_count=2)
 
     assert manager.ledger.slots[12].username == newcomer, "残留记录把新落座的人吞掉了"
@@ -460,11 +443,8 @@ async def test_person_moving_back_onto_a_recorded_residual_seat_is_not_erased():
 
     # 11 号已重绘成空座，人坐回了 12 号
     desks = build_live_desk_wrappers_for(handler, {12: True}, "bottom")
-    with patch(
-        "ushareiplay.managers.command_manager.CommandManager.instance"
-    ) as cmd_mgr:
-        notify = AsyncMock()
-        cmd_mgr.return_value.notify_focus_count_change = notify
+    notify = AsyncMock()
+    with patch.object(manager, "_on_focus_change", notify):
         changed = await manager.observe_visible_desks(desks, current_focus_count=1)
 
     assert manager.ledger.gate_state.residual_seats.get(12) is None, "残留判定该在别处没位置时当场作废"

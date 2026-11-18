@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.seat_manager import SeatManager
+from tests.seat_support import build_seat_service
 
 
 class _FakeSeatUI:
@@ -22,16 +22,8 @@ class _FakeSeatUI:
         return True
 
 
-@pytest.fixture(autouse=True)
-def _cleanup_seat_manager():
-    SeatManager.reset_instance()
-    yield
-    SeatManager.reset_instance()
-
-
 def _manager_with_fakes(ui=None):
-    SeatManager.reset_instance()
-    return SeatManager.initialize(seat_ui=ui or _FakeSeatUI(expanded=False))
+    return build_seat_service(seat_ui=ui or _FakeSeatUI(expanded=False))
 
 
 @pytest.mark.asyncio
@@ -54,19 +46,12 @@ async def test_prepare_for_chat_scan_collapses_only_when_seats_are_expanded():
 # 只增不减：这里原本钉的「转发」已无对象可钉。
 
 
-def test_seat_manager_wires_every_injected_collaborator_onto_one_subsystem():
-    """面板只有 `subsystem.panel` 一个入口（#402 之后不再有第二个面板对象）。
-
-    #402 之前这里断言五个单例对象互相引用同一个 `seat_ui`；四个内部单例删掉后，
-    活下来的等价命题是：显式注入的 `seat_ui` **就是**子系统暴露的面板入口，
-    因此「共享同一份面板依赖」这件事对调用方仍然成立且可断言。
-    八个公开接口的返回形状由 test_seat_subsystem_consolidation.py 对真实实现断言。
-    """
+def test_seat_manager_owns_a_single_seat_panel():
     handler = object()
     seat_ui = _FakeSeatUI(expanded=False)
-    manager = SeatManager.initialize(handler, seat_ui=seat_ui)
+    service = build_seat_service(handler, seat_ui=seat_ui)
 
-    assert manager.subsystem.panel is seat_ui
+    assert service._panel._seat_ui is seat_ui
 
 
 @pytest.mark.asyncio
@@ -76,7 +61,7 @@ async def test_message_manager_backfills_inside_the_seat_chat_scan_session(monke
     收起面板与滚动聊天历史是同一段屏幕动作：会话外收起会被持锁流程随后的
     展开顶掉，会话里才能保证「扫描期间面板是收起的」。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     calls = []
 
@@ -94,7 +79,7 @@ async def test_message_manager_backfills_inside_the_seat_chat_scan_session(monke
             calls.append("scroll")
             return None, None, []
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     manager._handler = SimpleNamespace(
         logger=SimpleNamespace(error=lambda message: None, critical=lambda message: None),
         key_actions=SimpleNamespace(switch_to_app=lambda: True),

@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.runtime_services import RuntimeInputPipeline, route_queue_text
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, route_queue_text
 
 
 class _Logger:
@@ -61,17 +61,19 @@ class _TimerManager:
 
 
 
-def _pipeline(items=(), timer_manager=None, dump_artifacts=None, owner="Joyer"):
+def _pipeline(items=(), timer_manager=None, dump_artifacts=None, owner="Joyer", message_queue=None):
     input_queue = queue.Queue()
     for item in items:
         input_queue.put(item)
     screen = []
     logger = _Logger()
+    mq = message_queue or MessageQueue()
     pipeline = RuntimeInputPipeline(
         input_queue=input_queue,
         room_owner_provider=lambda: owner,
         logger=logger,
         send_screen_message=screen.append,
+        message_queue=mq,
         timer_manager=timer_manager,
         dump_artifacts=dump_artifacts,
     )
@@ -86,47 +88,47 @@ async def _drain(items=(), **kwargs):
 
 @pytest.mark.asyncio
 async def test_command_items_are_queued_with_their_source():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    await _drain([{"content": ":play 晴天", "source": "console", "nickname": "Alice"}])
+    await _drain([{"content": ":play 晴天", "source": "console", "nickname": "Alice"}], message_queue=mq)
 
-    queued = list((await MessageQueue.instance().get_all_messages()).values())
+    queued = list((await mq.get_all_messages()).values())
     assert [(m.content, m.nickname, m.source) for m in queued] == [(":play 晴天", "Alice", "console")]
 
 
 @pytest.mark.asyncio
 async def test_console_nickname_defaults_to_the_room_owner():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
     await _drain([
         {"content": ":play 晴天", "source": "console", "nickname": "Console"},
         {"content": ":skip", "source": "console"},
-    ])
+    ], message_queue=mq)
 
-    queued = list((await MessageQueue.instance().get_all_messages()).values())
+    queued = list((await mq.get_all_messages()).values())
     assert [m.nickname for m in queued] == ["Joyer", "Joyer"]
 
 
 @pytest.mark.asyncio
 async def test_tuple_and_bare_string_items_are_accepted():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    await _drain([(":play 晴天", "console"), ":skip"])
+    await _drain([(":play 晴天", "console"), ":skip"], message_queue=mq)
 
-    queued = list((await MessageQueue.instance().get_all_messages()).values())
+    queued = list((await mq.get_all_messages()).values())
     assert [m.content for m in queued] == [":play 晴天", ":skip"]
     assert queued[1].source == "console"
 
 
 @pytest.mark.asyncio
 async def test_plain_chat_goes_to_the_screen_instead_of_the_queue():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
     # console / agent_spool 属于人工来源，公屏文案带 [人工] 标记
-    _pipeline_out, screen, _logger = await _drain([{"content": "大家好", "source": "console"}])
+    _pipeline_out, screen, _logger = await _drain([{"content": "大家好", "source": "console"}], message_queue=mq)
 
     assert screen == ["[人工] 大家好"]
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await mq.get_all_messages() == {}
 
 
 @pytest.mark.asyncio
@@ -149,33 +151,33 @@ async def test_plain_chat_carrying_the_inherited_silent_flag_is_suppressed():
 
 @pytest.mark.asyncio
 async def test_slash_prefixed_items_are_silent_commands_not_plain_chat():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    _pipeline_out, screen, _logger = await _drain([{"content": "/say 悄悄话", "source": "console"}])
+    _pipeline_out, screen, _logger = await _drain([{"content": "/say 悄悄话", "source": "console"}], message_queue=mq)
 
     assert screen == []
-    queued = list((await MessageQueue.instance().get_all_messages()).values())
+    queued = list((await mq.get_all_messages()).values())
     assert [(m.content, m.silent) for m in queued] == [("/say 悄悄话", True)]
 
 
 @pytest.mark.asyncio
 async def test_semicolon_separated_items_are_split_into_separate_messages():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    await _drain([{"content": ":play 晴天;:skip", "source": "console", "nickname": "Alice"}])
+    await _drain([{"content": ":play 晴天;:skip", "source": "console", "nickname": "Alice"}], message_queue=mq)
 
-    queued = list((await MessageQueue.instance().get_all_messages()).values())
+    queued = list((await mq.get_all_messages()).values())
     assert [m.content for m in queued] == [":play 晴天", ":skip"]
 
 
 @pytest.mark.asyncio
 async def test_blank_items_are_ignored():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    _pipeline_out, screen, _logger = await _drain([{"content": "   ", "source": "console"}])
+    _pipeline_out, screen, _logger = await _drain([{"content": "   ", "source": "console"}], message_queue=mq)
 
     assert screen == []
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await mq.get_all_messages() == {}
 
 
 # --------------------------------------------------------------------------
@@ -184,12 +186,12 @@ async def test_blank_items_are_ignored():
 
 @pytest.mark.asyncio
 async def test_stop_toggles_paused_state_without_queueing_anything():
-    await MessageQueue.instance().clear_queue()
+    mq = MessageQueue()
 
-    pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}])
+    pipeline, _screen, _logger = await _drain([{"content": "!stop", "source": "console"}], message_queue=mq)
 
     assert pipeline.paused is True
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await mq.get_all_messages() == {}
 
     # 再次输入 !stop 切换为恢复运行 (toggle)
     pipeline.input_queue.put({"content": "!stop", "source": "console"})

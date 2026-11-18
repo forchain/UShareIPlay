@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from ushareiplay.core.config_view import ConfigSectionView
-from ushareiplay.core.ui.element_finder import ElementFinder
+from ushareiplay.modules.shared.config import ConfigSectionView
+from ushareiplay.adapters.outbound.appium.ui.element_finder import ElementFinder
 
 
 class _Owner:
@@ -44,7 +44,7 @@ def test_wait_for_element_disappear_success(monkeypatch):
         def until(self, ec):
             return True
 
-    monkeypatch.setattr("ushareiplay.core.ui.element_finder.WebDriverWait", FakeUntil)
+    monkeypatch.setattr("ushareiplay.adapters.outbound.appium.ui.element_finder.WebDriverWait", FakeUntil)
 
     assert finder.wait_for_element_disappear("child", timeout=1.0) is True
 
@@ -62,7 +62,7 @@ def test_wait_for_element_disappear_timeout(monkeypatch):
         def until(self, ec):
             raise TimeoutException("element still visible")
 
-    monkeypatch.setattr("ushareiplay.core.ui.element_finder.WebDriverWait", FakeUntilTimeout)
+    monkeypatch.setattr("ushareiplay.adapters.outbound.appium.ui.element_finder.WebDriverWait", FakeUntilTimeout)
 
     assert finder.wait_for_element_disappear("child", timeout=1.0) is False
 

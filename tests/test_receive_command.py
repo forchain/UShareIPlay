@@ -1,11 +1,12 @@
 import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 
-from ushareiplay.commands.receive import ReceiveCommand
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.chat.receive import ReceiveCommand
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from tests.room_support import make_hooks
 
 
 @pytest_asyncio.fixture
@@ -18,7 +19,7 @@ async def db_init():
 
 @pytest.mark.asyncio
 async def test_receive_command_operations(db_init):
-    mock_controller = MagicMock()
+    mock_controller = MagicMock(user_event_hooks=make_hooks())
     cmd = ReceiveCommand(mock_controller)
 
     # Add command
@@ -42,15 +43,12 @@ async def test_receive_command_operations(db_init):
 
 @pytest.mark.asyncio
 async def test_receive_command_trigger(db_init):
-    mock_controller = MagicMock()
+    mq = MessageQueue()
+    mock_controller = MagicMock(user_event_hooks=make_hooks(message_queue=mq))
     cmd = ReceiveCommand(mock_controller)
 
     msg = MessageInfo(content=':receive add ":say Thanks!"', nickname="Bob")
     await cmd.do_process(msg, ["add", ":say Thanks!"])
-
-    # Clear message queue before trigger
-    mq = MessageQueue.instance()
-    await mq.clear_queue()
 
     # Trigger gift receive event for Bob
     await cmd.user_gift_receive("Bob")

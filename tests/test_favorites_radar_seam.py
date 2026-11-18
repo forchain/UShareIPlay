@@ -16,12 +16,12 @@ from types import SimpleNamespace
 import pytest
 from selenium.common.exceptions import NoSuchElementException
 
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
     PlaybackVariant,
 )
-from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
 QUEUE_TEXT = "喜帖街 - 谢安琪\n富士山下 - 陈奕迅"
 

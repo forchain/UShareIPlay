@@ -20,14 +20,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.models import User
-from ushareiplay.state import online_list_scraper as scraper_module
-from ushareiplay.state.online_list_scraper import OnlineListScraper
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.adapters.outbound.appium.soul import online_list_source as scraper_module
+from ushareiplay.adapters.outbound.appium.soul.online_list_source import SoulOnlineListSource
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.models import User
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+from ushareiplay.modules.room.use_cases import OnlineDrawer, PresenceTracker
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
+from tests.room_support import configured_room_state
 
 
 class _ReentrantController:
@@ -102,30 +102,24 @@ class _RecordingLogger:
 
 
 def _wire(driver, *, controller=None, room_count=None):
-    """按组合根的方式接线：抽屉管理器拿到驱动与 handler，scraper 拿到同一个 handler。
-
-    两者共用一个 handler 是有意义的：这样 `refresh_online_users` 持有的 UI 独占锁和
-    `drawer_session` 持有的是同一把，生产里它们本来就是同一个 controller。
-    """
+    """按组合根的方式接线：抽屉管理器、房间状态、在线集合与 UI 会话都显式注入。"""
     logger = _RecordingLogger()
     controller = controller if controller is not None else _ReentrantController()
-    handler = SimpleNamespace(logger=logger, controller=controller)
+    drawer = OnlineDrawer(drawer=driver, ui_session=controller.ui_session)
 
-    OnlineListScraper.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    RoomState.reset_instance()
-    PresenceTracker.reset_instance()
-
-    scraper = OnlineListScraper.initialize(handler)
-    OnlineDrawerManager.initialize(handler, driver=driver)
-
-    room = RoomState.initialize()
-    room._logger = logger
+    room = configured_room_state(logger=logger)
     if room_count is not None:
         room.user_count = room_count
 
-    presence = PresenceTracker.initialize()
-    presence._logger = logger
+    presence = PresenceTracker(logger=logger)
+    scraper = SoulOnlineListSource(
+        drawer=drawer,
+        users=TortoiseUserRepository(),
+        presence=presence,
+        room_state=room,
+        ui_session=controller.ui_session,
+        logger=logger,
+    )
 
     return SimpleNamespace(
         scraper=scraper,

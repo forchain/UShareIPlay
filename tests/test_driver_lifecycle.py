@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from ushareiplay.core.driver_lifecycle import DriverLifecycle
+from ushareiplay.adapters.outbound.appium.driver_lifecycle import DriverLifecycle
 
 
 class _RecordingDriver:

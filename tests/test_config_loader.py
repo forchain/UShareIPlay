@@ -3,7 +3,7 @@ import tempfile
 import yaml
 
 import pytest
-from ushareiplay.core.config_loader import ConfigLoader, _deep_merge
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader, _deep_merge
 
 
 def test_deep_merge_preserves_other_commands_when_overriding_single_command():

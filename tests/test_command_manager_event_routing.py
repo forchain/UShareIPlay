@@ -23,17 +23,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.managers.command_manager import CommandManager
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.user_event_hooks import UserEventHooks
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+from tests.room_support import make_hooks
 
-from ushareiplay.commands.enter import EnterCommand
+from ushareiplay.adapters.inbound.chat.enter import EnterCommand
 
-ReturnCommand = importlib.import_module("ushareiplay.commands.return").ReturnCommand
+ReturnCommand = importlib.import_module("ushareiplay.adapters.inbound.chat.return").ReturnCommand
 
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest_asyncio.fixture
@@ -44,19 +43,31 @@ async def db_init():
     await manager.close()
 
 
+@pytest.fixture
+def queue():
+    return MessageQueue()
+
+
+@pytest.fixture
+def hooks(db_init, queue):
+    return make_hooks(message_queue=queue)
+
+
 def _logger_stub():
     return SimpleNamespace(
         info=MagicMock(), warning=MagicMock(), error=MagicMock(), debug=MagicMock()
     )
 
 
-async def _drain():
-    return list((await MessageQueue.instance().get_all_messages()).values())
+async def _drain(queue: MessageQueue):
+    return list((await queue.get_all_messages()).values())
 
 
-def make_controller():
+def make_controller(hooks):
     handler = SimpleNamespace(logger=None, log_error=lambda *a, **k: None)
-    return SimpleNamespace(soul_handler=handler, music_handler=handler)
+    return SimpleNamespace(
+        soul_handler=handler, music_handler=handler, user_event_hooks=hooks
+    )
 
 
 # --------------------------------------------------------------------------
@@ -65,65 +76,61 @@ def make_controller():
 
 
 @pytest.mark.asyncio
-async def test_focus_change_with_changed_users_none_fires_every_configured_user(db_init):
+async def test_focus_change_with_changed_users_none_fires_every_configured_user(db_init, hooks, queue):
     """`changed_users=None` = 触发者未知 → 所有人已配的联动命令都发。"""
     for who, cmd in (("Alice", ":say Alice"), ("Bob", ":say Bob")):
-        await UserEventHooks.instance().execute_crud(
+        await hooks.execute_crud(
             "focus", who, f':focus add "{cmd}"'
         )
 
-    cm = CommandManager.instance()
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=None)
 
-    assert sorted(m.content for m in await _drain()) == [":say Alice", ":say Bob"]
+    assert sorted(m.content for m in await _drain(queue)) == [":say Alice", ":say Bob"]
 
 
 @pytest.mark.asyncio
-async def test_focus_change_with_empty_changed_users_fires_nobody(db_init):
+async def test_focus_change_with_empty_changed_users_fires_nobody(db_init, hooks, queue):
     """`changed_users=[]` = 本次没有用户变更 → 一条都不发（与 None 语义相反）。"""
-    await UserEventHooks.instance().execute_crud(
+    await hooks.execute_crud(
         "focus", "Alice", ':focus add ":say Alice"'
     )
 
-    cm = CommandManager.instance()
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=[])
 
-    assert await _drain() == []
+    assert await _drain(queue) == []
 
 
 @pytest.mark.asyncio
-async def test_focus_change_isolates_to_the_named_users(db_init):
+async def test_focus_change_isolates_to_the_named_users(db_init, hooks, queue):
     """给了名单就只发名单里这些人的。"""
     for who in ("Alice", "Bob", "Carol"):
-        await UserEventHooks.instance().execute_crud(
+        await hooks.execute_crud(
             "focus", who, f':focus add ":say {who}"'
         )
 
-    cm = CommandManager.instance()
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=["Alice", "Carol"])
 
-    assert sorted(m.content for m in await _drain()) == [":say Alice", ":say Carol"]
+    assert sorted(m.content for m in await _drain(queue)) == [":say Alice", ":say Carol"]
 
 
 @pytest.mark.asyncio
-async def test_focus_change_carries_seat_info_into_the_macro_context(db_init):
+async def test_focus_change_carries_seat_info_into_the_macro_context(db_init, hooks, queue):
     """座位观测必须进 `ctx`，否则 `{seat}` / `{action}` 展开成空串。"""
-    await UserEventHooks.instance().execute_crud(
+    await hooks.execute_crud(
         "focus", "Alice", ':focus add ":say {username} 坐到了 {seat} 号座位 ({action})"'
     )
 
-    cm = CommandManager.instance()
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(
         1,
@@ -132,7 +139,7 @@ async def test_focus_change_carries_seat_info_into_the_macro_context(db_init):
         seat_info={"Alice": {"seat_number": 3, "action": "坐下"}},
     )
 
-    assert [m.content for m in await _drain()] == [":say Alice 坐到了 3 号座位 (坐下)"]
+    assert [m.content for m in await _drain(queue)] == [":say Alice 坐到了 3 号座位 (坐下)"]
 
 
 # --------------------------------------------------------------------------
@@ -149,25 +156,20 @@ async def test_focus_change_carries_seat_info_into_the_macro_context(db_init):
     ],
 )
 async def test_enter_and_return_fire_hooks_and_check_seats_once(
-    db_init, notify_name, command_cls, raw
+    db_init, hooks, queue, notify_name, command_cls, raw
 ):
     """一次事件 = 钩子入队一次 + 座位复核一次，不多不少。"""
-    await command_cls(make_controller()).do_process(
+    await command_cls(make_controller(hooks)).do_process(
         MessageInfo(content=raw, nickname="Bob"), []
     )
 
-    cm = CommandManager.instance()
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
 
-    SeatManager.reset_instance()
-    SeatManager.initialize()
+    seat_check = AsyncMock()
+    cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=seat_check))
 
-    await MessageQueue.instance().clear_queue()
-    with patch(
-        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
-        new_callable=AsyncMock,
-    ) as seat_check:
-        await getattr(cm, notify_name)("Bob")
+    await getattr(cm, notify_name)("Bob")
 
-    assert [m.content for m in await _drain()] == [":play 稻香"]
+    assert [m.content for m in await _drain(queue)] == [":play 稻香"]
     seat_check.assert_awaited_once_with("Bob")

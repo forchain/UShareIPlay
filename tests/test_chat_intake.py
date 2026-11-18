@@ -1,6 +1,6 @@
 import pytest
 
-from ushareiplay.core.chat_intake import (
+from ushareiplay.adapters.inbound.runtime.chat_intake import (
     QUEUE_COMMAND_PREFIX_CHARS,
     ChatIntakeKind,
     ChatIntakeResult,
@@ -502,12 +502,12 @@ class TestQueueCommandPrefixChars:
 
 class TestMessageSourceFormatting:
     def test_format_ai_message_adds_prefix(self):
-        from ushareiplay.core.chat_intake import format_ai_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_ai_message
 
         assert format_ai_message("你好呀") == "[智能] 你好呀"
 
     def test_format_ai_message_preserves_existing_prefix(self):
-        from ushareiplay.core.chat_intake import format_ai_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_ai_message
 
         assert format_ai_message("[智能] 你好呀") == "[智能] 你好呀"
         assert format_ai_message("【智能】你好呀") == "【智能】你好呀"
@@ -515,18 +515,18 @@ class TestMessageSourceFormatting:
         assert format_ai_message("【人工】你好呀") == "【人工】你好呀"
 
     def test_format_ai_message_empty(self):
-        from ushareiplay.core.chat_intake import format_ai_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_ai_message
 
         assert format_ai_message("") == ""
         assert format_ai_message(None) == ""
 
     def test_format_manual_message_adds_prefix(self):
-        from ushareiplay.core.chat_intake import format_manual_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_manual_message
 
         assert format_manual_message("大家好") == "[人工] 大家好"
 
     def test_format_manual_message_preserves_existing_prefix(self):
-        from ushareiplay.core.chat_intake import format_manual_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_manual_message
 
         assert format_manual_message("[人工] 大家好") == "[人工] 大家好"
         assert format_manual_message("【人工】大家好") == "【人工】大家好"
@@ -534,13 +534,13 @@ class TestMessageSourceFormatting:
         assert format_manual_message("【智能】大家好") == "【智能】大家好"
 
     def test_format_manual_message_empty(self):
-        from ushareiplay.core.chat_intake import format_manual_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_manual_message
 
         assert format_manual_message("") == ""
         assert format_manual_message(None) == ""
 
     def test_is_manual_operator(self):
-        from ushareiplay.core.chat_intake import is_manual_operator
+        from ushareiplay.adapters.inbound.runtime.chat_intake import is_manual_operator
 
         assert is_manual_operator("Console") is True
         assert is_manual_operator("Alice", source="console") is True
@@ -650,7 +650,7 @@ class TestClassifyQuotedMessage:
 
 class TestFormatQuotedMessage:
     def test_wrapped_sender_line_keeps_its_wrapper(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert (
             format_quoted_message("souler[Bob]说：哈哈", "Alice：今天天气不错")
@@ -658,7 +658,7 @@ class TestFormatQuotedMessage:
         )
 
     def test_sender_line_separator_is_preserved(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert (
             format_quoted_message("souler[Bob]说:哈哈", "Alice：好")
@@ -666,23 +666,23 @@ class TestFormatQuotedMessage:
         )
 
     def test_unadorned_sender_line_is_prefixed_with_the_quote(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert format_quoted_message("哈哈", "Alice：好") == "「Alice：好」 哈哈"
 
     def test_empty_quote_returns_the_sender_line_unchanged(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert format_quoted_message("souler[Bob]说：哈哈", "") == "souler[Bob]说：哈哈"
         assert format_quoted_message("souler[Bob]说：哈哈", "   ") == "souler[Bob]说：哈哈"
 
     def test_empty_sender_body_has_no_trailing_space(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert format_quoted_message("souler[Bob]说：", "Alice：好") == "souler[Bob]说：「Alice：好」"
 
     def test_brackets_inside_the_quote_are_stripped(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert (
             format_quoted_message("souler[Bob]说：哈哈", "Alice：「嵌套」")
@@ -690,7 +690,7 @@ class TestFormatQuotedMessage:
         )
 
     def test_quote_whitespace_is_collapsed(self):
-        from ushareiplay.core.chat_intake import format_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
 
         assert (
             format_quoted_message("souler[Bob]说：哈哈", "Alice：\n今天   天气")
@@ -698,7 +698,7 @@ class TestFormatQuotedMessage:
         )
 
     def test_composed_message_round_trips_through_stripping(self):
-        from ushareiplay.core.chat_intake import (
+        from ushareiplay.adapters.inbound.runtime.chat_intake import (
             format_quoted_message,
             strip_quoted_segment,
         )
@@ -710,7 +710,7 @@ class TestFormatQuotedMessage:
 
 class TestSplitQuotedMessage:
     def test_line_without_quote_is_returned_unchanged(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("souler[Bob]说：哈哈") == ("souler[Bob]说：哈哈", "")
         assert split_quoted_message("souler[Bob]说：hello  world") == (
@@ -720,7 +720,7 @@ class TestSplitQuotedMessage:
         assert split_quoted_message("") == ("", "")
 
     def test_quote_after_the_wrapper_is_split_off_with_its_space(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("souler[Bob]说：「Alice：今天天气不错」 哈哈") == (
             "souler[Bob]说：哈哈",
@@ -728,7 +728,7 @@ class TestSplitQuotedMessage:
         )
 
     def test_quote_only_line_leaves_the_wrapper(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("souler[Bob]说：「Alice：好」") == (
             "souler[Bob]说：",
@@ -736,12 +736,12 @@ class TestSplitQuotedMessage:
         )
 
     def test_unadorned_quote_is_split_off_too(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("「Alice：好」 哈哈") == ("哈哈", "Alice：好")
 
     def test_brackets_in_the_senders_own_body_are_not_a_quote(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("souler[Bob]说：我发了个「笑脸」 哈哈") == (
             "souler[Bob]说：我发了个「笑脸」 哈哈",
@@ -749,7 +749,7 @@ class TestSplitQuotedMessage:
         )
 
     def test_only_the_leading_segment_is_the_quote(self):
-        from ushareiplay.core.chat_intake import split_quoted_message
+        from ushareiplay.adapters.inbound.runtime.chat_intake import split_quoted_message
 
         assert split_quoted_message("souler[Bob]说：「Alice：好」 他还说「Bob：坏」") == (
             "souler[Bob]说：他还说「Bob：坏」",
@@ -757,7 +757,7 @@ class TestSplitQuotedMessage:
         )
 
     def test_strip_quoted_segment_returns_the_senders_own_line(self):
-        from ushareiplay.core.chat_intake import strip_quoted_segment
+        from ushareiplay.adapters.inbound.runtime.chat_intake import strip_quoted_segment
 
         assert (
             strip_quoted_segment("souler[Bob]说：「Alice：今天天气不错」 哈哈")

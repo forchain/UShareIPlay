@@ -109,3 +109,24 @@ XML 节点是不是本选择器指向的元素。四个模块里各写一遍的�
   这正是「无声的本地覆盖」这一类问题的根治代价。
 - **视图不做缓存**：每次 `.element()` 都回到底层映射取字符串。配置体量下开销可忽略，
   换来的是热重载后无需任何缓存失效逻辑。
+
+## 修订记录（Amendments）
+
+### 2026-11-18 —— 模块位置按 ADR-0013 迁移
+
+spec #539 的六边形架构迁移（首个切片 #540）只调整本 ADR 决策 1 / 2 中两个类的**位置**，
+不改变其语义：
+
+- `ConfigView` / `ConfigSectionView` / `ConfigError` 及 `MissingConfigSection`、
+  `MissingConfigKey`、`MissingElementKey`、`REQUIRED_ELEMENTS` 从
+  `src/ushareiplay/core/config_view.py` 迁至 `src/ushareiplay/modules/shared/config.py`，
+  保持纯数据、不导入 AppiumBy。
+- `Locator` 从同一文件迁至 `src/ushareiplay/adapters/outbound/appium/locator.py`；
+  选择器策略属于 Appium 技术细节。因此 `ConfigSectionView.element()` /
+  `.maybe_element()` 现在只返回配置里的选择器**字符串**，需要定位的调用方从 Appium
+  适配器导入 `Locator` 并调用 `Locator.from_value(...)`。
+- 决策 1~7 的其余保证（唯一读入口、视图包裹映射与热重载身份、启动期必需元素校验、
+  `config.local.yaml` 拒绝覆盖元素、错误文案）逐字不变。
+
+详见 [ADR-0013](0013-hexagonal-module-layout-and-constructor-injection.md) 与 spec #539。
+

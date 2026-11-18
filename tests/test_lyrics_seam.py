@@ -14,29 +14,25 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.commands.lyrics import LyricsCommand
-from ushareiplay.core.config_view import ConfigView
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.driver import MusicUIDriverPort
+from ushareiplay.adapters.inbound.chat.lyrics import LyricsCommand
+from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.playback.ports import MusicUIDriverPort
+from ushareiplay.modules.playback.use_cases import QueryLyrics
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
 
 def _build_manager(*, driver=None, playback_info=None):
-    """真实 MusicManager + 内存驱动替身。
-
-    `playback_info` 是 `get_playback_info()` 的替身：MediaSession 的 dumpsys 解析
-    与歌词接缝无关，歌词只需要「当前这首歌叫什么」这一个事实。
-    """
+    """真实 QueryLyrics 用例 + 内存驱动替身。"""
     driver = driver or InMemoryMusicUIDriver()
-    manager = MusicManager.initialize(ui_driver=driver)
-    manager.music_handler = SimpleNamespace(
-        logger=MagicMock(),
-        play_mode_key="unknown",
-        note_play_mode=lambda key, reason: None,
-    )
     if playback_info is not None:
-        manager.get_playback_info = lambda: playback_info
-    return SimpleNamespace(manager=manager, driver=driver)
+        driver.playback_info = playback_info
+        driver.no_music = False
+        media = SimpleNamespace(get_playback_info=lambda: playback_info)
+    else:
+        media = driver
+    use_case = QueryLyrics(ui_driver=driver, media_session=media)
+    manager = SimpleNamespace(query_lyrics=use_case.execute, _use_case=use_case)
+    return SimpleNamespace(manager=manager, driver=driver, use_case=use_case)
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +164,10 @@ def test_query_lyrics_without_a_driver_raises_an_assembly_error(
 
     #421 把生产适配器接到组合根之后，这条路径才第一次被真正走到。
     """
-    manager = MusicManager.initialize()
+    use_case = QueryLyrics(ui_driver=None, media_session=None)
 
     with pytest.raises(RuntimeError, match="MusicUIDriverPort"):
-        manager.query_lyrics("夜曲")
+        use_case.execute("夜曲")
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +179,12 @@ def _make_command(*, lyrics="第一行\n第二行\n第三行", config=None):
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()  # soul handler
     command.music_handler = MagicMock()  # 命令层不该再碰它
+    query_lyrics = MagicMock(return_value={"lyrics": lyrics})
     command.controller = SimpleNamespace(
-        config=ConfigView(config if config is not None else {})
+        config=ConfigView(config if config is not None else {}),
+        query_lyrics=SimpleNamespace(execute=query_lyrics),
     )
-    command._music_manager = MagicMock()
-    command._music_manager.query_lyrics.return_value = {"lyrics": lyrics}
+    command._music_manager = SimpleNamespace(query_lyrics=query_lyrics)
     command._message_dispatch = MagicMock()
     return command
 
@@ -280,9 +277,9 @@ async def test_do_process_sends_each_group_to_the_chat_screen(initialized_test_s
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
     command.controller = SimpleNamespace(
-        config=ConfigView({"lyrics": {"line_max_width": 16}})
+        config=ConfigView({"lyrics": {"line_max_width": 16}}),
+        query_lyrics=engine.use_case,
     )
-    command._music_manager = engine.manager
     command._message_dispatch = MagicMock()
 
     result = await command.do_process(None, ["稻香", "周杰伦"])
@@ -300,8 +297,10 @@ async def test_do_process_parses_a_leading_integer_as_the_group_count(
     engine = _build_manager(driver=InMemoryMusicUIDriver(lyrics={"稻香": "\n".join(["0123456789"] * 6)}))
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config=ConfigView({}))
-    command._music_manager = engine.manager
+    command.controller = SimpleNamespace(
+        config=ConfigView({}),
+        query_lyrics=engine.use_case,
+    )
     command._message_dispatch = MagicMock()
 
     result = await command.do_process(None, ["2", "稻香"])
@@ -316,18 +315,22 @@ async def test_do_process_asks_for_the_current_song_without_parameters(
     initialized_test_singletons,
 ):
     """`:lyrics` 无参数：查询词为空，由管理器兜底成当前曲目。"""
-    engine = _build_manager(driver=InMemoryMusicUIDriver())
+    engine = _build_manager(
+        driver=InMemoryMusicUIDriver(),
+        playback_info={
+            "song": "夜曲",
+            "singer": "周杰伦",
+            "album": "十一月的萧邦",
+            "state": "Playing",
+        },
+    )
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config=ConfigView({}))
-    command._music_manager = engine.manager
+    command.controller = SimpleNamespace(
+        config=ConfigView({}),
+        query_lyrics=engine.use_case,
+    )
     command._message_dispatch = MagicMock()
-    engine.manager.get_playback_info = lambda: {
-        "song": "夜曲",
-        "singer": "周杰伦",
-        "album": "十一月的萧邦",
-        "state": "Playing",
-    }
 
     await command.do_process(None, [])
 
@@ -339,8 +342,10 @@ async def test_do_process_surfaces_the_manager_error_to_the_room(initialized_tes
     engine = _build_manager(driver=InMemoryMusicUIDriver(not_found_lyrics=True))
     command = LyricsCommand.__new__(LyricsCommand)
     command.handler = MagicMock()
-    command.controller = SimpleNamespace(config=ConfigView({}))
-    command._music_manager = engine.manager
+    command.controller = SimpleNamespace(
+        config=ConfigView({}),
+        query_lyrics=engine.use_case,
+    )
     command._message_dispatch = MagicMock()
 
     result = await command.do_process(None, ["不存在的歌"])

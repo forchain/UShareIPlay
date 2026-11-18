@@ -11,8 +11,7 @@
 
 import pytest
 
-from ushareiplay.managers.online_drawer import OnlineDrawerManager
-from ushareiplay.managers.user_manager import UserManager
+from ushareiplay.modules.room.use_cases import OnlineDrawer, UserProfileActions
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -35,24 +34,15 @@ class _Handler:
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
     yield
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
 
 
 def _wire(*, members=("小明",), name_resolver=None, **driver_kwargs):
-    """装好抽屉会话与 `UserManager`，把屏幕交给内存替身。"""
+    """装好抽屉用例与 `UserProfileActions`，把屏幕交给内存替身。"""
     driver = InMemoryOnlineDrawerDriver(members=list(members), **driver_kwargs)
-    # 单例只允许 initialize 一次（ADR-0009）：同一个测试里重装之前必须先 reset。
-    UserManager.reset_instance()
-    OnlineDrawerManager.reset_instance()
-    OnlineDrawerManager.initialize(
-        handler=_Handler(), driver=driver, name_resolver=name_resolver
-    )
     handler = _Handler()
-    manager = UserManager.initialize(handler)
+    drawer = OnlineDrawer(drawer=driver, name_resolver=name_resolver, ui_session=None)
+    manager = UserProfileActions(drawer=drawer)
     return manager, driver, handler
 
 
@@ -65,7 +55,7 @@ async def test_private_message_walks_drawer_card_home_chat_and_returns():
     ok = await manager.send_private_message_to_user("Alice", "hello")
 
     assert ok is True
-    assert handler.switched_to_app == 1, "私聊前先把 App 切回前台"
+    assert driver.switch_to_app_calls == 1, "私聊前先把 App 切回前台"
     assert driver.typed_messages == ["hello"]
     assert driver.room_returns == ["private_room_entry"]
     assert journal.index("card:open:Alice") < journal.index("chat:home")

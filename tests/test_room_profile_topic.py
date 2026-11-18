@@ -22,21 +22,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+from tests.room_profile_support import RoomProfileManager
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
+from ushareiplay.modules.room.use_cases import RoomStateService
+
+# 模块内显式构造的公屏出口：这几个文件观察的就是这一条出口
+_DISPATCH = MessageDispatch()
 
 # 编辑层打开时抽屉里有的东西（`config.yaml` 的 elements key）。
 TOPIC_EDIT_LAYER = ('edit_topic_entry', 'edit_topic_input', 'edit_topic_confirm')
 # 确认提交之后回到主房间界面：聊天输入框出现。
 BACK_TO_ROOM = ('input_box_entry',)
-
-
-@pytest.fixture(autouse=True)
-def reset_room_profile_manager():
-    RoomProfileManager.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
 
 
 class _Handler:
@@ -46,11 +43,14 @@ class _Handler:
         self.logger = MagicMock()
         self.key_actions = MagicMock()
         self.key_actions.switch_to_app.return_value = can_switch
+        self.controller = SimpleNamespace(message_dispatch=_DISPATCH)
 
 
-def _topic_profile(driver=None, can_switch=True):
-    profile = RoomProfileManager.initialize(
-        handler=_Handler(can_switch), drawer_driver=driver
+def _topic_profile(driver=None, can_switch=True, room_state=None):
+    profile = RoomProfileManager(
+        handler=_Handler(can_switch),
+        drawer_driver=driver,
+        room_state=room_state if room_state is not None else RoomStateService(),
     )
     # 确认提交后的静默等待是真实 Appium 时序，离线测试直接跳过。
     profile.topic_settle_seconds = 0
@@ -317,7 +317,6 @@ def test_the_topic_path_never_sends_a_blind_back_press():
     )
 
     for label, driver in outcomes:
-        RoomProfileManager.reset_instance()
         profile = _topic_profile(driver)
         profile.set_topic("夜曲")
 
@@ -395,17 +394,13 @@ def test_the_cooldown_clock_advances_before_the_ui_write_even_when_it_throws():
 
 
 def test_a_guest_room_never_opens_the_drawer():
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
-    try:
-        driver = _driver()
-        profile = _topic_profile(driver)
-        profile.set_topic("夜曲")
+    driver = _driver()
+    profile = _topic_profile(driver, room_state=room_state)
+    profile.set_topic("夜曲")
 
-        result = profile.update_topic()
-    finally:
-        RoomState.reset_instance()
+    result = profile.update_topic()
 
     assert result == {"skipped": "guest_room"}
     assert driver.opened_entries == []
@@ -449,7 +444,7 @@ def test_the_status_reports_the_queued_topic_and_the_minutes_left():
 
 
 def _command_with_profile(profile):
-    from ushareiplay.commands.topic import TopicCommand
+    from ushareiplay.adapters.inbound.chat.topic import TopicCommand
 
     handler = _Handler()
     controller = SimpleNamespace(soul_handler=handler, music_handler=None)
@@ -459,7 +454,7 @@ def _command_with_profile(profile):
 
 
 def test_the_topic_command_keeps_the_reply_templates_it_always_had():
-    from ushareiplay.commands.topic import TopicCommand
+    from ushareiplay.adapters.inbound.chat.topic import TopicCommand
 
     assert TopicCommand.handler_attr == "soul_handler"
     assert TopicCommand.error_message == "Failed to process topic command"
@@ -511,7 +506,7 @@ async def test_the_topic_command_tick_delegates_to_the_room_profile_manager():
 
 async def test_the_topic_command_never_reaches_for_the_legacy_topic_manager():
     """`:topic` 的每一次调用都必须落在房间档案这一个模块上。"""
-    import ushareiplay.commands.topic as topic_module
+    import ushareiplay.adapters.inbound.chat.topic as topic_module
 
     source = open(topic_module.__file__, encoding="utf-8").read()
 
@@ -526,11 +521,9 @@ async def test_the_topic_command_never_reaches_for_the_legacy_topic_manager():
 
 def _screen_messages(monkeypatch):
     """记录写进公屏的每一条消息 —— 「有没有宣布成功」必须能被断言。"""
-    from ushareiplay.core.message_dispatch import MessageDispatch
-
     sent = []
     monkeypatch.setattr(
-        MessageDispatch.instance(),
+        _DISPATCH,
         "send_screen_message",
         lambda message, silent=False: sent.append(message),
     )
@@ -544,18 +537,14 @@ def test_a_guest_room_skip_does_not_bookkeep_the_topic_write(monkeypatch):
     一条根本没发生过的变更。这与公告那条纵切同一个次序（先写再记账）。
     """
     sent = _screen_messages(monkeypatch)
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
-    try:
-        driver = _driver()
-        profile = _topic_profile(driver)
-        profile.set_topic("夜曲")
-        assert profile.drafts.last_attempt_at("topic") is None
+    driver = _driver()
+    profile = _topic_profile(driver, room_state=room_state)
+    profile.set_topic("夜曲")
+    assert profile.drafts.last_attempt_at("topic") is None
 
-        result = profile.update_topic()
-    finally:
-        RoomState.reset_instance()
+    result = profile.update_topic()
 
     assert result == {"skipped": "guest_room"}
     assert profile.drafts.pending("topic") == "夜曲", "没写成就别清草稿，用户的要求不能丢"

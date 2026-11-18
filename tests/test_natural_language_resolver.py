@@ -4,10 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ushareiplay.core.natural_language_resolver import (
-    NaturalLanguageResolver,
-    NaturalLanguageResult,
+from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+    OpenAICompatibleNaturalLanguageResolver,
 )
+from ushareiplay.modules.command.domain import NaturalLanguageResult
+from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+
+
+def _use_case(config=None):
+    return ResolveNaturalLanguage(OpenAICompatibleNaturalLanguageResolver(config), config)
 
 
 def _run(coro):
@@ -42,7 +47,7 @@ def mock_commands_config():
 
 
 def test_resolver_disabled_returns_none(mock_commands_config):
-    resolver = NaturalLanguageResolver(config={"enabled": False})
+    resolver = _use_case(config={"enabled": False})
     result = _run(
         resolver.resolve(
             user_text="放首晴天",
@@ -55,7 +60,7 @@ def test_resolver_disabled_returns_none(mock_commands_config):
 
 
 def test_resolver_missing_api_key_returns_none(mock_commands_config):
-    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": ""})
+    resolver = _use_case(config={"enabled": True, "api_key": ""})
     result = _run(
         resolver.resolve(
             user_text="放首晴天",
@@ -69,7 +74,7 @@ def test_resolver_missing_api_key_returns_none(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_success_command(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -88,7 +93,7 @@ async def test_resolver_success_command(mock_commands_config):
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="帮我放一首周杰伦的晴天",
@@ -103,7 +108,7 @@ async def test_resolver_success_command(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_success_reply(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -124,7 +129,7 @@ async def test_resolver_success_reply(mock_commands_config):
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="你好呀",
@@ -140,7 +145,7 @@ async def test_resolver_success_reply(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_reply_already_tagged_is_idempotent(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -160,7 +165,7 @@ async def test_resolver_reply_already_tagged_is_idempotent(mock_commands_config)
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="放歌了吗",
@@ -176,7 +181,7 @@ async def test_resolver_reply_already_tagged_is_idempotent(mock_commands_config)
 
 @pytest.mark.asyncio
 async def test_resolver_handles_markdown_wrapped_json(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -187,7 +192,7 @@ async def test_resolver_handles_markdown_wrapped_json(mock_commands_config):
     content = "```json\n{\"type\": \"command\", \"content\": \":next\"}\n```"
     mock_response = {"choices": [{"message": {"content": content}}]}
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="切歌",
@@ -201,7 +206,7 @@ async def test_resolver_handles_markdown_wrapped_json(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_handles_api_exception(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -209,7 +214,7 @@ async def test_resolver_handles_api_exception(mock_commands_config):
         }
     )
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.side_effect = TimeoutError("Request timed out")
         result = await resolver.resolve(
             user_text="放歌",
@@ -223,7 +228,7 @@ async def test_resolver_handles_api_exception(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_handles_malformed_json(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -233,7 +238,7 @@ async def test_resolver_handles_malformed_json(mock_commands_config):
 
     mock_response = {"choices": [{"message": {"content": "Not a json response"}}]}
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="放歌",
@@ -247,7 +252,7 @@ async def test_resolver_handles_malformed_json(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_handles_thinking_model_tags(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -263,7 +268,7 @@ async def test_resolver_handles_thinking_model_tags(mock_commands_config):
     )
     mock_response = {"choices": [{"message": {"content": content}}]}
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="来首胡彦斌的潇湘雨",
@@ -278,7 +283,7 @@ async def test_resolver_handles_thinking_model_tags(mock_commands_config):
 
 
 def test_resolver_injects_room_info_into_prompt(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -328,7 +333,7 @@ def test_resolver_injects_room_info_into_prompt(mock_commands_config):
 
 
 def test_resolver_injects_playback_and_playlist_info_into_prompt(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -359,7 +364,7 @@ def test_resolver_injects_playback_and_playlist_info_into_prompt(mock_commands_c
 
 
 def test_resolver_prompt_when_no_active_playlist(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -386,7 +391,7 @@ def test_resolver_prompt_when_no_active_playlist(mock_commands_config):
 
 @pytest.mark.asyncio
 async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -415,7 +420,7 @@ async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
         ]
     }
 
-    with patch.object(resolver, "_call_api", new_callable=AsyncMock) as mock_api:
+    with patch.object(resolver._resolver, "_call_api", new_callable=AsyncMock) as mock_api:
         mock_api.return_value = json.dumps(mock_response)
         result = await resolver.resolve(
             user_text="现在是播我的歌单吗",
@@ -431,7 +436,7 @@ async def test_resolver_resolves_playlist_status_reply(mock_commands_config):
 
 
 def test_resolver_prompt_with_system_user_timer(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -459,7 +464,7 @@ def test_resolver_prompt_with_system_user_timer(mock_commands_config):
 
 
 def test_resolver_prompt_with_system_user_console(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -497,7 +502,7 @@ def test_resolver_prompt_with_system_user_console(mock_commands_config):
 
 
 def test_resolver_custom_prompt_injection(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -516,7 +521,7 @@ def test_resolver_custom_prompt_injection(mock_commands_config):
 
 
 def test_resolver_custom_prompt_alias_key(mock_commands_config):
-    resolver = NaturalLanguageResolver(
+    resolver = _use_case(
         config={
             "enabled": True,
             "api_key": "test-key",
@@ -535,7 +540,9 @@ def test_resolver_custom_prompt_alias_key(mock_commands_config):
 
 
 def test_sync_http_call_custom_timeout():
-    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key", "timeout": 4.0})
+    resolver = OpenAICompatibleNaturalLanguageResolver(
+        config={"enabled": True, "api_key": "test-key", "timeout": 4.0}
+    )
     mock_resp = MagicMock()
     mock_resp.read.return_value = b'{"result": "ok"}'
     mock_resp.__enter__.return_value = mock_resp
@@ -552,7 +559,9 @@ def test_sync_http_call_custom_timeout():
 
 @pytest.mark.asyncio
 async def test_call_api_custom_timeout():
-    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key", "timeout": 4.0})
+    resolver = OpenAICompatibleNaturalLanguageResolver(
+        config={"enabled": True, "api_key": "test-key", "timeout": 4.0}
+    )
     with patch.object(resolver, "_sync_http_call", return_value='{"result": "ok"}') as mock_sync:
         res = await resolver._call_api({"model": "deepseek-chat"}, timeout=25.0)
         assert res == '{"result": "ok"}'
@@ -561,7 +570,7 @@ async def test_call_api_custom_timeout():
 
 def test_resolver_advertises_lowest_level_for_subcommand_commands():
     """带子命令的命令按最低形态等级报给 LLM，与门禁口径一致。"""
-    resolver = NaturalLanguageResolver(config={"enabled": True, "api_key": "test-key"})
+    resolver = _use_case(config={"enabled": True, "api_key": "test-key"})
 
     commands_config = [
         {

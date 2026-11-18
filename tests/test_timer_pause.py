@@ -1,12 +1,18 @@
 import asyncio
 from datetime import datetime, timedelta
+
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.dal.timer_dao import TimerDAO
-from ushareiplay.managers.timer_manager import TimerManager
-from ushareiplay.models.message_info import MessageInfo
+from tests.fakes.fake_clock import FakeClock
+from tests.fakes.in_memory_timer_repository import InMemoryTimerRepository
+from ushareiplay.adapters.inbound.runtime.timer_message_sink import (
+    QueueTimerMessageSink,
+)
+from ushareiplay.adapters.outbound.system.clock import SystemClock
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.modules.timer.use_cases import TimerUseCases
+
+NOW = datetime(2026, 1, 1, 12, 0, 0)
 
 
 class _DummyLogger:
@@ -23,139 +29,114 @@ class _DummyLogger:
         pass
 
 
+def _use_cases(clock, repository=None, message_queue=None):
+    queue = message_queue or MessageQueue()
+    return TimerUseCases(
+        repository=repository or InMemoryTimerRepository(),
+        clock=clock,
+        sink=QueueTimerMessageSink(queue),
+        logger=_DummyLogger(),
+    )
+
+
 @pytest.mark.asyncio
 async def test_timer_manager_pause_prevents_trigger():
-    await MessageQueue.instance().clear_queue()
-    manager = DatabaseManager(db_url="sqlite://:memory:")
-    await manager.init()
+    queue = MessageQueue()
+    clock = FakeClock(NOW)
+    repository = InMemoryTimerRepository()
+    use_cases = _use_cases(clock, repository, queue)
 
-    tm = TimerManager.instance()
-    tm._logger = _DummyLogger()
-
-    # Create a timer
-    timer_data = {
-        "key": "test_pause",
-        "message": ":play 晴天",
-        "target_time": "10",
-        "repeat": False,
-        "enabled": True,
-        "next_trigger": (datetime.now() - timedelta(seconds=5)).isoformat(),
-    }
-    tm._timers["test_pause"] = timer_data
+    await use_cases.create_timer(
+        key="test_pause", message=":play 晴天", target_time="10", repeat=False
+    )
 
     # Pause timer manager
-    tm.pause()
-    assert tm.is_paused() is True
+    use_cases.pause()
+    assert use_cases.is_paused() is True
 
     # Attempt to trigger directly while paused
-    await tm._trigger_timer("test_pause", timer_data)
+    await use_cases.fire_timer("test_pause")
 
     # MessageQueue must remain empty
-    messages = await MessageQueue.instance().get_all_messages()
-    assert len(messages) == 0
+    assert await queue.get_all_messages() == {}
 
     # Resume timer manager
-    await tm.resume()
-    assert tm.is_paused() is False
+    await use_cases.resume()
+    assert use_cases.is_paused() is False
 
     # Now trigger works
-    await tm._trigger_timer("test_pause", timer_data)
-    messages = await MessageQueue.instance().get_all_messages()
+    await use_cases.fire_timer("test_pause")
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
-    assert list(messages.values())[0].content == ":play 晴天"
+    assert next(iter(messages.values())).content == ":play 晴天"
 
-    await MessageQueue.instance().clear_queue()
-    await manager.close()
+    await queue.clear_queue()
 
 
 @pytest.mark.asyncio
 async def test_timer_loop_skips_triggering_while_paused():
-    await MessageQueue.instance().clear_queue()
-    manager = DatabaseManager(db_url="sqlite://:memory:")
-    await manager.init()
+    queue = MessageQueue()
+    repository = InMemoryTimerRepository()
+    await repository.create(
+        key="loop_test",
+        message="/title 晚上好 回家",
+        target_time="19:00",
+        repeat=False,
+        enabled=True,
+        next_trigger=datetime.now() - timedelta(seconds=1),
+    )
+    use_cases = _use_cases(SystemClock(), repository, queue)
 
-    tm = TimerManager.instance()
-    tm._logger = _DummyLogger()
-    tm._running = True
-    tm.pause()
-
-    timer_data = {
-        "key": "loop_test",
-        "message": "/title 晚上好 回家",
-        "target_time": "19:00",
-        "repeat": False,
-        "enabled": True,
-        "next_trigger": (datetime.now() - timedelta(seconds=1)).isoformat(),
-    }
-    tm._timers["loop_test"] = timer_data
-
-    # Start loop in background
-    task = asyncio.create_task(tm._timer_loop())
+    await use_cases.start()
+    use_cases.pause()
     await asyncio.sleep(0.05)
 
     # MessageQueue must NOT contain any messages because loop is paused
-    messages = await MessageQueue.instance().get_all_messages()
-    assert len(messages) == 0
+    assert await queue.get_all_messages() == {}
 
-    # Stop loop
-    await tm.stop()
-    await MessageQueue.instance().clear_queue()
-    await manager.close()
+    await use_cases.stop()
+    await queue.clear_queue()
 
 
 @pytest.mark.asyncio
 async def test_timer_manager_resume_skips_expired_repeat_timers():
-    manager = DatabaseManager(db_url="sqlite://:memory:")
-    await manager.init()
+    clock = FakeClock(NOW)
+    repository = InMemoryTimerRepository()
+    use_cases = _use_cases(clock, repository)
 
-    tm = TimerManager.instance()
-    tm._logger = _DummyLogger()
-
-    # Past trigger time for a repeat timer
-    past_trigger = datetime.now() - timedelta(hours=2)
-    await TimerDAO.create(
+    await use_cases.create_timer(
         key="theme_home",
         message="/title 晚上好 回家",
         target_time="19:00",
         repeat=True,
-        enabled=True,
-        next_trigger=past_trigger,
     )
+    # 两天后才恢复：暂停期间的重复任务已积压。
+    clock.advance(2 * 24 * 3600)
 
-    tm._timers["theme_home"] = {
-        "key": "theme_home",
-        "message": "/title 晚上好 回家",
-        "target_time": "19:00",
-        "repeat": True,
-        "enabled": True,
-        "next_trigger": past_trigger.isoformat(),
-    }
-
-    tm.pause()
-    assert tm.is_paused() is True
+    use_cases.pause()
+    assert use_cases.is_paused() is True
 
     # Resume should reschedule the repeat timer to the future
-    await tm.resume()
-    assert tm.is_paused() is False
+    await use_cases.resume()
+    assert use_cases.is_paused() is False
 
-    updated_nt_str = tm._timers["theme_home"]["next_trigger"]
-    updated_nt = datetime.fromisoformat(updated_nt_str)
-    assert updated_nt > datetime.now()
-
-    db_row = await TimerDAO.get_by_key("theme_home")
-    assert db_row.next_trigger > datetime.now()
-
-    await manager.close()
+    assert use_cases.get_timer("theme_home").next_trigger > clock.now()
+    assert (await repository.get_by_key("theme_home")).next_trigger > clock.now()
 
 
 @pytest.mark.asyncio
 async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monkeypatch):
     """When runtime_input is paused, _runtime_queue_drainer.drain() should not be invoked."""
     from types import SimpleNamespace
-    from ushareiplay.core.app_controller import AppController
 
-    controller = AppController.__new__(AppController)
-    controller.config = {"commands": []}
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
+
+    controller = RuntimeLoop(
+        config={"commands": []},
+        obs=None,
+        lease=SimpleNamespace(lock=SimpleNamespace(locked=lambda: False)),
+        room_owner_provider=lambda: "Owner",
+    )
     controller.logger = _DummyLogger()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
@@ -164,8 +145,6 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
     )
     controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
     controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=lambda: asyncio.sleep(0))
-    controller.in_console_mode = False
-    controller.is_running = True
     controller._drain_agent_command_spool = lambda: None
 
     drained_calls = []
@@ -188,16 +167,10 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
         def register_interruption_hook(self, _hook):
             pass
 
-    from queue import Queue
-    controller._runtime_queue_drainer = _Drainer()
-    controller.input_queue = Queue()
-    controller.role_policy = SimpleNamespace(room_owner="Owner")
-    controller.obs = None
-    controller._dump_readonly_artifacts = None
-    controller._send_screen_message = lambda _t: None
+    controller.runtime_queue_drainer = _Drainer()
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.RuntimeInputPipeline",
+        "ushareiplay.bootstrap.runtime_loop.RuntimeInputPipeline",
         lambda **_kwargs: _Pipeline(),
     )
     async def noop_sleep(*_args, **_kwargs):
@@ -207,15 +180,11 @@ async def test_app_controller_monitor_loop_skips_queue_drainer_when_paused(monke
         return None
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
-    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_async_noop),
-    )
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_async_noop)
 
     processed_screens = []
 

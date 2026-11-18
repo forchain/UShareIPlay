@@ -27,8 +27,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 def _run(coro):
@@ -77,11 +77,7 @@ class _FakeRuntime:
 
 def _routing_manager(monkeypatch, dispatch):
     """A CommandManager wired for real end-to-end routing assertions."""
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
-    monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager = CommandManager(message_dispatch=dispatch)
     manager.configure_runtime(_FakeRuntime())
     manager._logger = logging.getLogger("test_prefix_routing")
     manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
@@ -263,13 +259,12 @@ def test_prefix_family_routing_survives_the_queue_drain(
     Screen commands are executed by `RuntimeQueueDrainer`, not by the scan site,
     so this pins the routing at the place it actually happens in production.
     """
-    from ushareiplay.core.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     dispatch = _RecordingDispatch()
     manager = _routing_manager(monkeypatch, dispatch)
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     batch = build_message_batch([classify_chat_line(line)], source="screen")
     for command in batch.commands:
         _run(queue.put_message(command))
@@ -302,7 +297,7 @@ def test_command_path_no_longer_re_evaluates_prefixes(monkeypatch):
     consumes an already-classified batch. The chat-intake symbols that carried
     the prefix *semantics* are no longer imported here at all.
     """
-    from ushareiplay.managers import command_manager as command_manager_module
+    from ushareiplay.adapters.inbound.runtime import command_manager as command_manager_module
 
     for removed in (
         "execute_chat_scan",

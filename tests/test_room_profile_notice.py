@@ -23,12 +23,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+from tests.room_profile_support import RoomProfileManager
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.room.use_cases import RoomStateService
+from ushareiplay.modules.shared.config import ConfigSectionView
+
+# 模块内显式构造的公屏出口：这几个文件观察的就是这一条出口
+_DISPATCH = MessageDispatch()
 
 # 公告编辑层打开时抽屉里有的东西（`config.yaml` 的 elements key）。
 NOTICE_EDIT_LAYER = (
@@ -42,19 +45,12 @@ NOTICE_EDIT_LAYER = (
 DRAWER_LAYER = ('slide_drawer',)
 
 
-@pytest.fixture(autouse=True)
-def reset_room_profile_manager():
-    RoomProfileManager.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
-
-
 @pytest.fixture
 def screen_messages(monkeypatch):
     """记录写进公屏的每一条消息 —— 「有没有宣布成功」必须能被断言。"""
     sent = []
     monkeypatch.setattr(
-        MessageDispatch.instance(),
+        _DISPATCH,
         "send_screen_message",
         lambda message, silent=False: sent.append(message),
     )
@@ -87,11 +83,14 @@ class _Handler:
         self.key_actions.switch_to_app.return_value = can_switch
         self.element_finder = _NoticeTextFinder(notice_text)
         self.config = ConfigSectionView("soul", {} if config is None else config)
+        self.controller = SimpleNamespace(message_dispatch=_DISPATCH)
 
 
-def _profile(driver=None, handler=None, config=None, notice_text=""):
-    profile = RoomProfileManager.initialize(
-        handler=handler or _Handler(notice_text, config), drawer_driver=driver
+def _profile(driver=None, handler=None, config=None, notice_text="", room_state=None):
+    profile = RoomProfileManager(
+        handler=handler or _Handler(notice_text, config),
+        drawer_driver=driver,
+        room_state=room_state if room_state is not None else RoomStateService(),
     )
     return profile
 
@@ -165,8 +164,9 @@ def test_the_notice_budget_is_not_shared_with_the_topic():
 
 
 def test_set_notice_skips_the_guest_room_without_queueing_anything():
-    with _guest_room():
-        profile = _profile(_driver())
+    room_state = RoomStateService()
+    with _guest_room(room_state):
+        profile = _profile(_driver(), room_state=room_state)
 
         result = profile.set_notice("今晚八点开播")
 
@@ -406,7 +406,6 @@ def test_the_notice_path_never_sends_a_blind_back_press():
     )
 
     for label, driver in outcomes:
-        RoomProfileManager.reset_instance()
         profile = _profile(driver)
         profile.set_notice("今晚八点开播")
 
@@ -488,10 +487,11 @@ def test_the_cooldown_clock_advances_even_when_the_write_fails():
 # --------------------------------------------------------------------------
 
 
-def _guest_room():
-    """把房间状态临时切成「在别人的房间里」。"""
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+def _guest_room(room_state):
+    """把房间状态临时切成「在别人的房间里」。
+
+    切的是用例手里那一份 —— 用例看到的必须是它自己持有的那个房间状态。
+    """
     room_state.is_guest_room = True
 
     class _Reset:
@@ -499,7 +499,7 @@ def _guest_room():
             return room_state
 
         def __exit__(self, *_exc):
-            RoomState.reset_instance()
+            room_state.is_guest_room = False
             return False
 
     return _Reset()
@@ -513,7 +513,7 @@ def test_the_guest_room_tick_writes_nothing_and_keeps_the_draft_and_the_budget(
     profile = _profile(driver)
     profile.set_notice("今晚八点开播")
 
-    with _guest_room():
+    with _guest_room(profile.room_state):
         result = profile.update_notice()
 
     assert result == {"skipped": True, "reason": "guest_room"}
@@ -526,9 +526,10 @@ def test_the_guest_room_tick_writes_nothing_and_keeps_the_draft_and_the_budget(
 
 
 def test_the_guest_room_restore_keeps_the_draft_and_the_budget_too(screen_messages):
-    with _guest_room():
+    room_state = RoomStateService()
+    with _guest_room(room_state):
         driver = _driver()
-        profile = _profile(driver)
+        profile = _profile(driver, room_state=room_state)
         profile.drafts.set_pending("notice", "旧公告")
 
         result = profile.restore_notice("新公告")
@@ -655,8 +656,11 @@ def _title_change(monkeypatch, notice_text):
             "edit_notice_confirm": ("edit_notice_entry",),
         },
     )
-    RoomProfileManager.reset_instance()
-    profile = RoomProfileManager.initialize(handler=handler, drawer_driver=driver)
+    profile = RoomProfileManager(
+        handler=handler,
+        drawer_driver=driver,
+        room_state=RoomStateService(),
+    )
     profile.title_settle_seconds = 0
 
     return driver, profile, profile._write_title_in_drawer("新标题")
@@ -780,7 +784,7 @@ async def test_set_default_notice_without_configuration_reports_it():
 
 
 def _command_with_profile(profile):
-    from ushareiplay.commands.notice import NoticeCommand
+    from ushareiplay.adapters.inbound.chat.notice import NoticeCommand
 
     handler = _Handler()
     controller = SimpleNamespace(soul_handler=handler, music_handler=None)
@@ -790,7 +794,7 @@ def _command_with_profile(profile):
 
 
 def test_the_notice_command_keeps_the_reply_templates_it_always_had():
-    from ushareiplay.commands.notice import NoticeCommand
+    from ushareiplay.adapters.inbound.chat.notice import NoticeCommand
 
     assert NoticeCommand.handler_attr == "soul_handler"
     assert NoticeCommand.error_message == "Failed to process notice command: {error}"
@@ -862,7 +866,7 @@ async def test_the_notice_command_tick_delegates_to_the_room_profile_manager():
 
 async def test_the_notice_command_never_reaches_for_the_legacy_notice_manager():
     """`:notice` 的每一次调用都必须落在房间档案这一个模块上。"""
-    import ushareiplay.commands.notice as notice_module
+    import ushareiplay.adapters.inbound.chat.notice as notice_module
 
     source = open(notice_module.__file__, encoding="utf-8").read()
 

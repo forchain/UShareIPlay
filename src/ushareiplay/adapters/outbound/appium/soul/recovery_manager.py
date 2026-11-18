@@ -1,0 +1,123 @@
+import logging
+
+
+class RecoveryManager:
+    """异常检测和恢复管理器，用于检测和处理各种异常情况"""
+
+    def __init__(self, handler=None, room_state=None):
+        self.handler = handler
+        self._room_state = room_state
+        self.logger = getattr(handler, "logger", None) or logging.getLogger("RecoveryManager")
+
+    def close_drawer(
+            self, drawer_key: str, wait_element: str = "room_id", max_attempts: int = 2
+    ) -> bool:
+        """
+        关闭抽屉式弹窗：点击窗口上沿的遮罩。
+
+        这里只剩这一条手势了。原先前面还有一层「先找抽屉自带的关闭按钮」，而那张
+        表里唯一的一行是 `online_drawer` —— 在线用户抽屉的会话生命周期已由 #426 的
+        `OnlineDrawer` 接管（见 modules/room/ports.py 的 CLOSE_KEYS），
+        这条入口也已停用，于是整层机制连同那张表一起删掉（#440）。
+
+        仍然保留，是因为遮罩式抽屉（`input_drawer` 等）走的就是这条路径：
+        `events/drawer_elements.py` 的 `DrawerElementsEvent` 至今仍在调用本方法，
+        而它本来也没有关闭按钮可用。
+
+        Args:
+            drawer_key: 抽屉元素的 key
+            wait_element: 等待出现的界面元素，默认是 "room_id"
+            max_attempts: 最多点击关闭次数，默认两次
+            
+        Returns:
+            bool: 如果成功关闭返回 True，否则 False
+        """
+        try:
+            for attempt in range(1, max_attempts + 1):
+                # 使用 wait_for 获取可点击的元素
+                element = self.handler.element_finder.wait_for_element_clickable(drawer_key)
+                if not element:
+                    if not self._is_drawer_visible(drawer_key):
+                        return self._confirm_drawer_closed(drawer_key, wait_element)
+                    self.logger.warning(
+                        f"Drawer element {drawer_key} found in page_source but not clickable"
+                    )
+                    return False
+
+                # 点击抽屉上方区域来关闭
+                click_success = self.handler.gesture_handler.click_element_at(
+                    element, x_ratio=0.3, y_ratio=0, y_offset=-200
+                )
+                if not click_success:
+                    self.logger.warning(f"Failed to click drawer: {drawer_key}")
+                    return False
+
+                # 使用 Appium/Selenium SDK 的 WebDriverWait + EC.invisibility 动态等待抽屉消失
+                # poll_frequency=0.1s：抽屉一旦消失立即可返回，无需主观 sleep 固化延迟
+                drawer_disappeared = False
+                if hasattr(self.handler.element_finder, 'wait_for_element_disappear'):
+                    drawer_disappeared = self.handler.element_finder.wait_for_element_disappear(
+                        drawer_key, timeout=3.0, poll_frequency=0.1
+                    )
+
+                if drawer_disappeared or not self._is_drawer_visible(drawer_key):
+                    return self._confirm_drawer_closed(drawer_key, wait_element)
+
+                self.logger.warning(
+                    f"Drawer {drawer_key} still visible after close attempt "
+                    f"{attempt}/{max_attempts}"
+                )
+
+            self.logger.warning(f"Failed to close drawer after {max_attempts} attempts: {drawer_key}")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Error closing drawer {drawer_key}: {str(e)}")
+            return False
+
+    def _is_drawer_visible(self, drawer_key: str) -> bool:
+        element = self.handler.element_finder.try_find_element(drawer_key, log=False)
+        if not element:
+            return False
+        try:
+            return element.is_displayed()
+        except Exception:
+            return True
+
+    def _confirm_drawer_closed(self, drawer_key: str, wait_element: str) -> bool:
+        # 等待指定元素出现，确认界面已恢复正常；成功条件仍以抽屉消失为准。
+        target_element = self.handler.element_finder.wait_for_element(wait_element)
+        if target_element:
+            self.logger.info(f"Closed drawer: {drawer_key}, {wait_element} confirmed")
+        else:
+            self.handler.key_actions.press_back()
+            self.logger.warning(f"Closed drawer: {drawer_key}, but {wait_element} not found")
+        return not self._is_drawer_visible(drawer_key)
+
+    def is_normal_state(self) -> bool:
+        """
+        检测是否处于正常状态
+        最快速的方法就是检测输入框是否存在
+        """
+        try:
+            room_state = self._room_state
+            if room_state is None and self.handler is not None:
+                controller = getattr(self.handler, "controller", None)
+                if controller is not None:
+                    room_state = getattr(controller, "room_state", None)
+            if room_state is None:
+                return False
+            room_id_text = room_state.room_id
+
+            if room_id_text is None:
+                return False
+
+            if not room_id_text.startswith("FM"):
+                self.logger.warning(f"Room ID:{room_id_text} does not start with FM, skip")
+                return True
+
+            party_id = self.handler.config.value('default_party_id')
+            return room_id_text == party_id
+        except Exception as e:
+            self.logger.debug(f"检测正常状态时出错: {str(e)}")
+            return False

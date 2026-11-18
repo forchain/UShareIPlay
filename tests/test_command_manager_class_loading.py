@@ -2,8 +2,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 class DummyController:
@@ -28,7 +28,7 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
     (tmp_path / "demo.py").write_text(
         "\n".join(
             [
-                "from ushareiplay.core.base_command import BaseCommand",
+                "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
                 "",
                 "class DemoCommand(BaseCommand):",
                 "    async def do_process(self, message_info, parameters):",
@@ -41,6 +41,7 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
     manager = CommandManager.__new__(CommandManager)
     manager.__init__()
     manager.commands_path = Path(tmp_path)
+    manager.command_roots = (Path(tmp_path),)
     manager.controller = DummyController()
     manager._logger = FakeLogger()
     manager._handler = SimpleNamespace(config={"system_users": []})
@@ -53,3 +54,34 @@ def test_load_command_module_instantiates_class_without_factory(tmp_path):
     assert module.command.controller is manager.controller
     result = asyncio.run(module.command.process(None, []))
     assert result == {"message": "ok"}
+
+
+def test_load_command_module_prefers_the_first_matching_root(tmp_path):
+    inbound = tmp_path / "inbound"
+    legacy = tmp_path / "legacy"
+    inbound.mkdir()
+    legacy.mkdir()
+    for directory, marker in ((inbound, "inbound"), (legacy, "legacy")):
+        (directory / "demo.py").write_text(
+            "\n".join(
+                [
+                    "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
+                    "",
+                    "class DemoCommand(BaseCommand):",
+                    "    async def do_process(self, message_info, parameters):",
+                    f"        return {{'message': '{marker}'}}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    manager = CommandManager.__new__(CommandManager)
+    manager.__init__()
+    manager.command_roots = (inbound, legacy)
+    manager.controller = DummyController()
+    manager._logger = FakeLogger()
+    manager._handler = SimpleNamespace(config={"system_users": []})
+
+    module = manager.load_command_module("demo")
+
+    assert asyncio.run(module.command.process(None, [])) == {"message": "inbound"}

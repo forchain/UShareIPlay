@@ -10,8 +10,10 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Callable, Optional
 
+from ushareiplay.modules.shared.ports import UISession
 
-class UISessionLease:
+
+class UISessionLease(UISession):
     """独占 UI 执行权的租赁器。
 
     Args:

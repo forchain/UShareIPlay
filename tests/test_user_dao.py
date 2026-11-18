@@ -1,7 +1,9 @@
 import pytest
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.models import User
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+UserDAO = TortoiseUserRepository()
 
 
 @pytest.mark.asyncio
@@ -22,8 +24,7 @@ async def test_record_owner_gift_upgrades_level_below_4():
 
         # Test from level 3
         user2 = await UserDAO.get_or_create("Charlie")
-        user2.level = 3
-        await user2.save()
+        await UserDAO.update_level(user2.id, 3)
         updated2 = await UserDAO.record_owner_gift("Charlie")
         assert updated2.level == 4
     finally:
@@ -37,22 +38,19 @@ async def test_record_owner_gift_does_not_downgrade():
     try:
         # Level 4 user
         user4 = await UserDAO.get_or_create("User4")
-        user4.level = 4
-        await user4.save()
+        await UserDAO.update_level(user4.id, 4)
         res4 = await UserDAO.record_owner_gift("User4")
         assert res4.level == 4
 
         # Level 5 user
         user5 = await UserDAO.get_or_create("User5")
-        user5.level = 5
-        await user5.save()
+        await UserDAO.update_level(user5.id, 5)
         res5 = await UserDAO.record_owner_gift("User5")
         assert res5.level == 5
 
         # Level 9 user
         user9 = await UserDAO.get_or_create("Owner")
-        user9.level = 9
-        await user9.save()
+        await UserDAO.update_level(user9.id, 9)
         res9 = await UserDAO.record_owner_gift("Owner")
         assert res9.level == 9
     finally:
@@ -74,16 +72,14 @@ async def test_record_heat_contribution_base_level_5():
 
         # Level 4 user upgrading to 5
         user_l4 = await UserDAO.get_or_create("Eve")
-        user_l4.level = 4
-        await user_l4.save()
+        await UserDAO.update_level(user_l4.id, 4)
         updated_l4 = await UserDAO.record_heat_contribution("Eve", 500)
         assert updated_l4.level == 5
         assert updated_l4.heat_value == 500
 
         # Level 6 user not downgrading to 5
         user_l6 = await UserDAO.get_or_create("Frank")
-        user_l6.level = 6
-        await user_l6.save()
+        await UserDAO.update_level(user_l6.id, 6)
         updated_l6 = await UserDAO.record_heat_contribution("Frank", 500)
         assert updated_l6.level == 6
         assert updated_l6.heat_value == 500
@@ -118,8 +114,7 @@ async def test_record_heat_contribution_cumulative_thresholds():
 
         # Step 5: Level 9 user contributing 2,000,000 heat -> stays Level 9
         owner = await UserDAO.get_or_create("OwnerUser")
-        owner.level = 9
-        await owner.save()
+        await UserDAO.update_level(owner.id, 9)
         updated_owner = await UserDAO.record_heat_contribution("OwnerUser", 2000000)
         assert updated_owner.heat_value == 2000000
         assert updated_owner.level == 9
@@ -134,8 +129,7 @@ async def test_heat_contribution_with_alias_mapping():
     try:
         canonical = await UserDAO.get_or_create("MainAccount")
         alias_raw = await UserDAO.get_or_create_raw("AltAccount")
-        alias_raw.canonical_user_id = canonical.id
-        await alias_raw.save(update_fields=["canonical_user_id"])
+        await UserDAO.set_canonical(alias_raw.id, canonical.id)
 
         # AltAccount contributes 6,000 heat
         res1 = await UserDAO.record_heat_contribution("AltAccount", 6000)

@@ -27,7 +27,7 @@ from tests.seat_fixtures import (
     tap_point,
 )
 
-from ushareiplay.managers.seat_manager.seat_panel_driver import (
+from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import (
     AvatarTapPolicy,
     SeatPanelDriver,
 )

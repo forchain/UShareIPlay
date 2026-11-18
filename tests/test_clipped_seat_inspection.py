@@ -11,40 +11,38 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.seat_fixtures import make_handler, build_live_desk_wrapper
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_panel_driver import SeatPanelDriver
+from tests.seat_support import build_seat_observation
+from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import SeatPanelDriver
 
 
 @pytest.fixture(autouse=True)
 def reset_observation():
-    SeatObservationManager.reset_instance()
-    yield
-    SeatObservationManager.reset_instance()
-
+        yield
+    
 
 def test_is_desk_interactable_predicates():
     """验证桌位有效交互高度判断。"""
     handler = make_handler()
-    obs_manager = SeatObservationManager.initialize(handler)
+    obs_manager = build_seat_observation(handler)
 
     # 1. 完整桌位（真机 1080p 典型值：宽 309，高 207）
     full_desk = MagicMock()
     full_desk.bounds = {"x": 28, "y": 611, "width": 309, "height": 207}
-    assert obs_manager._is_desk_interactable(full_desk) is True
+    assert obs_manager._panel.is_desk_interactable(full_desk) is True
 
     # 2. 底部裁剪残片（真机折叠/顶相位典型残片：高 45px 或 56px）
     clipped_45 = MagicMock()
     clipped_45.bounds = {"x": 383, "y": 845, "width": 309, "height": 45}
-    assert obs_manager._is_desk_interactable(clipped_45) is False
+    assert obs_manager._panel.is_desk_interactable(clipped_45) is False
 
     clipped_56 = MagicMock()
     clipped_56.bounds = {"x": 383, "y": 800, "width": 309, "height": 56}
-    assert obs_manager._is_desk_interactable(clipped_56) is False
+    assert obs_manager._panel.is_desk_interactable(clipped_56) is False
 
     # 3. 顶部裁剪残片（真机底相位典型残片：高 18px）
     clipped_18 = MagicMock()
     clipped_18.bounds = {"x": 28, "y": 566, "width": 309, "height": 18}
-    assert obs_manager._is_desk_interactable(clipped_18) is False
+    assert obs_manager._panel.is_desk_interactable(clipped_18) is False
 
     # 4. 读不出 bounds（既没有 bounds 属性，也没有 location/size）
     #    渲染尺寸未知就无法证明它在视口内，与「绝不盲目点击」同源：判为不可交互。
@@ -54,14 +52,14 @@ def test_is_desk_interactable_predicates():
     no_bounds.bounds = None
     no_bounds.location = None
     no_bounds.size = None
-    assert obs_manager._is_desk_interactable(no_bounds) is False
+    assert obs_manager._panel.is_desk_interactable(no_bounds) is False
 
 
 @pytest.mark.asyncio
 async def test_clipped_seat_should_not_be_inspected_blindly():
     """视口中未完整显示的座位残片（如 12 号座只露出几十像素），不应被盲目调用 inspect_occupant 点击头像。"""
     handler = make_handler(popup_name=None)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 前两张桌位完全可见（高度 207px），且有数字锚点
     d2 = build_live_desk_wrapper(handler, left=(5, True, None), right=(6, False, None), y=611, bounds="[28,611][337,818]")
@@ -111,7 +109,7 @@ async def test_driver_refuses_clipped_desk():
 async def test_inspect_occupant_on_clipped_desk_returns_none_without_waiting():
     """inspect_occupant 面对残片桌位直接早退返回 None，不调用 wait_for_any_element，不产生超时报错。"""
     handler = make_handler(popup_name="AnyName")
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     d5 = build_live_desk_wrapper(handler, left=(11, False, None), right=(12, True, None), y=845, bounds="[383,845][692,890]")
     result = await manager.inspect_occupant(d5, "right", 12)

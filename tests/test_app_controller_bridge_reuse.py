@@ -1,8 +1,8 @@
 """The driver factory must never reuse a bridge pointed at a different Appium host."""
 from unittest.mock import patch
 
-from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.bootstrap.container import AppContainer
+from ushareiplay.modules.shared.config import ConfigView
 
 
 class FakeBridge:
@@ -28,7 +28,7 @@ class FakeDriver:
 
 
 def _controller(appium_host, appium_port):
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.config = ConfigView({
         "device": {
             "platform_name": "Android",
@@ -53,7 +53,7 @@ def _patch_driver_remote(monkeypatch):
         return FakeDriver()
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.webdriver.Remote", fake_remote
+        "ushareiplay.bootstrap.container.webdriver.Remote", fake_remote
     )
     monkeypatch.delenv("APPIUM_HOST", raising=False)
     monkeypatch.delenv("APPIUM_PORT", raising=False)
@@ -66,7 +66,7 @@ def test_init_driver_reuses_bridge_when_target_matches(monkeypatch):
     controller._network_bridge = bridge
     captured = _patch_driver_remote(monkeypatch)
 
-    with patch("ushareiplay.core.network_bridge.ensure_appium_endpoint") as mock_ensure:
+    with patch("ushareiplay.bootstrap.container.ensure_appium_endpoint") as mock_ensure:
         controller._init_driver()
 
     mock_ensure.assert_not_called()
@@ -82,7 +82,7 @@ def test_init_driver_discards_bridge_pointing_at_another_host(monkeypatch):
 
     fresh = FakeBridge("192.168.8.108", 4723, bridge_port=43999)
     with patch(
-        "ushareiplay.core.network_bridge.ensure_appium_endpoint",
+        "ushareiplay.bootstrap.container.ensure_appium_endpoint",
         return_value=("127.0.0.1", 43999, fresh),
     ) as mock_ensure:
         controller._init_driver()
@@ -101,7 +101,7 @@ def test_init_driver_discards_bridge_pointing_at_another_port(monkeypatch):
 
     fresh = FakeBridge("192.168.8.103", 4724, bridge_port=43999)
     with patch(
-        "ushareiplay.core.network_bridge.ensure_appium_endpoint",
+        "ushareiplay.bootstrap.container.ensure_appium_endpoint",
         return_value=("127.0.0.1", 43999, fresh),
     ):
         controller._init_driver()

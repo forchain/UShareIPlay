@@ -20,27 +20,9 @@ from tests.seat_fixtures import (
     FakeSeatUI,
     make_handler,
 )
-from ushareiplay.events.focus_count import FocusCountEvent
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.state.room_state import RoomState
-
-
-@pytest.fixture(autouse=True)
-def reset_state():
-    # RoomState 必须走 reset_instance()：只把 _instance 置 None 解不掉
-    # _singleton_initialized，instance() 会返回 None 而不是抛 SingletonError，
-    # 于是 FocusCountEvent 的兜底 except 吞掉 AttributeError，事件到不了
-    # on_focus_count —— 反 back-trigger 断言就成了空断言。
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
-    RoomState.reset_instance()
-    RoomState.initialize()
-    yield
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
-    RoomState.reset_instance()
+from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
+from tests.seat_support import build_seat_observation
+from tests.seat_support import build_seat_service
 
 
 def _load_xml(filename: str) -> str:
@@ -56,11 +38,11 @@ async def test_sit_at_specific_seat_navigates_directly_to_target_row_and_collaps
     handler.driver = MagicMock()
     handler.driver.page_source = bottom_xml
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
 
     # 构造 FakeSeatUI，记录滚动行
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # Mock 确认弹窗
     confirm_elem = MagicMock()
@@ -89,11 +71,11 @@ async def test_sit_at_specific_seat_row1_clamps_to_top_before_claiming_band():
     handler.driver = MagicMock()
     handler.driver.page_source = _load_xml("expanded_top_with_anchor.xml")  # 6 号位为空
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     confirm_elem = MagicMock()
     handler.element_finder.wait_for_element_clickable = MagicMock(
@@ -133,9 +115,9 @@ async def test_sit_at_specific_seat_aborts_without_clicking_when_seat_is_occupie
     handler.driver = MagicMock()
     handler.driver.page_source = top_xml
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # 尝试入座 1 号位（已占用）
     result = await seating.sit_at_specific_seat(1)
@@ -162,11 +144,11 @@ async def test_sit_at_specific_seat_clicks_coordinate_bounds_and_confirms_when_e
     handler.driver = MagicMock()
     handler.driver.page_source = top_xml
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # Mock 确认弹窗
     confirm_elem = MagicMock()
@@ -212,9 +194,9 @@ async def test_sit_at_specific_seat_reports_error_when_seat_is_unjudgable():
         seat.getparent().remove(seat)
     handler.driver.page_source = etree.tostring(root, encoding="unicode")
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     result = await seating.sit_at_specific_seat(2)
 
@@ -230,9 +212,9 @@ async def test_sit_at_specific_seat_reports_error_when_gesture_click_unavailable
     handler.driver.page_source = _load_xml("expanded_top_with_anchor.xml")
     handler.gesture_handler = SimpleNamespace()  # 没有 click_at
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     handler.element_finder.wait_for_element_clickable = MagicMock(return_value=None)
 
@@ -252,9 +234,9 @@ async def test_sit_at_specific_seat_collapses_panel_on_error():
     handler.driver = MagicMock()
     handler.driver.page_source = _load_xml("expanded_top_with_anchor.xml")
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     # 模拟确认就座异常
     handler.element_finder.wait_for_element_clickable = MagicMock(side_effect=RuntimeError("UI error"))
@@ -272,11 +254,11 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
     handler.driver = MagicMock()
     handler.driver.page_source = top_xml
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     observation.ledger.gate_state.last_focus_count = 1
 
     fake_seat_ui = FakeSeatUI(desks=[MagicMock() for _ in range(6)])
-    seating = SeatSubsystem(handler=handler, seat_ui=fake_seat_ui, observation=observation)
+    seating = build_seat_service(handler=handler, seat_ui=fake_seat_ui, observation=observation)
 
     confirm_elem = MagicMock()
     handler.element_finder.wait_for_element_clickable = MagicMock(
@@ -288,6 +270,7 @@ async def test_subsequent_focus_count_event_does_not_trigger_full_rescan():
     assert observation.ledger.gate_state.last_focus_count == 1
     assert observation.ledger.gate_state.reconciled_focus_count == 1
 
+    handler.controller.seat_observation = observation
     # 模拟 FocusCountEvent 处理「1人专注中」：换座后房间真实读数仍是 1
     event = FocusCountEvent(handler)
     event.previous_focus_count = 0  # 事件系统此前记录的数字

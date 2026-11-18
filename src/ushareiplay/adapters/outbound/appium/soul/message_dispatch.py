@@ -1,0 +1,106 @@
+import traceback
+
+from ushareiplay.core.command_silence import is_command_silent
+from ushareiplay.modules.shared.ports import RoomMessenger
+
+
+class MessageDispatch(RoomMessenger):
+    """Route outbound chat messages through one observable application seam."""
+
+    def __init__(self, handler=None, user_manager=None):
+        self._handler = handler
+        self._user_manager = user_manager
+        self._runtime = None
+
+    def configure_runtime(self, runtime):
+        self._runtime = runtime
+        controller = getattr(runtime, "controller", None)
+        handler = getattr(controller, "soul_handler", None)
+        if handler is not None:
+            self._handler = handler
+
+    def bind_handler(self, handler):
+        """Bind the active Soul handler for callers constructed outside runtime setup."""
+        if handler is not None:
+            self._handler = handler
+        return self
+
+    @property
+    def handler(self):
+        return self._handler
+
+    @property
+    def user_manager(self):
+        if self._user_manager is None and self._runtime is not None:
+            controller = getattr(self._runtime, "controller", None)
+            if controller is not None:
+                self._user_manager = getattr(controller, "user_profile_actions", None)
+        return self._user_manager
+
+    def _emit(self, event, ctx):
+        if self._runtime is None:
+            return
+        try:
+            self._runtime.emit(event, ctx=ctx)
+        except Exception:
+            pass
+
+    def send_screen_message(self, message: str, silent: bool = False):
+        """Send a room message unless the current command suppresses screen output."""
+        if silent or is_command_silent():
+            try:
+                self.handler.logger.info(f"Silent command suppressed screen message: {message}")
+            except Exception:
+                pass
+            self._emit(
+                "message.dispatch.suppressed",
+                {"channel": "screen", "message_len": len(message)},
+            )
+            return None
+
+        try:
+            result = self.handler.send_message(message)
+        except Exception:
+            self._emit(
+                "message.dispatch.screen",
+                {"message_len": len(message), "sent": False},
+            )
+            raise
+        self._emit(
+            "message.dispatch.screen",
+            {"message_len": len(message), "sent": not isinstance(result, dict) or "error" not in result},
+        )
+        return result
+
+    async def send_private_message(self, nickname: str, message: str) -> bool:
+        """Send a private reply and record its outcome without logging its contents."""
+        try:
+            sent = await self.user_manager.send_private_message_to_user(nickname, message)
+            if not sent:
+                self.handler.logger.warning(f"Private reply dropped for {nickname}: send failed")
+            self._emit(
+                "message.dispatch.private",
+                {"nickname": nickname, "message_len": len(message), "sent": bool(sent)},
+            )
+            return bool(sent)
+        except Exception:
+            try:
+                self.handler.logger.error(
+                    f"Private reply failed for {nickname}: {traceback.format_exc()}"
+                )
+            except Exception:
+                pass
+            self._emit(
+                "message.dispatch.private",
+                {"nickname": nickname, "message_len": len(message), "sent": False},
+            )
+            return False
+
+    async def send_for_message_info(self, message_info, response: str, silent: bool = False):
+        """Route command output according to the requester's private-reply preference."""
+        if not response:
+            return None
+        if getattr(message_info, "private_reply", False):
+            # 私聊要经抽屉会话进出，因此这条分支是异步的（#435）；公屏那条仍是同步的。
+            return await self.send_private_message(message_info.nickname, response)
+        return self.send_screen_message(response, silent=silent)

@@ -2,63 +2,36 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ushareiplay.commands.info import InfoCommand
-from ushareiplay.managers.admin_manager import AdminManager
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.state.presence_tracker import PresenceTracker
-from ushareiplay.state.room_state import RoomState
+from ushareiplay.adapters.inbound.chat.info import InfoCommand
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomAdmins, RoomStateService
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 
 
 @pytest.fixture(autouse=True)
 def setup_info_env():
-    for cls in (
-        InfoManager,
-        PlaybackBroadcaster,
-        PlaylistSession,
-        PresenceTracker,
-        RoomState,
-        AdminManager,
-        SeatObservationManager,
-    ):
-        cls.reset_instance()
+    global _room_admins, _info_manager, _presence
+    _room_admins = RoomAdmins()
 
-    PlaybackBroadcaster.initialize()
-    PlaylistSession.initialize()
-    presence = PresenceTracker.initialize()
-    presence._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, critical=lambda _msg: None)
-    presence._online_users = set()
-    room_state = RoomState.initialize()
+    playlist = PlaylistSession()
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist)
+    _presence = PresenceTracker()
+    _presence._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, critical=lambda _msg: None)
+    _presence._online_users = set()
+    room_state = RoomStateService()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager = InfoManager.initialize()
-    info_manager._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager._party_manager = SimpleNamespace(init_time=None)
-
-    from unittest.mock import patch
-    patcher = patch(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
-        return_value=SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知"),
+    _info_manager = InfoManager(
+        room_state=room_state,
+        presence=_presence,
+        room_admins=_room_admins,
+        playlist=playlist,
+        playback_cache=broadcaster,
+        logger=SimpleNamespace(info=lambda _msg: None),
     )
-    patcher.start()
-
     yield
-
-    patcher.stop()
-
-    for cls in (
-        InfoManager,
-        PlaybackBroadcaster,
-        PlaylistSession,
-        PresenceTracker,
-        RoomState,
-        AdminManager,
-        SeatObservationManager,
-    ):
-        cls.reset_instance()
 
 
 def make_dummy_controller():
@@ -69,8 +42,11 @@ def make_dummy_controller():
     )
     return SimpleNamespace(
         soul_handler=soul_handler,
-        music_handler=None,
+        music_handler=SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知"),
         logger=logger,
+        info_manager=_info_manager,
+        timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        room_profile_manager=SimpleNamespace(recommendation_enabled=None),
     )
 
 
@@ -86,7 +62,7 @@ async def test_info_online_users_empty():
 
 @pytest.mark.asyncio
 async def test_info_online_users_plain_users():
-    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
+    _presence.update_online_users(["Alice", "Bob"])
     controller = make_dummy_controller()
     cmd = InfoCommand(controller)
     msg = MessageInfo(content=":info", nickname="Alice")
@@ -97,9 +73,8 @@ async def test_info_online_users_plain_users():
 
 @pytest.mark.asyncio
 async def test_info_online_users_admin_only():
-    PresenceTracker.instance().update_online_users(["AdminUser", "NormalUser"])
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminUser")
+    _presence.update_online_users(["AdminUser", "NormalUser"])
+    _room_admins.add("AdminUser")
 
     controller = make_dummy_controller()
     cmd = InfoCommand(controller)
@@ -111,9 +86,10 @@ async def test_info_online_users_admin_only():
 
 @pytest.mark.asyncio
 async def test_info_online_users_seat_only():
-    PresenceTracker.instance().update_online_users(["SeatedUser", "NormalUser"])
+    _presence.update_online_users(["SeatedUser", "NormalUser"])
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="SeatedUser")
 
     cmd = InfoCommand(controller)
@@ -125,12 +101,12 @@ async def test_info_online_users_seat_only():
 
 @pytest.mark.asyncio
 async def test_info_online_users_admin_and_seat():
-    PresenceTracker.instance().update_online_users(["AdminOnSeat"])
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminOnSeat")
+    _presence.update_online_users(["AdminOnSeat"])
+    _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="AdminOnSeat")
 
     cmd = InfoCommand(controller)
@@ -143,14 +119,14 @@ async def test_info_online_users_admin_and_seat():
 @pytest.mark.asyncio
 async def test_info_online_users_all_combinations():
     users = ["AdminOffSeat", "AdminOnSeat", "NormalOffSeat", "NormalOnSeat"]
-    PresenceTracker.instance().update_online_users(users)
+    _presence.update_online_users(users)
 
-    admin_mgr = AdminManager.initialize()
-    admin_mgr.add_room_admin("AdminOffSeat")
-    admin_mgr.add_room_admin("AdminOnSeat")
+    _room_admins.add("AdminOffSeat")
+    _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="AdminOnSeat")
     obs.ledger.slots[4] = SeatSlot(seat_number=4, occupied=True, username="NormalOnSeat")
 
@@ -178,10 +154,9 @@ async def test_info_includes_timer_status():
 
 @pytest.mark.asyncio
 async def test_info_online_users_without_optional_managers_initialized():
-    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
-    # AdminManager and SeatObservationManager are NOT initialized
-    assert not AdminManager.is_initialized()
-    assert not SeatObservationManager.is_initialized()
+    _presence.update_online_users(["Alice", "Bob"])
+    # 没有房管名单，也没有座位观测
+    assert _room_admins.all() == set()
 
     controller = make_dummy_controller()
     cmd = InfoCommand(controller)

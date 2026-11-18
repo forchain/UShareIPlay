@@ -10,29 +10,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ushareiplay.commands.seat import SeatCommand
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.inbound.chat.seat import SeatCommand
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
-    yield
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
-
-
-def make_controller():
+def make_controller(seat_service=None):
     logger = MagicMock()
     soul_handler = SimpleNamespace(logger=logger, log_error=MagicMock())
-    return SimpleNamespace(soul_handler=soul_handler, music_handler=None, logger=logger)
+    return SimpleNamespace(
+        soul_handler=soul_handler,
+        music_handler=None,
+        logger=logger,
+        room_state=None,
+        seat_service=seat_service,
+        seat_observation=None,
+    )
 
 
-def make_command(resolved_name=None):
-    controller = make_controller()
+def make_command(resolved_name=None, seat_service=None):
+    controller = make_controller(seat_service=seat_service)
     command = SeatCommand(controller)
     info_manager = MagicMock()
     info_manager.resolve_visible_username = AsyncMock(
@@ -43,7 +39,7 @@ def make_command(resolved_name=None):
 
 
 def make_seat_manager(result=None):
-    manager = SeatManager.initialize()
+    manager = MagicMock()
     manager.invite_user_to_seat = AsyncMock(
         return_value=result if result is not None else {"success": "已邀请 可见昵称 入座 3 号座位"}
     )
@@ -57,8 +53,8 @@ def make_seat_manager(result=None):
 
 async def test_seat_5_defaults_the_target_to_the_sender():
     """用户留空：邀请对象就是命令发起人。"""
-    command, info_manager = make_command(resolved_name="发起人分身")
     manager = make_seat_manager()
+    command, info_manager = make_command(resolved_name="发起人分身", seat_service=manager)
     msg = MessageInfo(content=":seat 5 3", nickname="发起人")
 
     result = await command.process(msg, ["5", "3"])
@@ -69,8 +65,8 @@ async def test_seat_5_defaults_the_target_to_the_sender():
 
 
 async def test_seat_5_invites_the_named_user():
-    command, info_manager = make_command(resolved_name="对方分身")
     manager = make_seat_manager()
+    command, info_manager = make_command(resolved_name="对方分身", seat_service=manager)
     msg = MessageInfo(content=":seat 5 3 Bob", nickname="发起人")
 
     await command.process(msg, ["5", "3", "Bob"])
@@ -80,8 +76,8 @@ async def test_seat_5_invites_the_named_user():
 
 
 async def test_seat_5_rejects_a_seat_number_out_of_range():
-    command, _ = make_command()
     manager = make_seat_manager()
+    command, _ = make_command(seat_service=manager)
     msg = MessageInfo(content=":seat 5 99", nickname="发起人")
 
     result = await command.process(msg, ["5", "99"])
@@ -92,8 +88,8 @@ async def test_seat_5_rejects_a_seat_number_out_of_range():
 
 async def test_seat_5_requires_a_seat_number():
     """:seat 5 少了座位号：如实报错，不猜。"""
-    command, _ = make_command()
     manager = make_seat_manager()
+    command, _ = make_command(seat_service=manager)
     msg = MessageInfo(content=":seat 5", nickname="发起人")
 
     result = await command.process(msg, ["5"])
@@ -103,8 +99,8 @@ async def test_seat_5_requires_a_seat_number():
 
 
 async def test_seat_5_rejects_a_non_numeric_seat_number():
-    command, _ = make_command()
     manager = make_seat_manager()
+    command, _ = make_command(seat_service=manager)
     msg = MessageInfo(content=":seat 5 abc", nickname="发起人")
 
     result = await command.process(msg, ["5", "abc"])

@@ -8,10 +8,10 @@ from pathlib import Path
 
 
 def test_attach_app_logger_archives_existing_active_file(tmp_path: Path, monkeypatch):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
@@ -39,10 +39,10 @@ def test_attach_app_logger_archives_existing_active_file(tmp_path: Path, monkeyp
 
 
 def test_attach_app_logger_shares_handler_across_calls(tmp_path: Path, monkeypatch):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
@@ -73,10 +73,10 @@ def test_attach_app_logger_shares_handler_across_calls(tmp_path: Path, monkeypat
 
 
 def test_attach_chat_logger_archives_existing_active_file(tmp_path: Path, monkeypatch):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.log_rotation._log_file_created_at",
+        "ushareiplay.adapters.outbound.system.log_rotation._log_file_created_at",
         lambda path: datetime(2026, 7, 9, 8, 7, 6),
     )
 
@@ -102,7 +102,7 @@ def test_attach_chat_logger_archives_existing_active_file(tmp_path: Path, monkey
 
 
 def test_reset_closes_shared_handlers_and_clears_state(tmp_path: Path):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     lifecycle = RuntimeLogging()
     logger = lifecycle.attach_app_logger(
@@ -124,10 +124,10 @@ def test_reset_closes_shared_handlers_and_clears_state(tmp_path: Path):
 
 
 def test_resolve_path_returns_default_when_config_is_empty(tmp_path: Path, monkeypatch):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     monkeypatch.setattr(
-        "ushareiplay.core.config_loader.ConfigLoader.load_config",
+        "ushareiplay.adapters.outbound.system.config_loader.ConfigLoader.load_config",
         lambda: None,
     )
 
@@ -139,7 +139,7 @@ def test_resolve_path_returns_default_when_config_is_empty(tmp_path: Path, monke
 
 
 def test_shared_handler_is_idempotent_across_two_calls(tmp_path: Path):
-    from ushareiplay.core.runtime_logging import RuntimeLogging
+    from ushareiplay.adapters.outbound.system.runtime_logging import RuntimeLogging
 
     lifecycle = RuntimeLogging()
     active = tmp_path / "UShareIPlay.log"

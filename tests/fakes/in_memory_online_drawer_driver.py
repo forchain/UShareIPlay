@@ -50,7 +50,7 @@
 
 from typing import Optional
 
-from ushareiplay.managers.online_drawer.driver import (
+from ushareiplay.modules.room.ports import (
     ADMIN_ACTION_INVITE,
     ADMIN_LABEL_DISMISS,
     ADMIN_LABEL_INVITE,
@@ -201,6 +201,11 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.admin_confirm_pending = False
         self.admin_invite_clicks = []
         self.admin_confirm_actions = []
+        self.switch_to_app_calls = 0
+
+    async def switch_to_app(self) -> bool:
+        self.switch_to_app_calls += 1
+        return True
 
     async def is_open(self) -> bool:
         if self.container_missing:

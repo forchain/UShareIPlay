@@ -7,7 +7,7 @@
 """
 
 from types import SimpleNamespace
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 
 
 class _Logger:
@@ -47,9 +47,10 @@ class _FakeMusicHandler:
 
 
 def _make_music_manager_for_quality_check():
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
     manager = MusicManager.__new__(MusicManager)
     manager._handler = None
+    manager._config = None
     manager.logger = _Logger()
     manager._song_release_lookup = None
     manager.music_handler = _FakeMusicHandler()
@@ -159,8 +160,8 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
     断言仍落在「质量过滤发生在播放刚起来的同一时刻」这个行为上，只是不再经由
     `PlayCommand.play_song` —— 那条路现在是 `MusicManager.play()` 的引擎流水线。
     """
-    from ushareiplay.managers.playback.models import PlaybackRequest
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.modules.playback.domain import PlaybackRequest
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()
     quality_checked = []
@@ -170,12 +171,10 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
             quality_checked.append(song_info)
             return True
 
-    monkeypatch.setattr(
-        "ushareiplay.managers.music_manager.MusicManager.instance",
-        staticmethod(lambda: _FakeMusicManager()),
-    )
-
-    outcome = QQMusicUIDriver(music_handler).start_playback(
+    outcome = QQMusicUIDriver(
+        music_handler,
+        quality_checker=_FakeMusicManager(),
+    ).start_playback(
         PlaybackRequest.song("似是故人来 梅艳芳", requester="小明")
     )
 
@@ -185,8 +184,8 @@ def test_play_driver_checks_song_quality_immediately_after_playback_starts(monke
 
 
 def test_play_driver_returns_error_when_first_song_not_found(monkeypatch):
-    from ushareiplay.managers.playback.models import PlaybackRequest
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.modules.playback.domain import PlaybackRequest
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
     music_handler = _PlayMusicHandler()
     music_handler.wait_for_element_clickable = lambda key: None

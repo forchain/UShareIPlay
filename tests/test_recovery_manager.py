@@ -3,15 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.handlers.soul_handler import SoulHandler
-from ushareiplay.managers.recovery_manager import RecoveryManager
-
-
-@pytest.fixture(autouse=True)
-def reset_recovery_manager_singleton():
-    RecoveryManager.reset_instance()
-    yield
-    RecoveryManager.reset_instance()
+from ushareiplay.adapters.outbound.appium.soul.soul_handler import SoulHandler
+from ushareiplay.adapters.outbound.appium.soul.recovery_manager import RecoveryManager
 
 
 class FakeHandler:
@@ -52,7 +45,7 @@ class FakeHandler:
 
 
 def _make_manager(monkeypatch, handler):
-    return RecoveryManager.initialize(handler)
+    return RecoveryManager(handler)
 
 
 def test_close_drawer_succeeds_after_second_tap(monkeypatch):

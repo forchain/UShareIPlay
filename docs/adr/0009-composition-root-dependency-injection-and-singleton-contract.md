@@ -159,3 +159,21 @@ observe 时刻的旧分类。
 组合根现在构造 `ConfigView`，并把类型化的段视图（`config.soul` / `config.music`）注入给
 `SoulHandler` / `QQMusicHandler` 与各管理器，取代裸 dict；§1 的「构造一次、由组合根注入」
 原则在配置这条线上第一次真正落地。
+
+### 2026-11-18 —— §2 与 §3 的懒取措辞由 ADR-0013 取代；Non-Goal §4 改判
+
+spec #539（六边形架构迁移）的架构决策落在
+[ADR-0013](0013-hexagonal-module-layout-and-constructor-injection.md)，本 ADR 相应条款按
+「显式修订、不静默忽略」处理：
+
+- **§2（受保护单例契约）被取代**：`modules/` 内层不再允许 `Cls.instance()` 查找，
+  一切依赖只从构造器进入。单例可继续作为适配器级生命周期装置由组合根拥有，
+  最终状态是组合根之外没有 `.instance()` 查找。
+- **§3 的懒取 Handler 措辞被取代**：§3 的目标（依赖从构造器进入）保留，但内层不再
+  有「懒取 Handler 兜底」这一合法来源。
+- **Non-Goal §4（network_bridge 不迁移）改判**：网络桥归入
+  `adapters/outbound/system/`，在最终整合纵切完成迁移，期间不引入双轨兼容层。
+- Non-Goals §1、§2、§3、§5、§6 继续有效。
+
+首个落地切片为 #540（骨架、共享内核、架构护栏、ADR-0013）。
+

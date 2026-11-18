@@ -4,13 +4,13 @@ import queue
 import pytest
 from unittest.mock import MagicMock
 
-from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
 from ushareiplay.core.runtime_context import EventRuntimeContext
 from ushareiplay.core.ui_session_lease import UISessionLease
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.ui.element_finder import ElementFinder
-from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.outbound.appium.ui.element_finder import ElementFinder
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest.mark.asyncio
@@ -104,9 +104,7 @@ async def test_stop_command_halts_subsequent_events_in_event_manager():
     handler = MagicMock()
     handler.logger = MagicMock()
 
-    from ushareiplay.core.singleton import Singleton
-    Singleton.reset_all_instances()
-    em = EventManager.initialize(handler)
+    em = EventManager(handler)
     em.configure_runtime(runtime_ctx)
     em.element_to_event = {
         "chat_messages": "msg_mod",
@@ -173,7 +171,7 @@ def test_console_stop_sets_pause_flag_before_the_loop_is_free(monkeypatch):
     控制台线程必须同步落下暂停标志，否则同步 UI 代码下一次查
     `is_interrupted()` 仍看不到暂停，!stop 对 QQ Music 形同虚设。
     """
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
     pipeline = RuntimeInputPipeline(
         input_queue=queue.Queue(),
@@ -181,14 +179,14 @@ def test_console_stop_sets_pause_flag_before_the_loop_is_free(monkeypatch):
         logger=MagicMock(),
         send_screen_message=lambda msg: None,
     )
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = pipeline
     controller.loop = MagicMock()
     controller.loop.is_running.return_value = True
 
     deferred = []
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.asyncio.run_coroutine_threadsafe",
+        "ushareiplay.bootstrap.runtime_loop.asyncio.run_coroutine_threadsafe",
         lambda coro, loop: deferred.append(coro),
     )
 
@@ -211,12 +209,17 @@ async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch)
     若监控循环也不消费它，它就会一路逃出 `asyncio.run`，进程带着 traceback 退出。
     """
     from types import SimpleNamespace
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
     async def _noop(*_args, **_kwargs):
         return None
 
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop(
+        config={},
+        obs=None,
+        lease=SimpleNamespace(lock=SimpleNamespace(locked=lambda: False)),
+        room_owner_provider=lambda: "Owner",
+    )
     controller.logger = MagicMock()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
@@ -230,7 +233,7 @@ async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch)
     controller.in_console_mode = False
     controller.is_running = True
     controller._drain_agent_command_spool = lambda: None
-    controller._runtime_queue_drainer = None
+    controller.runtime_queue_drainer = None
     controller.runtime_input = SimpleNamespace(paused=False, drain=_noop)
 
     screens = []
@@ -253,18 +256,14 @@ async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch)
         if controller.runtime_input.paused:
             controller.is_running = False
 
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", fake_sleep)
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
-    monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
-    monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
-    monkeypatch.setattr(AppController, "_detect_initial_room_state", lambda _self: _noop())
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_noop),
-    )
+    monkeypatch.setattr(RuntimeLoop, "init_runtime_queue", lambda _self: None)
+    monkeypatch.setattr(RuntimeLoop, "_detect_initial_room_state", lambda _self: _noop())
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_noop)
 
     # 不应抛出：中断信号在监控循环边界被消费，进程进入暂停而非退出。
     await controller.start_monitoring()
@@ -277,7 +276,7 @@ def test_agent_command_spool_dispatches_meta_stop_immediately(tmp_path):
     这样在无交互终端运行（E2E、systemd 等）且 QQ Music 同步操作阻塞事件循环时，
     后台通道注入的 !stop 也能立即生效，而不必留在队列里等到操作结束。
     """
-    from ushareiplay.core.runtime_services import AgentCommandSpool
+    from ushareiplay.adapters.inbound.runtime.runtime_services import AgentCommandSpool
 
     input_q = queue.Queue()
     dispatched = []
@@ -312,7 +311,7 @@ def test_console_prompt_stop_logs_critical_paused(monkeypatch):
 
     不能因为处于输入静音期被 ConsoleLogMuter 过滤掉。
     """
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
     from ushareiplay.core.console_log_muter import ConsoleLogMuter
 
     muter = ConsoleLogMuter.get_instance()
@@ -337,7 +336,7 @@ def test_console_prompt_stop_logs_critical_paused(monkeypatch):
         logger=logger,
         send_screen_message=lambda msg: None,
     )
-    controller = AppController.__new__(AppController)
+    controller = RuntimeLoop.__new__(RuntimeLoop)
     controller.runtime_input = pipeline
     controller.logger = logger
     controller.is_running = True
@@ -347,7 +346,7 @@ def test_console_prompt_stop_logs_critical_paused(monkeypatch):
     controller.loop.is_running.return_value = True
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.asyncio.run_coroutine_threadsafe",
+        "ushareiplay.bootstrap.runtime_loop.asyncio.run_coroutine_threadsafe",
         lambda coro, loop: coro.close(),
     )
 

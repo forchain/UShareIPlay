@@ -1,11 +1,11 @@
 import asyncio
 from types import SimpleNamespace
 
-from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.runtime_services import StatusReporter
+from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.adapters.inbound.runtime.runtime_services import StatusReporter
 from ushareiplay.core.ui_session_lease import UISessionLease
-from ushareiplay.managers.event_manager import EventManager
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
 class FakeObserver:
@@ -125,7 +125,7 @@ def test_process_current_screen_retries_empty_page_source_and_returns_outcome(mo
 
     manager.get_page_source = fake_get_page_source
     manager.react_to_page = fake_react_to_page
-    monkeypatch.setattr("ushareiplay.managers.event_manager.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.ui_events.event_manager.asyncio.sleep", noop_sleep)
 
     outcome = asyncio.run(manager.process_current_screen())
 
@@ -155,7 +155,7 @@ def test_process_current_screen_without_page_source_reports_no_page_source_recov
         return None
 
     manager.get_page_source = lambda: ""
-    monkeypatch.setattr("ushareiplay.managers.event_manager.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("ushareiplay.adapters.inbound.ui_events.event_manager.asyncio.sleep", noop_sleep)
 
     outcome = asyncio.run(manager.process_current_screen())
 
@@ -505,7 +505,7 @@ def test_react_to_page_resets_counter_when_event_triggers():
 
 
 def test_status_reporter_uses_supplied_screen_description():
-    asyncio.run(MessageQueue.instance().clear_queue())
+    queue = MessageQueue()
     obs = FakeObserver()
     reporter = StatusReporter(
         config=ConfigView({"soul": {"default_party_id": "123"}}),
@@ -513,6 +513,7 @@ def test_status_reporter_uses_supplied_screen_description():
         obs=obs,
         soul_handler=SimpleNamespace(party_id="456"),
         timer_manager=SimpleNamespace(is_running=lambda: True),
+        message_queue=queue,
     )
     automation = FakeAutomation()
 

@@ -2,8 +2,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from ushareiplay.managers.command_manager import CommandManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class FakeMessageDispatch:
@@ -74,14 +74,15 @@ class FlakyCommand:
 
 
 def make_manager():
+    from ushareiplay.adapters.outbound.system.clock import SystemClock
+
     controller = SimpleNamespace(
         obs=FakeObserver(),
         soul_handler=object(),
         music_handler=object(),
     )
     runtime = FakeRuntime(controller)
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
+    manager = CommandManager(clock=SystemClock())
     manager.configure_runtime(runtime)
     manager._logger = FakeLogger()
     manager._handler = SimpleNamespace(config={"system_users": ["Console"]})

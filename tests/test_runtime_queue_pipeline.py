@@ -46,7 +46,7 @@ class _FakeCommandManager:
         return len(messages)
 
     async def execute_runtime_queue_messages(self, queue_messages, send_screen_message=None):
-        from ushareiplay.managers.command_manager import CommandManager
+        from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
         manager = CommandManager.__new__(CommandManager)
         manager.__init__()
@@ -64,19 +64,23 @@ class _FakeWrapper:
 
 
 def test_runtime_queue_drainer_routes_commands_and_plain_messages():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(queue.put_message(MessageInfo(content="hello {user_name};:timer list", nickname="Alice")))
 
     obs = _FakeObs()
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, obs=obs, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        obs=obs,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -90,12 +94,11 @@ def test_runtime_queue_drainer_routes_commands_and_plain_messages():
 
 
 def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_messages():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(
         queue.put_message(
             MessageInfo(content="hello {user_name};:timer list", nickname="Alice", silent=True)
@@ -105,7 +108,11 @@ def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_m
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -118,12 +125,11 @@ def test_runtime_queue_drainer_propagates_silent_commands_and_suppresses_plain_m
 
 
 def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(
         queue.put_message(
             MessageInfo(
@@ -137,7 +143,11 @@ def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -149,18 +159,21 @@ def test_runtime_queue_drainer_propagates_sleep_exempt_to_split_commands():
 
 
 def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(queue.put_message(MessageInfo(content="hello;/timer list", nickname="Alice")))
 
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -173,18 +186,21 @@ def test_runtime_queue_drainer_treats_slash_parts_as_silent_commands():
 
 
 def test_runtime_queue_drainer_routes_dollar_parts_as_private_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(queue.put_message(MessageInfo(content="hello;$info", nickname="Alice")))
 
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -197,18 +213,21 @@ def test_runtime_queue_drainer_routes_dollar_parts_as_private_commands():
 
 
 def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(queue.put_message(MessageInfo(content="＄info", nickname="Alice")))
 
     handler = _FakeHandler()
     command_manager = _FakeCommandManager()
     drainer = RuntimeQueueDrainer(
-        handler=handler, command_manager=command_manager, send_screen_message=handler.send_message, logger=handler.logger
+        handler=handler,
+        command_manager=command_manager,
+        send_screen_message=handler.send_message,
+        message_queue=queue,
+        logger=handler.logger,
     )
 
     drained, command_count = _run(drainer.drain())
@@ -221,8 +240,8 @@ def test_runtime_queue_drainer_routes_fullwidth_dollar_parts_as_private_commands
 
 def _queue_after_scan(*lines):
     """Run lines through the real scan site and return what it queued."""
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
@@ -232,11 +251,12 @@ def _queue_after_scan(*lines):
         def switch_to_app(self):
             return True
 
-    manager = MessageManager.instance()
-    manager._handler = _with_ui_components(_FakeSoulHandler())
+    queue = MessageQueue()
+    manager = MessageManager(
+        handler=_with_ui_components(_FakeSoulHandler()),
+        message_queue=queue,
+    )
     manager._chat_logger = logging.getLogger("test_chat_logger_new")
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
 
     _run(manager.dispatch_intake(list(lines), room_owner="群主"))
     return list(_run(queue.get_all_messages()).values())
@@ -273,9 +293,8 @@ def test_screen_scan_queues_ascii_colon_in_chat_prefix():
 
 def test_focus_app_for_queued_commands_switches_to_app_without_executing_commands():
     """The scan still brings Soul forward; execution belongs to the drainer (#398)."""
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.command_manager import CommandManager
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     switches = []
 
@@ -288,24 +307,21 @@ def test_focus_app_for_queued_commands_switches_to_app_without_executing_command
             switches.append(True)
             return True
 
-    original_cmd_instance = CommandManager.instance
-    try:
-        # A bare object: the focus step has no execution entry point to
-        # call any more (#399), so touching one would raise rather than pass quietly.
-        CommandManager.instance = classmethod(lambda cls: object())
-        manager = MessageManager.instance()
-        manager._handler = _with_ui_components(_FakeSoulHandler())
-        manager._chat_logger = logging.getLogger("test_chat_logger_switch")
-        queue = MessageQueue.instance()
-        _run(queue.clear_queue())
-        manager.observe(["souler[Alice]说：$play 123"])
+    queue = MessageQueue()
+    # A bare object: the focus step has no execution entry point to
+    # call any more (#399), so touching one would raise rather than pass quietly.
+    manager = MessageManager(
+        handler=_with_ui_components(_FakeSoulHandler()),
+        message_queue=queue,
+        command_manager=object(),
+    )
+    manager._chat_logger = logging.getLogger("test_chat_logger_switch")
+    manager.observe(["souler[Alice]说：$play 123"])
 
-        assert _run(manager.focus_app_for_queued_commands()) is True
+    assert _run(manager.focus_app_for_queued_commands()) is True
 
-        assert switches == [True]  # D10: the UI switch stays at scan time
-        assert queue.get_queue_size() == 0  # enqueueing belongs to dispatch_intake
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert switches == [True]  # D10: the UI switch stays at scan time
+    assert queue.get_queue_size() == 0  # enqueueing belongs to dispatch_intake
 
 
 def test_queued_screen_command_inherits_ambient_command_silence(chat_window, monkeypatch):
@@ -319,10 +335,9 @@ def test_queued_screen_command_inherits_ambient_command_silence(chat_window, mon
     it is pinned here deliberately rather than left to be discovered in a live room.
     """
     from ushareiplay.core.command_silence import command_silence
-    from ushareiplay.core.message_queue import MessageQueue
 
     event, _command_manager, _drainer = _screen_chat_window(chat_window, monkeypatch)
-    queue = MessageQueue.instance()
+    queue = chat_window.message_queue
 
     _scan(event, "souler[Alice]说：$info")
     assert [m.silent for m in _run(queue.get_all_messages()).values()] == [False]
@@ -348,13 +363,12 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
     drop the latency to zero) cannot happen unnoticed.
     """
     import asyncio
-    from queue import Queue
     from types import SimpleNamespace
 
-    from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
     from tests.test_app_controller_driver_subscribers import (
         FakeLogger,
         controller_without_init,
@@ -362,22 +376,14 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
 
     controller = controller_without_init()
     controller.config = {"commands": []}
-    controller.input_queue = Queue()
     controller.soul_handler = SimpleNamespace(
         error_count=0,
         log_error=lambda *_args, **_kwargs: None,
         logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
     )
     controller.logger = FakeLogger()
-    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
-    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_noop)
-    controller._drain_agent_command_spool = lambda: None
-    controller.is_running = True
-    controller.in_console_mode = False
-    controller._update_status_from_screen = _noop
 
-    asyncio.run(MessageQueue.instance().clear_queue())
-
+    queue = MessageQueue()
     executed = []
     sleeps = {"count": 0}
     sleeps_before_execution = []
@@ -394,6 +400,7 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
             execute_runtime_queue_messages=execute_runtime_queue_messages
         ),
         send_screen_message=lambda *_args, **_kwargs: None,
+        message_queue=queue,
     )
 
     async def drain():
@@ -406,30 +413,39 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
         scans["count"] += 1
         if scans["count"] == 1:
             # The scan sees the command and `dispatch_intake` queues it.
-            await MessageQueue.instance().put_message(
+            await queue.put_message(
                 MessageInfo(content="$info", nickname="Alice")
             )
         elif scans["count"] >= 3:
-            controller.is_running = False
+            loop.is_running = False
         return {"page_source": "", "screen": {}, "triggered_count": 0}
 
-    controller.event_manager = SimpleNamespace(process_current_screen=process_current_screen)
-    controller.runtime_input = SimpleNamespace(drain=_noop, paused=False)
-    controller._runtime_queue_drainer = SimpleNamespace(drain=drain)
+    loop = RuntimeLoop(
+        config=controller.config,
+        obs=controller.obs,
+        lease=controller.ui_session_lease,
+        room_owner_provider=lambda: "群主",
+    )
+    loop.logger = controller.logger
+    loop.soul_handler = controller.soul_handler
+    loop.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+    loop.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_noop)
+    loop.timer_manager = SimpleNamespace(is_running=lambda: True, start=_noop)
+    loop.event_manager = SimpleNamespace(process_current_screen=process_current_screen)
+    loop.message_queue = queue
+    loop.runtime_input = SimpleNamespace(drain=_noop, paused=False)
+    loop.runtime_queue_drainer = SimpleNamespace(drain=drain)
+    loop._drain_agent_command_spool = lambda: None
+    loop._update_status_from_screen = _noop
 
     async def noop_sleep(*_args, **_kwargs):
         sleeps["count"] += 1
         return None
 
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
-    monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
-    monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_noop),
-    )
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr(loop, "init_runtime_queue", lambda: None)
 
-    asyncio.run(controller.start_monitoring())
+    asyncio.run(loop.start_monitoring())
 
     assert executed == ["$info"]
     # A whole loop tick (and its sleep) separates the scan from the execution.
@@ -448,22 +464,10 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
     unsynchronised; this pins that a queued screen command is guarded exactly
     like a backfilled one. Playback muting no longer wraps this path (#535).
     """
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     entered = []
 
-    real_manager = CommandManager.__new__(CommandManager)
-    real_manager.__init__()
-    real_manager._logger = logging.getLogger("test_screen_guards")
-    real_manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
-    real_manager.initialize_parser(
-        [{"prefix": "play", "level": 1, "response_template": "{song}", "error_template": "{error}"}]
-    )
-    monkeypatch.setattr(real_manager, "get_command", lambda _cmd: SimpleNamespace())
-
-    # `message_dispatch` is a read-only property, so the outbound seam is swapped
-    # at the singleton seam. It is not what this test is about; keep it inert.
-    # 私聊出口是异步的（#435）：抽屉会话是 async context manager。
     async def _inert_noop(*_a, **_k):
         return None
 
@@ -475,10 +479,13 @@ def test_queued_screen_command_traverses_the_same_guard_bearing_path_as_a_backfi
         dispatch.bind_handler = lambda _handler: dispatch
         return dispatch
 
-    monkeypatch.setattr(
-        "ushareiplay.managers.command_manager.MessageDispatch.instance",
-        _inert_dispatch,
+    real_manager = CommandManager(message_dispatch=_inert_dispatch())
+    real_manager._logger = logging.getLogger("test_screen_guards")
+    real_manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
+    real_manager.initialize_parser(
+        [{"prefix": "play", "level": 1, "response_template": "{song}", "error_template": "{error}"}]
     )
+    monkeypatch.setattr(real_manager, "get_command", lambda _cmd: SimpleNamespace())
 
     async def _process_command(_command, message_info, _command_info):
         entered.append(message_info.content)
@@ -503,8 +510,8 @@ async def _noop(*_args, **_kwargs):
 
 
 def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     class _FakeSoulHandler:
         def __init__(self):
@@ -524,14 +531,14 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
         def send_message(self, _message):
             return None
 
-    manager = MessageManager.instance()
-    manager._handler = _with_ui_components(_FakeSoulHandler())
+    queue = MessageQueue()
+    manager = MessageManager(
+        handler=_with_ui_components(_FakeSoulHandler()),
+        message_queue=queue,
+    )
     manager._chat_logger = logging.getLogger("test_chat_logger_missed")
     manager._recovery_manager = None
     manager.observe(["souler[Anchor]说：:noop"])
-
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
 
     command_set = _run(manager.process_missed_messages())
 
@@ -543,7 +550,7 @@ def test_process_missed_messages_accepts_dollar_prefix_and_queues_command():
 
 
 def test_process_missed_messages_sends_empty_message_after_finding_anchor():
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     scroll_calls = []
 
@@ -563,8 +570,7 @@ def test_process_missed_messages_sends_empty_message_after_finding_anchor():
             self.sent_messages.append(message)
 
     handler = _with_ui_components(_FakeSoulHandler())
-    manager = MessageManager.instance()
-    manager._handler = handler
+    manager = MessageManager(handler=handler)
     manager._chat_logger = logging.getLogger("test_chat_logger_missed_anchor")
     manager._recovery_manager = None
     manager.observe(["兴趣主题已更换为「Turn Around」"])
@@ -581,9 +587,9 @@ def test_missed_detection_fallback_prevents_false_missed():
 
     这条用例原先把生产算法抄了一份来验证；现在走 observe() 的接口。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     # 窗口只保留 3 行，屏幕上有 5 行
     manager.observe(["msg_C", "msg_D", "msg_E"])
 
@@ -597,9 +603,9 @@ def test_missed_detection_fallback_prevents_false_missed():
 
 def test_observe_reports_missed_when_the_anchor_scrolled_away():
     """锚点确实不在屏幕上时才是真的漏了。"""
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     manager.observe(["msg_A", "msg_B", "msg_C"])
 
     delta = manager.observe(["msg_X", "msg_Y", "msg_Z"])
@@ -609,9 +615,9 @@ def test_observe_reports_missed_when_the_anchor_scrolled_away():
 
 
 def test_observe_returns_only_the_lines_after_the_anchor():
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     manager.observe(["msg_A", "msg_B", "msg_C"])
 
     delta = manager.observe(["msg_A", "msg_B", "msg_C", "msg_D"])
@@ -627,9 +633,9 @@ def test_a_static_screen_is_never_reported_as_new_again():
     下一次观察看不到锚点，整屏会被当成新增重新派发 —— 礼物重复道谢、热力值
     重复写库、命令重复执行。旧的 diff 算法 append 的是整屏，窗口跨静屏保留。
     """
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     screen = ["souler[A]说: 你好", "souler[A]送给Joyer", "souler[B]说: :play 稻香"]
 
     assert manager.observe(screen).new_lines == tuple(screen)
@@ -641,9 +647,9 @@ def test_a_static_screen_is_never_reported_as_new_again():
 
 def test_an_unreadable_screen_does_not_forget_the_window():
     """屏幕上什么都读不到（元素缺失/界面切换）时，窗口不能被清空。"""
-    from ushareiplay.managers.message_manager import MessageManager
+    from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
-    manager = MessageManager.instance()
+    manager = MessageManager()
     manager.observe(["msg_A", "msg_B", "msg_C"])
     manager.observe([])
 
@@ -658,25 +664,25 @@ def _screen_chat_window(chat_window, monkeypatch):
     chat logger) and points the event at a `_FakeCommandManager` recording what
     execution actually received. Returns `(event, command_manager, drainer)`.
     """
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
-    from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
     handler = chat_window.handler
     handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
 
     command_manager = _FakeCommandManager()
-    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: command_manager))
+    chat_window.controller.command_manager = command_manager
+    chat_window.manager.configure_command_manager(command_manager)
 
     drainer = RuntimeQueueDrainer(
         handler=handler,
         command_manager=command_manager,
         send_screen_message=lambda *_args, **_kwargs: None,
+        message_queue=chat_window.message_queue,
         logger=handler.logger,
     )
 
-    _run(MessageQueue.instance().clear_queue())
+    _run(chat_window.message_queue.clear_queue())
     return MessageContentEvent(handler), command_manager, drainer
 
 
@@ -691,13 +697,11 @@ def test_screen_chat_command_is_queued_and_not_executed_inline(chat_window, monk
     Before #398 the scan called `execute_chat_scan` and executed immediately, so
     screen commands never crossed `MessageQueue` at all.
     """
-    from ushareiplay.core.message_queue import MessageQueue
-
     event, command_manager, _drainer = _screen_chat_window(chat_window, monkeypatch)
 
     _scan(event, "souler[Outlier]说：$info")
 
-    queued = list(_run(MessageQueue.instance().get_all_messages()).values())
+    queued = list(_run(chat_window.message_queue.get_all_messages()).values())
     assert [m.content for m in queued] == ["$info"]
     assert [m.nickname for m in queued] == ["Outlier"]
     assert command_manager.received == []
@@ -756,11 +760,10 @@ def test_message_content_event_feeds_the_runtime_queue_and_leaves_execution_to_t
     and leaves execution to `RuntimeQueueDrainer`. Work already in the queue when
     the screen is scanned is still carried over untouched, not consumed here.
     """
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     event, command_manager, drainer = _screen_chat_window(chat_window, monkeypatch)
-    queue = MessageQueue.instance()
+    queue = chat_window.message_queue
     _run(queue.put_message(MessageInfo(content=":timer list", nickname="Timer")))
 
     _scan(event, "souler[Outlier]说：$info")
@@ -777,14 +780,13 @@ def test_message_content_event_feeds_the_runtime_queue_and_leaves_execution_to_t
 
 def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_window, monkeypatch):
     """The event hands the command to the runtime queue instead of executing it (#398)."""
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.events.message_content import MessageContentEvent
-    from ushareiplay.managers.command_manager import CommandManager
+    from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
     fake_command_manager = _FakeCommandManager()
-    monkeypatch.setattr(CommandManager, "instance", classmethod(lambda cls: fake_command_manager))
+    chat_window.controller.command_manager = fake_command_manager
+    chat_window.manager.configure_command_manager(fake_command_manager)
     chat_window.handler.key_actions = SimpleNamespace(switch_to_app=lambda: True)
-    queue = MessageQueue.instance()
+    queue = chat_window.message_queue
     _run(queue.clear_queue())
 
     event = MessageContentEvent(chat_window.handler)
@@ -801,12 +803,11 @@ def test_message_content_event_queues_dollar_command_for_the_runtime_queue(chat_
 @pytest.mark.asyncio
 async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    msg_queue = MessageQueue.instance()
-    await msg_queue.clear_queue()
+    msg_queue = MessageQueue()
 
     await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
     await msg_queue.put_message(MessageInfo(content=":quick_skip", nickname="Bob"))
@@ -833,12 +834,14 @@ async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue()
         room_owner_provider=lambda: "Owner",
         logger=logger,
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
     )
 
     drainer = RuntimeQueueDrainer(
         handler=_FakeHandler(),
         command_manager=MockCommandManager(),
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
         logger=logger,
         runtime_input=pipeline,
     )
@@ -881,14 +884,13 @@ async def test_instant_stop_hard_interrupts_active_command_and_preserves_queue()
 @pytest.mark.asyncio
 async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     import queue
-    from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
-    from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.bootstrap.container import AppContainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.modules.playback.use_cases import PlaybackMuting
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    msg_queue = MessageQueue.instance()
-    await msg_queue.clear_queue()
+    msg_queue = MessageQueue()
     await msg_queue.put_message(MessageInfo(content=":play_song", nickname="Alice"))
 
     class FakeMicManager:
@@ -925,15 +927,14 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     handler = FakeHandler()
     mic = FakeMicManager()
     # 用真实的 PlaybackMuting.guard：取消时靠它的 except BaseException 恢复开麦。
-    muting = PlaybackMuting.initialize(
-        handler, music_manager=FakeMusicManager(), mic_manager=mic
+    muting = PlaybackMuting(
+        mic=mic, media_session=FakeMusicManager(), logger=handler.logger
     )
 
-    # 真实 AppController.ui_session：取消时由它的 finally 释放锁。
-    controller = AppController.__new__(AppController)
-    controller.ui_lock = asyncio.Lock()
+    # 真实 AppContainer.ui_session：取消时由它的 finally 释放锁。
+    controller = AppContainer.__new__(AppContainer)
+    controller._ui_session_lease = None
     controller.logger = handler.logger
-    AppController._ui_session_lease = None
 
     started = asyncio.Event()
 
@@ -950,11 +951,13 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
         room_owner_provider=lambda: "Owner",
         logger=handler.logger,
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
     )
     drainer = RuntimeQueueDrainer(
         handler=handler,
         command_manager=MockCommandManager(),
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
         logger=handler.logger,
         runtime_input=pipeline,
     )
@@ -982,12 +985,11 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
 @pytest.mark.asyncio
 async def test_external_cancellation_propagates_and_cancels_active_command():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    msg_queue = MessageQueue.instance()
-    await msg_queue.clear_queue()
+    msg_queue = MessageQueue()
     await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
     await msg_queue.put_message(MessageInfo(content=":quick_skip", nickname="Bob"))
 
@@ -1015,11 +1017,13 @@ async def test_external_cancellation_propagates_and_cancels_active_command():
         room_owner_provider=lambda: "Owner",
         logger=handler.logger,
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
     )
     drainer = RuntimeQueueDrainer(
         handler=handler,
         command_manager=MockCommandManager(),
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
         logger=handler.logger,
         runtime_input=pipeline,
     )
@@ -1041,12 +1045,11 @@ async def test_external_cancellation_propagates_and_cancels_active_command():
 @pytest.mark.asyncio
 async def test_watcher_consumes_only_stop_and_start_during_command():
     import queue
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    msg_queue = MessageQueue.instance()
-    await msg_queue.clear_queue()
+    msg_queue = MessageQueue()
     await msg_queue.put_message(MessageInfo(content=":slow_search", nickname="Alice"))
 
     started = asyncio.Event()
@@ -1071,12 +1074,14 @@ async def test_watcher_consumes_only_stop_and_start_during_command():
         room_owner_provider=lambda: "Owner",
         logger=handler.logger,
         send_screen_message=screen.append,
+        message_queue=msg_queue,
         dump_artifacts=dump_artifacts,
     )
     drainer = RuntimeQueueDrainer(
         handler=handler,
         command_manager=MockCommandManager(),
         send_screen_message=lambda msg: None,
+        message_queue=msg_queue,
         logger=handler.logger,
         runtime_input=pipeline,
     )

@@ -17,12 +17,12 @@ from unittest.mock import MagicMock
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ushareiplay.commands.radio import RadioCommand
-from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
-from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
-from ushareiplay.managers.playlist_session import primary_topic
-from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.adapters.inbound.chat.radio import RadioCommand
+from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackRequest
+from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
+from ushareiplay.modules.playback.use_cases import primary_topic
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 # 老歌过滤的判定基准。与 config.yaml 的默认值一致，让测试里的「1995 年」
 # 与「2021 年」分别落在截止线两侧。
@@ -80,26 +80,26 @@ class _RecordingMicManager:
         return {"state": "1"}
 
 
+_CURRENT_PLAY_SONG = None
+
+
 def _controller():
     return SimpleNamespace(
         soul_handler=MagicMock(),
         music_handler=MagicMock(),
         config={},
+        play_song=_CURRENT_PLAY_SONG,
     )
 
 
 @pytest.fixture
 def radio_engine(initialized_test_singletons):
-    """`:radio` 的引擎台：真守护 + 真房间同步 + 内存 UI 驱动。
-
-    守护判定仍由 `PlaylistSession.guard_switch` 发给替身的 `_InfoManager`，
-    因此「守护还管不管得住 `:radio`」考的是引擎与命令的接线，而不是命令层
-    有没有再自己判一次。驱动替身把房间标题/话题/歌单都报成固定值，好让
-    「驱动观察到的事实一路进了房间」这件事看得见。
-    """
-    from ushareiplay.managers.music_manager import MusicManager
-    from ushareiplay.managers.playback_muting import PlaybackMuting
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    """`:radio` 的引擎台：真守护 + 真房间同步 + 内存 UI 驱动。"""
+    from ushareiplay.modules.playback.use_cases import (
+        PlaySong,
+        PlaybackMuting,
+        PlaylistSession,
+    )
     from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
     journal = []
@@ -110,25 +110,32 @@ def radio_engine(initialized_test_singletons):
         playlists={PlaybackMode.RADIO: "每日猜你喜欢"},
     )
 
-    session = PlaylistSession.instance()
     info = _InfoManager()
-    session._room_profile = _RoomProfileManager()
+    room_profile = _RoomProfileManager()
+    session = PlaylistSession(room_profile=room_profile)
     session.player_name = info.player_name
     session.current_playlist_name = info.current_playlist_name
     session.check_playlist_protection = info.check_playlist_protection
 
-    MusicManager.initialize(ui_driver=driver)
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
-        SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
-        _RecordingMicManager(journal),
+    muting = PlaybackMuting(
+        mic=_RecordingMicManager(journal),
+        media_session=SimpleNamespace(wait_for_playback_ready=lambda **_kw: True),
+        config=ConfigSectionView("soul", {}),
+        logger=MagicMock(),
+    )
+    global _CURRENT_PLAY_SONG
+    _CURRENT_PLAY_SONG = PlaySong(
+        ui_driver=driver,
+        playlist_session=session,
+        playback_muting=muting,
+        logger=MagicMock(),
     )
     return SimpleNamespace(
         driver=driver,
         journal=journal,
         info=info,
         session=session,
-        room_profile=session._room_profile,
+        room_profile=room_profile,
     )
 
 
@@ -310,15 +317,22 @@ class _ReleaseLookup:
         return self.dates.get(query)
 
 
-@pytest.fixture
-def music_manager(initialized_test_singletons):
-    """驱动里的老歌判定要走真实的 `MusicManager`，这里只换掉它的日期查询。"""
-    from ushareiplay.managers.music_manager import MusicManager
+_ACTIVE_MUSIC_MANAGER = None
 
-    manager = MusicManager.initialize()
-    manager.music_handler = SimpleNamespace(config=ConfigView({}))
+
+@pytest.fixture
+def music_manager():
+    """驱动里的老歌判定要走真实的 `MusicManager`，这里只换掉它的日期查询。"""
+    global _ACTIVE_MUSIC_MANAGER
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+
+    manager = MusicManager(
+        music_handler=SimpleNamespace(config=ConfigView({})),
+    )
     manager._song_release_lookup = _ReleaseLookup({})
-    return manager
+    _ACTIVE_MUSIC_MANAGER = manager
+    yield manager
+    _ACTIVE_MUSIC_MANAGER = None
 
 
 def _filter_config(**overrides):
@@ -328,12 +342,17 @@ def _filter_config(**overrides):
 
 
 def _driver(elements, actions, setup=None, **kwargs):
-    from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
+    from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
 
     handler = _RadioHandlerFake(elements, actions, **kwargs)
     if setup is not None:
         setup(handler)
-    return QQMusicUIDriver(handler), handler
+    manager = _ACTIVE_MUSIC_MANAGER
+    return QQMusicUIDriver(
+        handler,
+        quality_checker=manager,
+        config=manager.config if manager is not None else None,
+    ), handler
 
 
 def _radio(channel, **kwargs):

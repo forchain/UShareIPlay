@@ -20,15 +20,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.commands.play import PlayCommand
-from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.adapters.inbound.chat.play import PlayCommand
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomState
+from ushareiplay.modules.playback.use_cases import (
+    PlaySong,
+    PlaybackMuting,
+    PlaylistSession,
+)
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 RADIO_NAME = "猜你喜欢-沉浸刷歌"
 
@@ -59,8 +59,14 @@ class _MicManager:
         return {"state": "1"}
 
 
-def _play_command():
-    return PlayCommand(SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock()))
+def _play_command(play_song):
+    return PlayCommand(
+        SimpleNamespace(
+            soul_handler=MagicMock(),
+            music_handler=MagicMock(),
+            play_song=play_song,
+        )
+    )
 
 
 @pytest.mark.asyncio
@@ -68,19 +74,27 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
     monkeypatch, initialized_test_singletons
 ):
     """电台在放时点一首歌：`/info` 的歌单行仍是电台与它的播放者。"""
-    info = InfoManager.initialize(
-        SimpleNamespace(config=ConfigSectionView("soul", {}), logger=MagicMock())
+    adoption = PlaylistSession(room_profile=_RoomProfile())
+    adoption.current_playlist_name = RADIO_NAME
+
+    info = InfoManager(
+        room_state=RoomState(),
+        presence=PresenceTracker(),
+        playlist=adoption,
+        logger=MagicMock(),
     )
 
-    adoption = PlaylistSession.instance()
-    adoption.current_playlist_name = RADIO_NAME
-    adoption._room_profile = _RoomProfile()
-
-    MusicManager.initialize(ui_driver=InMemoryMusicUIDriver())
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
-        _ReadinessProbe(),
-        _MicManager(),
+    muting = PlaybackMuting(
+        mic=_MicManager(),
+        media_session=_ReadinessProbe(),
+        config=ConfigSectionView("soul", {}),
+        logger=MagicMock(),
+    )
+    play_song = PlaySong(
+        ui_driver=InMemoryMusicUIDriver(),
+        playlist_session=adoption,
+        playback_muting=muting,
+        logger=MagicMock(),
     )
 
     # 定时器开的电台已经在放。
@@ -92,7 +106,7 @@ async def test_radio_keeps_the_room_playlist_when_a_single_song_is_played(
     assert info.player_name == "Timer"
 
     # Joyer 在电台里点一首歌。
-    result = await _play_command().do_process(
+    result = await _play_command(play_song).do_process(
         SimpleNamespace(nickname="Joyer"), ["爱情男女"]
     )
     assert result["song"], result

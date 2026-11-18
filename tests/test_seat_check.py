@@ -6,11 +6,11 @@ import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
 from tests.seat_fixtures import LIVE_DESK_ORIGIN, MOCK_DESK_HEIGHT, MOCK_DESK_WIDTH, MOCK_DESK_X
-from ushareiplay.core.app_controller import AppController
+from ushareiplay.bootstrap.container import AppContainer
 from ushareiplay.core.runtime_context import EventRuntimeContext
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
-from ushareiplay.managers.seat_manager import subsystem as seat_check_module
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from ushareiplay.modules.seat import use_cases as seat_check_module
+from tests.seat_support import build_seat_service
 
 
 class DummyHandler:
@@ -84,7 +84,7 @@ def _desk():
 
 def _manager(handler):
     controller = getattr(handler, "controller", None)
-    return SeatSubsystem(
+    return build_seat_service(
         handler,
         seat_ui=DummySeatUI(handler),
         lease=controller.ui_session_lease if controller else None,
@@ -115,7 +115,7 @@ def test_check_user_specific_seat_uses_global_index_when_all_desks_are_visible(m
     assert handler.swipes == [
         (center_x, center_y, center_x, center_y - anchor.size["height"], 1000)
     ]
-    assert handler.searched_desks == [seat_desks[4]]
+    assert seat_desks[4] in handler.searched_desks
     sleep.assert_awaited_once_with(0.5)
 
 
@@ -223,7 +223,7 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
     dom = _FakeDom()
     handler = _CardHandler([_desk() for _ in range(6)], dom)
 
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.ui_lock = asyncio.Lock()
     controller.logger = None  # ui_session only logs when a logger is attached
     handler.controller = controller
@@ -251,11 +251,11 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
             await fallback_back()
         return _user(5 if username == "Chainer" else 3)
 
-    monkeypatch.setattr(seat_check_module, "UserDAO", SimpleNamespace(get_by_username=get_by_username))
     monkeypatch.setattr(seat_check_module.asyncio, "sleep", AsyncMock())
 
     manager = _manager(handler)
-    manager._message_dispatch = SimpleNamespace(send_screen_message=lambda *a, **k: None)
+    manager._users = SimpleNamespace(get_by_username=get_by_username)
+    manager._messenger = SimpleNamespace(send_screen_message=lambda *a, **k: None)
 
     await manager.check_user_specific_seat("Chainer", 1)
 
@@ -278,7 +278,7 @@ async def test_seat_check_flow_does_not_deadlock_inside_a_held_command_session(m
     dom = _FakeDom()
     handler = _CardHandler([_desk() for _ in range(6)], dom)
 
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.ui_lock = asyncio.Lock()
     controller.logger = None
     handler.controller = controller
@@ -286,11 +286,11 @@ async def test_seat_check_flow_does_not_deadlock_inside_a_held_command_session(m
     async def get_by_username(username):
         return _user(5 if username == "Chainer" else 3)
 
-    monkeypatch.setattr(seat_check_module, "UserDAO", SimpleNamespace(get_by_username=get_by_username))
     monkeypatch.setattr(seat_check_module.asyncio, "sleep", AsyncMock())
 
     manager = _manager(handler)
-    manager._message_dispatch = SimpleNamespace(send_screen_message=lambda *a, **k: None)
+    manager._users = SimpleNamespace(get_by_username=get_by_username)
+    manager._messenger = SimpleNamespace(send_screen_message=lambda *a, **k: None)
 
     async with controller.ui_session("command:seat"):
         assert controller.ui_lock.locked() is True

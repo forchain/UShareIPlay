@@ -2,8 +2,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-from ushareiplay.core.chat_intake import build_message_batch, classify_chat_line
-from ushareiplay.managers.command_manager import CommandManager
+from ushareiplay.adapters.inbound.runtime.chat_intake import build_message_batch, classify_chat_line
+from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
 
 def _intake_message(content: str, nickname: str = "Console"):
@@ -68,24 +68,31 @@ class _DirectSendCommand:
 
 
 class _QueueingCommand:
-    async def process(self, message_info, parameters):
-        from ushareiplay.core.message_queue import MessageQueue
-        from ushareiplay.models.message_info import MessageInfo
+    def __init__(self, queue):
+        self.queue = queue
 
-        await MessageQueue.instance().put_message(
+    async def process(self, message_info, parameters):
+        from ushareiplay.modules.shared.message_info import MessageInfo
+
+        await self.queue.put_message(
             MessageInfo(content="queued text;:demo queued", nickname=message_info.nickname)
         )
         return {"message": "queued"}
 
 
 def _make_manager(commands=None):
+    from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
+
     runtime = _Runtime()
     handler = _Handler()
-    controller = SimpleNamespace(soul_handler=handler, music_handler=object())
+    dispatch = MessageDispatch(handler=handler)
+    dispatch.configure_runtime(runtime)
+    controller = SimpleNamespace(
+        soul_handler=handler, music_handler=object(), message_dispatch=dispatch
+    )
     runtime.controller = controller
 
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
+    manager = CommandManager(message_dispatch=dispatch)
     manager.configure_runtime(runtime)
     manager.controller = controller
     manager._handler = handler
@@ -175,11 +182,10 @@ def test_silent_lifecycle_does_not_change_low_level_handler_primitive():
 
 
 def test_silent_lifecycle_marks_queued_keyword_commands_silent(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.runtime_services import RuntimeQueueDrainer
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
 
-    queue = MessageQueue.instance()
-    asyncio.run(queue.clear_queue())
+    queue = MessageQueue()
 
     manager, _runtime, handler = _make_manager()
     monkeypatch.setattr(manager, "get_command", lambda _cmd: _Command())
@@ -194,13 +200,14 @@ def test_silent_lifecycle_marks_queued_keyword_commands_silent(monkeypatch):
     }
 
     response = asyncio.run(
-        manager.process_command(_QueueingCommand(), message_info, command_info)
+        manager.process_command(_QueueingCommand(queue), message_info, command_info)
     )
     drained, command_count = asyncio.run(
         RuntimeQueueDrainer(
             handler=handler,
             command_manager=manager,
             send_screen_message=handler.send_message,
+            message_queue=queue,
         ).drain()
     )
 

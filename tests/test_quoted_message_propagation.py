@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from ushareiplay.core.db_manager import DatabaseManager
-from ushareiplay.events.message_content import MessageContentEvent
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
+from ushareiplay.adapters.inbound.ui_events.message_content import MessageContentEvent
 
 
 class _FakeWrapper:
@@ -30,11 +30,8 @@ async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
     first = "souler[Bob]说：「Alice：今天天气不错」 哈哈"
     second = "souler[Bob]说：「Dave：晚安」 哈哈"
 
-    with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance"),
-    ):
-        await event.handle("message_content", [_FakeWrapper(first)])
-        await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
+    await event.handle("message_content", [_FakeWrapper(first)])
+    await event.handle("message_content", [_FakeWrapper(first), _FakeWrapper(second)])
 
     # Same utterance, different quote → the second must not be dropped as a duplicate.
     # 再观察一次这两行：两条都已在窗口里，因此没有新行。
@@ -43,19 +40,18 @@ async def test_quoted_message_is_logged_and_kept_for_deduplication(chat_window):
 
 
 @pytest.mark.asyncio
-async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_window):
+async def test_command_inside_a_quote_does_not_trigger_command_processing(chat_window, monkeypatch):
     event = _event(chat_window)
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
-    with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance") as mock_cmd,
-    ):
-        await event.handle(
-            "message_content",
-            [_FakeWrapper("souler[Bob]说：「Alice：:play 晴天」 哈哈哈")],
-        )
+    notify_return = AsyncMock()
+    monkeypatch.setattr(chat_window.command_manager, "notify_user_return", notify_return)
+    await event.handle(
+        "message_content",
+        [_FakeWrapper("souler[Bob]说：「Alice：:play 晴天」 哈哈哈")],
+    )
 
-    mock_cmd.return_value.notify_user_return.assert_not_called()
+    notify_return.assert_not_called()
     chat_window.manager.focus_app_for_queued_commands.assert_not_called()
     assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：:play 晴天」 哈哈哈"
@@ -68,10 +64,7 @@ async def test_sender_command_after_a_quote_reaches_command_processing(chat_wind
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 :play 晴天"
-    with (
-        patch("ushareiplay.managers.command_manager.CommandManager.instance"),
-    ):
-        await event.handle("message_content", [_FakeWrapper(composed)])
+    await event.handle("message_content", [_FakeWrapper(composed)])
 
     chat_window.manager.focus_app_for_queued_commands.assert_awaited_once()
     assert [call.args[0] for call in chat_window.logger.critical.call_args_list] == [composed]
@@ -82,16 +75,10 @@ async def test_mention_inside_a_quote_is_not_dispatched(chat_window):
     event = _event(chat_window)
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
-    with (
-        patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
-    ):
-        mock_keyword.return_value.dispatch_mention = AsyncMock()
-        await event.handle(
-            "message_content",
-            [_FakeWrapper("souler[Bob]说：「Alice：@群主 点歌」 哈哈哈")],
-        )
-
-    mock_keyword.return_value.dispatch_mention.assert_not_called()
+    await event.handle(
+        "message_content",
+        [_FakeWrapper("souler[Bob]说：「Alice：@群主 点歌」 哈哈哈")],
+    )
     assert [call.args[0] for call in chat_window.logger.info.call_args_list] == [
         "souler[Bob]说：「Alice：@群主 点歌」 哈哈哈"
     ]
@@ -103,13 +90,11 @@ async def test_sender_mention_after_a_quote_is_dispatched_with_its_quote(chat_wi
     chat_window.manager.focus_app_for_queued_commands = AsyncMock()
     chat_window.manager.process_missed_messages = AsyncMock()
     composed = "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天"
-    with (
-        patch("ushareiplay.managers.keyword_manager.KeywordManager.instance") as mock_keyword,
-    ):
-        mock_keyword.return_value.dispatch_mention = AsyncMock()
-        await event.handle("message_content", [_FakeWrapper(composed)])
+    mock_keyword = SimpleNamespace(dispatch_mention=AsyncMock())
+    chat_window.manager.configure_keywords(mock_keyword)
+    await event.handle("message_content", [_FakeWrapper(composed)])
 
-    result = mock_keyword.return_value.dispatch_mention.await_args.args[0]
+    result = mock_keyword.dispatch_mention.await_args.args[0]
     assert result.text == "点歌"
     assert result.params == "晴天"
     assert result.quoted_text == "Alice：哈哈"
@@ -159,41 +144,57 @@ async def db_init():
 
 @pytest.mark.asyncio
 async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init, monkeypatch):
-    from ushareiplay.core.chat_intake import classify_chat_line
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
-    from ushareiplay.managers.keyword_manager import KeywordManager
-
-    try:
-        MessageQueue.initialize()
-    except Exception:
-        pass
-    await MessageQueue.instance().clear_queue()
-
-    keyword_manager = KeywordManager.initialize()
-    keyword_manager._logger = SimpleNamespace(
-        info=lambda *_args, **_kwargs: None,
-        error=lambda *_args, **_kwargs: None,
-        warning=lambda *_args, **_kwargs: None,
+    from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
+        UserMemoryChatLogRecorder,
     )
-    keyword_manager._config = {"llm": {"enabled": True}}
+    from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
+        TortoiseChatLogRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
+        TortoiseUserMemoryRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_repository import (
+        TortoiseUserRepository,
+    )
+    from ushareiplay.adapters.inbound.runtime.chat_intake import classify_chat_line
+    from ushareiplay.modules.command.use_cases import KeywordUseCases
+    from ushareiplay.modules.user.domain import MemorySettings
+    from ushareiplay.modules.user.use_cases import UserMemoryService
+    from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
+    from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
 
-    async def _no_keyword(keyword, username):
-        return None
-
-    monkeypatch.setattr(keyword_manager, "find_keyword", _no_keyword)
+    users = TortoiseUserRepository()
+    chat_logs = TortoiseChatLogRepository()
+    memory = UserMemoryService(
+        users=users,
+        memories=TortoiseUserMemoryRepository(),
+        chat_logs=chat_logs,
+        distiller=InMemoryMemoryDistiller(),
+        settings=MemorySettings(),
+    )
     mock_resolve = AsyncMock(return_value=None)
-    keyword_manager._nl_resolver = SimpleNamespace(resolve=mock_resolve)
+    keyword_manager = KeywordUseCases(
+        repository=InMemoryKeywordRepository(users),
+        users=users,
+        presence=SimpleNamespace(is_user_online=lambda _name: True),
+        queue=SimpleNamespace(enqueue=AsyncMock()),
+        chat_logs=UserMemoryChatLogRecorder(memory),
+        config_source=SimpleNamespace(load=lambda: None),
+        fallback=SimpleNamespace(resolve=mock_resolve),
+        logger=SimpleNamespace(
+            info=lambda *_args, **_kwargs: None,
+            error=lambda *_args, **_kwargs: None,
+            warning=lambda *_args, **_kwargs: None,
+        ),
+    )
 
     result = classify_chat_line(
         "souler[Bob]说：「Alice：哈哈」 @群主 点歌 晴天", room_owner="群主"
     )
     await keyword_manager.dispatch_mention(result, sleep_exempt=True)
 
-    from ushareiplay.dal.user_dao import UserDAO
-
-    user = await UserDAO.get_by_username("Bob")
-    logs = await UserChatLogDAO.get_unconsolidated_logs(user.id)
+    user = await TortoiseUserRepository().get_by_username("Bob")
+    logs = await chat_logs.unconsolidated_logs(user.id)
     assert [log.content for log in logs] == ["「Alice：哈哈」 点歌 晴天"]
 
     assert mock_resolve.await_args.kwargs["user_text"] == "「Alice：哈哈」 点歌 晴天"

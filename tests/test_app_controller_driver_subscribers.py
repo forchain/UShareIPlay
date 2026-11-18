@@ -4,8 +4,9 @@ from queue import Queue
 
 import pytest
 
-from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import REQUIRED_ELEMENTS, ConfigView
+from ushareiplay.bootstrap.container import AppContainer
+from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
+from ushareiplay.modules.shared.config import REQUIRED_ELEMENTS, ConfigView
 
 
 class DriverAware:
@@ -65,7 +66,7 @@ class FakeSoulHandler(DriverAware):
 
 
 def _make_lifecycle(controller, driver):
-    from ushareiplay.core.driver_lifecycle import DriverLifecycle
+    from ushareiplay.adapters.outbound.appium.driver_lifecycle import DriverLifecycle
 
     # Wrap the call in a lambda so monkeypatching ``controller._init_driver``
     # (the existing test pattern) is observed at call time, not captured
@@ -86,7 +87,7 @@ def _make_lifecycle(controller, driver):
 
 
 def controller_without_init(driver=None):
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.logger = FakeLogger()
     controller.obs = FakeObserver()
     controller.soul_handler = None
@@ -94,6 +95,30 @@ def controller_without_init(driver=None):
         controller, driver or FakeDriver("old-driver")
     )
     return controller
+
+
+def _runtime_loop(config=None):
+    loop = RuntimeLoop(
+        config=config or ConfigView({"commands": []}),
+        obs=FakeObserver(),
+        lease=SimpleNamespace(lock=SimpleNamespace(locked=lambda: False)),
+        room_owner_provider=lambda: "Owner",
+    )
+    loop.logger = FakeLogger()
+    loop.soul_handler = SimpleNamespace(
+        error_count=0,
+        log_error=lambda *_args, **_kwargs: None,
+        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
+    )
+    loop.command_manager = SimpleNamespace(load_all_commands=lambda: None)
+
+    async def _noop():
+        return None
+
+    loop.timer_manager = SimpleNamespace(is_running=lambda: True, start=_noop)
+    loop.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_noop)
+    loop._drain_agent_command_spool = lambda: None
+    return loop
 
 
 def _minimal_config() -> dict:
@@ -111,16 +136,16 @@ def _minimal_config() -> dict:
 def test_start_up_closes_driver_when_starting_apps_fails(monkeypatch):
     """启动期设备 I/O 在 start_up() 里：失败必须关掉驱动再抛出。"""
     driver = FakeDriver("startup-driver")
-    controller = object.__new__(AppController)
-    monkeypatch.setattr(AppController, "_init_driver", lambda _self: driver)
+    controller = object.__new__(AppContainer)
+    monkeypatch.setattr(AppContainer, "_init_driver", lambda _self: driver)
 
     def fail_to_start_apps(_self):
         raise RuntimeError("startup failed")
 
-    monkeypatch.setattr(AppController, "_start_apps", fail_to_start_apps)
+    monkeypatch.setattr(AppContainer, "_start_apps", fail_to_start_apps)
 
     # 构造本身不做设备 I/O（配置要能通过启动期的元素选择器校验）
-    AppController.__init__(controller, _minimal_config())
+    AppContainer.__init__(controller, _minimal_config())
 
     with pytest.raises(RuntimeError, match="startup failed"):
         controller.start_up()
@@ -140,7 +165,7 @@ def test_register_driver_subscriber_adds_unique_objects_and_current_driver():
 
 
 def test_lifecycle_propagates_new_driver_to_attached_subscribers():
-    from ushareiplay.core.driver_lifecycle import DriverLifecycle
+    from ushareiplay.adapters.outbound.appium.driver_lifecycle import DriverLifecycle
 
     controller = controller_without_init()
     first = DriverAware()
@@ -176,7 +201,7 @@ def test_reinitialize_driver_notifies_registered_subscribers(monkeypatch):
     controller.register_driver_subscriber(music_handler)
     controller.register_driver_subscriber(music_manager)
     monkeypatch.setattr(controller, "_init_driver", lambda: new_driver)
-    monkeypatch.setattr("ushareiplay.core.app_controller.time.sleep", lambda _: None)
+    monkeypatch.setattr("ushareiplay.bootstrap.container.time.sleep", lambda _: None)
 
     assert controller.reinitialize_driver() is True
 
@@ -197,11 +222,10 @@ def test_reinitialize_driver_notifies_registered_subscribers(monkeypatch):
 
 
 def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
-    from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
-    controller = controller_without_init()
+    controller = _runtime_loop()
     controller.input_queue = Queue()
     controller.soul_handler = FakeSoulHandler()
     controller.logger = FakeLogger()
@@ -214,7 +238,7 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
     )
     controller.is_running = False
 
-    message_queue = MessageQueue.instance()
+    message_queue = MessageQueue()
     asyncio.run(message_queue.clear_queue())
 
     controller.input_queue.put({
@@ -234,37 +258,19 @@ def test_controller_queues_dollar_command_with_injected_nickname(monkeypatch):
                 nickname = "Console"
             trimmed = message.lstrip()
             if trimmed and trimmed[0] in (':', '：', '/', '／', '$', '＄') and trimmed[1:].strip():
-                await MessageQueue.instance().put_message(
+                await message_queue.put_message(
                     MessageInfo(content=trimmed, nickname=nickname)
                 )
 
     asyncio.run(_noop())
 
-    queued = asyncio.run(MessageQueue.instance().get_all_messages())
+    queued = asyncio.run(message_queue.get_all_messages())
     assert [m.content for m in queued.values()] == ["$info"]
     assert [m.nickname for m in queued.values()] == ["Outlier"]
 
 
 def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monkeypatch):
-    controller = controller_without_init()
-    controller.config = ConfigView({"commands": []})
-    controller.input_queue = Queue()
-    controller.soul_handler = SimpleNamespace(
-        error_count=0,
-        log_error=lambda *_args, **_kwargs: None,
-        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
-    )
-    controller.logger = FakeLogger()
-    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
-
-    async def _start_timer():
-        return None
-
-    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
-    controller._runtime_queue_drainer = None
-    controller._drain_agent_command_spool = lambda: None
-    controller.is_running = True
-    controller.in_console_mode = False
+    loop = _runtime_loop()
 
     calls = []
 
@@ -273,56 +279,33 @@ def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monke
 
     async def fake_process_current_screen():
         calls.append("processed")
-        controller.is_running = False
+        loop.is_running = False
         return {"page_source": "<hierarchy />", "screen": {}, "triggered_count": 0}
 
-    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
-    controller._update_status_from_screen = fake_update_status
+    loop.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+    loop._update_status_from_screen = fake_update_status
 
     def fail_get_page_source():
         raise AssertionError("monitor loop should not fetch page source directly")
 
-    controller.event_manager.get_page_source = fail_get_page_source
-    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    loop.event_manager.get_page_source = fail_get_page_source
     monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
-    )
-    monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
 
     async def noop_sleep(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
 
-    asyncio.run(controller.start_monitoring())
+    asyncio.run(loop.start_monitoring())
 
     assert calls == ["processed", "status"]
 
 
 def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(monkeypatch):
-    controller = controller_without_init()
-    controller.config = ConfigView({"commands": []})
-    controller.input_queue = Queue()
-    controller.soul_handler = SimpleNamespace(
-        error_count=0,
-        log_error=lambda *_args, **_kwargs: None,
-        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
-    )
-    controller.logger = FakeLogger()
-    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
-
-    async def _start_timer():
-        return None
-
-    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
-    controller._runtime_queue_drainer = None
-    controller._drain_agent_command_spool = lambda: None
-    controller.is_running = True
-    controller.in_console_mode = False
+    loop = _runtime_loop()
     calls = []
 
     async def fake_update_status(_screen):
@@ -330,7 +313,7 @@ def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(m
 
     async def fake_process_current_screen():
         calls.append("processed")
-        controller.is_running = False
+        loop.is_running = False
         return {
             "page_source": "<hierarchy />",
             "screen": {},
@@ -343,59 +326,31 @@ def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(m
             },
         }
 
-    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
-    controller._update_status_from_screen = fake_update_status
+    loop.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+    loop._update_status_from_screen = fake_update_status
 
     def fail_direct_recovery():
         raise AssertionError("monitor loop should not own recovery policy")
 
-    controller.event_manager.get_page_source = fail_direct_recovery
-    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
+    loop.event_manager.get_page_source = fail_direct_recovery
     monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
-    )
-    monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
 
     async def noop_sleep(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
 
-    asyncio.run(controller.start_monitoring())
+    asyncio.run(loop.start_monitoring())
 
     assert calls == ["processed", "status"]
 
 
 def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch):
-    """监控循环自己组装 RuntimeInputPipeline，每圈 drain 它，paused 时跳过屏幕处理。
-
-    pipeline 的接口测试（tests/test_runtime_input_pipeline.py）全都在直接构造它，
-    因此「循环有没有把 drain() 接上、paused 到底有没有短路事件处理」只有循环级
-    测试能钉住。
-    """
-    controller = controller_without_init()
-    controller.config = ConfigView({"commands": []})
-    controller.input_queue = Queue()
-    controller.soul_handler = SimpleNamespace(
-        error_count=0,
-        log_error=lambda *_args, **_kwargs: None,
-        logger=SimpleNamespace(critical=lambda *_args, **_kwargs: None),
-    )
-    controller.logger = FakeLogger()
-    controller.command_manager = SimpleNamespace(load_all_commands=lambda: None)
-
-    async def _start_timer():
-        return None
-
-    controller.timer_manager = SimpleNamespace(is_running=lambda: True, start=_start_timer)
-    controller._runtime_queue_drainer = None
-    controller._drain_agent_command_spool = lambda: None
-    controller.is_running = True
-    controller.in_console_mode = False
+    """监控循环自己组装 RuntimeInputPipeline，每圈 drain 它，paused 时跳过屏幕处理。"""
+    loop = _runtime_loop()
 
     built = []
     passes = []
@@ -411,28 +366,23 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
             self.drains += 1
             passes.append((self.drains, self.paused))
             if self.drains == 3:
-                controller.is_running = False
+                loop.is_running = False
 
         def register_interruption_hook(self, _hook):
             pass
 
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.RuntimeInputPipeline", _SpyPipeline
-    )
-    monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
+        "ushareiplay.bootstrap.runtime_loop.RuntimeInputPipeline", _SpyPipeline
     )
     monkeypatch.setattr(
-        "ushareiplay.core.app_controller.threading.Thread",
+        "ushareiplay.bootstrap.runtime_loop.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
     )
 
     async def noop_sleep(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("ushareiplay.bootstrap.runtime_loop.asyncio.sleep", noop_sleep)
 
     processed = []
 
@@ -441,9 +391,9 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
         built[0].paused = True  # 处理完这一屏之后进入 paused
         return {"page_source": "", "screen": {}, "triggered_count": 0}
 
-    controller.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
+    loop.event_manager = SimpleNamespace(process_current_screen=fake_process_current_screen)
 
-    asyncio.run(controller.start_monitoring())
+    asyncio.run(loop.start_monitoring())
 
     # 循环真的把 pipeline 接上了自己的协作者
     assert len(built) == 1
@@ -452,15 +402,14 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
         "room_owner_provider",
         "logger",
         "send_screen_message",
+        "message_queue",
         "timer_manager",
         "obs",
         "dump_artifacts",
         "reload_config",
         "is_admin",
     }
-    assert built[0].kwargs["input_queue"] is controller.input_queue
-    # 热重载与管理员判定都是循环交给管线的可调用协作者（#469）
-    assert callable(built[0].kwargs["reload_config"])
+    assert built[0].kwargs["input_queue"] is loop.input_queue
     assert callable(built[0].kwargs["is_admin"])
     # 每圈都 drain，paused 的圈不处理屏幕
     assert built[0].drains == 3

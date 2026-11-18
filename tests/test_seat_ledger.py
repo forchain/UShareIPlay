@@ -1,6 +1,6 @@
 """SeatLedger 的纯策略测试：不构造 DOM、ElementWrapper 或 driver。"""
 
-from ushareiplay.managers.seat_manager.seat_ledger import (
+from ushareiplay.modules.seat.ledger import (
     SeatLedger,
     SeatRescanCooldownPolicy,
     SeatSlot,

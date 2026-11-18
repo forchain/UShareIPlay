@@ -26,16 +26,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.row_editor import (
+from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.use_cases import RoomStateService
+from ushareiplay.modules.room.row_editor import (
     RowSkin,
     RowStep,
     WriteOutcome,
 )
-from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
-PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/managers/room_profile'
+PKG = pathlib.Path(__file__).resolve().parents[1] / 'src/ushareiplay/modules/room'
+ROW_EDITOR_PATH = PKG / 'row_editor.py'
 
 FULLWIDTH_SEPARATOR = '｜'
 DEFAULT_THEME = '听歌'
@@ -85,15 +86,6 @@ GUEST_SKIP_RESULTS = {
 FIELDS = ('topic', 'notice', 'title')
 
 
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    RoomProfileManager.reset_instance()
-    RoomState.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
-    RoomState.reset_instance()
-
-
 class _RoomTextFinder:
     """判定读（房名 / 公告），与 `test_room_profile_title.py` 同一个形状。"""
 
@@ -133,8 +125,10 @@ class _Handler:
 
 
 def _profile(driver=None, handler=None):
-    profile = RoomProfileManager.initialize(
-        handler=handler or _Handler(), drawer_driver=driver
+    profile = RoomProfileManager(
+        handler=handler or _Handler(),
+        drawer_driver=driver,
+        room_state=RoomStateService(),
     )
     # 确认提交后的静默等待是真实 Appium 时序，离线测试直接跳过。
     profile.topic_settle_seconds = 0
@@ -163,9 +157,9 @@ def _flush(profile, field):
     return getattr(profile, f'update_{field}')()
 
 
-def _guest_room():
+def _guest_room(profile):
     """把房间状态临时切成「在别人的房间里」。"""
-    room_state = RoomState.initialize()
+    room_state = profile.room_state
     room_state.is_guest_room = True
     return room_state
 
@@ -185,7 +179,7 @@ def test_a_guest_room_skips_every_row_the_same_way(field):
     _queue(profile, field, '夜曲')
     assert profile.drafts.last_attempt_at(field) is None
 
-    _guest_room()
+    _guest_room(profile)
     result = _flush(profile, field)
 
     assert result == GUEST_SKIP_RESULTS[field]
@@ -204,7 +198,7 @@ def test_a_guest_room_skip_keeps_the_other_fields_budgets_intact(field):
     profile = _profile(driver)
     _queue(profile, field, '夜曲')
 
-    _guest_room()
+    _guest_room(profile)
     _flush(profile, field)
 
     for other in FIELDS:
@@ -379,7 +373,7 @@ def test_a_skipped_row_never_advances_the_cooldown_clock(field):
         original(name, now),
     )[1]
 
-    _guest_room()
+    _guest_room(profile)
     _flush(profile, field)
 
     assert calls == [], '跳过不许记账'
@@ -499,7 +493,7 @@ def test_the_outcome_type_has_exactly_the_four_kinds():
 )
 def test_every_skin_declares_its_probe_keys_and_what_each_of_them_means(skin, probe_keys):
     """探测键集合与判定表都在皮肤里 —— 写错一个 key 在这里就能抓到。"""
-    from ushareiplay.managers.room_profile import manager as manager_module
+    from ushareiplay.modules.room import room_profile as manager_module
 
     row_skin = getattr(manager_module, skin)
 
@@ -532,7 +526,7 @@ _PHYSICAL_PRIMITIVES = {'replace_text', 'click_element', 'click_element_at', 'wa
 
 
 def _manager_source() -> str:
-    return (PKG / 'manager.py').read_text(encoding='utf-8')
+    return (PKG / 'room_profile.py').read_text(encoding='utf-8')
 
 
 def test_the_physical_ritual_lives_only_in_the_row_editor():
@@ -552,8 +546,9 @@ def test_the_physical_ritual_lives_only_in_the_row_editor():
 
 def test_the_guest_room_guard_for_drawer_edits_is_defined_in_exactly_one_place():
     """「什么算别人的房间」只有一个定义：改判定不会漏掉某一条路。"""
-    editor_source = (PKG / 'row_editor.py').read_text(encoding='utf-8')
-    assert editor_source.count('RoomState.in_guest_room()') == 1
+    editor_source = ROW_EDITOR_PATH.read_text(encoding='utf-8')
+    assert editor_source.count('def guest_room_blocks_edit(') == 1
+    assert editor_source.count('guest_room_blocks_edit(self._manager.room_state)') == 1
 
     tree = ast.parse(_manager_source())
     offenders = []

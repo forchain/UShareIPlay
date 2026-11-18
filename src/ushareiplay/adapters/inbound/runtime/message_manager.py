@@ -1,0 +1,517 @@
+"""聊天窗口的观察与补漏（MessageManager）。
+
+对接缝的两点说明：
+
+1. **窗口状态不再对外暴露**。原先 `recent_chats` / `latest_chats` 是两个公有
+   deque，`MessageContentEvent` 一边往里塞、一边复制 `maxlen=3` 的语义来做
+   diff —— 事件因此在解释 manager 的实现细节，而且测试只能把算法抄一份来验证。
+   现在 diff 算法、maxlen 与锚点回落都在 `observe()` 里，对外只给一个
+   `ChatDelta`。
+2. **实时与补漏共用一套派发**。两条路径原先各写一份发言者分类与礼物处理；
+   现在 `dispatch()` 是唯一实现，回溯路径用 `from_backfill` 说明它发现的行
+   来自回滚（命令入队而不是立即执行、入场横幅不当作刚返回）。
+"""
+
+from collections import deque
+from dataclasses import dataclass
+import logging
+import traceback
+
+from ushareiplay.adapters.inbound.runtime.chat_intake import (
+    QUEUE_COMMAND_PREFIX_CHARS,
+    ChatIntakeKind,
+    ChatIntakeResult,
+    MessageBatch,
+    build_message_batch,
+    classify_chat_line,
+    strip_quoted_segment,
+)
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.shared.roles import RolePolicy
+
+
+# Global chat logger - will be initialized when needed
+chat_logger = None
+
+
+def get_chat_logger(config=None):
+    """Get or create chat logger."""
+    global chat_logger
+    if chat_logger is None:
+        chat_logger = logging.getLogger("chat")
+    return chat_logger
+
+
+@dataclass(frozen=True)
+class ChatDelta:
+    """一次聊天窗口观察的结果。
+
+    Attributes:
+        new_lines: 相对上一次观察新增的聊天行，保持屏幕上的先后顺序。
+        anchor: 上一次观察的最后一行（本次的滚动锚点）；窗口此前为空时为 None。
+        missed: 锚点已不在屏幕上 —— 两次观察之间有滚过去、没被看到的行。
+    """
+
+    new_lines: tuple[str, ...] = ()
+    anchor: str | None = None
+    missed: bool = False
+
+
+class MessageManager:
+    #: 上一次观察保留多少行用于去重（比屏幕可见行数窄，因此存在 missed 兜底）
+    RECENT_MAXLEN = 3
+
+    def __init__(
+        self,
+        handler=None,
+        presence=None,
+        *,
+        message_queue=None,
+        command_manager=None,
+        users=None,
+        chat_logger_factory=None,
+    ):
+        """Initialize MessageManager with handler, previous messages, recent messages"""
+        self._handler = handler
+        self._presence = presence
+        self._message_queue = message_queue
+        self._command_manager = command_manager
+        self._users = users
+        self._chat_logger_factory = chat_logger_factory
+        self._chat_logger = None
+        self._keyword_use_cases = None
+        self._playback_muting = None
+
+        self.previous_messages = {}
+        self._recent = deque(maxlen=self.RECENT_MAXLEN)
+        # 去重集：本次观察前的窗口 ∪ 本次增量。补漏回溯会滚过上一次屏幕上的行，
+        # 那些行已经派发过了，必须仍留在去重集里（旧实现用的是
+        # `recent_chats ∪ latest_chats`，就是这个集合）。
+        self._known: tuple[str, ...] = ()
+
+    def configure_keywords(self, keyword_use_cases) -> None:
+        """组合根注入关键字用例；未注入时 @ 群主链路不派发。"""
+        self._keyword_use_cases = keyword_use_cases
+
+    def configure_command_manager(self, command_manager) -> None:
+        """组合根注入命令管理器，供事件回调通知使用。"""
+        self._command_manager = command_manager
+
+    @property
+    def handler(self):
+        return self._handler
+
+    @property
+    def chat_logger(self):
+        if self._chat_logger is None:
+            config = getattr(self._handler, "config", None)
+            if self._chat_logger_factory is not None:
+                self._chat_logger = self._chat_logger_factory(config)
+            else:
+                self._chat_logger = get_chat_logger(config)
+        return self._chat_logger
+
+    def _get_message_queue(self):
+        if self._message_queue is not None:
+            return self._message_queue
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "message_queue", None) if controller else None
+
+    def _get_command_manager(self):
+        if self._command_manager is not None:
+            return self._command_manager
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "command_manager", None) if controller else None
+
+    def _get_users(self):
+        if self._users is not None:
+            return self._users
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "user_repository", None) if controller else None
+
+    def _get_seat_manager(self):
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "seat_service", None) if controller else None
+
+    async def resolve_room_owner(self) -> str | None:
+        """房间房主名：配置优先（走 ADR-0008 的 RolePolicy），否则回落到库里的房主。
+
+        配置读取原先在两个地方各写一份（本模块与 MessageContentEvent，后者还有
+        第三个回落），现在只有这一个入口。
+
+        读 `configured_room_owner` 而不是 `room_owner`：后者在配置没写时会给出
+        `DEFAULT_ROOM_OWNER`，会让库回落永远走不到（配置没写 room_owner 的部署
+        就检测不到「送给房主」的礼物）。
+        """
+        config = getattr(self.handler, "config", None)
+        owner = RolePolicy(config).configured_room_owner
+        if owner:
+            return owner
+
+        try:
+            users = self._get_users()
+            if users is None:
+                return None
+            owner_user = await users.find_first_by_level(9)
+            if owner_user:
+                return owner_user.username.value
+        except Exception:
+            self.handler.logger.error(f"解析房主失败: {traceback.format_exc()}")
+        return None
+
+    # ------------------------------------------------------------------
+    # 观察：窗口状态与 diff 只在这里
+    # ------------------------------------------------------------------
+
+    def observe(self, content_list) -> ChatDelta:
+        """观察一次聊天窗口，返回相对上次观察的增量，并提交新的窗口状态。
+
+        diff 算法原先住在 `MessageContentEvent.handle` 里，直接操作两个公有
+        deque；它和 `maxlen` 的相互作用（前向对齐、窗口比 maxlen 宽时的兜底）
+        因此只存在于事件里。现在它和 `_recent` 一起留在本模块。
+
+        窗口提交的是**增量**而不是整屏：静屏时增量是空的，窗口若被设成增量就
+        等于被清空，下一次观察看不到锚点，会把整屏当成新增重新派发 —— 礼物
+        重复道谢、热力值重复写库、命令重复执行。因此窗口只做「追加」。
+        """
+        contents = [c for c in (content_list or []) if c]
+        previous = self._recent
+        anchor = previous[-1] if previous else None
+
+        if not previous:
+            new_lines = tuple(contents)
+            missed = False
+        else:
+            new_lines, missed = self._diff_against_window(contents, previous)
+            if missed and anchor is not None:
+                new_lines, missed = self._apply_anchor_fallback(contents, anchor, new_lines)
+
+        # 去重集要在追加之前取：含观察前的窗口，补漏回溯滚过它时不会再派发一次。
+        self._known = tuple(previous) + new_lines
+        for line in new_lines:
+            self._recent.append(line)
+        return ChatDelta(new_lines=new_lines, anchor=anchor, missed=missed)
+
+    @staticmethod
+    def _diff_against_window(contents, previous) -> tuple[tuple[str, ...], bool]:
+        """前向对齐：找到最小的偏移，使上次窗口的后缀对上本次列表的前缀。
+
+        对齐点之后的行就是新增行。全部偏移都失配时说明中间漏了行（missed）。
+        """
+        recent_len = len(previous)
+        content_len = len(contents)
+        new_lines: list[str] = []
+
+        for i in range(recent_len):
+            matched_to_end = False
+            for j in range(content_len):
+                ii = i + j
+                if ii < recent_len:
+                    if contents[j] != previous[ii]:
+                        break
+                    if ii == recent_len - 1 and j == content_len - 1:
+                        matched_to_end = True
+                        break
+                else:
+                    new_lines.append(contents[j])
+            if matched_to_end:
+                break
+            if new_lines:
+                break
+            if i == recent_len - 1:
+                # 一次都没对上：窗口整段滚走了，本次列表全部当作新增
+                return tuple(contents), True
+
+        return tuple(new_lines), False
+
+    @staticmethod
+    def _apply_anchor_fallback(contents, anchor, new_lines) -> tuple[tuple[str, ...], bool]:
+        """锚点仍在屏幕上时，`missed` 是假的 —— 只是窗口比 maxlen 宽。
+
+        `contents` 比 `RECENT_MAXLEN` 长时前向对齐会在 j=0 整体失配；此时若锚点
+        确实可见，就只保留锚点之后的行。
+        """
+        for idx, content in enumerate(contents):
+            if content == anchor:
+                return tuple(contents[idx + 1:]), False
+        return new_lines, True
+
+    def get_party_id(self):
+        party_id = self.handler.party_id
+        if not party_id:
+            party_id = self.handler.config.require('default_party_id')
+        return party_id
+
+    # ------------------------------------------------------------------
+    # 派发：实时与补漏共用同一套分类与处理
+    # ------------------------------------------------------------------
+
+    async def dispatch(
+        self,
+        lines,
+        *,
+        room_owner: str | None = None,
+        from_backfill: bool = False,
+    ) -> list[MessageInfo]:
+        """把聊天行按类型派发到各自的处理器，返回本批的命令消息。
+
+        见 `dispatch_intake`：这是同一次派发的列表形态，供只需要命令消息的调用方
+        使用。
+        """
+        batch = await self.dispatch_intake(
+            lines, room_owner=room_owner, from_backfill=from_backfill
+        )
+        return list(batch.commands)
+
+    async def dispatch_intake(
+        self,
+        lines,
+        *,
+        room_owner: str | None = None,
+        from_backfill: bool = False,
+    ) -> MessageBatch:
+        """把聊天行按类型派发到各自的处理器。
+
+        实时扫描与回滚补漏原先各写一份分类与处理（礼物处理两份、mention 两份），
+        现在只有这一个实现。两条路径真正的差别只有一处，由 `from_backfill`
+        说明：回滚发现的行属于历史，命令入队等 runtime 管线执行、入场横幅不当作
+        「用户刚返回」；其余处理完全一致。
+
+        批次在**认识 `room_owner` 的地方**构建：礼物与 mention 的判定都要房主名，
+        放到下游再分类就会把「送给房主的礼物」当成普通发言。
+
+        命令消息一律入队，由 runtime 队列统一执行 —— 实时扫描与回滚补漏因此共用
+        同一条消费路径（同一批角色校验、权限校验与播放静音保护），实时命令也不再
+        在扫描现场就地执行。
+
+        Args:
+            lines: 要派发的聊天行，通常来自 `observe()` 的 `new_lines`
+            room_owner: 房主名，用于识别「送给房主」的礼物
+            from_backfill: 这些行来自回滚补漏
+
+        Returns:
+            本批的全部分类结果与其命令消息。命令消息已带上 intake 抽出的全部
+            元数据（`silent` / `private_reply` / `sleep_exempt` / `quoted_text`），
+            下游不必再从原始行重新判定。
+        """
+        chat_logger = self.chat_logger
+        results: list[ChatIntakeResult] = []
+
+        for content in lines:
+            result = classify_chat_line(content, room_owner=room_owner)
+            results.append(result)
+            kind = result.kind
+
+            if kind == ChatIntakeKind.USER_RETURN:
+                if from_backfill:
+                    # 回溯到的入场横幅是历史，不触发「用户返回」事件
+                    chat_logger.info(content)
+                    continue
+                await self._handle_user_return(result, content)
+                continue
+
+            if kind == ChatIntakeKind.USER_ON_MIC:
+                chat_logger.info(content)
+                if from_backfill:
+                    # 回溯到的是历史行：那人可能早已下麦，不能当作「现在有人在麦上」
+                    self.handler.logger.debug(f"Backfilled on-mic line skipped: {content}")
+                else:
+                    self._handle_user_on_mic(result)
+                continue
+
+            if kind == ChatIntakeKind.GIFT_RECEIVE:
+                chat_logger.critical(content)
+                heat_value = getattr(result, "heat_value", 0)
+                if heat_value > 0:
+                    self.handler.logger.info(
+                        f"Heat contribution received from user '{result.nickname}': +{heat_value} heat"
+                    )
+                else:
+                    self.handler.logger.info(
+                        f"Gift received from user '{result.nickname}' (sent to room_owner '{room_owner}')"
+                    )
+                await self.handle_gift_receive(result)
+                continue
+
+            if kind == ChatIntakeKind.KEYWORD_MENTION:
+                if self._keyword_use_cases is not None:
+                    await self._keyword_use_cases.dispatch_mention(result, sleep_exempt=True)
+                chat_logger.critical(content)
+                continue
+
+            if kind == ChatIntakeKind.COMMAND:
+                if not result.text.strip(QUEUE_COMMAND_PREFIX_CHARS).strip():
+                    # 只有触发符、没有内容：当成普通发言记日志
+                    chat_logger.info(content)
+                    continue
+                chat_logger.critical(content)
+                continue
+
+            chat_logger.info(content)
+
+        # 命令统一入队：实时与补漏共用这一条入队点，因此两条来源都只会被
+        # `RuntimeQueueDrainer` 这一条消费路径执行。来源标签挂在消息上
+        # (`MessageInfo.source`)，日志直接读它，不再另存一份局部字符串。
+        queue_source = "backfill" if from_backfill else "screen"
+        batch = build_message_batch(results, source=queue_source)
+        queue = self._get_message_queue()
+        for message in batch.commands:
+            await queue.put_message(message)
+            self.handler.logger.info(
+                f"{message.source} command added to queue: {message.content}"
+            )
+
+        return batch
+
+    def configure_playback_muting(self, playback_muting) -> None:
+        self._playback_muting = playback_muting
+
+    def _handle_user_on_mic(self, result) -> None:
+        """有人上麦：即时开启播放静音保护（切歌底噪会盖住麦上的人）。"""
+        if self._playback_muting is not None:
+            self._playback_muting.arm_on_mic(result.nickname)
+
+    async def _handle_user_return(self, result, content: str) -> None:
+        """入场通知：由在线集合判定是否算作「用户返回」。"""
+        presence_tracker = self._presence
+        if presence_tracker is not None and presence_tracker.should_trigger_return(result.nickname):
+            presence_tracker.record_return(result.nickname)
+            self.handler.logger.critical(f"User returned: {result.nickname}")
+            self.chat_logger.critical(content)
+            cmd_mgr = self._get_command_manager()
+            if cmd_mgr is not None:
+                await cmd_mgr.notify_user_return(result.nickname)
+        else:
+            self.handler.logger.info(
+                f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
+            )
+            self.chat_logger.info(content)
+
+    async def handle_gift_receive(self, result) -> None:
+        """收礼物与热力值贡献：升级等级、发感谢消息、触发自定义命令。
+
+        实时路径与补漏路径原先各有一份实现，只有日志文案不同。
+        """
+        try:
+            username = result.nickname
+            heat_value = getattr(result, "heat_value", 0)
+            users = self._get_users()
+            if heat_value > 0:
+                user = await users.record_heat_contribution(username, heat_value)
+            else:
+                user = await users.record_owner_gift(username)
+
+            if user:
+                self.handler.logger.info(
+                    f"User '{user.username}' status after gift/heat processing: "
+                    f"level=L{user.level}, cumulative_heat={user.heat_value}"
+                )
+
+            thank_msg = MessageInfo(content=f"@{username} 谢谢", nickname=username)
+            await self._get_message_queue().put_message(thank_msg)
+            self.handler.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
+
+            cmd_mgr = self._get_command_manager()
+            if cmd_mgr is not None:
+                await cmd_mgr.notify_gift_receive(username)
+        except Exception:
+            self.handler.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
+
+    async def process_missed_messages(self, anchor: str | None = None) -> set[str]:
+        """回溯补漏：从 anchor 往回滚动，处理实时扫描没看到的行。
+
+        Args:
+            anchor: 上一次已处理的行（由 `observe()` 的 ChatDelta 给出）。
+                省略时取窗口里最后一行，便于单独调用。
+
+        Returns:
+            本次发现的命令文本集合；没有可回溯内容时返回 None。
+        """
+        if not self.handler.key_actions.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
+            return None
+
+        if anchor is None:
+            anchor = self._recent[-1] if self._recent else None
+        if not anchor:
+            return None
+
+        try:
+            seat_manager = self._get_seat_manager()
+        except Exception:
+            seat_manager = None
+            self.handler.logger.error(f"获取座位管理器失败（不影响补漏继续执行）: {traceback.format_exc()}")
+
+        if seat_manager is None:
+            return await self._scan_missed_history(anchor)
+
+        # 补漏要滚动聊天区，是一段独占屏幕的动作：交给座位子系统在 UI 锁内跑。
+        # 拿锁后先收起座位面板 —— 面板展开时聊天区只剩一半，回溯会慢得多；整段
+        # 持锁也保证扫描途中没有别的流程把面板重新展开。
+        async with seat_manager.chat_scan_session():
+            return await self._scan_missed_history(anchor)
+
+    async def _scan_missed_history(self, anchor: str) -> set[str]:
+        """在 anchor 之前的历史里滚一遍（调用方负责 UI 独占与面板状态）。"""
+        # Quoted Messages are composed onto the scanned line but never rendered
+        # in the sender's own bubble, so scroll/skip on the quote-free line.
+        scroll_anchor = strip_quoted_segment(anchor) or anchor
+
+        self.handler.logger.critical(f"last_chat={anchor}")
+
+        # 锚点就在历史消息里，'down' 单向扫不到说明确实没有；下面的
+        # send_message("") 会立刻跳回最新消息，反向兜底只会白拖时间。
+        key, element, attribute_values = self.handler.gesture_handler.scroll_container_until_element(
+            'message_content',
+            'message_list',
+            'down',
+            'content-desc|text',
+            scroll_anchor,
+            bidirectional=False,
+        )
+
+        # send empty message to scroll to bottom instantly (always, even if
+        # the anchor was not found — otherwise the view stays on old messages)
+        self.handler.send_message("")
+
+        if not key:
+            return None
+
+        # Scanned lines carry no quote; compare on the quote-free form of what we
+        # already processed so a reply is not re-reported (and re-dispatched).
+        # 用 `_known`（观察前的窗口 ∪ 本次增量）而不是只比 `_recent`：回溯会滚过
+        # 上一次屏幕上的行，它们已派发过，不在这里就会被重复派发。
+        known_chats = {strip_quoted_segment(chat) for chat in self._known}
+        missed_lines: list[str] = []
+        for chat in attribute_values:
+            if scroll_anchor == strip_quoted_segment(chat):
+                continue
+            if chat in known_chats or chat in missed_lines:
+                continue
+            self.chat_logger.warning(chat)
+            missed_lines.append(chat)
+
+        commands = await self.dispatch(
+            missed_lines,
+            room_owner=await self.resolve_room_owner(),
+            from_backfill=True,
+        )
+        return {message.content for message in commands}
+
+    async def focus_app_for_queued_commands(self) -> bool:
+        """扫描到新命令时，把 Soul 客户端带到前台，等 runtime 队列执行。
+
+        这里**不执行命令**，也不接收聊天行：`dispatch_intake` 已经完成分类并
+        把命令消息入队（#396 接缝 / #399 收口），执行由 `RuntimeQueueDrainer`
+        在下一圈监控循环统一完成。原始行不再跨过命令派发接缝（#399）。
+        本次扫描仍要切到 App —— 读屏幕是这里做的，入队的命令随后要在同一个
+        界面上操作。
+
+        Returns:
+            `switch_to_app()` 的结果：是否已把 Soul 切到前台。
+        """
+        if not self.handler.key_actions.switch_to_app():
+            self.handler.logger.error("Failed to switch to Soul app")
+            return False
+
+        return True

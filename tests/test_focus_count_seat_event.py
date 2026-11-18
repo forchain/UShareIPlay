@@ -1,23 +1,13 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from lxml import etree
 
 from tests.seat_fixtures import build_desk_wrapper, make_handler, soul_elements
-from ushareiplay.core.element_wrapper import ElementWrapper
-from ushareiplay.events.focus_count import FocusCountEvent, __elements__, __multiple__
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.state.room_state import RoomState
-
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    SeatObservationManager.reset_instance()
-    RoomState.reset_instance()
-    RoomState.initialize()
-    yield
-    SeatObservationManager.reset_instance()
-    RoomState.reset_instance()
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
+from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent, __elements__, __multiple__
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.room.use_cases import RoomStateService
 
 
 def test_focus_count_event_metadata():
@@ -51,21 +41,20 @@ async def test_same_round_visible_sitdown_does_not_trigger_expansion():
     随后从 0 变 1 —— 此时在座数已经同步，不构成背离。
     """
     handler = make_handler()
-    observation = SeatObservationManager.initialize(handler)
+    notify = AsyncMock()
+    observation = build_seat_observation(handler, on_focus_change=notify)
+    handler.controller.seat_observation = observation
     event = FocusCountEvent(handler=handler)
     observation.expand_rescan_and_collapse = AsyncMock(return_value=False)
 
     desk = build_desk_wrapper(handler, left="张三", right="2", left_occupied=True, y=100)
     focus_wrapper = _focus_count_wrapper("1人专注中")
 
-    with patch("ushareiplay.managers.command_manager.CommandManager.instance") as cmd_mgr:
-        notify = AsyncMock()
-        cmd_mgr.return_value.notify_focus_count_change = notify
-        for key in __elements__:
-            if key == "seat_desk":
-                await event.handle("seat_desk", [desk])
-            else:
-                await event.handle("focus_count", focus_wrapper)
+    for key in __elements__:
+        if key == "seat_desk":
+            await event.handle("seat_desk", [desk])
+        else:
+            await event.handle("focus_count", focus_wrapper)
 
     observation.expand_rescan_and_collapse.assert_not_awaited()
     assert notify.await_args.kwargs["changed_users"] == ["张三"]
@@ -75,7 +64,10 @@ async def test_same_round_visible_sitdown_does_not_trigger_expansion():
 async def test_focus_count_event_handles_focus_count():
     handler = MagicMock()
     handler.logger = MagicMock()
-    observation = SeatObservationManager.initialize(handler)
+    from types import SimpleNamespace
+    room_state = RoomStateService()
+    handler.controller = SimpleNamespace(room_state=room_state)
+    observation = build_seat_observation(handler); handler.controller.seat_observation = observation
     observation.on_focus_count = AsyncMock()
 
     event = FocusCountEvent(handler=handler)
@@ -86,7 +78,7 @@ async def test_focus_count_event_handles_focus_count():
     # First update: from None to 5
     res = await event.handle("focus_count", mock_wrapper)
     assert res is False
-    assert RoomState.instance().focus_count == 5
+    assert room_state.focus_count == 5
     observation.on_focus_count.assert_awaited_once_with(None, 5)
 
     # Second update with same count should be ignored
@@ -99,7 +91,7 @@ async def test_focus_count_event_handles_focus_count():
     mock_wrapper.text = "6"
     res3 = await event.handle("focus_count", mock_wrapper)
     assert res3 is False
-    assert RoomState.instance().focus_count == 6
+    assert room_state.focus_count == 6
     observation.on_focus_count.assert_awaited_once_with(5, 6)
 
 
@@ -107,7 +99,9 @@ async def test_focus_count_event_handles_focus_count():
 async def test_focus_count_event_handles_seat_desk():
     handler = MagicMock()
     handler.logger = MagicMock()
-    observation = SeatObservationManager.initialize(handler)
+    from types import SimpleNamespace
+    handler.controller = SimpleNamespace(room_state=RoomStateService())
+    observation = build_seat_observation(handler); handler.controller.seat_observation = observation
     observation.observe_visible_desks = AsyncMock()
 
     event = FocusCountEvent(handler=handler)

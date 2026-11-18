@@ -134,7 +134,7 @@ preflight_checks() {
       local cfg_host="" cfg_port=""
       read -r cfg_host cfg_port < <(uv run python -c "
 try:
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
     cfg = ConfigLoader.load_config('${ROOT_DIR}/config.yaml')
     print(cfg.get('appium', {}).get('host', '127.0.0.1'), cfg.get('appium', {}).get('port', 4723))
 except Exception:
@@ -178,7 +178,7 @@ except Exception:
     local py_status=0
     uv run python -c "
 import sys
-from ushareiplay.core.network_bridge import check_socket_connectivity, is_macos_local_network_error
+from ushareiplay.adapters.outbound.system.network_bridge import check_socket_connectivity, is_macos_local_network_error
 ok, err = check_socket_connectivity('${appium_host}', int('${appium_port}'), timeout=2.0)
 if not ok:
     if is_macos_local_network_error(err):

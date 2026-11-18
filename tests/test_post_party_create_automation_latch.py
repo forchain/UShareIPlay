@@ -1,5 +1,5 @@
 import asyncio
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 
 
 def _run(coro):
@@ -7,8 +7,8 @@ def _run(coro):
 
 
 def test_post_party_create_latch_party_then_ready_fires_once():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.post_party_create_automation import PostPartyCreateAutomation
 
     class C:
         config = ConfigView({
@@ -23,10 +23,9 @@ def test_post_party_create_latch_party_then_ready_fires_once():
         logger = None
         obs = None
 
-    q = MessageQueue.instance()
-    _run(q.clear_queue())
+    q = MessageQueue()
 
-    auto = PostPartyCreateAutomation(C())
+    auto = PostPartyCreateAutomation(C(), message_queue=q)
 
     # Party created first: should not enqueue until ready
     _run(auto.on_party_created_new())
@@ -44,8 +43,8 @@ def test_post_party_create_latch_party_then_ready_fires_once():
 
 
 def test_post_party_create_latch_ready_then_party_fires_once():
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.core.post_party_create_automation import PostPartyCreateAutomation
+    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+    from ushareiplay.adapters.inbound.runtime.post_party_create_automation import PostPartyCreateAutomation
 
     class C:
         config = ConfigView({
@@ -60,10 +59,9 @@ def test_post_party_create_latch_ready_then_party_fires_once():
         logger = None
         obs = None
 
-    q = MessageQueue.instance()
-    _run(q.clear_queue())
+    q = MessageQueue()
 
-    auto = PostPartyCreateAutomation(C())
+    auto = PostPartyCreateAutomation(C(), message_queue=q)
 
     # Ready first: should not enqueue until party created
     _run(auto.on_command_ready())
