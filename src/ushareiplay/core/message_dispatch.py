@@ -2,7 +2,6 @@ import traceback
 
 from ushareiplay.core.command_silence import is_command_silent
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.modules.shared.ports import RoomMessenger
 
 
@@ -33,8 +32,10 @@ class MessageDispatch(RoomMessenger, Singleton):
 
     @property
     def user_manager(self):
-        if self._user_manager is None:
-            self._user_manager = UserManager.instance()
+        if self._user_manager is None and self._runtime is not None:
+            controller = getattr(self._runtime, "controller", None)
+            if controller is not None:
+                self._user_manager = getattr(controller, "user_profile_actions", None)
         return self._user_manager
 
     def _emit(self, event, ctx):

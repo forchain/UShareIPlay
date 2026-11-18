@@ -1,9 +1,41 @@
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
 from ushareiplay.models import MessageInfo
+from ushareiplay.modules.room import PartyService, RoomStateService
 from ushareiplay.modules.shared.config import ConfigSectionView
+
+
+class _PartyHarness:
+    def __init__(self):
+        self._handler = None
+        self._logger = None
+        self._message_dispatch = None
+
+    def _service(self):
+        from tests.legacy_state import RoomState
+        room_state = RoomState.instance() if RoomState.is_initialized() else RoomStateService()
+        return PartyService(
+            driver=SoulPartyDriver(self._handler),
+            room_state=room_state,
+            config=self._handler.config,
+            messenger=self._message_dispatch,
+            on_sync_profile=self._handler.controller.room_profile_manager.ensure_synced_on_return,
+            logger=self._logger or self._handler.logger,
+        )
+
+    async def invite_user(self, message_info, party_id):
+        return await self._service().invite_user(message_info.nickname, party_id)
+
+    async def join_party(self):
+        return await self._service().join_party()
+
+    def _restore_current_party(self):
+        return SoulPartyDriver(self._handler).restore_current_party()
+
+    def _navigate_back_to_hall_entry(self, max_attempts=5):
+        return SoulPartyDriver(self._handler)._navigate_back_to_hall_entry(max_attempts=max_attempts)
 
 
 class _Logger:
@@ -95,7 +127,7 @@ async def test_invite_user_target_party_not_found_does_not_close_current_room():
     2. 必须点击 floating_entry 安全返回原房间
     3. 返回包含 error 的字典
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     more_menu = _Element("more_menu")
     party_hall = _Element("party_hall")
@@ -149,7 +181,7 @@ async def test_invite_user_with_minimize_room_button_found_and_switches():
     2. 进入搜索查找目标房间
     3. 找到目标房间并切换进入
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     minimize_room = _Element("minimize_room")
     search_entry = _Element("search_entry")
@@ -191,7 +223,7 @@ async def test_invite_user_target_party_closed_card_with_no_party_online_restore
     搜索 FM13515566 时，页面显示了 room_card（提示“派对已结束~”），但 party_online 不存在。
     此时系统必须判定为派对未开启，安全点击 floating_entry 返回原房间，并返回错误提示。
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     minimize_room = _Element("minimize_room")
     search_entry = _Element("search_entry")
@@ -232,7 +264,7 @@ async def test_invite_user_closes_current_party_before_entering_target():
     3. 返回原房间并结束当前房间 (end_party)
     4. 再次搜索并进入目标房间
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     minimize_room = _Element("minimize_room")
     search_entry = _Element("search_entry")
@@ -284,7 +316,7 @@ async def test_invite_user_target_party_open_switches_successfully():
     3. 自动抢麦并更新 party_id
     4. 返回成功信息
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     more_menu = _Element("more_menu")
     party_hall = _Element("party_hall")
@@ -325,7 +357,7 @@ async def test_invite_user_target_party_with_switch_confirmation_dialog():
     """
     当进入目标房间时弹出解散/退出当前房间确认弹窗时，应自动点击确认
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     more_menu = _Element("more_menu")
     party_hall = _Element("party_hall")
@@ -368,7 +400,7 @@ async def test_restore_current_party_fallback_with_search_back():
     """
     若悬浮窗在搜索页未直接找到，通过 search_back 后再找到并点击
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     search_back = _Element("search_back")
     floating_entry = _Element("floating_entry")
@@ -403,7 +435,7 @@ async def test_restore_current_party_fallback_with_press_back():
     """
     若 search_back 亦不存在，使用 key_actions.press_back 兜底
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     floating_entry = _Element("floating_entry")
 
@@ -435,7 +467,7 @@ async def test_restore_current_party_fallback_with_press_back():
 
 @pytest.mark.asyncio
 async def test_invite_user_missing_search_box_error():
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     more_menu = _Element("more_menu")
     party_hall = _Element("party_hall")
@@ -466,7 +498,7 @@ async def test_navigate_back_to_hall_entry_via_back_loop_to_planet_tab():
     """
     测试当最小化后处于子页面时，不断点击返回直到出现 planet_tab，随后进入 party_hall_entry
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     item_left_back = _Element("item_left_back")
     planet_tab = _Element("planet_tab")
@@ -522,7 +554,7 @@ async def test_navigate_back_to_hall_entry_via_party_hall_entry_directly():
     """
     测试直接在主界面检测到 party_hall_entry 并成功进入大厅
     """
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     party_hall_entry = _Element("party_hall_entry")
     search_entry = _Element("search_entry")
@@ -575,7 +607,7 @@ async def test_join_party_recreates_room_after_guest_room_closed():
     room_state.is_guest_room = True
     room_state.room_id = "FM18633292"
 
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     planet_tab = _Element("planet_tab")
     party_hall_entry = _Element("party_hall_entry")
@@ -646,7 +678,7 @@ async def test_join_party_prioritizes_party_back_when_dialog_appears():
     room_state = RoomState.initialize()
     room_state._logger = type('_L', (), {'info': lambda s, *a: None})()
 
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     planet_tab = _Element("planet_tab")
     party_hall_entry = _Element("party_hall_entry")
@@ -686,7 +718,7 @@ async def test_join_party_when_party_back_already_visible():
     RoomState.reset_instance()
     RoomState.initialize()
 
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     party_back = _Element("party_back")
     handler = _MockHandler(elements={
@@ -712,7 +744,7 @@ async def test_join_party_recovers_from_stale_element_on_party_back():
     RoomState.reset_instance()
     RoomState.initialize()
 
-    manager = PartyManager.instance()
+    manager = _PartyHarness()
 
     planet_tab = _Element("planet_tab")
     party_hall_entry = _Element("party_hall_entry")

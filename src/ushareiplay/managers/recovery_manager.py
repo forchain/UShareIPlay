@@ -4,8 +4,9 @@ from ushareiplay.core.singleton import Singleton
 class RecoveryManager(Singleton):
     """异常检测和恢复管理器，用于检测和处理各种异常情况"""
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, room_state=None):
         self.handler = handler
+        self._room_state = room_state
         self.logger = getattr(handler, "logger", None) or logging.getLogger("RecoveryManager")
 
     def close_drawer(
@@ -99,10 +100,14 @@ class RecoveryManager(Singleton):
         最快速的方法就是检测输入框是否存在
         """
         try:
-            # 从 InfoManager 获取房间ID
-            from ushareiplay.managers.info_manager import InfoManager
-            info_manager = InfoManager.instance()
-            room_id_text = info_manager.room_id
+            room_state = self._room_state
+            if room_state is None and self.handler is not None:
+                controller = getattr(self.handler, "controller", None)
+                if controller is not None:
+                    room_state = getattr(controller, "room_state", None)
+            if room_state is None:
+                return False
+            room_id_text = room_state.room_id
 
             if room_id_text is None:
                 return False

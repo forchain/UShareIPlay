@@ -5,11 +5,9 @@ class InfoCommand(BaseCommand):
     handler_attr = 'soul_handler'
 
     async def do_process(self, message_info, parameters):
-        # 从缓存获取播放信息
         info_manager = self.info_manager
         result = info_manager.ensure_cached_release_date()
 
-        # 如果缓存未初始化，使用默认值
         if result is None:
             result = {
                 "song": "Unknown",
@@ -21,7 +19,6 @@ class InfoCommand(BaseCommand):
         else:
             result["release_date"] = result.get("release_date") or ""
 
-        # 追加播放器信息和在线用户列表
         result["player"] = info_manager.player_name
 
         online_users = info_manager.get_online_users()
@@ -33,11 +30,9 @@ class InfoCommand(BaseCommand):
         else:
             result["online_users"] = "列表暂未更新"
 
-        # 追加派对时长信息
         party_duration = info_manager.get_party_duration_info()
         result["party_duration"] = party_duration if party_duration else ""
 
-        # 追加当前歌单信息
         playlist_info = info_manager.get_playlist_info()
         if playlist_info and playlist_info.get("name"):
             playlist_type_map = {
@@ -62,8 +57,6 @@ class InfoCommand(BaseCommand):
         result["play_mode_key"] = play_mode_key
         result["play_mode"] = music_handler.play_mode_key_to_name(play_mode_key) if music_handler else "未知"
 
-        # 推荐分发归房间档案模块所有（#456）：`:info` 问它的直接答案，而不是
-        # 绕过模块边界去摸 RoomState。
         rec_status = self._recommendation_enabled(info_manager)
         if rec_status is True:
             result["party_recommendation"] = "开放"
@@ -115,6 +108,5 @@ class InfoCommand(BaseCommand):
         return formatted
 
     def update(self):
-        """Update playback info and user count - delegates to InfoManager"""
-        # Update playback info (handles playback info changes, quality check, etc.)
-        self.info_manager.update()
+        """Update playback info - delegates to PlaybackBroadcaster"""
+        self.controller.playback_broadcaster.update()

@@ -80,8 +80,7 @@ class BaseCommand(ABC):
     @property
     def info_manager(self):
         if self._info_manager is None:
-            from ushareiplay.managers.info_manager import InfoManager
-            self._info_manager = InfoManager.instance()
+            self._info_manager = self.controller.info_manager
         return self._info_manager
 
     @property

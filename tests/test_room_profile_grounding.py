@@ -25,7 +25,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.modules.room import PartyService
 from tests.room_profile_support import RoomProfileManager
 from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
@@ -98,10 +98,10 @@ def _driver():
 @pytest.fixture(autouse=True)
 def _reset_singletons(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RoomProfileManager, PartyManager):
+    for cls in (RoomState, RoomProfileManager):
         cls.reset_instance()
     yield
-    for cls in (RoomState, RoomProfileManager, PartyManager):
+    for cls in (RoomState, RoomProfileManager):
         cls.reset_instance()
 
 
@@ -200,12 +200,15 @@ def test_party_manager_routes_the_return_and_create_paths_through_the_module():
     """
     import inspect
 
-    from ushareiplay.managers import party_manager as pm
+    from ushareiplay.core.app_controller import AppController
 
-    source = inspect.getsource(pm)
-    assert "ensure_synced_on_return()" in source, (
-        "PartyManager 必须把房间档案的 UI 接地点回来 —— "
-        "它是 audit_and_repair/initialize_from_ui 唯一的生产触发点"
+    controller_source = inspect.getsource(AppController._init_handlers)
+    service_source = inspect.getsource(PartyService)
+    assert "ensure_synced_on_return" in controller_source, (
+        "AppController 必须把房间档案的 ensure_synced_on_return 注入 PartyService"
+    )
+    assert "_sync_profile_from_ui()" in service_source, (
+        "PartyService 必须把房间档案的 UI 接地点回来"
     )
 
 

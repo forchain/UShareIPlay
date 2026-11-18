@@ -17,23 +17,30 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.commands.gift import GiftCommand
+from ushareiplay.adapters.inbound.chat.gift import GiftCommand
 from ushareiplay.commands.seat import SeatCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
 )
+from ushareiplay.adapters.outbound.persistence.user_repository import (
+    TortoiseUserRepository,
+)
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.registry import FOCUS
-from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer, PresenceTracker
+from ushareiplay.modules.room.use_cases import (
+    InfoManager,
+    ManageAdmin,
+    OnlineDrawer,
+    PresenceTracker,
+    UserProfileActions,
+)
 from tests.room_support import configured_room_state, make_hooks, wire_room_state
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
@@ -61,25 +68,30 @@ async def alias_pair(db):
 
 
 _presence = None
+_info_manager = None
 
 
 @pytest.fixture(autouse=True)
 def presence_env():
     """在线集合由 Soul UI 读回，因此里面只有分身名。"""
-    global _presence
-    InfoManager.reset_instance()
+    global _presence, _info_manager
     presence = PresenceTracker()
     presence._logger = SimpleNamespace(
         info=lambda _m: None, warning=lambda _m: None, error=lambda _m: None, critical=lambda _m: None
     )
     room_state = configured_room_state()
     wire_room_state(room_state)
-    info_manager = InfoManager.initialize(presence=presence, room_state=room_state)
-    info_manager._logger = SimpleNamespace(info=lambda _m: None)
+    info_manager = InfoManager(
+        presence=presence,
+        room_state=room_state,
+        users=TortoiseUserRepository(),
+        logger=SimpleNamespace(info=lambda _m: None),
+    )
     _presence = presence
+    _info_manager = info_manager
     yield presence
     _presence = None
-    InfoManager.reset_instance()
+    _info_manager = None
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +206,7 @@ class DummyController:
         self.music_handler = None
         self.config = {}
         self.room_state = configured_room_state()
+        self.info_manager = _info_manager
 
 
 def _seating_manager(desks, popup_name):
@@ -317,7 +330,7 @@ async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair
 @pytest.mark.asyncio
 async def test_resolve_visible_username_returns_the_name_soul_shows(alias_pair):
     _presence._online_users = {AVATAR, STRANGER}
-    info_manager = InfoManager.instance()
+    info_manager = _info_manager
 
     assert await info_manager.resolve_visible_username(CANONICAL) == AVATAR
     assert await info_manager.resolve_visible_username(AVATAR) == AVATAR
@@ -341,7 +354,7 @@ async def test_admin_opens_the_avatar_profile_and_tracks_the_visible_name(alias_
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], journal=journal)
     drawer = OnlineDrawer(
         drawer=driver,
-        name_resolver=InfoManager.instance().resolve_visible_username,
+        name_resolver=_info_manager.resolve_visible_username,
         ui_session=None,
     )
     manager = ManageAdmin(
@@ -369,22 +382,17 @@ async def test_gift_targets_the_avatar_visible_in_the_room(alias_pair):
 
     journal = []
     driver = InMemoryOnlineDrawerDriver(members=[AVATAR], gift_name="小黄鸭x1", journal=journal)
-    UserManager.reset_instance()
     drawer = OnlineDrawer(
         drawer=driver,
-        name_resolver=InfoManager.instance().resolve_visible_username,
+        name_resolver=_info_manager.resolve_visible_username,
         ui_session=None,
     )
-    UserManager.initialize(SimpleNamespace(logger=None), drawer=drawer)
-
     controller = DummyController()
+    controller.user_profile_actions = UserProfileActions(drawer=drawer)
     command = GiftCommand(controller)
-    try:
-        result = await command.do_process(
-            MessageInfo(content=f":gift {CANONICAL}", nickname="群主"), [CANONICAL]
-        )
-    finally:
-        UserManager.reset_instance()
+    result = await command.do_process(
+        MessageInfo(content=f":gift {CANONICAL}", nickname="群主"), [CANONICAL]
+    )
 
     assert result == {"success": "小黄鸭 送你啦"}
     assert f"card:open:{AVATAR}" in journal, "点开的是分身名那一行，而不是找不到人"

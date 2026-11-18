@@ -4,13 +4,12 @@ from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room import InfoManager
 
 
 @pytest.fixture
 def init_singletons():
     for cls in (
-        InfoManager,
         PlaybackBroadcaster,
         PlaylistSession,
         PresenceTracker,
@@ -19,14 +18,14 @@ def init_singletons():
         cls.reset_instance()
     PlaybackBroadcaster.initialize()
     PlaylistSession.initialize()
-    PresenceTracker.initialize()
+    presence = PresenceTracker.initialize()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _message: None)
-    manager = InfoManager.initialize(
-        room_state=room_state, presence=PresenceTracker.instance()
+    return InfoManager(
+        room_state=room_state,
+        presence=presence,
+        logger=SimpleNamespace(info=lambda _message: None),
     )
-    manager._logger = SimpleNamespace(info=lambda _message: None)
-    return manager
 
 
 def test_room_state_recommendation_enabled_default_and_clear(init_singletons):
@@ -44,9 +43,8 @@ def test_room_state_recommendation_enabled_default_and_clear(init_singletons):
 
 
 def test_info_manager_recommendation_enabled_delegation(init_singletons):
-    info_manager = InfoManager.instance()
+    info_manager = init_singletons
     assert info_manager.recommendation_enabled is None
 
-    info_manager.recommendation_enabled = True
+    RoomState.instance().recommendation_enabled = True
     assert info_manager.recommendation_enabled is True
-    assert RoomState.instance().recommendation_enabled is True

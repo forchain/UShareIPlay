@@ -19,7 +19,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.party_manager import PartyManager
+from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+from ushareiplay.modules.room import PartyService
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.legacy_state import RoomState
@@ -110,10 +111,10 @@ class _Handler:
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    for cls in (RoomProfileManager, RoomState, PartyManager):
+    for cls in (RoomProfileManager, RoomState):
         cls.reset_instance()
     yield
-    for cls in (RoomProfileManager, RoomState, PartyManager):
+    for cls in (RoomProfileManager, RoomState):
         cls.reset_instance()
 
 
@@ -365,9 +366,14 @@ async def test_room_creation_does_not_open_drawer_for_recommendation():
     room_state = RoomState.initialize()
     room_state.recommendation_enabled = False  # 建房时的配置假设
 
-    party = PartyManager.initialize()
-    party._handler = _room_lifecycle_handler(screen, profile)
-    party._logger = MagicMock()
+    party_handler = _room_lifecycle_handler(screen, profile)
+    party = PartyService(
+        driver=SoulPartyDriver(party_handler),
+        room_state=room_state,
+        on_sync_profile=profile.ensure_synced_on_return,
+        on_after_create_notice=profile.set_default_notice,
+        logger=MagicMock(),
+    )
 
     await party._after_party_created()
 
@@ -387,9 +393,14 @@ async def test_re_entering_the_room_does_not_open_drawer_for_recommendation():
     room_state = RoomState.initialize()
     room_state.recommendation_enabled = None
 
-    party = PartyManager.initialize()
-    party._handler = _room_lifecycle_handler(screen, profile)
-    party._logger = MagicMock()
+    party_handler = _room_lifecycle_handler(screen, profile)
+    party = PartyService(
+        driver=SoulPartyDriver(party_handler),
+        room_state=room_state,
+        on_sync_profile=profile.ensure_synced_on_return,
+        on_after_create_notice=profile.set_default_notice,
+        logger=MagicMock(),
+    )
 
     # 点「回到房间」那一支：不应再为了推荐分发开抽屉
     assert await party.join_party() is True
@@ -450,10 +461,10 @@ def test_the_room_profile_manager_does_not_import_the_deleted_or_legacy_managers
 
 
 def test_party_manager_has_no_direct_drawer_element_queries_left():
-    """AC#3：`party_manager.py` 里不再有任何直接的抽屉元素查询。"""
+    """AC#3：`PartyService` / `SoulPartyDriver` 里不再有任何直接的抽屉元素查询。"""
     import inspect
 
-    source = inspect.getsource(PartyManager)
+    source = inspect.getsource(PartyService) + "\n" + inspect.getsource(SoulPartyDriver)
     for drawer_key in ("party_room_type_option", "party_recommendation_status"):
         assert drawer_key not in source, drawer_key
     assert "def check_and_correct_room_type" not in source

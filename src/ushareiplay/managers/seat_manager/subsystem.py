@@ -39,7 +39,6 @@ from typing import ClassVar, Optional, Tuple
 
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.dal import SeatReservationDAO, UserDAO
-from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.seat_manager.guard import (
     GUEST_ROOM_CHAT_SCAN_RESULT,
     GUEST_ROOM_EMPTY_DESK_RESULT,
@@ -145,9 +144,11 @@ class SeatSubsystem:
         panel_reader=None,
         lease=None,
         room_state=None,
+        info_manager=None,
     ):
         self._handler = handler
         self._room_state = room_state
+        self._info_manager = info_manager
         self._panel_reader = panel_reader
         self._panel_driver = panel_driver
         self._lease = lease
@@ -174,6 +175,18 @@ class SeatSubsystem:
     @property
     def room_state(self):
         return self._room_state
+
+    @property
+    def info_manager(self):
+        if self._info_manager is None and self._handler is not None:
+            controller = getattr(self._handler, "controller", None)
+            if controller is not None:
+                return getattr(controller, "info_manager", None)
+        return self._info_manager
+
+    @info_manager.setter
+    def info_manager(self, value):
+        self._info_manager = value
 
     @handler.setter
     def handler(self, value):
@@ -550,7 +563,10 @@ class SeatSubsystem:
         一致：认不出就按调用方给的名字继续）。
         """
         try:
-            visible = await InfoManager.instance().resolve_visible_username(username)
+            info_manager = self.info_manager
+            if info_manager is None:
+                return username
+            visible = await info_manager.resolve_visible_username(username)
         except Exception as e:
             self.logger.debug(f"解析 {username} 的可见昵称失败，按原名继续: {e}")
             return username
@@ -607,7 +623,8 @@ class SeatSubsystem:
             # 若跨名匹配（如同一身份改名前后）：只有当 slot_username 并不是房间里另一个独立在线的用户时才算同一人
             if await self._same_identity(slot_username, username):
                 try:
-                    is_online_fn = getattr(InfoManager.instance(), "is_user_online", None)
+                    info_manager = self.info_manager
+                    is_online_fn = getattr(info_manager, "is_user_online", None) if info_manager else None
                     if is_online_fn and is_online_fn(slot_username):
                         # slot 上的账号与进房账号同时在线，属于同主账号下的不同独立账号（如 Outlier 在座，Chainer 进房）
                         continue
@@ -1177,8 +1194,8 @@ class SeatSubsystem:
             # 两侧名字可能来自不同命名域（调用方常拿到 DB 的主账号名，UI 只有分身名），
             # 所以同一身份必须按身份判定，而不是按字符串相等。
             if not await UserDAO.is_same_identity(sender_username, target_username):
-                info_manager = InfoManager.instance()
-                if not await info_manager.is_user_or_avatar_online(target_username):
+                info_manager = self.info_manager
+                if info_manager is not None and not await info_manager.is_user_or_avatar_online(target_username):
                     return {'error': f'User {target_username} is not online'}
 
             seat_desks = await self.expand_and_find_desks()

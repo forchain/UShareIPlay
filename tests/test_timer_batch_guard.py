@@ -24,7 +24,7 @@ from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room import InfoManager
 from ushareiplay.managers.music_manager import MusicManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
@@ -43,7 +43,6 @@ LOGGER = logging.getLogger("test_timer_batch_guard")
 @pytest.fixture
 def clean_info_manager():
     for cls in (
-        InfoManager,
         RoomState,
         PresenceTracker,
         PlaylistSession,
@@ -56,17 +55,22 @@ def clean_info_manager():
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    for cls in (
-        RoomState,
-        PresenceTracker,
-        PlaylistSession,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.initialize()._logger = fake_logger
-    manager = InfoManager.initialize()
-    manager._logger = fake_logger
-    return manager
+    room_state = RoomState.initialize()
+    room_state._logger = fake_logger
+    presence = PresenceTracker.initialize()
+    presence._logger = fake_logger
+    playlist = PlaylistSession.initialize()
+    playlist._logger = fake_logger
+    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster._logger = fake_logger
+    OnlineListScraper.initialize()._logger = fake_logger
+    return InfoManager(
+        room_state=room_state,
+        presence=presence,
+        playlist=playlist,
+        playback_cache=broadcaster,
+        logger=fake_logger,
+    )
 
 
 class _RecordingDispatch:
@@ -239,7 +243,7 @@ def batch_seam(clean_info_manager, monkeypatch):
 def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
     """Playlist Context owner online: say/title/topic/vol run, radio never does."""
     PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(
         ":say 晚安;:title 晚安;:topic 晚安;:vol 5;:radio sleep"
@@ -257,7 +261,7 @@ def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
 def test_guarded_batch_still_records_next_but_blocks_radio(batch_seam):
     """A guest's pending Next Queue guards the timer; its `:next` still records."""
     PlaylistSession.instance().record_next("Alice")
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":say 晚安;:next 晴天;:radio sleep")
 
@@ -289,7 +293,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
     `:playlist <query>` is a continuous-queue switch and is guarded like radio.
     """
     PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":play 晴天;:playlist 晚安歌单")
 
@@ -301,7 +305,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 def test_guarded_batch_blocks_skip_and_pause_without_touching_playback(batch_seam):
     """Skip/pause in a guarded batch never reach the player or the microphone."""
     PlaylistSession.instance().player_name = "Alice"
-    batch_seam.info.update_online_users(["Alice", "Joyer"])
+    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":skip;:pause")
 

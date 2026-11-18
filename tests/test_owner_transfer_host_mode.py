@@ -96,13 +96,17 @@ def _guest_room_state(monkeypatch, explicit_guest_flag=True):
 
 
 def _party_manager_with_stub_handler(monkeypatch, handler=None):
-    """真实的 PartyManager + stub handler：房间核对判定现在归它所有。"""
-    from ushareiplay.managers.party_manager import PartyManager
+    """真实的 PartyService + stub handler：房间核对判定现在归它所有。"""
+    from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
+    from ushareiplay.modules.room import PartyService
 
-    manager = PartyManager.instance()
     handler = handler or _HandlerStub(config={})
-    manager._handler = handler
-    manager._logger = handler.logger
+    manager = PartyService(
+        driver=SoulPartyDriver(handler),
+        room_state=RoomState.instance(),
+        logger=handler.logger,
+    )
+    handler.controller = SimpleNamespace(party_service=manager)
     monkeypatch.setattr(manager, "leave_and_recreate_party", AsyncMock(return_value=True))
     return manager, handler
 
@@ -181,6 +185,7 @@ async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
     party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch, soul_handler)
     controller = SimpleNamespace(
         soul_handler=soul_handler,
+        party_service=party_manager,
         logger=_Logger(),
     )
 

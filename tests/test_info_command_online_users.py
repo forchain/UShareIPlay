@@ -2,9 +2,8 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ushareiplay.commands.info import InfoCommand
-from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.modules.room.domain import RoomAdmins
+from ushareiplay.adapters.inbound.chat.info import InfoCommand
+from ushareiplay.modules.room import InfoManager, RoomAdmins
 from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
 from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
@@ -16,10 +15,9 @@ from tests.legacy_state import RoomState
 
 @pytest.fixture(autouse=True)
 def setup_info_env():
-    global _room_admins
+    global _room_admins, _info_manager
     _room_admins = RoomAdmins()
     for cls in (
-        InfoManager,
         PlaybackBroadcaster,
         PlaylistSession,
         PresenceTracker,
@@ -28,16 +26,21 @@ def setup_info_env():
     ):
         cls.reset_instance()
 
-    PlaybackBroadcaster.initialize()
-    PlaylistSession.initialize()
+    broadcaster = PlaybackBroadcaster.initialize()
+    playlist = PlaylistSession.initialize()
     presence = PresenceTracker.initialize()
     presence._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, critical=lambda _msg: None)
     presence._online_users = set()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager = InfoManager.initialize(room_admins=_room_admins)
-    info_manager._logger = SimpleNamespace(info=lambda _msg: None)
-    info_manager._party_manager = SimpleNamespace(init_time=None)
+    _info_manager = InfoManager(
+        room_state=room_state,
+        presence=presence,
+        room_admins=_room_admins,
+        playlist=playlist,
+        playback_cache=broadcaster,
+        logger=SimpleNamespace(info=lambda _msg: None),
+    )
 
     from unittest.mock import patch
     patcher = patch(
@@ -51,7 +54,6 @@ def setup_info_env():
     patcher.stop()
 
     for cls in (
-        InfoManager,
         PlaybackBroadcaster,
         PlaylistSession,
         PresenceTracker,
@@ -71,6 +73,7 @@ def make_dummy_controller():
         soul_handler=soul_handler,
         music_handler=None,
         logger=logger,
+        info_manager=_info_manager,
         timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
         room_profile_manager=SimpleNamespace(recommendation_enabled=None),
     )

@@ -2,7 +2,8 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from ushareiplay.commands.info import InfoCommand
+from ushareiplay.adapters.inbound.chat.info import InfoCommand
+from ushareiplay.modules.room import InfoManager
 from ushareiplay.models.message_info import MessageInfo
 from tests.legacy_state import OnlineListScraper
 from tests.legacy_state import PresenceTracker
@@ -11,13 +12,11 @@ from tests.legacy_state import RoomState
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    from ushareiplay.managers.info_manager import InfoManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
-    InfoManager.reset_instance()
     PlaybackBroadcaster.reset_instance()
     PlaylistSession.reset_instance()
     PlaybackBroadcaster.initialize()
@@ -26,7 +25,6 @@ def reset_singletons():
     RoomState.reset_instance()
     PresenceTracker.reset_instance()
     OnlineListScraper.reset_instance()
-    InfoManager.reset_instance()
     PlaybackBroadcaster.reset_instance()
     PlaylistSession.reset_instance()
 
@@ -77,10 +75,15 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
     assert "Alice" in online_users
     assert "Bob" in online_users
 
-    from ushareiplay.managers.info_manager import InfoManager
-    info_manager = InfoManager.initialize()
-    info_manager._logger = logger
-    info_manager._party_manager = SimpleNamespace(init_time=None)
+    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.managers.playlist_session import PlaylistSession
+    info_manager = InfoManager(
+        room_state=room_state,
+        presence=presence_tracker,
+        playlist=PlaylistSession.instance(),
+        playback_cache=PlaybackBroadcaster.instance(),
+        logger=logger,
+    )
 
     # 3. info 命令必须正常输出在线用户，而不是「列表暂未更新」
     soul_handler = SimpleNamespace(logger=logger, log_error=MagicMock())
@@ -88,6 +91,7 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
         SimpleNamespace(
             soul_handler=soul_handler,
             music_handler=None,
+            info_manager=info_manager,
             logger=logger,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),

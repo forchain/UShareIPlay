@@ -11,7 +11,7 @@ import pytest_asyncio
 from tortoise import Tortoise
 
 from ushareiplay.modules.shared.config import ConfigView
-from ushareiplay.managers.info_manager import InfoManager
+from ushareiplay.modules.room import InfoManager, RoomState
 from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.legacy_state import PresenceTracker
@@ -40,18 +40,23 @@ async def user_db():
 
 @pytest.fixture
 def info_manager():
-    for cls in (InfoManager, PlaylistSession, PresenceTracker):
+    for cls in (PlaylistSession, PresenceTracker):
         cls.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    for cls in (PresenceTracker, PlaylistSession):
-        cls.initialize()._logger = fake_logger
-    manager = InfoManager.initialize()
-    manager._logger = fake_logger
-    return manager
+    presence = PresenceTracker.initialize()
+    presence._logger = fake_logger
+    playlist = PlaylistSession.initialize()
+    playlist._logger = fake_logger
+    return InfoManager(
+        room_state=RoomState(),
+        presence=presence,
+        playlist=playlist,
+        logger=fake_logger,
+    )
 
 
 def queue_next(info_manager, *contributors):
@@ -68,7 +73,7 @@ async def add_avatar(canonical, avatar):
 async def test_single_contributor_online_blocks_regular_caller(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -79,7 +84,7 @@ async def test_single_contributor_online_blocks_regular_caller(user_db, info_man
 async def test_contributor_offline_allows_caller(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Bob"])
+    PresenceTracker.instance().update_online_users(["Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -91,7 +96,7 @@ async def test_contributor_avatar_online_blocks_caller(user_db, info_manager):
     await add_avatar("Alice", "Alice小号")
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice小号", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice小号", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -102,7 +107,7 @@ async def test_contributor_avatar_online_blocks_caller(user_db, info_manager):
 async def test_contributor_may_override_own_queue(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Alice", config=CONFIG)
 
@@ -114,7 +119,7 @@ async def test_contributor_avatar_may_override_own_queue(user_db, info_manager):
     await add_avatar("Alice", "Alice小号")
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Alice小号", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Alice小号", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Alice小号", config=CONFIG)
 
@@ -125,7 +130,7 @@ async def test_contributor_avatar_may_override_own_queue(user_db, info_manager):
 async def test_human_operator_bypasses_next_queue(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Outlier"])
+    PresenceTracker.instance().update_online_users(["Alice", "Outlier"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Outlier", config=CONFIG)
 
@@ -136,7 +141,7 @@ async def test_human_operator_bypasses_next_queue(user_db, info_manager):
 async def test_multiple_contributors_name_the_online_one(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Alice", "Bob")
-    info_manager.update_online_users(["Bob"])
+    PresenceTracker.instance().update_online_users(["Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Carol", config=CONFIG)
 
@@ -147,7 +152,7 @@ async def test_multiple_contributors_name_the_online_one(user_db, info_manager):
 async def test_all_contributors_privileged_is_not_guarded(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     queue_next(info_manager, "Timer", "Agent")
-    info_manager.update_online_users(["Timer", "Agent", "Alice"])
+    PresenceTracker.instance().update_online_users(["Timer", "Agent", "Alice"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Alice", config=CONFIG)
 
@@ -158,7 +163,7 @@ async def test_all_contributors_privileged_is_not_guarded(user_db, info_manager)
 async def test_zero_pending_count_allows_even_with_listed_contributors(user_db, info_manager):
     PlaylistSession.instance().player_name = ""
     info_manager.next_queue_contributors.add("Alice")
-    info_manager.update_online_users(["Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -172,7 +177,7 @@ async def test_next_queue_guard_is_independent_of_playlist_context(
 ):
     PlaylistSession.instance().player_name = player_name
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -185,7 +190,7 @@ async def test_playlist_owner_offline_but_contributor_online_still_blocks(
 ):
     PlaylistSession.instance().player_name = "儿童不易"
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 
@@ -196,7 +201,7 @@ async def test_playlist_owner_offline_but_contributor_online_still_blocks(
 async def test_playlist_context_error_wins_when_both_block(user_db, info_manager):
     PlaylistSession.instance().player_name = "儿童不易"
     queue_next(info_manager, "Alice")
-    info_manager.update_online_users(["儿童不易", "Alice", "Bob"])
+    PresenceTracker.instance().update_online_users(["儿童不易", "Alice", "Bob"])
 
     result = await PlaylistSession.instance().check_playlist_protection("Bob", config=CONFIG)
 

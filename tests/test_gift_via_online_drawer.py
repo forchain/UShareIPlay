@@ -12,8 +12,7 @@
 
 import pytest
 
-from ushareiplay.managers.user_manager import UserManager
-from ushareiplay.modules.room.use_cases import OnlineDrawer
+from ushareiplay.modules.room.use_cases import OnlineDrawer, UserProfileActions
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 
@@ -51,14 +50,11 @@ class _RecordingController:
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    UserManager.reset_instance()
     yield
-    UserManager.reset_instance()
 
 
 def _wire(*, members=("小明",), name_resolver=None, handler=None, **driver_kwargs):
-    """装好抽屉用例与 `UserManager`，把屏幕交给内存替身。"""
-    UserManager.reset_instance()
+    """装好抽屉用例与 `UserProfileActions`，把屏幕交给内存替身。"""
     if handler is None:
         handler = _Handler()
     driver = InMemoryOnlineDrawerDriver(members=list(members), **driver_kwargs)
@@ -68,7 +64,7 @@ def _wire(*, members=("小明",), name_resolver=None, handler=None, **driver_kwa
         name_resolver=name_resolver,
         ui_session=controller.ui_session if controller is not None else None,
     )
-    manager = UserManager.initialize(handler, drawer=drawer)
+    manager = UserProfileActions(drawer=drawer)
     return manager, driver
 
 
@@ -399,19 +395,20 @@ async def test_gift_command_parses_the_target_and_delegates_verbatim(
     from types import SimpleNamespace
     from unittest.mock import MagicMock, patch
 
-    from ushareiplay.commands.gift import GiftCommand
+    from ushareiplay.adapters.inbound.chat.gift import GiftCommand
     from ushareiplay.models.message_info import MessageInfo
 
     fake_user_manager = _RecordingUserManager()
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock())
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=MagicMock(),
+        user_profile_actions=fake_user_manager,
+    )
     command = GiftCommand(controller)
 
-    with patch(
-        "ushareiplay.commands.gift.UserManager.instance", return_value=fake_user_manager
-    ):
-        result = await command.do_process(
-            MessageInfo(content=content, nickname="群主"), parameters
-        )
+    result = await command.do_process(
+        MessageInfo(content=content, nickname="群主"), parameters
+    )
 
     assert fake_user_manager.given == [expected]
     assert result == {'success': f'{expected} 送你啦'}
@@ -426,16 +423,18 @@ async def test_gift_command_does_not_resolve_the_nickname_itself():
     from types import SimpleNamespace
     from unittest.mock import MagicMock, patch
 
-    from ushareiplay.commands.gift import GiftCommand
+    from ushareiplay.adapters.inbound.chat.gift import GiftCommand
     from ushareiplay.models.message_info import MessageInfo
 
     fake_user_manager = _RecordingUserManager()
-    controller = SimpleNamespace(soul_handler=MagicMock(), music_handler=MagicMock())
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=MagicMock(),
+        user_profile_actions=fake_user_manager,
+    )
     command = GiftCommand(controller)
 
-    with patch(
-        "ushareiplay.commands.gift.UserManager.instance", return_value=fake_user_manager
-    ), patch.object(
+    with patch.object(
         type(command),
         "info_manager",
         new=property(lambda _self: (_ for _ in ()).throw(AssertionError("命令层不该解析昵称"))),

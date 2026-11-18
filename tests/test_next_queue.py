@@ -105,12 +105,16 @@ def test_consume_logs_only_when_the_queue_empties(playlist_session):
 
 @pytest.fixture
 def stateful_info_manager(playlist_session):
-    from ushareiplay.managers.info_manager import InfoManager
+    from tests.legacy_state import PresenceTracker, RoomState
+    from ushareiplay.modules.room import InfoManager
 
-    InfoManager.reset_instance()
-    manager = InfoManager.initialize()
-    manager._logger, _ = _fake_logger()
-    return manager
+    logger, _ = _fake_logger()
+    return InfoManager(
+        room_state=RoomState.instance() if RoomState.is_initialized() else RoomState.initialize(),
+        presence=PresenceTracker.instance() if PresenceTracker.is_initialized() else PresenceTracker.initialize(),
+        playlist=playlist_session,
+        logger=logger,
+    )
 
 
 @pytest.fixture

@@ -5,8 +5,9 @@
 """
 
 import math
+import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable, Dict, Optional
 
 from ushareiplay.modules.shared.errors import DomainError
@@ -455,3 +456,176 @@ class ProfileDraftStore:
     def parse_room_title(self, room_title_text: str):
         """从 UI 读到的房间名里拆出 `(主题, 标题)`；没有分隔符则 None。"""
         return parse_room_title_text(room_title_text)
+
+
+# --------------------------------------------------------------------------
+# 派对生命周期、送礼与福袋规则（#552）
+# --------------------------------------------------------------------------
+
+#: 礼物列表兜底礼物，固定为列表首位，点击即送无需点赠送。
+YELLOW_DUCK_NAME = "小黄鸭"
+
+MAX_REDEMPTIONS = 50
+PACK_USAGE = '用法: :pack [list|open [level] [countdown]|redeem]'
+OPEN_USAGE = '用法: :pack open [level] [countdown]（level 取 1~5，countdown 取 0/1/3/5/10）'
+
+#: 阶段文案 → 福袋等级：「第一阶段奖励」即 1 级福袋。
+_PHASE_PATTERN = re.compile(r'第([一二三四五])阶段')
+_PHASE_LEVELS = {'一': 1, '二': 2, '三': 3, '四': 4, '五': 5}
+
+#: 倒计时选项：0 表示即刻抢，其余是分钟数。
+COUNTDOWN_OPTIONS = {0: '即刻抢', 1: '1分钟', 3: '3分钟', 5: '5分钟', 10: '10分钟'}
+
+_HEAT_PATTERN = re.compile(r'(\d+(?:\.\d+)?)\s*([万wW])?')
+_ZERO_PACK_PATTERN = re.compile(r'(?<!\d)0\s*个')
+
+
+class PartyLifecycleState:
+    """派对生命周期状态：启动时间、自动重启触发时长与每日自动结束去重。"""
+
+    def __init__(self, trigger_minutes: int = 720):
+        self.init_time: Optional[datetime] = None
+        self.last_auto_end_date: Optional[date] = None
+        self.trigger_minutes: int = trigger_minutes
+
+    def initialize(
+        self,
+        now: Optional[datetime] = None,
+        trigger_minutes: Optional[int] = None,
+    ) -> bool:
+        """首次初始化派对计时；已初始化时保持原 init_time。"""
+        if self.init_time is not None:
+            return False
+        self.init_time = now or datetime.now()
+        if trigger_minutes is not None:
+            self.trigger_minutes = trigger_minutes
+        return True
+
+    def reset_time(self, now: Optional[datetime] = None) -> datetime:
+        """重置派对创建时间。"""
+        self.init_time = now or datetime.now()
+        return self.init_time
+
+    def mark_auto_ended(self, today: date) -> None:
+        """记录今日已尝试过自动结束（成功或失败均每天最多一次）。"""
+        self.last_auto_end_date = today
+
+    def should_auto_restart(
+        self,
+        now: datetime,
+        *,
+        user_count: int,
+        is_guest_room: bool,
+    ) -> bool:
+        """是否满足自动重启派对条件：宿主房、已过触发分钟数、今日未触发且仅剩 1 人。"""
+        if is_guest_room or self.init_time is None:
+            return False
+        if self.last_auto_end_date == now.date():
+            return False
+        minutes_since_init = (now - self.init_time).total_seconds() / 60
+        if minutes_since_init < self.trigger_minutes:
+            return False
+        if user_count == -1:
+            return False
+        return user_count == 1
+
+    def format_duration_info(self, now: Optional[datetime] = None) -> Optional[str]:
+        """格式化派对开始时间与持续时长，未初始化返回 None。"""
+        if self.init_time is None:
+            return None
+        current_time = now or datetime.now()
+        duration = current_time - self.init_time
+        total_minutes = int(duration.total_seconds() / 60)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        start_time_str = self.init_time.strftime("%H:%M")
+        duration_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+        return f"{start_time_str}, {duration_str}"
+
+
+def party_create_mode(raw_mode: Optional[str]) -> str:
+    """规范化建房模式：仅接受 new_party_entry / restore_party，其余回退 new_party_entry。"""
+    if raw_mode in ('new_party_entry', 'restore_party'):
+        return raw_mode
+    return 'new_party_entry'
+
+
+def is_zero_packs(text: Optional[str]) -> bool:
+    """福袋标签文案是否为 0 个（如「礼物福袋  (0个)」）。"""
+    return bool(_ZERO_PACK_PATTERN.search(text or ''))
+
+
+def parse_heat(text: Optional[str]) -> Optional[int]:
+    """提取热力数值，兼容 `万`/`w` 单位与千分位逗号。"""
+    match = _HEAT_PATTERN.search((text or '').replace(',', ''))
+    if not match:
+        return None
+    value = float(match.group(1))
+    return int(value * 10000) if match.group(2) else int(value)
+
+
+def parse_pack_level(text: Optional[str]) -> Optional[int]:
+    """从「第X阶段奖励」里读出福袋等级；不是阶段文案返回 None。"""
+    match = _PHASE_PATTERN.search(text or '')
+    return _PHASE_LEVELS[match.group(1)] if match else None
+
+
+def parse_countdown(text: Optional[str]) -> Optional[int]:
+    """从「即刻抢 | 所有人」/「3分钟 | 所有人」里读出倒计时分钟数（即刻抢 = 0）。"""
+    cleaned = (text or '').strip()
+    if '即刻抢' in cleaned:
+        return 0
+    match = re.search(r'(\d+)\s*分钟', cleaned)
+    return int(match.group(1)) if match else None
+
+
+def format_packs(packs: list[tuple[int, str]]) -> str:
+    """把扫描结果渲染成一行可读文案。"""
+    counts: dict[int, int] = {}
+    names: dict[int, str] = {}
+    for level, name in packs:
+        counts[level] = counts.get(level, 0) + 1
+        names.setdefault(level, name)
+    parts = []
+    for level in sorted(counts, reverse=True):
+        name = names[level]
+        suffix = f'×{counts[level]}' if counts[level] > 1 else ''
+        parts.append(f'{name}（{level}级）{suffix}' if name else f'{level}级福袋{suffix}')
+    return f'福袋列表（共{len(packs)}个）：' + '、'.join(parts)
+
+
+def parse_open_pack_args(
+    parameters: list[str],
+) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    """解析 :pack open 的参数：level（1~5，可省略）、countdown（0/1/3/5/10，默认即刻抢）。"""
+    if len(parameters) > 2:
+        return None, None, OPEN_USAGE
+    level: Optional[int] = None
+    countdown = 0
+    if parameters:
+        try:
+            level = int(parameters[0])
+        except (TypeError, ValueError):
+            return None, None, OPEN_USAGE
+        if not 1 <= level <= 5:
+            return None, None, OPEN_USAGE
+    if len(parameters) > 1:
+        try:
+            countdown = int(parameters[1])
+        except (TypeError, ValueError):
+            return None, None, OPEN_USAGE
+        if countdown not in COUNTDOWN_OPTIONS:
+            return None, None, OPEN_USAGE
+    return level, countdown, None
+
+
+def should_skip_auto_pack(user_count: Optional[int], item_text: str) -> bool:
+    """人数不超过 10 人时，自动模式仅允许低/中级或一/二级福袋。"""
+    if user_count is None or user_count > 10:
+        return False
+    return not (
+        "初级" in item_text
+        or "中级" in item_text
+        or "一级" in item_text
+        or "二级" in item_text
+    )

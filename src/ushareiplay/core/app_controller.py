@@ -59,7 +59,6 @@ from ushareiplay.handlers.qq_music_handler import QQMusicHandler
 from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
-from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 from ushareiplay.managers.playlist_session import PlaylistSession
 
@@ -483,10 +482,7 @@ class AppController(Singleton):
             if not room_id_text or not isinstance(room_id_text, str):
                 return
 
-            from ushareiplay.managers.party_manager import PartyManager
-            if not PartyManager.is_initialized():
-                return
-            await PartyManager.instance().verify_current_room(
+            await self.party_service.verify_current_room(
                 room_id_text.strip(), source="startup"
             )
         except Exception as e:
@@ -514,17 +510,28 @@ class AppController(Singleton):
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-            from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.modules.room import RoomProfileManager
+            from ushareiplay.modules.room import (
+                InfoManager,
+                LuckPackService,
+                PartyLifecycleState,
+                PartyService,
+                UserProfileActions,
+            )
+            from ushareiplay.adapters.outbound.appium.soul.luck_pack_driver import (
+                SoulLuckPackDriver,
+            )
+            from ushareiplay.adapters.outbound.appium.soul.party_driver import (
+                SoulPartyDriver,
+            )
             from ushareiplay.adapters.outbound.appium.soul.room_profile import (
                 SoulDrawerDriver,
                 SoulPartySettingsDriver,
                 SoulRoomProfileSurface,
             )
-            from ushareiplay.managers.user_manager import UserManager
             from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
             from ushareiplay.adapters.inbound.runtime.hook_command_sink import QueueHookCommandSink
             from ushareiplay.adapters.outbound.appium.soul.online_drawer_driver import (
@@ -584,7 +591,7 @@ class AppController(Singleton):
                 self.config, catalogue=self.command_catalogue
             )
             MessageQueue.initialize()
-            RecoveryManager.initialize(self.soul_handler)
+            RecoveryManager.initialize(self.soul_handler, room_state=self.room_state)
             MessageManager.initialize(self.soul_handler, presence=self.presence)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_control = SoulMicControl(self.soul_handler)
@@ -612,15 +619,7 @@ class AppController(Singleton):
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
             self.playback_broadcaster = PlaybackBroadcaster.initialize(self.soul_handler)
-            self.info_manager = InfoManager.initialize(
-                self.soul_handler,
-                room_state=self.room_state,
-                presence=self.presence,
-                room_admins=self.room_admins,
-            )
-            self.party_manager = PartyManager.initialize(
-                self.soul_handler, room_state=self.room_state
-            )
+            self.party_lifecycle = PartyLifecycleState()
             # 房间档案的唯一所有者：抽屉会话与四类字段（房间标题/话题、派对公告、
             # 派对类型与推荐分发）全在它这里，由组合根构造一次并注入。
             self.room_profile_manager = RoomProfileManager(
@@ -637,6 +636,17 @@ class AppController(Singleton):
                 room_profile=self.room_profile_manager,
                 online_users=self.presence.get_online_users,
             )
+            self.info_manager = InfoManager(
+                room_state=self.room_state,
+                presence=self.presence,
+                room_admins=self.room_admins,
+                playlist=self.playlist_session,
+                playback_cache=self.playback_broadcaster,
+                party_lifecycle=self.party_lifecycle,
+                users=TortoiseUserRepository(),
+                logger=self.logger,
+            )
+            self.seat_manager.subsystem.info_manager = self.info_manager
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
             # 那里（#428）。端口、命名域解析器与 UI 独占会话都从组合根注入 ——
             # DB 的 canonical 名与 Soul UI 上的可见昵称是两个域，拿 canonical 名去
@@ -652,8 +662,29 @@ class AppController(Singleton):
                 admins=self.room_admins,
                 logger=self.logger,
             )
-            # 送礼 / 私聊的资料页流程仍由 UserManager 编排（#552 迁移），抽屉用例注入。
-            UserManager.initialize(self.soul_handler, drawer=self.online_drawer)
+            self.user_profile_actions = UserProfileActions(
+                drawer=self.online_drawer,
+                logger=self.logger,
+            )
+            self.message_dispatch._user_manager = self.user_profile_actions
+            self.party_service = PartyService(
+                driver=SoulPartyDriver(self.soul_handler),
+                room_state=self.room_state,
+                lifecycle=self.party_lifecycle,
+                config=self.config.soul,
+                messenger=self.message_dispatch.bind_handler(self.soul_handler),
+                on_sync_profile=self.room_profile_manager.ensure_synced_on_return,
+                on_after_create_notice=self.room_profile_manager.set_default_notice,
+                on_after_create_seat=self.seat_manager.find_owner_seat,
+                on_after_create_automation=lambda: self.post_party_create_automation.on_party_created_new(),
+                on_memory_consolidate=lambda: self.user_memory.schedule_all(),
+                logger=self.logger,
+            )
+            self.luck_pack = LuckPackService(
+                driver=SoulLuckPackDriver(self.soul_handler),
+                room_state=self.room_state,
+                logger=self.logger,
+            )
             # 在线名单抓取：抽屉会话、用户仓储、在线集合与房间人数都由这里注入。
             self.online_list_source = SoulOnlineListSource(
                 drawer=self.online_drawer,
@@ -663,7 +694,6 @@ class AppController(Singleton):
                 ui_session=self.ui_session,
                 logger=self.logger,
             )
-            self.info_manager._online_list_scraper = self.online_list_source
 
             # 双层用户记忆：领域用例由组合根装配，LLM 客户端在此注入，
             # 内存/聊天日志仓储背后是 Tortoise 适配器（ADR-0006）。
@@ -706,7 +736,6 @@ class AppController(Singleton):
                 settings=memory_settings,
             )
             self.command_manager.user_memory = self.user_memory
-            self.party_manager.user_memory = self.user_memory
 
             # 关键字回复（#547）：仓储、队列出口、在线校验与自然语言兜底都从
             # 组合根注入；自然语言解析走 #548 的 LLM 端口。
