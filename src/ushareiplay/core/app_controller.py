@@ -529,7 +529,9 @@ class AppController(Singleton):
             self.command_catalogue = CommandCatalogue.from_config(self.config)
             self.command_catalogue.validate()
             UserManager.initialize(self.soul_handler)
-            SleepManager.initialize(self.config, catalogue=self.command_catalogue)
+            self.sleep_manager = SleepManager(
+                self.config, catalogue=self.command_catalogue
+            )
             MessageQueue.initialize()
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
@@ -547,7 +549,9 @@ class AppController(Singleton):
                 sink=QueueTimerMessageSink(MessageQueue.instance()),
                 logger=self.logger,
             )
-            self.command_manager = CommandManager.initialize(self.soul_handler)
+            self.command_manager = CommandManager.initialize(
+                self.soul_handler, self.sleep_manager
+            )
             self.command_manager.controller = self
             self.command_manager.configure_runtime(self.command_runtime_context)
             RoomState.initialize(self.soul_handler, catalogue=self.command_catalogue)
@@ -671,6 +675,7 @@ class AppController(Singleton):
             config=self.config,
             event_manager=self.event_manager,
             command_manager=self.command_manager,
+            sleep_manager=self.sleep_manager,
         )
 
     async def start_monitoring(self):

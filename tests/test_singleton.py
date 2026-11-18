@@ -141,7 +141,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.modules.command.use_cases import SleepManager
     from ushareiplay.managers.user_event_hooks import UserEventHooks
     from ushareiplay.managers.user_manager import UserManager
     from ushareiplay.state.online_list_scraper import OnlineListScraper
@@ -154,7 +153,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         MessageDispatch,
         MessageQueue,
         UserManager,
-        SleepManager,
         RecoveryManager,
         MessageManager,
         MicManager,

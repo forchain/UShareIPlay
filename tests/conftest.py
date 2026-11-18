@@ -12,15 +12,12 @@ from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.user_event_hooks import UserEventHooks
-from ushareiplay.modules.command.use_cases import SleepManager
 
 
 @pytest.fixture(autouse=True)
 def initialized_test_singletons():
     """Provide dependency-free singleton services and isolate every test."""
     Singleton.reset_all_instances()
-    # 睡眠保护默认关闭，避免用例结果依赖本机当前时间；睡眠用例自行重配。
-    SleepManager.initialize({"sleep": {"enabled": False}})
     for singleton_class in (
         MessageQueue,
         MessageDispatch,

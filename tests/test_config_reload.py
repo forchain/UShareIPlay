@@ -213,6 +213,7 @@ def _make_controller_with_live_sections():
     controller.music_handler = SimpleNamespace(config=controller.config.music)
     controller.event_manager = SimpleNamespace(element_to_event={})
     controller.command_manager = SimpleNamespace()
+    controller.sleep_manager = SimpleNamespace(configure_catalogue=lambda _c: None)
     return controller
 
 

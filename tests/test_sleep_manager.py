@@ -4,9 +4,7 @@ import datetime as dt
 def _fresh_manager(config: dict):
     from ushareiplay.modules.command.use_cases import SleepManager
 
-    # Singleton test isolation (official hook)
-    SleepManager.reset_instance()
-    return SleepManager.initialize(config)
+    return SleepManager(config)
 
 
 def test_non_cross_midnight_window_start_inclusive_end_exclusive():

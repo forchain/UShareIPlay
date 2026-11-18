@@ -156,9 +156,8 @@ def command_manager(monkeypatch):
         TortoiseUserRepository, "get_or_create", staticmethod(_get_or_create)
     )
 
-    SleepManager.reset_instance()
-    SleepManager.initialize(config)
-    manager = CommandManager.instance()
+    CommandManager.reset_instance()
+    manager = CommandManager.initialize(sleep=SleepManager(config))
     manager._handler = _Handler(config)
     manager.configure_runtime(_Runtime())
     return manager

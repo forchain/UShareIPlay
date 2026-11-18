@@ -10,7 +10,6 @@ import datetime as dt
 import logging
 from typing import Callable, ContextManager, Optional
 
-from ushareiplay.core.singleton import Singleton
 from ushareiplay.modules.command.domain import (
     DEFAULT_SLEEP_ENABLED,
     DEFAULT_SLEEP_WINDOW_END,
@@ -35,12 +34,14 @@ from ushareiplay.modules.shared.roles import RolePolicy, resolve_command_level
 from ushareiplay.modules.user.ports import UserRepository
 
 
-class SleepManager(Singleton):
+class SleepManager:
     """
     SleepManager (睡眠模式)
 
     - Reads config from a merged dict (config.yaml + config.local.yaml result).
     - Provides a guard window check and command blocking decision.
+
+    普通对象：由组合根构造后注入 `CommandManager` / 配置热重载器。
     """
 
     DEFAULT_ENABLED = DEFAULT_SLEEP_ENABLED

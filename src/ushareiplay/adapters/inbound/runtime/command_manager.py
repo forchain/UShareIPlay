@@ -23,7 +23,7 @@ from ushareiplay.modules.command.domain import (
     InsufficientCommandLevel,
     SleepBlocked,
 )
-from ushareiplay.modules.command.use_cases import DispatchCommand, SleepManager
+from ushareiplay.modules.command.use_cases import DispatchCommand
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.managers.user_event_hooks import (
     ENTER,
@@ -44,11 +44,12 @@ class CommandManager(Singleton):
     单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self, handler=None):
+    def __init__(self, handler=None, sleep=None):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
+        self._sleep = sleep
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
         self.commands_path = DEFAULT_COMMANDS_PATH
@@ -270,7 +271,7 @@ class CommandManager(Singleton):
             runtime=self.runtime,
             clock=self._clock,
             silence=command_silence,
-            sleep=SleepManager.instance() if SleepManager.is_initialized() else None,
+            sleep=self._sleep,
             room=RoomState.instance() if RoomState.is_initialized() else None,
             logger=self.logger,
         )

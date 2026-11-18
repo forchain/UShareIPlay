@@ -44,18 +44,15 @@ class DummyCommand:
 
 
 @pytest.fixture(autouse=True)
-def _reset_sleep_singleton():
+def _reset_command_manager():
     from ushareiplay.core.message_dispatch import MessageDispatch
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.modules.command.use_cases import SleepManager
 
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
-    SleepManager.reset_instance()
     yield
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
-    SleepManager.reset_instance()
 
 
 @pytest.fixture
@@ -78,9 +75,8 @@ def _make_command_manager(config: dict):
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.modules.command.use_cases import SleepManager
 
-    SleepManager.initialize(config)
     MessageDispatch.initialize()
-    cm = CommandManager.initialize()
+    cm = CommandManager.initialize(sleep=SleepManager(config))
     cm._handler = HandlerStub(config)
     cm.configure_runtime(RuntimeStub())
     return cm
