@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.models import MessageInfo
@@ -43,6 +44,11 @@ class _MockHandler:
         self.party_id = None
         self.grabbed_mic = False
         self.current_screen = 'room'  # 'room', 'more_menu', 'hall', 'search'
+        self.controller = SimpleNamespace(
+            room_profile_manager=SimpleNamespace(
+                ensure_synced_on_return=lambda: None
+            )
+        )
 
     def try_find_element(self, key, log=True):
         if self.current_screen == 'room' and key in ('party_hall', 'search_entry', 'parties_search'):
@@ -602,7 +608,10 @@ async def test_join_party_recreates_room_after_guest_room_closed():
             self.room_profile_manager = type(
                 '_MockRPM',
                 (),
-                {'set_default_notice': AsyncMock(return_value={'success': True})},
+                {
+                    'ensure_synced_on_return': lambda _self: None,
+                    'set_default_notice': AsyncMock(return_value={'success': True}),
+                },
             )()
             self.seat_manager = type('_MockSM', (), {'find_owner_seat': AsyncMock(return_value={'success': True})})()
             self.post_party_create_automation = None

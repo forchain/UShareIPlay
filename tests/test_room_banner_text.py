@@ -8,12 +8,12 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from ushareiplay.helpers.room_banner import (
+from ushareiplay.modules.room.domain import (
     TITLE_MAX_LENGTH,
     TOPIC_MAX_LENGTH,
+    PendingWrite,
     clean_banner_text,
 )
-from ushareiplay.managers.pending_write import PendingWrite
 
 
 class TestCleanBannerText:
@@ -50,7 +50,7 @@ def cooldown_drafts():
     时长一起由 `test_room_profile_manager.py::test_the_draft_store_keeps_the_established_cooldowns`
     守着。
     """
-    from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
+    from ushareiplay.modules.room.domain import ProfileDraftStore
 
     yield ProfileDraftStore()
 

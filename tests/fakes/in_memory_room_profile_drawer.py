@@ -20,7 +20,7 @@
 是一次界面切换，这里用 `world_after_click` 把那次切换写成数据。
 """
 
-from ushareiplay.managers.room_profile.driver import RoomProfileDrawerDriverPort
+from ushareiplay.modules.room.ports import RoomProfileDrawerDriverPort
 
 
 class InMemoryRoomProfileDrawerDriver(RoomProfileDrawerDriverPort):

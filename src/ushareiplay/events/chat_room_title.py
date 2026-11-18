@@ -48,9 +48,7 @@ class ChatRoomTitleEvent(BaseEvent):
             if "｜" in room_title_text:
                 return False
 
-            from ushareiplay.managers.room_profile import RoomProfileManager
-
-            profile = RoomProfileManager.instance()
+            profile = self.controller.room_profile_manager
             if profile.get_next_title():
                 return False
 

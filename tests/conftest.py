@@ -11,7 +11,7 @@ from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_session import PlaylistSession
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 from tests import legacy_state
 
 
@@ -62,7 +62,7 @@ def _install_state_defaults():
     from ushareiplay.managers.party_manager import PartyManager
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
-    from ushareiplay.managers.room_profile import RoomProfileManager
+    from tests.room_profile_support import RoomProfileManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 

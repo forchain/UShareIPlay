@@ -90,6 +90,7 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
             music_handler=None,
             logger=logger,
             timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+            room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
     )
     with patch("ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance", return_value=None):

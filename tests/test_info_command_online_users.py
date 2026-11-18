@@ -72,6 +72,7 @@ def make_dummy_controller():
         music_handler=None,
         logger=logger,
         timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        room_profile_manager=SimpleNamespace(recommendation_enabled=None),
     )
 
 

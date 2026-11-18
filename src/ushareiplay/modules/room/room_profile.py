@@ -4,15 +4,15 @@
 原先它有四个「打开者」各自复制一遍打开 ritual，关闭则靠 `PartyManager` 的
 `finally` 兜底，而「在窗口里必须按什么顺序同步」只写在注释里。
 
-现在只有一个模块知道窗口什么时候开着：
+现在只有一个模块知道窗口什么时候开着（实例由组合根构造并注入）：
 
-    with RoomProfileManager.instance().with_window_open() as open_error:
+    with room_profile.with_window_open() as open_error:
         if open_error:
             return open_error
         <每个字段只做自己的编辑>
 
-    results = RoomProfileManager.instance().audit_and_repair()   # 一次性全量检查与修正
-    RoomProfileManager.instance().ensure_synced_on_return()  # 回房/建房后把真实房名读回来（只读，不开窗）
+    results = room_profile.audit_and_repair()   # 一次性全量检查与修正
+    room_profile.ensure_synced_on_return()  # 回房/建房后把真实房名读回来（只读，不开窗）
 
 `with_window_open()` 只在「窗口是它打开的」时候负责关窗；窗口本来就开着时
 （例如被外层流程打开），退出后保持原状，让外层决定何时关。
@@ -29,29 +29,35 @@ from datetime import datetime, timedelta
 from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
-from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
-from ushareiplay.core.message_dispatch import MessageDispatch
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
-from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
-from ushareiplay.managers.room_profile.driver import (
-    DEFAULT_ENTRY_KEYS,
-    RoomProfileDrawerDriverPort,
+from ushareiplay.modules.room.domain import (
+    TOPIC_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    InvalidRoomName,
+    ProfileCooldown,
+    ProfileDraftStore,
+    clean_banner_text,
+    compose_room_name,
+    recommendation_status_from_text,
+    validate_theme,
 )
-from ushareiplay.managers.room_profile.party_settings import (
+from ushareiplay.modules.room.ports import (
+    DEFAULT_ENTRY_KEYS,
     DEFAULT_MAX_SWIPES as PARTY_SETTINGS_DEFAULT_MAX_SWIPES,
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
+    RoomProfileDrawerDriverPort,
+    RoomProfileSurfacePort,
 )
-from ushareiplay.managers.room_profile.row_editor import (
+from ushareiplay.modules.shared.ports import RoomMessenger
+from ushareiplay.modules.room.row_editor import (
     RowEditor,
     RowSkin,
     RowStep,
     WriteOutcome,
     WriteResult,
 )
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 #: 没读到真实房名时，下一次尝试接地的间隔（秒）。接地挂在心跳上、每拍都走，
 #: 而那次判定读最坏要等 `room_name_in_dialog` 两秒 —— 读不到就得退避，否则每拍
@@ -99,10 +105,6 @@ TITLE_SETTLE_SECONDS = 1.0
 DEFAULT_THEME_FALLBACK = '听歌'
 DEFAULT_TITLE_FALLBACK = '听歌'
 
-#: 设置面板里「推荐分发」那一行显示的文案 -> 布尔状态。判定顺序与既有实现
-#: 一致（先认"所有人"）。选择器 key 由 `party_settings` 模块拥有。
-RECOMMENDATION_OPEN_TEXT = '所有人'
-RECOMMENDATION_CLOSED_TEXT = '关闭推荐分发'
 #: 抽屉里「派对类型」那一行；被纠正的源类型文案。
 ROOM_TYPE_OPTION_KEY = 'party_room_type_option'
 CHAT_PARTY_TYPE_TEXT = '闲聊唠嗑'
@@ -378,8 +380,12 @@ TITLE_SKIN = RowSkin(
 )
 
 
-class RoomProfileManager(Singleton):
-    """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。"""
+class RoomProfileManager:
+    """打开、检测、关闭房间信息抽屉，并拥有窗口内的全量审计顺序。
+
+    UI 细节都在注入的端口之后：抽屉与设置面板的物理动作、判定读与前台切换、
+    公屏出口、`soul` 段配置。本类只决定顺序、冷却与对外返回面。
+    """
 
     def __init__(
         self,
@@ -387,12 +393,19 @@ class RoomProfileManager(Singleton):
         drawer_driver: Optional[RoomProfileDrawerDriverPort] = None,
         settings_driver: Optional[PartySettingsDriverPort] = None,
         room_state=None,
+        surface: Optional[RoomProfileSurfacePort] = None,
+        config: Optional[ConfigSectionView] = None,
+        messenger: Optional[RoomMessenger] = None,
+        logger=None,
     ):
         self._handler = handler
-        self._logger = getattr(handler, "logger", None)
+        self._logger = logger if logger is not None else (handler.logger if handler is not None else None)
         self._room_state = room_state
         self._drawer_driver = drawer_driver
         self._settings_driver = settings_driver
+        self._surface = surface
+        self._config = config if config is not None else ConfigSectionView('soul', {})
+        self._messenger = messenger
         self._drafts = ProfileDraftStore()
         self.pending_audit_retry = False
         self.last_audit_results: Dict = {}
@@ -425,7 +438,11 @@ class RoomProfileManager(Singleton):
     @property
     def logger(self):
         if self._logger is None:
-            self._logger = getattr(self._handler, 'logger', None) or logging.getLogger("RoomProfileManager")
+            self._logger = (
+                self._handler.logger
+                if self._handler is not None
+                else logging.getLogger("RoomProfileManager")
+            )
         return self._logger
 
     @property
@@ -438,21 +455,38 @@ class RoomProfileManager(Singleton):
         """派对设置面板 UI 端口（推荐分发的真实所在地，#456）。"""
         return self._settings_driver
 
-    def adopt_handler(self, handler, drawer_driver=None, settings_driver=None) -> None:
+    @property
+    def surface(self):
+        """抽屉之外的判定读与前台切换端口。"""
+        return self._surface
+
+    def adopt_handler(
+        self,
+        handler,
+        drawer_driver=None,
+        settings_driver=None,
+        *,
+        surface=None,
+        config=None,
+        messenger=None,
+    ) -> None:
         """把 handler（可选地连同它的端口）接过来。
 
-        正常装配由组合根的 `initialize(handler=..., drawer_driver=...)` 一次做完，
-        运行时不需要再走这条路。它保留下来是给测试用的：conftest 的单例 fixture
-        无参创建本单例，测试要换一套 handler 与端口时从这里接，不必去碰私有的
-        `_handler` / `_drawer_driver`。
+        正常装配由组合根一次做完；测试可以从这里换一套 handler 与端口。
         """
         if handler is not None:
             self._handler = handler
-            self._logger = getattr(handler, "logger", self._logger)
+            self._logger = handler.logger if handler.logger is not None else self._logger
         if drawer_driver is not None:
             self._drawer_driver = drawer_driver
         if settings_driver is not None:
             self._settings_driver = settings_driver
+        if surface is not None:
+            self._surface = surface
+        if config is not None:
+            self._config = config
+        if messenger is not None:
+            self._messenger = messenger
 
     # ------------------------------------------------------------------
     # 生命周期
@@ -619,7 +653,9 @@ class RoomProfileManager(Singleton):
             text: 这一次要写进去的文字。
         """
         # 表面正热就别去开这个头：一次被拒要罚一整个字段周期，多等 60 秒买得到。
-        if not self.drafts.can_start_write(skin.field):
+        try:
+            self.drafts.require_can_start(skin.field)
+        except ProfileCooldown:
             return skin.cooldown_result(self)
 
         if skin.attempt_log:
@@ -718,7 +754,7 @@ class RoomProfileManager(Singleton):
                 `@guest_room_guard` 与 `RolePolicy` 负责；这个参数只用于把发起人
                 记进「话题确实排进队列了」这条行为日志。
         """
-        if not self.handler.key_actions.switch_to_app():
+        if not self.surface.switch_to_app():
             return {'error': 'Failed to switch to Soul app'}
 
         self.logger.info("Switched to Soul app")
@@ -782,21 +818,16 @@ class RoomProfileManager(Singleton):
         return TOPIC_SKIN.to_result(self, self._edit_row(TOPIC_SKIN, topic))
 
     def _announce_to_screen(self, message: str, *, what: str) -> None:
-        """往公屏发一条；未初始化或发送失败都只记日志，不影响调用方的结果。
+        """往公屏发一条；未装配出口或发送失败都只记日志，不影响调用方的结果。
 
         话题与公告两处播报是同一个形状：句子的内容因字段而异，「怎么发」完全
         一样（未装配就静默跳过，发送抛异常只记 warning，绝不把已经写成功的字段
-        变成一次失败）。因此这里只抽出这一份，两处各自保留自己的那句话。
-
-        `MessageDispatch` 是顶层导入：`message_dispatch` 只依赖 `user_manager`，
-        而 `user_manager` 不依赖本模块，导入图是单向的，延迟导入没有任何理由。
+        变成一次失败）。
         """
+        if self._messenger is None:
+            return
         try:
-            if not MessageDispatch.is_initialized():
-                return
-            MessageDispatch.instance().bind_handler(self.handler).send_screen_message(
-                message
-            )
+            self._messenger.send_screen_message(message)
         except Exception as e:
             self.logger.warning(f"Failed to announce {what}: {e}")
 
@@ -955,8 +986,7 @@ class RoomProfileManager(Singleton):
         的 `:notice` 占着时，默认公告排队而不是覆盖它。
         """
         try:
-            config = getattr(self.handler, 'config', None)
-            default_notice = config.value('default_notice') if config is not None else None
+            default_notice = self._config.value('default_notice')
             if not default_notice:
                 self.logger.warning("未找到default_notice配置")
                 return {'error': 'No default_notice configuration found'}
@@ -982,36 +1012,20 @@ class RoomProfileManager(Singleton):
 
     def get_system_default_notices(self) -> List[str]:
         """系统默认公告文案：房间公告里出现这些内容说明被系统重置了。"""
-        cfg = getattr(self.handler, 'config', None)
-        notices = cfg.value('system_default_notices') if cfg is not None else None
+        notices = self._config.value('system_default_notices')
         if notices is not None:
             return list(notices)
         return list(SYSTEM_DEFAULT_NOTICES_FALLBACK)
 
     def get_default_notice(self) -> str:
         """默认公告文案，被系统重置后恢复成它。"""
-        cfg = getattr(self.handler, 'config', None)
-        if cfg is None:
-            return DEFAULT_NOTICE_FALLBACK
-        return cfg.value('default_notice', DEFAULT_NOTICE_FALLBACK)
+        return self._config.value('default_notice', DEFAULT_NOTICE_FALLBACK)
 
     def _read_notice_text_from_ui(self) -> str:
-        """读一次抽屉里当前公告的文案。
-
-        抽屉端口只建模物理动作（探测 / 点 / 等 / 写），不承载「读文本」；这一次
-        读只用于**判定**公告是不是被系统冲掉了，因此这里仍然直接问 handler 的
-        element_finder，与旧 `NoticeManager.get_notice_text_from_ui` 逐字一致
-        （用 `chat_room_notice` 而不是 `edit_notice_entry`，避免把「编辑」当成文案）。
-        """
-        finder = getattr(self.handler, 'element_finder', None)
-        if finder is None:
+        """读一次抽屉里当前公告的文案（判定读由注入口完成）。"""
+        if self.surface is None:
             return ""
-        element = finder.try_find_element(NOTICE_TEXT_KEY, log=False)
-        if element:
-            text = (finder.get_element_text(element) or "").strip()
-            if text and text != "编辑":
-                return text
-        return ""
+        return self.surface.read_notice_text()
 
     def _audit_notice_in_open_window(self) -> Dict:
         """窗口已开着时的公告核对：被系统重置就就地恢复默认公告。
@@ -1136,12 +1150,10 @@ class RoomProfileManager(Singleton):
         if self.room_state is not None and self.room_state.is_guest_room:
             return {'error': '他人房间模式下不可修改房间主题'}
 
-        if len(theme) > 2:
-            return {'error': '主题最多两个字符'}
-
-        new_theme = theme.strip()
-        if not new_theme:
-            return {'error': '主题不能为空'}
+        try:
+            new_theme = validate_theme(theme)
+        except InvalidRoomName as error:
+            return {'error': str(error)}
 
         old_theme = self.drafts.pending_theme()
         if old_theme != new_theme:
@@ -1189,27 +1201,11 @@ class RoomProfileManager(Singleton):
     def current_theme(self, value):
         self._current_theme = value
 
-    def _soul_config(self) -> ConfigSectionView:
-        """`soul` 段配置视图。
-
-        优先问 handler 的配置快照（组合根用 `config.soul` 构造 handler），
-        拿不到再读一次全局配置 —— 与公告那两条判定读同一个形状。
-        """
-        cfg = getattr(self.handler, 'config', None)
-        if isinstance(cfg, ConfigSectionView):
-            return cfg
-        if isinstance(cfg, ConfigView):
-            section = cfg.maybe_section('soul')
-            return section if section is not None else ConfigSectionView('soul', {})
-        loaded = ConfigLoader.load_config()
-        section = loaded.get('soul') if isinstance(loaded, dict) else None
-        return ConfigSectionView('soul', section if isinstance(section, dict) else {})
-
     def get_default_theme(self) -> str:
-        return self._soul_config().value('default_theme', DEFAULT_THEME_FALLBACK)
+        return self._config.value('default_theme', DEFAULT_THEME_FALLBACK)
 
     def get_default_title(self) -> str:
-        return self._soul_config().value('default_title', DEFAULT_TITLE_FALLBACK)
+        return self._config.value('default_title', DEFAULT_TITLE_FALLBACK)
 
     def get_current_theme(self):
         return self.current_theme
@@ -1262,7 +1258,9 @@ class RoomProfileManager(Singleton):
         """
         if title is None:
             title = self.drafts.pending('title')
-        return f"{self.drafts.pending_theme() or self.current_theme}｜{title or ''}"
+        return compose_room_name(
+            self.drafts.pending_theme() or self.current_theme, title
+        )
 
     def parse_room_title(self, room_title_text: str):
         """从 UI 读到的房间名里拆出 `(主题, 标题)`；没有分隔符则 None。
@@ -1355,33 +1353,10 @@ class RoomProfileManager(Singleton):
         return room_title_text
 
     def _read_room_title_text_from_ui(self) -> Optional[str]:
-        """读一次屏幕上的房名。
-
-        抽屉端口只建模物理动作，不承载「读文本」；这一次读只用于**判定**
-        （冷启动填充状态 / 审核是否把房名吃了），因此走 handler 的
-        element_finder —— 与公告那条纵切的形状一致。
-        """
-        finder = getattr(self.handler, 'element_finder', None)
-        if finder is None:
+        """读一次屏幕上的房名（判定读由注入口完成）。"""
+        if self.surface is None:
             return None
-        try:
-            # 优先检查弹窗内部的房名 ID (room_name_in_dialog / tv_room_name)，等待动画/过渡完成
-            dialog_element = finder.wait_for_element('room_name_in_dialog', timeout=2)
-            if dialog_element:
-                text = finder.get_element_text(dialog_element)
-                if isinstance(text, str) and text.strip():
-                    return text.strip()
-
-            # 若弹窗未打开，回退至主界面房名 ID (chat_room_title / tvStudyRoomTitle)
-            room_title_element = finder.try_find_element('chat_room_title', log=False)
-            if not room_title_element:
-                return None
-            text = finder.get_element_text(room_title_element)
-            if isinstance(text, str) and text.strip():
-                return text.strip()
-            return None
-        except Exception:
-            return None
+        return self.surface.read_room_title()
 
     # ------------------------------------------------------------------
     # 房名：心跳写 UI
@@ -1710,11 +1685,7 @@ class RoomProfileManager(Singleton):
         text = self._read_drawer_row_text(RECOMMENDATION_STATUS_KEY, wait=wait)
         if not text:
             return None
-        if RECOMMENDATION_OPEN_TEXT in text:
-            return True
-        if RECOMMENDATION_CLOSED_TEXT in text:
-            return False
-        return None
+        return recommendation_status_from_text(text)
 
     def ensure_synced_on_return(self) -> Dict:
         """回房 / 进房 / 建房之后，把房间档案的 UI 事实**读**回来。
@@ -1837,10 +1808,9 @@ class RoomProfileManager(Singleton):
 
     def _target_party_type_key(self) -> str:
         """二级弹窗里目标类型的 selector key（既有配置项，不新造）。"""
-        config = getattr(self.handler, 'config', None)
-        if config is None:
-            return DEFAULT_TARGET_PARTY_TYPE_KEY
-        return config.value('target_party_type_element', DEFAULT_TARGET_PARTY_TYPE_KEY)
+        return self._config.value(
+            'target_party_type_element', DEFAULT_TARGET_PARTY_TYPE_KEY
+        )
 
     def _read_room_type_text_from_ui(self) -> str:
         """读一次抽屉里当前派对类型的文案。
@@ -1851,25 +1821,10 @@ class RoomProfileManager(Singleton):
         return self._read_drawer_row_text(ROOM_TYPE_OPTION_KEY)
 
     def _read_drawer_row_text(self, key: str, wait: bool = False) -> str:
-        """读一次抽屉里某一行显示的文案；读不到就是空串。
-
-        抽屉端口只建模物理动作（探测 / 点 / 等 / 写），不承载「读文本」；推荐分发
-        与派对类型的判定都只靠这一次读，因此这里仍然直接问 handler 的
-        element_finder —— 与公告、房名两条判定读同一个形状。
-        """
-        finder = getattr(self.handler, 'element_finder', None)
-        if finder is None:
+        """读一次抽屉里某一行显示的文案（判定读由注入口完成）。"""
+        if self.surface is None:
             return ""
-        try:
-            if wait:
-                element = finder.wait_for_element(key)
-            else:
-                element = finder.try_find_element(key, log=False)
-            if not element:
-                return ""
-            return (finder.get_element_text(element) or "").strip()
-        except Exception:
-            return ""
+        return self.surface.read_row_text(key, wait=wait)
 
     # ------------------------------------------------------------------
     # 窗口内的顺序：先纠偏，再编辑

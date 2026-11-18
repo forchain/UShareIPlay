@@ -10,7 +10,7 @@ from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.recovery_manager import RecoveryManager
-from ushareiplay.managers.room_profile import RoomProfileManager
+from tests.room_profile_support import RoomProfileManager
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession

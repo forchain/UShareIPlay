@@ -133,7 +133,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
     from ushareiplay.managers.recovery_manager import RecoveryManager
-    from ushareiplay.managers.room_profile import RoomProfileManager
     from ushareiplay.managers.seat_manager import SeatManager
     from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.managers.user_manager import UserManager
