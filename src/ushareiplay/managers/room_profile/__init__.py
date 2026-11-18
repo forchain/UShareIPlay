@@ -11,18 +11,18 @@ from ushareiplay.modules.room.domain import (
     TOPIC_COOLDOWN_MINUTES,
     ProfileDraftStore,
 )
-from ushareiplay.managers.room_profile.driver import (
+from ushareiplay.modules.room.ports import (
     DEFAULT_ENTRY_KEYS,
     DIALOG_KEYS,
     DRAWER_KEY,
     RoomProfileDrawerDriverPort,
 )
 from ushareiplay.managers.room_profile.manager import RoomProfileManager
-from ushareiplay.managers.room_profile.party_settings import (
-    PartySettingsDriverPort,
+from ushareiplay.modules.room.ports import PartySettingsDriverPort
+from ushareiplay.adapters.outbound.appium.soul.room_profile import (
+    SoulDrawerDriver,
     SoulPartySettingsDriver,
 )
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 
 __all__ = [
     "DEFAULT_ENTRY_KEYS",

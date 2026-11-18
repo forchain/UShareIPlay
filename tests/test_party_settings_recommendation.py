@@ -17,7 +17,7 @@ import pytest
 
 from ushareiplay.commands.recommend import RecommendCommand
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.party_settings import (
+from ushareiplay.modules.room.ports import (
     DEFAULT_MAX_SWIPES,
     PARTY_SETTING_BUTTON_KEY,
     PARTY_SETTING_CLOSE_KEY,
@@ -25,6 +25,8 @@ from ushareiplay.managers.room_profile.party_settings import (
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
+)
+from ushareiplay.adapters.outbound.appium.soul.room_profile import (
     SoulPartySettingsDriver,
 )
 from tests.legacy_state import RoomState

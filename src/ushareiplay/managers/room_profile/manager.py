@@ -39,17 +39,15 @@ from ushareiplay.modules.room.domain import (
     ProfileDraftStore,
     clean_banner_text,
 )
-from ushareiplay.managers.room_profile.driver import (
+from ushareiplay.modules.room.ports import (
     DEFAULT_ENTRY_KEYS,
-    RoomProfileDrawerDriverPort,
-)
-from ushareiplay.managers.room_profile.party_settings import (
     DEFAULT_MAX_SWIPES as PARTY_SETTINGS_DEFAULT_MAX_SWIPES,
     RECOMMENDATION_OPTION_KEYS,
     RECOMMENDATION_STATUS_KEY,
     PartySettingsDriverPort,
+    RoomProfileDrawerDriverPort,
 )
-from ushareiplay.managers.room_profile.row_editor import (
+from ushareiplay.modules.room.row_editor import (
     RowEditor,
     RowSkin,
     RowStep,

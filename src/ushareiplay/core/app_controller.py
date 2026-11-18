@@ -520,10 +520,10 @@ class AppController(Singleton):
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
-            from ushareiplay.managers.room_profile.party_settings import (
+            from ushareiplay.adapters.outbound.appium.soul.room_profile import (
+                SoulDrawerDriver,
                 SoulPartySettingsDriver,
             )
-            from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
             from ushareiplay.managers.online_drawer import OnlineDrawerManager
             from ushareiplay.managers.online_drawer.soul_driver import SoulOnlineDrawerDriver
             from ushareiplay.managers.user_manager import UserManager

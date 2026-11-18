@@ -18,7 +18,7 @@ import pytest
 from ushareiplay.core.singleton import Singleton, SingletonError
 from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.modules.room.domain import ProfileDraftStore
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
+from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 
@@ -133,7 +133,7 @@ def _stub_sync_partners(monkeypatch, journal):
 
 
 def test_the_drawer_port_is_an_abstract_boundary():
-    from ushareiplay.managers.room_profile.driver import RoomProfileDrawerDriverPort
+    from ushareiplay.modules.room.ports import RoomProfileDrawerDriverPort
 
     with pytest.raises(TypeError):
         RoomProfileDrawerDriverPort()
@@ -612,7 +612,7 @@ def test_every_dialog_marker_alone_counts_as_an_open_drawer():
     少认一个就等于给了防盲按返回那道闸一个缺口：标志认不出来时
     `ensure_closed()` 会以为抽屉没开，于是放任它留在屏幕上。
     """
-    from ushareiplay.managers.room_profile.driver import DIALOG_KEYS
+    from ushareiplay.modules.room.ports import DIALOG_KEYS
 
     for marker in DIALOG_KEYS:
         class _Finder:
@@ -739,7 +739,7 @@ def test_the_requester_shows_up_in_the_change_triggered_log_of_each_setter():
 
 
 def test_the_drawer_port_exposes_a_coordinate_tap_primitive():
-    from ushareiplay.managers.room_profile.driver import RoomProfileDrawerDriverPort
+    from ushareiplay.modules.room.ports import RoomProfileDrawerDriverPort
 
     assert "click_element_at" in RoomProfileDrawerDriverPort.__abstractmethods__
     assert hasattr(RoomProfileDrawerDriverPort, "click_element_at")

@@ -8,7 +8,7 @@ from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
+from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 
 
 class MockElementFinder:

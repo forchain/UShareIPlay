@@ -21,7 +21,7 @@ import pytest
 
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
+from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
