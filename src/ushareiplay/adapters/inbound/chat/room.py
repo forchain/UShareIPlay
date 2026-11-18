@@ -6,14 +6,7 @@ class RoomCommand(BaseCommand):
 
     def __init__(self, controller):
         super().__init__(controller)
-        self._party_manager = None
-
-    @property
-    def party_manager(self):
-        if self._party_manager is None:
-            from ushareiplay.managers.party_manager import PartyManager
-            self._party_manager = PartyManager.instance()
-        return self._party_manager
+        self._party_service = controller.party_service
 
     def error_context(self, message_info, parameters):
         return {'party_id': parameters[0] if len(parameters) > 0 else 'unknown'}
@@ -34,7 +27,7 @@ class RoomCommand(BaseCommand):
             }
 
         party_id = parameters[0]
-        result = await self.party_manager.invite_user(message_info, party_id)
+        result = await self._party_service.invite_user(message_info.nickname, party_id)
 
         if 'error' in result:
             return {
