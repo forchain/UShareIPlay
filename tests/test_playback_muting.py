@@ -50,7 +50,7 @@ class _MusicManager:
 
 
 class _MicManager:
-    """MicManager 的替身：状态读取不算动作，因此不记录事件。"""
+    """MicControl 的替身：状态读取不算动作，因此不记录事件。"""
 
     def __init__(self, events, state=True):
         self.events = events

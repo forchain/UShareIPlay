@@ -1,5 +1,5 @@
 ---
-covers: [PartyManager, SoulHandler, RoomProfileManager, SeatManager, MicManager, SleepManager, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
+covers: [PartyManager, SoulHandler, RoomProfileManager, SeatManager, SoulMicControl, SleepManager, ThemeCommand, TitleCommand, TopicCommand, NoticeCommand, SeatCommand, EndCommand, RoomCommand, PackCommand, MicCommand, RecommendCommand, SleepCommand]
 last-synced: 2026-09-23
 ---
 
@@ -15,7 +15,7 @@ Room management covers the Soul App party room lifecycle: room creation, auto-re
 | `SoulHandler` | All Soul App UI automation (chat reading, room navigation, UI actions) |
 | `RoomProfileManager` | Sole owner of the room drawer session and its field groups (room name / topic / notice / party type) plus recommendation state; owns the `{theme}｜{title}` invariant, the 5-minute topic, 15-minute notice and shared 10-minute room-name cooldowns, every drawer write, the batched audit, and the notice restore after a title change. Recommendation reads/writes go through a separate party-settings driver (#456) |
 | `SeatManager` | Seat reservation + seating sub-managers |
-| `MicManager` | Microphone on/off automation and off-seat preparation |
+| `SoulMicControl` | Microphone on/off automation and off-seat preparation (Soul Appium adapter) |
 | `SleepManager` | Sleep Guardian: blocks unprivileged automated commands during night hours (23:00 - 06:00) |
 
 ## How It Works
