@@ -1,1 +1,61 @@
-"""房间业务包（迁移中）。"""
+"""房间业务包：房间状态、在线集合与用户事件钩子引擎。"""
+
+from ushareiplay.modules.room.domain import HookCommand, RoomError, RoomState
+from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY, expand_seat_macros, seat_info_for
+from ushareiplay.modules.room.ports import (
+    HookCommandSink,
+    MemoryConsolidationSink,
+    OnlineListSource,
+    PresenceQuery,
+    RoomStateStore,
+    UserEventHookRepository,
+)
+from ushareiplay.modules.room.registry import (
+    ALIAS_GROUP,
+    COMMAND_PREFIXES,
+    ENTER,
+    EVENT_HOOK_SPECS,
+    EXIT,
+    FOCUS,
+    RECEIVE,
+    RETURN,
+    SINGLE_ID,
+    Resolution,
+    UserEventHookSpec,
+    spec_for,
+)
+from ushareiplay.modules.room.use_cases import (
+    PresenceTracker,
+    RoomStateService,
+    UserEventHooks,
+)
+
+__all__ = [
+    "ALIAS_GROUP",
+    "COMMAND_PREFIXES",
+    "ENTER",
+    "EVENT_HOOK_SPECS",
+    "EXIT",
+    "FOCUS",
+    "HookCommand",
+    "HookCommandSink",
+    "MemoryConsolidationSink",
+    "OnlineListSource",
+    "PresenceQuery",
+    "PresenceTracker",
+    "RECEIVE",
+    "RETURN",
+    "Resolution",
+    "RoomError",
+    "RoomState",
+    "RoomStateService",
+    "RoomStateStore",
+    "SEAT_INFO_CTX_KEY",
+    "SINGLE_ID",
+    "UserEventHookRepository",
+    "UserEventHookSpec",
+    "UserEventHooks",
+    "expand_seat_macros",
+    "seat_info_for",
+    "spec_for",
+]
