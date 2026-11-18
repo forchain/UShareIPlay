@@ -1,11 +1,12 @@
 import threading
+from abc import ABCMeta
 
 
 class SingletonError(RuntimeError):
     """Raised when a singleton is created or accessed through the wrong API."""
 
 
-class SingletonMeta(type):
+class SingletonMeta(ABCMeta):
     """所有单例类共用的元类"""
     _lock = threading.RLock()
     _initialization_order: list[type] = []
