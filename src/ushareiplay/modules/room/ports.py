@@ -279,6 +279,10 @@ class OnlineDrawerDriverPort(ABC):
     """把在线用户抽屉的物理动作关在接口之后。"""
 
     @abstractmethod
+    async def switch_to_app(self) -> bool:
+        """把 Soul App 切到前台；失败返回 False。"""
+
+    @abstractmethod
     async def is_open(self) -> bool:
         """抽屉当前是否开着（容器元素在页面上即为开着）。"""
 
@@ -708,3 +712,183 @@ class PartySettingsDriverPort(ABC):
     @abstractmethod
     def press_back(self) -> None:
         """按一次返回键。"""
+
+
+# --------------------------------------------------------------------------
+# 派对生命周期、福袋与只读查询端口（#552）
+# --------------------------------------------------------------------------
+
+
+class PartyDriverPort(ABC):
+    """把派对建房、退房、切房与恢复的 Appium 动作关在接口之后。"""
+
+    @abstractmethod
+    def end_party_ui(self) -> dict:
+        """切到 Soul 并关闭/退出当前派对。"""
+
+    @abstractmethod
+    def restore_current_party(self) -> bool:
+        """通过悬浮窗/返回入口恢复当前房间。"""
+
+    @abstractmethod
+    def minimize_room(self) -> bool:
+        """最小化当前房间。"""
+
+    @abstractmethod
+    def navigate_to_hall_entry(self) -> bool:
+        """导航到派对大厅搜索入口。"""
+
+    @abstractmethod
+    def search_party(self, party_id: str) -> bool:
+        """在派对大厅搜索指定房间 ID。"""
+
+    @abstractmethod
+    def is_target_party_online(self) -> bool:
+        """检查搜索结果中目标房间是否在线。"""
+
+    @abstractmethod
+    def enter_searched_party(self) -> bool:
+        """点击搜索结果中的房间卡片进入房间并确认/抢麦。"""
+
+    @abstractmethod
+    def click_visible_party_back(self) -> bool:
+        """若当前屏已出现返回派对弹窗则点击返回。"""
+
+    @abstractmethod
+    def enter_party_hall_from_home(self) -> bool:
+        """从首页星球标签进入派对大厅。"""
+
+    @abstractmethod
+    def try_enter_existing_party(self, party_id: Optional[str]) -> bool:
+        """在大厅尝试搜索并进入既有房间。"""
+
+    @abstractmethod
+    def create_party_flow(
+        self,
+        *,
+        mode: str,
+        recommendation_enabled: bool,
+        change_party_type: bool,
+        target_party_type_element: str,
+    ) -> tuple[bool, Optional[bool]]:
+        """执行建房/恢复流程，返回 `(是否进入房间, 实际生效的推荐状态或 None)`。"""
+
+    @abstractmethod
+    def get_party_id(self) -> Optional[str]:
+        """读取当前处理器的 party_id。"""
+
+    @abstractmethod
+    def set_party_id(self, party_id: Optional[str]) -> None:
+        """同步当前处理器的 party_id。"""
+
+
+class LuckPackDriverPort(ABC):
+    """把福袋抽屉、倒计时与热力兑换的 Appium 动作关在接口之后。"""
+
+    @abstractmethod
+    def open_pack_drawer(self) -> bool:
+        """打开福袋抽屉。"""
+
+    @abstractmethod
+    def wait_pack_tab(self) -> Optional[str]:
+        """等待福袋抽屉标签渲染出来，返回标签文本或 None。"""
+
+    @abstractmethod
+    def wait_pack_list(self) -> bool:
+        """等待福袋列表渲染出来。"""
+
+    @abstractmethod
+    def close_pack_drawer(self) -> bool:
+        """关闭福袋抽屉。"""
+
+    @abstractmethod
+    def scan_packs(self) -> list[tuple[int, str]]:
+        """滑动扫描福袋列表，返回 `[(等级, 名称), ...]`。"""
+
+    @abstractmethod
+    def locate_pack(self, level: Optional[int]) -> Optional[int]:
+        """定位指定等级（或最小等级）福袋，返回实际等级或 None。"""
+
+    @abstractmethod
+    def sync_countdown(self, target: int) -> Optional[bool]:
+        """将倒计时调为目标分钟数；失败返回 None，是否改动返回 bool。"""
+
+    @abstractmethod
+    def click_pack(self, level: int) -> bool:
+        """点击当前屏幕上指定等级的福袋条目。"""
+
+    @abstractmethod
+    def wait_use_pack_clickable(self) -> bool:
+        """等待「使用」按钮可点击。"""
+
+    @abstractmethod
+    def click_use_pack(self) -> None:
+        """点击「使用」按钮开启福袋。"""
+
+    @abstractmethod
+    def open_heat_exchange_entry(self) -> bool:
+        """等待并点击热力兑换入口。"""
+
+    @abstractmethod
+    def wait_lucky_bag_tab(self) -> bool:
+        """等待「兑换福袋」标签页渲染出来。"""
+
+    @abstractmethod
+    def click_lucky_bag_tab(self) -> bool:
+        """点击切换到「兑换福袋」标签页。"""
+
+    @abstractmethod
+    def wait_for_heat(self, below: Optional[int] = None) -> Optional[int]:
+        """轮询读取剩余热力值（若指定 `below` 则等待低于该值）。"""
+
+    @abstractmethod
+    def redeem_highest_affordable(self, current_heat: int) -> Optional[int]:
+        """点击不超过 `current_heat` 的最高档位兑换按钮，返回消耗值或 None。"""
+
+    @abstractmethod
+    def exit_exchange_window(self) -> None:
+        """退出热力兑换橱窗。"""
+
+    @abstractmethod
+    def auto_open_luck_pack(self, user_count: Optional[int], auto_mode: bool) -> dict:
+        """主循环自动/快捷开福袋流程。"""
+
+
+class PlaylistQueryPort(ABC):
+    """歌单状态的只读查询端口（供 InfoManager 使用，ADR-0004）。"""
+
+    @property
+    @abstractmethod
+    def player_name(self) -> str:
+        """当前播放器名称。"""
+
+    @property
+    @abstractmethod
+    def current_playlist_name(self) -> str:
+        """当前歌单名称。"""
+
+    @property
+    @abstractmethod
+    def pending_next_count(self) -> int:
+        """Next Queue 中尚未消费的曲目数量。"""
+
+    @property
+    @abstractmethod
+    def next_queue_contributors(self) -> Set[str]:
+        """往 Next Queue 点过歌的用户。"""
+
+    @abstractmethod
+    def get_playlist_info(self) -> Optional[dict]:
+        """当前歌单的只读视图。"""
+
+
+class PlaybackCacheQueryPort(ABC):
+    """播放信息缓存的只读查询端口（供 InfoManager 使用，ADR-0004）。"""
+
+    @abstractmethod
+    def get_playback_info_cache(self) -> Optional[dict]:
+        """获取播放信息缓存。"""
+
+    @abstractmethod
+    def ensure_cached_release_date(self) -> Optional[dict]:
+        """获取播放信息缓存（必要时补全发行日期）。"""

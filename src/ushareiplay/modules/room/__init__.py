@@ -1,9 +1,13 @@
 """房间业务包：房间状态、在线集合、用户事件钩子与房间档案。"""
 
 from ushareiplay.modules.room.domain import (
+    COUNTDOWN_OPTIONS,
     FIELDS,
     FULLWIDTH_SEPARATOR,
+    MAX_REDEMPTIONS,
     NOTICE_COOLDOWN_MINUTES,
+    OPEN_USAGE,
+    PACK_USAGE,
     PendingWrite,
     ProfileCooldown,
     ProfileDraftStore,
@@ -12,16 +16,26 @@ from ushareiplay.modules.room.domain import (
     RoomState,
     TITLE_COOLDOWN_MINUTES,
     TOPIC_COOLDOWN_MINUTES,
+    YELLOW_DUCK_NAME,
     AlreadyRoomAdmin,
     HookCommand,
     InvalidRoomName,
     NotRoomAdmin,
+    PartyLifecycleState,
     RoomAdminError,
     RoomAdmins,
     clean_banner_text,
     compose_room_name,
+    format_packs,
+    is_zero_packs,
+    parse_countdown,
+    parse_heat,
+    parse_open_pack_args,
+    parse_pack_level,
     parse_room_title_text,
+    party_create_mode,
     recommendation_status_from_text,
+    should_skip_auto_pack,
     validate_theme,
 )
 from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY, expand_seat_macros, seat_info_for
@@ -30,11 +44,15 @@ from ushareiplay.modules.room.ports import (
     DIALOG_KEYS,
     DRAWER_KEY,
     HookCommandSink,
+    LuckPackDriverPort,
     MemberRow,
     MemoryConsolidationSink,
     OnlineDrawerDriverPort,
     OnlineListSource,
+    PartyDriverPort,
     PartySettingsDriverPort,
+    PlaybackCacheQueryPort,
+    PlaylistQueryPort,
     PresenceQuery,
     RoomProfileDrawerDriverPort,
     RoomProfileSurfacePort,
@@ -58,11 +76,15 @@ from ushareiplay.modules.room.registry import (
 )
 from ushareiplay.modules.room.use_cases import (
     Handover,
+    InfoManager,
+    LuckPackService,
     ManageAdmin,
     OnlineDrawer,
+    PartyService,
     PresenceTracker,
     RoomStateService,
     UserEventHooks,
+    UserProfileActions,
 )
 
 __all__ = [

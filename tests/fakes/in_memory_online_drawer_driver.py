@@ -202,6 +202,9 @@ class InMemoryOnlineDrawerDriver(OnlineDrawerDriverPort):
         self.admin_invite_clicks = []
         self.admin_confirm_actions = []
 
+    async def switch_to_app(self) -> bool:
+        return True
+
     async def is_open(self) -> bool:
         if self.container_missing:
             return False

@@ -81,6 +81,14 @@ class SoulOnlineDrawerDriver(OnlineDrawerDriverPort):
     def __init__(self, handler=None):
         self._handler = handler
 
+    async def switch_to_app(self) -> bool:
+        if self._handler is None:
+            return False
+        key_actions = getattr(self._handler, "key_actions", None)
+        if key_actions is None:
+            return False
+        return bool(key_actions.switch_to_app())
+
     async def is_open(self) -> bool:
         handler = self._handler
         if handler is None:
