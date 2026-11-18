@@ -17,7 +17,6 @@ from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.managers.user_event_hooks import ENTER, EXIT, UserEventHooks, spec_for
 from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
@@ -64,13 +63,11 @@ def online_users():
 
 
 @pytest.fixture
-def scheduled_consolidations(monkeypatch):
-    """MemoryManager 的沉淀调度打桩，返回记录到的用户名列表。"""
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
-    mm = MemoryManager.instance()
+def scheduled_consolidations():
+    """记忆沉淀调度打桩，返回记录到的用户名列表。"""
+    hooks = UserEventHooks.instance()
     scheduled = []
-    monkeypatch.setattr(mm, "schedule_consolidation_user", scheduled.append)
+    hooks.user_memory = SimpleNamespace(schedule_user=scheduled.append)
     return scheduled
 
 
@@ -169,13 +166,11 @@ async def test_exit_consolidation_guard_survives_a_failing_memory_manager(
 ):
     """沉淀调度抛异常不得连带丢掉退出命令（与迁移前的内层 try/except 一致）。"""
     online_users({"张三"})
-    if not MemoryManager.is_initialized():
-        MemoryManager.initialize()
 
     def boom(_username):
         raise RuntimeError("consolidation backend down")
 
-    monkeypatch.setattr(MemoryManager.instance(), "schedule_consolidation_user", boom)
+    hooks.user_memory = SimpleNamespace(schedule_user=boom)
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
 
     assert await hooks.fire(EXIT, "明明") == 1

@@ -47,11 +47,12 @@ MODULES = [
     "ushareiplay.dal",
     "ushareiplay.dal.user_dao",
     "ushareiplay.dal.seat_reservation_dao",
+    "ushareiplay.adapters.outbound.llm.memory_distiller",
+    "ushareiplay.adapters.outbound.persistence.chat_log_repository",
+    "ushareiplay.adapters.outbound.persistence.user_memory_repository",
     "ushareiplay.dal.enter_dao",
     "ushareiplay.dal.exit_dao",
     "ushareiplay.dal.return_dao",
-    "ushareiplay.dal.user_chat_log_dao",
-    "ushareiplay.dal.user_memory_dao",
     # helpers
 
     "ushareiplay.helpers.playlist_parser",

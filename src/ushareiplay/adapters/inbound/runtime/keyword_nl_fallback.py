@@ -6,7 +6,7 @@
 
 from typing import Optional
 
-from ushareiplay.modules.command.domain import ResolvedMention
+from ushareiplay.modules.command.domain import NaturalLanguageResult
 from ushareiplay.modules.command.ports import NaturalLanguageFallback
 from ushareiplay.modules.shared.config import ConfigView
 
@@ -18,9 +18,10 @@ def _as_root_view(config) -> ConfigView:
 
 
 class NaturalLanguageFallbackAdapter(NaturalLanguageFallback):
-    def __init__(self, config=None, resolver=None):
+    def __init__(self, config=None, resolver=None, memory=None):
         self._config = config
         self._nl_resolver = resolver
+        self._memory = memory
 
     @property
     def config(self) -> ConfigView:
@@ -30,7 +31,10 @@ class NaturalLanguageFallbackAdapter(NaturalLanguageFallback):
     def nl_resolver(self):
         """惰性获取 NaturalLanguageResolver；测试可直接替换 `_nl_resolver`。"""
         if self._nl_resolver is None:
-            from ushareiplay.core.natural_language_resolver import NaturalLanguageResolver
+            from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+                OpenAICompatibleNaturalLanguageResolver,
+            )
+            from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
 
             root_cfg = self.config
             llm_section = root_cfg.maybe_section("llm")
@@ -42,12 +46,14 @@ class NaturalLanguageFallbackAdapter(NaturalLanguageFallback):
                 )
                 if sys_users:
                     cfg["system_users"] = sys_users
-            self._nl_resolver = NaturalLanguageResolver(cfg)
+            self._nl_resolver = ResolveNaturalLanguage(
+                OpenAICompatibleNaturalLanguageResolver(cfg), cfg
+            )
         return self._nl_resolver
 
     async def resolve(
         self, *, user_text: str, user_name: str, user_level: int
-    ) -> Optional[ResolvedMention]:
+    ) -> Optional[NaturalLanguageResult]:
         commands_config = self.config.command_entries
         catalogue = None
         try:
@@ -81,10 +87,8 @@ class NaturalLanguageFallbackAdapter(NaturalLanguageFallback):
 
         memory_context = None
         try:
-            from ushareiplay.managers.memory_manager import MemoryManager
-
-            if MemoryManager.is_initialized():
-                memory_context = await MemoryManager.instance().get_user_dialogue_context(
+            if self._memory is not None:
+                memory_context = await self._memory.dialogue_context(
                     user_name, user_level=user_level
                 )
         except Exception:
@@ -102,7 +106,7 @@ class NaturalLanguageFallbackAdapter(NaturalLanguageFallback):
         )
         if not resolved or not resolved.content:
             return None
-        return ResolvedMention(type=resolved.type, content=resolved.content)
+        return resolved
 
     def _get_playback_info(self) -> Optional[dict]:
         """获取当前活跃的播放与歌单信息缓存。"""

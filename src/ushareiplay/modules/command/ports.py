@@ -1,4 +1,4 @@
-"""命令包对外的端口：执行运行时、睡眠策略与客房策略。
+"""命令包对外的端口：执行运行时、睡眠策略、客房策略、自然语言与关键字仓储。
 
 端口只描述命令派发需要的能力，生产实现是现有的 runtime context /
 `SleepManager` / `RoomState`；测试替身直接实现这些方法即可。
@@ -10,7 +10,8 @@ from typing import Any, Mapping, Optional
 from ushareiplay.modules.command.domain import (
     KEYWORD_MODE_SEQUENCE,
     Keyword,
-    ResolvedMention,
+    NaturalLanguageContext,
+    NaturalLanguageResult,
 )
 
 
@@ -45,6 +46,19 @@ class GuestRoomPolicy(ABC):
     @abstractmethod
     def is_command_allowed_in_guest_room(self, prefix: str) -> bool:
         """该前缀是否在客房白名单内。"""
+
+
+class NaturalLanguageResolver(ABC):
+    """自然语言解析出站端口：把文本与用例构建好的提示交给 LLM。
+
+    实现负责传输与响应校验，返回 `NaturalLanguageResult`；不可用/无法解析时返回 None。
+    """
+
+    @abstractmethod
+    async def resolve(
+        self, text: str, context: NaturalLanguageContext
+    ) -> Optional[NaturalLanguageResult]:
+        """解析一条自然语言文本。"""
 
 
 class KeywordRepository(ABC):
@@ -141,10 +155,14 @@ class ChatLogRecorder(ABC):
 
 
 class NaturalLanguageFallback(ABC):
-    """未命中关键字时的自然语言兜底（#548 的解析器接缝）。"""
+    """未命中关键字时的自然语言兜底接缝。
+
+    生产实现负责拼装播放/房间/记忆上下文并调用 #548 的 `ResolveNaturalLanguage`；
+    用例只关心解析出的命令或回复文本。
+    """
 
     @abstractmethod
     async def resolve(
         self, *, user_text: str, user_name: str, user_level: int
-    ) -> Optional[ResolvedMention]:
+    ) -> Optional[NaturalLanguageResult]:
         """把一句话解析成命令/回复；解析失败返回 None。"""

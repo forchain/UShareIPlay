@@ -151,15 +151,25 @@ async def db_init():
 
 @pytest.mark.asyncio
 async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init, monkeypatch):
-    from ushareiplay.adapters.outbound.persistence.chat_log_recorder import (
-        TortoiseChatLogRecorder,
+    from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
+        UserMemoryChatLogRecorder,
+    )
+    from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
+        TortoiseChatLogRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
+        TortoiseUserMemoryRepository,
+    )
+    from ushareiplay.adapters.outbound.persistence.user_repository import (
+        TortoiseUserRepository,
     )
     from ushareiplay.core.chat_intake import classify_chat_line
     from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
     from ushareiplay.modules.command.use_cases import KeywordUseCases
+    from ushareiplay.modules.user.domain import MemorySettings
+    from ushareiplay.modules.user.use_cases import UserMemoryService
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
-    from tests.fakes.in_memory_user_repository import InMemoryUserRepository
+    from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
 
     try:
         MessageQueue.initialize()
@@ -167,14 +177,22 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
         pass
     await MessageQueue.instance().clear_queue()
 
-    users = InMemoryUserRepository()
+    users = TortoiseUserRepository()
+    chat_logs = TortoiseChatLogRepository()
+    memory = UserMemoryService(
+        users=users,
+        memories=TortoiseUserMemoryRepository(),
+        chat_logs=chat_logs,
+        distiller=InMemoryMemoryDistiller(),
+        settings=MemorySettings(),
+    )
     mock_resolve = AsyncMock(return_value=None)
     keyword_manager = KeywordUseCases(
         repository=InMemoryKeywordRepository(users),
         users=users,
         presence=SimpleNamespace(is_user_online=lambda _name: True),
         queue=SimpleNamespace(enqueue=AsyncMock()),
-        chat_logs=TortoiseChatLogRecorder(),
+        chat_logs=UserMemoryChatLogRecorder(memory),
         config_source=SimpleNamespace(load=lambda: None),
         fallback=SimpleNamespace(resolve=mock_resolve),
         logger=SimpleNamespace(
@@ -189,10 +207,8 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
     )
     await keyword_manager.dispatch_mention(result, sleep_exempt=True)
 
-    from ushareiplay.dal.user_dao import UserDAO
-
-    user = await UserDAO.get_by_username("Bob")
-    logs = await UserChatLogDAO.get_unconsolidated_logs(user.id)
+    user = await TortoiseUserRepository().get_by_username("Bob")
+    logs = await chat_logs.unconsolidated_logs(user.id)
     assert [log.content for log in logs] == ["「Alice：哈哈」 点歌 晴天"]
 
     assert mock_resolve.await_args.kwargs["user_text"] == "「Alice：哈哈」 点歌 晴天"

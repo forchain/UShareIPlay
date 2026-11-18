@@ -14,7 +14,7 @@ from ushareiplay.modules.command.domain import (
     KeywordNotFound,
     MissingGrantees,
     NotKeywordOwner,
-    ResolvedMention,
+    NaturalLanguageResult,
     UserNotOnline,
 )
 from ushareiplay.modules.command.use_cases import KeywordUseCases
@@ -295,7 +295,7 @@ async def test_dispatch_mention_prefers_keyword_over_fallback(keyword_env):
     keyword_env.presence.online.add("Alice")
     alice = await keyword_env.users.get_or_create("Alice")
     await keyword_env.repository.create("520", ":play 晴天", creator_id=alice.id, is_public=True)
-    fallback = _Fallback(ResolvedMention(type="reply", content="不该出现"))
+    fallback = _Fallback(NaturalLanguageResult(type="reply", content="不该出现"))
     use_cases = keyword_env.build(fallback=fallback)
     result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION, nickname="Alice", text="520", params=""
@@ -310,7 +310,7 @@ async def test_dispatch_mention_prefers_keyword_over_fallback(keyword_env):
 async def test_dispatch_mention_falls_back_to_natural_language(keyword_env):
     alice = await keyword_env.users.get_or_create("Alice")
     await keyword_env.users.update_level(alice.id, 4)
-    fallback = _Fallback(ResolvedMention(type="command", content=":play 周杰伦 晴天"))
+    fallback = _Fallback(NaturalLanguageResult(type="command", content=":play 周杰伦 晴天"))
     use_cases = keyword_env.build(fallback=fallback)
     result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,

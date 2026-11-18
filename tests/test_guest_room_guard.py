@@ -174,7 +174,7 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
         NaturalLanguageFallbackAdapter,
     )
     from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
-    from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
+    from ushareiplay.modules.command.domain import NaturalLanguageResult
     from ushareiplay.modules.command.use_cases import KeywordUseCases
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
     from tests.fakes.in_memory_user_repository import InMemoryUserRepository

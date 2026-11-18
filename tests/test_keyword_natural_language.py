@@ -13,7 +13,7 @@ from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
 )
 from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.natural_language_resolver import NaturalLanguageResult
+from ushareiplay.modules.command.domain import NaturalLanguageResult
 from ushareiplay.modules.command.use_cases import KeywordUseCases
 from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
 from tests.fakes.in_memory_user_repository import InMemoryUserRepository
@@ -197,7 +197,7 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
     use_cases = _use_cases(fallback)
 
     with patch(
-        "ushareiplay.core.natural_language_resolver.NaturalLanguageResolver.resolve",
+        "ushareiplay.modules.command.use_cases.ResolveNaturalLanguage.resolve",
         new_callable=AsyncMock,
     ) as mock_resolve:
         mock_resolve.return_value = NaturalLanguageResult(
@@ -311,15 +311,20 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
+    from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+        OpenAICompatibleNaturalLanguageResolver,
+    )
+    from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+
+    llm_cfg = {
+        "enabled": True,
+        "api_key": "test-key",
+        "base_url": "https://api.openai.com/v1",
+    }
+    llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
     fallback = NaturalLanguageFallbackAdapter(
-        {
-            "llm": {
-                "enabled": True,
-                "api_key": "test-key",
-                "base_url": "https://api.openai.com/v1",
-            },
-            "commands": [{"prefix": "play", "level": 1}],
-        }
+        {"llm": llm_cfg, "commands": [{"prefix": "play", "level": 1}]},
+        resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
     use_cases = _use_cases(fallback)
 
@@ -347,7 +352,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 
     captured_payload = {}
 
-    async def _fake_call_api(payload):
+    async def _fake_call_api(payload, timeout=None):
         nonlocal captured_payload
         captured_payload = payload
         mock_response = {
@@ -367,7 +372,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        fallback.nl_resolver,
+        llm_client,
         "_call_api",
         _fake_call_api,
     )
@@ -402,15 +407,20 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
+    from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+        OpenAICompatibleNaturalLanguageResolver,
+    )
+    from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+
+    llm_cfg = {
+        "enabled": True,
+        "api_key": "test-key",
+        "base_url": "https://api.openai.com/v1",
+    }
+    llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
     fallback = NaturalLanguageFallbackAdapter(
-        {
-            "llm": {
-                "enabled": True,
-                "api_key": "test-key",
-                "base_url": "https://api.openai.com/v1",
-            },
-            "commands": [{"prefix": "play", "level": 1}],
-        }
+        {"llm": llm_cfg, "commands": [{"prefix": "play", "level": 1}]},
+        resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
     use_cases = _use_cases(fallback)
 
@@ -434,7 +444,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         lambda: fake_music_handler,
     )
 
-    async def _fake_call_api(payload):
+    async def _fake_call_api(payload, timeout=None):
         mock_response = {
             "choices": [
                 {
@@ -452,7 +462,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         return json.dumps(mock_response)
 
     monkeypatch.setattr(
-        fallback.nl_resolver,
+        llm_client,
         "_call_api",
         _fake_call_api,
     )
