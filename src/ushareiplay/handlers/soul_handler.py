@@ -268,6 +268,6 @@ class SoulHandler(AppHandler, Singleton):
             self.logger.error("Failed to grab mic: still not seated")
         return seated
 
-    # 麦克风状态与开关不在本类：见 MicManager.state()/set_active()/ensure_active()
+    # 麦克风状态与开关不在本类：见 SoulMicControl.state()/set_active()/ensure_active()
     # （ADR-0007 的接缝）。本类只保留麦位 UI 动作：is_on_seat / ensure_on_seat /
     # grab_mic_and_confirm。

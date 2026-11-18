@@ -1,4 +1,4 @@
-"""MicManager：麦克风状态与开关的唯一实现。
+"""SoulMicControl（Soul/Appium 适配器）：麦克风状态与开关的唯一实现。
 
 本文件合并了原先三份针对同一行为的测试：
 - tests/test_soul_handler_seat_take.py 的 ensure_mic_active 三例
@@ -10,7 +10,7 @@ Ticket #317 的两个不变量现在都住在这里：
 2. 「开麦 = content-desc 是『闭麦按钮』」
 """
 
-from ushareiplay.managers.mic_manager import MicManager
+from ushareiplay.adapters.outbound.appium.soul.mic_control import SoulMicControl
 
 
 class _Logger:
@@ -120,17 +120,14 @@ class _SoulHandler:
             self.element_finder.mic_desc = "闭麦按钮" if self.mic_on_after_seat else "开麦按钮"
         return True
 
-    # MicManager 只通过 is_on_seat / ensure_on_seat 使用麦位；grab_mic_and_confirm
+    # SoulMicControl 只通过 is_on_seat / ensure_on_seat 使用麦位；grab_mic_and_confirm
     # 由 SoulHandler 的 ensure_on_seat 内部调用，替身里合并进 ensure_on_seat。
 
 
 def _make_manager(**kwargs):
     events = []
     handler = _SoulHandler(events, **kwargs)
-    manager = MicManager.instance()
-    manager._soul_handler = handler
-    manager._logger = handler.logger
-    return manager, handler, events
+    return SoulMicControl(handler), handler, events
 
 
 # --------------------------------------------------------------------------

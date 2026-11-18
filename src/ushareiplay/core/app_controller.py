@@ -491,7 +491,8 @@ class AppController(Singleton):
             self.logger = self.soul_handler.logger
 
             # Initialize managers using singleton pattern (no parameters needed)
-            from ushareiplay.managers.mic_manager import MicManager
+            from ushareiplay.adapters.outbound.appium.soul.mic_control import SoulMicControl
+            from ushareiplay.modules.mic.use_cases import ToggleMic
             from ushareiplay.managers.music_manager import MusicManager
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
@@ -538,12 +539,13 @@ class AppController(Singleton):
             RecoveryManager.initialize(self.soul_handler)
             MessageManager.initialize(self.soul_handler)
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
-            self.mic_manager = MicManager.initialize(self.soul_handler)
+            self.mic_control = SoulMicControl(self.soul_handler)
+            self.toggle_mic = ToggleMic(self.mic_control)
             self.music_manager = MusicManager.initialize(
                 ui_driver=QQMusicUIDriver(self.music_handler)
             )
             self.register_driver_subscriber(self.music_manager)
-            self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_manager)
+            self.playback_muting = PlaybackMuting.initialize(self.soul_handler, self.music_manager, self.mic_control)
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerUseCases(
                 repository=TortoiseTimerRepository(),

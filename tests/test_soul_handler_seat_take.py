@@ -4,7 +4,7 @@ Detecting the grab-mic entry, confirming it, and waiting for the seat to settle
 are room UI actions, so they live on SoulHandler (docs/room.md: "New room UI
 action: Add method to SoulHandler").
 
-Who *asks* for a seat is `MicManager` — the seat pre-check before opening the
+Who *asks* for a seat is `SoulMicControl` — the seat pre-check before opening the
 microphone is part of its interface, tested in tests/test_mic_manager.py.
 """
 
@@ -118,4 +118,4 @@ def test_ensure_on_seat_reports_failure_when_the_grab_entry_stays():
 
 
 # 「确保开麦」的三例（抢麦 / 点开 / 已开不点）已迁到 tests/test_mic_manager.py：
-# 麦克风状态与开关归 MicManager，本文件只留 SoulHandler 自己的麦位 UI 动作。
+# 麦克风状态与开关归 SoulMicControl，本文件只留 SoulHandler 自己的麦位 UI 动作。
