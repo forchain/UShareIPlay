@@ -330,7 +330,7 @@ def _room_lifecycle_handler(screen, profile):
         config=CONFIG,
         controller=SimpleNamespace(
             room_profile_manager=profile,
-            seat_manager=SimpleNamespace(
+            seat_service=SimpleNamespace(
                 find_owner_seat=lambda: _async_ok()
             ),
         ),

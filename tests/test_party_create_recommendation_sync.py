@@ -110,7 +110,7 @@ def create_sync_setup(monkeypatch, tmp_path):
                 ensure_synced_on_return=lambda: None,
                 set_default_notice=set_default_notice,
             ),
-            seat_manager=SimpleNamespace(find_owner_seat=find_owner_seat),
+            seat_service=SimpleNamespace(find_owner_seat=find_owner_seat),
         ),
     )
     party_manager = PartyManager.initialize()

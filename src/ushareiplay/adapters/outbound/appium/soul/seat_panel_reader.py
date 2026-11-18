@@ -131,7 +131,7 @@ class SeatPanelReader:
 
     def _get_label_text(self, desk, side: str) -> str:
         elem = self.find_child_element(desk, f"{side}_label")
-        if elem is None:
+        if elem is None and not isinstance(desk, dict):
             seat_elem = self.find_child_element(desk, f"{side}_seat")
             if seat_elem is not None:
                 elem = self.find_child_element(seat_elem, f"{side}_label")

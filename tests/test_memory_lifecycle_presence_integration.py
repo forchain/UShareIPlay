@@ -42,7 +42,7 @@ async def test_party_manager_lifecycle_schedules_memory_consolidation():
                 ensure_synced_on_return=lambda: None,
                 set_default_notice=AsyncMock(return_value={"success": True}),
             ),
-            seat_manager=SimpleNamespace(find_owner_seat=AsyncMock(return_value={"success": True})),
+            seat_service=SimpleNamespace(find_owner_seat=AsyncMock(return_value={"success": True})),
             post_party_create_automation=None,
         )
     )
