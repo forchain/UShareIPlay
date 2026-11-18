@@ -3,8 +3,8 @@
 from ushareiplay.modules.mic.domain import (
     MIC_ACTIVE_DESC,
     MIC_BUTTON_NOT_FOUND,
+    MIC_GRAB_FAILED,
     MIC_INACTIVE_DESC,
-    MIC_NOT_SEATED,
     MIC_STATUS_UNAVAILABLE,
     noop_result,
     state_from_desc,
@@ -16,8 +16,8 @@ from ushareiplay.modules.mic.use_cases import ToggleMic
 __all__ = [
     "MIC_ACTIVE_DESC",
     "MIC_BUTTON_NOT_FOUND",
+    "MIC_GRAB_FAILED",
     "MIC_INACTIVE_DESC",
-    "MIC_NOT_SEATED",
     "MIC_STATUS_UNAVAILABLE",
     "MicControl",
     "ToggleMic",

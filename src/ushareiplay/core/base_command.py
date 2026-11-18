@@ -108,8 +108,7 @@ class BaseCommand(ABC):
     @property
     def mic_manager(self):
         if self._mic_manager is None:
-            from ushareiplay.managers.mic_manager import MicManager
-            self._mic_manager = MicManager.instance()
+            self._mic_manager = self.controller.mic_control
         return self._mic_manager
 
     @property

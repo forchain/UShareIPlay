@@ -7,7 +7,6 @@ from ushareiplay.core.singleton import Singleton
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.message_manager import MessageManager
-from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.room_profile import RoomProfileManager
@@ -24,7 +23,6 @@ def initialized_test_singletons():
         CommandManager,
         EventManager,
         MessageManager,
-        MicManager,
         PartyManager,
         PlaylistSession,
         RoomProfileManager,

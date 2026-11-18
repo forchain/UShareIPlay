@@ -1,6 +1,6 @@
 """Ticket #317: `:mic` 的决定逻辑与委托。
 
-`:mic` 现在只做两件事：决定目标状态，然后交给 `MicManager.set_active()`。
+`:mic` 现在只做两件事：决定目标状态，然后交给 `ToggleMic`。
 麦位前置检查、content-desc 状态读取与点击都在模块里 —— 机件测试见
 tests/test_mic_manager.py（原先那份重复的机件测试已并入其中）。
 
@@ -9,7 +9,8 @@ tests/test_mic_manager.py（原先那份重复的机件测试已并入其中）�
 
 from types import SimpleNamespace
 
-from ushareiplay.commands.mic import MicCommand
+from ushareiplay.adapters.inbound.chat.mic import MicCommand
+from ushareiplay.modules.mic.use_cases import ToggleMic
 
 
 class _Logger:
@@ -34,7 +35,7 @@ class _SoulHandler:
         return self._on_seat
 
 
-class _MicManager:
+class _MicControl:
     def __init__(self, state=False):
         self.state_value = state
         self.calls = []
@@ -51,10 +52,9 @@ class _MicManager:
 
 def _make_command(handler, mic_state=False):
     controller = SimpleNamespace(soul_handler=handler, music_handler=SimpleNamespace())
-    command = MicCommand(controller)
-    mic_manager = _MicManager(state=mic_state)
-    command._mic_manager = mic_manager
-    return command, mic_manager
+    mic_manager = _MicControl(state=mic_state)
+    controller.toggle_mic = ToggleMic(mic_manager)
+    return MicCommand(controller), mic_manager
 
 
 def _run(command, parameters):

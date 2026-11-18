@@ -16,7 +16,7 @@ def test_commands_discovery_finds_expected_files():
     commands_path = _get_ushareiplay_root() / "commands"
     found = {f.stem for f in commands_path.glob("*.py") if not f.stem.startswith("__")}
 
-    expected = {"play", "skip", "next", "pause", "vol", "mic", "seat"}
+    expected = {"play", "skip", "next", "pause", "vol", "seat"}
     missing = expected - found
     assert not missing, f"以下命令文件缺失: {missing}"
 

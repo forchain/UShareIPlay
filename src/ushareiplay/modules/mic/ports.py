@@ -16,7 +16,7 @@ class MicControl(ABC):
 
     @abstractmethod
     def set_active(self, enable: bool, *, report_noop: bool = False) -> dict:
-        """把麦克风设为目标状态；需要开麦时先完成就座准备。
+        """把麦克风设为目标状态；需要开麦时先完成必要的前置准备。
 
         Returns:
             {'state': '1'|'0'} 或 {'error': <公屏文案>}

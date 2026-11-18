@@ -13,7 +13,7 @@ from typing import Optional
 
 from ushareiplay.modules.mic.domain import (
     MIC_BUTTON_NOT_FOUND,
-    MIC_NOT_SEATED,
+    MIC_GRAB_FAILED,
     MIC_STATUS_UNAVAILABLE,
     noop_result,
     state_from_desc,
@@ -75,7 +75,7 @@ class SoulMicControl(MicControl):
             # 开麦前先确认已在麦位：不在麦位时界面只提供抢麦入口，
             # 直接点击开麦按钮会失败或抛错。
             if not self.soul_handler.ensure_on_seat():
-                return {'error': MIC_NOT_SEATED}
+                return {'error': MIC_GRAB_FAILED}
             opened_during_setup = True
 
         current = self.state(wait=True)
