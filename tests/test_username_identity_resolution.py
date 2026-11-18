@@ -296,7 +296,7 @@ async def test_focus_hook_seat_macro_resolves_from_avatar_observation(alias_pair
     queue = MessageQueue.instance()
     await queue.clear_queue()
 
-    from ushareiplay.commands.focus import FocusCommand
+    from ushareiplay.adapters.inbound.chat.focus import FocusCommand
 
     handler = SimpleNamespace(logger=DummyLogger())
     command = FocusCommand(

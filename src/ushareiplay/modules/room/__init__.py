@@ -38,7 +38,6 @@ from ushareiplay.modules.room.domain import (
     should_skip_auto_pack,
     validate_theme,
 )
-from ushareiplay.modules.room.macros import SEAT_INFO_CTX_KEY, expand_seat_macros, seat_info_for
 from ushareiplay.modules.room.ports import (
     DEFAULT_ENTRY_KEYS,
     DIALOG_KEYS,
@@ -131,7 +130,6 @@ __all__ = [
     "RoomState",
     "RoomStateService",
     "RoomStateStore",
-    "SEAT_INFO_CTX_KEY",
     "SINGLE_ID",
     "TITLE_COOLDOWN_MINUTES",
     "TOPIC_COOLDOWN_MINUTES",
@@ -140,10 +138,8 @@ __all__ = [
     "UserEventHooks",
     "clean_banner_text",
     "compose_room_name",
-    "expand_seat_macros",
     "parse_room_title_text",
     "recommendation_status_from_text",
-    "seat_info_for",
     "spec_for",
     "validate_theme",
 ]

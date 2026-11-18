@@ -31,6 +31,11 @@ from ushareiplay.modules.seat.ledger import (
     claimed_usernames,
     evidence_weight,
 )
+from ushareiplay.modules.seat.macros import (
+    SEAT_INFO_CTX_KEY,
+    expand_seat_macros,
+    seat_info_for,
+)
 
 from ushareiplay.modules.seat.ports import (
     SeatInvitePort,
@@ -53,6 +58,7 @@ __all__ = [
     "IdentityResolutionPlan",
     "MIN_INTERACTABLE_DESK_HEIGHT",
     "Reading",
+    "SEAT_INFO_CTX_KEY",
     "SeatCardView",
     "SeatClickPlan",
     "SeatDiff",
@@ -71,8 +77,10 @@ __all__ = [
     "SeatSnapshot",
     "claimed_usernames",
     "evidence_weight",
+    "expand_seat_macros",
     "guest_room_guard",
     "is_bounds_interactable",
     "is_seat_number_label",
     "parse_focus_count_text",
+    "seat_info_for",
 ]
