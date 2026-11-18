@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.adapters.inbound.chat.admin import AdminCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.room.domain import AlreadyRoomAdmin, NotRoomAdmin, RoomAdmins
 from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver

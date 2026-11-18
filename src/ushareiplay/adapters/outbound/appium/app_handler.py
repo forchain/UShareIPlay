@@ -1,24 +1,28 @@
 import logging
 
-from ushareiplay.core.console_log_muter import ConsoleLogMuter
-from ushareiplay.core.log_formatter import ColoredFormatter
-from ushareiplay.core.ui import ElementFinder, GestureHandler, KeyActions, Navigator, UIActions
+from ushareiplay.adapters.outbound.appium.ui import (
+    ElementFinder,
+    GestureHandler,
+    KeyActions,
+    Navigator,
+    UIActions,
+)
 
 _shared_handler_file_handler = None
 _shared_handler_file_path = None
 
 
 class AppHandler:
-    def __init__(self, driver, config, controller):
+    def __init__(self, driver, config, controller, *, logger=None):
         logging.getLogger(self.__class__.__name__).debug(f"AppHandler.__init__ 开始: {self.__class__.__name__}")
         self.driver = driver
         # 应用段配置视图（`soul` / `qq_music` 段），取值一律走视图方法（ADR-0012）。
         self.config = config
         logging.getLogger(self.__class__.__name__).debug(f"AppHandler 设置 logger: {self.__class__.__name__}")
-        self.logger = self._setup_logger()
+        self.controller = controller
+        self.logger = logger if logger is not None else self._setup_logger()
         self.logger.debug(f"AppHandler logger 设置完成: {self.__class__.__name__}")
         self.error_count = 0
-        self.controller = controller
         self.element_finder = ElementFinder(self)
         self.key_actions = KeyActions(self)
         self.gesture_handler = GestureHandler(self)
@@ -31,18 +35,12 @@ class AppHandler:
         return getattr(self.controller, "driver_recovery_context", None)
 
     def _setup_logger(self):
-        """Setup logger for the handler.
-
-        Delegates to the RuntimeLogging module so path resolution, archiving,
-        handler construction, and reset behavior share one implementation
-        across the app log and the chat log.
-        """
-        from ushareiplay.core.runtime_logging import get_runtime_logging
-
-        cfg = None
-        if getattr(self, "controller", None) is not None:
-            cfg = getattr(self.controller, "config", None)
-        return get_runtime_logging().attach_app_logger(
+        """Setup logger for the handler."""
+        runtime_logging = getattr(self.controller, "runtime_logging", None) if self.controller is not None else None
+        if runtime_logging is None:
+            return logging.getLogger(self.__class__.__name__)
+        cfg = getattr(self.controller, "config", None)
+        return runtime_logging.attach_app_logger(
             self.__class__.__name__, cfg
         )
 

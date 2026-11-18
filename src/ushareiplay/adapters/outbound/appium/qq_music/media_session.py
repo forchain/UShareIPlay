@@ -3,7 +3,7 @@
 import re
 from typing import Optional
 
-from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
 from ushareiplay.modules.playback.ports import PlaybackControlPort
 
 

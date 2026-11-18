@@ -154,12 +154,8 @@ def test_driver_reports_every_unimplemented_mode_as_failed(mode, initialized_tes
 
 @pytest.fixture
 def quality_checked(initialized_test_singletons):
-    """记录质量过滤收到的曲目，避免测试真的去查发行日期。"""
-    from ushareiplay.managers.music_manager import MusicManager
-
-    seen = []
-    MusicManager.initialize().handle_song_quality_check = seen.append
-    return seen
+    """记录质量过滤收到的曲目：检查器由驱动显式注入，这里只提供记录本。"""
+    return []
 
 def test_driver_clicks_the_first_match_and_reports_the_parsed_track(
     initialized_test_singletons, quality_checked
@@ -339,21 +335,16 @@ def _real_config() -> dict:
 
 
 def test_composition_root_injects_the_production_driver(initialized_test_singletons):
-    """真实跑一遍 `AppController._init_handlers()`，MusicManager 必须拿到生产适配器。
+    """真实跑一遍 `AppContainer.wire_services()`，MusicManager 必须拿到生产适配器。
 
     漏装配不会在启动时炸，只会在第一次 `:play` 时抛 RuntimeError —— 那是线上才发现
     的故障，因此在这里钉住接线本身。走真实启动路径而非读源码。
     """
-    from ushareiplay.core.app_controller import AppController
-    from ushareiplay.core.singleton import Singleton
+    from ushareiplay.bootstrap.container import AppContainer
 
-    Singleton.reset_all_instances()
-    AppController._ui_session_lease = None
-
-    controller = AppController.__new__(AppController)
-    controller.__init__(_real_config())
+    controller = AppContainer(_real_config())
     controller.driver = SimpleNamespace()  # 构造函数只碰 driver 表面属性，不做设备 I/O
-    controller._init_handlers()
+    controller.wire_services()
 
     ui_driver = controller.ui_driver
     assert isinstance(ui_driver, QQMusicUIDriver)
@@ -769,13 +760,8 @@ class _TextElement(_Element):
 
 @pytest.fixture
 def lyrics_tab(initialized_test_singletons):
-    """记录歌词分类 tab 的选择结果，避免测试真的去切 tab。"""
-    from ushareiplay.managers.music_manager import MusicManager
-
-    calls = []
-    manager = MusicManager.initialize()
-    manager.select_tab = lambda name, **kwargs: calls.append(name) or True
-    return calls
+    """歌词分类 tab 的选择结果由 handler 自己记账，这里只提供记录本。"""
+    return []
 
 
 def test_driver_unescapes_html_entities_in_the_lyrics(initialized_test_singletons, lyrics_tab):

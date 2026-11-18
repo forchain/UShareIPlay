@@ -134,7 +134,7 @@ preflight_checks() {
       local cfg_host="" cfg_port=""
       read -r cfg_host cfg_port < <(uv run python -c "
 try:
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
     cfg = ConfigLoader.load_config('${ROOT_DIR}/config.yaml')
     print(cfg.get('appium', {}).get('host', '127.0.0.1'), cfg.get('appium', {}).get('port', 4723))
 except Exception:

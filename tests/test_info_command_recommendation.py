@@ -2,11 +2,9 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.playback.use_cases import PlaylistSession
-from tests.legacy_state import PresenceTracker
-from tests.legacy_state import RoomState
-from ushareiplay.modules.room import InfoManager
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomStateService
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
 
@@ -39,17 +37,10 @@ class MockElement:
 
 @pytest.fixture
 def info_cmd_setup():
-    for cls in (
-        PlaybackBroadcaster,
-        PresenceTracker,
-        RoomState,
-        RoomProfileManager,
-    ):
-        cls.reset_instance()
     playlist = PlaylistSession()
-    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
-    presence = PresenceTracker.initialize()
-    room_state = RoomState.initialize()
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist)
+    presence = PresenceTracker()
+    room_state = RoomStateService()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
     presence._online_users = set()
     info_manager = InfoManager(
@@ -60,7 +51,7 @@ def info_cmd_setup():
         logger=SimpleNamespace(info=lambda _msg: None),
     )
     # 推荐分发归房间档案模块所有（#393）：抽屉与状态读都在它那里。
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager(room_state=room_state)
     profile._logger = SimpleNamespace(info=lambda _msg: None, error=lambda _msg: None, warning=lambda _msg: None)
 
     title_elem = MockElement(text="所有人")
@@ -96,10 +87,6 @@ def info_cmd_setup():
 @pytest.mark.asyncio
 async def test_info_command_does_not_fetch_recommendation_from_drawer_when_unknown(monkeypatch, info_cmd_setup):
     cmd, room_state, info_manager = info_cmd_setup
-    monkeypatch.setattr(
-        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
-        lambda: SimpleNamespace(play_mode_key="unknown", play_mode_key_to_name=lambda _k: "未知"),
-    )
 
     room_state.recommendation_enabled = None
     result = await cmd.do_process(SimpleNamespace(nickname="Console"), [])

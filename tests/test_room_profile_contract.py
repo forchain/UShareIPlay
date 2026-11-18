@@ -73,22 +73,23 @@ def test_no_source_module_imports_a_retired_manager(name):
 
 
 def test_the_composition_root_constructs_exactly_one_room_profile():
-    source = (PKG / "core" / "app_controller.py").read_text(encoding="utf-8")
+    source = (PKG / "bootstrap" / "container.py").read_text(encoding="utf-8")
 
     assert source.count("self.room_profile_manager = RoomProfileManager(") == 1
     assert "RoomProfileManager.initialize(" not in source
-    assert "from ushareiplay.modules.room import RoomProfileManager" in source
+    assert "from ushareiplay.modules.room import (" in source
+    assert "    RoomProfileManager," in source
 
 
 def test_the_composition_root_initializes_no_retired_manager():
-    source = (PKG / "core" / "app_controller.py").read_text(encoding="utf-8")
+    source = (PKG / "bootstrap" / "container.py").read_text(encoding="utf-8")
     for name in RETIRED_CLASSES:
         assert f"{name}.initialize(" not in source
         assert f"import {name}\n" not in source
 
 
 def test_the_composition_root_keeps_no_orphaned_manager_attribute():
-    source = (PKG / "core" / "app_controller.py").read_text(encoding="utf-8")
+    source = (PKG / "bootstrap" / "container.py").read_text(encoding="utf-8")
     for attribute in (
         "self.room_info_window",
         "self.topic_manager",
@@ -134,12 +135,9 @@ def test_the_room_profile_modules_have_no_deferred_imports():
         assert offenders == [], offenders
 
 
-def test_the_singleton_contract_test_names_no_retired_class():
-    source = (pathlib.Path(__file__).resolve().parent / "test_singleton.py").read_text(
-        encoding="utf-8"
-    )
-    for name in RETIRED_CLASSES:
-        assert name not in source
+def test_the_retired_singleton_contract_test_is_gone():
+    """受保护单例那一层已经整体下线，契约测试本身也不该留着。"""
+    assert not (pathlib.Path(__file__).resolve().parent / "test_singleton.py").exists()
 
 
 @pytest.mark.parametrize(

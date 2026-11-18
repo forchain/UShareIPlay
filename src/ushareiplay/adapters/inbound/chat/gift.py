@@ -1,6 +1,6 @@
 """送礼命令：薄适配器，把参数解析之外的一切交给 `UserProfileActions.send_gift`。"""
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class GiftCommand(BaseCommand):

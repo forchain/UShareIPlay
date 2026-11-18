@@ -34,7 +34,7 @@ __elements__ = [
     'post_draft_dont_save',
 ]
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class RiskElementsEvent(BaseEvent):

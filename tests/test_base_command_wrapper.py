@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class _Logger:

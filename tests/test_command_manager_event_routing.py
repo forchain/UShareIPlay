@@ -32,7 +32,7 @@ from ushareiplay.adapters.inbound.chat.enter import EnterCommand
 
 ReturnCommand = importlib.import_module("ushareiplay.adapters.inbound.chat.return").ReturnCommand
 
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest_asyncio.fixture
@@ -44,8 +44,13 @@ async def db_init():
 
 
 @pytest.fixture
-def hooks(db_init):
-    return make_hooks()
+def queue():
+    return MessageQueue()
+
+
+@pytest.fixture
+def hooks(db_init, queue):
+    return make_hooks(message_queue=queue)
 
 
 def _logger_stub():
@@ -54,8 +59,8 @@ def _logger_stub():
     )
 
 
-async def _drain():
-    return list((await MessageQueue.instance().get_all_messages()).values())
+async def _drain(queue: MessageQueue):
+    return list((await queue.get_all_messages()).values())
 
 
 def make_controller(hooks):
@@ -71,69 +76,61 @@ def make_controller(hooks):
 
 
 @pytest.mark.asyncio
-async def test_focus_change_with_changed_users_none_fires_every_configured_user(db_init, hooks):
+async def test_focus_change_with_changed_users_none_fires_every_configured_user(db_init, hooks, queue):
     """`changed_users=None` = 触发者未知 → 所有人已配的联动命令都发。"""
     for who, cmd in (("Alice", ":say Alice"), ("Bob", ":say Bob")):
         await hooks.execute_crud(
             "focus", who, f':focus add "{cmd}"'
         )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=None)
 
-    assert sorted(m.content for m in await _drain()) == [":say Alice", ":say Bob"]
+    assert sorted(m.content for m in await _drain(queue)) == [":say Alice", ":say Bob"]
 
 
 @pytest.mark.asyncio
-async def test_focus_change_with_empty_changed_users_fires_nobody(db_init, hooks):
+async def test_focus_change_with_empty_changed_users_fires_nobody(db_init, hooks, queue):
     """`changed_users=[]` = 本次没有用户变更 → 一条都不发（与 None 语义相反）。"""
     await hooks.execute_crud(
         "focus", "Alice", ':focus add ":say Alice"'
     )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=[])
 
-    assert await _drain() == []
+    assert await _drain(queue) == []
 
 
 @pytest.mark.asyncio
-async def test_focus_change_isolates_to_the_named_users(db_init, hooks):
+async def test_focus_change_isolates_to_the_named_users(db_init, hooks, queue):
     """给了名单就只发名单里这些人的。"""
     for who in ("Alice", "Bob", "Carol"):
         await hooks.execute_crud(
             "focus", who, f':focus add ":say {who}"'
         )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(1, 2, changed_users=["Alice", "Carol"])
 
-    assert sorted(m.content for m in await _drain()) == [":say Alice", ":say Carol"]
+    assert sorted(m.content for m in await _drain(queue)) == [":say Alice", ":say Carol"]
 
 
 @pytest.mark.asyncio
-async def test_focus_change_carries_seat_info_into_the_macro_context(db_init, hooks):
+async def test_focus_change_carries_seat_info_into_the_macro_context(db_init, hooks, queue):
     """座位观测必须进 `ctx`，否则 `{seat}` / `{action}` 展开成空串。"""
     await hooks.execute_crud(
         "focus", "Alice", ':focus add ":say {username} 坐到了 {seat} 号座位 ({action})"'
     )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
-    await MessageQueue.instance().clear_queue()
 
     await cm.notify_focus_count_change(
         1,
@@ -142,7 +139,7 @@ async def test_focus_change_carries_seat_info_into_the_macro_context(db_init, ho
         seat_info={"Alice": {"seat_number": 3, "action": "坐下"}},
     )
 
-    assert [m.content for m in await _drain()] == [":say Alice 坐到了 3 号座位 (坐下)"]
+    assert [m.content for m in await _drain(queue)] == [":say Alice 坐到了 3 号座位 (坐下)"]
 
 
 # --------------------------------------------------------------------------
@@ -159,22 +156,20 @@ async def test_focus_change_carries_seat_info_into_the_macro_context(db_init, ho
     ],
 )
 async def test_enter_and_return_fire_hooks_and_check_seats_once(
-    db_init, hooks, notify_name, command_cls, raw
+    db_init, hooks, queue, notify_name, command_cls, raw
 ):
     """一次事件 = 钩子入队一次 + 座位复核一次，不多不少。"""
     await command_cls(make_controller(hooks)).do_process(
         MessageInfo(content=raw, nickname="Bob"), []
     )
 
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
     cm._logger = _logger_stub()
 
     seat_check = AsyncMock()
     cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=seat_check))
 
-    await MessageQueue.instance().clear_queue()
     await getattr(cm, notify_name)("Bob")
 
-    assert [m.content for m in await _drain()] == [":play 稻香"]
+    assert [m.content for m in await _drain(queue)] == [":play 稻香"]
     seat_check.assert_awaited_once_with("Bob")

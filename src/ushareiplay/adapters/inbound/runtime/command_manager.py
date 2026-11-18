@@ -6,14 +6,10 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
-from ushareiplay.adapters.outbound.system.clock import SystemClock
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.adapters.inbound.runtime.chat_intake import MessageBatch, normalize_command_text
 from ushareiplay.core.command_silence import command_silence
-from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.adapters.inbound.runtime.runtime_services import route_queue_text
-from ushareiplay.core.singleton import Singleton
 from ushareiplay.modules.command.domain import (
     DEFAULT_COMMAND_ROOTS,
     CommandCatalogue,
@@ -22,19 +18,28 @@ from ushareiplay.modules.command.domain import (
     SleepBlocked,
 )
 from ushareiplay.modules.command.use_cases import DispatchCommand
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.modules.seat.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.modules.room.registry import ENTER, EXIT, FOCUS, RECEIVE, RETURN
-from ushareiplay.models.message_info import MessageInfo
 
 
-class CommandManager(Singleton):
+class CommandManager:
     """
     命令管理器 - 管理所有命令相关的逻辑
-    单例模式，提供统一的命令管理服务
     """
 
-    def __init__(self, handler=None, sleep=None, room_state=None, user_event_hooks=None):
+    def __init__(
+        self,
+        handler=None,
+        sleep=None,
+        room_state=None,
+        user_event_hooks=None,
+        *,
+        users=None,
+        clock=None,
+        message_dispatch=None,
+    ):
         self._handler = handler
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
@@ -48,12 +53,17 @@ class CommandManager(Singleton):
         self.command_roots = DEFAULT_COMMAND_ROOTS
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
-        self._users = TortoiseUserRepository()
-        self._clock = SystemClock()
+        self._users = users
+        self._clock = clock
+        self._message_dispatch = message_dispatch
 
     def configure_runtime(self, runtime):
         self._runtime = runtime
-        MessageDispatch.instance().configure_runtime(runtime)
+        dispatch = self._message_dispatch
+        if dispatch is None and self.controller is not None:
+            dispatch = getattr(self.controller, "message_dispatch", None)
+        if dispatch is not None:
+            dispatch.configure_runtime(runtime)
 
     @property
     def runtime(self):
@@ -73,7 +83,12 @@ class CommandManager(Singleton):
 
     @property
     def message_dispatch(self):
-        return MessageDispatch.instance().bind_handler(self.handler)
+        dispatch = self._message_dispatch
+        if dispatch is None and self.controller is not None:
+            dispatch = getattr(self.controller, "message_dispatch", None)
+        if dispatch is not None and hasattr(dispatch, "bind_handler"):
+            return dispatch.bind_handler(self.handler)
+        return dispatch
 
     def _get_command_controller(self):
         if self.controller is not None:
@@ -256,12 +271,14 @@ class CommandManager(Singleton):
 
     def _dispatch_command(self) -> DispatchCommand:
         config = self.handler.config if self.handler is not None else None
+        users = self._users if self._users is not None else getattr(self.controller, "user_repository", None)
+        clock = self._clock if self._clock is not None else getattr(self.controller, "clock", None)
         return DispatchCommand(
             policy=RolePolicy(config),
             catalogue=self.catalogue,
-            users=self._users,
+            users=users,
             runtime=self.runtime,
-            clock=self._clock,
+            clock=clock,
             silence=command_silence,
             sleep=self._sleep,
             room=self.room_state,

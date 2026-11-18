@@ -9,10 +9,19 @@ __multiple__ = True
 
 import traceback
 
-from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.core.element_wrapper import composed_message_text
-from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.adapters.inbound.runtime.chat_intake import format_quoted_message
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
+
+
+def composed_message_text(wrapper) -> str:
+    """The message text an event should treat as this row's content.
+
+    Quoted Message context is composed in for an ElementWrapper carrying a reply
+    view; other wrappers (e.g. test doubles) contribute their plain ``content``.
+    """
+    quoted = wrapper.quoted_message() if isinstance(wrapper, ElementWrapper) else None
+    return format_quoted_message(wrapper.content or "", quoted)
 
 
 class MessageContentEvent(BaseEvent):
@@ -52,9 +61,7 @@ class MessageContentEvent(BaseEvent):
 
             # 窗口状态与 diff 归 MessageManager：这里只提供本次屏幕上的行，
             # 拿回一个增量（哪些是新行、要不要补漏、补漏的锚点是谁）。
-            from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
-
-            message_manager = MessageManager.instance()
+            message_manager = self.controller.message_manager
             room_owner = await message_manager.resolve_room_owner()
             delta = message_manager.observe(content_list)
 
@@ -84,10 +91,10 @@ class MessageContentEvent(BaseEvent):
         """处理更新逻辑（、播放信息等）- 在没有命令消息时执行"""
         try:
             # Update all commands
-            command_manager = CommandManager.instance()
+            command_manager = self.controller.command_manager
             command_manager.update_commands()
 
             # update playback info
-            PlaybackBroadcaster.instance().update_playback_info_cache()
+            self.controller.playback_broadcaster.update_playback_info_cache()
         except Exception as e:
             self.logger.error(f"Error processing update logic: {str(e)}")

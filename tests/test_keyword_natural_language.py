@@ -44,37 +44,26 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _use_cases(fallback):
+def _use_cases(fallback, message_queue=None):
+    queue = message_queue or MessageQueue()
     users = InMemoryUserRepository()
     return KeywordUseCases(
         repository=InMemoryKeywordRepository(users),
         users=users,
         presence=_Presence(),
-        queue=QueueKeywordCommandSink(MessageQueue.instance()),
+        queue=QueueKeywordCommandSink(queue),
         chat_logs=_ChatLogs(),
         config_source=_NoConfig(),
         fallback=fallback,
         logger=_LOGGER,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _clear_message_queue():
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
-    yield
-    _run(queue.clear_queue())
+    ), queue
 
 
 @pytest.mark.asyncio
 async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
     mock_resolve = AsyncMock()
     fallback = SimpleNamespace(resolve=mock_resolve)
-    use_cases = _use_cases(fallback)
+    use_cases, queue = _use_cases(fallback)
     alice = await use_cases._users.get_or_create("Alice")
     await use_cases._repository.create(
         keyword="520",
@@ -94,7 +83,7 @@ async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
 
     # Assert keyword was executed, resolver was NOT called
     mock_resolve.assert_not_called()
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == ":play love song"
@@ -104,12 +93,10 @@ async def test_keyword_takes_precedence_over_natural_language(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_command(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
     )
-    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
+    use_cases, queue = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -121,7 +108,7 @@ async def test_unmatched_mention_resolves_to_command(monkeypatch):
     await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == ":play 周杰伦 晴天"
@@ -131,12 +118,10 @@ async def test_unmatched_mention_resolves_to_command(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_resolves_to_reply(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="reply", content="你好呀！我是小助手~")
     )
-    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
+    use_cases, queue = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
     intake_result = ChatIntakeResult(
         kind=ChatIntakeKind.KEYWORD_MENTION,
@@ -148,7 +133,7 @@ async def test_unmatched_mention_resolves_to_reply(monkeypatch):
     await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == "你好呀！我是小助手~"
@@ -158,11 +143,9 @@ async def test_unmatched_mention_resolves_to_reply(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
     # Mock resolver returning None (failure or timeout)
     mock_resolve = AsyncMock(return_value=None)
-    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
+    use_cases, queue = _use_cases(SimpleNamespace(resolve=mock_resolve))
     use_cases._default_keyword_command = ":help"
 
     intake_result = ChatIntakeResult(
@@ -175,7 +158,7 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
     await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == ":help"
@@ -186,8 +169,6 @@ async def test_unmatched_mention_fallback_on_resolver_failure(monkeypatch):
 @pytest.mark.asyncio
 async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch):
     """Verify the keyword fallback reads root config (with llm and commands)."""
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-
     root_config = {
         "soul": {"room_owner": "Chainer"},
         "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
@@ -210,7 +191,7 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
         playback_info=lambda: None,
         resolver=resolver,
     )
-    use_cases = _use_cases(fallback)
+    use_cases, queue = _use_cases(fallback)
 
     with patch(
         "ushareiplay.modules.command.use_cases.ResolveNaturalLanguage.resolve",
@@ -231,7 +212,7 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 
         assert resolver.enabled is True
         mock_resolve.assert_awaited_once()
-        messages = await MessageQueue.instance().get_all_messages()
+        messages = await queue.get_all_messages()
         assert len(messages) == 1
         msg = next(iter(messages.values()))
         assert msg.content == ":play 胡彦斌 潇湘雨"
@@ -240,12 +221,11 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 @pytest.mark.asyncio
 async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
     from ushareiplay.adapters.inbound.runtime.chat_intake import classify_chat_line
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 
     mock_resolve = AsyncMock(
         return_value=NaturalLanguageResult(type="command", content=":play 周杰伦 晴天")
     )
-    use_cases = _use_cases(SimpleNamespace(resolve=mock_resolve))
+    use_cases, queue = _use_cases(SimpleNamespace(resolve=mock_resolve))
 
     raw_chat = "souler[Alice]说: @Chainer 帮我放一首周杰伦的晴天"
     intake_result = classify_chat_line(raw_chat, room_owner="Chainer")
@@ -254,7 +234,7 @@ async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
     await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
     mock_resolve.assert_awaited_once()
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == ":play 周杰伦 晴天"
@@ -265,10 +245,10 @@ def test_get_playback_info_enrichment():
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         PlaybackInfoProvider,
     )
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
     from ushareiplay.modules.playback.use_cases import PlaylistSession
 
-    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster = PlaybackBroadcaster()
     playlist_session = PlaylistSession()
 
     broadcaster._playback_info_cache = {
@@ -303,9 +283,9 @@ def test_get_playback_info_tolerates_missing_playlist_context():
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         PlaybackInfoProvider,
     )
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 
-    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster = PlaybackBroadcaster()
     broadcaster._playback_info_cache = {"song": "SongA", "singer": "SingerA"}
 
     info = PlaybackInfoProvider(broadcaster, None, None)()
@@ -315,8 +295,7 @@ def test_get_playback_info_tolerates_missing_playlist_context():
 
 @pytest.mark.asyncio
 async def test_mention_query_own_playlist_e2e(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
     from ushareiplay.modules.playback.use_cases import PlaylistSession
 
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
@@ -342,9 +321,9 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         )(),
         resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
-    use_cases = _use_cases(fallback)
+    use_cases, queue = _use_cases(fallback)
 
-    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster = PlaybackBroadcaster()
     broadcaster._playback_info_cache = {
         "song": "Fictional (Stripped)",
         "singer": "Khloe Rose",
@@ -360,10 +339,6 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         list_mode="playlist",
         play_mode_key="random",
         play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
-    )
-    monkeypatch.setattr(
-        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
-        lambda: fake_music_handler,
     )
 
     captured_payload = {}
@@ -409,7 +384,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     assert "播放模式: 随机播放" in system_prompt
 
     # Verify message queue has the response
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == "[智能] 是的，当前正在播放你的歌单《咿鸭咿鸭yo宝天天开心》哦~"
@@ -419,8 +394,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mention_query_others_playlist_e2e(monkeypatch):
-    from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
     from ushareiplay.modules.playback.use_cases import PlaylistSession
 
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
@@ -446,9 +420,9 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         )(),
         resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
-    use_cases = _use_cases(fallback)
+    use_cases, queue = _use_cases(fallback)
 
-    broadcaster = PlaybackBroadcaster.initialize()
+    broadcaster = PlaybackBroadcaster()
     broadcaster._playback_info_cache = {
         "song": "Fictional (Stripped)",
         "singer": "Khloe Rose",
@@ -462,10 +436,6 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         list_mode="playlist",
         play_mode_key="random",
         play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
-    )
-    monkeypatch.setattr(
-        "ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance",
-        lambda: fake_music_handler,
     )
 
     async def _fake_call_api(payload, timeout=None):
@@ -500,7 +470,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
 
     await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     msg = next(iter(messages.values()))
     assert msg.content == "[智能] 现在播放的不是你的歌单哦，当前正在播放 不约儿童🐏🐏 点播的歌单《咿鸭咿鸭yo宝天天开心》~"

@@ -1,6 +1,6 @@
 import pytest
 
-from ushareiplay.helpers.playlist_parser import PlaylistParser
+from ushareiplay.adapters.outbound.appium.qq_music.playlist_parser import PlaylistParser
 
 
 @pytest.fixture

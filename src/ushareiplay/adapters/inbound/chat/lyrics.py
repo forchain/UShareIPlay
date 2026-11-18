@@ -1,4 +1,4 @@
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from datetime import datetime, timedelta
 from langdetect import detect_langs
 import langdetect

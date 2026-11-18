@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from ushareiplay.adapters.inbound.chat.admin import AdminCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.room.domain import RoomAdmins
 from ushareiplay.modules.room.use_cases import ManageAdmin, OnlineDrawer
 from ushareiplay.modules.shared.roles import RolePolicy

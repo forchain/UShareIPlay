@@ -1,4 +1,4 @@
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class RecommendCommand(BaseCommand):

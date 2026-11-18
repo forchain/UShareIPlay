@@ -3,7 +3,7 @@
 解析与渲染都在 `UserEventHooks` 内部；这里只做参数转译。
 """
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.seat.macros import SEAT_INFO_CTX_KEY
 from ushareiplay.modules.room.registry import FOCUS
 

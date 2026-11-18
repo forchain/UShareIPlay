@@ -20,9 +20,9 @@ from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
 )
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.room.registry import (
     ALIAS_GROUP,
     ENTER,
@@ -48,10 +48,15 @@ async def db_init():
     await manager.close()
 
 
+@pytest.fixture
+def queue():
+    return MessageQueue()
+
+
 @pytest_asyncio.fixture
-async def hooks(db_init):
+async def hooks(db_init, queue):
     """The engine under test, wired like the composition root."""
-    return make_hooks()
+    return make_hooks(message_queue=queue)
 
 
 def make_controller(hooks):
@@ -62,9 +67,9 @@ def make_controller(hooks):
     )
 
 
-async def drain_messages():
+async def drain_messages(queue: MessageQueue):
     """Take everything the engine enqueued, in insertion order."""
-    queued = await MessageQueue.instance().get_all_messages()
+    queued = await queue.get_all_messages()
     return list(queued.values())
 
 
@@ -160,7 +165,7 @@ async def test_dao_receive_resolves_alias_group(db_init):
     """收礼物命令按 alias-group 解析：别名能找到主账号下发的命令。"""
     assert spec_for(RECEIVE).resolution is ALIAS_GROUP
 
-    outlier = await UserDAO.get_or_create_raw("Outlier")
+    outlier = await TortoiseUserRepository().get_or_create_raw("Outlier")
     await User.create(username="Chainer", level=0, canonical_user_id=outlier.id)
 
     repository = TortoiseUserEventHookRepository()
@@ -183,12 +188,13 @@ async def test_dao_alias_group_also_covers_rows_bound_to_an_alias_id(db_init):
     """
     assert spec_for(RECEIVE).resolution is ALIAS_GROUP
 
+    repo = TortoiseUserRepository()
     repository = TortoiseUserEventHookRepository()
-    chainer = await UserDAO.get_or_create_raw("Chainer")
+    chainer = await repo.get_or_create_raw("Chainer")
     await repository.create(RECEIVE, "Chainer", ":say 下发于分身名下")
 
-    outlier = await UserDAO.get_or_create_raw("Outlier")
-    await User.filter(id=chainer.id).update(canonical_user_id=outlier.id)
+    outlier = await repo.get_or_create_raw("Outlier")
+    await repo.set_canonical(chainer.id, outlier.id)
 
     rows = await repository.get_by_username(RECEIVE, "Outlier")
     assert [row.command for row in rows] == [":say 下发于分身名下"]
@@ -202,7 +208,7 @@ async def test_dao_alias_group_also_covers_rows_bound_to_an_alias_id(db_init):
 async def test_dao_single_id_resolution_stays_on_the_canonical_id(db_init, event_type):
     """其余事件类型是 single-id 口径：只认 canonical 主账号那一个 id。
 
-    注意这不等于「分身查不到主账号的命令」—— `UserDAO.get_or_create` 会把分身解析
+    注意这不等于「分身查不到主账号的命令」—— `TortoiseUserRepository.get_or_create` 会把分身解析
     回主账号，所以那条路两边一致。真正的差别在于挂在分身自己 id 上的命令：single-id
     一旦分身关联建立，从任何名字都够不着它，alias-group 则仍能捞到。
 
@@ -210,12 +216,13 @@ async def test_dao_single_id_resolution_stays_on_the_canonical_id(db_init, event
     """
     assert spec_for(event_type).resolution is SINGLE_ID
 
+    repo = TortoiseUserRepository()
     repository = TortoiseUserEventHookRepository()
-    chainer = await UserDAO.get_or_create_raw("Chainer")
+    chainer = await repo.get_or_create_raw("Chainer")
     await repository.create(event_type, "Chainer", ":play 下发于分身名下")
 
-    outlier = await UserDAO.get_or_create_raw("Outlier")
-    await User.filter(id=chainer.id).update(canonical_user_id=outlier.id)
+    outlier = await repo.get_or_create_raw("Outlier")
+    await repo.set_canonical(chainer.id, outlier.id)
 
     # single-id：无论按主账号还是按分身查，都只看 canonical 那一个 id
     assert len(await repository.get_by_username(event_type, "Outlier")) == 0
@@ -351,12 +358,12 @@ async def test_execute_crud_renders_per_event_type_wording(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_fire_enqueues_message_info(db_init, hooks):
+async def test_fire_enqueues_message_info(db_init, hooks, queue):
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play 起风了"')
 
     await hooks.fire(ENTER, "Alice")
 
-    queued = await drain_messages()
+    queued = await drain_messages(queue)
     assert len(queued) == 1
     assert isinstance(queued[0], MessageInfo)
     assert queued[0].content == ":play 起风了"
@@ -364,23 +371,23 @@ async def test_fire_enqueues_message_info(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_fire_without_configuration_enqueues_nothing(db_init, hooks):
+async def test_fire_without_configuration_enqueues_nothing(db_init, hooks, queue):
     await hooks.fire(ENTER, "Nobody")
-    assert await drain_messages() == []
+    assert await drain_messages(queue) == []
 
 
 @pytest.mark.asyncio
-async def test_fire_accepts_realtime_context(db_init, hooks):
+async def test_fire_accepts_realtime_context(db_init, hooks, queue):
     """`ctx` 是可选的实时上下文（人数前后值等），不参与命令内容。"""
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play one"')
     await hooks.fire(ENTER, "Alice", {"before": 1, "after": 2})
 
-    queued = await drain_messages()
+    queued = await drain_messages(queue)
     assert [msg.content for msg in queued] == [":play one"]
 
 
 @pytest.mark.asyncio
-async def test_fire_with_none_username_uses_all_configured_users(db_init, hooks):
+async def test_fire_with_none_username_uses_all_configured_users(db_init, hooks, queue):
     """`username=None` 是专注人数联动的向后兼容回退：执行所有已配置用户。
 
     #433 起 `fire()` 同时负责入队前的宏替换，所以没有座位观测时 `{seat}` /
@@ -391,7 +398,7 @@ async def test_fire_with_none_username_uses_all_configured_users(db_init, hooks)
 
     await hooks.fire(FOCUS, None, {})
 
-    queued = await drain_messages()
+    queued = await drain_messages(queue)
     assert sorted(msg.content for msg in queued) == [":seat ", ":wave Bob"]
     assert sorted(msg.nickname for msg in queued) == ["Alice", "Bob"]
 
@@ -418,12 +425,12 @@ async def test_enter_command_is_a_thin_adapter(db_init, hooks):
 
 
 @pytest.mark.asyncio
-async def test_enter_command_user_enter_delegates_to_fire(db_init, hooks):
+async def test_enter_command_user_enter_delegates_to_fire(db_init, hooks, queue):
     """`user_enter` 仍是命令上的可调用钩子（事件接缝，测试直接调用它）。"""
     await hooks.execute_crud(ENTER, "Alice", ':enter add ":play 起风了"')
 
     command = EnterCommand(make_controller(hooks))
     await command.user_enter("Alice")
 
-    queued = await drain_messages()
+    queued = await drain_messages(queue)
     assert [(msg.content, msg.nickname) for msg in queued] == [(":play 起风了", "Alice")]

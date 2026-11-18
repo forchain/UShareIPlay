@@ -9,7 +9,9 @@ import pytest
 
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.modules.playback.use_cases import PlaybackMuting
-from tests.legacy_state import RoomState
+from ushareiplay.modules.room import RoomStateService
+
+_ROOM_STATE = RoomStateService()
 
 
 class _Logger:
@@ -76,15 +78,14 @@ def _make_coordinator(mic_state=True, config=None, ready=True):
         mic=_MicManager(events, state=mic_state),
         media_session=music_manager,
         config=soul_handler.config,
-        is_guest_room=lambda: RoomState.instance().is_guest_room,
+        is_guest_room=lambda: _ROOM_STATE.is_guest_room,
         logger=soul_handler.logger,
     )
     return coordinator, events
 
 
 def _set_guest_room(is_guest: bool):
-    RoomState.reset_instance()
-    RoomState.initialize().is_guest_room = is_guest
+    _ROOM_STATE.is_guest_room = is_guest
 
 
 # --------------------------------------------------------------------------
@@ -248,7 +249,7 @@ def test_settings_ignore_unknown_keys():
 
 
 def test_shipped_config_declares_playback_mute_defaults():
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 
     config = ConfigLoader.load_config()
 

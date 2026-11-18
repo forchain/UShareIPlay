@@ -4,13 +4,12 @@ import pytest
 
 from ushareiplay.modules.room import InfoManager, PresenceTracker
 from ushareiplay.modules.playback.use_cases import PlaylistSession
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from tests.room_support import configured_room_state
 
 
 @pytest.fixture
 def info_manager():
-    PlaybackBroadcaster.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
@@ -19,8 +18,7 @@ def info_manager():
     room_state = configured_room_state(logger=fake_logger)
     presence = PresenceTracker(logger=fake_logger)
     playlist = PlaylistSession(logger=fake_logger)
-    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
-    broadcaster._logger = fake_logger
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist, logger=fake_logger)
     return InfoManager(
         room_state=room_state,
         presence=presence,
@@ -63,7 +61,7 @@ def test_facade_delegates_online_users(info_manager):
 
 def test_facade_delegates_playback_info_cache(info_manager):
     cache = {"song": "SongA", "singer": "SingerA", "album": "AlbumA"}
-    PlaybackBroadcaster.instance()._playback_info_cache = cache
+    info_manager._playback_cache._playback_info_cache = cache
     assert info_manager.get_playback_info_cache() is cache
 
 

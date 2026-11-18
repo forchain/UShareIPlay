@@ -4,7 +4,7 @@
 解析用户（主账号配置的命令对其任意分身都生效），这条口径由注册表声明。
 """
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.room.registry import RECEIVE
 
 

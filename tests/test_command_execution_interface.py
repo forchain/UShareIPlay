@@ -4,7 +4,7 @@ from collections import deque
 from types import SimpleNamespace
 
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 def _run(coro):
@@ -151,19 +151,15 @@ def test_focus_app_for_queued_commands_does_not_execute_scanned_rows_inline():
     rather than quietly recording a call.
     """
     from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
 
     fake_command_manager = object()
-    original_cmd_instance = CommandManager.instance
-    try:
-        CommandManager.instance = classmethod(lambda cls: fake_command_manager)
-        manager = MessageManager.instance()
-        manager._handler = _FakeHandler()
-        manager._chat_logger = logging.getLogger("test_chat_logger_scan")
-        MessageQueue.instance()
-        manager.observe(["souler[Alice]说：$play 123"])
+    manager = MessageManager(
+        handler=_FakeHandler(),
+        message_queue=MessageQueue(),
+        command_manager=fake_command_manager,
+    )
+    manager._chat_logger = logging.getLogger("test_chat_logger_scan")
+    manager.observe(["souler[Alice]说：$play 123"])
 
-        assert _run(manager.focus_app_for_queued_commands()) is True
-    finally:
-        CommandManager.instance = original_cmd_instance
+    assert _run(manager.focus_app_for_queued_commands()) is True

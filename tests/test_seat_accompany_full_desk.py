@@ -38,7 +38,6 @@ from tests.test_seat_panel_delegation import (
     RecordingNode,
     make_popup_handler,
 )
-from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.modules.seat.domain import AvatarTapPolicy, SeatCardView
 from tests.seat_support import _SeatPanelWithCustomUI, build_seat_service
 

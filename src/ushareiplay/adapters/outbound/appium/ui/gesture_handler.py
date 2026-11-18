@@ -11,7 +11,7 @@ from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.remote.webelement import WebElement
 
 from ushareiplay.adapters.outbound.appium.locator import Locator
-from ushareiplay.core.driver_decorator import with_driver_recovery
+from ushareiplay.adapters.outbound.appium.driver_decorator import with_driver_recovery
 
 
 class GestureHandler:

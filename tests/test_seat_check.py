@@ -6,7 +6,7 @@ import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
 from tests.seat_fixtures import LIVE_DESK_ORIGIN, MOCK_DESK_HEIGHT, MOCK_DESK_WIDTH, MOCK_DESK_X
-from ushareiplay.core.app_controller import AppController
+from ushareiplay.bootstrap.container import AppContainer
 from ushareiplay.core.runtime_context import EventRuntimeContext
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
 from ushareiplay.modules.seat import use_cases as seat_check_module
@@ -223,7 +223,7 @@ async def test_occupied_seat_flow_survives_event_manager_fallback_back(monkeypat
     dom = _FakeDom()
     handler = _CardHandler([_desk() for _ in range(6)], dom)
 
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.ui_lock = asyncio.Lock()
     controller.logger = None  # ui_session only logs when a logger is attached
     handler.controller = controller
@@ -278,7 +278,7 @@ async def test_seat_check_flow_does_not_deadlock_inside_a_held_command_session(m
     dom = _FakeDom()
     handler = _CardHandler([_desk() for _ in range(6)], dom)
 
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.ui_lock = asyncio.Lock()
     controller.logger = None
     handler.controller = controller

@@ -5,8 +5,7 @@ import logging
 from typing import List, Optional
 
 from ushareiplay.modules.shared.config import ConfigSectionView
-from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.models import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class PostPartyCreateAutomation:
@@ -18,8 +17,9 @@ class PostPartyCreateAutomation:
     - 仅对“新建派对成功”触发一次（AND+once 门闩语义）
     """
 
-    def __init__(self, controller):
+    def __init__(self, controller, *, message_queue=None):
         self.controller = controller
+        self._message_queue = message_queue
 
         # Latch state (AND + once)
         self._party_created_new: bool = False
@@ -112,7 +112,9 @@ class PostPartyCreateAutomation:
             )
             from ushareiplay.modules.shared.roles import RolePolicy
             owner = RolePolicy(getattr(self.controller, "config", None)).room_owner
-            queue = MessageQueue.instance()
+            queue = self._message_queue if self._message_queue is not None else getattr(self.controller, "message_queue", None)
+            if queue is None:
+                raise RuntimeError("PostPartyCreateAutomation requires message_queue")
             for cmd in cmds:
                 await queue.put_message(MessageInfo(content=cmd, nickname=owner))
             self._fired = True

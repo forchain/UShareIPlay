@@ -8,7 +8,7 @@ exemption expires once the requested song has played.
 
 from types import SimpleNamespace
 
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
@@ -42,13 +42,10 @@ class _FakeMusicHandler:
 
 
 def _make_music_manager(handler=None):
-    from ushareiplay.managers.music_manager import MusicManager
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 
-    manager = MusicManager.__new__(MusicManager)
-    manager._handler = None
-    manager.logger = _Logger()
     handler = handler or _FakeMusicHandler()
-    manager.music_handler = handler
+    manager = MusicManager(music_handler=handler, config=handler.config)
     manager._song_release_lookup = SimpleNamespace(
         get_release_date=lambda _query: handler.release_date
     )
@@ -67,15 +64,14 @@ class _FakeDispatch:
 
 
 def _make_broadcaster(manager):
-    PlaybackBroadcaster.reset_instance()
-    broadcaster = PlaybackBroadcaster.initialize()
-    broadcaster._logger = _Logger()
-    broadcaster._music_manager = manager
-    broadcaster._soul_handler = SimpleNamespace(
-        config=ConfigSectionView("soul", {"broadcast_playing_info": True})
+    return PlaybackBroadcaster(
+        music_manager=manager,
+        messenger=_FakeDispatch(),
+        handler=SimpleNamespace(
+            config=ConfigSectionView("soul", {"broadcast_playing_info": True})
+        ),
+        logger=_Logger(),
     )
-    broadcaster._message_dispatch = _FakeDispatch()
-    return broadcaster
 
 
 # --------------------------------------------------------------------------

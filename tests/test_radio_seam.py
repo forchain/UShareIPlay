@@ -21,7 +21,7 @@ from ushareiplay.adapters.inbound.chat.radio import RadioCommand
 from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackRequest
 from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import PLAY_ALL_KEYS
 from ushareiplay.modules.playback.use_cases import primary_topic
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 # 老歌过滤的判定基准。与 config.yaml 的默认值一致，让测试里的「1995 年」
@@ -317,15 +317,22 @@ class _ReleaseLookup:
         return self.dates.get(query)
 
 
-@pytest.fixture
-def music_manager(initialized_test_singletons):
-    """驱动里的老歌判定要走真实的 `MusicManager`，这里只换掉它的日期查询。"""
-    from ushareiplay.managers.music_manager import MusicManager
+_ACTIVE_MUSIC_MANAGER = None
 
-    manager = MusicManager.initialize()
-    manager.music_handler = SimpleNamespace(config=ConfigView({}))
+
+@pytest.fixture
+def music_manager():
+    """驱动里的老歌判定要走真实的 `MusicManager`，这里只换掉它的日期查询。"""
+    global _ACTIVE_MUSIC_MANAGER
+    from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+
+    manager = MusicManager(
+        music_handler=SimpleNamespace(config=ConfigView({})),
+    )
     manager._song_release_lookup = _ReleaseLookup({})
-    return manager
+    _ACTIVE_MUSIC_MANAGER = manager
+    yield manager
+    _ACTIVE_MUSIC_MANAGER = None
 
 
 def _filter_config(**overrides):
@@ -336,12 +343,11 @@ def _filter_config(**overrides):
 
 def _driver(elements, actions, setup=None, **kwargs):
     from ushareiplay.adapters.outbound.appium.qq_music.qq_music_ui_driver import QQMusicUIDriver
-    from ushareiplay.managers.music_manager import MusicManager
 
     handler = _RadioHandlerFake(elements, actions, **kwargs)
     if setup is not None:
         setup(handler)
-    manager = MusicManager.instance() if MusicManager.is_initialized() else None
+    manager = _ACTIVE_MUSIC_MANAGER
     return QQMusicUIDriver(
         handler,
         quality_checker=manager,

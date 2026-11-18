@@ -2,7 +2,7 @@
 
 放在 `playback/qq_music_ui_driver.py` 而不是 `playback/driver.py`，是为了守住
 `driver.py` 的导入纯净：端口模块被 `MusicManager` 与全部测试直接导入，一旦它
-顶层引入 `QQMusicHandler`（而后者经 `MusicManager.instance()` 反向依赖
+顶层引入 `QQMusicHandler`（而后者经组合根注入的 `MusicManager` 反向依赖
 `music_manager`），就形成 `driver → handler → music_manager → driver` 的循环引用，
 与 ADR-0009 §4 已经为 `PlaybackMuting` 解开的那个环同型。拆成独立模块后，
 本模块的依赖方向是单向的 `qq_music_ui_driver → driver → models`。
@@ -21,8 +21,8 @@ from typing import Any, Callable, Optional
 from appium.webdriver.common.appiumby import AppiumBy
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 
-from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
-from ushareiplay.helpers.playlist_parser import PlaylistParser
+from ushareiplay.adapters.outbound.appium.qq_music.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.adapters.outbound.appium.qq_music.playlist_parser import PlaylistParser
 from ushareiplay.modules.playback.ports import MusicUIDriverPort
 from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,

@@ -5,7 +5,7 @@ import logging
 from typing import ClassVar, Optional, Tuple
 
 from ushareiplay.adapters.outbound.appium.locator import Locator
-from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.modules.seat.domain import Reading, is_seat_number_label
 

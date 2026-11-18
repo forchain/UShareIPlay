@@ -1,6 +1,6 @@
 import re
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.timer.domain import TimerError, is_time_token
 
 

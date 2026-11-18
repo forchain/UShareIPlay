@@ -1,6 +1,6 @@
 """`:enter` 命令：用户事件钩子引擎的薄适配器。"""
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.room.registry import ENTER
 
 

@@ -1,6 +1,6 @@
 """`:mic` 入站适配器：决定目标状态，交给 `ToggleMic`。"""
 
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
 
 class MicCommand(BaseCommand):

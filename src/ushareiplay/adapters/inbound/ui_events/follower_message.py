@@ -5,7 +5,7 @@
 UI 动作：写聊天日志、建用户记录、触发 return、点打招呼并发送。
 """
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 from ushareiplay.adapters.inbound.runtime.chat_intake import ChatIntakeKind, classify_banner_line
 
 
@@ -42,8 +42,7 @@ class FollowerMessageEvent(BaseEvent):
             self.last_follower_message = message_text
 
             # 记录到聊天日志
-            from ushareiplay.adapters.inbound.runtime.message_manager import get_chat_logger
-            chat_logger = get_chat_logger(self.handler.config)
+            chat_logger = self.controller.message_manager.chat_logger
             chat_logger.critical(message_text)
 
             # 解析消息（横幅文法归 Chat Intake）
@@ -53,9 +52,7 @@ class FollowerMessageEvent(BaseEvent):
             if nickname:
                 # 创建用户记录（异步操作）
                 try:
-                    from ushareiplay.dal.user_dao import UserDAO
-                    # 在事件循环中创建任务
-                    await UserDAO.get_or_create(nickname)
+                    await self.controller.user_repository.get_or_create(nickname)
                     self.logger.info(f"Creating user record for: {nickname}")
                 except Exception as e:
                     self.logger.error(f"Error creating user record: {str(e)}")
@@ -69,13 +66,11 @@ class FollowerMessageEvent(BaseEvent):
 
             # 触发用户返回事件（若符合 return 条件）
             try:
-                from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
                 presence_tracker = self.controller.presence
                 if presence_tracker is not None and presence_tracker.should_trigger_return(nickname):
                     presence_tracker.record_return(nickname)
                     self.logger.critical(f"User returned: {nickname}")
-                    await CommandManager.instance().notify_user_return(nickname)
+                    await self.controller.command_manager.notify_user_return(nickname)
                 else:
                     self.logger.info(
                         f"Follower banner for {nickname} skipped return event (not online or recently entered/returned)"

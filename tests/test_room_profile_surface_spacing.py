@@ -27,13 +27,13 @@ from datetime import datetime, timedelta
 import pytest
 
 from tests.room_profile_support import RoomProfileManager
+from ushareiplay.modules.room.use_cases import RoomStateService
 from ushareiplay.modules.room.domain import (
     SURFACE_SPACING_SECONDS,
     ProfileDraftStore,
 )
 from unittest.mock import MagicMock
 
-from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
 # 抽屉里同时摆着房名那一行与公告那一行：表面节奏闸与「当场补公告」都要能被考到。
@@ -93,15 +93,6 @@ class _Handler:
         return None
 
 
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-    yield
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-
-
 def _now():
     return datetime.now()
 
@@ -151,8 +142,10 @@ def test_a_field_never_touched_needs_no_surface_history():
 
 
 def _profile(driver=None, handler=None):
-    profile = RoomProfileManager.initialize(
-        handler=handler or _Handler(), drawer_driver=driver
+    profile = RoomProfileManager(
+        handler=handler or _Handler(),
+        drawer_driver=driver,
+        room_state=RoomStateService(),
     )
     profile.title_settle_seconds = 0
     return profile
@@ -167,7 +160,6 @@ def _driver():
 
 def test_set_title_after_a_topic_write_does_not_promise_soon():
     """用户看到的第一个谎：`queued ... will be updated soon`，6 秒后却被服务端拒绝。"""
-    RoomState.initialize()
     profile = _profile(_driver())
     profile.drafts.mark_attempted('topic', now=_now())  # 话题刚刚写成功
 
@@ -178,7 +170,6 @@ def test_set_title_after_a_topic_write_does_not_promise_soon():
 
 def test_the_heartbeat_does_not_spend_the_room_name_budget_on_a_hot_surface():
     """表面正热时心跳**不去点编辑层**，也就不会被拒、不会被罚一整个 10 分钟周期。"""
-    RoomState.initialize()
     driver = _driver()
     profile = _profile(driver)
 
@@ -194,7 +185,6 @@ def test_the_heartbeat_does_not_spend_the_room_name_budget_on_a_hot_surface():
 
 def test_the_same_title_is_written_once_the_surface_has_quieted():
     """下一拍：表面安静了，房名照常写出去（预算没被误烧，所以不用等 10 分钟）。"""
-    RoomState.initialize()
     driver = _driver()
     profile = _profile(driver)
 
@@ -215,7 +205,6 @@ def test_the_notice_restore_inside_an_open_drawer_is_never_deferred_by_spacing()
     表面节奏闸只管「开始一次新的写入」，绝不能把会话内部的连带动作推去排队 ——
     那正是 `can_apply_now` 与 `can_start_write` 必须分开的理由。
     """
-    RoomState.initialize()
     profile = _profile(_driver())
     profile.drafts.mark_attempted('title', now=_now())  # 房名刚写过（表面与预算都热）
 

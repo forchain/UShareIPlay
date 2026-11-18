@@ -33,17 +33,16 @@ class FakeRuntime:
         return self.busy
 
 
-def test_chat_room_title_skips_room_profile_manager_when_runtime_ui_busy(monkeypatch):
+def test_chat_room_title_skips_room_profile_manager_when_runtime_ui_busy():
     runtime = FakeRuntime(busy=True)
 
-    def fail_if_room_profile_manager_is_touched():
-        pytest.fail("RoomProfileManager.instance should not be called while UI is busy")
+    class _UntouchedRoomProfileManager:
+        def __getattr__(self, name):
+            pytest.fail("room profile manager must not be touched while UI is busy")
 
-    monkeypatch.setattr(
-        RoomProfileManager, "instance", fail_if_room_profile_manager_is_touched
+    event = ChatRoomTitleEvent(
+        FakeHandler(_UntouchedRoomProfileManager()), runtime=runtime
     )
-
-    event = ChatRoomTitleEvent(FakeHandler(), runtime=runtime)
 
     handled = asyncio.run(event.handle("chat_room_title", None))
 
@@ -51,23 +50,20 @@ def test_chat_room_title_skips_room_profile_manager_when_runtime_ui_busy(monkeyp
     assert runtime.calls == 1
 
 
-def test_chat_room_title_busy_skip_does_not_consume_throttle(monkeypatch):
+def test_chat_room_title_busy_skip_does_not_consume_throttle():
     runtime = FakeRuntime(busy=True)
     room_profile_manager_calls = 0
 
     class FakeRoomProfileManager:
         def get_next_title(self):
+            nonlocal room_profile_manager_calls
+            room_profile_manager_calls += 1
             return None
 
         def get_room_title_text_from_ui(self):
+            nonlocal room_profile_manager_calls
+            room_profile_manager_calls += 1
             return None
-
-    def room_profile_manager_instance():
-        nonlocal room_profile_manager_calls
-        room_profile_manager_calls += 1
-        return FakeRoomProfileManager()
-
-    monkeypatch.setattr(RoomProfileManager, "instance", room_profile_manager_instance)
 
     event = ChatRoomTitleEvent(
         FakeHandler(FakeRoomProfileManager()), runtime=runtime

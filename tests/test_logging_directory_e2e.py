@@ -42,7 +42,7 @@ def test_probe_log_file_written_next_to_repo_not_inside(tmp_path: Path, monkeypa
     )
     monkeypatch.chdir(project)
 
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
     from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
     cfg = ConfigLoader.load_config("config.yaml")
@@ -67,7 +67,7 @@ def test_filehandler_writes_resolved_log_directory(tmp_path: Path, monkeypatch) 
     )
     monkeypatch.chdir(project)
 
-    from ushareiplay.core.config_loader import ConfigLoader
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
     from ushareiplay.core.paths import ensure_dir, resolve_log_directory
 
     cfg = ConfigLoader.load_config("config.yaml")

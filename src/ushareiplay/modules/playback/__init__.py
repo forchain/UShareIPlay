@@ -1,5 +1,6 @@
 """播放业务包：领域模型、出站端口与播放/切歌用例。"""
 
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_DISABLED_ERROR,
     ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
@@ -71,6 +72,7 @@ __all__ = [
     "PlayModeOutcome",
     "PlayNext",
     "PlaySong",
+    "PlaybackBroadcaster",
     "PlaybackControlPort",
     "PlaybackMode",
     "PlaybackMuting",

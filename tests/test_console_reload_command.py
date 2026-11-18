@@ -47,6 +47,7 @@ def _pipeline(items=(), reload_config=None, is_admin=None, owner="Joyer"):
         room_owner_provider=lambda: owner,
         logger=logger,
         send_screen_message=screen.append,
+        message_queue=MessageQueue(),
         reload_config=reload_config,
         is_admin=is_admin,
     )
@@ -59,7 +60,6 @@ def _echoes(logger):
 
 @pytest.mark.asyncio
 async def test_reload_command_triggers_the_reload_and_echoes_the_result():
-    await MessageQueue.instance().clear_queue()
     calls = []
 
     def reload_config():
@@ -77,15 +77,13 @@ async def test_reload_command_triggers_the_reload_and_echoes_the_result():
 
 @pytest.mark.asyncio
 async def test_reload_is_consumed_and_never_reaches_the_public_screen():
-    await MessageQueue.instance().clear_queue()
-
     _pipeline_out, screen, _logger = _pipeline(
         [{"content": "!reload", "source": "console"}], reload_config=lambda: "ok"
     )
     await _pipeline_out.drain()
 
     assert screen == []
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await _pipeline_out.message_queue.get_all_messages() == {}
 
 
 @pytest.mark.asyncio

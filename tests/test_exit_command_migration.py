@@ -14,13 +14,16 @@ import pytest_asyncio
 from ushareiplay.adapters.inbound.chat.exit import ExitCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.dal.user_dao import UserDAO
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.modules.room.registry import ENTER, EXIT, spec_for
 from ushareiplay.modules.room.use_cases import PresenceTracker
 from ushareiplay.adapters.outbound.persistence.models import User
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from tests.room_support import make_hooks
+
+UserDAO = TortoiseUserRepository()
+_TEST_QUEUE = MessageQueue()
 
 
 @pytest_asyncio.fixture
@@ -54,7 +57,8 @@ def memory_sink():
 @pytest_asyncio.fixture
 async def hooks(db_init, presence, memory_sink):
     """The engine under test, wired like the composition root."""
-    return make_hooks(presence=presence, memory=memory_sink)
+    await _TEST_QUEUE.clear_queue()
+    return make_hooks(presence=presence, memory=memory_sink, message_queue=_TEST_QUEUE)
 
 
 @pytest_asyncio.fixture
@@ -93,7 +97,7 @@ def make_controller(hooks):
 
 async def drain_messages():
     """Take everything the engine enqueued, in insertion order."""
-    queued = await MessageQueue.instance().get_all_messages()
+    queued = await _TEST_QUEUE.get_all_messages()
     return list(queued.values())
 
 
@@ -242,8 +246,7 @@ async def test_notify_user_leave_delegates_to_fire(
 ):
     online_users({"张三"})
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
 
     await cm.notify_user_leave("明明")
 
@@ -258,8 +261,7 @@ async def test_notify_user_leave_skips_when_an_alias_is_still_online(
 ):
     online_users({"小明"})
     await hooks.execute_crud(EXIT, "小明", ':exit add ":play 稻香"')
-    cm = CommandManager.instance()
-    cm.user_event_hooks = hooks
+    cm = CommandManager(user_event_hooks=hooks)
 
     await cm.notify_user_leave("明明")
 

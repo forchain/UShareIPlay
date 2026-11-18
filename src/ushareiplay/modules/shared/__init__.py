@@ -10,6 +10,7 @@ from ushareiplay.modules.shared.config import (
     REQUIRED_ELEMENTS,
 )
 from ushareiplay.modules.shared.errors import DomainError
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.names import CanonicalName, VisibleName
 from ushareiplay.modules.shared.ports import Clock, RoomMessenger, UISession
 from ushareiplay.modules.shared.roles import (
@@ -33,6 +34,7 @@ __all__ = [
     "DEFAULT_ROOM_OWNER",
     "DEFAULT_SYSTEM_USERS",
     "DomainError",
+    "MessageInfo",
     "MissingConfigKey",
     "MissingConfigSection",
     "MissingElementKey",

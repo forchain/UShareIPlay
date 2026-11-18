@@ -143,3 +143,12 @@ async def assert_avatar_and_associated_ids(repository):
         canonical.id,
         avatar.id,
     }
+
+
+async def assert_find_first_by_level(repository):
+    assert await repository.find_first_by_level(9) is None
+    alice = await repository.get_or_create("alice")
+    await repository.update_level(alice.id, 9)
+    found = await repository.find_first_by_level(9)
+    assert found is not None
+    assert found.username.value == "alice"

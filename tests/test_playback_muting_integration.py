@@ -16,7 +16,7 @@ import pytest
 
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.modules.playback.use_cases import PlaybackMuting
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
@@ -58,14 +58,6 @@ class _Recorder:
 
     async def send_for_message_info(self, message_info, response, silent=False):
         self.events.append(f"notify:{response}")
-
-
-class _DispatchStub:
-    recorder = None
-
-    @classmethod
-    def instance(cls):
-        return cls.recorder
 
 
 class _SoulHandler:
@@ -113,9 +105,9 @@ def _make_coordinator(events):
 
 def _make_manager(monkeypatch, command, coordinator):
     manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
-    _DispatchStub.recorder = _Recorder(coordinator.soul_handler.events)
-    monkeypatch.setattr("ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch", _DispatchStub)
+    manager.__init__(
+        message_dispatch=_Recorder(coordinator.soul_handler.events)
+    )
     manager.configure_runtime(_Runtime())
     manager._logger = _Logger()
     manager._handler = SimpleNamespace(
@@ -191,7 +183,7 @@ def test_playback_commands_leave_mic_activation_to_the_coordinator():
 
 
 def test_base_command_declares_no_muting_hooks():
-    from ushareiplay.core.base_command import BaseCommand
+    from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 
     assert not hasattr(BaseCommand, "playback_muting")
     assert not hasattr(BaseCommand, "playback_expected_song")

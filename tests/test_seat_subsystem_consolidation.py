@@ -21,7 +21,7 @@ from tests.seat_fixtures import FakeController, make_handler, soul_elements
 from tests.seat_support import build_seat_service
 
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import SeatPanelDriver
-from ushareiplay.core.app_controller import AppController
+from ushareiplay.bootstrap.container import AppContainer
 from ushareiplay.modules.seat.domain import (
     GUEST_ROOM_CHAT_SCAN_RESULT,
     GUEST_ROOM_EMPTY_DESK_RESULT,
@@ -73,13 +73,11 @@ class _RecordingPanel:
 @pytest.fixture
 def _guest_room():
     """他人房间开关（客房守卫的判据），用完复原。"""
-    from tests.legacy_state import RoomState
+    from ushareiplay.modules.room.use_cases import RoomStateService
 
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
     yield room_state
-    RoomState.reset_instance()
 
 
 def _manager_with_panel(panel):
@@ -261,7 +259,9 @@ async def test_guest_room_guard_still_short_circuits_every_public_interface(
     证明的是守卫真的在门面就短路了，而不是「某个替身没被 await 到」。
     """
     manager = build_seat_service(
-        make_handler(controller=None), seat_ui=_RecordingPanel(expanded=True)
+        make_handler(controller=None),
+        seat_ui=_RecordingPanel(expanded=True),
+        room_state=_guest_room,
     )
 
     def _explode(*_args, **_kwargs):
@@ -352,7 +352,7 @@ async def test_subsystem_ui_session_is_caller_held_and_degrades_without_controll
 
 
 async def test_nested_ui_session_inside_a_held_command_session_does_not_self_deadlock():
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.ui_lock = asyncio.Lock()
     controller.logger = None
     handler = make_handler(controller=controller)

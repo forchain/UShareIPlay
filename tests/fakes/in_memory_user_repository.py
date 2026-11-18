@@ -125,3 +125,10 @@ class InMemoryUserRepository(UserRepository):
 
     async def set_canonical(self, alias_id: int, canonical_id: int) -> User:
         return self._with(self._users[alias_id], canonical_user_id=canonical_id)
+
+    async def find_first_by_level(self, level: int) -> Optional[User]:
+        for user_id in sorted(self._users):
+            user = self._users[user_id]
+            if user.level == level:
+                return user
+        return None

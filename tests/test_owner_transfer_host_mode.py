@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.legacy_state import RoomState
+from ushareiplay.modules.room import RoomStateService
 
 HOST_ROOM_ID = "FM15321640"   # soul.default_party_id in config.yaml
 GUEST_ROOM_ID = "FM18633292"  # someone else's room we were invited into
@@ -67,26 +67,15 @@ class _DummyCommand:
         return {"message": "OK"}
 
 
-@pytest.fixture(autouse=True)
-def _isolate_singletons():
-    from ushareiplay.core.message_dispatch import MessageDispatch
-    from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-    MessageDispatch.initialize()
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+def _room_state():
+    room_state = RoomStateService()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)
-    yield
-    CommandManager.reset_instance()
-    MessageDispatch.reset_instance()
-    RoomState.reset_instance()
+    return room_state
 
 
 def _guest_room_state(monkeypatch, explicit_guest_flag=True):
     """Room state as it looks while the bot is a guest in another room."""
-    state = RoomState.instance()
+    state = _room_state()
     monkeypatch.setattr(state, "default_party_id", HOST_ROOM_ID)
     state.expected_party_id = GUEST_ROOM_ID
     state.room_id = GUEST_ROOM_ID
@@ -95,18 +84,19 @@ def _guest_room_state(monkeypatch, explicit_guest_flag=True):
     return state
 
 
-def _party_manager_with_stub_handler(monkeypatch, handler=None):
+def _party_manager_with_stub_handler(monkeypatch, state=None, handler=None):
     """真实的 PartyService + stub handler：房间核对判定现在归它所有。"""
     from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
     from ushareiplay.modules.room import PartyService
 
+    state = state or _room_state()
     handler = handler or _HandlerStub(config={})
     manager = PartyService(
         driver=SoulPartyDriver(handler),
-        room_state=RoomState.instance(),
+        room_state=state,
         logger=handler.logger,
     )
-    handler.controller = SimpleNamespace(party_service=manager)
+    handler.controller = SimpleNamespace(party_service=manager, room_state=state)
     monkeypatch.setattr(manager, "leave_and_recreate_party", AsyncMock(return_value=True))
     return manager, handler
 
@@ -124,7 +114,7 @@ def _wrapper(room_id):
 @pytest.mark.asyncio
 async def test_room_id_becoming_configured_id_promotes_to_host_mode(monkeypatch):
     state = _guest_room_state(monkeypatch)
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, state)
     event = _room_id_event(handler)
 
     result = await event.handle("room_id", _wrapper(HOST_ROOM_ID))
@@ -145,7 +135,7 @@ async def test_room_id_becoming_configured_id_promotes_from_derived_guest_mode(m
     """Guest mode derived from the room ID (no explicit flag) is promoted too."""
     state = _guest_room_state(monkeypatch, explicit_guest_flag=False)
     assert state.is_guest_room is True
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, state)
     event = _room_id_event(handler)
 
     await event.handle("room_id", _wrapper(HOST_ROOM_ID))
@@ -157,7 +147,7 @@ async def test_room_id_becoming_configured_id_promotes_from_derived_guest_mode(m
 @pytest.mark.asyncio
 async def test_unrelated_room_id_still_triggers_leave_and_recreate(monkeypatch):
     state = _guest_room_state(monkeypatch)
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, state)
     event = _room_id_event(handler)
 
     result = await event.handle("room_id", _wrapper(RANDOM_ROOM_ID))
@@ -169,7 +159,7 @@ async def test_unrelated_room_id_still_triggers_leave_and_recreate(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
-    from ushareiplay.core.app_controller import AppController
+    from ushareiplay.bootstrap.runtime_loop import RuntimeLoop
 
     state = _guest_room_state(monkeypatch)
 
@@ -177,19 +167,16 @@ async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
         try_find_element=lambda key, log=False: object(),
         get_element_text=lambda _element: HOST_ROOM_ID,
     )
-    # 生产中 PartyManager.handler 就是 SoulHandler 单例，这里让 stub handler 与
-    # 启动路径读到的 soul_handler 是同一个对象
     soul_handler = _HandlerStub(config={})
     soul_handler.element_finder = element_finder
     soul_handler.party_id = None
-    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch, soul_handler)
-    controller = SimpleNamespace(
-        soul_handler=soul_handler,
-        party_service=party_manager,
-        logger=_Logger(),
-    )
+    party_manager, _stub_handler = _party_manager_with_stub_handler(monkeypatch, state=state, handler=soul_handler)
+    loop = RuntimeLoop.__new__(RuntimeLoop)
+    loop.soul_handler = soul_handler
+    loop.party_service = party_manager
+    loop.logger = _Logger()
 
-    await AppController._detect_initial_room_state(controller)
+    await loop._detect_initial_room_state()
 
     party_manager.leave_and_recreate_party.assert_not_awaited()
     assert state.is_guest_room is False
@@ -200,10 +187,11 @@ async def test_startup_room_detection_promotes_to_host_mode(monkeypatch):
 @pytest.mark.asyncio
 async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     """Acceptance: host privileges (seat/theme/notice/...) come back with the room."""
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
     state = _guest_room_state(monkeypatch)
-    command_manager = CommandManager.initialize()
+    command_manager = CommandManager(room_state=state, users=TortoiseUserRepository())
     command_manager.configure_runtime(_RuntimeStub())
     command_manager._handler = _HandlerStub(config={"system_users": ["Timer"]})
 
@@ -224,7 +212,7 @@ async def test_host_only_commands_are_unlocked_after_promotion(monkeypatch):
     assert dummy_command.called is False
     assert "当前处于他人房间" in blocked
 
-    party_manager, handler = _party_manager_with_stub_handler(monkeypatch)
+    party_manager, handler = _party_manager_with_stub_handler(monkeypatch, state=state)
     event = _room_id_event(handler)
     await event.handle("room_id", _wrapper(HOST_ROOM_ID))
 

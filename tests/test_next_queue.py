@@ -102,13 +102,12 @@ def test_consume_logs_only_when_the_queue_empties(playlist_session):
 
 @pytest.fixture
 def stateful_info_manager(playlist_session):
-    from tests.legacy_state import PresenceTracker, RoomState
-    from ushareiplay.modules.room import InfoManager
+    from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomStateService
 
     logger, _ = _fake_logger()
     return InfoManager(
-        room_state=RoomState.instance() if RoomState.is_initialized() else RoomState.initialize(),
-        presence=PresenceTracker.instance() if PresenceTracker.is_initialized() else PresenceTracker.initialize(),
+        room_state=RoomStateService(),
+        presence=PresenceTracker(),
         playlist=playlist_session,
         logger=logger,
     )
@@ -150,14 +149,13 @@ def test_adopt_single_song_keeps_the_next_queue(adoption, playlist_session):
 
 @pytest.fixture
 def broadcaster(playlist_session):
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
+    from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
 
-    PlaybackBroadcaster.reset_instance()
-    module = PlaybackBroadcaster.initialize(
-        SimpleNamespace(logger=_fake_logger()[0]),
+    module = PlaybackBroadcaster(
+        handler=SimpleNamespace(logger=_fake_logger()[0]),
         playlist_session=playlist_session,
+        logger=_fake_logger()[0],
     )
-    module._logger, _ = _fake_logger()
     # 广播落地的细节（Soul 消息 / 音质处理）不在这里考，只留状态消费。
     module.send_playing_message = lambda: None
     return module
@@ -214,7 +212,7 @@ async def test_next_command_records_a_successful_enqueue(
 ):
     from ushareiplay.adapters.inbound.chat.next import NextCommand
     from ushareiplay.modules.playback.use_cases import PlayNext
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     next_driver = SimpleNamespace(play_next=MagicMock(return_value={"success": True}))
     controller = SimpleNamespace(
@@ -239,7 +237,7 @@ async def test_next_command_does_not_record_when_play_next_fails(
 ):
     from ushareiplay.adapters.inbound.chat.next import NextCommand
     from ushareiplay.modules.playback.use_cases import PlayNext
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     next_driver = SimpleNamespace(play_next=MagicMock(return_value={"error": "Not found"}))
     controller = SimpleNamespace(
@@ -270,7 +268,7 @@ async def test_next_command_does_not_record_when_the_handler_play_next_raises(
     from ushareiplay.adapters.inbound.chat.next import NextCommand
     from ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler import QQMusicHandler
     from ushareiplay.modules.playback.use_cases import PlayNext
-    from ushareiplay.models.message_info import MessageInfo
+    from ushareiplay.modules.shared.message_info import MessageInfo
 
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _fake_logger()[0]

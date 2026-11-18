@@ -1,7 +1,7 @@
 import logging
-from ushareiplay.core.singleton import Singleton
 
-class RecoveryManager(Singleton):
+
+class RecoveryManager:
     """异常检测和恢复管理器，用于检测和处理各种异常情况"""
 
     def __init__(self, handler=None, room_state=None):

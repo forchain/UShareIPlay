@@ -29,7 +29,7 @@ from ushareiplay.modules.room.ports import (
 from ushareiplay.adapters.outbound.appium.soul.room_profile import (
     SoulPartySettingsDriver,
 )
-from tests.legacy_state import RoomState
+from ushareiplay.modules.room.use_cases import RoomStateService
 from tests.fakes.in_memory_party_settings_driver import (
     CLOSED_TEXT,
     OPEN_TEXT,
@@ -37,15 +37,6 @@ from tests.fakes.in_memory_party_settings_driver import (
 )
 
 CONFIG = {'elements': {'party_setting_button': 'cn.soulapp.android:id/partySettingBtn'}}
-
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-    yield
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
 
 
 # --------------------------------------------------------------------------
@@ -92,10 +83,10 @@ class _Handler:
         self.config = CONFIG
 
 
-def _profile(driver=None, handler=None):
+def _profile(driver=None, handler=None, room_state=None):
     handler = handler or _Handler(driver)
-    return RoomProfileManager.initialize(
-        handler=handler, settings_driver=driver
+    return RoomProfileManager(
+        handler=handler, settings_driver=driver, room_state=room_state
     )
 
 
@@ -110,8 +101,8 @@ def _driver(**kwargs):
 
 def test_set_recommendation_turns_off_through_the_settings_panel():
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -125,8 +116,8 @@ def test_set_recommendation_turns_off_through_the_settings_panel():
 
 def test_set_recommendation_turns_on_through_the_settings_panel():
     driver = _driver(status_text=CLOSED_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(True)
 
@@ -139,8 +130,8 @@ def test_set_recommendation_turns_on_through_the_settings_panel():
 def test_the_target_state_skips_the_second_level_popup():
     """已经是目标状态就不要再点一次：不点状态项，也不点选项。"""
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(True)
 
@@ -166,9 +157,9 @@ def test_a_cached_state_at_the_target_skips_the_settings_panel():
     读一次文案全是白花的时间。
     """
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(True)
 
@@ -185,9 +176,9 @@ def test_a_cached_state_at_the_target_skips_the_settings_panel():
 def test_a_cached_closed_state_skips_the_panel_for_turning_off():
     """缓存是「关」、目标也是「关」：同样一个 UI 动作都不发生。"""
     driver = _driver(status_text=CLOSED_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = False
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -207,8 +198,9 @@ def test_a_cached_state_at_the_target_leaves_an_open_panel_alone():
     一致，本来就不该动它。选了直接返回：谁开的谁关，这里一个动作都不发生。
     """
     driver = _driver(panel_open=True, status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    RoomState.initialize().recommendation_enabled = True
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = True
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(True)
 
@@ -222,8 +214,9 @@ def test_a_cached_state_at_the_target_leaves_an_open_panel_alone():
 def test_a_cached_state_at_another_target_still_writes_through_the_panel():
     """缓存是「开」而目标是「关」：缓存不命中，照旧走设置面板。"""
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    RoomState.initialize().recommendation_enabled = True
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = True
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -235,8 +228,8 @@ def test_a_cached_state_at_another_target_still_writes_through_the_panel():
 def test_an_unknown_cached_state_still_reads_the_settings_panel():
     """缓存是 None（还没从 UI 读到过）：必须去面板读一次真实状态。"""
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     assert profile.set_recommendation(True) == {
         'success': True,
@@ -248,10 +241,10 @@ def test_an_unknown_cached_state_still_reads_the_settings_panel():
 def test_a_cached_state_at_the_target_does_not_bypass_the_guest_room_guard():
     """缓存命中也不能绕过他房守卫：他人房间依旧不可修改。"""
     driver = _driver(status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
     room_state.is_guest_room = True
+    profile = _profile(driver, room_state=room_state)
 
     assert profile.set_recommendation(True) == {
         'error': '他人房间模式下不可修改推荐状态'
@@ -261,8 +254,8 @@ def test_a_cached_state_at_the_target_does_not_bypass_the_guest_room_guard():
 
 def test_a_panel_someone_else_opened_is_not_closed_by_the_manager():
     driver = _driver(panel_open=True, status_text=OPEN_TEXT)
-    profile = _profile(driver)
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -274,8 +267,8 @@ def test_a_panel_someone_else_opened_is_not_closed_by_the_manager():
 
 def test_the_settings_panel_is_found_after_scrolling():
     driver = _driver(status_text=OPEN_TEXT, visible_after_swipes=3)
-    profile = _profile(driver)
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     assert profile.set_recommendation(False) == {
         'success': True,
@@ -287,8 +280,9 @@ def test_the_settings_panel_is_found_after_scrolling():
 
 def test_a_guest_room_refuses_to_touch_the_settings_panel():
     driver = _driver()
-    profile = _profile(driver)
-    RoomState.initialize().is_guest_room = True
+    room_state = RoomStateService()
+    room_state.is_guest_room = True
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -298,8 +292,10 @@ def test_a_guest_room_refuses_to_touch_the_settings_panel():
 
 
 def test_a_missing_settings_driver_is_reported_as_an_error():
-    profile = RoomProfileManager.initialize(handler=_Handler(_driver()))
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = RoomProfileManager(
+        handler=_Handler(_driver()), room_state=room_state
+    )
 
     assert profile.set_recommendation(True) == {'error': '派对设置面板不可用'}
 
@@ -316,8 +312,8 @@ def test_a_panel_that_never_opens_is_reported_without_a_blind_close():
 
 def test_a_scroll_that_never_finds_the_status_closes_the_panel():
     driver = _driver(visible_after_swipes=99, fail_scroll=True)
-    profile = _profile(driver)
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -350,8 +346,8 @@ def test_a_status_entry_that_cannot_be_clicked_closes_the_panel():
 
 def test_an_option_that_cannot_be_clicked_keeps_the_old_state():
     driver = _driver(status_text=OPEN_TEXT, fail_option=True)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.set_recommendation(False)
 
@@ -367,8 +363,8 @@ def test_an_option_that_cannot_be_clicked_keeps_the_old_state():
 
 def test_inspection_reads_the_status_and_syncs_room_state():
     driver = _driver(status_text=CLOSED_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     assert profile.inspect_current_ui_status() is False
     assert room_state.recommendation_enabled is False
@@ -378,15 +374,16 @@ def test_inspection_reads_the_status_and_syncs_room_state():
 
 
 def test_inspection_without_a_driver_returns_none():
-    profile = RoomProfileManager.initialize(handler=_Handler(_driver()))
+    profile = RoomProfileManager(handler=_Handler(_driver()))
 
     assert profile.inspect_current_ui_status() is None
 
 
 def test_inspection_does_not_run_in_a_guest_room():
     driver = _driver()
-    profile = _profile(driver)
-    RoomState.initialize().is_guest_room = True
+    room_state = RoomStateService()
+    room_state.is_guest_room = True
+    profile = _profile(driver, room_state=room_state)
 
     assert profile.inspect_current_ui_status() is None
     assert driver.open_attempts == 0
@@ -399,8 +396,8 @@ def test_inspection_does_not_run_in_a_guest_room():
 
 def test_grounding_probes_the_settings_panel_while_the_state_is_unknown():
     driver = _driver(status_text=CLOSED_TEXT)
-    profile = _profile(driver)
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(driver, room_state=room_state)
 
     result = profile.ensure_synced_on_return()
 
@@ -411,8 +408,9 @@ def test_grounding_probes_the_settings_panel_while_the_state_is_unknown():
 
 def test_grounding_skips_the_settings_panel_once_the_state_is_known():
     driver = _driver(status_text=CLOSED_TEXT)
-    profile = _profile(driver)
-    RoomState.initialize().recommendation_enabled = True
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = True
+    profile = _profile(driver, room_state=room_state)
     profile.is_initialized = True
 
     assert profile.ensure_synced_on_return() == {
@@ -433,32 +431,34 @@ class _Runtime:
         self.music_handler = SimpleNamespace()
 
 
-def _command(driver):
+def _command(driver, room_state):
     handler = _Handler(driver)
-    _profile(driver, handler)
+    profile = _profile(driver, handler, room_state=room_state)
     runtime = _Runtime(handler)
-    runtime.room_profile_manager = RoomProfileManager.instance()
+    runtime.room_profile_manager = profile
     return RecommendCommand(runtime)
 
 
 @pytest.mark.asyncio
 async def test_recommend_without_arguments_toggles_an_open_panel_off():
     driver = _driver(status_text=OPEN_TEXT)
-    RoomState.initialize().recommendation_enabled = True
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = True
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), [])
 
     assert result == {'status': '关闭'}
     assert driver.option_clicks == [False]
-    assert RoomState.instance().recommendation_enabled is False
+    assert room_state.recommendation_enabled is False
 
 
 @pytest.mark.asyncio
 async def test_recommend_without_arguments_toggles_a_closed_panel_on():
     driver = _driver(status_text=CLOSED_TEXT)
-    RoomState.initialize().recommendation_enabled = False
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = False
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), [])
 
@@ -469,8 +469,8 @@ async def test_recommend_without_arguments_toggles_a_closed_panel_on():
 @pytest.mark.asyncio
 async def test_recommend_without_arguments_enables_when_the_state_is_unknown():
     driver = _driver(status_text=CLOSED_TEXT)
-    RoomState.initialize()
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), [])
 
@@ -501,8 +501,9 @@ async def test_recommend_accepts_the_documented_aliases(
     driver = _driver(
         status_text=CLOSED_TEXT if expected_option else OPEN_TEXT
     )
-    RoomState.initialize().recommendation_enabled = not expected_option
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = not expected_option
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), [argument])
 
@@ -514,8 +515,9 @@ async def test_recommend_accepts_the_documented_aliases(
 async def test_recommend_on_an_already_open_state_does_not_touch_the_panel():
     """`:recommend on` 而推荐已经是开的：不碰设置面板，直接回话。"""
     driver = _driver(status_text=OPEN_TEXT)
-    RoomState.initialize().recommendation_enabled = True
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = True
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['on'])
 
@@ -528,8 +530,9 @@ async def test_recommend_on_an_already_open_state_does_not_touch_the_panel():
 async def test_recommend_on_a_closed_state_still_writes_through_the_panel():
     """`:recommend on` 而推荐是关的：缓存不命中，照旧去面板上写。"""
     driver = _driver(status_text=CLOSED_TEXT)
-    RoomState.initialize().recommendation_enabled = False
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    room_state.recommendation_enabled = False
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['on'])
 
@@ -541,8 +544,8 @@ async def test_recommend_on_a_closed_state_still_writes_through_the_panel():
 @pytest.mark.asyncio
 async def test_recommend_rejects_an_unknown_argument_without_touching_the_panel():
     driver = _driver()
-    RoomState.initialize()
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['maybe'])
 
@@ -554,8 +557,8 @@ async def test_recommend_rejects_an_unknown_argument_without_touching_the_panel(
 @pytest.mark.asyncio
 async def test_recommend_propagates_a_manager_error():
     driver = _driver(visible_after_swipes=99, fail_scroll=True)
-    RoomState.initialize()
-    cmd = _command(driver)
+    room_state = RoomStateService()
+    cmd = _command(driver, room_state)
 
     result = await cmd.do_process(SimpleNamespace(nickname='Console'), ['off'])
 
@@ -565,12 +568,12 @@ async def test_recommend_propagates_a_manager_error():
 @pytest.mark.asyncio
 async def test_recommend_does_not_touch_the_panel_when_soul_cannot_be_switched_to():
     driver = _driver()
-    RoomState.initialize()
+    room_state = RoomStateService()
     handler = _Handler(driver)
     handler.key_actions = SimpleNamespace(
         switch_to_app=lambda: False, press_back=lambda: None
     )
-    _profile(driver, handler)
+    _profile(driver, handler, room_state=room_state)
     cmd = RecommendCommand(_Runtime(handler))
 
     assert await cmd.do_process(SimpleNamespace(nickname='Console'), []) == {
@@ -687,8 +690,8 @@ def test_an_exception_from_the_driver_becomes_a_user_facing_error():
         def is_open(self):
             raise RuntimeError('appium is gone')
 
-    profile = _profile(_ExplodingDriver())
-    RoomState.initialize()
+    room_state = RoomStateService()
+    profile = _profile(_ExplodingDriver(), room_state=room_state)
 
     assert profile.set_recommendation(True) == {'error': '设置推荐状态时出错'}
 

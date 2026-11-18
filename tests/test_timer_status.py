@@ -6,7 +6,7 @@ from tests.fakes.fake_clock import FakeClock
 from tests.fakes.in_memory_timer_repository import InMemoryTimerRepository
 from tests.fakes.recording_timer_message_sink import RecordingTimerMessageSink
 from ushareiplay.adapters.inbound.chat.timer import TimerCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 
 NOW = datetime(2026, 1, 1, 12, 0, 0)

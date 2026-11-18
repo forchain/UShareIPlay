@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 import ushareiplay.adapters.inbound.ui_events as events_package
-from ushareiplay.core.app_controller import AppController
+from ushareiplay.bootstrap.container import AppContainer
 from ushareiplay.modules.shared.config import (
     REQUIRED_ELEMENTS,
     ConfigSectionView,
@@ -26,7 +26,7 @@ from ushareiplay.modules.shared.config import (
 from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeInputPipeline
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.config_reload_manager import ConfigReloadManager
+from ushareiplay.adapters.inbound.runtime.config_reload_manager import ConfigReloadManager
 from ushareiplay.adapters.inbound.ui_events.event_manager import EventManager
 
 
@@ -113,11 +113,14 @@ def _make_runtime(soul_config):
 
 def _make_reload_manager(root, event_manager, command_manager, config_path):
     """依赖显式注入（ADR-0009 §1）：热重载器自己不回头去翻控制器。"""
+    from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
+
     return ConfigReloadManager(
         config=root,
         event_manager=event_manager,
         command_manager=command_manager,
         config_path=str(config_path),
+        load_config=ConfigLoader.load_config,
     )
 
 
@@ -150,10 +153,7 @@ def _write_config(path, soul_config, qq_music_config=None, commands=None, omit=(
 @pytest.fixture
 def command_manager():
     """真的 CommandManager：命令解析器重绑的效果要能被 parse_command 看见。"""
-    CommandManager.reset_instance()
-    manager = CommandManager.initialize(SimpleNamespace(logger=_Logger()))
-    yield manager
-    CommandManager.reset_instance()
+    return CommandManager(SimpleNamespace(logger=_Logger()))
 
 
 # --------------------------------------------------------------------------
@@ -203,7 +203,7 @@ def test_config_reload_manager_takes_its_dependencies_explicitly():
 
 def _make_controller_with_live_sections():
     """最小控制器替身：两个 handler 手里就是根配置里那两个段。"""
-    controller = AppController.__new__(AppController)
+    controller = AppContainer.__new__(AppContainer)
     controller.config = ConfigView({
         "soul": {"elements": {"collapse_seats": "id/collapse"}},
         "qq_music": {"elements": {"play_button": "id/play"}},
@@ -214,6 +214,7 @@ def _make_controller_with_live_sections():
     controller.event_manager = SimpleNamespace(element_to_event={})
     controller.command_manager = SimpleNamespace()
     controller.sleep_manager = SimpleNamespace(configure_catalogue=lambda _c: None)
+    controller.room_state = None
     return controller
 
 

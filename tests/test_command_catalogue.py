@@ -6,14 +6,14 @@ from ushareiplay.modules.command.domain import (
     CommandCatalogue,
     CommandCatalogueError,
 )
-from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 
 
 def _write_command_module(directory: Path, name: str, *, base: str = "BaseCommand") -> None:
     (directory / f"{name}.py").write_text(
         "\n".join(
             [
-                "from ushareiplay.core.base_command import BaseCommand",
+                "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
                 "",
                 f"class DemoCommand({base}):",
                 "    async def do_process(self, message_info, parameters):",

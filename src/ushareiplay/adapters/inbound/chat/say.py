@@ -1,4 +1,4 @@
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.adapters.inbound.runtime.chat_intake import format_manual_message, is_manual_operator
 
 

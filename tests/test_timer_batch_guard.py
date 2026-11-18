@@ -20,20 +20,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from ushareiplay.core.config_loader import ConfigLoader
+from ushareiplay.adapters.outbound.system.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import ConfigSectionView
-from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.modules.room import InfoManager
-from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.modules.playback.use_cases import PlaybackMuting
-from ushareiplay.modules.playback.use_cases import PlaylistSession
-from ushareiplay.models.message_info import MessageInfo
-from tests.legacy_state import OnlineListScraper
-from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.modules.playback.use_cases import PlaylistSession
-from tests.legacy_state import PresenceTracker
-from tests.legacy_state import RoomState
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
+from ushareiplay.modules.playback.use_cases import PlaybackMuting, PlaylistSession
+from ushareiplay.modules.shared.message_info import MessageInfo
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.room.use_cases import PresenceTracker, RoomStateService
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -44,30 +39,22 @@ LOGGER = logging.getLogger("test_timer_batch_guard")
 def clean_info_manager():
     from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
-    for cls in (
-        RoomState,
-        PresenceTracker,
-        PlaybackBroadcaster,
-        OnlineListScraper,
-    ):
-        cls.reset_instance()
     fake_logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,
         error=lambda _msg: None,
     )
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state._logger = fake_logger
-    presence = PresenceTracker.initialize()
+    presence = PresenceTracker()
     presence._logger = fake_logger
     playlist = PlaylistSession(
         online_users=presence.get_online_users,
         avatar_usernames=TortoiseUserRepository().get_all_avatar_usernames,
         logger=fake_logger,
     )
-    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
+    broadcaster = PlaybackBroadcaster(playlist_session=playlist)
     broadcaster._logger = fake_logger
-    OnlineListScraper.initialize()._logger = fake_logger
     return InfoManager(
         room_state=room_state,
         presence=presence,
@@ -184,8 +171,6 @@ def batch_seam(clean_info_manager, monkeypatch):
     async def _avatars(username):
         return {username}
 
-    monkeypatch.setattr(UserDAO, "get_all_avatar_usernames", _avatars)
-
     music_handler = SimpleNamespace(
         logger=LOGGER,
         play_next=lambda query: {
@@ -205,14 +190,10 @@ def batch_seam(clean_info_manager, monkeypatch):
         obs=SimpleNamespace(emit=lambda *args, **kwargs: None),
     )
 
-    dispatch = _RecordingDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
-        lambda: dispatch,
-    )
+    from ushareiplay.adapters.outbound.system.clock import SystemClock
 
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
+    dispatch = _RecordingDispatch()
+    manager = CommandManager(message_dispatch=dispatch, clock=SystemClock())
     manager.configure_runtime(_Runtime(controller))
     manager._logger = LOGGER
     manager._handler = SimpleNamespace(config=config, logger=LOGGER)
@@ -224,10 +205,12 @@ def batch_seam(clean_info_manager, monkeypatch):
     manager.get_command("topic")._room_profile_manager = room
     pause_mic = _Mic()
 
-    MusicManager.reset_instance()
-    music = MusicManager.initialize()
+    music = MusicManager(
+        music_handler=music_handler,
+        playlist_session=clean_info_manager._playlist,
+        config=config,
+    )
     appium = _AppiumStub()
-    music.music_handler = music_handler
     music.driver = appium
     music_handler.driver = appium
 
@@ -288,7 +271,7 @@ def batch_seam(clean_info_manager, monkeypatch):
 def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
     """Playlist Context owner online: say/title/topic/vol run, radio never does."""
     batch_seam.info._playlist.player_name = "Alice"
-    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(
         ":say 晚安;:title 晚安;:topic 晚安;:vol 5;:radio sleep"
@@ -306,7 +289,7 @@ def test_guarded_batch_runs_non_interrupting_parts_and_drops_radio(batch_seam):
 def test_guarded_batch_still_records_next_but_blocks_radio(batch_seam):
     """A guest's pending Next Queue guards the timer; its `:next` still records."""
     batch_seam.info._playlist.record_next("Alice")
-    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":say 晚安;:next 晴天;:radio sleep")
 
@@ -338,7 +321,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
     `:playlist <query>` is a continuous-queue switch and is guarded like radio.
     """
     batch_seam.info._playlist.player_name = "Alice"
-    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":play 晴天;:playlist 晚安歌单")
 
@@ -350,7 +333,7 @@ def test_guarded_batch_blocks_single_song_play_and_playlist(batch_seam):
 def test_guarded_batch_blocks_skip_and_pause_without_touching_playback(batch_seam):
     """Skip/pause in a guarded batch never reach the player or the microphone."""
     batch_seam.info._playlist.player_name = "Alice"
-    PresenceTracker.instance().update_online_users(["Alice", "Joyer"])
+    batch_seam.info._presence.update_online_users(["Alice", "Joyer"])
 
     routed, dispatch = batch_seam.run(":skip;:pause")
 

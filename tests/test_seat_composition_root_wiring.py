@@ -15,10 +15,8 @@ import pytest
 import yaml
 
 from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import SeatPanelDriver
-from ushareiplay.core.app_controller import AppController
-from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.bootstrap.container import AppContainer
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.seat.use_cases import SeatObservationService, SeatService
 
 RETIRED_SEAT_MODULES = ("seat_ui", "seat_check", "seating", "reservation", "subsystem", "seat_observation")
@@ -40,17 +38,12 @@ def _real_config() -> dict:
 
 
 @pytest.fixture
-def started_controller(initialized_test_singletons):
-    Singleton.reset_all_instances()
-    AppController._ui_session_lease = None
-
-    controller = AppController.__new__(AppController)
-    controller.__init__(_real_config())
+def started_controller():
+    controller = AppContainer(_real_config())
     controller.driver = MagicMock()
-    controller._init_handlers()
-    controller._init_runtime_queue()
+    controller.wire_services()
+    controller.runtime_loop.init_runtime_queue()
     yield controller
-    Singleton.reset_all_instances()
 
 
 def test_composition_root_initializes_seat_use_cases_and_retires_old_package(started_controller):
@@ -98,14 +91,14 @@ def test_real_startup_path_completes_without_missing_singletons(started_controll
 
 
 async def test_runtime_queue_drains_through_the_real_startup_wiring(started_controller):
-    await MessageQueue.instance().put_message(
+    await started_controller.message_queue.put_message(
         MessageInfo(content="在吗", nickname="路人", source="chat_scan")
     )
 
     drained, commands = await started_controller._runtime_queue_drainer.drain()
 
     assert (drained, commands) == (1, 0)
-    assert await MessageQueue.instance().get_all_messages() == {}
+    assert await started_controller.message_queue.get_all_messages() == {}
 
 
 async def test_seat_service_from_the_startup_path_actually_executes(started_controller):

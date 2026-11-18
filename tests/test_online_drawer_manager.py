@@ -453,8 +453,8 @@ def test_recovery_manager_no_longer_owns_any_online_drawer_closing_machinery():
     又把 `ivClose` 那张表加回来 —— 那样在线用户抽屉就又有了第二个关闭手势的归属，
     正是 spec #426 要消灭的东西。
     """
-    from ushareiplay.managers import recovery_manager
-    from ushareiplay.managers.recovery_manager import RecoveryManager
+    from ushareiplay.adapters.outbound.appium.soul import recovery_manager
+    from ushareiplay.adapters.outbound.appium.soul.recovery_manager import RecoveryManager
 
     # 通用入口仍在。
     assert callable(RecoveryManager.close_drawer)

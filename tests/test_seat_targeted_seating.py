@@ -23,19 +23,6 @@ from tests.seat_fixtures import (
 from ushareiplay.adapters.inbound.ui_events.focus_count import FocusCountEvent
 from tests.seat_support import build_seat_observation
 from tests.seat_support import build_seat_service
-from tests.legacy_state import RoomState
-
-
-@pytest.fixture(autouse=True)
-def reset_state():
-    # RoomState 必须走 reset_instance()：只把 _instance 置 None 解不掉
-    # _singleton_initialized，instance() 会返回 None 而不是抛 SingletonError，
-    # 于是 FocusCountEvent 的兜底 except 吞掉 AttributeError，事件到不了
-    # on_focus_count —— 反 back-trigger 断言就成了空断言。
-    RoomState.reset_instance()
-    RoomState.initialize()
-    yield
-    RoomState.reset_instance()
 
 
 def _load_xml(filename: str) -> str:

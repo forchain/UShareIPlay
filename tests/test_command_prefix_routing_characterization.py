@@ -77,11 +77,7 @@ class _FakeRuntime:
 
 def _routing_manager(monkeypatch, dispatch):
     """A CommandManager wired for real end-to-end routing assertions."""
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager = CommandManager(message_dispatch=dispatch)
     manager.configure_runtime(_FakeRuntime())
     manager._logger = logging.getLogger("test_prefix_routing")
     manager._handler = SimpleNamespace(config={"system_users": ["Console"]})
@@ -268,8 +264,7 @@ def test_prefix_family_routing_survives_the_queue_drain(
     dispatch = _RecordingDispatch()
     manager = _routing_manager(monkeypatch, dispatch)
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     batch = build_message_batch([classify_chat_line(line)], source="screen")
     for command in batch.commands:
         _run(queue.put_message(command))

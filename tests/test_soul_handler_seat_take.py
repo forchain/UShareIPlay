@@ -8,7 +8,7 @@ Who *asks* for a seat is `SoulMicControl` — the seat pre-check before opening 
 microphone is part of its interface, tested in tests/test_mic_manager.py.
 """
 
-from ushareiplay.handlers.soul_handler import SoulHandler
+from ushareiplay.adapters.outbound.appium.soul.soul_handler import SoulHandler
 
 
 class _Logger:

@@ -6,7 +6,7 @@ import pytest
 
 from tests.seat_support import build_seat_service
 from ushareiplay.adapters.inbound.chat.seat import SeatCommand
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class DummyController:

@@ -19,7 +19,7 @@ from ushareiplay.adapters.inbound.runtime.chat_intake import (
     expand_queue_text,
 )
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 def _run(coro):
@@ -255,9 +255,7 @@ def test_intake_seam_routes_a_silent_and_a_private_command(monkeypatch):
     """`/play` stays public-but-silent; `$play` replies privately."""
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager._message_dispatch = dispatch
 
     batch = build_message_batch(
         [
@@ -292,10 +290,7 @@ def test_intake_seam_routes_every_prefix_family_as_the_legacy_scan_did(monkeypat
     """
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
-        lambda: dispatch,
-    )
+    manager._message_dispatch = dispatch
 
     lines = [
         "souler[Bob]说：/play 123",
@@ -328,10 +323,7 @@ def test_scanned_chat_flows_to_execution_in_a_single_classification_pass(
     """Scan → batch → execution, with each line classified exactly once."""
     manager = _routing_manager(monkeypatch)
     dispatch = _RecordingDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance",
-        lambda: dispatch,
-    )
+    manager._message_dispatch = dispatch
 
     from ushareiplay.adapters.inbound.runtime import message_manager as message_manager_module
 

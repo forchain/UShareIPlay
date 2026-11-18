@@ -5,10 +5,9 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from ushareiplay.core.command_silence import is_command_silent
-from ushareiplay.core.singleton import Singleton
 
 
-class MessageQueue(Singleton):
+class MessageQueue:
     """
     消息队列管理器（协程版本）
     用于 timer 和 controller 之间的消息传递

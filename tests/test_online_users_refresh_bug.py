@@ -3,27 +3,17 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
-from ushareiplay.modules.room import InfoManager
-from ushareiplay.models.message_info import MessageInfo
-from tests.legacy_state import OnlineListScraper
-from tests.legacy_state import PresenceTracker
-from tests.legacy_state import RoomState
-
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.modules.playback.use_cases import PlaylistSession
-    RoomState.reset_instance()
-    PresenceTracker.reset_instance()
-    OnlineListScraper.reset_instance()
-    PlaybackBroadcaster.reset_instance()
-    PlaybackBroadcaster.initialize()
-    yield
-    RoomState.reset_instance()
-    PresenceTracker.reset_instance()
-    OnlineListScraper.reset_instance()
-    PlaybackBroadcaster.reset_instance()
+from ushareiplay.modules.room.use_cases import OnlineDrawer
+from tests.fakes.in_memory_online_drawer_driver import (
+    InMemoryOnlineDrawerDriver,
+)
+from ushareiplay.adapters.outbound.appium.soul.online_list_source import SoulOnlineListSource
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+from ushareiplay.core.ui_session_lease import UISessionLease
+from ushareiplay.modules.playback.broadcaster import PlaybackBroadcaster
+from ushareiplay.modules.playback.use_cases import PlaylistSession
+from ushareiplay.modules.room import InfoManager, PresenceTracker, RoomStateService
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @pytest.mark.asyncio
@@ -34,7 +24,7 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
     refresh_online_users 不得放弃更新导致 PresenceTracker 变空、info 命令显示「列表暂未更新」。
     同时，在更新在线用户时必须输出在线人物列表日志（INFO 级别）。
     """
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.user_count = 3
 
     info_logs = []
@@ -46,16 +36,22 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
         critical=lambda msg: None,
     )
 
-    presence_tracker = PresenceTracker.initialize()
+    presence_tracker = PresenceTracker()
     presence_tracker._logger = logger
 
-    scraper = OnlineListScraper.initialize()
-    scraper._logger = logger
-    scraper._handler = SimpleNamespace(
+    handler = SimpleNamespace(
         logger=logger,
         element_finder=MagicMock(),
         gesture_handler=MagicMock(),
         controller=None,
+    )
+    scraper = SoulOnlineListSource(
+        drawer=OnlineDrawer(drawer=InMemoryOnlineDrawerDriver()),
+        users=TortoiseUserRepository(),
+        presence=presence_tracker,
+        room_state=room_state,
+        ui_session=UISessionLease().acquire,
+        logger=logger,
     )
 
     # 抽屉中抓取到 2 人（例如在麦用户不在抽屉列表中）
@@ -72,13 +68,11 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
     assert "Alice" in online_users
     assert "Bob" in online_users
 
-    from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.modules.playback.use_cases import PlaylistSession
     info_manager = InfoManager(
         room_state=room_state,
         presence=presence_tracker,
         playlist=PlaylistSession(),
-        playback_cache=PlaybackBroadcaster.instance(),
+        playback_cache=PlaybackBroadcaster(),
         logger=logger,
     )
 
@@ -94,11 +88,10 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
             room_profile_manager=SimpleNamespace(recommendation_enabled=None),
         )
     )
-    with patch("ushareiplay.adapters.outbound.appium.qq_music.qq_music_handler.QQMusicHandler.instance", return_value=None):
-        msg = MessageInfo(content=":info", nickname="Alice")
-        res = await cmd.process(msg, [])
-        assert res["online_users"] != "列表暂未更新"
-        assert "Alice" in res["online_users"]
+    msg = MessageInfo(content=":info", nickname="Alice")
+    res = await cmd.process(msg, [])
+    assert res["online_users"] != "列表暂未更新"
+    assert "Alice" in res["online_users"]
 
     # 4. 在线人数变更时必须在 INFO 日志中输出在线人物列表
     assert any("Online users:" in log or "在线用户" in log for log in info_logs), (

@@ -29,6 +29,7 @@ class BaseCommand(ABC):
         self._playlist_session = None
         self._mic_manager = None
         self._message_dispatch = None
+        self._user_repository = None
 
     async def process(self, message_info, parameters):
         """Command shell: do_process -> exception-to-error mapping.
@@ -92,8 +93,7 @@ class BaseCommand(ABC):
     @property
     def music_manager(self):
         if self._music_manager is None:
-            from ushareiplay.managers.music_manager import MusicManager
-            self._music_manager = MusicManager.instance()
+            self._music_manager = self.controller.music_manager
         return self._music_manager
 
     @property
@@ -111,10 +111,19 @@ class BaseCommand(ABC):
     @property
     def message_dispatch(self):
         if self._message_dispatch is None:
-            from ushareiplay.core.message_dispatch import MessageDispatch
-
-            self._message_dispatch = MessageDispatch.instance().bind_handler(self.soul_handler)
+            dispatch = self.controller.message_dispatch
+            self._message_dispatch = (
+                dispatch.bind_handler(self.soul_handler)
+                if dispatch is not None and self.soul_handler is not None
+                else dispatch
+            )
         return self._message_dispatch
+
+    @property
+    def user_repository(self):
+        if self._user_repository is None:
+            self._user_repository = self.controller.user_repository
+        return self._user_repository
 
     def update(self):
         """Update method called every monitoring loop

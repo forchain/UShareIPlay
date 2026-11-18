@@ -13,8 +13,7 @@ from ushareiplay.adapters.inbound.runtime.chat_intake import (
     format_manual_message,
     is_manual_operator,
 )
-from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 @dataclass(frozen=True)
@@ -82,6 +81,7 @@ class RuntimeQueueDrainer:
         handler,
         command_manager,
         send_screen_message,
+        message_queue=None,
         obs=None,
         logger=None,
         runtime_input=None,
@@ -90,6 +90,7 @@ class RuntimeQueueDrainer:
         self.handler = handler
         self.command_manager = command_manager
         self.send_screen_message = send_screen_message
+        self.message_queue = message_queue
         self.obs = obs
         self.logger = logger or getattr(handler, "logger", None)
         self.runtime_input = runtime_input
@@ -108,7 +109,9 @@ class RuntimeQueueDrainer:
         if self.is_paused():
             return 0, 0
 
-        queue = MessageQueue.instance()
+        queue = self.message_queue
+        if queue is None:
+            return 0, 0
         items = list((await queue.get_all_messages()).values())
         if not items:
             return 0, 0
@@ -216,6 +219,7 @@ class RuntimeInputPipeline:
         room_owner_provider,
         logger,
         send_screen_message,
+        message_queue=None,
         timer_manager=None,
         obs=None,
         dump_artifacts=None,
@@ -226,6 +230,7 @@ class RuntimeInputPipeline:
         self.room_owner_provider = room_owner_provider
         self.logger = logger
         self.send_screen_message = send_screen_message
+        self.message_queue = message_queue
         self.timer_manager = timer_manager
         self.obs = obs
         self._dump_artifacts = dump_artifacts
@@ -402,7 +407,7 @@ class RuntimeInputPipeline:
     async def _route_text(self, message: str, source: str, nickname: str) -> None:
         routing = route_queue_text(message, nickname, source=source)
 
-        queue = MessageQueue.instance()
+        queue = self.message_queue
         for message_info in routing.commands:
             await queue.put_message(message_info)
             if self.obs:
@@ -509,19 +514,20 @@ class AgentCommandSpool:
 
 
 class StatusReporter:
-    def __init__(self, *, config, lease, obs, soul_handler=None, timer_manager=None):
+    def __init__(self, *, config, lease, obs, soul_handler=None, timer_manager=None, message_queue=None):
         self.config = config
         self.lease = lease
         self.obs = obs
         self.soul_handler = soul_handler
         self.timer_manager = timer_manager
+        self.message_queue = message_queue
 
     async def update(self, *, screen: dict, automation=None) -> None:
         try:
             foreground_app = screen["foreground_app"]
             anchors = screen["anchors"]
             ui_lock_state = "locked" if self.lease.lock.locked() else "unlocked"
-            queue_size = MessageQueue.instance().get_queue_size()
+            queue_size = self.message_queue.get_queue_size() if self.message_queue is not None else 0
 
             status = {
                 "foreground_app": foreground_app,

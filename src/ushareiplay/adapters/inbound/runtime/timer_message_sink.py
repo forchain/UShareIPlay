@@ -1,6 +1,6 @@
 """定时器消息的队列适配器：把领域消息落成运行时队列认识的 MessageInfo。"""
 
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.timer.ports import TimerMessageSink
 
 

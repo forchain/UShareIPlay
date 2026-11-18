@@ -58,3 +58,7 @@ async def test_identity_usernames(user_repository):
 
 async def test_avatar_and_associated_ids(user_repository):
     await contracts.assert_avatar_and_associated_ids(user_repository)
+
+
+async def test_find_first_by_level(user_repository):
+    await contracts.assert_find_first_by_level(user_repository)

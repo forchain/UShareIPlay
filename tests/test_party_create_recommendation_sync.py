@@ -1,9 +1,8 @@
 import pytest
 from types import SimpleNamespace
 
-from tests.legacy_state import RoomState
 from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
-from ushareiplay.modules.room import PartyService
+from ushareiplay.modules.room import PartyService, RoomStateService
 from tests.room_profile_support import RoomProfileManager
 
 
@@ -74,13 +73,10 @@ def create_sync_setup(monkeypatch, tmp_path):
     的场景 —— 抽屉开不起来，刷新必须退回「直接读一次 UI」那条兜底路径。
     """
     monkeypatch.chdir(tmp_path)  # isolate data/room_state.json persistence
-    for cls in (RoomState, RoomProfileManager):
-        cls.reset_instance()
-
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state._logger = _Logger()
 
-    profile = RoomProfileManager.initialize()
+    profile = RoomProfileManager(room_state=room_state)
     profile._handler = SimpleNamespace(
         logger=_Logger(),
         element_finder=_RecFinder(),  # no dialog marker is ever visible

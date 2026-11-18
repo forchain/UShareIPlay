@@ -20,10 +20,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.adapters.outbound.appium.soul.party_driver import SoulPartyDriver
-from ushareiplay.modules.room import PartyService
+from ushareiplay.modules.room import PartyService, RoomStateService
 from tests.room_profile_support import RoomProfileManager
 from ushareiplay.adapters.outbound.appium.soul.room_profile import SoulDrawerDriver
-from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
 
@@ -109,18 +108,11 @@ class _Handler:
         self.config = ConfigSectionView("soul", CONFIG if config is None else config)
 
 
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-    yield
-    for cls in (RoomProfileManager, RoomState):
-        cls.reset_instance()
-
-
-def _profile(driver=None, handler=None):
-    return RoomProfileManager.initialize(
-        handler=handler or _Handler(), drawer_driver=driver
+def _profile(driver=None, handler=None, room_state=None):
+    return RoomProfileManager(
+        handler=handler or _Handler(),
+        drawer_driver=driver,
+        room_state=room_state,
     )
 
 
@@ -140,9 +132,9 @@ def _recommendation_driver(**kwargs):
 
 def test_set_recommendation_never_touches_the_room_info_drawer():
     """推荐分发的屏幕是派对设置面板；没装配那个端口时只报不可用。"""
-    RoomState.initialize()
+    room_state = RoomStateService()
     driver = _recommendation_driver()
-    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})))
+    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})), room_state)
 
     result = profile.set_recommendation(True)
 
@@ -163,9 +155,9 @@ def test_inspecting_the_recommendation_status_does_not_open_the_drawer():
 
 def test_sync_while_open_does_not_sync_recommendation():
     """打开抽屉时不再获取/纠偏推荐状态。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
-    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": CLOSED_TEXT})))
+    profile = _profile(_recommendation_driver(), _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": CLOSED_TEXT})), room_state)
 
     results = profile.sync_while_open()
     assert "recommendation" not in results
@@ -175,10 +167,10 @@ def test_sync_while_open_does_not_sync_recommendation():
 
 def test_ensure_synced_on_return_does_not_touch_the_drawer_once_the_profile_is_grounded():
     """档案已经从 UI 读回过真实值就没有「要做」的事：一个抽屉动作都不该发生。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = False
     driver = _recommendation_driver()
-    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
+    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})), room_state)
     profile.is_initialized = True  # 这一间房已经读过真实房名
 
     assert profile.ensure_synced_on_return() == {"skipped": True, "reason": "already_initialized"}
@@ -193,10 +185,10 @@ def test_a_known_recommendation_state_does_not_short_circuit_the_grounding():
     `current_title` 停在 None，`:theme` 只能说「当前标题: 未设置」。这里那块屏幕
     故意没有可读的房名：要钉的是「它真的去读了」，而不是「读到了什么」。
     """
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
     driver = _recommendation_driver()
-    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})))
+    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {"party_recommendation_status": OPEN_TEXT})), room_state)
 
     result = profile.ensure_synced_on_return()
 
@@ -207,11 +199,11 @@ def test_a_known_recommendation_state_does_not_short_circuit_the_grounding():
 
 def test_grounding_the_room_name_does_not_cost_a_drawer_session():
     """#413 的契约：回房接地不开抽屉 —— 读主界面那一行 `chat_room_title` 就够。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
     driver = _recommendation_driver()
     screen = _Screen(DRAWER_SCREEN + ("chat_room_title",), {"chat_room_title": "听歌｜Lofi Girl"})
-    profile = _profile(driver, _Handler(screen))
+    profile = _profile(driver, _Handler(screen), room_state)
 
     assert profile.ensure_synced_on_return() == {"success": True, "initialized": True}
     assert profile.get_current_title() == "Lofi Girl"
@@ -222,10 +214,10 @@ def test_grounding_the_room_name_does_not_cost_a_drawer_session():
 
 
 def test_ensure_synced_on_return_is_skipped_in_a_guest_room():
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
     driver = _recommendation_driver()
-    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})))
+    profile = _profile(driver, _Handler(_Screen(DRAWER_SCREEN, {})), room_state)
 
     assert profile.ensure_synced_on_return() == {"skipped": True, "reason": "guest_room"}
     assert driver.opened_entries == []
@@ -362,9 +354,9 @@ async def test_room_creation_does_not_open_drawer_for_recommendation():
         journal=journal,
         present=screen.present,
     )
-    profile = _profile(driver, _Handler(screen))
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = False  # 建房时的配置假设
+    profile = _profile(driver, _Handler(screen), room_state)
 
     party_handler = _room_lifecycle_handler(screen, profile)
     party = PartyService(
@@ -389,9 +381,9 @@ async def test_re_entering_the_room_does_not_open_drawer_for_recommendation():
     screen = _full_drawer_screen()
     screen.present.add("party_back")
     driver = InMemoryRoomProfileDrawerDriver(journal=journal, present=screen.present)
-    profile = _profile(driver, _Handler(screen))
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = None
+    profile = _profile(driver, _Handler(screen), room_state)
 
     party_handler = _room_lifecycle_handler(screen, profile)
     party = PartyService(
@@ -636,11 +628,11 @@ def test_the_party_type_probe_is_still_observable_at_debug():
 
 def test_a_failed_open_never_claims_the_room_info_window_was_closed():
     """抽屉根本没打开成功，说「已关窗」就是一句假话。"""
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = None
     driver = _recommendation_driver(fail_for=("chat_room_title", "room_topic"))
     handler = _Handler(_Screen(DRAWER_SCREEN, {"party_room_type_option": SINGING_TYPE_TEXT}))
-    profile = _profile(driver, handler)
+    profile = _profile(driver, handler, room_state)
 
     profile.audit_and_repair()
 
@@ -655,7 +647,7 @@ def test_a_real_audit_still_claims_it_ran_in_an_open_window():
     改挂在 `audit_and_repair` 上：回房接地（`ensure_synced_on_return`）自 #413 的契约
     起根本不开窗，因此「窗开过、也关掉了」这句话只由全量审计来说。
     """
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = None
     driver = _recommendation_driver()
     # 审计要真的成功才算数：抽屉里那一行房名读得到，room_name 步骤才不带 error。
@@ -665,7 +657,7 @@ def test_a_real_audit_still_claims_it_ran_in_an_open_window():
             {"party_recommendation_status": OPEN_TEXT, "room_name_in_dialog": "听歌｜Lofi Girl"},
         )
     )
-    profile = _profile(driver, handler)
+    profile = _profile(driver, handler, room_state)
 
     profile.audit_and_repair()
 
@@ -679,9 +671,9 @@ def test_a_real_audit_still_claims_it_ran_in_an_open_window():
 
 
 def test_the_manager_answers_the_recommendation_state_directly():
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.recommendation_enabled = True
-    profile = _profile()
+    profile = _profile(room_state=room_state)
 
     assert profile.recommendation_enabled is True
 

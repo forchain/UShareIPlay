@@ -14,6 +14,7 @@
 
 from collections import deque
 from dataclasses import dataclass
+import logging
 import traceback
 
 from ushareiplay.adapters.inbound.runtime.chat_intake import (
@@ -25,14 +26,8 @@ from ushareiplay.adapters.inbound.runtime.chat_intake import (
     classify_chat_line,
     strip_quoted_segment,
 )
-from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
+from ushareiplay.modules.shared.message_info import MessageInfo
 from ushareiplay.modules.shared.roles import RolePolicy
-from ushareiplay.core.runtime_logging import get_runtime_logging
-from ushareiplay.core.singleton import Singleton
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.adapters.outbound.persistence.models import User
-from ushareiplay.models.message_info import MessageInfo
 
 
 # Global chat logger - will be initialized when needed
@@ -40,14 +35,10 @@ chat_logger = None
 
 
 def get_chat_logger(config=None):
-    """Get or create chat logger.
-
-    Delegates to the RuntimeLogging module so the chat log inherits the
-    same path / archive / handler / reset invariants as the app log.
-    """
+    """Get or create chat logger."""
     global chat_logger
     if chat_logger is None:
-        chat_logger = get_runtime_logging().attach_chat_logger(config)
+        chat_logger = logging.getLogger("chat")
     return chat_logger
 
 
@@ -66,14 +57,27 @@ class ChatDelta:
     missed: bool = False
 
 
-class MessageManager(Singleton):
+class MessageManager:
     #: 上一次观察保留多少行用于去重（比屏幕可见行数窄，因此存在 missed 兜底）
     RECENT_MAXLEN = 3
 
-    def __init__(self, handler=None, presence=None):
+    def __init__(
+        self,
+        handler=None,
+        presence=None,
+        *,
+        message_queue=None,
+        command_manager=None,
+        users=None,
+        chat_logger_factory=None,
+    ):
         """Initialize MessageManager with handler, previous messages, recent messages"""
         self._handler = handler
         self._presence = presence
+        self._message_queue = message_queue
+        self._command_manager = command_manager
+        self._users = users
+        self._chat_logger_factory = chat_logger_factory
         self._chat_logger = None
         self._keyword_use_cases = None
         self._playback_muting = None
@@ -89,6 +93,10 @@ class MessageManager(Singleton):
         """组合根注入关键字用例；未注入时 @ 群主链路不派发。"""
         self._keyword_use_cases = keyword_use_cases
 
+    def configure_command_manager(self, command_manager) -> None:
+        """组合根注入命令管理器，供事件回调通知使用。"""
+        self._command_manager = command_manager
+
     @property
     def handler(self):
         return self._handler
@@ -97,8 +105,29 @@ class MessageManager(Singleton):
     def chat_logger(self):
         if self._chat_logger is None:
             config = getattr(self._handler, "config", None)
-            self._chat_logger = get_chat_logger(config)
+            if self._chat_logger_factory is not None:
+                self._chat_logger = self._chat_logger_factory(config)
+            else:
+                self._chat_logger = get_chat_logger(config)
         return self._chat_logger
+
+    def _get_message_queue(self):
+        if self._message_queue is not None:
+            return self._message_queue
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "message_queue", None) if controller else None
+
+    def _get_command_manager(self):
+        if self._command_manager is not None:
+            return self._command_manager
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "command_manager", None) if controller else None
+
+    def _get_users(self):
+        if self._users is not None:
+            return self._users
+        controller = getattr(self._handler, "controller", None) if self._handler else None
+        return getattr(controller, "user_repository", None) if controller else None
 
     def _get_seat_manager(self):
         controller = getattr(self._handler, "controller", None) if self._handler else None
@@ -120,9 +149,12 @@ class MessageManager(Singleton):
             return owner
 
         try:
-            owner_user = await User.filter(level=9).first()
+            users = self._get_users()
+            if users is None:
+                return None
+            owner_user = await users.find_first_by_level(9)
             if owner_user:
-                return owner_user.username
+                return owner_user.username.value
         except Exception:
             self.handler.logger.error(f"解析房主失败: {traceback.format_exc()}")
         return None
@@ -322,8 +354,9 @@ class MessageManager(Singleton):
         # (`MessageInfo.source`)，日志直接读它，不再另存一份局部字符串。
         queue_source = "backfill" if from_backfill else "screen"
         batch = build_message_batch(results, source=queue_source)
+        queue = self._get_message_queue()
         for message in batch.commands:
-            await MessageQueue.instance().put_message(message)
+            await queue.put_message(message)
             self.handler.logger.info(
                 f"{message.source} command added to queue: {message.content}"
             )
@@ -345,7 +378,9 @@ class MessageManager(Singleton):
             presence_tracker.record_return(result.nickname)
             self.handler.logger.critical(f"User returned: {result.nickname}")
             self.chat_logger.critical(content)
-            await CommandManager.instance().notify_user_return(result.nickname)
+            cmd_mgr = self._get_command_manager()
+            if cmd_mgr is not None:
+                await cmd_mgr.notify_user_return(result.nickname)
         else:
             self.handler.logger.info(
                 f"User entrance message for '{result.nickname}' skipped return event (not online or recently entered/returned)"
@@ -360,10 +395,11 @@ class MessageManager(Singleton):
         try:
             username = result.nickname
             heat_value = getattr(result, "heat_value", 0)
+            users = self._get_users()
             if heat_value > 0:
-                user = await UserDAO.record_heat_contribution(username, heat_value)
+                user = await users.record_heat_contribution(username, heat_value)
             else:
-                user = await UserDAO.record_owner_gift(username)
+                user = await users.record_owner_gift(username)
 
             if user:
                 self.handler.logger.info(
@@ -372,10 +408,12 @@ class MessageManager(Singleton):
                 )
 
             thank_msg = MessageInfo(content=f"@{username} 谢谢", nickname=username)
-            await MessageQueue.instance().put_message(thank_msg)
+            await self._get_message_queue().put_message(thank_msg)
             self.handler.logger.info(f"Enqueued thank-you message '@{username} 谢谢' to MessageQueue")
 
-            await CommandManager.instance().notify_gift_receive(username)
+            cmd_mgr = self._get_command_manager()
+            if cmd_mgr is not None:
+                await cmd_mgr.notify_gift_receive(username)
         except Exception:
             self.handler.logger.error(f"Error handling gift receive: {traceback.format_exc()}")
 

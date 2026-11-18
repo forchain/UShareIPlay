@@ -24,11 +24,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.core.message_dispatch import MessageDispatch
+from ushareiplay.adapters.outbound.appium.soul.message_dispatch import MessageDispatch
 from tests.room_profile_support import RoomProfileManager
-from tests.legacy_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
+from ushareiplay.modules.room.use_cases import RoomStateService
 from ushareiplay.modules.shared.config import ConfigSectionView
+
+# 模块内显式构造的公屏出口：这几个文件观察的就是这一条出口
+_DISPATCH = MessageDispatch()
 
 # 全角竖线 U+FF5C —— ADR-0001 的分隔符，写入与拆分两侧都必须是它。
 FULLWIDTH_SEPARATOR = "｜"
@@ -64,18 +67,11 @@ CONFIG = {
 }
 
 
-@pytest.fixture(autouse=True)
-def reset_room_profile_manager():
-    RoomProfileManager.reset_instance()
-    yield
-    RoomProfileManager.reset_instance()
-
-
 def _screen_messages(monkeypatch):
     """记录写进公屏的每一条消息 —— 「有没有宣布成功」必须能被断言。"""
     sent = []
     monkeypatch.setattr(
-        MessageDispatch.instance(),
+        _DISPATCH,
         "send_screen_message",
         lambda message, silent=False: sent.append(message),
     )
@@ -122,14 +118,17 @@ class _Handler:
         self.key_actions.switch_to_app.return_value = True
         self.element_finder = _RoomTextFinder(room_title_text, notice_text)
         self.config = ConfigSectionView("soul", CONFIG if config is None else config)
+        self.controller = SimpleNamespace(message_dispatch=_DISPATCH)
 
     def log_error(self, _message):
         return None
 
 
-def _profile(driver=None, handler=None):
-    profile = RoomProfileManager.initialize(
-        handler=handler or _Handler(), drawer_driver=driver
+def _profile(driver=None, handler=None, room_state=None):
+    profile = RoomProfileManager(
+        handler=handler or _Handler(),
+        drawer_driver=driver,
+        room_state=room_state if room_state is not None else RoomStateService(),
     )
     # 确认提交后的静默等待是真实 Appium 时序，离线测试直接跳过。
     profile.title_settle_seconds = 0
@@ -471,13 +470,8 @@ def test_a_guest_room_skip_does_not_bookkeep_the_room_name_write(monkeypatch):
     assert profile.drafts.last_attempt_at("title") is None
 
     # 排队之后房间变成了别人的 —— 这是这条闸门真正要防的竞态。
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
-    room_state.is_guest_room = True
-    try:
-        result = profile.update_title()
-    finally:
-        RoomState.reset_instance()
+    profile.room_state.is_guest_room = True
+    result = profile.update_title()
 
     assert result == {"skipped": True, "reason": "guest_room"}
     assert profile.drafts.pending("title") == "晚安"
@@ -489,14 +483,10 @@ def test_a_guest_room_skip_does_not_bookkeep_the_room_name_write(monkeypatch):
 
 def test_a_guest_room_refuses_the_theme_before_the_length_check():
     """既有次序：他人房间的拒绝先于主题长度校验。"""
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomStateService()
     room_state.is_guest_room = True
-    try:
-        profile = _profile()
-        assert profile.set_theme("三福福") == {"error": "他人房间模式下不可修改房间主题"}
-    finally:
-        RoomState.reset_instance()
+    profile = _profile(room_state=room_state)
+    assert profile.set_theme("三福福") == {"error": "他人房间模式下不可修改房间主题"}
 
 
 # --------------------------------------------------------------------------

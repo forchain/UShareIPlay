@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from ushareiplay.helpers.playlist_info import get_playlist_text_and_first_song
+from ushareiplay.adapters.outbound.appium.qq_music.playlist_info import get_playlist_text_and_first_song
 
 
 def _commands_by_prefix():

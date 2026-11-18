@@ -33,11 +33,11 @@ from ushareiplay.modules.timer.use_cases import TimerUseCases
 NOW = datetime(2026, 1, 1, 12, 0, 0)
 
 
-def _timer_use_cases():
+def _timer_use_cases(message_queue=None):
     return TimerUseCases(
         repository=InMemoryTimerRepository(),
         clock=FakeClock(NOW),
-        sink=QueueTimerMessageSink(MessageQueue.instance()),
+        sink=QueueTimerMessageSink(message_queue or MessageQueue()),
         logger=_DummyLogger(),
     )
 
@@ -71,7 +71,8 @@ class _DummyController:
 @pytest.mark.asyncio
 async def test_timer_fired_message_is_sleep_exempt():
     """定时器触发的消息必须带 sleep_exempt，睡眠保护才不会拦下它。"""
-    use_cases = _timer_use_cases()
+    queue = MessageQueue()
+    use_cases = _timer_use_cases(queue)
 
     await use_cases.create_timer(
         key="night",
@@ -81,7 +82,7 @@ async def test_timer_fired_message_is_sleep_exempt():
     )
     await use_cases.fire_timer("night")
 
-    messages = await MessageQueue.instance().get_all_messages()
+    messages = await queue.get_all_messages()
     assert len(messages) == 1
     fired = next(iter(messages.values()))
     assert fired.nickname == "Timer"
@@ -127,7 +128,8 @@ async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypat
     from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
     from tests.fakes.in_memory_user_repository import InMemoryUserRepository
 
-    use_cases = _timer_use_cases()
+    queue = MessageQueue()
+    use_cases = _timer_use_cases(queue)
     await use_cases.create_timer(
         key="night",
         message=":keyword run 助眠",
@@ -136,7 +138,7 @@ async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypat
     )
     await use_cases.fire_timer("night")
 
-    timer_message = next(iter((await MessageQueue.instance().get_all_messages()).values()))
+    timer_message = next(iter((await queue.get_all_messages()).values()))
 
     users = InMemoryUserRepository()
     repository = InMemoryKeywordRepository(users)
@@ -148,7 +150,7 @@ async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypat
         repository=repository,
         users=users,
         presence=SimpleNamespace(is_user_online=lambda _name: True),
-        queue=QueueKeywordCommandSink(MessageQueue.instance()),
+        queue=QueueKeywordCommandSink(queue),
         chat_logs=SimpleNamespace(record=lambda *_a, **_k: None),
         config_source=SimpleNamespace(load=lambda: None),
         fallback=SimpleNamespace(resolve=lambda **_kwargs: None),
@@ -160,7 +162,7 @@ async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypat
 
     await cmd.do_process(timer_message, ["run", "助眠"])
 
-    inner = next(iter((await MessageQueue.instance().get_all_messages()).values()))
+    inner = next(iter((await queue.get_all_messages()).values()))
     assert inner.content == ":playlist 助眠"
     assert inner.nickname == "Timer"
     assert inner.sleep_exempt is True

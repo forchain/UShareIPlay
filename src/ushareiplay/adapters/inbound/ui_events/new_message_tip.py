@@ -4,7 +4,7 @@
 当检测到新消息提示时触发，自动点击滚动到最新消息。
 """
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 
 
 class NewMessageTipEvent(BaseEvent):

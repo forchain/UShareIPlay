@@ -2,8 +2,10 @@ import pytest
 
 from ushareiplay.adapters.inbound.chat.level import LevelCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-from ushareiplay.dal.user_dao import UserDAO
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+from ushareiplay.modules.shared.message_info import MessageInfo
+
+UserDAO = TortoiseUserRepository()
 
 
 class DummyController:
@@ -20,6 +22,7 @@ class DummyController:
         }
         self.soul_handler = None
         self.music_handler = None
+        self.user_repository = UserDAO
 
 
 @pytest.fixture
@@ -37,8 +40,7 @@ async def test_level_query_self(setup_db):
 
     # 准备用户
     user = await UserDAO.get_or_create("Alice")
-    user.level = 2
-    await user.save(update_fields=["level"])
+    await UserDAO.update_level(user.id, 2)
 
     msg = MessageInfo(nickname="Alice", content=":level")
     res = await cmd.process(msg, [])
@@ -53,8 +55,7 @@ async def test_level_query_target_user(setup_db):
     cmd = LevelCommand(ctl)
 
     user = await UserDAO.get_or_create("Bob")
-    user.level = 4
-    await user.save(update_fields=["level"])
+    await UserDAO.update_level(user.id, 4)
 
     msg = MessageInfo(nickname="Alice", content=":level Bob")
     res = await cmd.process(msg, ["Bob"])
@@ -69,12 +70,10 @@ async def test_level_query_alias_resolves_to_canonical(setup_db):
     cmd = LevelCommand(ctl)
 
     canonical = await UserDAO.get_or_create("Charlie")
-    canonical.level = 3
-    await canonical.save(update_fields=["level"])
+    await UserDAO.update_level(canonical.id, 3)
 
     alias_raw = await UserDAO.get_or_create_raw("Charlie_Alias")
-    alias_raw.canonical_user_id = canonical.id
-    await alias_raw.save(update_fields=["canonical_user_id"])
+    await UserDAO.set_canonical(alias_raw.id, canonical.id)
 
     # 查询别名，应展示主账号及其等级
     msg = MessageInfo(nickname="Alice", content=":level Charlie_Alias")
@@ -90,8 +89,7 @@ async def test_level_set_by_room_owner_or_admin(setup_db):
     cmd = LevelCommand(ctl)
 
     target = await UserDAO.get_or_create("TargetUser")
-    target.level = 1
-    await target.save(update_fields=["level"])
+    await UserDAO.update_level(target.id, 1)
 
     # 房主 Joyer 将其设置为 L9
     msg = MessageInfo(nickname="Joyer", content=":level TargetUser 9")
@@ -116,8 +114,7 @@ async def test_level_set_by_automated_system_user_rejected(setup_db):
     cmd = LevelCommand(ctl)
 
     target = await UserDAO.get_or_create("TargetUser")
-    target.level = 1
-    await target.save(update_fields=["level"])
+    await UserDAO.update_level(target.id, 1)
 
     # 自动化系统角色 Timer 无权随意设置等级
     msg = MessageInfo(nickname="Timer", content=":level TargetUser 9")
@@ -132,12 +129,10 @@ async def test_level_set_by_higher_level_user_success(setup_db):
     cmd = LevelCommand(ctl)
 
     caller = await UserDAO.get_or_create("Leader")
-    caller.level = 5
-    await caller.save(update_fields=["level"])
+    await UserDAO.update_level(caller.id, 5)
 
     target = await UserDAO.get_or_create("Member")
-    target.level = 1
-    await target.save(update_fields=["level"])
+    await UserDAO.update_level(target.id, 1)
 
     # L5 用户将 L1 用户修改为 L3（目标当前 < 5 且 目标新等级 3 < 5）
     msg = MessageInfo(nickname="Leader", content=":level Member 3")
@@ -156,16 +151,13 @@ async def test_level_set_reject_target_equal_or_higher_level(setup_db):
     cmd = LevelCommand(ctl)
 
     caller = await UserDAO.get_or_create("UserA")
-    caller.level = 3
-    await caller.save(update_fields=["level"])
+    await UserDAO.update_level(caller.id, 3)
 
     target_same = await UserDAO.get_or_create("UserB")
-    target_same.level = 3
-    await target_same.save(update_fields=["level"])
+    await UserDAO.update_level(target_same.id, 3)
 
     target_higher = await UserDAO.get_or_create("UserC")
-    target_higher.level = 4
-    await target_higher.save(update_fields=["level"])
+    await UserDAO.update_level(target_higher.id, 4)
 
     # 尝试修改同级用户 -> 拦截
     msg1 = MessageInfo(nickname="UserA", content=":level UserB 1")
@@ -186,12 +178,10 @@ async def test_level_set_reject_new_level_equal_or_higher_than_caller(setup_db):
     cmd = LevelCommand(ctl)
 
     caller = await UserDAO.get_or_create("UserA")
-    caller.level = 3
-    await caller.save(update_fields=["level"])
+    await UserDAO.update_level(caller.id, 3)
 
     target = await UserDAO.get_or_create("UserB")
-    target.level = 1
-    await target.save(update_fields=["level"])
+    await UserDAO.update_level(target.id, 1)
 
     # 目标虽然 < 3，但试图设定为 3 (同级提权) -> 拦截
     msg1 = MessageInfo(nickname="UserA", content=":level UserB 3")
@@ -212,12 +202,10 @@ async def test_level_set_alias_updates_canonical(setup_db):
     cmd = LevelCommand(ctl)
 
     canonical = await UserDAO.get_or_create("RealUser")
-    canonical.level = 0
-    await canonical.save(update_fields=["level"])
+    await UserDAO.update_level(canonical.id, 0)
 
     alias_raw = await UserDAO.get_or_create_raw("AliasUser")
-    alias_raw.canonical_user_id = canonical.id
-    await alias_raw.save(update_fields=["canonical_user_id"])
+    await UserDAO.set_canonical(alias_raw.id, canonical.id)
 
     # 房主通过 alias 设置等级
     msg = MessageInfo(nickname="Joyer", content=":level AliasUser 2")

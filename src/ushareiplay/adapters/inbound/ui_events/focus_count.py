@@ -8,7 +8,7 @@
 
 from typing import Optional
 
-from ushareiplay.core.base_event import BaseEvent
+from ushareiplay.adapters.inbound.ui_events.base_event import BaseEvent
 from ushareiplay.modules.seat.domain import parse_focus_count_text
 
 # 顺序即 EventManager 的同轮分发顺序（见 _process_events_once）：必须先被动观测

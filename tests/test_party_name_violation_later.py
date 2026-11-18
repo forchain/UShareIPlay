@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from lxml import etree
 
-from ushareiplay.core.element_wrapper import ElementWrapper
+from ushareiplay.adapters.outbound.appium.element_wrapper import ElementWrapper
 from ushareiplay.adapters.inbound.ui_events.party_name_violation_later import PartyNameViolationLaterEvent
 
 

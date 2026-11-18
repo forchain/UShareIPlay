@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 class FakeMessageDispatch:
@@ -85,7 +85,7 @@ def test_load_command_module_uses_injected_runtime_controller(tmp_path):
     command_file.write_text(
         "\n".join(
             [
-                "from ushareiplay.core.base_command import BaseCommand",
+                "from ushareiplay.adapters.inbound.chat.base_command import BaseCommand",
                 "",
                 "class DemoCommand(BaseCommand):",
                 "    def __init__(self, controller):",
@@ -195,9 +195,7 @@ def test_execute_command_messages_trusts_the_metadata_intake_attached(monkeypatc
     monkeypatch.setattr(manager, "get_command", lambda _cmd: object())
     monkeypatch.setattr(manager, "process_command", _fake_process)
     dispatch = FakeMessageDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager._message_dispatch = dispatch
 
     processed = asyncio.run(
         manager.execute_command_messages(
@@ -231,9 +229,7 @@ def test_private_reply_keeps_confirmation_public(monkeypatch):
     monkeypatch.setattr(manager, "process_command", _fake_process)
 
     dispatch = FakeMessageDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager._message_dispatch = dispatch
 
     processed = asyncio.run(
         manager.execute_command_messages(
@@ -269,9 +265,7 @@ def test_private_reply_error_routes_private(monkeypatch):
     monkeypatch.setattr(manager, "process_command", _fake_process)
 
     dispatch = FakeMessageDispatch()
-    monkeypatch.setattr(
-        "ushareiplay.adapters.inbound.runtime.command_manager.MessageDispatch.instance", lambda: dispatch
-    )
+    manager._message_dispatch = dispatch
 
     processed = asyncio.run(
         manager.execute_command_messages(

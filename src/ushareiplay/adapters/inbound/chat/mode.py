@@ -1,4 +1,4 @@
-from ushareiplay.core.base_command import BaseCommand
+from ushareiplay.adapters.inbound.chat.base_command import BaseCommand
 from ushareiplay.modules.playback.domain import PLAY_MODE_INVALID_PARAMETER_ERROR
 
 

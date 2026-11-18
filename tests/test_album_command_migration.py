@@ -14,12 +14,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.adapters.inbound.chat.album import AlbumCommand
-from ushareiplay.managers.music_manager import MusicManager
+from ushareiplay.adapters.outbound.appium.qq_music.music_manager import MusicManager
 from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackTrack
 from ushareiplay.modules.playback.use_cases import PlaySong, PlaybackMuting, PlaylistSession
 
 _CURRENT_PLAY_SONG = None
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
 

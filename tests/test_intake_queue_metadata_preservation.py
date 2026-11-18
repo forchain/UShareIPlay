@@ -28,7 +28,7 @@ from ushareiplay.adapters.inbound.runtime.message_queue import MessageQueue
 from ushareiplay.adapters.inbound.runtime.runtime_services import RuntimeQueueDrainer
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 from ushareiplay.adapters.inbound.runtime.message_manager import MessageManager
-from ushareiplay.models.message_info import MessageInfo
+from ushareiplay.modules.shared.message_info import MessageInfo
 
 
 def _run(coro):
@@ -56,7 +56,7 @@ class _FakeSoulHandler:
         return True
 
 
-def _scan_lines(*lines, from_backfill=False):
+def _scan_lines(*lines, from_backfill=False, queue=None):
     """Run raw chat lines through the real scan site, leaving them in the queue.
 
     The queue is deliberately NOT drained here: draining is what these tests are
@@ -64,11 +64,12 @@ def _scan_lines(*lines, from_backfill=False):
     Returns the `MessageBatch` intake produced, so a test can assert on the
     intake side without stealing the messages the drainer is supposed to find.
     """
-    manager = MessageManager.instance()
-    manager._handler = _with_ui_components(_FakeSoulHandler())
+    queue = queue or MessageQueue()
+    manager = MessageManager(
+        handler=_with_ui_components(_FakeSoulHandler()),
+        message_queue=queue,
+    )
     manager._chat_logger = logging.getLogger("test_chat_logger_intake_queue")
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
 
     return _run(
         manager.dispatch_intake(
@@ -79,8 +80,7 @@ def _scan_lines(*lines, from_backfill=False):
 
 def _real_command_manager():
     """A real `CommandManager`, with execution captured at the execution seam."""
-    manager = CommandManager.__new__(CommandManager)
-    manager.__init__()
+    manager = CommandManager()
     manager._logger = logging.getLogger("test_intake_queue_command_manager")
 
     captured = []
@@ -93,12 +93,13 @@ def _real_command_manager():
     return manager, captured
 
 
-def _drain(command_manager, handler=None):
+def _drain(command_manager, handler=None, *, queue=None):
     handler = handler or _FakeSoulHandler()
     drainer = RuntimeQueueDrainer(
         handler=handler,
         command_manager=command_manager,
         send_screen_message=handler.send_message,
+        message_queue=queue,
         logger=handler.logger,
     )
     drained, command_count = _run(drainer.drain())
@@ -112,10 +113,11 @@ def test_screen_command_containing_semicolon_reaches_execution_whole():
     `:play a;:mode random` as one message. A person typing `:play a;b` in chat
     meant one command, and `b` must not be posted to the room as chat.
     """
-    _scan_lines("souler[Bob]说：:play a;b")
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：:play a;b", queue=queue)
 
     manager, captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert [m.content for m in captured] == [":play a;b"]
     assert [m.nickname for m in captured] == ["Bob"]
@@ -123,10 +125,11 @@ def test_screen_command_containing_semicolon_reaches_execution_whole():
 
 def test_backfilled_command_containing_semicolon_reaches_execution_whole():
     """The backfill path shares the screen path, so it shares the fix."""
-    _scan_lines("souler[Bob]说：/play a;b", from_backfill=True)
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：/play a;b", from_backfill=True, queue=queue)
 
     manager, captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert [m.content for m in captured] == ["/play a;b"]
 
@@ -138,11 +141,12 @@ def test_quoted_text_survives_intake_queue_drain_to_execution():
     `quoted_text` entirely, so the reply context was silently dropped at the
     drain.
     """
-    batch = _scan_lines("souler[Bob]说：「Alice：hi」 :play x")
+    queue = MessageQueue()
+    batch = _scan_lines("souler[Bob]说：「Alice：hi」 :play x", queue=queue)
     assert [m.quoted_text for m in batch.commands] == ["Alice：hi"], "intake must attach the quote"
 
     manager, captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert [m.quoted_text for m in captured] == ["Alice：hi"]
 
@@ -154,10 +158,11 @@ def test_intake_metadata_reaches_execution_without_re_derivation():
     character was still in the rebuilt content, so the same answer came out for
     the wrong reason.
     """
-    _scan_lines("souler[Bob]说：$info", "souler[Carol]说：/mode random")
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：$info", "souler[Carol]说：/mode random", queue=queue)
 
     manager, captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert [m.private_reply for m in captured] == [True, False]
     assert [m.silent for m in captured] == [False, True]
@@ -182,9 +187,10 @@ def test_intake_messages_are_never_classified_a_second_time(monkeypatch):
 
     monkeypatch.setattr(runtime_services, "expand_queue_text", _counting_expand)
 
-    _scan_lines("souler[Bob]说：:play 晴天")
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：:play 晴天", queue=queue)
     manager, _captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert calls == [], "intake already classified; the queue must not classify again"
 
@@ -206,8 +212,9 @@ def test_intake_commands_reach_the_intake_seam_on_the_live_path(monkeypatch):
 
     manager.execute_intake_batch = _spy
 
-    _scan_lines("souler[Bob]说：:play 晴天")
-    _drain(manager)
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：:play 晴天", queue=queue)
+    _drain(manager, queue=queue)
 
     assert len(seen) == 1
     assert [m.content for m in seen[0].commands] == [":play 晴天"]
@@ -220,8 +227,7 @@ def test_queue_grammar_producers_still_split_and_substitute():
     This is the counterweight to the bypass above: the queue grammar belongs to
     the raw-text producers, and must not regress with them.
     """
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(
         queue.put_message(
             MessageInfo(content="hi {user_name};:play 晴天", nickname="Alice")
@@ -229,7 +235,7 @@ def test_queue_grammar_producers_still_split_and_substitute():
     )
 
     manager, captured = _real_command_manager()
-    _drained, command_count, handler = _drain(manager)
+    _drained, command_count, handler = _drain(manager, queue=queue)
 
     assert command_count == 1
     assert [m.content for m in captured] == [":play 晴天"]
@@ -239,8 +245,7 @@ def test_queue_grammar_producers_still_split_and_substitute():
 
 def test_queue_grammar_producers_still_split_silent_and_private_parts():
     """The whole prefix matrix still resolves for raw-text producers."""
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     _run(
         queue.put_message(
             MessageInfo(
@@ -252,7 +257,7 @@ def test_queue_grammar_producers_still_split_silent_and_private_parts():
     )
 
     manager, captured = _real_command_manager()
-    _drained, command_count, handler = _drain(manager)
+    _drained, command_count, handler = _drain(manager, queue=queue)
 
     assert command_count == 2
     assert [m.content for m in captured] == ["/mode random", "$info"]
@@ -268,13 +273,12 @@ def test_intake_and_queue_producers_coexist_in_one_drain():
     Commands run in global FIFO order. What matters here is that neither
     grammar is applied to the other's producer.
     """
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
-    _scan_lines("souler[Bob]说：:play a;b")
+    queue = MessageQueue()
+    _scan_lines("souler[Bob]说：:play a;b", queue=queue)
     _run(queue.put_message(MessageInfo(content="hi {user_name};:timer list", nickname="Timer")))
 
     manager, captured = _real_command_manager()
-    _drained, command_count, handler = _drain(manager)
+    _drained, command_count, handler = _drain(manager, queue=queue)
 
     assert command_count == 2
     # Queue-grammar entry splits and substitutes; the screen entry does not.
@@ -286,10 +290,11 @@ def test_intake_and_queue_producers_coexist_in_one_drain():
 
 def test_queued_screen_command_carries_its_source_provenance():
     """JUDG-1: `MessageInfo.source` is populated, not a log-local duplicate."""
-    batch = _scan_lines("souler[Bob]说：:play 晴天")
+    queue = MessageQueue()
+    batch = _scan_lines("souler[Bob]说：:play 晴天", queue=queue)
     assert [m.source for m in batch.commands] == ["screen"]
 
-    batch = _scan_lines("souler[Bob]说：:play 晴天", from_backfill=True)
+    batch = _scan_lines("souler[Bob]说：:play 晴天", from_backfill=True, queue=queue)
     assert [m.source for m in batch.commands] == ["backfill"]
 
 
@@ -310,13 +315,12 @@ def test_ambient_command_silence_survives_the_drain_for_a_screen_command(monkeyp
     """
     from ushareiplay.core.command_silence import command_silence
 
-    queue = MessageQueue.instance()
-    _run(queue.clear_queue())
+    queue = MessageQueue()
     with command_silence(True):
-        _scan_lines("souler[Bob]说：:play a;b")
+        _scan_lines("souler[Bob]说：:play a;b", queue=queue)
 
     manager, captured = _real_command_manager()
-    _drain(manager)
+    _drain(manager, queue=queue)
 
     assert [m.content for m in captured] == [":play a;b"]
     assert [m.silent for m in captured] == [True]
