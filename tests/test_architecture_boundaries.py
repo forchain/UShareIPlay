@@ -118,6 +118,19 @@ def test_room_package_is_covered_by_the_guard():
     assert violations == {}
 
 
+def test_playback_package_is_covered_by_the_guard():
+    """播放切片也必须被扫描，确保无 Appium/Tortoise/adapters 或 .instance() 泄漏。"""
+    playback_files = sorted((MODULES_ROOT / "playback").rglob("*.py"))
+    assert playback_files
+
+    violations = {
+        str(path): found
+        for path in playback_files
+        if (found := find_violations(path.read_text(), path))
+    }
+    assert violations == {}
+
+
 def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
     persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
     assert persistence_files
