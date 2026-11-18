@@ -16,7 +16,7 @@ import pytest
 import pytest_asyncio
 
 from ushareiplay.commands.enter import EnterCommand
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.user_event_hooks import (
@@ -31,7 +31,7 @@ from ushareiplay.managers.user_event_hooks import (
     UserEventHooks,
     spec_for,
 )
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 
 

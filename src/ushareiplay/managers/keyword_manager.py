@@ -8,7 +8,7 @@ from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.dal import KeywordDAO, UserDAO
-from ushareiplay.models.keyword import Keyword
+from ushareiplay.adapters.outbound.persistence.models.keyword import Keyword
 
 
 def _as_root_view(config) -> ConfigView:

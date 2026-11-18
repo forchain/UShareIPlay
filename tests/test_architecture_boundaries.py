@@ -12,12 +12,24 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 MODULES_ROOT = SRC_ROOT / "ushareiplay" / "modules"
+PERSISTENCE_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "persistence"
 SYSTEM_ADAPTERS_ROOT = SRC_ROOT / "ushareiplay" / "adapters" / "outbound" / "system"
 GUARDED_ROOTS = (MODULES_ROOT, SYSTEM_ADAPTERS_ROOT)
 
 FORBIDDEN_MODULES = ("appium", "selenium", "tortoise", "openai", "ushareiplay.adapters")
+# 持久化适配器自己就是 Tortoise 的家，但不得卷入 UI/LLM/其他适配器或服务定位。
+FORBIDDEN_IN_PERSISTENCE = (
+    "appium",
+    "selenium",
+    "openai",
+    "ushareiplay.adapters.inbound",
+    "ushareiplay.adapters.outbound.appium",
+    "ushareiplay.adapters.outbound.llm",
+    "ushareiplay.adapters.outbound.system",
+)
 
 _SYNTHETIC_PATH = MODULES_ROOT / "shared" / "_guard_fixture.py"
+_PERSISTENCE_SYNTHETIC_PATH = PERSISTENCE_ROOT / "_guard_fixture.py"
 
 
 def _package_parts(path: Path) -> list[str]:
@@ -45,18 +57,18 @@ def _imported_modules(node: ast.AST, path: Path) -> list[str]:
     return imported
 
 
-def _is_forbidden(module: str) -> bool:
+def _is_forbidden(module: str, forbidden_modules=FORBIDDEN_MODULES) -> bool:
     return any(
         module == forbidden or module.startswith(f"{forbidden}.")
-        for forbidden in FORBIDDEN_MODULES
+        for forbidden in forbidden_modules
     )
 
 
-def find_violations(source: str, path: Path) -> list[str]:
+def find_violations(source: str, path: Path, forbidden_modules=FORBIDDEN_MODULES) -> list[str]:
     violations = []
     for node in ast.walk(ast.parse(source)):
         for module in _imported_modules(node, path):
-            if _is_forbidden(module):
+            if _is_forbidden(module, forbidden_modules):
                 violations.append(f"{path}:{node.lineno}: forbidden import {module}")
         if (
             isinstance(node, ast.Call)
@@ -80,6 +92,44 @@ def test_guarded_packages_do_not_import_technology_or_adapters_and_do_not_locate
     }
 
     assert violations == {}
+
+
+def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
+    persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
+    assert persistence_files
+
+    violations = {
+        str(path): found
+        for path in persistence_files
+        if (found := find_violations(path.read_text(), path, FORBIDDEN_IN_PERSISTENCE))
+    }
+
+    assert violations == {}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import tortoise\n",
+        "from tortoise.models import Model\n",
+    ],
+)
+def test_persistence_guard_allows_tortoise(source):
+    assert find_violations(source, _PERSISTENCE_SYNTHETIC_PATH, FORBIDDEN_IN_PERSISTENCE) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import appium\n",
+        "from selenium.webdriver import Chrome\n",
+        "from openai import OpenAI\n",
+        "from ushareiplay.adapters.outbound.appium import locator\n",
+        "value = Service.instance()\n",
+    ],
+)
+def test_persistence_guard_rejects_a_forbidden_line(source):
+    assert find_violations(source, _PERSISTENCE_SYNTHETIC_PATH, FORBIDDEN_IN_PERSISTENCE)
 
 
 @pytest.mark.parametrize(

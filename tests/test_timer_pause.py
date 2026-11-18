@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 import pytest
 
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.timer_dao import TimerDAO
 from ushareiplay.managers.timer_manager import TimerManager

@@ -1,12 +1,12 @@
 import pytest
 from datetime import datetime, timedelta
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.dal.user_chat_log_dao import UserChatLogDAO
 from ushareiplay.dal.user_memory_dao import UserMemoryDAO
-from ushareiplay.models.user import User
-from ushareiplay.models.user_chat_log import UserChatLog
-from ushareiplay.models.user_memory import UserMemory
+from ushareiplay.adapters.outbound.persistence.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user_chat_log import UserChatLog
+from ushareiplay.adapters.outbound.persistence.models.user_memory import UserMemory
 from ushareiplay.core.chat_intake import ChatIntakeResult, ChatIntakeKind
 from ushareiplay.managers.keyword_manager import KeywordManager
 

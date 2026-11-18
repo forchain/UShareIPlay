@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
 from ushareiplay.managers.user_event_hooks.registry import ENTER
-from ushareiplay.models.enter_event import EnterEvent
+from ushareiplay.adapters.outbound.persistence.models.enter_event import EnterEvent
 
 
 class EnterDao:

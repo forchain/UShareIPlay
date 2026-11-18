@@ -14,7 +14,7 @@ from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.state.presence_tracker import PresenceTracker
 from ushareiplay.state.room_state import RoomState
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.dal.user_dao import UserDAO
 from tortoise import Tortoise
 import pytest_asyncio
@@ -25,7 +25,7 @@ from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 async def user_db():
     await Tortoise.init(
         db_url="sqlite://:memory:",
-        modules={"models": ["ushareiplay.models.user"]},
+        modules={"models": ["ushareiplay.adapters.outbound.persistence.models.user"]},
     )
     await Tortoise.generate_schemas()
     try:

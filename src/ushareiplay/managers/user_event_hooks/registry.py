@@ -16,11 +16,11 @@ from enum import Enum
 from typing import Awaitable, Callable, Optional
 
 from ushareiplay.managers.user_event_hooks.macros import expand_seat_macros
-from ushareiplay.models.enter_event import EnterEvent
-from ushareiplay.models.exit_event import ExitEvent
-from ushareiplay.models.focus_event import FocusEvent
-from ushareiplay.models.receive_event import ReceiveEvent
-from ushareiplay.models.return_event import ReturnEvent
+from ushareiplay.adapters.outbound.persistence.models.enter_event import EnterEvent
+from ushareiplay.adapters.outbound.persistence.models.exit_event import ExitEvent
+from ushareiplay.adapters.outbound.persistence.models.focus_event import FocusEvent
+from ushareiplay.adapters.outbound.persistence.models.receive_event import ReceiveEvent
+from ushareiplay.adapters.outbound.persistence.models.return_event import ReturnEvent
 
 #: 事件类型取值，同时也是各命令的前缀词根。
 ENTER = "enter"

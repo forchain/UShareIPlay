@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime, timedelta
-from ushareiplay.models import SeatReservation, User
+from ushareiplay.adapters.outbound.persistence.models import SeatReservation, User
 from ushareiplay.dal.user_dao import UserDAO
 import logging
 

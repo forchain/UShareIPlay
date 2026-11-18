@@ -1,7 +1,7 @@
 import pytest
 
 from ushareiplay.commands.level import LevelCommand
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.models.message_info import MessageInfo
 

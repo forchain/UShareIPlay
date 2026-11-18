@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 
-from ushareiplay.models.timer import Timer
+from ushareiplay.adapters.outbound.persistence.models.timer import Timer
 
 
 class TimerDAO:

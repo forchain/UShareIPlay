@@ -29,7 +29,7 @@ class _DummyController:
 @pytest.mark.asyncio
 async def test_timer_manager_supports_numeric_delay():
     from datetime import datetime, timedelta
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.managers.timer_manager import TimerManager
     from ushareiplay.dal.timer_dao import TimerDAO
 
@@ -54,7 +54,7 @@ async def test_timer_manager_supports_numeric_delay():
 
 @pytest.mark.asyncio
 async def test_timer_command_add_without_id_generates_key(monkeypatch):
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.commands.timer import TimerCommand
     from ushareiplay.managers.timer_manager import TimerManager
     from ushareiplay.dal.timer_dao import TimerDAO
@@ -88,7 +88,7 @@ async def test_timer_command_add_without_id_generates_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_timer_command_strips_grouping_quotes_in_message():
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.commands.timer import TimerCommand
     from ushareiplay.managers.timer_manager import TimerManager
     from ushareiplay.dal.timer_dao import TimerDAO
@@ -114,7 +114,7 @@ async def test_timer_command_strips_grouping_quotes_in_message():
 async def test_one_shot_timer_deleted_after_trigger():
     from datetime import datetime, timedelta
 
-    from ushareiplay.core.db_manager import DatabaseManager
+    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
     from ushareiplay.dal.timer_dao import TimerDAO
     from ushareiplay.managers.timer_manager import TimerManager
 

@@ -16,7 +16,7 @@ import pytest
 import pytest_asyncio
 
 from ushareiplay.commands.focus import FocusCommand
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.dal.user_dao import UserDAO
@@ -31,7 +31,7 @@ from ushareiplay.managers.user_event_hooks.macros import (
     SEAT_INFO_CTX_KEY,
     expand_seat_macros,
 )
-from ushareiplay.models import User
+from ushareiplay.adapters.outbound.persistence.models import User
 from ushareiplay.models.message_info import MessageInfo
 
 

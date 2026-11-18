@@ -19,7 +19,7 @@ import pytest
 
 from ushareiplay.commands.gift import GiftCommand
 from ushareiplay.commands.seat import SeatCommand
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.focus_event_dao import FocusEventDao
 from ushareiplay.dal.user_dao import UserDAO
@@ -30,7 +30,7 @@ from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.models.user import User
+from ushareiplay.adapters.outbound.persistence.models.user import User
 from ushareiplay.state.presence_tracker import PresenceTracker
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 

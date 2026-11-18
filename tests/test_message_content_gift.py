@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock, AsyncMock
-from ushareiplay.core.db_manager import DatabaseManager
+from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.events.message_content import MessageContentEvent
 from ushareiplay.core.chat_intake import ChatIntakeKind, classify_chat_line
 

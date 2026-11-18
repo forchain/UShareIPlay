@@ -21,7 +21,7 @@ from typing import List, Optional
 
 from ushareiplay.managers.user_event_hooks.dao import UserEventHookDAO
 from ushareiplay.managers.user_event_hooks.registry import FOCUS
-from ushareiplay.models.focus_event import FocusEvent
+from ushareiplay.adapters.outbound.persistence.models.focus_event import FocusEvent
 
 
 class FocusEventDao:
