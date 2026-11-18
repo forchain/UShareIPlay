@@ -26,7 +26,6 @@ import pytest_asyncio
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.seat_manager import SeatManager
 from tests.room_support import make_hooks
 
 from ushareiplay.adapters.inbound.chat.enter import EnterCommand
@@ -171,15 +170,11 @@ async def test_enter_and_return_fire_hooks_and_check_seats_once(
     cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
 
-    SeatManager.reset_instance()
-    SeatManager.initialize()
+    seat_check = AsyncMock()
+    cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=seat_check))
 
     await MessageQueue.instance().clear_queue()
-    with patch(
-        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
-        new_callable=AsyncMock,
-    ) as seat_check:
-        await getattr(cm, notify_name)("Bob")
+    await getattr(cm, notify_name)("Bob")
 
     assert [m.content for m in await _drain()] == [":play 稻香"]
     seat_check.assert_awaited_once_with("Bob")

@@ -15,18 +15,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from tests.seat_fixtures import FakeSeatUI, make_handler
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
 from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)
 def _reset():
-    SeatObservationManager.reset_instance()
     RoomState.reset_instance()
     RoomState.initialize()  # 组合根在生产里一定会建；事件链路的两个缓存都写它
     yield
-    SeatObservationManager.reset_instance()
     RoomState.reset_instance()
 
 
@@ -64,7 +62,7 @@ class TestOnDemandFocusCountRead:
 
     def test_reads_focus_count_from_ui_element(self):
         handler = _with_live_focus(make_handler(), "7人专注中")
-        manager = SeatObservationManager.initialize(handler)
+        manager = build_seat_observation(handler); handler.controller.seat_observation = manager
 
         assert manager.read_focus_count_from_ui() == 7
 
@@ -81,7 +79,7 @@ class TestOnDemandFocusCountRead:
     )
     def test_parses_focus_count_text(self, text, expected):
         handler = _with_live_focus(make_handler(), text)
-        manager = SeatObservationManager.initialize(handler)
+        manager = build_seat_observation(handler); handler.controller.seat_observation = manager
 
         assert manager.read_focus_count_from_ui() == expected
 
@@ -89,7 +87,7 @@ class TestOnDemandFocusCountRead:
         """元素读不到时返回 None（不抛、不假装有值）。"""
         handler = make_handler()
         handler.element_finder.try_find_element = lambda key, **kwargs: None
-        manager = SeatObservationManager.initialize(handler)
+        manager = build_seat_observation(handler); handler.controller.seat_observation = manager
 
         assert manager.read_focus_count_from_ui() is None
 
@@ -97,7 +95,7 @@ class TestOnDemandFocusCountRead:
         """finder 整个缺席时不能炸（降级环境：观测器可能没有 element_finder）。"""
         handler = make_handler()
         handler.element_finder = None
-        manager = SeatObservationManager.initialize(handler)
+        manager = build_seat_observation(handler); handler.controller.seat_observation = manager
 
         assert manager.read_focus_count_from_ui() is None
 
@@ -109,7 +107,7 @@ class TestOnDemandFocusCountRead:
             raise RuntimeError("driver gone")
 
         handler.element_finder.try_find_element = _boom
-        manager = SeatObservationManager.initialize(handler)
+        manager = build_seat_observation(handler); handler.controller.seat_observation = manager
 
         assert manager.read_focus_count_from_ui() is None
 
@@ -120,8 +118,7 @@ class TestRescanReconcilesAgainstLiveCount:
     @pytest.mark.asyncio
     async def test_rescan_reports_the_live_count_instead_of_unknown(self):
         handler = _with_live_focus(make_handler(), "7人专注中")
-        manager = SeatObservationManager.initialize(handler)
-        manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
+        manager = build_seat_observation(handler, seat_ui=FakeSeatUI(desks=[SimpleNamespace()])); handler.controller.seat_observation = manager
         manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
@@ -143,8 +140,7 @@ class TestRescanReconcilesAgainstLiveCount:
         一次账都没对，错的快照被当成对的。
         """
         handler = _with_live_focus(make_handler(), "7人专注中")
-        manager = SeatObservationManager.initialize(handler)
-        manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
+        manager = build_seat_observation(handler, seat_ui=FakeSeatUI(desks=[SimpleNamespace()])); handler.controller.seat_observation = manager
         manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
@@ -162,8 +158,7 @@ class TestRescanReconcilesAgainstLiveCount:
     async def test_rescan_agrees_when_counts_match(self):
         """读数与人数一致时不误报。"""
         handler = _with_live_focus(make_handler(), "4人专注中")
-        manager = SeatObservationManager.initialize(handler)
-        manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
+        manager = build_seat_observation(handler, seat_ui=FakeSeatUI(desks=[SimpleNamespace()])); handler.controller.seat_observation = manager
         manager.ledger.gate_state.last_focus_count = None
 
         with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
@@ -181,8 +176,7 @@ class TestRescanReconcilesAgainstLiveCount:
     async def test_explicit_target_wins_over_live_read(self):
         """调用方给了人数就用它，不去多读一次界面。"""
         handler = _with_live_focus(make_handler(), "7人专注中")
-        manager = SeatObservationManager.initialize(handler)
-        manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
+        manager = build_seat_observation(handler, seat_ui=FakeSeatUI(desks=[SimpleNamespace()])); handler.controller.seat_observation = manager
 
         calls = []
         real_read = manager.read_focus_count_from_ui
@@ -208,8 +202,7 @@ class TestRescanReconcilesAgainstLiveCount:
         """界面上真的读不到时保持「未知」，但扫描本身仍然落地。"""
         handler = make_handler()
         handler.element_finder.try_find_element = lambda key, **kwargs: None
-        manager = SeatObservationManager.initialize(handler)
-        manager._seat_ui = FakeSeatUI(desks=[SimpleNamespace()])
+        manager = build_seat_observation(handler, seat_ui=FakeSeatUI(desks=[SimpleNamespace()])); handler.controller.seat_observation = manager
 
         with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
             cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -233,7 +226,7 @@ class TestFocusCountEventSeedsCache:
         from ushareiplay.events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.observe_visible_desks = AsyncMock()
 
         event = FocusCountEvent(handler=handler)
@@ -250,7 +243,7 @@ class TestFocusCountEventSeedsCache:
         from ushareiplay.events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.observe_visible_desks = AsyncMock()
 
         event = FocusCountEvent(handler=handler)
@@ -275,7 +268,7 @@ class TestFocusCountEventSeedsCache:
         from ushareiplay.events.focus_count import FocusCountEvent
 
         handler = _with_live_focus(make_handler(), "7人专注中")
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.observe_visible_desks = AsyncMock()
 
         reads = []
@@ -303,7 +296,7 @@ class TestFocusCountEventSeedsCache:
 
         handler = make_handler()
         handler.element_finder.try_find_element = lambda key, **kwargs: None
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.observe_visible_desks = AsyncMock()
 
         event = FocusCountEvent(handler=handler)
@@ -321,7 +314,7 @@ class TestFocusCountEventSeedsCache:
         from tests.legacy_state import RoomState
 
         handler = make_handler()
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.on_focus_count = AsyncMock()
 
         RoomState.reset_instance()
@@ -343,7 +336,7 @@ class TestFocusCountEventSeedsCache:
         from tests.legacy_state import RoomState
 
         handler = make_handler()
-        observation = SeatObservationManager.initialize(handler)
+        observation = build_seat_observation(handler); handler.controller.seat_observation = observation
         observation.on_focus_count = AsyncMock()
 
         RoomState.reset_instance()

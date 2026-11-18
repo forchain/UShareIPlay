@@ -18,7 +18,8 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.commands.gift import GiftCommand
-from ushareiplay.commands.seat import SeatCommand
+from tests.seat_support import build_seat_service
+from ushareiplay.adapters.inbound.chat.seat import SeatCommand
 from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
 from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import (
     TortoiseUserEventHookRepository,
@@ -26,8 +27,6 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.info_manager import InfoManager
-from ushareiplay.managers.seat_manager import SeatManager
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
 from ushareiplay.managers.user_manager import UserManager
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.adapters.outbound.persistence.models.user import User
@@ -198,7 +197,7 @@ class DummyController:
 
 def _seating_manager(desks, popup_name):
     handler = DummySeatHandler(desks, popup_name)
-    manager = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    manager = build_seat_service(handler, seat_ui=DummySeatUI(handler))
     return handler, manager
 
 
@@ -254,7 +253,7 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
     """`:seat 3` 不接参数时，交给座位层的靶子必须是麦位上可见的分身名。"""
     desks = [_desk(right_label=AVATAR, right_occupied=True)]
     handler = DummySeatHandler(desks, popup_name=AVATAR)
-    seating = SeatSubsystem(handler, seat_ui=DummySeatUI(handler))
+    seating = build_seat_service(handler, seat_ui=DummySeatUI(handler))
     presence_env = _presence
     presence_env._online_users = {AVATAR}
 
@@ -264,10 +263,9 @@ async def test_seat_3_without_parameter_targets_the_avatar_name_on_seat(alias_pa
         accompanying["target"] = target_username
         return await seating.accompany_user(target_username, sender_username=sender_username)
 
-    SeatManager.reset_instance()
-    seat_manager = SeatManager.initialize()
-    seat_manager.accompany_user = spy
-    command = SeatCommand(DummyController(handler))
+    controller = DummyController(handler)
+    controller.seat_service = SimpleNamespace(accompany_user=spy)
+    command = SeatCommand(controller)
     result = await command.do_process(
         MessageInfo(content=":seat 3", nickname=CANONICAL), ["3"]
     )
@@ -431,7 +429,7 @@ async def test_accompany_user_collapses_seats_and_avoids_duplicate_row_scrolls(a
         async def collapse_seats(self):
             collapsed.append(True)
 
-    manager = SeatSubsystem(handler, seat_ui=MockUI(handler))
+    manager = build_seat_service(handler, seat_ui=MockUI(handler))
 
     result = await manager.accompany_user(CANONICAL, sender_username=CANONICAL)
     assert "error" in result

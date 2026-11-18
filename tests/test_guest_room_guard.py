@@ -57,13 +57,11 @@ class DummyCommand:
 def _reset_singletons():
     from ushareiplay.core.message_dispatch import MessageDispatch
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.seat_manager import SeatManager
 
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
     MessageDispatch.initialize()
     RoomState.reset_instance()
-    SeatManager.reset_instance()
     from ushareiplay.modules.command.domain import CommandCatalogue
     from ushareiplay.core.config_loader import ConfigLoader
 
@@ -75,7 +73,6 @@ def _reset_singletons():
     CommandManager.reset_instance()
     MessageDispatch.reset_instance()
     RoomState.reset_instance()
-    SeatManager.reset_instance()
 
 
 @pytest.mark.asyncio
@@ -237,13 +234,12 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
 
 @pytest.mark.asyncio
 async def test_guest_room_blocks_all_seat_manager_actions():
-    from ushareiplay.managers.seat_manager import SeatManager
+    from tests.seat_support import build_seat_service
 
     room_state = RoomState.instance()
     room_state.is_guest_room = True
 
-    SeatManager.reset_instance()
-    seat_mgr = SeatManager.initialize()
+    seat_mgr = build_seat_service(room_state=room_state)
 
     # take seat
     res = await seat_mgr.take_seat(1)
@@ -287,22 +283,17 @@ async def test_guest_room_blocks_seat_check_on_enter_and_return():
     调用，守卫也跟着搬过来 —— 这里钉的是新缝上的同一件事。
     """
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.seat_manager import SeatManager
 
     RoomState.instance().is_guest_room = True
 
-    SeatManager.reset_instance()
-    SeatManager.initialize()
     cm = CommandManager.initialize()
+    mock_check = AsyncMock()
+    cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=mock_check))
 
     cm.user_event_hooks = MagicMock()
     cm.user_event_hooks.fire = AsyncMock(return_value=0)
-    with patch(
-        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
-        new_callable=AsyncMock,
-    ) as mock_check:
-        await cm.notify_user_enter("Alice")
-        await cm.notify_user_return("Alice")
+    await cm.notify_user_enter("Alice")
+    await cm.notify_user_return("Alice")
 
     mock_check.assert_not_awaited()
 
@@ -316,22 +307,17 @@ async def test_host_room_checks_seats_on_enter_and_return():
     静默失效 —— 不报错，只是座位再也不动了。
     """
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-    from ushareiplay.managers.seat_manager import SeatManager
 
     RoomState.instance().is_guest_room = False
 
-    SeatManager.reset_instance()
-    SeatManager.initialize()
     cm = CommandManager.initialize()
+    mock_check = AsyncMock()
+    cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=mock_check))
 
     cm.user_event_hooks = MagicMock()
     cm.user_event_hooks.fire = AsyncMock(return_value=0)
-    with patch(
-        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
-        new_callable=AsyncMock,
-    ) as mock_check:
-        await cm.notify_user_enter("Alice")
-        await cm.notify_user_return("Bob")
+    await cm.notify_user_enter("Alice")
+    await cm.notify_user_return("Bob")
 
     assert mock_check.await_args_list == [call("Alice"), call("Bob")]
 
@@ -576,7 +562,7 @@ async def test_detect_initial_room_state_mismatch_triggers_leave(monkeypatch):
 @pytest.mark.asyncio
 async def test_new_seat_entry_inherits_guest_room_guard():
     """证明新增座位入口无需复制守卫即可获得同样的客房行为。"""
-    from ushareiplay.managers.seat_manager.guard import (
+    from ushareiplay.modules.seat.domain import (
         guest_room_guard,
         GUEST_ROOM_ERROR_RESULT,
         GUEST_ROOM_CHAT_SCAN_RESULT,

@@ -46,7 +46,12 @@ class _SeatPanelWithCustomUI(SeatPanelDriver):
 
     def scroll_to_row(self, desk_index: int, seat_desks=None, duration: int = 100) -> bool:
         if hasattr(self._seat_ui, "scroll_to_row"):
-            return self._seat_ui.scroll_to_row(desk_index, seat_desks, duration=duration)
+            resolved = (
+                [self._resolve_desk(d) or d for d in seat_desks]
+                if seat_desks is not None
+                else None
+            )
+            return self._seat_ui.scroll_to_row(desk_index, resolved, duration=duration)
         return super().scroll_to_row(desk_index, seat_desks, duration=duration)
 
 
@@ -91,6 +96,15 @@ def build_seat_observation(
 
         owner_nickname_provider = _owner
 
+    if on_focus_change is None:
+        from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
+
+        async def _default_on_focus_change(before, after, **kw):
+            if CommandManager.is_initialized():
+                await CommandManager.instance().notify_focus_count_change(before, after, **kw)
+
+        on_focus_change = _default_on_focus_change
+
     return SeatObservationService(
         panel=panel_driver,
         room_state=room_state,
@@ -130,6 +144,12 @@ def build_seat_service(
             panel_driver = _SeatPanelWithCustomUI(
                 handler, seat_ui, panel_reader=panel_reader, lease=lease
             )
+            if isinstance(observation, SeatObservationService) and hasattr(
+                observation._panel, "_desk_registry"
+            ):
+                panel_driver._desk_registry = observation._panel._desk_registry
+        elif isinstance(observation, SeatObservationService):
+            panel_driver = observation._panel
         else:
             panel_driver = SeatPanelDriver(handler, panel_reader=panel_reader, lease=lease)
     if invite_driver is None:

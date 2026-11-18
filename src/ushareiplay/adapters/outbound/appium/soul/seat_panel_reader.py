@@ -104,7 +104,10 @@ class SeatPanelReader:
 
         finder = getattr(self.handler, "element_finder", None)
         if finder is not None and hasattr(finder, "find_child_element"):
-            elem = finder.find_child_element(desk, element_key, log_failure=False)
+            try:
+                elem = finder.find_child_element(desk, element_key, log_failure=False)
+            except TypeError:
+                elem = finder.find_child_element(desk, element_key)
             if elem is not None:
                 return elem
 
@@ -128,6 +131,10 @@ class SeatPanelReader:
 
     def _get_label_text(self, desk, side: str) -> str:
         elem = self.find_child_element(desk, f"{side}_label")
+        if elem is None:
+            seat_elem = self.find_child_element(desk, f"{side}_seat")
+            if seat_elem is not None:
+                elem = self.find_child_element(seat_elem, f"{side}_label")
         if elem and hasattr(elem, "text"):
             return elem.text or ""
         return ""

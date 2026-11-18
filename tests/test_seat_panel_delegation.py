@@ -35,9 +35,8 @@ from tests.seat_fixtures import (
 
 from ushareiplay.dal.user_dao import UserDAO
 # 实现已并入 SeatSubsystem（票 #400）：打桩点跟着代码走，落在子系统模块上。
-from ushareiplay.managers.seat_manager import subsystem as seat_check_module
-from ushareiplay.managers.seat_manager.seat_panel_driver import AvatarTapPolicy, SeatCardView
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from tests.seat_support import _SeatPanelWithCustomUI, build_seat_service
+from ushareiplay.modules.seat.domain import AvatarTapPolicy, SeatCardView
 
 CANONICAL = "主账号"
 AVATAR = "分身"
@@ -154,14 +153,11 @@ def _occupied_desk(events, occupant="Bob"):
     )
 
 
-class RecordingDriver:
-    """SeatPanelDriver 的记录替身：证明调用点把点名与读数交了出去。
+class RecordingDriver(_SeatPanelWithCustomUI):
+    """SeatPanelDriver 的记录替身：证明调用点把点名与读数交了出去。"""
 
-    签名与生产一致（含 keyword-only 的 tap_target），并把点击策略一并记下来：
-    占座检查那条链路必须钉在 SEAT_NODE 上，陪伴搜索那条必须钉在 STATE_ONLY 上。
-    """
-
-    def __init__(self, opened=True, name=None):
+    def __init__(self, handler=None, seat_ui=None, opened=True, name=None):
+        super().__init__(handler, seat_ui)
         self.calls = []
         self.card = SeatCardView(opened=opened, name=name)
 
@@ -186,20 +182,21 @@ def _no_sleeps(monkeypatch):
 @pytest.fixture
 def same_identity(monkeypatch):
     """身份判定：主账号与它的分身是同一个人（与 UserDAO.is_same_identity 同义）。"""
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 
-    async def _is_same_identity(left, right):
+    async def _is_same_identity(self, left, right):
         return IDENTITY.get(left, left) == IDENTITY.get(right, right)
 
-    monkeypatch.setattr(UserDAO, "is_same_identity", _is_same_identity)
+    monkeypatch.setattr(TortoiseUserRepository, "is_same_identity", _is_same_identity)
 
 
 def _seat_check_levels(monkeypatch, occupant_level=3):
-    async def _get_by_username(username):
+    from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
+
+    async def _get_by_username(self, username):
         return SimpleNamespace(level=5 if username == "Chainer" else occupant_level)
 
-    monkeypatch.setattr(
-        seat_check_module, "UserDAO", SimpleNamespace(get_by_username=_get_by_username)
-    )
+    monkeypatch.setattr(TortoiseUserRepository, "get_by_username", _get_by_username)
 
 
 # ---------------------------------------------------------------------------
@@ -210,9 +207,9 @@ async def test_accompany_user_delegates_the_avatar_read_to_the_panel_driver(same
     events = []
     desk = _companion_desk(events)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
-    driver = RecordingDriver(opened=True, name=AVATAR)
+    driver = RecordingDriver(handler, FakeSeatUI([desk]), opened=True, name=AVATAR)
 
-    subsystem = SeatSubsystem(
+    subsystem = build_seat_service(
         handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver
     )
 
@@ -237,7 +234,7 @@ async def test_accompany_user_never_presses_back_when_no_popup_opened(same_ident
     desk = _companion_desk(events)
     handler, _finder = make_popup_handler(events, popup_name=None)
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]))
 
     result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -253,7 +250,7 @@ async def test_accompany_user_does_not_press_back_when_the_card_vanished(same_id
     # 读完昵称就把名片关掉（别的任务抢了锁 / 页面被切走）
     finder.on_wait = finder.close_popup
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]))
 
     result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -267,7 +264,7 @@ async def test_accompany_user_closes_the_card_before_sitting_next_to_the_target(
     desk = _companion_desk(events)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]))
 
     result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -332,7 +329,7 @@ async def test_accompany_user_taps_nothing_when_the_state_node_vanished(same_ide
     desk = _desk_with_vanishing_state(events)
     handler, _finder = make_popup_handler(events, popup_name=AVATAR)
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]))
 
     result = await subsystem.accompany_user(CANONICAL, sender_username=CANONICAL)
 
@@ -354,7 +351,7 @@ async def test_accompany_user_does_not_deadlock_when_a_command_session_holds_the
     controller = FakeController()
     handler.controller = controller
 
-    subsystem = SeatSubsystem(handler, seat_ui=FakeSeatUI([desk]))
+    subsystem = build_seat_service(handler, seat_ui=FakeSeatUI([desk]))
 
     async with controller.ui_session("command:seat 3"):
         assert controller.ui_lock.locked() is True
@@ -372,10 +369,13 @@ async def test_accompany_user_does_not_deadlock_when_a_command_session_holds_the
 async def _seat_check_run(events, handler, finder, driver=None, occupant="Bob"):
     """跑一遍 check_user_specific_seat（公开入口），返回事件流。"""
     desk = _occupied_desk(events, occupant=occupant)
-    subsystem = SeatSubsystem(
-        handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver
+    if driver is not None and isinstance(driver, RecordingDriver) and driver.handler is None:
+        driver.handler = handler
+        driver._seat_ui = FakeSeatUI([desk])
+    subsystem = build_seat_service(
+        handler, seat_ui=FakeSeatUI([desk]), panel_driver=driver,
+        messenger=SimpleNamespace(send_screen_message=lambda *a, **k: None),
     )
-    subsystem._message_dispatch = SimpleNamespace(send_screen_message=lambda *a, **k: None)
     await subsystem.check_user_specific_seat("Chainer", 1)
     return events
 
@@ -474,7 +474,7 @@ def _press_back_nodes(path: Path) -> list:
     ]
 
 
-@pytest.mark.parametrize("module_name", ["subsystem.py"])
+@pytest.mark.parametrize("module_name", ["use_cases.py"])
 def test_the_seat_managers_never_call_press_back_directly(module_name):
     """按返回只能由 SeatPanelDriver 授权：实现模块里一处 press_back 都不该有。
 
@@ -483,7 +483,7 @@ def test_the_seat_managers_never_call_press_back_directly(module_name):
     """
     path = (
         Path(__file__).resolve().parents[1]
-        / "src/ushareiplay/managers/seat_manager"
+        / "src/ushareiplay/modules/seat"
         / module_name
     )
     assert _press_back_nodes(path) == [], f"{module_name} 仍在直接调用 press_back"

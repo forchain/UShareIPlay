@@ -176,6 +176,12 @@ class SeatObservationService:
             return desks
         return self._panel.snapshot_desks(desks)
 
+    def _as_snapshot(self, desk) -> Optional[DeskSnapshot]:
+        if desk is None or isinstance(desk, DeskSnapshot):
+            return desk
+        snaps = self._panel.snapshot_desks([desk])
+        return snaps[0] if snaps else None
+
     def map_desks_to_indices(self, desk_wrappers: list) -> List[Tuple[int, DeskSnapshot]]:
         snapshots = self._to_snapshots(desk_wrappers)
         mapped, _dropped, _source = self._map_desks_with_identity(snapshots)
@@ -285,7 +291,10 @@ class SeatObservationService:
             return None
         return seat_num
 
-    def _detect_desk_index_from_labels(self, desk: DeskSnapshot) -> Optional[int]:
+    def _detect_desk_index_from_labels(self, desk) -> Optional[int]:
+        desk = self._as_snapshot(desk)
+        if desk is None:
+            return None
         left_raw = self._label_seat_number(desk, "left")
         right_raw = self._label_seat_number(desk, "right")
 
@@ -314,8 +323,9 @@ class SeatObservationService:
             return None
 
     def _extract_seat_info(
-        self, desk: DeskSnapshot, side: str, seat_num: Optional[int] = None
+        self, desk, side: str, seat_num: Optional[int] = None
     ) -> dict:
+        desk = self._as_snapshot(desk)
         reading = desk.left if side == "left" else desk.right
         label = reading.label
 
@@ -338,8 +348,8 @@ class SeatObservationService:
             "avatar_images": reading.avatar_images,
         }
 
-    @staticmethod
-    def _has_desk_content(desk: Optional[DeskSnapshot]) -> bool:
+    def _has_desk_content(self, desk) -> bool:
+        desk = self._as_snapshot(desk)
         if desk is None:
             return False
         for reading in (desk.left, desk.right):
@@ -347,7 +357,8 @@ class SeatObservationService:
                 return True
         return False
 
-    def _is_desk_visible(self, desk: Optional[DeskSnapshot]) -> bool:
+    def _is_desk_visible(self, desk) -> bool:
+        desk = self._as_snapshot(desk)
         if desk is None or not desk.displayed:
             return False
         return self._has_desk_content(desk)
@@ -358,9 +369,15 @@ class SeatObservationService:
         if not self._panel.is_handler_ready:
             return None
         self.logger.info(f"Inspecting occupant on seat {seat_number} ({side} side)")
-        return await self._panel.read_occupant(desk.desk_id, side, seat_number)
+        desk_id = (
+            desk.desk_id
+            if isinstance(desk, DeskSnapshot)
+            else self._panel.snapshot_desks([desk])[0].desk_id
+        )
+        return await self._panel.read_occupant(desk_id, side, seat_number)
 
-    def _visible_band_signature(self, desks: List[DeskSnapshot]) -> Optional[Tuple]:
+    def _visible_band_signature(self, desks: list) -> Optional[Tuple]:
+        desks = self._to_snapshots(desks)
         rows = []
         for desk in sorted(desks or [], key=self._desk_sort_key):
             if not self._has_desk_content(desk):
@@ -379,7 +396,8 @@ class SeatObservationService:
             rows.append(tuple(sides))
         return tuple(rows) if rows else None
 
-    def _visible_band_geometry_key(self, desks: List[DeskSnapshot]) -> Optional[Tuple]:
+    def _visible_band_geometry_key(self, desks: list) -> Optional[Tuple]:
+        desks = self._to_snapshots(desks)
         keys = tuple(
             self._desk_sort_key(desk)
             for desk in sorted(desks or [], key=self._desk_sort_key)
@@ -395,7 +413,8 @@ class SeatObservationService:
             self.ledger.gate_state.last_visible_band = (geometry, signature)
         return previous, geometry, signature
 
-    def _note_band_change(self, desks: List[DeskSnapshot]) -> None:
+    def _note_band_change(self, desks: list) -> None:
+        desks = self._to_snapshots(desks)
         previous, geometry, signature = self._read_band_baseline(desks)
         if signature is None or previous is None:
             return
@@ -409,8 +428,9 @@ class SeatObservationService:
             )
 
     def _read_visible_seats(
-        self, desks: List[DeskSnapshot], *, band: Optional[str] = None
+        self, desks: list, *, band: Optional[str] = None
     ) -> Dict[int, Tuple[DeskSnapshot, str, dict]]:
+        desks = self._to_snapshots(desks)
         mapped, _dropped, _offset_source = self._map_desks_with_identity(desks, band=band)
         observed: Dict[int, Tuple[DeskSnapshot, str, dict]] = {}
         for desk_idx, desk, _self_anchored in mapped:
@@ -427,9 +447,9 @@ class SeatObservationService:
         plan = plan or self.ledger.prepare_identity_resolution(observed)
 
         pending = [
-            (seat_num, desk, side)
+            (seat_num, snap, side)
             for seat_num, desk, side in plan.pending
-            if isinstance(desk, DeskSnapshot) and desk.interactable
+            if (snap := self._as_snapshot(desk)) is not None and snap.interactable
         ]
         if not pending:
             return
@@ -1268,7 +1288,12 @@ class SeatService:
         if not info.get("is_empty"):
             return SeatClickPlan(reason="unjudgable", desk_index=desk_index, side=side)
 
-        click_err = self._panel.click_empty_seat(desk.desk_id, side)
+        desk_id = (
+            desk.desk_id
+            if isinstance(desk, DeskSnapshot)
+            else self._panel.snapshot_desks([desk])[0].desk_id
+        )
+        click_err = self._panel.click_empty_seat(desk_id, side)
         if click_err is not None:
             return SeatClickPlan(reason=click_err, desk_index=desk_index, side=side)
 

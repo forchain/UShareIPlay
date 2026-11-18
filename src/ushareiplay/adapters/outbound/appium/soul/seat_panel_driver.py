@@ -421,23 +421,7 @@ class SeatPanelDriver(SeatPanelPort):
         return self.panel_reader._element_locator(element_key)
 
     def _find_child_element(self, desk, element_key: str):
-        if desk is None:
-            return None
-
-        if isinstance(desk, ElementWrapper):
-            locator = self._element_locator(element_key)
-            if locator is None:
-                self.logger.debug(f"没有为座位元素 '{element_key}' 配置选择器")
-                return None
-            try:
-                return desk.find_child_element(locator.relative_xpath)
-            except Exception:
-                return None
-
-        finder = getattr(self.handler, "element_finder", None)
-        if finder is None:
-            return None
-        return finder.find_child_element(desk, element_key, log_failure=False)
+        return self.panel_reader.find_child_element(desk, element_key)
 
     def is_desk_interactable(self, desk) -> bool:
         resolved = self._resolve_desk(desk)

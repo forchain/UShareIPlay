@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 import pytest
 
-from ushareiplay.managers.seat_manager.seat_panel_reader import (
+from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import (
     Reading,
     SeatPanelReader,
 )
@@ -457,22 +457,16 @@ def test_unreadable_cases_do_not_default_to_empty():
 
 
 def test_composition_root_wires_panel_reader():
-    """组合根接线测试：SeatObservationManager.initialize 接收并持有来自 SeatSubsystem 的 panel_reader。"""
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+    """组合根接线测试：SeatService 与 SeatObservationService 共用同一份 panel_reader。"""
+    from tests.seat_support import build_seat_observation, build_seat_service
 
     handler = make_handler(controller=FakeController())
-    subsystem = SeatSubsystem(handler)
-    reader = subsystem.panel_reader
+    service = build_seat_service(handler)
+    reader = service._panel.panel_reader
     assert isinstance(reader, SeatPanelReader)
-    assert subsystem.panel_driver.panel_reader is reader
 
-    SeatObservationManager.reset_instance()
-    try:
-        observation = SeatObservationManager.initialize(handler, panel_reader=reader)
-        assert observation.panel_reader is reader
-    finally:
-        SeatObservationManager.reset_instance()
+    observation = build_seat_observation(handler, panel_reader=reader)
+    assert observation._panel.panel_reader is reader
 
 
 @pytest.mark.asyncio
@@ -483,7 +477,7 @@ async def test_chat_scan_session_waits_for_the_ui_lock_then_collapses():
     面板留在展开态，补漏就在缩小后的聊天区里慢慢滚 —— 真机上表现为「有时候
     往回扫描时座位没有收起来」。
     """
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+    from tests.seat_support import build_seat_service
 
     ctrl = FakeController()
     handler = make_handler(controller=ctrl)
@@ -501,7 +495,7 @@ async def test_chat_scan_session_waits_for_the_ui_lock_then_collapses():
 
     panel = DummyPanel()
     # 与组合根同一套接线：座位子系统共享 controller 的 UI 租约。
-    subsystem = SeatSubsystem(handler, seat_ui=panel, lease=ctrl.ui_session_lease)
+    subsystem = build_seat_service(handler, seat_ui=panel, lease=ctrl.ui_session_lease)
 
     holding = asyncio.Event()
     release = asyncio.Event()
@@ -536,11 +530,10 @@ async def test_chat_scan_session_waits_for_the_ui_lock_then_collapses():
 @pytest.mark.asyncio
 async def test_prepare_for_chat_scan_when_busy_elsewhere():
     """prepare_for_chat_scan 查验 UI 独占：外部任务持有时，退出并保持面板不动。"""
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+    from tests.seat_support import build_seat_service
 
     ctrl = FakeController()
     handler = make_handler(controller=ctrl)
-    subsystem = SeatSubsystem(handler, lease=ctrl.ui_session_lease)
 
     class DummyPanel:
         def __init__(self):
@@ -552,7 +545,7 @@ async def test_prepare_for_chat_scan_when_busy_elsewhere():
             return True
 
     panel = DummyPanel()
-    subsystem._panel = panel
+    subsystem = build_seat_service(handler, seat_ui=panel, lease=ctrl.ui_session_lease)
 
     # 另一个 task 持有 controller.ui_session（共享同一份 lease）
     acquired = asyncio.Event()
@@ -566,7 +559,7 @@ async def test_prepare_for_chat_scan_when_busy_elsewhere():
     task = asyncio.create_task(holder())
     await acquired.wait()
     try:
-        assert subsystem.panel_reader.busy_elsewhere is True
+        assert subsystem._panel.busy_elsewhere is True
         res = await subsystem.prepare_for_chat_scan()
         assert res is True
         # 面板保持原状，未收起
@@ -577,48 +570,43 @@ async def test_prepare_for_chat_scan_when_busy_elsewhere():
 
 
 def test_semantic_consistency_across_subsystem_and_observation():
-    """语义一致性：对于同一张 desk，SeatPanelReader、SeatObservationManager
-    与 SeatSubsystem 的判定完全一致。
+    """语义一致性：对于同一张 desk，SeatPanelReader、SeatObservationService
+    与 SeatService 的判定完全一致。
     """
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+    from tests.seat_support import build_seat_observation, build_seat_service
 
     handler = make_handler(controller=FakeController())
-    subsystem = SeatSubsystem(handler)
-    SeatObservationManager.reset_instance()
-    try:
-        observation = SeatObservationManager.initialize(handler, panel_reader=subsystem.panel_reader)
+    subsystem = build_seat_service(handler)
+    observation = build_seat_observation(handler, panel_reader=subsystem._panel.panel_reader)
 
-        # 占座桌：有 RankView + 多头像
-        desk_occ = build_desk_wrapper(handler, left="1", right="2", left_occupied=False, left_avatar_images=2)
-        r_occ = subsystem.panel_reader.read(desk_occ, "left", seat_number=1)
-        assert r_occ.occupied is True
-        assert r_occ.is_empty is False
+    # 占座桌：有 RankView + 多头像
+    desk_occ = build_desk_wrapper(handler, left="1", right="2", left_occupied=False, left_avatar_images=2)
+    r_occ = subsystem._panel.panel_reader.read(desk_occ, "left", seat_number=1)
+    assert r_occ.occupied is True
+    assert r_occ.is_empty is False
 
-        info = observation._extract_seat_info(desk_occ, "left", seat_num=1)
-        assert info["occupied"] is True
-        assert info["is_empty"] is False
+    snap = subsystem._panel.snapshot_desks([desk_occ])[0]
+    info = observation._extract_seat_info(snap, "left", seat_num=1)
+    assert info["occupied"] is True
+    assert info["is_empty"] is False
 
-        d_info = subsystem._collect_desk_info(desk_occ)
-        assert d_info["left"]["occupied"] is True
-        assert d_info["left"]["label"] == "1"
-    finally:
-        SeatObservationManager.reset_instance()
+    d_info = subsystem._collect_desk_info(snap)
+    assert d_info["left"]["occupied"] is True
+    assert d_info["left"]["label"] == "1"
 
 
 def test_ast_invariants():
     """AST 与代码文本静态不变量测试：
     1. src/ 下没有任何 'caller_holds_ui_session'；
-    2. subsystem.py 中没有任何 'bool(left_state)' 或 'bool(right_state)'；
-    3. seat_manager 中除 seat_panel_reader.py 外，没有直接调用 controller.ui_session；
-    4. seat_observation.py, seat_panel_driver.py, subsystem.py 中没有任何 '// 4' 座位点击公式；
-    5. SeatObservationManager 已删除 read_seat_occupancy, seat_click_position, is_ui_busy；
-       SeatSubsystem 已删除 _ui_is_busy。
+    2. modules/seat/use_cases.py 中没有任何 'bool(left_state)' 或 'bool(right_state)'；
+    3. modules/seat/ 与 adapters/outbound/appium/soul/seat_* 中除 seat_panel_reader.py 外，没有直接调用 controller.ui_session；
+    4. modules/seat/ 与 seat_panel_driver.py 中没有任何 '// 4' 座位点击公式；
+    5. SeatObservationService 已删除 read_seat_occupancy, seat_click_position, is_ui_busy；
+       SeatService 已删除 _ui_is_busy。
     """
     import ast
     from pathlib import Path
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+    from ushareiplay.modules.seat.use_cases import SeatObservationService, SeatService
 
     repo_root = Path(__file__).resolve().parents[1]
     src_dir = repo_root / "src"
@@ -628,38 +616,41 @@ def test_ast_invariants():
         content = py_file.read_text(encoding="utf-8")
         assert "caller_holds_ui_session" not in content, f"{py_file} still references caller_holds_ui_session"
 
-    # 2. subsystem.py 中没有任何 bool(left_state) 或 bool(right_state)
-    subsystem_content = (src_dir / "ushareiplay/managers/seat_manager/subsystem.py").read_text(encoding="utf-8")
-    assert "bool(left_state)" not in subsystem_content
-    assert "bool(right_state)" not in subsystem_content
+    # 2. use_cases.py 中没有任何 bool(left_state) 或 bool(right_state)
+    use_cases_content = (src_dir / "ushareiplay/modules/seat/use_cases.py").read_text(encoding="utf-8")
+    assert "bool(left_state)" not in use_cases_content
+    assert "bool(right_state)" not in use_cases_content
 
-    # 3. seat_manager 中除 seat_panel_reader.py 外，没有任何地方直接调用 controller.ui_session
-    seat_mgr_dir = src_dir / "ushareiplay/managers/seat_manager"
-    for py_file in seat_mgr_dir.glob("*.py"):
+    # 3. modules/seat/ 与 appium seat_* 中除 seat_panel_reader.py 外，没有任何地方直接调用 controller.ui_session
+    seat_files = list((src_dir / "ushareiplay/modules/seat").glob("*.py")) + list(
+        (src_dir / "ushareiplay/adapters/outbound/appium/soul").glob("seat_*.py")
+    )
+    for py_file in seat_files:
         if py_file.name == "seat_panel_reader.py":
             continue
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 func = node.func
-                # 检查直接通过 controller 调用 ui_session
                 if isinstance(func, ast.Attribute) and func.attr == "ui_session":
-                    # 只允许调用 panel_reader.session
                     assert not (isinstance(func.value, ast.Attribute) and func.value.attr == "controller"), (
                         f"{py_file.name} directly calls controller.ui_session"
                     )
 
-    # 4. seat_observation, seat_panel_driver, subsystem 中没有 '// 4' 坐标计算 (x + width // 4)
-    for name in ("seat_observation.py", "seat_panel_driver.py", "subsystem.py"):
-        tree = ast.parse((seat_mgr_dir / name).read_text(encoding="utf-8"), filename=name)
+    # 4. use_cases.py, seat_panel_driver.py 中没有 '// 4' 坐标计算 (x + width // 4)
+    for py_file in (
+        src_dir / "ushareiplay/modules/seat/use_cases.py",
+        src_dir / "ushareiplay/adapters/outbound/appium/soul/seat_panel_driver.py",
+    ):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=py_file.name)
         for node in ast.walk(tree):
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.FloorDiv):
                 if isinstance(node.right, ast.Constant) and node.right.value == 4:
-                    raise AssertionError(f"{name} contains '// 4' tap coordinate calculation")
+                    raise AssertionError(f"{py_file.name} contains '// 4' tap coordinate calculation")
 
     # 5. 已退役的方法必须在类上消失
-    assert not hasattr(SeatObservationManager, "read_seat_occupancy")
-    assert not hasattr(SeatObservationManager, "seat_click_position")
-    assert not hasattr(SeatObservationManager, "is_ui_busy")
-    assert not hasattr(SeatSubsystem, "_ui_is_busy")
+    assert not hasattr(SeatObservationService, "read_seat_occupancy")
+    assert not hasattr(SeatObservationService, "seat_click_position")
+    assert not hasattr(SeatObservationService, "is_ui_busy")
+    assert not hasattr(SeatService, "_ui_is_busy")
 

@@ -20,20 +20,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatRescanCooldownPolicy
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatRescanCooldownPolicy
 
 
 @pytest.fixture(autouse=True)
 def reset_observation():
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
 
-    SeatObservationManager.reset_instance()
     CommandManager.instance().user_event_hooks = MagicMock(
         fire=AsyncMock(return_value=0)
     )
     yield
-    SeatObservationManager.reset_instance()
 
 
 class FakeClock:
@@ -52,7 +50,7 @@ async def test_unreadable_occupied_seat_is_not_reinspected_every_round():
     """身份始终读不出的占座位：一次弹窗失败后必须进入冷却，不得每轮重试。"""
     clock = FakeClock()
     handler = make_handler(popup_name=None)  # 弹窗开了但读不出昵称节点
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
@@ -82,7 +80,7 @@ async def test_successful_identity_is_not_suppressed_by_probe_backoff():
     """读过一次的号位仍走快照沿用，绝不因为冷却机制退化成不弹窗。"""
     clock = FakeClock()
     handler = make_handler(popup_name="Bob")
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
@@ -110,7 +108,7 @@ async def test_probe_backoff_expires_when_seat_becomes_readable():
     """冷却期内位子换了人（label 直接给出昵称）应立刻生效，不被冷却挡住。"""
     clock = FakeClock()
     handler = make_handler(popup_name=None)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.cooldown_policy = SeatRescanCooldownPolicy(
         residual_inspect_cooldown=60.0,
         time_fn=clock,
