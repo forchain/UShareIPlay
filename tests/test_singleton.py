@@ -87,36 +87,14 @@ def test_thread_safe_concurrent_creation():
     _ConcurrentService.reset_instance()
 
 
-def test_seat_management_follows_singleton_contract():
-    """座位管理的唯一实现由 `SeatManager` 绑定为受保护单例。
+def test_seat_services_are_not_singletons():
+    """座位切片（#556）不再使用受保护单例：用例与驱动均为普通可注入对象。"""
+    from ushareiplay.modules.seat.use_cases import SeatObservationService, SeatService
 
-    `SeatManager` 继承 `SeatSubsystem`（#536）：守卫、UI 会话锁与全部座位流程都在
-    实现上，门面不再逐方法转发。`SeatSubsystem` 本身仍**不**是单例：它没有全局
-    状态，同一进程里可以并存多个实例（接线层一个 + 单元测试各自一个）。
-    """
-    from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-
-    SeatManager.reset_instance()
-    with pytest.raises(SingletonError, match="Use SeatManager.initialize"):
-        SeatManager()
-
-    sm = SeatManager.initialize(handler=None)
-
-    assert SeatManager.instance() is sm
-    assert isinstance(sm, SeatSubsystem)
-
-    with pytest.raises(SingletonError, match="already initialized"):
-        SeatManager.initialize()
-
-    # 实现类不走单例契约：直接构造合法，也不提供 lookup-only 的 instance()。
-    assert not issubclass(SeatSubsystem, Singleton)
-    assert not hasattr(SeatSubsystem, "instance")
-    assert SeatSubsystem(handler=None) is not SeatSubsystem(handler=None)
-
-    Singleton.reset_all_instances()
-    with pytest.raises(SingletonError, match="has not been initialized"):
-        SeatManager.instance()
+    assert not issubclass(SeatService, Singleton)
+    assert not issubclass(SeatObservationService, Singleton)
+    assert not hasattr(SeatService, "instance")
+    assert not hasattr(SeatObservationService, "instance")
 
 
 def test_all_protected_singletons_reject_direct_constructor_instantiation():
@@ -131,8 +109,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.managers.playback_muting import PlaybackMuting
     from ushareiplay.managers.playlist_session import PlaylistSession
     from ushareiplay.managers.recovery_manager import RecoveryManager
-    from ushareiplay.managers.seat_manager import SeatManager
-    from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
     all_protected_classes = [
@@ -147,8 +123,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         PlaylistSession,
         PlaybackBroadcaster,
         EventManager,
-        SeatManager,
-        SeatObservationManager,
     ]
 
     for cls in all_protected_classes:

@@ -1,3 +1,5 @@
+"""座位面板的唯一读数器与 UI 锁门面（Appium 适配器）。"""
+
 from dataclasses import dataclass
 import logging
 from typing import ClassVar, Optional, Tuple
@@ -5,29 +7,7 @@ from typing import ClassVar, Optional, Tuple
 from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
-
-
-@dataclass(frozen=True)
-class Reading:
-    """单个座位的 DOM 读数与判定结果。
-
-    三态语义：
-    - `occupied`：存在明确的占座证据（多图头像、ClState、RankView、非空非纯数字昵称）；
-    - `is_empty`：无占座证据且存在明确的空座证据（TvDefaultName、空座文案、匹配的座位编号、恰好一张头像图）；
-    - `readable`：`occupied or is_empty`，两者皆假表示「看不见 / 缺证据 / 无法判定」，绝不可等同于空座。
-    """
-
-    occupied: bool
-    is_empty: bool
-    label: str
-    has_state: bool
-    has_default: bool
-    has_rank: bool
-    avatar_images: int
-
-    @property
-    def readable(self) -> bool:
-        return self.occupied or self.is_empty
+from ushareiplay.modules.seat.domain import Reading, is_seat_number_label
 
 
 class SeatPanelReader:
@@ -124,7 +104,10 @@ class SeatPanelReader:
 
         finder = getattr(self.handler, "element_finder", None)
         if finder is not None and hasattr(finder, "find_child_element"):
-            elem = finder.find_child_element(desk, element_key, log_failure=False)
+            try:
+                elem = finder.find_child_element(desk, element_key, log_failure=False)
+            except TypeError:
+                elem = finder.find_child_element(desk, element_key)
             if elem is not None:
                 return elem
 
@@ -148,13 +131,17 @@ class SeatPanelReader:
 
     def _get_label_text(self, desk, side: str) -> str:
         elem = self.find_child_element(desk, f"{side}_label")
+        if elem is None and not isinstance(desk, dict):
+            seat_elem = self.find_child_element(desk, f"{side}_seat")
+            if seat_elem is not None:
+                elem = self.find_child_element(seat_elem, f"{side}_label")
         if elem and hasattr(elem, "text"):
             return elem.text or ""
         return ""
 
     @staticmethod
     def is_seat_number_label(label: str) -> bool:
-        return label.isdigit() and 1 <= int(label) <= 12
+        return is_seat_number_label(label)
 
     # ------------------------------------------------------------------
     # 占座判定与 DOM 读数

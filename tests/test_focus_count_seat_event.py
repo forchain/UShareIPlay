@@ -6,17 +6,15 @@ from lxml import etree
 from tests.seat_fixtures import build_desk_wrapper, make_handler, soul_elements
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.events.focus_count import FocusCountEvent, __elements__, __multiple__
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from tests.seat_support import build_seat_observation
 from tests.legacy_state import RoomState
 
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    SeatObservationManager.reset_instance()
     RoomState.reset_instance()
     RoomState.initialize()
     yield
-    SeatObservationManager.reset_instance()
     RoomState.reset_instance()
 
 
@@ -51,7 +49,7 @@ async def test_same_round_visible_sitdown_does_not_trigger_expansion():
     随后从 0 变 1 —— 此时在座数已经同步，不构成背离。
     """
     handler = make_handler()
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler); handler.controller.seat_observation = observation
     event = FocusCountEvent(handler=handler)
     observation.expand_rescan_and_collapse = AsyncMock(return_value=False)
 
@@ -77,7 +75,7 @@ async def test_focus_count_event_handles_focus_count():
     handler.logger = MagicMock()
     from types import SimpleNamespace
     handler.controller = SimpleNamespace(room_state=RoomState.instance())
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler); handler.controller.seat_observation = observation
     observation.on_focus_count = AsyncMock()
 
     event = FocusCountEvent(handler=handler)
@@ -111,7 +109,7 @@ async def test_focus_count_event_handles_seat_desk():
     handler.logger = MagicMock()
     from types import SimpleNamespace
     handler.controller = SimpleNamespace(room_state=RoomState.instance())
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler); handler.controller.seat_observation = observation
     observation.observe_visible_desks = AsyncMock()
 
     event = FocusCountEvent(handler=handler)

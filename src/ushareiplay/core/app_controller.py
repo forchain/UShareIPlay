@@ -115,7 +115,8 @@ class AppController(Singleton):
         self.command_manager = None
 
         # Initialize managers (will be done after handlers are initialized)
-        self.seat_manager = None
+        self.seat_service = None
+        self.seat_observation = None
         self.recovery_manager = None
         self.music_manager = None
         self.event_manager = None
@@ -510,7 +511,6 @@ class AppController(Singleton):
             from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-            from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.modules.room import RoomProfileManager
@@ -579,14 +579,6 @@ class AppController(Singleton):
                 on_user_leave=lambda name: self.command_manager.notify_user_leave(name),
             )
 
-            # 座位子系统只构造一次：四个旧单例的真实实现都已并入 SeatSubsystem
-            # （#400），接线层不再逐个 initialize 它们，#402 连同旧单例一起退役。
-            self.seat_manager = SeatManager.initialize(
-                self.soul_handler,
-                lease=self.ui_session_lease,
-                room_state=self.room_state,
-            )
-
             self.sleep_manager = SleepManager(
                 self.config, catalogue=self.command_catalogue
             )
@@ -646,7 +638,6 @@ class AppController(Singleton):
                 users=TortoiseUserRepository(),
                 logger=self.logger,
             )
-            self.seat_manager.subsystem.info_manager = self.info_manager
             # 在线用户抽屉的唯一所有者：一次抽屉会话的开、落定、找人、收尾全在它
             # 那里（#428）。端口、命名域解析器与 UI 独占会话都从组合根注入 ——
             # DB 的 canonical 名与 Soul UI 上的可见昵称是两个域，拿 canonical 名去
@@ -675,7 +666,7 @@ class AppController(Singleton):
                 messenger=self.message_dispatch.bind_handler(self.soul_handler),
                 on_sync_profile=self.room_profile_manager.ensure_synced_on_return,
                 on_after_create_notice=self.room_profile_manager.set_default_notice,
-                on_after_create_seat=self.seat_manager.find_owner_seat,
+                on_after_create_seat=lambda: self.seat_service.find_owner_seat(),
                 on_after_create_automation=lambda: self.post_party_create_automation.on_party_created_new(),
                 on_memory_consolidate=lambda: self.user_memory.schedule_all(),
                 logger=self.logger,
@@ -773,20 +764,56 @@ class AppController(Singleton):
             )
             self.command_manager.user_event_hooks = self.user_event_hooks
 
-            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-            # 观测器的面板委派取自子系统的面板入口（#401）：那是 SeatPanelDriver 的
-            # seat_ui 契约适配层，面板动作与子系统自身走的是同一份实现。
-            # 传 panel_driver 不行 —— 驱动上是 collapse()，观测器要的是
-            # 契约适配层上的 collapse_seats()。
-            self.seat_observation_manager = SeatObservationManager.initialize(
+            from ushareiplay.adapters.outbound.appium.soul.seat_invite_driver import (
+                SeatInviteDriver,
+            )
+            from ushareiplay.adapters.outbound.appium.soul.seat_panel_driver import (
+                SeatPanelDriver,
+            )
+            from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import (
+                SeatPanelReader,
+            )
+            from ushareiplay.adapters.outbound.persistence.seat_reservation_repository import (
+                TortoiseSeatReservationRepository,
+            )
+            from ushareiplay.modules.seat.use_cases import (
+                SeatObservationService,
+                SeatService,
+            )
+
+            self.seat_panel_reader = SeatPanelReader(
+                self.soul_handler, lease=self.ui_session_lease
+            )
+            self.seat_panel_driver = SeatPanelDriver(
                 self.soul_handler,
-                seat_ui=self.seat_manager.panel,
-                panel_reader=self.seat_manager.panel_reader,
-                panel_driver=self.seat_manager.panel_driver,
+                panel_reader=self.seat_panel_reader,
+                lease=self.ui_session_lease,
+            )
+            self.seat_invite_driver = SeatInviteDriver(self.soul_handler)
+            self.seat_observation = SeatObservationService(
+                panel=self.seat_panel_driver,
                 room_state=self.room_state,
                 room_admins=self.room_admins,
+                owner_nickname_provider=lambda: (
+                    RolePolicy(self.config).configured_room_owner or None
+                ),
+                on_focus_change=self.command_manager.notify_focus_count_change,
+                logger=self.logger,
             )
-            self.room_state.add_clear_listener(self.seat_observation_manager.clear)
+            self.seat_service = SeatService(
+                panel=self.seat_panel_driver,
+                invite_driver=self.seat_invite_driver,
+                reservations=TortoiseSeatReservationRepository(),
+                users=TortoiseUserRepository(),
+                observation=self.seat_observation,
+                room_state=self.room_state,
+                messenger=self.message_dispatch.bind_handler(self.soul_handler),
+                resolve_visible_username=self.info_manager.resolve_visible_username,
+                is_user_online=self.info_manager.is_user_online,
+                is_user_or_avatar_online=self.info_manager.is_user_or_avatar_online,
+                logger=self.logger,
+            )
+            self.room_state.add_clear_listener(self.seat_observation.clear)
             self.room_state.add_clear_listener(self.playback_muting.reset)
             self.room_state.add_room_change_listener(self.room_profile_manager.invalidate_ui_state)
             self.post_party_create_automation = PostPartyCreateAutomation(self)

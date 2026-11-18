@@ -118,6 +118,19 @@ def test_room_package_is_covered_by_the_guard():
     assert violations == {}
 
 
+def test_seat_package_is_covered_by_the_guard():
+    """座位切片也必须被扫描：不得导入底层技术/适配器或调用 .instance()。"""
+    seat_files = sorted((MODULES_ROOT / "seat").rglob("*.py"))
+    assert seat_files
+
+    violations = {
+        str(path): found
+        for path in seat_files
+        if (found := find_violations(path.read_text(), path))
+    }
+    assert violations == {}
+
+
 def test_persistence_adapter_does_not_import_other_technologies_or_locate_services():
     persistence_files = sorted(PERSISTENCE_ROOT.rglob("*.py"))
     assert persistence_files

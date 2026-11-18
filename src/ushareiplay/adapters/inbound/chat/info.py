@@ -86,9 +86,9 @@ class InfoCommand(BaseCommand):
 
         seated_users = {}
         try:
-            from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-            if SeatObservationManager.is_initialized():
-                seated_users = SeatObservationManager.instance().get_all_seated_users()
+            obs = getattr(self.controller, "seat_observation", None)
+            if obs is not None:
+                seated_users = obs.get_all_seated_users()
         except Exception:
             pass
 

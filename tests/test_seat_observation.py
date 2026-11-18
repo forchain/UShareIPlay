@@ -33,13 +33,15 @@ from tests.seat_fixtures import (
 from lxml import etree
 
 from ushareiplay.core.element_wrapper import ElementWrapper
-from ushareiplay.managers.seat_manager.seat_ledger import (
+from ushareiplay.modules.seat.ledger import (
     SeatLedger,
     SeatObservationGateState,
     SeatRescanCooldownPolicy,
     SeatSlot,
 )
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
+from tests.seat_support import _SeatPanelWithCustomUI, build_seat_observation
+from ushareiplay.modules.seat.domain import DeskSnapshot
+from ushareiplay.modules.seat.use_cases import SeatObservationService
 
 
 class FakeClock:
@@ -55,15 +57,13 @@ class FakeClock:
 
 @pytest.fixture(autouse=True)
 def reset_observation():
-    SeatObservationManager.reset_instance()
     yield
-    SeatObservationManager.reset_instance()
 
 
 def test_format_3row_layout_visual_representation():
     from ushareiplay.core.log_formatter import strip_ansi
 
-    manager = SeatObservationManager.initialize(None)
+    manager = build_seat_observation(None)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="群主", is_owner=True)
     manager.ledger.slots[2] = SeatSlot(seat_number=2, occupied=False)
     manager.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="张三")
@@ -85,10 +85,10 @@ def test_format_3row_layout_visual_representation():
 
 
 def test_map_desks_to_indices_by_number_labels():
-    manager = SeatObservationManager.initialize(make_handler())
-    desk_row0_left = build_desk_wrapper(manager.handler, left="1", right="2", y=100)
-    desk_row1_right = build_desk_wrapper(manager.handler, left="7", right="8", y=300)
-    desk_row2_left = build_desk_wrapper(manager.handler, left="9", right="10", y=500)
+    manager = build_seat_observation(make_handler())
+    desk_row0_left = build_desk_wrapper(manager._panel.handler, left="1", right="2", y=100)
+    desk_row1_right = build_desk_wrapper(manager._panel.handler, left="7", right="8", y=300)
+    desk_row2_left = build_desk_wrapper(manager._panel.handler, left="9", right="10", y=500)
 
     mapped = manager.map_desks_to_indices([desk_row1_right, desk_row0_left, desk_row2_left])
 
@@ -101,12 +101,12 @@ def test_map_desks_to_indices_without_any_anchor_maps_nothing():
     旧实现会从 desk 0 起往后排（[0,1,2,3]）—— 面板只露出中后排时整条带位被
     错配两个桌位，第二排的空座读数就被写进 1~4 号位。
     """
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
     desks = [
-        build_desk_wrapper(manager.handler, left="群主", right="A", y=500),
-        build_desk_wrapper(manager.handler, left="B", right="C", y=100),
-        build_desk_wrapper(manager.handler, left="D", right="E", y=300),
-        build_desk_wrapper(manager.handler, left="F", right="G", y=200),
+        build_desk_wrapper(manager._panel.handler, left="群主", right="A", y=500),
+        build_desk_wrapper(manager._panel.handler, left="B", right="C", y=100),
+        build_desk_wrapper(manager._panel.handler, left="D", right="E", y=300),
+        build_desk_wrapper(manager._panel.handler, left="F", right="G", y=200),
     ]
 
     assert manager.map_desks_to_indices(desks) == []
@@ -118,9 +118,9 @@ def test_anchor_pins_band_offset_for_desks_without_seat_numbers():
     只露出第二排且左侧桌位全是昵称（读不到编号）时，右侧桌位读到的 7 号空位把
     整个带位的偏移钉在 2：左侧桌位仍落在 desk 2（5/6 号位），不会被排到 0 号位。
     """
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
     desk_without_numbers = build_desk_wrapper(
-        manager.handler,
+        manager._panel.handler,
         left="锦鲤",
         right="儿童不易",
         left_occupied=True,
@@ -128,7 +128,7 @@ def test_anchor_pins_band_offset_for_desks_without_seat_numbers():
         bounds="[40,611][400,771]",
     )
     desk_with_seat_numbers = build_desk_wrapper(
-        manager.handler, left="7", right="8", bounds="[383,611][743,771]"
+        manager._panel.handler, left="7", right="8", bounds="[383,611][743,771]"
     )
 
     mapped = manager.map_desks_to_indices([desk_without_numbers, desk_with_seat_numbers])
@@ -137,30 +137,30 @@ def test_anchor_pins_band_offset_for_desks_without_seat_numbers():
 
 
 def test_nickname_digits_do_not_anchor_seat_number():
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
 
     # 昵称里带数字不算编号
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="小明7")
+        build_desk_wrapper(manager._panel.handler, left="小明7")
     ) is None
     # 左位只可能是奇数号，读到 8 判为昵称
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="8")
+        build_desk_wrapper(manager._panel.handler, left="8")
     ) is None
     # 两侧都是数字时必须构成一张桌子：7 配 9、7 配 4 都不成立
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="7", right="9")
+        build_desk_wrapper(manager._panel.handler, left="7", right="9")
     ) is None
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="7", right="4")
+        build_desk_wrapper(manager._panel.handler, left="7", right="4")
     ) is None
     # 配对一致才锚定
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="7", right="8")
+        build_desk_wrapper(manager._panel.handler, left="7", right="8")
     ) == 3
     # 另一侧是昵称时，单侧读到编号也锚定
     assert manager._detect_desk_index_from_labels(
-        build_desk_wrapper(manager.handler, left="1", right="小明")
+        build_desk_wrapper(manager._panel.handler, left="1", right="小明")
     ) == 0
 
 
@@ -168,7 +168,7 @@ def test_nickname_digits_do_not_anchor_seat_number():
 async def test_observe_visible_desks_reads_occupancy_from_page_source():
     """C1 回归：desk 是 ElementWrapper 时也必须读到真实占用状态。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     desks = [
@@ -200,7 +200,7 @@ async def test_observe_visible_desks_reads_occupancy_from_page_source():
 async def test_observe_visible_desks_inspects_unknown_occupant_under_ui_session():
     controller = FakeController()
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
+    manager = build_seat_observation(handler, lease=controller.ui_session_lease)
     lock_states = []
     handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
 
@@ -228,12 +228,24 @@ async def test_inspect_occupant_delegates_to_the_seat_panel_driver():
     handler = make_handler()
     driver = MagicMock()
     driver.read_occupant = AsyncMock(return_value="Bob")
+    driver.snapshot_desks = MagicMock(
+        side_effect=lambda ds: [
+            DeskSnapshot(
+                desk_id="d-9",
+                bounds=None,
+                displayed=True,
+                left=MagicMock(),
+                right=MagicMock(),
+            )
+            for _ in ds
+        ]
+    )
     driver.handler = handler
-    manager = SeatObservationManager.initialize(handler, panel_driver=driver)
+    manager = build_seat_observation(handler, panel_driver=driver)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
 
     assert await manager.inspect_occupant(desk, "left", 9) == "Bob"
-    driver.read_occupant.assert_awaited_once_with(desk, "left", 9)
+    driver.read_occupant.assert_awaited_once_with("d-9", "left", 9)
 
 
 @pytest.mark.asyncio
@@ -247,7 +259,7 @@ async def test_inspect_occupant_never_presses_back_when_no_popup_opened():
     无法展开座位）。超时读数本身就是判据：没读到昵称节点＝没有可关的弹窗。
     """
     handler = make_handler(popup_name=None)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
 
     username = await manager.inspect_occupant(desk, "left", 9)
@@ -260,7 +272,7 @@ async def test_inspect_occupant_never_presses_back_when_no_popup_opened():
 async def test_inspect_occupant_closes_the_popup_it_actually_opened():
     """弹窗真开了（读到昵称节点）就必须关掉：麦位读数还在后面，卡片不许留在屏幕上。"""
     handler = make_handler(popup_name="Bob")
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
 
     username = await manager.inspect_occupant(desk, "left", 9)
@@ -274,7 +286,7 @@ async def test_inspect_occupant_does_not_press_back_when_the_tap_never_landed():
     """连点都没点出去（坐标缺失/手势失败）时按 back 同样是盲按。"""
     handler = make_handler(popup_name="Bob")
     handler.gesture_handler.click_at.return_value = False
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
 
     username = await manager.inspect_occupant(desk, "left", 9)
@@ -288,7 +300,7 @@ async def test_inspect_occupant_still_closes_a_card_that_rendered_after_the_time
     """昵称没读出来但卡片已经在屏幕上：仍要关掉，否则它会挡住后面的麦位读数。"""
     handler = make_handler(popup_name=None)
     handler.element_finder.popup_open = True  # 卡片在屏幕上，只是昵称节点读不出文字
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_desk_wrapper(handler, left="", right="10", left_occupied=True)
 
     username = await manager.inspect_occupant(desk, "left", 9)
@@ -300,7 +312,7 @@ async def test_inspect_occupant_still_closes_a_card_that_rendered_after_the_time
 @pytest.mark.asyncio
 async def test_observe_visible_desks_reuses_known_occupant_without_reinspection():
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
 
@@ -324,7 +336,7 @@ async def test_same_seat_occupant_swap_escalates_to_full_rescan():
     （旧实现会把「李四坐 1 号」直接写进快照并给张三发一条假的离座事件。）
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三", label="张三")
 
@@ -354,7 +366,7 @@ async def test_same_seat_occupant_swap_escalates_to_full_rescan():
 async def test_relocating_user_reports_move_seat():
     """R3：同一次观测里离开又落座 = move_seat（PR 文档承诺的三个动作之一）。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三", label="张三")
 
@@ -391,9 +403,9 @@ def _raw_desk(left_label, right_label, y):
 async def test_focus_divergence_triggers_active_expansion_and_collapse():
     raw_desks = [_raw_desk("Alice", "2", 100), _raw_desk("David", "8", 300)]
     handler = make_handler(desks=raw_desks)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     seat_ui = FakeSeatUI(desks=raw_desks)
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
 
     # 可视区只有 seat 1 有人
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
@@ -425,8 +437,8 @@ async def test_expansion_inspection_clicks_raw_web_element():
         location={"x": 40, "y": 100},
     )
     handler = make_handler(desks=[raw_desk], popup_name="Bob")
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=[raw_desk])
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=[raw_desk]), panel_reader=manager._panel.panel_reader)
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -441,9 +453,9 @@ async def test_expansion_inspection_clicks_raw_web_element():
 async def test_expansion_without_six_desks_keeps_snapshot():
     """expand_and_find_desks 半截返回（None）时不得写入残缺快照，但仍要收起。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     seat_ui = FakeSeatUI(desks=None)
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="Alice")
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
@@ -469,7 +481,7 @@ async def test_inspection_holds_the_real_app_controller_ui_lock():
     controller.logger = None  # ui_session 只在有 logger 时打日志
 
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
+    manager = build_seat_observation(handler, lease=controller.ui_session_lease)
     lock_states = []
     handler.element_finder.on_wait = lambda: lock_states.append(controller.ui_lock.locked())
 
@@ -484,28 +496,13 @@ async def test_inspection_holds_the_real_app_controller_ui_lock():
 
 
 def test_seat_manager_does_not_initialize_seat_observation_singleton():
-    """
-    SeatObservationManager is a Singleton whose creation is limited to the composition root.
-    SeatManager must never call SeatObservationManager.initialize(...), so that the composition root
-    can initialize SeatObservationManager without raising SingletonError.
-    """
-    from ushareiplay.managers.seat_manager import SeatManager
-
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
+    """SeatService 与 SeatObservationService 均为普通可注入对象，无全局单例耦合。"""
+    from tests.seat_support import build_seat_service
 
     handler = make_handler()
-    seat_mgr = SeatManager.initialize(handler)
-
-    # SeatManager must not eagerly initialize the singleton
-    assert not SeatObservationManager.is_initialized()
-    assert seat_mgr.observation is None
-    assert seat_mgr._observation is None
-
-    # Composition root initializes SeatObservationManager
-    observation = SeatObservationManager.initialize(handler)
-    assert SeatObservationManager.is_initialized()
-    assert seat_mgr.observation is observation
+    observation = build_seat_observation(handler)
+    service = build_seat_service(handler, observation=observation)
+    assert service.observation is observation
 
 
 @pytest.mark.asyncio
@@ -513,7 +510,7 @@ async def test_observe_visible_desks_does_not_acquire_ui_session_when_no_unknown
     """监控轮询在没有未解析昵称时不得抢占 ui_session，避免常规监控输出日志与锁竞争。"""
     controller = FakeController()
     handler = make_handler(controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     desk = build_desk_wrapper(handler, left="1", right="2")
 
@@ -549,7 +546,7 @@ async def test_ui_session_logs_at_debug_level_only():
 
 def test_format_3row_layout_includes_focus_count():
     """输出日志时输出专注人数，不输出在座人数。"""
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
     manager.ledger.slots[6] = SeatSlot(seat_number=6, occupied=True, username="儿童不易")
 
@@ -568,7 +565,7 @@ def test_format_3row_layout_includes_focus_count():
 async def test_expand_rescan_bidirectional_scans_top_and_bottom_rows():
     """全量重扫必须双向滚动（先到第0排扫顶，再到第2排扫底），保证第1排和第3排均不漏扫。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 构造6张桌位：
     # 第1排 (desk 0): 1号 occupied (张三)
@@ -603,7 +600,7 @@ async def test_expand_rescan_bidirectional_scans_top_and_bottom_rows():
         fake_seat_ui.scrolled_rows.append(desk_index // 2)
 
     fake_seat_ui.scroll_to_row = tracking_scroll_to_row
-    manager._seat_ui = fake_seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, fake_seat_ui, panel_reader=manager._panel.panel_reader)
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -625,7 +622,7 @@ async def test_expand_rescan_bidirectional_scans_top_and_bottom_rows():
 def test_extract_seat_info_marks_occupied_when_label_is_nickname_even_without_state_node():
     """即使 state 节点未抓取到，只要 label 是用户昵称，麦位必须判定为占用。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 构造一个没有 left_state 但 left_label 是昵称的 desk
     elements = soul_elements()
@@ -647,7 +644,7 @@ async def test_observe_visible_desks_validates_focus_count_and_triggers_full_sca
     """验证：如果输出的座位与专注人数对不上（如在座2人但专注6人），必须触发全量重扫。"""
     controller = FakeController()
     handler = make_handler(controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.expand_rescan_and_collapse = AsyncMock(return_value=True)
 
     desk = build_desk_wrapper(handler, left="张三", right="2", left_occupied=True)
@@ -664,7 +661,7 @@ async def test_observe_visible_desks_validates_focus_count_and_triggers_full_sca
 async def test_collapsed_seats_do_not_overwrite_third_row_snapshot():
     """折叠状态下的可视区域观测不得把未展开的第三排麦位（9~12号）误推平为空闲。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 预设全量扫描已探明的第三排麦位
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer")
@@ -674,7 +671,7 @@ async def test_collapsed_seats_do_not_overwrite_third_row_snapshot():
     # 模拟座位已收起（折叠状态）
     seat_ui = FakeSeatUI()
     seat_ui.is_expanded = False
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
 
     # 折叠状态下，传递前两排桌位（包含占位与空位）
     desk0 = build_desk_wrapper(handler, left="1", right="2", y=100)
@@ -698,7 +695,7 @@ async def test_collapsed_seats_do_not_overwrite_third_row_snapshot():
 async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_third_row():
     """当 Appium XML 中带有折叠/零尺寸的桌位节点时，不得误作为可见空座位处理。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer")
     manager.ledger.slots[11] = SeatSlot(seat_number=11, occupied=True, username="不约儿童")
@@ -706,7 +703,7 @@ async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_th
 
     seat_ui = FakeSeatUI()
     seat_ui.is_expanded = False
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
 
     # 模拟 6 个桌位节点都在 XML 树中，但后两张桌子 bounds 为 [0,0][0,0]（折叠状态）
     desk0 = build_desk_wrapper(handler, left="1", right="2", y=100)
@@ -732,19 +729,22 @@ async def test_collapsed_state_with_zero_height_or_hidden_desks_does_not_wipe_th
 
 def test_no_pixel_height_threshold_constant_remains():
     """#341：FULL_DESK_MIN_HEIGHT 连同所有 bounds 宽高阈值必须彻底删除。"""
-    assert not hasattr(SeatObservationManager, "FULL_DESK_MIN_HEIGHT")
+    assert not hasattr(SeatObservationService, "FULL_DESK_MIN_HEIGHT")
 
 
 def test_seat_dom_is_read_regardless_of_pixel_size():
     """几十像素的残片只要 DOM 里有麦位就必须照读 —— 高度不再是可见性的代理。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 40x18px（旧实现里宽高都 <60 会被整张丢弃）
     clipped = build_desk_wrapper(handler, left="1", right="2", bounds="[10,566][50,584]")
 
     assert manager._is_desk_visible(clipped) is True
-    assert manager.map_desks_to_indices([clipped]) == [(0, clipped)]
+    mapped = manager.map_desks_to_indices([clipped])
+    assert len(mapped) == 1
+    assert mapped[0][0] == 0
+    assert mapped[0][1].desk_id == str(id(clipped))
     info = manager._extract_seat_info(clipped, "left", 1)
     assert info["occupied"] is False
     assert info["is_empty"] is True
@@ -753,7 +753,7 @@ def test_seat_dom_is_read_regardless_of_pixel_size():
 def test_empty_seat_with_single_avatar_image_is_empty():
     """空座只剩 AvatarView 里的一张占位图（没有编号、没有「点击入座」）也要判为空座。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 右侧 "2" 把桌位钉在 desk 0；左侧空座没有任何文字，只有一张占位图
     desk = build_desk_wrapper(handler, right="2", left_avatar_images=1)
@@ -767,7 +767,7 @@ def test_empty_seat_with_single_avatar_image_is_empty():
 def test_occupied_seat_with_multiple_avatar_images_is_occupied():
     """占座麦位的 AvatarView 有多张图（头像 + 挂件/边框），即便读不到昵称也算占座。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     desk = build_desk_wrapper(handler, right="2", left_avatar_images=3)
 
@@ -780,7 +780,7 @@ def test_occupied_seat_with_multiple_avatar_images_is_occupied():
 def test_occupied_seat_with_state_widgets_is_occupied():
     """ClState 里的活跃控件（勋章、专注时长）本身就是占座证据，不依赖头像或昵称。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     desk = build_desk_wrapper(handler, right="2", left_state_widgets=True)
 
@@ -798,7 +798,7 @@ def test_bare_clstate_reads_as_occupied():
     「ClState presence」；勋章/专注时长等活跃控件因此天然覆盖（见 #341）。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # leftClState 在，但里面既没有勋章/时长，也没有昵称
     desk = build_desk_wrapper(handler, left_occupied=True, right="2")
@@ -825,7 +825,7 @@ def test_raw_desk_avatar_image_count_is_unreadable_and_never_clears_a_seat():
         location={"x": 40, "y": 100},
     )
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     info = manager._extract_seat_info(raw_desk, "left", 1)
     assert info["avatar_images"] == 0
@@ -836,7 +836,7 @@ def test_raw_desk_avatar_image_count_is_unreadable_and_never_clears_a_seat():
 def test_avatar_view_without_images_is_unknown_not_empty():
     """占位图都没渲染出来时既不算占座也不算空座：宁可不写，不可猜。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     desk = build_desk_wrapper(handler, right="2")
 
@@ -849,7 +849,7 @@ def test_avatar_view_without_images_is_unknown_not_empty():
 def test_base_only_fragment_produces_no_seat_slot_data():
     """只渲染底座的残片（bgRoot + left/rightBottomView）不产出任何麦位数据。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     fragment = build_base_fragment_wrapper(handler, y=566)
 
@@ -862,7 +862,7 @@ def test_base_only_fragment_produces_no_seat_slot_data():
 async def test_observation_of_base_only_fragment_writes_nothing():
     """底座残片既不能推平快照，也不构成变更 —— 它不是任何一个麦位的读数。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
     manager.ledger.gate_state.last_focus_count = 1
 
@@ -885,11 +885,11 @@ async def test_full_rescan_clears_seat_showing_only_the_placeholder_image():
     WebElement，数不到占位图，见 test_raw_desk_avatar_image_count_is_unreadable_and_never_clears_a_seat。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="张三")
 
     desk = build_desk_wrapper(handler, right="2", left_avatar_images=1)
-    manager._seat_ui = FakeSeatUI(desks=[desk])
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=[desk]), panel_reader=manager._panel.panel_reader)
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         notify = AsyncMock()
@@ -909,11 +909,11 @@ async def test_full_rescan_clears_seat_showing_only_the_placeholder_image():
 async def test_full_rescan_inspects_occupant_of_seat_with_multiple_avatar_images():
     """权威路径：AvatarView 多图判定占座后点头像弹窗取真实昵称，再发上座事件。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value="Bob")
 
     desk = build_desk_wrapper(handler, right="2", left_avatar_images=3)
-    manager._seat_ui = FakeSeatUI(desks=[desk])
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=[desk]), panel_reader=manager._panel.panel_reader)
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         notify = AsyncMock()
@@ -932,7 +932,7 @@ async def test_full_rescan_inspects_occupant_of_seat_with_multiple_avatar_images
 def test_seat_reads_as_empty_vs_invisible():
     """验证空座（下座）与看不见（不可见/稀疏内容）的严格区分。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     def _read(**kwargs) -> dict:
         return manager._extract_seat_info(build_desk_wrapper(handler, y=200, **kwargs), "left", 1)
@@ -962,7 +962,7 @@ def test_seat_reads_as_empty_vs_invisible():
 def test_desk_visibility_requires_dom_content_not_bounds():
     """桌位是否可用只看 DOM 证据，像素宽高一律不参与判定（见 #341）。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 1. 边缘裁切残片（高 18px）：DOM 里没有麦位证据 → 不可用
     desk_clipped = build_desk_wrapper(handler, bounds="[28,566][337,584]")
@@ -993,7 +993,7 @@ def test_desk_visibility_requires_dom_content_not_bounds():
 def test_apply_snapshot_preserves_occupant_when_seat_is_invisible():
     """不可见不等于下座：稀疏内容不可见时，必须保留原有占座人，防止被错误清空触发死循环。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 5 号麦位此前已知被“锦鲤”占用
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
@@ -1023,7 +1023,7 @@ def test_apply_snapshot_clears_only_on_explicit_empty_evidence_and_clearable():
     与 test_base_only_fragment_produces_no_seat_slot_data）。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     def _empty_read():
         return {
@@ -1063,7 +1063,7 @@ async def test_real_clipped_desks_do_not_wipe_out_of_view_seats_or_trigger_loop(
     被动监控绝不能将第一排（1~4号）或第三排（9~12号）误清空，人数保持一致，不触发全量重扫。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 初始快照：全量扫描已识别 5 位用户
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="Outlier")
@@ -1075,7 +1075,7 @@ async def test_real_clipped_desks_do_not_wipe_out_of_view_seats_or_trigger_loop(
 
     seat_ui = FakeSeatUI()
     seat_ui.is_expanded = False
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
 
     # 模拟生产 page source 中的 6 个 userRoot
     # Desk 0, 1: 顶部裁切边缘 (height=18)
@@ -1120,7 +1120,7 @@ async def test_passive_observation_never_clears_a_seat_it_cannot_identify():
     再展开重扫 → 恢复 → 再推平，17 秒一轮无限循环。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 全量重扫刚确认的快照：1/3/5/8 号位有人，专注人数 4
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="Outlier")
@@ -1131,7 +1131,7 @@ async def test_passive_observation_never_clears_a_seat_it_cannot_identify():
 
     seat_ui = FakeSeatUI()
     seat_ui.is_expanded = False
-    manager._seat_ui = seat_ui
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, seat_ui, panel_reader=manager._panel.panel_reader)
 
     # 折叠视口：两张第二排桌位，都读不到座位号
     desk_row2_left = build_desk_wrapper(
@@ -1168,7 +1168,7 @@ async def test_seat_read_as_empty_without_a_destination_escalates_to_full_rescan
     必须全量扫描一遍取最新信息。同一份读数只扫一次，否则就是每轮十几秒的死循环。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
@@ -1227,7 +1227,7 @@ async def test_appearing_user_still_recorded_elsewhere_escalates_to_full_rescan(
     全量扫描一遍。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     # 锦鲤此前记录在第三排 9 号位（当前不可视）
@@ -1257,7 +1257,7 @@ async def test_appearing_user_still_recorded_elsewhere_escalates_to_full_rescan(
 async def test_one_full_rescan_serves_both_signals_in_the_same_observation():
     """同一次观测里人数背离和「去向不明」同时出现 → 只展开扫一次，不排队扫两遍。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
 
@@ -1282,7 +1282,7 @@ async def test_one_full_rescan_serves_both_signals_in_the_same_observation():
 async def test_same_focus_count_is_reconciled_only_once():
     """闸门：专注人数这个取值只允许触发一次全量重扫，人数没变绝不重复展开。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     async def _landed_scan(*_args, **_kwargs):
         manager.ledger.gate_state.last_rescan_ok = True
@@ -1318,7 +1318,7 @@ async def test_rescan_that_never_landed_is_retried():
     clock = FakeClock()
     policy = SeatRescanCooldownPolicy(time_fn=clock)
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler, cooldown_policy=policy)
+    manager = build_seat_observation(handler, cooldown_policy=policy)
     # 替身不设置 _last_rescan_ok，模拟「扫了但没扫成」
     manager.expand_rescan_and_collapse = AsyncMock(return_value=False)
 
@@ -1339,7 +1339,7 @@ async def test_rescan_that_never_landed_is_retried():
 def test_avatar_image_count_matches_real_appium_xml_tag():
     """真实 Appium page_source 的节点是 <android.widget.ImageView>，不带 class 属性。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     xml = """
     <android.view.ViewGroup resource-id="cn.soulapp.android:id/userRoot">
@@ -1353,7 +1353,7 @@ def test_avatar_image_count_matches_real_appium_xml_tag():
     </android.view.ViewGroup>
     """
     desk = ElementWrapper(etree.fromstring(xml.encode()), handler, "seat_desk")
-    assert manager.panel_reader._avatar_image_count(desk, "left") == 3
+    assert manager._panel.panel_reader._avatar_image_count(desk, "left") == 3
 
 
 @pytest.mark.asyncio
@@ -1365,7 +1365,7 @@ async def test_move_seat_to_collapsed_row_triggers_full_rescan():
     真实 Appium XML 节点为 <android.widget.ImageView>。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 初始快照（与线上日志一致）：5锦鲤，6儿童不易，11 Outlier，12群主
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="锦鲤")
@@ -1442,7 +1442,7 @@ def test_real_top_phase_maps_leading_desks_without_anchor():
 
     夹具是实测的展开态首相位：第 0 排满高、第 1 排满高、第 2 排裁到 45px。
     """
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
 
     observed = manager._read_visible_seats(
         _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml"), band="top"
@@ -1462,7 +1462,7 @@ def test_real_bottom_phase_maps_trailing_desks_without_anchor():
 
     夹具是实测的滚到底相位：第 0 排只剩上方残片，第 1、2 排满高。
     """
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
 
     observed = manager._read_visible_seats(
         _real_raw_desks_without_number_anchors("expanded_scrolled_bottom.xml"), band="bottom"
@@ -1477,7 +1477,7 @@ def test_real_bottom_phase_maps_trailing_desks_without_anchor():
 def test_phase_mapping_refuses_when_panel_is_at_the_other_end():
     """相位兜底必须过几何校验：面板没滚到那一端时绝不按相位硬排（会写错座位号）。"""
 
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
     top_leaning = _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml")
     bottom_leaning = _real_raw_desks_without_number_anchors("expanded_scrolled_bottom.xml")
 
@@ -1488,7 +1488,7 @@ def test_phase_mapping_refuses_when_panel_is_at_the_other_end():
 def test_mid_scroll_viewport_stays_unknown():
     """中间滚动位置（上方和下方都还有桌位）不猜 —— 复现 #341 之前错配座位号的成因。"""
 
-    manager = SeatObservationManager.initialize(make_handler())
+    manager = build_seat_observation(make_handler())
     desks = _real_raw_desks_without_number_anchors("collapsed_scrolled_after_collapse.xml")
 
     for band in (None, "top", "bottom"):
@@ -1503,7 +1503,7 @@ def test_real_collapsed_viewport_without_anchor_maps_nothing():
     """
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     wrappers = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
 
     assert manager._read_visible_seats(wrappers) == {}
@@ -1532,7 +1532,7 @@ async def test_real_collapsed_second_row_change_escalates_without_anchor():
     """
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     before = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
     await manager.observe_visible_desks(before)  # 记下基线指纹（此轮不应触发重扫）
@@ -1551,7 +1551,7 @@ async def test_real_collapsed_viewport_without_change_does_not_rescan():
     """指纹没变就不重扫：避免身份未知的稳定视口把重扫当监控用（铁律：无行为不刷日志）。"""
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     first = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
     second = build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
@@ -1573,7 +1573,7 @@ async def test_band_change_signal_survives_failed_rescan():
     """
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     await manager.observe_visible_desks(
         build_real_desk_wrappers(handler, "collapsed_top_no_anchor.xml")
@@ -1597,8 +1597,8 @@ async def test_rescan_falls_back_to_on_screen_desks_when_expansion_unavailable()
 
     raw_desks = _real_raw_desks_without_number_anchors("expanded_top_with_anchor.xml")
     handler = make_handler(desks=raw_desks)
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=None)  # 展开失败
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=None), panel_reader=manager._panel.panel_reader)  # 展开失败
 
     with patch("ushareiplay.adapters.inbound.runtime.command_manager.CommandManager.instance") as cmd_mgr:
         cmd_mgr.return_value.notify_focus_count_change = AsyncMock()
@@ -1619,7 +1619,7 @@ async def test_sync_current_viewport_extracts_desks_and_updates_snapshot_with_ba
     handler.driver = MagicMock()
     handler.driver.page_source = xml_content
 
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     # 预设快照中 2 号位原为占座，检验视口同步能将真实空座清空
     manager.ledger.slots[2] = SeatSlot(seat_number=2, occupied=True, username="旧占用者")
 
@@ -1652,7 +1652,7 @@ async def test_sync_current_viewport_with_band_bottom_preserves_unseen_seats():
     handler.driver = MagicMock()
     handler.driver.page_source = xml_content
 
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     # 预先设置 1 号位群主与 9 号位旧占用者
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="群主", is_owner=True)
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="旧占用者")
@@ -1676,7 +1676,7 @@ async def test_sync_current_viewport_with_band_bottom_preserves_unseen_seats():
 async def test_mark_owner_seated_updates_snapshot_and_suppresses_focus_count_divergence():
     """就座后立即写入快照、预增基准并标记已对账，下游 +1 专注人数事件不再触发全量展开重扫。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.gate_state.last_focus_count = 2
 
     # 模拟确认就座 2 号位
@@ -1733,8 +1733,8 @@ async def test_full_rescan_does_not_reuse_a_user_read_occupied_on_another_seat()
         _raw_desk_sides(("Outlier", True), ("12", False), 600),
     ]
     handler = make_handler(desks=desks)
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=desks), panel_reader=manager._panel.panel_reader)
 
     manager.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="Chainer", label="Chainer")
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="Outlier", label="Outlier")
@@ -1780,8 +1780,8 @@ def _ghost_render_desks():
 
 def _manager_for_rescan(desks):
     handler = make_handler(desks=desks)
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=desks), panel_reader=manager._panel.panel_reader)
     manager.inspect_occupant = AsyncMock(return_value=None)
     # _reconcile_focus_count 是「先登记再扫」的，进扫描时这个取值已经登记过了
     manager.ledger.gate_state.reconciled_focus_count = 3
@@ -1837,8 +1837,8 @@ async def test_consistent_rescan_leaves_the_ledger_closed():
     """对上了就不许留欠账，否则每次重扫都会多追一次展开。"""
     desks = _ghost_render_desks()
     handler = make_handler(desks=desks)
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=desks), panel_reader=manager._panel.panel_reader)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.gate_state.reconciled_focus_count = 4
 
@@ -1873,7 +1873,7 @@ async def test_consistency_retry_uses_the_longer_cooldown():
     """补扫要 10 秒后才允许，常规重扫 3 秒就行：一次展开要十几秒，不能追着扫。"""
     clock = FakeClock()
     policy = SeatRescanCooldownPolicy(time_fn=clock)
-    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
+    manager = build_seat_observation(make_handler(), cooldown_policy=policy)
     manager.ledger.gate_state.last_rescan_ok = True
     manager.ledger.gate_state.last_rescan_time = clock()
 
@@ -1943,8 +1943,8 @@ async def test_rescan_keeps_the_informative_of_two_passes_for_one_seat():
     )
     handler = make_handler(desks=top)
     handler.element_finder.find_elements = MagicMock(side_effect=[top, bottom])
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=top)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=top), panel_reader=manager._panel.panel_reader)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.gate_state.reconciled_focus_count = 1
 
@@ -1982,8 +1982,8 @@ async def test_landed_rescan_prints_the_seat_table_even_with_no_changes():
     )
     handler = make_handler(desks=top)
     handler.element_finder.find_elements = MagicMock(side_effect=[top, bottom])
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=top)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=top), panel_reader=manager._panel.panel_reader)
     manager.inspect_occupant = AsyncMock(return_value=None)
     manager.ledger.slots[10] = SeatSlot(
         seat_number=10, occupied=True, username="群主", label="群主", is_owner=True
@@ -2004,7 +2004,7 @@ def test_seat_table_colors_occupants_and_marks_changed_seats_differently():
     """座次表着色：在座亮青、本轮变更亮绿、空闲压暗 —— 纯文本内容不许变。"""
     from ushareiplay.core.log_formatter import strip_ansi
 
-    manager = SeatObservationManager.initialize(None)
+    manager = build_seat_observation(None)
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="Outlier")
     manager.ledger.slots[10] = SeatSlot(seat_number=10, occupied=True, username="Joyer")
     manager.ledger.slots[11] = SeatSlot(seat_number=11, occupied=False)
@@ -2012,15 +2012,15 @@ def test_seat_table_colors_occupants_and_marks_changed_seats_differently():
     layout = manager.format_3row_layout("测试触发", changed_seats={9})
 
     assert "第三排: [9号: Outlier] [10号: Joyer]  |  [11号: 空闲] [12号: 空闲]" in strip_ansi(layout)
-    assert f"{SeatObservationManager.SEAT_COLOR_CHANGED}[9号: Outlier]" in layout
-    assert f"{SeatObservationManager.SEAT_COLOR_OCCUPIED}[10号: Joyer]" in layout
-    assert f"{SeatObservationManager.SEAT_COLOR_IDLE}[11号: 空闲]" in layout
+    assert f"{SeatObservationService.SEAT_COLOR_CHANGED}[9号: Outlier]" in layout
+    assert f"{SeatObservationService.SEAT_COLOR_OCCUPIED}[10号: Joyer]" in layout
+    assert f"{SeatObservationService.SEAT_COLOR_IDLE}[11号: 空闲]" in layout
 
 
 def test_rescan_table_highlights_only_the_seats_that_actually_changed():
     """变更位子的着色必须来自真 diff，不是「凡是坐了就标绿」。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[9] = SeatSlot(seat_number=9, occupied=True, username="Chainer", label="Chainer")
 
     observed = {
@@ -2048,7 +2048,7 @@ def test_mark_owner_seated_move_reseats_without_double_booking_or_inflated_count
     虚增，紧接着的被动观测就拿真实人数 1 去比对 2，误判背离、引爆整轮全量重扫。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.gate_state.last_focus_count = 1
     manager.ledger.slots[10] = SeatSlot(
         seat_number=10, occupied=True, username="群主", label="群主", is_owner=True
@@ -2089,8 +2089,8 @@ async def test_owner_ghost_render_cannot_book_the_room_owner_on_two_seats():
     ]
     handler = make_handler(desks=desks)
     handler.config.data["room_owner"] = "Joyer"
-    manager = SeatObservationManager.initialize(handler)
-    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager = build_seat_observation(handler)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=desks), panel_reader=manager._panel.panel_reader)
     manager.ledger.gate_state.reconciled_focus_count = 1
     manager.inspect_occupant = AsyncMock(
         side_effect=lambda desk, side, seat_number: "Joyer" if seat_number == 9 else None
@@ -2131,7 +2131,7 @@ async def test_seat_identity_collision_in_snapshot_resolves_to_winner_and_clears
     避免虚增在座人数导致 Rescan still disagrees with focus count (2 seated vs 1)。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     # 构造一次观测：9 号位与 11 号位均被读成 Joyer
     observed = {
@@ -2188,7 +2188,7 @@ def test_format_3row_layout_with_room_admins():
     admins.add("AdminAlice")
     admins.add("OwnerUser")  # Owner is also in room admins
 
-    manager = SeatObservationManager.initialize(None, room_admins=admins)
+    manager = build_seat_observation(None, room_admins=admins)
     # Seat 1: Owner with username
     manager.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="OwnerUser", is_owner=True)
     # Seat 2: Owner without distinct username
@@ -2231,7 +2231,7 @@ def test_format_3row_layout_with_room_admins():
 
 
 def test_get_user_seat_and_all_seated_users():
-    manager = SeatObservationManager.initialize(None)
+    manager = build_seat_observation(None)
     manager.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="Alice")
     manager.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="Bob")
     manager.ledger.slots[7] = SeatSlot(seat_number=7, occupied=False, username="Charlie")  # not occupied
@@ -2276,7 +2276,7 @@ async def test_in_viewport_move_with_residual_render_is_not_swallowed_by_stale_i
     可视范围内换座被整个吞掉。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[12] = SeatSlot(seat_number=12, occupied=True, username="Outlier", label="Outlier")
     # 真机：11 号位点头像弹窗读出 Outlier；12 号位的残留渲染弹窗同样是他
     manager.inspect_occupant = AsyncMock(
@@ -2304,7 +2304,7 @@ async def test_full_rescan_lands_an_in_viewport_move_and_reports_move_seat():
     钉在 12 号，再把 11 号的本轮弹窗证据判成残留清空 —— 重扫也检不出来。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desks = [
         build_live_raw_desk((1, False, None), (2, False, None), y=100),
         build_live_raw_desk((3, False, None), (4, False, None), y=200),
@@ -2315,7 +2315,7 @@ async def test_full_rescan_lands_an_in_viewport_move_and_reports_move_seat():
         build_live_raw_desk((11, True, None), (12, True, None), y=600),
     ]
     handler.element_finder.find_elements = MagicMock(return_value=desks)
-    manager._seat_ui = FakeSeatUI(desks=desks)
+    manager._panel = _SeatPanelWithCustomUI(manager._panel.handler, FakeSeatUI(desks=desks), panel_reader=manager._panel.panel_reader)
     manager.ledger.slots[12] = SeatSlot(seat_number=12, occupied=True, username="Outlier", label="Outlier")
     manager.ledger.gate_state.last_focus_count = 1
     manager.inspect_occupant = AsyncMock(
@@ -2345,7 +2345,7 @@ async def test_in_viewport_move_without_residual_render_is_applied_directly():
     这条路径不依赖重扫，是换座检测最便宜也最常见的形状，必须钉住。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.ledger.slots[12] = SeatSlot(seat_number=12, occupied=True, username="Chainer", label="Chainer")
     manager.inspect_occupant = AsyncMock(
         side_effect=lambda desk, side, seat_number: "Chainer" if seat_number == 11 else None
@@ -2390,7 +2390,7 @@ async def test_rescan_invariants_with_injected_cooldown_policy():
         consistency_rescan_cooldown=15.0,
         time_fn=clock,
     )
-    manager = SeatObservationManager.initialize(make_handler(), cooldown_policy=policy)
+    manager = build_seat_observation(make_handler(), cooldown_policy=policy)
 
     scan_calls = []
 
@@ -2510,8 +2510,8 @@ def test_gate_state_unified_reset():
 
 
 def test_gate_state_integration_with_manager_clear():
-    """验证 SeatObservationManager.clear() 委托 gate_state.reset() 重置全部闸门。"""
-    manager = SeatObservationManager.initialize(None)
+    """验证 SeatObservationService.clear() 委托 gate_state.reset() 重置全部闸门。"""
+    manager = build_seat_observation(None)
     manager.ledger.gate_state.last_focus_count = 3
     manager.ledger.gate_state.reconciled_focus_count = 3
     manager.ledger.gate_state.last_rescan_ok = True
@@ -2539,7 +2539,7 @@ async def test_ghost_duplicate_cleared_in_rescan_is_recorded_as_residual_and_not
     """复现并防止生产事故：重扫时 2 号和 10 号冲突清空 2 号 ghost 后，收起麦位被动观测时反复弹窗。"""
     from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     user = "卡拉皮奶巴白大阿🐟啊啊……"
     observed_all = {
@@ -2571,7 +2571,7 @@ async def test_ghost_discovered_in_passive_observation_triggers_rescan_and_then_
     """被动观测中 2 号位出现已在 10 号位的用户：触发重扫，重扫裁决为残留后，后续被动观测绝不再弹窗。"""
     from tests.seat_fixtures import build_live_desk_wrappers_for, make_handler
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     user = "卡拉皮奶巴白大阿🐟啊啊……"
     # 快照中 10 号位已有人
@@ -2620,7 +2620,7 @@ async def test_admin_label_not_dropped_when_observation_has_empty_label():
     admins = RoomAdmins()
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler, room_admins=admins)
+    manager = build_seat_observation(handler, room_admins=admins)
 
     # 初始快照：7 号位为管理(Chainer)
     manager.ledger.slots[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
@@ -2659,7 +2659,7 @@ async def test_admin_label_preserved_when_admin_moves_to_new_seat_with_unreadabl
     admins = RoomAdmins()
 
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler, room_admins=admins)
+    manager = build_seat_observation(handler, room_admins=admins)
 
     # 初始快照：7 号位为管理(Chainer)
     manager.ledger.slots[7] = SeatSlot(seat_number=7, occupied=True, username="Chainer", label="管理")
@@ -2708,7 +2708,7 @@ async def test_observe_visible_desks_skips_avatar_inspection_when_ui_is_busy():
     """UI 锁被持有时（例如进房自动邀请正在驱动屏幕），被动观测跳过点击头像弹窗，避免争抢屏幕与死锁。"""
     controller = FakeController()
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler, lease=controller.ui_session_lease)
+    manager = build_seat_observation(handler, lease=controller.ui_session_lease)
     # 座次表里已知「1 号座占座但身份未知」：本轮不会因变更触发全量重扫（重扫会等锁）。
     manager.ledger.slots[1] = SeatSlot(
         seat_number=1, occupied=True, username=None, label="管理"
@@ -2754,7 +2754,7 @@ async def test_observe_visible_desks_and_sync_current_viewport_concurrency_no_de
 
     controller = FakeController()
     handler = make_handler(popup_name="Bob", controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     desk = build_desk_wrapper(handler, left="管理", right="2", left_occupied=True)
 
     async def holding_task():
@@ -2787,7 +2787,7 @@ async def test_expand_rescan_and_collapse_concurrency_no_deadlock():
 
     controller = FakeController()
     handler = make_handler(controller=controller)
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
 
     async def holding_task():
         async with controller.ui_session("seat_auto_invite:user"):
@@ -2835,7 +2835,7 @@ async def test_repeated_unexplained_readings_are_logged_once():
     读数在轮询里一直重复；指纹闸门挡住了重复重扫，日志却每轮都打（刷屏）。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     fragment = _fragment_desk(handler, "9", "10", y=900)
@@ -2862,7 +2862,7 @@ async def test_repeated_unexplained_readings_are_logged_once():
 async def test_new_unexplained_change_is_logged_again():
     """读数真的变了（换了一位子去向不明）→ 照旧打一条日志。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     fragment_9 = _fragment_desk(handler, "9", "10", y=900)
@@ -2888,12 +2888,12 @@ async def test_new_unexplained_change_is_logged_again():
 
 @pytest.mark.asyncio
 async def test_clear_resets_unexplained_log_memory():
-    """换房重置（RoomState.clear → SeatObservationManager.clear）后记忆归零。
+    """换房重置（RoomState.clear → SeatObservationService.clear）后记忆归零。
 
     同一份读数在新房间里仍要打一条 —— 记忆只用于抑制重复，不许把日志永久压掉。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     fragment = _fragment_desk(handler, "9", "10", y=900)
@@ -2927,7 +2927,7 @@ async def test_unreadable_round_does_not_reopen_the_unexplained_log():
     （AGENTS.md 日志静默铁律）。
     """
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     fragment = _fragment_desk(handler, "9", "10", y=900)
@@ -2960,7 +2960,7 @@ async def test_unreadable_round_does_not_reopen_the_unexplained_log():
 async def test_unexplained_reappearing_after_clearing_is_logged_again():
     """去向不明异常消失（清零）后再次出现：重新打一条日志（新事件）。"""
     handler = make_handler()
-    manager = SeatObservationManager.initialize(handler)
+    manager = build_seat_observation(handler)
     manager.inspect_occupant = AsyncMock(return_value=None)
 
     fragment = _fragment_desk(handler, "9", "10", y=900)

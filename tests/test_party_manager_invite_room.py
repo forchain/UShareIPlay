@@ -645,7 +645,7 @@ async def test_join_party_recreates_room_after_guest_room_closed():
                     'set_default_notice': AsyncMock(return_value={'success': True}),
                 },
             )()
-            self.seat_manager = type('_MockSM', (), {'find_owner_seat': AsyncMock(return_value={'success': True})})()
+            self.seat_service = type('_MockSM', (), {'find_owner_seat': AsyncMock(return_value={'success': True})})()
             self.post_party_create_automation = None
 
     handler.controller = _MockController()

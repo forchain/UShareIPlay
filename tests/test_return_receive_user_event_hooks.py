@@ -31,7 +31,6 @@ from ushareiplay.adapters.outbound.persistence.user_event_hook_repository import
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
-from ushareiplay.managers.seat_manager import SeatManager
 from ushareiplay.modules.room.registry import RECEIVE, RETURN
 from tests.room_support import make_hooks
 from ushareiplay.adapters.outbound.persistence.models import User
@@ -285,15 +284,11 @@ async def test_notify_user_return_enqueues_once_and_checks_seats(db_init, hooks)
     cm.user_event_hooks = hooks
     cm._logger = _logger_stub()
 
-    SeatManager.reset_instance()
-    SeatManager.initialize()
+    seat_check = AsyncMock()
+    cm.controller = SimpleNamespace(seat_service=SimpleNamespace(check_seats_on_entry=seat_check))
 
     await MessageQueue.instance().clear_queue()
-    with patch(
-        "ushareiplay.managers.seat_manager.SeatManager.check_seats_on_entry",
-        new_callable=AsyncMock,
-    ) as seat_check:
-        await cm.notify_user_return("Bob")
+    await cm.notify_user_return("Bob")
 
     queued = await _drain()
     assert [m.content for m in queued] == [":play 稻香"]

@@ -9,10 +9,7 @@
 from typing import Optional
 
 from ushareiplay.core.base_event import BaseEvent
-from ushareiplay.managers.seat_manager.seat_observation import (
-    SeatObservationManager,
-    parse_focus_count_text,
-)
+from ushareiplay.modules.seat.domain import parse_focus_count_text
 
 # 顺序即 EventManager 的同轮分发顺序（见 _process_events_once）：必须先被动观测
 # 本页可见麦位，再判人数背离。反过来的话每一次可视上座都会拿旧快照去比，被误判
@@ -28,7 +25,8 @@ class FocusCountEvent(BaseEvent):
 
     def __init__(self, handler, runtime=None):
         super().__init__(handler, runtime)
-        self.observation = SeatObservationManager.instance().bind_handler(handler)
+        controller = getattr(handler, "controller", None)
+        self.observation = getattr(controller, "seat_observation", None) if controller else None
 
     async def handle(self, key: str, element_wrapper):
         """

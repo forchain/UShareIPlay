@@ -23,10 +23,9 @@ from tests.seat_fixtures import (
     build_live_page_source,
     make_handler,
 )
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
-from ushareiplay.managers.seat_manager import SeatManager
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
+from tests.seat_support import build_seat_service
 
 # 桌号 -> 左右两个座位号（奇数在左、偶数在右）
 DESK_SEATS = {desk: (desk * 2 + 1, desk * 2 + 2) for desk in range(6)}
@@ -100,14 +99,14 @@ def _make_subsystem(cached_occupied=(), live_occupants=None, top_source=None):
     )
     handler.driver = driver
 
-    observation = SeatObservationManager.initialize(handler)
+    observation = build_seat_observation(handler)
     for seat in cached_occupied:
         observation.ledger.slots[seat] = SeatSlot(
             seat_number=seat, occupied=True, username="Someone", label=str(seat)
         )
 
     seat_ui = FakePhaseSeatUI(driver)
-    subsystem = SeatSubsystem(handler=handler, seat_ui=seat_ui, observation=observation)
+    subsystem = build_seat_service(handler=handler, seat_ui=seat_ui, observation=observation)
     return subsystem, observation, seat_ui
 
 
@@ -121,17 +120,14 @@ def _debug_logs(subsystem):
 
 @pytest.fixture(autouse=True)
 def reset_observation():
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
     yield
-    SeatObservationManager.reset_instance()
-    SeatManager.reset_instance()
 
 
 @pytest.fixture(autouse=True)
 def no_settle_wait(monkeypatch):
     """滚动后的安定等待在测试里去掉（它是墙钟时间，不是行为）。"""
-    monkeypatch.setattr(SeatSubsystem, "VIEWPORT_SETTLE_SECONDS", 0)
+    from ushareiplay.modules.seat.use_cases import SeatService
+    monkeypatch.setattr(SeatService, "VIEWPORT_SETTLE_SECONDS", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +264,7 @@ async def test_method_is_reachable_through_the_seat_manager_facade():
     `SeatManager.subsystem`。
     """
     subsystem, observation, seat_ui = _make_subsystem()
-    manager = SeatManager.initialize(handler=subsystem.handler, seat_ui=seat_ui)
+    manager = build_seat_service(handler=subsystem._panel.handler, seat_ui=seat_ui)
 
     assert getattr(
         manager.find_verified_isolated_empty_desk, "__wrapped__", None
@@ -286,7 +282,7 @@ async def test_the_facade_method_returns_nothing_in_a_guest_room():
     from tests.legacy_state import RoomState
 
     subsystem, observation, seat_ui = _make_subsystem()
-    manager = SeatManager.initialize(handler=subsystem.handler, seat_ui=seat_ui)
+    manager = build_seat_service(handler=subsystem._panel.handler, seat_ui=seat_ui)
 
     RoomState.reset_instance()
     room_state = RoomState.initialize()

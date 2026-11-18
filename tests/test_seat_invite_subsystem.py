@@ -19,7 +19,7 @@ from tests.seat_fixtures import (
 )
 from tests.test_seat_invite_driver import InviteRow, make_invite_handler
 
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from tests.seat_support import build_seat_service
 
 SEAT_BOUNDS = FAKE_SEAT_BOUNDS
 
@@ -42,10 +42,11 @@ def make_subsystem(
     else:
         info = {"occupied": False, "is_empty": True}
 
+    from ushareiplay.modules.room.domain import RoomState
     observation = FakeSeatObservation(observed={3: (desks[1], "left", info)})
-    subsystem = SeatSubsystem(
+    subsystem = build_seat_service(
         handler=handler, seat_ui=seat_ui, observation=observation,
-        invite_driver=invite_driver,
+        invite_driver=invite_driver, room_state=RoomState(),
     )
     return subsystem, handler, seat_ui, observation
 

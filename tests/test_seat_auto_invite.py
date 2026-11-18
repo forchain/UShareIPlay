@@ -30,9 +30,9 @@ from tests.seat_fixtures import (
 )
 from tests.test_seat_invite_driver import InviteRow, make_invite_handler
 
-from ushareiplay.managers.seat_manager import subsystem as seat_subsystem_module
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
-from ushareiplay.managers.seat_manager.subsystem import SeatSubsystem
+from tests.seat_support import build_seat_service
+from ushareiplay.modules.seat.domain import SeatReservation
+from ushareiplay.modules.seat.ledger import SeatSlot
 
 # 同一个人的两个命名域：DB 侧是 canonical 名（主账号名），Soul UI 上是可见昵称。
 CANONICAL = "alice_master"
@@ -46,10 +46,13 @@ DESK_SEAT = 3  # 1 号桌的左座
 # 局部替身
 # ---------------------------------------------------------------------------
 class FakeIdentityDAO:
-    """`UserDAO.is_same_identity` 的替身：按身份组判定同名不同串。"""
+    """`UserRepository` 的替身：按身份组判定同名不同串。"""
 
     def __init__(self, groups=()):
         self.groups = [set(group) for group in groups]
+
+    async def get_or_create(self, username):
+        return SimpleNamespace(id=1, username=username, level=5)
 
     async def is_same_identity(self, requested_username, observed_username):
         if not requested_username or not observed_username:
@@ -63,21 +66,23 @@ class FakeIdentityDAO:
 
 
 class FakeReservationDAO:
-    """座位预约 DAO 的替身（只保留进房检查用到的那几个动作）。"""
+    """座位预约仓储的替身（只保留进房检查用到的那几个动作）。"""
 
     def __init__(self, reservation=None):
         self.reservation = reservation
         self.removed = []
         self.renewed = []
 
-    async def get_reservation_by_user_name(self, username):
+    async def get_by_user_id(self, user_id):
         return self.reservation
 
-    async def remove_reservation(self, reservation):
-        self.removed.append(reservation)
+    async def remove_by_id(self, reservation_id):
+        self.removed.append(self.reservation if self.reservation and self.reservation.id == reservation_id else reservation_id)
+        return True
 
-    async def update_reservation_start_time(self, reservation_id, now):
+    async def update_start_time(self, reservation_id, now):
         self.renewed.append((reservation_id, now))
+        return self.reservation
 
 
 class FakeInfoManager:
@@ -152,12 +157,14 @@ class InviteStub:
 def _reservation(expired=False, seat_number=5):
     """一份预约（过期与否由 expired 决定）。"""
     start = datetime.now() - timedelta(hours=10 if expired else 1)
-    return SimpleNamespace(
+    return SeatReservation(
         id=1,
+        user_id=1,
+        username=CANONICAL,
+        user_level=5,
         seat_number=seat_number,
         start_time=start,
         duration_hours=1 if expired else 5,
-        user=SimpleNamespace(username=CANONICAL, level=5),
     )
 
 
@@ -196,10 +203,6 @@ def _build(
     if seats is None:
         seats = {number: SeatSlot(seat_number=number) for number in range(1, 13)}
     observation = FakeSeatObservation(seats=seats, owner=room_owner)
-    subsystem = SeatSubsystem(
-        handler=handler, seat_ui=seat_ui, observation=observation
-    )
-
     reservations = FakeReservationDAO(reservation)
     if identities is None:
         identities = FakeIdentityDAO([(CANONICAL, VISIBLE)])
@@ -207,12 +210,17 @@ def _build(
         visible_by_canonical = {CANONICAL: VISIBLE}
     info = FakeInfoManager(visible_by_canonical, online_users=online_users)
 
-    monkeypatch.setattr(seat_subsystem_module, "SeatReservationDAO", reservations)
-    monkeypatch.setattr(seat_subsystem_module, "UserDAO", identities)
-    subsystem.info_manager = info
-
     messages = []
-    subsystem._message_dispatch = SimpleNamespace(send_screen_message=messages.append)
+    subsystem = build_seat_service(
+        handler=handler,
+        seat_ui=seat_ui,
+        observation=observation,
+        reservations=reservations,
+        users=identities,
+        messenger=SimpleNamespace(send_screen_message=messages.append),
+        resolve_visible_username=info.resolve_visible_username,
+        is_user_online=info.is_user_online,
+    )
 
     desk_search = DeskSearchStub(desk)
     invite = InviteStub(invite_result)
@@ -465,28 +473,24 @@ async def test_the_whole_auto_invite_flow_runs_under_one_ui_session(monkeypatch)
             )
         }
     )
-    subsystem = SeatSubsystem(
+    info = FakeInfoManager({CANONICAL: VISIBLE})
+    messages = []
+    subsystem = build_seat_service(
         handler=handler,
         seat_ui=seat_ui,
         observation=observation,
         lease=controller.ui_session_lease,
-    )
-
-    subsystem.info_manager = FakeInfoManager({CANONICAL: VISIBLE})
-    monkeypatch.setattr(
-        seat_subsystem_module, "UserDAO", FakeIdentityDAO([(CANONICAL, VISIBLE)])
-    )
-    monkeypatch.setattr(
-        seat_subsystem_module, "SeatReservationDAO", FakeReservationDAO(None)
+        reservations=FakeReservationDAO(None),
+        users=FakeIdentityDAO([(CANONICAL, VISIBLE)]),
+        messenger=SimpleNamespace(send_screen_message=messages.append),
+        resolve_visible_username=info.resolve_visible_username,
+        is_user_online=info.is_user_online,
     )
 
     async def _desk_search(*_args, **_kwargs):
         return (DESK_INDEX, DESK_SEAT)
 
     monkeypatch.setattr(subsystem, "find_verified_isolated_empty_desk", _desk_search)
-
-    messages = []
-    subsystem._message_dispatch = SimpleNamespace(send_screen_message=messages.append)
 
     await asyncio.wait_for(
         subsystem.check_seats_on_entry(CANONICAL), timeout=10
@@ -526,28 +530,25 @@ async def test_the_panel_is_collapsed_when_no_isolated_desk_is_found(monkeypatch
 # ---------------------------------------------------------------------------
 async def test_a_guest_room_triggers_no_ui_action_at_all(monkeypatch):
     """他人房间：进房自动邀请整条链路都不许跑。"""
-    from ushareiplay.managers.seat_manager import SeatManager
-    from tests.legacy_state import RoomState
+    from ushareiplay.modules.room.domain import RoomState
 
-    RoomState.reset_instance()
-    room_state = RoomState.initialize()
+    room_state = RoomState()
     room_state.is_guest_room = True
 
-    SeatManager.reset_instance()
     seat_ui = RecordingSeatUI()
-    manager = SeatManager.initialize(make_handler(controller=FakeController()), seat_ui=seat_ui)
+    manager = build_seat_service(
+        make_handler(controller=FakeController()),
+        seat_ui=seat_ui,
+        room_state=room_state,
+    )
 
     def _explode(*_args, **_kwargs):
         raise AssertionError("他人房间里不该跑进房自动邀请的实现")
 
-    monkeypatch.setattr(manager.subsystem, "find_verified_isolated_empty_desk", _explode)
-    monkeypatch.setattr(manager.subsystem, "invite_user_to_seat", _explode)
+    monkeypatch.setattr(manager, "find_verified_isolated_empty_desk", _explode)
+    monkeypatch.setattr(manager, "invite_user_to_seat", _explode)
 
-    try:
-        result = await manager.check_seats_on_entry(CANONICAL)
-    finally:
-        SeatManager.reset_instance()
-        RoomState.reset_instance()
+    result = await manager.check_seats_on_entry(CANONICAL)
 
     assert result is None
     assert seat_ui.expand_calls == 0
@@ -556,9 +557,9 @@ async def test_a_guest_room_triggers_no_ui_action_at_all(monkeypatch):
 
 async def test_check_seats_on_entry_without_a_handler_or_username_is_unchanged():
     """既有行为不许回归：没有 handler / 没有用户名都安静返回。"""
-    assert await SeatSubsystem(handler=None).check_seats_on_entry(CANONICAL) is None
+    assert await build_seat_service(handler=None).check_seats_on_entry(CANONICAL) is None
 
     handler = make_handler(controller=FakeController())
-    subsystem = SeatSubsystem(handler)
+    subsystem = build_seat_service(handler)
     assert await subsystem.check_seats_on_entry(None) is None
     assert handler.logger.info.call_args_list == []

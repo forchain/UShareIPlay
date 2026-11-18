@@ -21,7 +21,7 @@ from lxml import etree
 from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
-from ushareiplay.managers.seat_manager.seat_panel_reader import SeatPanelReader
+from ushareiplay.adapters.outbound.appium.soul.seat_panel_reader import SeatPanelReader
 
 DESK_RESOURCE_ID = "cn.soulapp.android:id/userRoot"
 SOUL_PACKAGE = "cn.soulapp.android:id"

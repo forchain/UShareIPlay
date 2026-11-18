@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
 from ushareiplay.modules.room import InfoManager, RoomAdmins
-from ushareiplay.managers.seat_manager.seat_observation import SeatObservationManager
-from ushareiplay.managers.seat_manager.seat_ledger import SeatSlot
+from tests.seat_support import build_seat_observation
+from ushareiplay.modules.seat.ledger import SeatSlot
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 from ushareiplay.managers.playlist_session import PlaylistSession
@@ -22,7 +22,6 @@ def setup_info_env():
         PlaylistSession,
         PresenceTracker,
         RoomState,
-        SeatObservationManager,
     ):
         cls.reset_instance()
 
@@ -58,7 +57,6 @@ def setup_info_env():
         PlaylistSession,
         PresenceTracker,
         RoomState,
-        SeatObservationManager,
     ):
         cls.reset_instance()
 
@@ -117,7 +115,8 @@ async def test_info_online_users_admin_only():
 async def test_info_online_users_seat_only():
     PresenceTracker.instance().update_online_users(["SeatedUser", "NormalUser"])
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[3] = SeatSlot(seat_number=3, occupied=True, username="SeatedUser")
 
     cmd = InfoCommand(controller)
@@ -133,7 +132,8 @@ async def test_info_online_users_admin_and_seat():
     _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[5] = SeatSlot(seat_number=5, occupied=True, username="AdminOnSeat")
 
     cmd = InfoCommand(controller)
@@ -152,7 +152,8 @@ async def test_info_online_users_all_combinations():
     _room_admins.add("AdminOnSeat")
 
     controller = make_dummy_controller()
-    obs = SeatObservationManager.initialize(controller.soul_handler)
+    obs = build_seat_observation(controller.soul_handler)
+    controller.seat_observation = obs
     obs.ledger.slots[1] = SeatSlot(seat_number=1, occupied=True, username="AdminOnSeat")
     obs.ledger.slots[4] = SeatSlot(seat_number=4, occupied=True, username="NormalOnSeat")
 
@@ -183,7 +184,6 @@ async def test_info_online_users_without_optional_managers_initialized():
     PresenceTracker.instance().update_online_users(["Alice", "Bob"])
     # 没有房管名单，也没有座位观测
     assert _room_admins.all() == set()
-    assert not SeatObservationManager.is_initialized()
 
     controller = make_dummy_controller()
     cmd = InfoCommand(controller)
