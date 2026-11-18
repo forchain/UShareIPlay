@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ushareiplay.handlers.qq_music_handler import QQMusicHandler
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _Logger:

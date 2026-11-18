@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import ConfigError, ConfigView
+from ushareiplay.modules.shared.config import ConfigError, ConfigView
 
 
 @dataclass(frozen=True)

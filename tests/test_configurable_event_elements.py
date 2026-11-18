@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.events import drawer_elements as drawer_elements_module
 from ushareiplay.events import risk_elements as risk_elements_module
 from ushareiplay.events.drawer_elements import DrawerElementsEvent

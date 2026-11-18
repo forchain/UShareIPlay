@@ -26,7 +26,7 @@ from ushareiplay.managers.playback.models import PlaybackOutcome
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.managers.playlist_session import PlaylistSession
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _InfoManager:

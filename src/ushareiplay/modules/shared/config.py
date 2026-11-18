@@ -1,16 +1,17 @@
-"""统一配置视图（ADR-0012）。
+"""统一配置视图（ADR-0012 / ADR-0013）。
 
 配置读取此前散落在八种调用形态里：调用方得自己猜手上这份映射到底是根配置
 （`config.yaml`）还是某个应用段（`soul` / `qq_music`），于是出现了
 `config["elements"]`、`config.get("soul", {}).get("elements")` 这类形状试探，
 以及两处永远取不到值的死分支。
 
-本模块给出唯一入口：
+本模块给出配置读取的唯一入口（纯数据，不依赖任何技术库）：
 
-- `Locator` —— 选择器值对象。XPath 与 resource-id 的判定、Appium 定位元组、
-  绝对/相对 XPath、节点匹配，全部只在这里实现一次。
 - `ConfigSectionView` —— 一个应用段（`soul` / `qq_music`）的类型化视图。
 - `ConfigView` —— 根配置的类型化视图，按段取子视图。
+
+UI 选择器只以字符串形式暴露；把字符串解释成 XPath / resource-id 的 `Locator`
+属于 Appium 技术细节，位于 `adapters.outbound.appium.locator`。
 
 视图**包裹**底层映射而不复制它：热重载原地改写底层映射，视图实例身份不变，
 长生命周期的管理器不需要重新接线（见 `ConfigView.reload`）。
@@ -18,10 +19,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Mapping, MutableMapping, Optional
 
-from appium.webdriver.common.appiumby import AppiumBy
+__all__ = [
+    "ConfigError",
+    "ConfigSectionView",
+    "ConfigView",
+    "MissingConfigKey",
+    "MissingConfigSection",
+    "MissingElementKey",
+    "REQUIRED_ELEMENTS",
+]
 
 
 class ConfigError(Exception):
@@ -83,70 +91,6 @@ REQUIRED_ELEMENTS: Mapping[str, tuple[str, ...]] = {
 }
 
 
-@dataclass(frozen=True)
-class Locator:
-    """UI 选择器值对象。
-
-    `kind` 只有两种取值：
-
-    - ``"xpath"`` —— 选择器以 ``//`` 或 ``./`` 开头，是一条 XPath；
-    - ``"id"`` —— 其它一律按 Android resource-id 处理。
-
-    这个判定规则此前在 `element_finder`、`event_manager`、`gesture_handler`、
-    `seat_panel_driver` 四处各写了一遍，现在只有这里一份。
-    """
-
-    kind: str
-    value: str
-
-    @classmethod
-    def from_value(cls, value: str) -> "Locator":
-        """按选择器字符串建 Locator（``//`` 或 ``./`` 开头算 XPath，其余算 resource-id）。"""
-        text = (value or "").strip()
-        kind = "xpath" if text.startswith(("//", "./")) else "id"
-        return cls(kind=kind, value=text)
-
-    @property
-    def appium(self) -> tuple[str, str]:
-        """Appium 定位元组 ``(by, value)``。"""
-        by = AppiumBy.XPATH if self.kind == "xpath" else AppiumBy.ID
-        return (by, self.value)
-
-    @property
-    def absolute_xpath(self) -> str:
-        """在整页 XML 里定位该元素的 XPath。"""
-        if self.kind == "xpath":
-            return self.value
-        return f"//*[@resource-id='{self.value}']"
-
-    @property
-    def relative_xpath(self) -> str:
-        """在父节点下定位该子元素的相对 XPath。"""
-        if self.kind == "xpath":
-            return self.value if self.value.startswith(".") else f".{self.value}"
-        return f".//*[@resource-id='{self.value}']"
-
-    def matches(self, node) -> bool:
-        """node 是否是本选择器指向的那个元素。
-
-        resource-id 沿用既有语义：裸 id 与带包名前缀的 id 互相认得
-        （``gReplyView`` 认得 ``cn.soulapp.android:id/gReplyView``）。
-        XPath 则在 node 所属文档里求值，看是否命中 node 自身。
-        """
-        if self.kind == "id":
-            node_id = node.get("resource-id") or ""
-            if not node_id:
-                return False
-            return node_id == self.value or node_id.endswith(f"/{self.value}")
-
-        try:
-            tree = node.getroottree()
-            path = tree.getpath(node)
-            return any(tree.getpath(hit) == path for hit in tree.xpath(self.value))
-        except Exception:
-            return False
-
-
 class ConfigSectionView:
     """一个配置段的类型化视图（``soul`` / ``qq_music``）。
 
@@ -170,22 +114,22 @@ class ConfigSectionView:
         """底层映射（只读用途；改动请走 `ConfigView.reload`）。"""
         return self._data
 
-    def element(self, key: str) -> Locator:
-        """必需的元素选择器；缺失即抛 `MissingElementKey`。"""
-        locator = self.maybe_element(key)
-        if locator is None:
+    def element(self, key: str) -> str:
+        """必需的元素选择器字符串；缺失即抛 `MissingElementKey`。"""
+        value = self.maybe_element(key)
+        if value is None:
             raise MissingElementKey(self._name, key)
-        return locator
+        return value
 
-    def maybe_element(self, key: str) -> Optional[Locator]:
-        """可选的元素选择器；缺失返回 None。"""
+    def maybe_element(self, key: str) -> Optional[str]:
+        """可选的元素选择器字符串；缺失返回 None。"""
         elements = self._data.get("elements")
         if not isinstance(elements, Mapping):
             return None
         value = elements.get(key)
         if not isinstance(value, str) or not value.strip():
             return None
-        return Locator.from_value(value)
+        return value
 
     def value(self, key: str, default: Any = None) -> Any:
         """段内参数；缺失返回 default。"""

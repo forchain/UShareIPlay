@@ -1,5 +1,5 @@
 import asyncio
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 
 
 def _run(coro):

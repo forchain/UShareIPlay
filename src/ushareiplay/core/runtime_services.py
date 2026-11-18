@@ -454,7 +454,7 @@ class AgentCommandSpool:
 
     def _do_drain(self) -> None:
         try:
-            from ushareiplay.core.roles import RolePolicy
+            from ushareiplay.modules.shared.roles import RolePolicy
             owner = RolePolicy(self.config).room_owner
             self.command_dir.mkdir(parents=True, exist_ok=True)
             for path in sorted(self.command_dir.glob("*.cmd")):

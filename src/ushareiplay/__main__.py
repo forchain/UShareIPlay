@@ -1,6 +1,6 @@
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.config_loader import ConfigLoader, LocalConfigOverrideRejected
-from ushareiplay.core.config_view import ConfigError
+from ushareiplay.modules.shared.config import ConfigError
 from ushareiplay.core.db_manager import DatabaseManager
 from ushareiplay.core.singleton import Singleton
 import asyncio

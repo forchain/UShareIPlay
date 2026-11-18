@@ -4,7 +4,7 @@ from ushareiplay.managers.admin_manager import AdminManager
 from ushareiplay.managers.online_drawer import OnlineDrawerManager
 from ushareiplay.commands.admin import AdminCommand
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from tests.fakes.in_memory_online_drawer_driver import InMemoryOnlineDrawerDriver
 
 

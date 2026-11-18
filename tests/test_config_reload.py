@@ -18,12 +18,12 @@ import yaml
 
 import ushareiplay.events as events_package
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import (
+from ushareiplay.modules.shared.config import (
     REQUIRED_ELEMENTS,
     ConfigSectionView,
     ConfigView,
 )
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager

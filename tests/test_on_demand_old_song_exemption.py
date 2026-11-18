@@ -9,7 +9,7 @@ exemption expires once the requested song has played.
 from types import SimpleNamespace
 
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 
 class _Logger:

@@ -1,6 +1,6 @@
 import pytest
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.message_queue import MessageQueue
 from ushareiplay.core.singleton import Singleton

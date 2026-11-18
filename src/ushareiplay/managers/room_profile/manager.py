@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional, Sequence
 
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text

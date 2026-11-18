@@ -9,7 +9,7 @@ import queue
 import pytest
 
 from ushareiplay.core.message_queue import MessageQueue
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.runtime_services import RuntimeInputPipeline
 
 

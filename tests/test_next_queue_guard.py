@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from tortoise import Tortoise
 
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.managers.info_manager import InfoManager
 from ushareiplay.models.user import User
 from ushareiplay.managers.playlist_session import PlaylistSession

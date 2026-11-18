@@ -17,7 +17,7 @@ import pytest
 
 from ushareiplay.core.command_parser import CommandParser
 from ushareiplay.core.observability import Observability
-from ushareiplay.core.roles import RolePolicy, _normalize_set
+from ushareiplay.modules.shared.roles import RolePolicy, _normalize_set
 
 
 class _Logger:

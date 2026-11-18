@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from ushareiplay.core.chat_intake import format_ai_message
-from ushareiplay.core.roles import min_command_level
+from ushareiplay.modules.shared.roles import min_command_level
 
 logger = logging.getLogger(__name__)
 

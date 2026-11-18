@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.dal.user_dao import UserDAO
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.info_manager import InfoManager

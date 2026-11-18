@@ -24,7 +24,7 @@ from ushareiplay.managers.room_profile import RoomProfileManager
 from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 from ushareiplay.state.room_state import RoomState
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 # 抽屉刚打开时的屏幕：推荐分发那一行 + 派对类型那一行。
 DRAWER_SCREEN = (

@@ -1,5 +1,5 @@
 from ushareiplay.managers.party_manager import PartyManager
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _Logger:

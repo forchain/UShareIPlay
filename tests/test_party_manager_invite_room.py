@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.models import MessageInfo
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _Logger:

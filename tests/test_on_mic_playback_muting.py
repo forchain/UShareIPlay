@@ -27,7 +27,7 @@ from ushareiplay.managers.message_manager import MessageManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
 from ushareiplay.state.room_state import RoomState
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _StubMusicManager:

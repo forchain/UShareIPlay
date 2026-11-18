@@ -19,7 +19,7 @@
 import logging
 from typing import Callable, Optional
 
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.managers.playback.models import PlaybackMode
 

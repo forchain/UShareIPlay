@@ -7,7 +7,7 @@ import pytest
 import yaml
 from lxml import etree
 
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 from ushareiplay.core.element_wrapper import ElementWrapper, composed_message_text
 from ushareiplay.events.message_content import MessageContentEvent
 

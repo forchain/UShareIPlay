@@ -2,7 +2,7 @@
 from unittest.mock import patch
 
 from ushareiplay.core.app_controller import AppController
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 
 
 class FakeBridge:

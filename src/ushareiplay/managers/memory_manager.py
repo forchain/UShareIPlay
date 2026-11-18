@@ -6,7 +6,7 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.singleton import Singleton
 
 logger = logging.getLogger(__name__)

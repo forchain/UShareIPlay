@@ -22,7 +22,7 @@ from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
 from ushareiplay.managers.playback.qq_music_ui_driver import PLAY_ALL_KEYS
 from ushareiplay.managers.playlist_session import primary_topic
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 
 # 老歌过滤的判定基准。与 config.yaml 的默认值一致，让测试里的「1995 年」
 # 与「2021 年」分别落在截止线两侧。

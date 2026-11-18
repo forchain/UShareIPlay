@@ -10,6 +10,7 @@ from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.remote.webelement import WebElement
 
+from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.core.driver_decorator import with_driver_recovery
 
 
@@ -219,9 +220,10 @@ class GestureHandler:
                     return "", 0
 
             def target_values(source: str) -> tuple[list[str], bool]:
-                locator = self.config.maybe_element(element_key)
-                if not source or locator is None:
+                value = self.config.maybe_element(element_key)
+                if not source or value is None:
                     return [], False
+                locator = Locator.from_value(value)
                 root = etree.fromstring(source.encode("utf-8"))
                 elements = root.xpath(locator.absolute_xpath)
                 attrs = attribute_name.split("|") if attribute_name else ["content-desc", "text"]

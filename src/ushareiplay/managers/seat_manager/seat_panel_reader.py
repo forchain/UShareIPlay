@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import logging
 from typing import ClassVar, Optional, Tuple
 
-from ushareiplay.core.config_view import Locator
+from ushareiplay.adapters.outbound.appium.locator import Locator
 from ushareiplay.core.element_wrapper import ElementWrapper
 from ushareiplay.core.ui_session_lease import UISessionLease
 
@@ -100,7 +100,8 @@ class SeatPanelReader:
         config = getattr(self.handler, "config", None)
         if config is None:
             return None
-        return config.maybe_element(element_key)
+        value = config.maybe_element(element_key)
+        return Locator.from_value(value) if value is not None else None
 
     def find_child_element(self, desk, element_key: str):
         """按 config.yaml 的元素 key 在 desk 下查找子元素。

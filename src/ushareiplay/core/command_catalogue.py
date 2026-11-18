@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
-from ushareiplay.core.config_view import ConfigView
-from ushareiplay.core.roles import (
+from ushareiplay.modules.shared.config import ConfigView
+from ushareiplay.modules.shared.roles import (
     DEFAULT_COMMAND_LEVEL,
     min_command_level,
     resolve_command_level,

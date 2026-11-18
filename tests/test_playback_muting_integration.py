@@ -17,7 +17,7 @@ import pytest
 from ushareiplay.managers.command_manager import CommandManager
 from ushareiplay.managers.playback_muting import PlaybackMuting
 from ushareiplay.models.message_info import MessageInfo
-from ushareiplay.core.config_view import ConfigSectionView
+from ushareiplay.modules.shared.config import ConfigSectionView
 
 
 class _Logger:

@@ -22,7 +22,7 @@ from typing import Optional
 
 def _logging_directory(config) -> str:
     """从配置里取 `logging.directory`（配置视图与裸 dict 都认）。"""
-    from ushareiplay.core.config_view import ConfigView
+    from ushareiplay.modules.shared.config import ConfigView
 
     if isinstance(config, ConfigView):
         section = config.maybe_section("logging")

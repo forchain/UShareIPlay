@@ -29,7 +29,7 @@ import yaml
 
 from ushareiplay.core.chat_intake import normalize_command_text
 from ushareiplay.core.command_parser import CommandParser
-from ushareiplay.core.roles import min_command_level, resolve_command_level
+from ushareiplay.modules.shared.roles import min_command_level, resolve_command_level
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

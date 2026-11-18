@@ -13,7 +13,7 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
-from ushareiplay.core.config_view import ConfigView
+from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
 from ushareiplay.core.command_catalogue import CommandCatalogue
 from ushareiplay.core.console_log_muter import ConsoleLogMuter
@@ -31,7 +31,7 @@ from ushareiplay.core.runtime_context import (
     DriverRecoveryContext,
     EventRuntimeContext,
 )
-from ushareiplay.core.roles import RolePolicy
+from ushareiplay.modules.shared.roles import RolePolicy
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.ui_session_lease import UISessionLease
 from ushareiplay.core.observability import Observability, new_run_id
@@ -160,7 +160,7 @@ class AppController(Singleton):
 
     @property
     def room_owner(self) -> str:
-        from ushareiplay.core.roles import RolePolicy
+        from ushareiplay.modules.shared.roles import RolePolicy
         return RolePolicy(self.config).room_owner
 
     @property

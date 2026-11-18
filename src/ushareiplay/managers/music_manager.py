@@ -4,7 +4,7 @@ import time
 import traceback
 from collections import deque
 from typing import Optional
-from ushareiplay.core.config_view import ConfigSectionView, ConfigView
+from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
 from ushareiplay.managers.playback.models import (

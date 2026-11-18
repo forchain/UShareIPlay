@@ -15,7 +15,7 @@ import yaml
 import ushareiplay.__main__ as app_main
 from ushareiplay.core.app_controller import AppController
 from ushareiplay.core.config_loader import ConfigLoader
-from ushareiplay.core.config_view import (
+from ushareiplay.modules.shared.config import (
     ConfigView,
     MissingConfigSection,
     MissingElementKey,
