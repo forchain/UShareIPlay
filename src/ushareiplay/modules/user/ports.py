@@ -1,9 +1,10 @@
 """用户仓储端口；语义与既有 `UserDAO` 对齐，但只进出领域对象。"""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional
 
-from ushareiplay.modules.user.domain import User
+from ushareiplay.modules.user.domain import ChatLogEntry, User, UserMemory
 
 
 class UserRepository(ABC):
@@ -62,3 +63,58 @@ class UserRepository(ABC):
     @abstractmethod
     async def set_canonical(self, alias_id: int, canonical_id: int) -> User:
         """写入别名链接；别名记录必须已存在。"""
+
+
+class UserMemoryRepository(ABC):
+    @abstractmethod
+    async def get(self, user_id: int) -> Optional[UserMemory]:
+        """按 canonical 用户 ID 取长期记忆；不存在返回 None。"""
+
+    @abstractmethod
+    async def update(
+        self,
+        user_id: int,
+        directives: list[str],
+        profile: str,
+        consolidated_at: datetime,
+    ) -> UserMemory:
+        """写入铁律区、画像与沉淀游标（不存在则创建）。"""
+
+
+class ChatLogRepository(ABC):
+    @abstractmethod
+    async def create(self, user_id: int, content: str) -> ChatLogEntry:
+        """记录一条短期聊天，返回带 ID 与时间戳的领域对象。"""
+
+    @abstractmethod
+    async def count_unconsolidated(
+        self, user_id: int, since: Optional[datetime] = None
+    ) -> int:
+        """统计游标之后的聊天条数。"""
+
+    @abstractmethod
+    async def unconsolidated_logs(
+        self,
+        user_id: int,
+        since: Optional[datetime] = None,
+        limit: Optional[int] = None,
+    ) -> list[ChatLogEntry]:
+        """按时间正序取游标之后的聊天。"""
+
+    @abstractmethod
+    async def active_user_ids_with_unconsolidated_logs(
+        self, min_count: int = 1
+    ) -> list[tuple[int, int]]:
+        """返回 (user_id, 未沉淀条数)，仅含达到 min_count 的用户。"""
+
+
+class MemoryDistiller(ABC):
+    @abstractmethod
+    async def distill(
+        self,
+        user_name: str,
+        existing_directives: list[str],
+        existing_profile: str,
+        new_messages: list[str],
+    ) -> tuple[bool, list[str], str]:
+        """把新增发言蒸馏进长期记忆；失败时返回原始值且不得推进游标。"""

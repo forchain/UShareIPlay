@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Optional
 
 from ushareiplay.modules.shared.errors import DomainError
@@ -101,3 +102,55 @@ def heat_target_level(heat_value: int) -> int:
     if heat_value > 10_000:
         return 6
     return 5
+
+
+@dataclass(frozen=True)
+class UserMemory:
+    """双层记忆的长期层：不可变铁律区 + 可演化画像 + 已沉淀游标。"""
+
+    directives: list[str]
+    profile: str
+    last_consolidated_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class ChatLogEntry:
+    """短期层：一条用户 @群主 的原始发言。"""
+
+    id: int
+    user_id: int
+    content: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class MemorySettings:
+    """`llm.memory` 配置段；默认值与既有 `config.yaml` 一致。"""
+
+    enabled: bool = True
+    min_messages: int = 10
+    min_level_for_long_term: int = 20
+    worker_delay: float = 1.0
+    timeout: float = 30.0
+    debounce_interval: float = 60.0
+
+    @classmethod
+    def from_config(cls, config) -> "MemorySettings":
+        from ushareiplay.modules.shared.config import ConfigView
+
+        if isinstance(config, ConfigView):
+            llm_section = config.maybe_section("llm")
+            mem_section = llm_section.maybe_section("memory") if llm_section else None
+            mem_cfg = dict(mem_section.data) if mem_section else {}
+        else:
+            cfg = config or {}
+            llm_cfg = cfg.get("llm") or (cfg.get("soul", {}) or {}).get("llm", {})
+            mem_cfg = (llm_cfg.get("memory") if isinstance(llm_cfg, dict) else {}) or {}
+
+        return cls(
+            enabled=bool(mem_cfg.get("enabled", True)),
+            min_messages=int(mem_cfg.get("min_messages", 10)),
+            min_level_for_long_term=int(mem_cfg.get("min_level_for_long_term", 20)),
+            worker_delay=float(mem_cfg.get("worker_delay_seconds", 1.0)),
+            timeout=float(mem_cfg.get("timeout", 30.0)),
+        )

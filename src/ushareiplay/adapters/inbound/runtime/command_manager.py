@@ -14,7 +14,6 @@ from ushareiplay.core.command_silence import command_silence
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.runtime_services import route_queue_text
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.managers.memory_manager import MemoryManager
 from ushareiplay.modules.command.domain import (
     CHAT_COMMANDS_PATH,
     DEFAULT_COMMANDS_PATH,
@@ -49,6 +48,7 @@ class CommandManager(Singleton):
         self._logger = getattr(handler, "logger", None)
         self._runtime = None
         self.controller = None
+        self.user_memory = None
         self._sleep = sleep
 
         # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
@@ -490,8 +490,8 @@ class CommandManager(Singleton):
             username: Username of the user who entered
         """
         try:
-            if MemoryManager.is_initialized():
-                MemoryManager.instance().schedule_consolidation_user(username)
+            if self.user_memory is not None:
+                self.user_memory.schedule_user(username)
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_enter '{username}'")
 
@@ -509,8 +509,8 @@ class CommandManager(Singleton):
             username: Username of the user who returned
         """
         try:
-            if MemoryManager.is_initialized():
-                MemoryManager.instance().schedule_consolidation_user(username)
+            if self.user_memory is not None:
+                self.user_memory.schedule_user(username)
         except Exception:
             self.logger.warning(f"Failed to schedule memory consolidation for user_return '{username}'")
 
