@@ -15,16 +15,17 @@ import pytest
 import yaml
 from pathlib import Path
 
-from ushareiplay.commands.fav import FavCommand
-from ushareiplay.commands.play import PlayCommand
+from ushareiplay.adapters.inbound.chat.fav import FavCommand
+from ushareiplay.adapters.inbound.chat.play import PlayCommand
 from ushareiplay.managers.music_manager import MusicManager
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     PlaybackMode,
     PlaybackRequest,
     PlaybackVariant,
 )
-from ushareiplay.managers.playback_muting import PlaybackMuting
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaySong, PlaybackMuting, PlaylistSession
+
+_CURRENT_PLAY_SONG = None
 from tests.fakes.in_memory_music_driver import InMemoryMusicUIDriver
 from ushareiplay.modules.shared.config import ConfigSectionView
 
@@ -87,6 +88,7 @@ class _Controller:
     def __init__(self):
         self.soul_handler = SimpleNamespace(log_error=lambda *_a, **_k: None)
         self.music_handler = SimpleNamespace()
+        self.play_song = _CURRENT_PLAY_SONG
 
 
 def _wire_engine(*, driver=None, protection_error=None):
@@ -97,25 +99,32 @@ def _wire_engine(*, driver=None, protection_error=None):
         journal=journal,
     )
 
-    session = PlaylistSession.instance()
     info = _InfoManager(protection_error=protection_error)
-    session._room_profile = _RoomProfileManager()
+    room_profile = _RoomProfileManager()
+    session = PlaylistSession(room_profile=room_profile)
     session.player_name = info.player_name
     session.current_playlist_name = info.current_playlist_name
     session.check_playlist_protection = info.check_playlist_protection
 
-    MusicManager.initialize(ui_driver=driver)
-    PlaybackMuting.initialize(
-        SimpleNamespace(logger=MagicMock(), config=ConfigSectionView("soul", {})),
-        SimpleNamespace(wait_for_playback_ready=lambda **_k: True),
-        _MicManager(journal),
+    muting = PlaybackMuting(
+        mic=_MicManager(journal),
+        media_session=SimpleNamespace(wait_for_playback_ready=lambda **_k: True),
+        config=ConfigSectionView("soul", {}),
+        logger=MagicMock(),
+    )
+    global _CURRENT_PLAY_SONG
+    _CURRENT_PLAY_SONG = PlaySong(
+        ui_driver=driver,
+        playlist_session=session,
+        playback_muting=muting,
+        logger=MagicMock(),
     )
     return SimpleNamespace(
-        manager=MusicManager.instance(),
+        manager=_CURRENT_PLAY_SONG,
         driver=driver,
         info=info,
         session=session,
-        room_profile=session._room_profile,
+        room_profile=room_profile,
         journal=journal,
     )
 
@@ -263,7 +272,7 @@ async def test_radar_adopts_the_radio_title_and_the_current_program(initialized_
 
 
 def _radar_track():
-    from ushareiplay.managers.playback.models import PlaybackTrack
+    from ushareiplay.modules.playback.domain import PlaybackTrack
 
     return PlaybackTrack(song="雷达电台", singer="O Radio")
 
@@ -305,7 +314,7 @@ def test_every_music_template_renders_against_a_started_reply(prefix):
 
     这里拿引擎的标准成功回复去渲染每个模板，断言没有一个模板需要命令层再手拼键。
     """
-    from ushareiplay.managers.playback.models import PlaybackResult, PlaybackStatus
+    from ushareiplay.modules.playback.domain import PlaybackResult, PlaybackStatus
 
     result = PlaybackResult(
         status=PlaybackStatus.STARTED,
@@ -337,7 +346,7 @@ async def test_a_protected_room_rejects_every_favourites_and_radar_shape_without
 ):
     engine = _wire_engine(protection_error={"error": "小红 正在播放歌单，请等待"})
 
-    result = await engine.manager.play(request_factory())
+    result = await engine.manager.execute(request_factory())
 
     assert result.rejected
     assert result.as_response() == {"error": "小红 正在播放歌单，请等待"}

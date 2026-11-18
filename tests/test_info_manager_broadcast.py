@@ -5,7 +5,7 @@ from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.modules.room import InfoManager
 from tests.legacy_state import OnlineListScraper
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 from ushareiplay.modules.shared.config import ConfigSectionView
@@ -18,15 +18,14 @@ def info_manager():
     for cls in (
         RoomState,
         PresenceTracker,
-        PlaylistSession,
         PlaybackBroadcaster,
         OnlineListScraper,
     ):
         cls.reset_instance()
     room_state = RoomState.initialize()
     presence = PresenceTracker.initialize()
-    playlist = PlaylistSession.initialize()
-    broadcaster = PlaybackBroadcaster.initialize()
+    playlist = PlaylistSession()
+    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
     OnlineListScraper.initialize()
     return InfoManager(
         room_state=room_state,

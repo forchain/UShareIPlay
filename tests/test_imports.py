@@ -75,10 +75,20 @@ MODULES = [
     # helpers
 
     "ushareiplay.helpers.playlist_parser",
-    # managers (深度播放引擎，#379 新增子包)
+    # playback (#554)
+    "ushareiplay.modules.playback",
+    "ushareiplay.modules.playback.domain",
+    "ushareiplay.modules.playback.ports",
+    "ushareiplay.modules.playback.use_cases",
+    "ushareiplay.adapters.inbound.chat.play",
+    "ushareiplay.adapters.inbound.chat.fav",
+    "ushareiplay.adapters.inbound.chat.skip",
+    "ushareiplay.adapters.inbound.chat.next",
+    "ushareiplay.adapters.inbound.chat.singer",
+    "ushareiplay.adapters.inbound.chat.album",
+    "ushareiplay.adapters.inbound.chat.playlist",
+    "ushareiplay.adapters.inbound.chat.radio",
     "ushareiplay.managers.playback",
-    "ushareiplay.managers.playback.models",
-    "ushareiplay.managers.playback.driver",
     "ushareiplay.managers.playback.qq_music_ui_driver",
     # 房间档案
     "ushareiplay.modules.room.room_profile",

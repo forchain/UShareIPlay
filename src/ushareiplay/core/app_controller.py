@@ -60,7 +60,13 @@ from ushareiplay.handlers.soul_handler import SoulHandler
 from ushareiplay.managers.event_manager import EventManager
 from ushareiplay.managers.config_reload_manager import ConfigReloadManager
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback import (
+    PlayNext,
+    PlaySong,
+    PlaybackMuting,
+    PlaylistSession,
+    SkipSong,
+)
 
 
 class AppController(Singleton):
@@ -508,7 +514,6 @@ class AppController(Singleton):
             from ushareiplay.adapters.outbound.appium.soul.mic_control import SoulMicControl
             from ushareiplay.modules.mic.use_cases import ToggleMic
             from ushareiplay.managers.music_manager import MusicManager
-            from ushareiplay.managers.playback_muting import PlaybackMuting
             from ushareiplay.managers.recovery_manager import RecoveryManager
             from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
             from ushareiplay.managers.message_manager import MessageManager
@@ -588,16 +593,19 @@ class AppController(Singleton):
             self.message_dispatch = MessageDispatch.initialize(self.soul_handler)
             self.mic_control = SoulMicControl(self.soul_handler)
             self.toggle_mic = ToggleMic(self.mic_control)
+            self.ui_driver = QQMusicUIDriver(self.music_handler)
             self.music_manager = MusicManager.initialize(
-                ui_driver=QQMusicUIDriver(self.music_handler)
+                ui_driver=self.ui_driver
             )
             self.register_driver_subscriber(self.music_manager)
-            self.playback_muting = PlaybackMuting.initialize(
-                self.soul_handler,
-                self.music_manager,
-                self.mic_control,
-                room_state=self.room_state,
+            self.playback_muting = PlaybackMuting(
+                mic=self.mic_control,
+                media_session=self.music_manager,
+                config=self.config.soul,
+                is_guest_room=lambda: self.room_state.is_guest_room,
+                logger=self.logger,
             )
+            MessageManager.instance().configure_playback_muting(self.playback_muting)
             self.recovery_manager = RecoveryManager.instance()
             self.timer_manager = TimerUseCases(
                 repository=TortoiseTimerRepository(),
@@ -623,10 +631,30 @@ class AppController(Singleton):
                 config=self.config.soul,
                 messenger=self.message_dispatch.bind_handler(self.soul_handler),
             )
-            self.playlist_session = PlaylistSession.initialize(
-                self.soul_handler,
+            self.playlist_session = PlaylistSession(
+                config=self.config.soul,
                 room_profile=self.room_profile_manager,
                 online_users=self.presence.get_online_users,
+                avatar_usernames=TortoiseUserRepository().get_all_avatar_usernames,
+                logger=self.logger,
+            )
+            self.music_manager._playlist_session = self.playlist_session
+            self.music_handler._playlist_session = self.playlist_session
+            self.playback_broadcaster._playlist_session = self.playlist_session
+            self.play_song = PlaySong(
+                ui_driver=self.ui_driver,
+                playlist_session=self.playlist_session,
+                playback_muting=self.playback_muting,
+                logger=self.logger,
+            )
+            self.skip_song = SkipSong(
+                media_session=self.music_manager,
+                playlist_session=self.playlist_session,
+                playback_muting=self.playback_muting,
+            )
+            self.play_next = PlayNext(
+                next_driver=self.music_handler,
+                playlist_session=self.playlist_session,
             )
             self.info_manager = InfoManager(
                 room_state=self.room_state,

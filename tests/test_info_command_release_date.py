@@ -5,7 +5,7 @@ import pytest
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
 from ushareiplay.modules.room import InfoManager
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 
@@ -14,13 +14,12 @@ from tests.legacy_state import RoomState
 def info_manager():
     for cls in (
         PlaybackBroadcaster,
-        PlaylistSession,
         PresenceTracker,
         RoomState,
     ):
         cls.reset_instance()
-    broadcaster = PlaybackBroadcaster.initialize()
-    playlist = PlaylistSession.initialize()
+    playlist = PlaylistSession()
+    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
     presence = PresenceTracker.initialize()
     room_state = RoomState.initialize()
     return InfoManager(

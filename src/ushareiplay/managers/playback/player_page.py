@@ -25,7 +25,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
-from ushareiplay.managers.playback.models import NO_PLAYING_MUSIC_ERROR
+from ushareiplay.modules.playback.domain import NO_PLAYING_MUSIC_ERROR
 
 # 模式 key → 播放页上的模式按钮（config.yaml: qq_music.elements）。
 PLAY_MODE_ELEMENT_KEYS = {

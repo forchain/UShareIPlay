@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 
 
 def _fake_logger(logs=None):
@@ -23,10 +23,7 @@ def _fake_logger(logs=None):
 
 @pytest.fixture
 def playlist_session():
-    PlaylistSession.reset_instance()
-    state = PlaylistSession.initialize()
-    state._logger, _ = _fake_logger()
-    return state
+    return PlaylistSession(logger=_fake_logger()[0])
 
 
 # --------------------------------------------------------------------------
@@ -118,14 +115,11 @@ def stateful_info_manager(playlist_session):
 
 
 @pytest.fixture
-def adoption(stateful_info_manager):
-    from ushareiplay.managers.playlist_session import PlaylistSession
-
-    module = PlaylistSession.instance()
-    module._room_profile = SimpleNamespace(
+def adoption(playlist_session):
+    playlist_session._room_profile = SimpleNamespace(
         set_title=lambda _title: None, set_topic=lambda _topic: None
     )
-    return module
+    return playlist_session
 
 
 def test_adopt_continuous_queue_clears_the_next_queue(adoption, playlist_session):
@@ -159,7 +153,10 @@ def broadcaster(playlist_session):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
     PlaybackBroadcaster.reset_instance()
-    module = PlaybackBroadcaster.initialize(SimpleNamespace(logger=_fake_logger()[0]))
+    module = PlaybackBroadcaster.initialize(
+        SimpleNamespace(logger=_fake_logger()[0]),
+        playlist_session=playlist_session,
+    )
     module._logger, _ = _fake_logger()
     # 广播落地的细节（Soul 消息 / 音质处理）不在这里考，只留状态消费。
     module.send_playing_message = lambda: None
@@ -215,11 +212,17 @@ def test_broadcaster_does_not_consume_on_an_error_cache_entry(
 async def test_next_command_records_a_successful_enqueue(
     stateful_info_manager, playlist_session
 ):
-    from ushareiplay.commands.next import NextCommand
+    from ushareiplay.adapters.inbound.chat.next import NextCommand
+    from ushareiplay.modules.playback.use_cases import PlayNext
     from ushareiplay.models.message_info import MessageInfo
 
-    command = NextCommand(MagicMock())
-    command.play_next = MagicMock(return_value={"success": True})
+    next_driver = SimpleNamespace(play_next=MagicMock(return_value={"success": True}))
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=next_driver,
+        play_next=PlayNext(next_driver=next_driver, playlist_session=playlist_session),
+    )
+    command = NextCommand(controller)
 
     result = await command.do_process(
         MessageInfo(content="/next 晴天", nickname="Alice"), ["晴天"]
@@ -234,11 +237,17 @@ async def test_next_command_records_a_successful_enqueue(
 async def test_next_command_does_not_record_when_play_next_fails(
     stateful_info_manager, playlist_session
 ):
-    from ushareiplay.commands.next import NextCommand
+    from ushareiplay.adapters.inbound.chat.next import NextCommand
+    from ushareiplay.modules.playback.use_cases import PlayNext
     from ushareiplay.models.message_info import MessageInfo
 
-    command = NextCommand(MagicMock())
-    command.play_next = MagicMock(return_value={"error": "Not found"})
+    next_driver = SimpleNamespace(play_next=MagicMock(return_value={"error": "Not found"}))
+    controller = SimpleNamespace(
+        soul_handler=MagicMock(),
+        music_handler=next_driver,
+        play_next=PlayNext(next_driver=next_driver, playlist_session=playlist_session),
+    )
+    command = NextCommand(controller)
 
     result = await command.do_process(
         MessageInfo(content="/next 不存在", nickname="Alice"), ["不存在"]
@@ -258,15 +267,20 @@ async def test_next_command_does_not_record_when_the_handler_play_next_raises(
     之前异常路径返回不带 'error' 的 {'song': ..., 'singer': 'unknown'}，
     于是 NextCommand 把一次失败的入队当成成功记了一笔。
     """
-    from ushareiplay.commands.next import NextCommand
+    from ushareiplay.adapters.inbound.chat.next import NextCommand
     from ushareiplay.handlers.qq_music_handler import QQMusicHandler
+    from ushareiplay.modules.playback.use_cases import PlayNext
     from ushareiplay.models.message_info import MessageInfo
 
     handler = QQMusicHandler.__new__(QQMusicHandler)
     handler.logger = _fake_logger()[0]
     handler._prepare_music_playback = MagicMock(side_effect=RuntimeError("boom"))
     command = NextCommand(
-        SimpleNamespace(soul_handler=MagicMock(), music_handler=handler)
+        SimpleNamespace(
+            soul_handler=MagicMock(),
+            music_handler=handler,
+            play_next=PlayNext(next_driver=handler, playlist_session=playlist_session),
+        )
     )
 
     result = await command.do_process(

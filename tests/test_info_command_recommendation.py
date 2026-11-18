@@ -3,7 +3,7 @@ import pytest
 
 from ushareiplay.adapters.inbound.chat.info import InfoCommand
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from tests.legacy_state import PresenceTracker
 from tests.legacy_state import RoomState
 from ushareiplay.modules.room import InfoManager
@@ -41,14 +41,13 @@ class MockElement:
 def info_cmd_setup():
     for cls in (
         PlaybackBroadcaster,
-        PlaylistSession,
         PresenceTracker,
         RoomState,
         RoomProfileManager,
     ):
         cls.reset_instance()
-    broadcaster = PlaybackBroadcaster.initialize()
-    playlist = PlaylistSession.initialize()
+    playlist = PlaylistSession()
+    broadcaster = PlaybackBroadcaster.initialize(playlist_session=playlist)
     presence = PresenceTracker.initialize()
     room_state = RoomState.initialize()
     room_state._logger = SimpleNamespace(info=lambda _msg: None)

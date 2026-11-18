@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.use_cases import PlaylistSession
 from ushareiplay.modules.shared.config import ConfigSectionView
 
 
@@ -13,14 +13,15 @@ from ushareiplay.modules.shared.config import ConfigSectionView
 def broadcaster():
     MessageDispatch.reset_instance()
     MessageDispatch.initialize()
-    PlaylistSession.reset_instance()
-    PlaylistSession.initialize()._logger = SimpleNamespace(
-        info=lambda _msg: None,
-        warning=lambda _msg: None,
-        error=lambda _msg: None,
+    playlist = PlaylistSession(
+        logger=SimpleNamespace(
+            info=lambda _msg: None,
+            warning=lambda _msg: None,
+            error=lambda _msg: None,
+        )
     )
     PlaybackBroadcaster.reset_instance()
-    b = PlaybackBroadcaster.initialize()
+    b = PlaybackBroadcaster.initialize(playlist_session=playlist)
     b._logger = SimpleNamespace(
         info=lambda _msg: None,
         warning=lambda _msg: None,

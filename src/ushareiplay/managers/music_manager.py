@@ -7,20 +7,18 @@ from typing import Optional
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.singleton import Singleton
 from ushareiplay.core.driver_decorator import with_driver_recovery
-from ushareiplay.managers.playback.models import (
+from ushareiplay.modules.playback.domain import (
     ACCOMPANIMENT_INVALID_PARAMETER_ERROR,
     PLAY_MODE_BY_INDEX,
     PLAY_MODE_INDEX_BY_KEY,
     PLAY_MODE_INVALID_PARAMETER_ERROR,
     PLAY_MODE_NAMES,
-    PlaybackRequest,
-    PlaybackResult,
-    PlaybackStatus,
+    matches_expected_song,
 )
-from ushareiplay.managers.playlist_session import PlaylistSession
+from ushareiplay.modules.playback.ports import MediaSessionPort
 
 
-class MusicManager(Singleton):
+class MusicManager(Singleton, MediaSessionPort):
     """
     音乐管理器 - 音乐播放的唯一公开接口。
 
@@ -41,7 +39,7 @@ class MusicManager(Singleton):
     _ON_DEMAND_REQUESTS_MAX = 20
     _on_demand_requests: Optional[deque] = None
 
-    def __init__(self, ui_driver=None, playlist_session=None, playback_muting=None):
+    def __init__(self, ui_driver=None, playlist_session=None):
         from ushareiplay.handlers.qq_music_handler import QQMusicHandler
         # 播放引擎的离线测试不需要 Appium，因此 handler 缺失不再是构造期错误；
         # 真正要用到 driver 的地方由 `driver` 属性给出明确的装配错误。
@@ -52,11 +50,8 @@ class MusicManager(Singleton):
         self.driver = getattr(self.music_handler, "driver", None)
         self._song_release_lookup = None
 
-        # 播放引擎的协作者。构造注入优先，未注入时按需从单例取 —— MusicManager
-        # 与 PlaybackMuting 互相需要，无法在 __init__ 传齐依赖（见 playback_muting 属性）。
         self._ui_driver = ui_driver
         self._playlist_session = playlist_session
-        self._playback_muting = playback_muting
 
     @property
     def driver(self):
@@ -95,7 +90,9 @@ class MusicManager(Singleton):
 
     @property
     def list_mode(self):
-        return self.playlist_session.list_mode
+        if self._playlist_session is None:
+            return "unknown"
+        return self._playlist_session.list_mode
 
     @property
     def no_skip(self):
@@ -339,145 +336,15 @@ class MusicManager(Singleton):
             )
         return {"enabled": "on" if target else "off"}
 
-    # ------------------------------------------------------------------
-    # 深度播放引擎（#379）
-    #
-    # 全部播放模式共用的一条流水线：守护 → 静音 → UI → 房间同步。
-    # 顺序是有讲究的，不是随手排的：
-    #
-    #   guard   先问房间规则。被拒绝时一个 UI 动作都不该发生 —— 否则「正在播放歌单，
-    #           请等待」这句回复背后已经切了歌又切回来，还顺带闭了一次麦。
-    #   muting  只覆盖真正的切歌过程（ADR-0007）。守护拒绝不触发麦克风生命周期。
-    #   adopt   必须在播放确认之后：房间对「谁在放、放的是什么」的认知要跟真实
-    #           播放一致，否则 UI 失败会留下一条与事实不符的歌单记录。
-    # ------------------------------------------------------------------
-
     @property
     def ui_driver(self):
-        """播放 UI 端口。返回 None 表示尚未装配生产适配器（#380 只交付接缝）。"""
+        """播放 UI 端口。"""
         return self._ui_driver
 
     @property
     def playlist_session(self):
-        """歌单会话（上下文 + Next Queue + 守护）。
-
-        构造注入优先；未注入时取已初始化的单例 —— 与 `BaseCommand` 同一套按需查找。
-        """
-        if self._playlist_session is None:
-            self._playlist_session = PlaylistSession.instance()
+        """歌单会话（上下文 + Next Queue + 守护）。"""
         return self._playlist_session
-
-    @property
-    def playback_muting(self):
-        """播放静音生命周期协调器。
-
-        函数体内 import 的原因：`playback_muting` 顶层导入 `state.room_state`，
-        而 `state/__init__.py` 又导入 `state.playback_broadcaster`，后者顶层导入本类
-        —— 顶层互相 import 会形成 `playback_muting → state → music_manager` 的循环
-        引用（ADR-0009 §4）。也正因如此两者无法在构造期互注：静音守卫需要本类做
-        就绪探针，本类又需要静音守卫做麦克风生命周期。
-        """
-        if self._playback_muting is None:
-            from ushareiplay.managers.playback_muting import PlaybackMuting
-
-            self._playback_muting = PlaybackMuting.instance()
-        return self._playback_muting
-
-    async def play(self, request: PlaybackRequest) -> PlaybackResult:
-        """统一播放入口 —— 所有音乐命令的唯一切片点。
-
-        Args:
-            request: 播放意图（模式、查询词、频道、请求者）。
-
-        Returns:
-            `PlaybackResult` —— 已经开始、被守护拒绝、或 UI 侧失败。调用方用
-            `as_response()` 取回命令层的 dict 契约。
-
-        Raises:
-            RuntimeError: 尚未装配 UI 驱动时。这是装配错误而不是播放失败，
-                因此不能让调用方把它误当成「搜不到歌」回复给用户。
-        """
-        driver = self.ui_driver
-        if driver is None:
-            raise RuntimeError(
-                "MusicManager.play() requires a MusicUIDriverPort adapter; "
-                "construct MusicManager with ui_driver=... at the composition root."
-            )
-
-        # 守护要知道「这次要来切的是什么」：单曲请求不受歌单守护拦，见
-        # `PlaylistSession.guard_switch`。
-        guard_error = await self.playlist_session.guard_switch(
-            request.requester, incoming_mode=request.mode.value
-        )
-        if guard_error:
-            self.logger.info(
-                f"Playback rejected by song protection: mode={request.mode.value}, "
-                f"requester={request.requester}, reason={guard_error.get('error')}"
-            )
-            return PlaybackResult(
-                status=PlaybackStatus.REJECTED,
-                error=guard_error.get("error"),
-            )
-
-        # ADR-0007：闭麦只覆盖切歌过程；退出时等待播放就绪再开麦。
-        with self.playback_muting.guard(expected_song=request.expected_song):
-            outcome = driver.start_playback(request)
-            if not outcome.ok:
-                self.playback_muting.report_failure()
-                self.logger.warning(
-                    f"Playback failed: mode={request.mode.value}, "
-                    f"query={request.query}, error={outcome.error}"
-                )
-                return PlaybackResult(
-                    status=PlaybackStatus.FAILED,
-                    error=outcome.error,
-                )
-
-            # 「单曲不写歌单上下文」这条规则归 `PlaylistSession.adopt()`：引擎这里
-            # 照常把观察到的标题/话题/歌单名交出去，由采纳协议决定什么该落进房间。
-            adopt_error = self.playlist_session.adopt(
-                request.requester,
-                mode=request.mode.value,
-                title=outcome.title or request.room_title,
-                topic=outcome.topic or outcome.track.queue_line,
-                playlist=outcome.playlist or request.playlist,
-            )
-            if adopt_error:
-                # 播放已经发生，失败的只是房间同步。如实回报为「已开始 + 同步错误」：
-                # 房间里响的是歌，回复就必须是歌；同步错误只进日志。
-                self.logger.warning(
-                    f"Playback started but room sync failed: "
-                    f"mode={request.mode.value}, error={adopt_error.get('error')}"
-                )
-                return PlaybackResult(
-                    status=PlaybackStatus.STARTED,
-                    track=outcome.track,
-                    error=adopt_error.get("error"),
-                    playlist=outcome.playlist or request.playlist,
-                    extra=outcome.extra,
-                )
-
-            self.logger.info(
-                f"Playback started: mode={request.mode.value}, "
-                f"song={outcome.track.song}, requester={request.requester}"
-            )
-            return PlaybackResult(
-                status=PlaybackStatus.STARTED,
-                track=outcome.track,
-                playlist=outcome.playlist or request.playlist,
-                extra=outcome.extra,
-            )
-
-    async def skip(self, requester: str) -> dict:
-        """`:skip` 的唯一切片点：先过 Playlist Guard，再闭麦切歌。
-
-        被守护拒绝时不碰麦克风 —— 闭麦只覆盖真正的切歌过程（ADR-0007）。
-        """
-        guard_error = await self.playlist_session.guard_switch(requester)
-        if guard_error:
-            return guard_error
-        with self.playback_muting.guard():
-            return self.skip_song()
 
     @staticmethod
     def _song_key(song_info) -> str:
@@ -664,21 +531,7 @@ class MusicManager(Singleton):
 
     @staticmethod
     def _matches_expected_song(reported, expected_song) -> bool:
-        """判断 MediaSession 上报的歌名是否已是本次点播的目标歌曲。
-
-        按空格切词比较而非子串匹配：点歌查询常为「歌名 歌手」，上报歌名常带
-        「(Live)」等后缀，两者都能命中；而子串匹配会让「:play 爱」被上一首
-        「真的爱你」的陈旧 metadata 满足，导致过早开麦。
-        """
-        if not expected_song:
-            return True
-        reported = (reported or "").strip()
-        expected = expected_song.strip()
-        if not reported:
-            return False
-        if expected == reported:
-            return True
-        return bool(set(reported.split()) & set(expected.split()))
+        return matches_expected_song(reported, expected_song)
 
     @with_driver_recovery
     def get_volume_level(self) -> int:

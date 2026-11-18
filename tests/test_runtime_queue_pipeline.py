@@ -881,7 +881,7 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     from ushareiplay.core.app_controller import AppController
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.core.runtime_services import RuntimeInputPipeline, RuntimeQueueDrainer
-    from ushareiplay.managers.playback_muting import PlaybackMuting
+    from ushareiplay.modules.playback.use_cases import PlaybackMuting
     from ushareiplay.models.message_info import MessageInfo
 
     msg_queue = MessageQueue.instance()
@@ -922,8 +922,8 @@ async def test_cancellation_releases_ui_lock_and_restores_mic_and_foreground():
     handler = FakeHandler()
     mic = FakeMicManager()
     # 用真实的 PlaybackMuting.guard：取消时靠它的 except BaseException 恢复开麦。
-    muting = PlaybackMuting.initialize(
-        handler, music_manager=FakeMusicManager(), mic_manager=mic
+    muting = PlaybackMuting(
+        mic=mic, media_session=FakeMusicManager(), logger=handler.logger
     )
 
     # 真实 AppController.ui_session：取消时由它的 finally 释放锁。

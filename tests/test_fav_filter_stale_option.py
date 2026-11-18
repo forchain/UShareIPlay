@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException
 
-from ushareiplay.managers.playback.models import PlaybackRequest, PlaybackVariant
+from ushareiplay.modules.playback.domain import PlaybackRequest, PlaybackVariant
 from ushareiplay.managers.playback.qq_music_ui_driver import QQMusicUIDriver
 
 

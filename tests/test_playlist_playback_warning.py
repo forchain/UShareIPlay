@@ -12,7 +12,7 @@
 
 from types import SimpleNamespace
 
-from ushareiplay.managers.playback.models import PlaybackMode, PlaybackRequest
+from ushareiplay.modules.playback.domain import PlaybackMode, PlaybackRequest
 from ushareiplay.managers.playback.qq_music_ui_driver import (
     PLAY_ALL_KEYS,
     PLAYLIST_RESULT_KEYS,

@@ -266,10 +266,10 @@ def test_get_playback_info_enrichment():
         PlaybackInfoProvider,
     )
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    from ushareiplay.modules.playback.use_cases import PlaylistSession
 
     broadcaster = PlaybackBroadcaster.initialize()
-    playlist_session = PlaylistSession.instance()
+    playlist_session = PlaylistSession()
 
     broadcaster._playback_info_cache = {
         "song": "Fictional (Stripped)",
@@ -317,7 +317,7 @@ def test_get_playback_info_tolerates_missing_playlist_context():
 async def test_mention_query_own_playlist_e2e(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    from ushareiplay.modules.playback.use_cases import PlaylistSession
 
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         PlaybackInfoProvider,
@@ -351,7 +351,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
         "album": "Fictional (Stripped)",
         "release_date": "2023-05-12",
     }
-    playlist_session = PlaylistSession.instance()
+    playlist_session = PlaylistSession()
     playlist_session.player_name = "不约儿童🐏🐏"
     playlist_session.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
     playlist_session.list_mode = "playlist"
@@ -421,7 +421,7 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
 async def test_mention_query_others_playlist_e2e(monkeypatch):
     from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
-    from ushareiplay.managers.playlist_session import PlaylistSession
+    from ushareiplay.modules.playback.use_cases import PlaylistSession
 
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         PlaybackInfoProvider,
@@ -453,7 +453,7 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
         "song": "Fictional (Stripped)",
         "singer": "Khloe Rose",
     }
-    playlist_session = PlaylistSession.instance()
+    playlist_session = PlaylistSession()
     playlist_session.player_name = "不约儿童🐏🐏"
     playlist_session.current_playlist_name = "咿鸭咿鸭yo宝天天开心"
     playlist_session.list_mode = "playlist"

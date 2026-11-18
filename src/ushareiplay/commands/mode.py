@@ -1,5 +1,5 @@
 from ushareiplay.core.base_command import BaseCommand
-from ushareiplay.managers.playback.models import PLAY_MODE_INVALID_PARAMETER_ERROR
+from ushareiplay.modules.playback.domain import PLAY_MODE_INVALID_PARAMETER_ERROR
 
 
 class ModeCommand(BaseCommand):

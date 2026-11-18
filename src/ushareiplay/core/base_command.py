@@ -99,8 +99,7 @@ class BaseCommand(ABC):
     @property
     def playlist_session(self):
         if self._playlist_session is None:
-            from ushareiplay.managers.playlist_session import PlaylistSession
-            self._playlist_session = PlaylistSession.instance()
+            self._playlist_session = self.controller.playlist_session
         return self._playlist_session
 
     @property
