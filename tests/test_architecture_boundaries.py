@@ -200,7 +200,9 @@ def test_retired_legacy_packages_and_singleton_module_are_deleted():
         "state",
         "helpers",
     ):
-        assert not (PKG_ROOT / retired).exists(), f"retired package still exists: {retired}"
+        # 只看源码文件：本地 worktree 里旧的 __pycache__ 可能还留着，它不代表模块仍在。
+        stale = list((PKG_ROOT / retired).rglob("*.py"))
+        assert not stale, f"retired package still has source: {retired}: {stale}"
     assert not (CORE_ROOT / "singleton.py").exists()
     assert not (CORE_ROOT / "app_controller.py").exists()
 
