@@ -13,7 +13,7 @@ from ushareiplay.adapters.outbound.persistence.user_repository import (
     TortoiseUserRepository,
 )
 from ushareiplay.core.chat_intake import ChatIntakeResult, ChatIntakeKind
-from ushareiplay.managers.keyword_manager import KeywordManager
+from tests.fakes.in_memory_keyword_repository import InMemoryKeywordRepository
 from tests.fakes.in_memory_memory_distiller import InMemoryMemoryDistiller
 
 
@@ -150,22 +150,33 @@ async def test_keyword_manager_dispatch_mention_logs_chat(monkeypatch):
     db = DatabaseManager(db_url="sqlite://:memory:")
     await db.init()
     try:
+        from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
+            UserMemoryChatLogRecorder,
+        )
+        from ushareiplay.modules.command.use_cases import KeywordUseCases
+
         users, memories, chat_logs = _stack()
-        if not KeywordManager.is_initialized():
-            KeywordManager.initialize()
-        km = KeywordManager.instance()
-        km.user_memory = UserMemoryService(
+        memory = UserMemoryService(
             users=users,
             memories=memories,
             chat_logs=chat_logs,
             distiller=InMemoryMemoryDistiller(),
             settings=MemorySettings(),
         )
-        # Mock nl resolver and execute_keyword to avoid external calls
 
-        async def dummy_resolve(*args, **kwargs):
-            return True
-        monkeypatch.setattr(km, "_resolve_natural_language", dummy_resolve)
+        class _NoFallback:
+            async def resolve(self, **_kwargs):
+                return None
+
+        km = KeywordUseCases(
+            repository=InMemoryKeywordRepository(users),
+            users=users,
+            presence=type("P", (), {"is_user_online": lambda self, _u: True})(),
+            queue=type("Q", (), {"enqueue": lambda *a, **k: None})(),
+            chat_logs=UserMemoryChatLogRecorder(memory),
+            config_source=type("C", (), {"load": lambda self: None})(),
+            fallback=_NoFallback(),
+        )
 
         result = ChatIntakeResult(
             kind=ChatIntakeKind.KEYWORD_MENTION,

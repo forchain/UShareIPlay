@@ -284,10 +284,7 @@ def test_monitor_loop_delegates_current_screen_processing_to_event_manager(monke
 
     controller.event_manager.get_page_source = fail_get_page_source
     monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_start_timer)
     monkeypatch.setattr(
         "ushareiplay.core.app_controller.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
@@ -351,10 +348,7 @@ def test_monitor_loop_consumes_recovery_outcome_without_direct_recovery_policy(m
 
     controller.event_manager.get_page_source = fail_direct_recovery
     monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_start_timer)
     monkeypatch.setattr(
         "ushareiplay.core.app_controller.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),
@@ -420,10 +414,7 @@ def test_monitor_loop_assembles_the_runtime_pipeline_and_obeys_pause(monkeypatch
         "ushareiplay.core.app_controller.RuntimeInputPipeline", _SpyPipeline
     )
     monkeypatch.setattr(controller, "_init_handlers", lambda: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_start_timer),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_start_timer)
     monkeypatch.setattr(
         "ushareiplay.core.app_controller.threading.Thread",
         lambda target: SimpleNamespace(daemon=False, start=lambda: None),

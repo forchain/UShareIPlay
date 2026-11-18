@@ -261,10 +261,7 @@ async def test_paused_ui_session_abort_does_not_escape_monitor_loop(monkeypatch)
     monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
     monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
     monkeypatch.setattr(AppController, "_detect_initial_room_state", lambda _self: _noop())
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_noop),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_noop)
 
     # 不应抛出：中断信号在监控循环边界被消费，进程进入暂停而非退出。
     await controller.start_monitoring()

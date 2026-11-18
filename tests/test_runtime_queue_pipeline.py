@@ -424,10 +424,7 @@ def test_monitoring_loop_executes_a_screen_command_on_the_tick_after_it_is_scann
     monkeypatch.setattr("ushareiplay.core.app_controller.asyncio.sleep", noop_sleep)
     monkeypatch.setattr(AppController, "_init_handlers", lambda _self: None)
     monkeypatch.setattr(AppController, "_init_runtime_queue", lambda _self: None)
-    monkeypatch.setattr(
-        "ushareiplay.managers.keyword_manager.KeywordManager.instance",
-        lambda: SimpleNamespace(load_keywords_from_config=_noop),
-    )
+    controller.keyword_use_cases = SimpleNamespace(load_keywords_from_config=_noop)
 
     asyncio.run(controller.start_monitoring())
 

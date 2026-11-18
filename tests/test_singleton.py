@@ -128,7 +128,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
     from ushareiplay.adapters.inbound.runtime.command_manager import CommandManager
     from ushareiplay.managers.event_manager import EventManager
     from ushareiplay.managers.info_manager import InfoManager
-    from ushareiplay.managers.keyword_manager import KeywordManager
     from ushareiplay.managers.message_manager import MessageManager
     from ushareiplay.managers.music_manager import MusicManager
     from ushareiplay.managers.online_drawer import OnlineDrawerManager
@@ -164,7 +163,6 @@ def test_all_protected_singletons_reject_direct_constructor_instantiation():
         InfoManager,
         PartyManager,
         AdminManager,
-        KeywordManager,
         EventManager,
         SeatManager,
         SeatObservationManager,

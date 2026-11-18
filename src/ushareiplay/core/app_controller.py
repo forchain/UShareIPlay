@@ -13,9 +13,23 @@ from appium import webdriver
 from appium.options.common import AppiumOptions
 from selenium.common import WebDriverException, StaleElementReferenceException
 
+from ushareiplay.adapters.inbound.runtime.keyword_command_sink import QueueKeywordCommandSink
+from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+    NaturalLanguageFallbackAdapter,
+)
+from ushareiplay.adapters.inbound.runtime.keyword_presence import InfoManagerPresence
+from ushareiplay.adapters.inbound.runtime.user_memory_chat_log import (
+    UserMemoryChatLogRecorder,
+)
 from ushareiplay.adapters.inbound.runtime.timer_message_sink import QueueTimerMessageSink
+from ushareiplay.adapters.outbound.persistence.keyword_repository import (
+    TortoiseKeywordRepository,
+)
 from ushareiplay.adapters.outbound.persistence.timer_repository import TortoiseTimerRepository
+from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.outbound.system.clock import SystemClock
+from ushareiplay.adapters.outbound.system.keyword_config import YamlKeywordConfigSource
+from ushareiplay.modules.command.use_cases import KeywordUseCases
 from ushareiplay.modules.shared.config import ConfigView
 from ushareiplay.modules.timer.use_cases import TimerUseCases
 from ushareiplay.core.driver_lifecycle import DriverLifecycle
@@ -500,7 +514,6 @@ class AppController(Singleton):
             from ushareiplay.managers.info_manager import InfoManager
             from ushareiplay.managers.seat_manager import SeatManager
             from ushareiplay.managers.admin_manager import AdminManager
-            from ushareiplay.managers.keyword_manager import KeywordManager
             from ushareiplay.managers.message_manager import MessageManager
             from ushareiplay.modules.command.use_cases import SleepManager
             from ushareiplay.managers.room_profile import RoomProfileManager
@@ -583,11 +596,13 @@ class AppController(Singleton):
                 name_resolver=self.info_manager.resolve_visible_username,
             )
             AdminManager.initialize(self.soul_handler)
-            self.keyword_manager = KeywordManager.initialize(self.soul_handler)
             # 双层用户记忆：领域用例由组合根装配，LLM 客户端在此注入，
             # 内存/聊天日志仓储背后是 Tortoise 适配器（ADR-0006）。
             from ushareiplay.adapters.outbound.llm.memory_distiller import (
                 LLMMemoryDistiller,
+            )
+            from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+                OpenAICompatibleNaturalLanguageResolver,
             )
             from ushareiplay.adapters.outbound.persistence.chat_log_repository import (
                 TortoiseChatLogRepository,
@@ -595,11 +610,20 @@ class AppController(Singleton):
             from ushareiplay.adapters.outbound.persistence.user_memory_repository import (
                 TortoiseUserMemoryRepository,
             )
-            from ushareiplay.adapters.outbound.persistence.user_repository import (
-                TortoiseUserRepository,
-            )
+            from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
             from ushareiplay.modules.user.domain import MemorySettings
             from ushareiplay.modules.user.use_cases import UserMemoryService
+
+            llm_section = self.config.maybe_section("llm")
+            llm_cfg = dict(llm_section.data) if llm_section else {}
+            if "system_users" not in llm_cfg:
+                soul_section = self.config.maybe_section("soul")
+                sys_users = (
+                    soul_section.value("system_users") if soul_section else None
+                ) or self.config.value("system_users")
+                if sys_users:
+                    llm_cfg["system_users"] = sys_users
+            llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
 
             memory_settings = MemorySettings.from_config(self.config)
             self.user_memory = UserMemoryService(
@@ -607,14 +631,31 @@ class AppController(Singleton):
                 memories=TortoiseUserMemoryRepository(),
                 chat_logs=TortoiseChatLogRepository(),
                 distiller=LLMMemoryDistiller(
-                    self.keyword_manager.llm_client,
+                    llm_client,
                     timeout=memory_settings.timeout,
                 ),
                 settings=memory_settings,
             )
             self.command_manager.user_memory = self.user_memory
             self.party_manager.user_memory = self.user_memory
-            self.keyword_manager.user_memory = self.user_memory
+
+            # 关键字回复（#547）：仓储、队列出口、在线校验与自然语言兜底都从
+            # 组合根注入；自然语言解析走 #548 的 LLM 端口。
+            self.keyword_use_cases = KeywordUseCases(
+                repository=TortoiseKeywordRepository(),
+                users=TortoiseUserRepository(),
+                presence=InfoManagerPresence(self.info_manager),
+                queue=QueueKeywordCommandSink(MessageQueue.instance()),
+                chat_logs=UserMemoryChatLogRecorder(self.user_memory),
+                config_source=YamlKeywordConfigSource(),
+                fallback=NaturalLanguageFallbackAdapter(
+                    self.config,
+                    resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
+                    memory=self.user_memory,
+                ),
+                logger=self.logger,
+            )
+            MessageManager.instance().configure_keywords(self.keyword_use_cases)
             # 用户事件钩子的唯一所有者：五类事件的命令配置、解析渲染与入队触发都在
             # 这一个模块里，各命令文件只是薄适配器（#422）。
             self.user_event_hooks = UserEventHooks.initialize(self.soul_handler)
@@ -728,9 +769,7 @@ class AppController(Singleton):
 
         # Initialize keyword system and load keywords from config
         self.logger.info("初始化关键字系统...")
-        from ushareiplay.managers.keyword_manager import KeywordManager
-        keyword_manager = KeywordManager.instance()
-        await keyword_manager.load_keywords_from_config()
+        await self.keyword_use_cases.load_keywords_from_config()
         self.logger.info("关键字系统初始化完成")
 
         # Start async timer manager (loads from DB, migrates from JSON if needed)
