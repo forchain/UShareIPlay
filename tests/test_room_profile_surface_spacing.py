@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.drafts import (
+from ushareiplay.modules.room.domain import (
     SURFACE_SPACING_SECONDS,
     ProfileDraftStore,
 )

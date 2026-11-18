@@ -5,7 +5,7 @@
 `{theme}｜{title}` 的合成规则都在这个子包内部。
 """
 
-from ushareiplay.managers.room_profile.drafts import (
+from ushareiplay.modules.room.domain import (
     NOTICE_COOLDOWN_MINUTES,
     TITLE_COOLDOWN_MINUTES,
     TOPIC_COOLDOWN_MINUTES,

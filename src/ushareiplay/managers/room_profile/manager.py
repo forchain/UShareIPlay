@@ -33,8 +33,12 @@ from ushareiplay.core.config_loader import ConfigLoader
 from ushareiplay.modules.shared.config import ConfigSectionView, ConfigView
 from ushareiplay.core.message_dispatch import MessageDispatch
 from ushareiplay.core.singleton import Singleton
-from ushareiplay.helpers.room_banner import TOPIC_MAX_LENGTH, TITLE_MAX_LENGTH, clean_banner_text
-from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
+from ushareiplay.modules.room.domain import (
+    TOPIC_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    ProfileDraftStore,
+    clean_banner_text,
+)
 from ushareiplay.managers.room_profile.driver import (
     DEFAULT_ENTRY_KEYS,
     RoomProfileDrawerDriverPort,

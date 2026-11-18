@@ -17,7 +17,7 @@ import pytest
 
 from ushareiplay.core.singleton import Singleton, SingletonError
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.room_profile.drafts import ProfileDraftStore
+from ushareiplay.modules.room.domain import ProfileDraftStore
 from ushareiplay.managers.room_profile.soul_drawer import SoulDrawerDriver
 from tests.fakes.in_memory_room_profile_drawer import InMemoryRoomProfileDrawerDriver
 
