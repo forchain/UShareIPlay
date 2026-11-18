@@ -286,37 +286,32 @@ def test_write_status_replaces_atomically(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_repeat_timer_advances_past_missed_days(monkeypatch):
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.timer_manager import TimerManager
-    from ushareiplay.dal.timer_dao import TimerDAO
+async def test_repeat_timer_advances_past_missed_days():
+    from tests.fakes.fake_clock import FakeClock
+    from tests.fakes.in_memory_timer_repository import InMemoryTimerRepository
+    from tests.fakes.recording_timer_message_sink import RecordingTimerMessageSink
+    from ushareiplay.modules.timer.use_cases import TimerUseCases
 
-    manager = TimerManager.instance()
-    manager._logger = _Logger()
-    manager._paused = False
-
-    async def _put_message(_message_info):
-        return True
-
-    monkeypatch.setattr(MessageQueue.instance(), "put_message", _put_message)
-
-    scheduled = {}
-
-    async def _update_next_trigger(key, next_trigger):
-        scheduled[key] = next_trigger
-        return True
-
-    monkeypatch.setattr(TimerDAO, "update_next_trigger", staticmethod(_update_next_trigger))
-
-    stale = datetime.now() - timedelta(days=3)
-    await manager._trigger_timer(
-        "daily",
-        {"message": "daily hello", "repeat": True, "next_trigger": stale.isoformat()},
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    clock = FakeClock(now)
+    repository = InMemoryTimerRepository()
+    manager = TimerUseCases(
+        repository=repository,
+        clock=clock,
+        sink=RecordingTimerMessageSink(),
+        logger=_Logger(),
     )
+    timer = await manager.create_timer(
+        key="daily", message="daily hello", target_time="19:00", repeat=True
+    )
+    scheduled_before = timer.next_trigger
+    clock.advance(4 * 24 * 3600)
 
-    assert "daily" in scheduled
-    assert scheduled["daily"] > datetime.now()
-    assert scheduled["daily"] - stale >= timedelta(days=3)
+    await manager.fire_timer("daily")
+
+    scheduled = (await repository.get_by_key("daily")).next_trigger
+    assert scheduled > clock.now()
+    assert scheduled - scheduled_before >= timedelta(days=4)
 
 
 # ---------------------------------------------------------------------------

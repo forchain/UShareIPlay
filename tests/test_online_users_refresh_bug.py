@@ -84,7 +84,14 @@ async def test_info_command_and_presence_not_empty_when_count_diverges():
 
     # 3. info 命令必须正常输出在线用户，而不是「列表暂未更新」
     soul_handler = SimpleNamespace(logger=logger, log_error=MagicMock())
-    cmd = InfoCommand(SimpleNamespace(soul_handler=soul_handler, music_handler=None, logger=logger))
+    cmd = InfoCommand(
+        SimpleNamespace(
+            soul_handler=soul_handler,
+            music_handler=None,
+            logger=logger,
+            timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        )
+    )
     with patch("ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance", return_value=None):
         msg = MessageInfo(content=":info", nickname="Alice")
         res = await cmd.process(msg, [])

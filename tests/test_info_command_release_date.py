@@ -50,7 +50,11 @@ def _patch_common_info_dependencies(monkeypatch, info_manager):
 async def test_info_command_returns_empty_release_date_when_cache_missing(monkeypatch, info_manager):
     _patch_common_info_dependencies(monkeypatch, info_manager)
     command = InfoCommand(
-        SimpleNamespace(soul_handler=SimpleNamespace(), music_handler=SimpleNamespace())
+        SimpleNamespace(
+            soul_handler=SimpleNamespace(),
+            music_handler=SimpleNamespace(),
+            timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        )
     )
 
     result = await command.process(SimpleNamespace(nickname="Console"), [])
@@ -68,7 +72,11 @@ async def test_info_command_preserves_cached_release_date(monkeypatch, info_mana
         "release_date": "2007-11-23",
     }
     command = InfoCommand(
-        SimpleNamespace(soul_handler=SimpleNamespace(), music_handler=SimpleNamespace())
+        SimpleNamespace(
+            soul_handler=SimpleNamespace(),
+            music_handler=SimpleNamespace(),
+            timer_manager=SimpleNamespace(status_line=lambda: "定时器: 已停止，共 0 个"),
+        )
     )
 
     result = await command.process(SimpleNamespace(nickname="Console"), [])

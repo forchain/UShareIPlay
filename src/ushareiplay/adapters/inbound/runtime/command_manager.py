@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 from ushareiplay.adapters.outbound.persistence.user_repository import TortoiseUserRepository
 from ushareiplay.adapters.outbound.system.clock import SystemClock
@@ -49,9 +50,8 @@ class CommandManager(Singleton):
         self._runtime = None
         self.controller = None
 
-        # 命令相关属性
+        # 命令相关属性：启动校验与动态加载共用同一份有序根列表。
         self.commands_path = DEFAULT_COMMANDS_PATH
-        # 迁移期按序查找：新聊天适配器目录优先，旧 commands 包随后。
         self.command_roots = (CHAT_COMMANDS_PATH, self.commands_path)
         self.command_modules = {}  # Cache for loaded command modules
         self.catalogue = None  # Built from config by initialize_parser()
@@ -115,28 +115,35 @@ class CommandManager(Singleton):
         )
         self.logger.info("Command parser initialized")
 
+    @staticmethod
+    def _module_name(module_path: Path, command: str) -> str:
+        """按文件位置推导模块名；测试里的临时目录回退到旧命名。"""
+        src_root = Path(__file__).resolve().parents[2]
+        try:
+            relative = module_path.relative_to(src_root)
+        except ValueError:
+            return f"ushareiplay.commands.{command}"
+        return ".".join(relative.with_suffix("").parts)
+
     def load_command_module(self, command):
         """Load command module dynamically"""
         try:
             if command in self.command_modules:
                 return self.command_modules[command]
 
-            module_path = None
-            package_name = None
-            for root in self.command_roots:
-                candidate = (root / f"{command}.py").resolve()
-                if candidate.is_file():
-                    module_path = candidate
-                    package_name = (
-                        f"ushareiplay.adapters.inbound.chat.{command}"
-                        if root == CHAT_COMMANDS_PATH
-                        else f"ushareiplay.commands.{command}"
-                    )
-                    break
+            module_path = next(
+                (
+                    path
+                    for root in self.command_roots
+                    if (path := (root / f"{command}.py").resolve()).exists()
+                ),
+                None,
+            )
             if module_path is None:
                 self.logger.error(f'module path not exists, {command}.py')
                 return None
 
+            package_name = self._module_name(module_path, command)
             spec = importlib.util.spec_from_file_location(package_name, module_path)
             module = importlib.util.module_from_spec(spec)
             sys.modules[package_name] = module
@@ -178,12 +185,14 @@ class CommandManager(Singleton):
             if self.catalogue is not None:
                 command_files = list(self.catalogue.modules())
             else:
-                command_files = [
-                    f.stem
-                    for root in self.command_roots
-                    for f in root.glob('*.py')
-                    if f.is_file() and not f.stem.startswith('__')
-                ]
+                command_files = []
+                seen = set()
+                for root in self.command_roots:
+                    for path in sorted(root.glob('*.py')):
+                        if path.stem.startswith('__') or path.stem in seen:
+                            continue
+                        seen.add(path.stem)
+                        command_files.append(path.stem)
 
             self.logger.info(f"Found command files: {command_files}")
 

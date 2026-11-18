@@ -17,9 +17,29 @@
 普通用户在房间里自称 Timer 依然会被拦。
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
+
+from tests.fakes.fake_clock import FakeClock
+from tests.fakes.in_memory_timer_repository import InMemoryTimerRepository
+from ushareiplay.adapters.inbound.runtime.timer_message_sink import (
+    QueueTimerMessageSink,
+)
+from ushareiplay.core.message_queue import MessageQueue
+from ushareiplay.modules.timer.use_cases import TimerUseCases
+
+NOW = datetime(2026, 1, 1, 12, 0, 0)
+
+
+def _timer_use_cases():
+    return TimerUseCases(
+        repository=InMemoryTimerRepository(),
+        clock=FakeClock(NOW),
+        sink=QueueTimerMessageSink(MessageQueue.instance()),
+        logger=_DummyLogger(),
+    )
 
 
 class _DummyLogger:
@@ -50,32 +70,21 @@ class _DummyController:
 @pytest.mark.asyncio
 async def test_timer_fired_message_is_sleep_exempt():
     """定时器触发的消息必须带 sleep_exempt，睡眠保护才不会拦下它。"""
-    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-    from ushareiplay.core.message_queue import MessageQueue
-    from ushareiplay.managers.timer_manager import TimerManager
+    use_cases = _timer_use_cases()
 
-    manager = DatabaseManager(db_url="sqlite://:memory:")
-    await manager.init()
+    await use_cases.create_timer(
+        key="night",
+        message=":playlist 助眠",
+        target_time="10",
+        repeat=False,
+    )
+    await use_cases.fire_timer("night")
 
-    try:
-        tm = TimerManager.instance()
-        tm._logger = _DummyLogger()
-
-        await tm.create_timer(
-            key="night",
-            message=":playlist 助眠",
-            target_time="10",
-            repeat=False,
-        )
-        await tm.fire_timer("night")
-
-        messages = await MessageQueue.instance().get_all_messages()
-        assert len(messages) == 1
-        fired = next(iter(messages.values()))
-        assert fired.nickname == "Timer"
-        assert fired.sleep_exempt is True
-    finally:
-        await manager.close()
+    messages = await MessageQueue.instance().get_all_messages()
+    assert len(messages) == 1
+    fired = next(iter(messages.values()))
+    assert fired.nickname == "Timer"
+    assert fired.sleep_exempt is True
 
 
 @pytest.mark.asyncio
@@ -112,43 +121,33 @@ async def test_keyword_run_forwards_sleep_exemption():
 async def test_timer_sourced_keyword_command_keeps_the_sleep_exemption(monkeypatch):
     """整条链：定时器 → 关键字 → 内层播放命令，豁免标记必须一路传下去。"""
     from ushareiplay.commands.keyword import KeywordCommand
-    from ushareiplay.adapters.outbound.persistence.db_manager import DatabaseManager
-    from ushareiplay.core.message_queue import MessageQueue
     from ushareiplay.managers.keyword_manager import KeywordManager
-    from ushareiplay.managers.timer_manager import TimerManager
 
-    manager = DatabaseManager(db_url="sqlite://:memory:")
-    await manager.init()
+    use_cases = _timer_use_cases()
+    await use_cases.create_timer(
+        key="night",
+        message=":keyword run 助眠",
+        target_time="10",
+        repeat=False,
+    )
+    await use_cases.fire_timer("night")
 
-    try:
-        tm = TimerManager.instance()
-        tm._logger = _DummyLogger()
-        await tm.create_timer(
-            key="night",
-            message=":keyword run 助眠",
-            target_time="10",
-            repeat=False,
-        )
-        await tm.fire_timer("night")
+    timer_message = next(iter((await MessageQueue.instance().get_all_messages()).values()))
 
-        timer_message = next(iter((await MessageQueue.instance().get_all_messages()).values()))
+    km = KeywordManager.initialize()
+    km._logger = _DummyLogger()
 
-        km = KeywordManager.initialize()
-        km._logger = _DummyLogger()
+    async def _fake_find_keyword(keyword, username):
+        return SimpleNamespace(keyword=keyword, command=":playlist 助眠", mode="sequence")
 
-        async def _fake_find_keyword(keyword, username):
-            return SimpleNamespace(keyword=keyword, command=":playlist 助眠", mode="sequence")
+    monkeypatch.setattr(km, "find_keyword", _fake_find_keyword)
 
-        monkeypatch.setattr(km, "find_keyword", _fake_find_keyword)
+    cmd = KeywordCommand(_DummyController())
+    cmd.keyword_manager = km
 
-        cmd = KeywordCommand(_DummyController())
-        cmd.keyword_manager = km
+    await cmd.do_process(timer_message, ["run", "助眠"])
 
-        await cmd.do_process(timer_message, ["run", "助眠"])
-
-        inner = next(iter((await MessageQueue.instance().get_all_messages()).values()))
-        assert inner.content == ":playlist 助眠"
-        assert inner.nickname == "Timer"
-        assert inner.sleep_exempt is True
-    finally:
-        await manager.close()
+    inner = next(iter((await MessageQueue.instance().get_all_messages()).values()))
+    assert inner.content == ":playlist 助眠"
+    assert inner.nickname == "Timer"
+    assert inner.sleep_exempt is True

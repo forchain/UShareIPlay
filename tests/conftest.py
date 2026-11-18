@@ -11,7 +11,6 @@ from ushareiplay.managers.mic_manager import MicManager
 from ushareiplay.managers.party_manager import PartyManager
 from ushareiplay.managers.playlist_session import PlaylistSession
 from ushareiplay.managers.room_profile import RoomProfileManager
-from ushareiplay.managers.timer_manager import TimerManager
 from ushareiplay.managers.user_event_hooks import UserEventHooks
 from ushareiplay.modules.command.use_cases import SleepManager
 
@@ -32,7 +31,6 @@ def initialized_test_singletons():
         PartyManager,
         PlaylistSession,
         RoomProfileManager,
-        TimerManager,
         UserEventHooks,
     ):
         singleton_class.initialize()

@@ -1,25 +1,26 @@
 ---
-covers: [TimerManager, TimerCommand, Timer, TimerDAO]
-last-synced: 2026-11-17
+covers: [TimerUseCases, TimerCommand, Timer, TimerRepository, TimerMessageSink]
+last-synced: 2026-11-18
 ---
 
 ## Overview
 
-`TimerManager` runs an asynchronous scheduling loop that executes scheduled commands at designated times. Timers are persisted in SQLite (`timer_events` table) so they survive process restarts. Each fired timer injects its command into `MessageQueue` with sender `"Timer"` (a system user that bypasses standard user level checks).
+`TimerUseCases` (`modules/timer/use_cases.py`) runs an asynchronous scheduling loop that executes scheduled commands at designated times. Timers are persisted through the `TimerRepository` port (`adapters/outbound/persistence/timer_repository.py` on SQLite `timer_events`), so they survive process restarts. Each fired timer hands its command to the `TimerMessageSink` port; the runtime adapter injects it into `MessageQueue` with sender `"Timer"` (a system user that bypasses standard user level checks).
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| `TimerManager` | Async timer loop; key allocation; DB persistence; queue injection |
-| `TimerCommand` | Handles `:timer` commands (add, remove, list, enable, disable, start, stop, reset, reload) |
-| `Timer` (model) | Tortoise ORM model mapping to `timer_events` table |
-| `TimerDAO` | Database CRUD operations for `Timer` |
+| `TimerUseCases` | Async timer loop; key allocation; orchestrates persistence and delivery |
+| `TimerCommand` | Inbound adapter for `:timer` (add, remove, list, enable, disable, start, stop, reset, reload) |
+| `Timer` (domain) | Plain value object; schedule rules live in `modules/timer/domain.py` |
+| `TimerRepository` | Persistence port; Tortoise + in-memory implementations |
+| `TimerMessageSink` | Outbound port for a due timer message; queue adapter in `adapters/inbound/runtime/` |
 
 ## How It Works
 
 ### Startup & Persistence
-`TimerManager.start()` loads all stored timers from SQLite. The timer loop runs as a persistent background `asyncio.Task`.
+`TimerUseCases.start()` prepares storage (legacy JSON migration) and loads all stored timers through the repository. The timer loop runs as a persistent background `asyncio.Task`.
 
 ### Firing Logic
 Every tick, the loop checks enabled timers whose `next_trigger` has arrived (`now >= next_trigger`):
