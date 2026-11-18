@@ -193,7 +193,23 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
         "commands": [{"prefix": "play", "level": 1, "description": "播放歌曲"}],
         "llm": {"enabled": True, "api_key": "test-key"},
     }
-    fallback = NaturalLanguageFallbackAdapter(root_config)
+    from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
+        OpenAICompatibleNaturalLanguageResolver,
+    )
+    from ushareiplay.modules.command.use_cases import ResolveNaturalLanguage
+    from ushareiplay.modules.shared.config import ConfigView
+
+    llm_cfg = dict(ConfigView(root_config).maybe_section("llm").data)
+    resolver = ResolveNaturalLanguage(
+        OpenAICompatibleNaturalLanguageResolver(llm_cfg), llm_cfg
+    )
+    fallback = NaturalLanguageFallbackAdapter(
+        commands_config=lambda: root_config["commands"],
+        catalogue=lambda: None,
+        room_info=lambda: None,
+        playback_info=lambda: None,
+        resolver=resolver,
+    )
     use_cases = _use_cases(fallback)
 
     with patch(
@@ -213,7 +229,7 @@ async def test_keyword_manager_resolves_root_config_from_controller(monkeypatch)
 
         await use_cases.dispatch_mention(intake_result, sleep_exempt=True)
 
-        assert fallback.nl_resolver.enabled is True
+        assert resolver.enabled is True
         mock_resolve.assert_awaited_once()
         messages = await MessageQueue.instance().get_all_messages()
         assert len(messages) == 1
@@ -245,11 +261,13 @@ async def test_keyword_mention_with_room_owner_dispatches_properly(monkeypatch):
     assert msg.nickname == "Alice"
 
 
-def test_get_playback_info_enrichment(monkeypatch):
+def test_get_playback_info_enrichment():
+    from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+        PlaybackInfoProvider,
+    )
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
-    fallback = NaturalLanguageFallbackAdapter({})
     broadcaster = PlaybackBroadcaster.initialize()
     playlist_session = PlaylistSession.instance()
 
@@ -268,12 +286,8 @@ def test_get_playback_info_enrichment(monkeypatch):
         play_mode_key="random",
         play_mode_key_to_name=lambda k: "随机播放" if k == "random" else "未知",
     )
-    monkeypatch.setattr(
-        "ushareiplay.handlers.qq_music_handler.QQMusicHandler.instance",
-        lambda: fake_music_handler,
-    )
 
-    info = fallback._get_playback_info()
+    info = PlaybackInfoProvider(broadcaster, playlist_session, fake_music_handler)()
     assert info is not None
     assert info["song"] == "Fictional (Stripped)"
     assert info["singer"] == "Khloe Rose"
@@ -285,22 +299,16 @@ def test_get_playback_info_enrichment(monkeypatch):
     assert info["play_mode"] == "随机播放"
 
 
-def test_get_playback_info_handles_exceptions_gracefully(monkeypatch):
+def test_get_playback_info_tolerates_missing_playlist_context():
+    from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+        PlaybackInfoProvider,
+    )
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
 
-    fallback = NaturalLanguageFallbackAdapter({})
     broadcaster = PlaybackBroadcaster.initialize()
     broadcaster._playback_info_cache = {"song": "SongA", "singer": "SingerA"}
 
-    def _raise():
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(
-        "ushareiplay.managers.playlist_session.PlaylistSession.instance",
-        _raise,
-    )
-
-    info = fallback._get_playback_info()
+    info = PlaybackInfoProvider(broadcaster, None, None)()
     assert info is not None
     assert info["song"] == "SongA"
 
@@ -311,6 +319,9 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
+    from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+        PlaybackInfoProvider,
+    )
     from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
         OpenAICompatibleNaturalLanguageResolver,
     )
@@ -323,7 +334,12 @@ async def test_mention_query_own_playlist_e2e(monkeypatch):
     }
     llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
     fallback = NaturalLanguageFallbackAdapter(
-        {"llm": llm_cfg, "commands": [{"prefix": "play", "level": 1}]},
+        commands_config=lambda: [{"prefix": "play", "level": 1}],
+        catalogue=lambda: None,
+        room_info=lambda: None,
+        playback_info=lambda: PlaybackInfoProvider(
+            broadcaster, playlist_session, fake_music_handler
+        )(),
         resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
     use_cases = _use_cases(fallback)
@@ -407,6 +423,9 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
     from ushareiplay.state.playback_broadcaster import PlaybackBroadcaster
     from ushareiplay.managers.playlist_session import PlaylistSession
 
+    from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
+        PlaybackInfoProvider,
+    )
     from ushareiplay.adapters.outbound.llm.natural_language_resolver import (
         OpenAICompatibleNaturalLanguageResolver,
     )
@@ -419,7 +438,12 @@ async def test_mention_query_others_playlist_e2e(monkeypatch):
     }
     llm_client = OpenAICompatibleNaturalLanguageResolver(llm_cfg)
     fallback = NaturalLanguageFallbackAdapter(
-        {"llm": llm_cfg, "commands": [{"prefix": "play", "level": 1}]},
+        commands_config=lambda: [{"prefix": "play", "level": 1}],
+        catalogue=lambda: None,
+        room_info=lambda: None,
+        playback_info=lambda: PlaybackInfoProvider(
+            broadcaster, playlist_session, fake_music_handler
+        )(),
         resolver=ResolveNaturalLanguage(llm_client, llm_cfg),
     )
     use_cases = _use_cases(fallback)

@@ -172,6 +172,7 @@ async def test_host_room_allows_all_commands():
 async def test_guest_room_filters_commands_for_natural_language_resolver(monkeypatch):
     from ushareiplay.adapters.inbound.runtime.keyword_nl_fallback import (
         NaturalLanguageFallbackAdapter,
+        RoomInfoProvider,
     )
     from ushareiplay.core.chat_intake import ChatIntakeKind, ChatIntakeResult
     from ushareiplay.modules.command.domain import NaturalLanguageResult
@@ -186,21 +187,21 @@ async def test_guest_room_filters_commands_for_natural_language_resolver(monkeyp
         passed_commands = kwargs.get("commands_config", [])
         return NaturalLanguageResult(type="reply", content="只支持点歌")
 
-    fallback = NaturalLanguageFallbackAdapter(
-        {
-            "llm": {"enabled": True, "api_key": "test"},
-            "commands": [
-                {"prefix": "play", "level": 1},
-                {"prefix": "theme", "level": 3},
-                {"prefix": "vol", "level": 1},
-                {"prefix": "seat", "level": 1},
-            ],
-        }
-    )
-    fallback._nl_resolver = SimpleNamespace(resolve=_mock_resolve)
-
+    commands_config = [
+        {"prefix": "play", "level": 1},
+        {"prefix": "theme", "level": 3},
+        {"prefix": "vol", "level": 1},
+        {"prefix": "seat", "level": 1},
+    ]
     room_state = RoomState.instance()
     room_state.is_guest_room = True
+    fallback = NaturalLanguageFallbackAdapter(
+        commands_config=lambda: commands_config,
+        catalogue=lambda: None,
+        room_info=RoomInfoProvider(room_state),
+        playback_info=lambda: None,
+        resolver=SimpleNamespace(resolve=_mock_resolve),
+    )
 
     users = InMemoryUserRepository()
     km = KeywordUseCases(
