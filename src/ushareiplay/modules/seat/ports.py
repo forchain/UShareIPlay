@@ -82,6 +82,11 @@ class SeatPanelPort(ABC):
     def session(self, reason: str = "", *, skip_if_busy: bool = False):
         """独占 UI 执行权的异步上下文管理器。"""
 
+    @property
+    @abstractmethod
+    def is_handler_ready(self) -> bool:
+        """底层 UI 处理器是否已就绪。"""
+
     @abstractmethod
     def is_expanded(self) -> bool:
         """面板当前是否处于展开状态。"""
@@ -95,7 +100,7 @@ class SeatPanelPort(ABC):
         """收起座位面板。"""
 
     @abstractmethod
-    async def expand_and_find_desks(self) -> Optional[List[DeskSnapshot]]:
+    async def expand_and_find_desk_snapshots(self) -> Optional[List[DeskSnapshot]]:
         """展开面板并读取全部 6 张桌位快照；失败返回 None。"""
 
     @abstractmethod
