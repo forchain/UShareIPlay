@@ -193,7 +193,20 @@ class MessageManager:
         return ChatDelta(new_lines=new_lines, anchor=anchor, missed=missed)
 
     @staticmethod
-    def _diff_against_window(contents, previous) -> tuple[tuple[str, ...], bool]:
+    def _same_observed_line(current: str, previous: str) -> bool:
+        """判定当前屏幕行是否与窗口旧行是同一条消息。
+
+        引用视图 (gReplyView) 位于气泡上方，上滚时可能先于正文 (tvContent) 滚出
+        视口，使同一行从「带引用」退化为「无引用」；仅在这种单向退化时按去引用正文对齐，
+        保持两条不同引用、相同正文的消息彼此独立。
+        """
+        if current == previous:
+            return True
+        stripped_prev = strip_quoted_segment(previous)
+        return stripped_prev != previous and stripped_prev == current
+
+    @classmethod
+    def _diff_against_window(cls, contents, previous) -> tuple[tuple[str, ...], bool]:
         """前向对齐：找到最小的偏移，使上次窗口的后缀对上本次列表的前缀。
 
         对齐点之后的行就是新增行。全部偏移都失配时说明中间漏了行（missed）。
@@ -207,7 +220,7 @@ class MessageManager:
             for j in range(content_len):
                 ii = i + j
                 if ii < recent_len:
-                    if contents[j] != previous[ii]:
+                    if not cls._same_observed_line(contents[j], previous[ii]):
                         break
                     if ii == recent_len - 1 and j == content_len - 1:
                         matched_to_end = True
@@ -224,15 +237,15 @@ class MessageManager:
 
         return tuple(new_lines), False
 
-    @staticmethod
-    def _apply_anchor_fallback(contents, anchor, new_lines) -> tuple[tuple[str, ...], bool]:
+    @classmethod
+    def _apply_anchor_fallback(cls, contents, anchor, new_lines) -> tuple[tuple[str, ...], bool]:
         """锚点仍在屏幕上时，`missed` 是假的 —— 只是窗口比 maxlen 宽。
 
         `contents` 比 `RECENT_MAXLEN` 长时前向对齐会在 j=0 整体失配；此时若锚点
         确实可见，就只保留锚点之后的行。
         """
         for idx, content in enumerate(contents):
-            if content == anchor:
+            if cls._same_observed_line(content, anchor):
                 return tuple(contents[idx + 1:]), False
         return new_lines, True
 
