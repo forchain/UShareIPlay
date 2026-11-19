@@ -198,3 +198,48 @@ async def test_mention_with_quote_records_the_quote_in_the_user_chat_log(db_init
     assert [log.content for log in logs] == ["「Alice：哈哈」 点歌 晴天"]
 
     assert mock_resolve.await_args.kwargs["user_text"] == "「Alice：哈哈」 点歌 晴天"
+
+
+@pytest.mark.asyncio
+async def test_quoted_message_losing_its_quote_on_scroll_is_not_redispatched(chat_window):
+    event = _event(chat_window)
+    chat_window.manager.focus_app_for_queued_commands = AsyncMock()
+    chat_window.manager.process_missed_messages = AsyncMock()
+    mock_keyword = SimpleNamespace(dispatch_mention=AsyncMock())
+    chat_window.manager.configure_keywords(mock_keyword)
+
+    quoted = "souler[Bob]说：「Joyer：[智能] 好，有需要随时告诉我。」 @群主 好嘞"
+    quote_free = "souler[Bob]说：@群主 好嘞"
+    bot_reply = "souler[群主]说：[智能] 好的，随时都可以告诉我。"
+
+    await event.handle("message_content", [_FakeWrapper(quoted)])
+    await event.handle("message_content", [_FakeWrapper(quote_free), _FakeWrapper(bot_reply)])
+
+    assert mock_keyword.dispatch_mention.await_count == 1
+    chat_window.manager.process_missed_messages.assert_not_awaited()
+
+
+def test_observe_anchor_fallback_matches_quote_stripped_anchor(chat_window):
+    manager = chat_window.manager
+    quoted = "souler[Bob]说：「Alice：早上好」 @群主 你好"
+    quote_free = "souler[Bob]说：@群主 你好"
+    bot_reply = "souler[群主]说：[智能] 你好呀"
+
+    manager.observe(["p1", "p2", quoted])
+    delta = manager.observe(["x1", "x2", "x3", quote_free, bot_reply])
+
+    assert delta.new_lines == (bot_reply,)
+    assert delta.missed is False
+
+
+def test_observe_keeps_distinct_quoted_messages_separate_when_scrolled(chat_window):
+    manager = chat_window.manager
+    first = "souler[Bob]说：「Alice：今天天气不错」 哈哈"
+    second = "souler[Bob]说：「Dave：晚安」 哈哈"
+
+    manager.observe([first])
+    delta = manager.observe([second])
+
+    assert delta.new_lines == (second,)
+    assert delta.missed is True
+
